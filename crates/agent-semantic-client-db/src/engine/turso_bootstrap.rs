@@ -20,7 +20,7 @@ pub async fn bootstrap_turso_client_db(
     bootstrap_turso_client_cache_schema(&connection).await?;
     bootstrap_turso_syntax_query_schema(&connection).await?;
     let mut search_projection_connection =
-        super::turso::connect_turso_search_projection_db(&turso_path).await?;
+        super::turso::connect_turso_search_projection_db_for_write(&turso_path).await?;
     bootstrap_turso_schema_version(&mut search_projection_connection).await?;
     bootstrap_turso_client_search_schema(&search_projection_connection).await?;
     Ok(turso_bootstrap_report(db_path))

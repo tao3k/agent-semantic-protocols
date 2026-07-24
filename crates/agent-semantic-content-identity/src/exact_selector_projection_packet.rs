@@ -103,19 +103,19 @@ pub enum ExactSelectorProjectionEncodingV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExactSelectorProjectionPacketV1 {
-    schema_id: String,
-    schema_version: String,
-    digest_algorithm: String,
+    pub schema_id: String,
+    pub schema_version: String,
+    pub digest_algorithm: String,
     pub language_id: ProjectionPacketLanguageIdV1,
     pub provider_id: ProjectionPacketProviderIdV1,
     canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
-    parser_identity_digest: ContentDigestV1,
-    query_pack_digest: ContentDigestV1,
+    pub parser_identity_digest: ContentDigestV1,
+    pub query_pack_digest: ContentDigestV1,
     pub owner_path: ProjectionPacketOwnerPathV1,
-    source_blob_digest: ContentDigestV1,
+    pub source_blob_digest: ContentDigestV1,
     parser_fact_digest: ContentDigestV1,
     pub structural_selector: ProjectionPacketStructuralSelectorV1,
-    projection_mode: ExactProjectionModeV1,
+    pub projection_mode: ExactProjectionModeV1,
     projection_encoding: ExactSelectorProjectionEncodingV1,
     pub projection_payload_base64: ProjectionPacketPayloadBase64V1,
 }

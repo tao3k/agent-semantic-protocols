@@ -31,32 +31,38 @@ pub(crate) fn search_pipe_source_index_lookup_from_client_result(
     let source_snapshot = result.source_snapshot;
     let index_artifact_digest = result.index_artifact_digest;
     SearchPipeSourceIndexLookup {
-        state: result.state.as_str().to_string(),
+        state: result.state.as_str().to_string().into(),
         candidates: result
             .candidates
             .into_iter()
             .map(|candidate| SearchPipeSourceIndexCandidate {
-                path: candidate.path,
+                path: candidate.path.as_str().to_string().into(),
                 language_id: candidate
                     .language_id
-                    .map(|value| value.as_str().to_string()),
+                    .map(|value| value.as_str().to_string().into()),
                 provider_id: candidate
                     .provider_id
-                    .map(|value| value.as_str().to_string()),
-                source_kind: source_index_candidate_kind(&candidate.source_kind).to_string(),
+                    .map(|value| value.as_str().to_string().into()),
+                source_kind: source_index_candidate_kind(&candidate.source_kind)
+                    .to_string()
+                    .into(),
                 line_count: candidate.line_count,
-                query_keys: candidate.query_keys,
+                query_keys: candidate
+                    .query_keys
+                    .into_iter()
+                    .map(|key| key.as_str().to_string().into())
+                    .collect(),
                 selector_proof: candidate.selector_proof.map(|proof| {
                     agent_semantic_search::SearchPipeSelectorPayloadProof {
-                        structural_selector: proof.structural_selector,
-                        payload_kind: proof.payload_kind,
+                        structural_selector: proof.structural_selector.as_str().to_string().into(),
+                        payload_kind: proof.payload_kind.as_str().to_string().into(),
                         bounded: proof.bounded,
                     }
                 }),
             })
             .collect(),
         source_snapshot,
-        index_artifact_digest,
+        index_artifact_digest: index_artifact_digest.map(Into::into),
     }
 }
 

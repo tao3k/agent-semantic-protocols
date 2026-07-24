@@ -13,7 +13,6 @@ use super::search_pipe_args::{
     parse_search_pipe_args,
 };
 use super::search_pipe_candidates::{parse_ingest_candidates, read_piped_stdin};
-use super::search_pipe_dependency_facts::dependency_matches_query;
 use super::search_pipe_failure::run_search_failure_command;
 use super::search_pipe_model::SearchPipeSourceTrace;
 use super::search_pipe_owner_items_fast::{
@@ -94,7 +93,8 @@ pub(super) fn run_asp_fast_search_command(
         return run_search_ingest_command(args, &context);
     }
     if is_search_owner_items_query(args) {
-        match preflight_search_command_args(context.language_id, args, context.project_root) {
+        match preflight_search_command_args(&context.language_id.into(), args, context.project_root)
+        {
             SearchCommandPreflightOutcome::Rejected(error) => return Err(error),
             SearchCommandPreflightOutcome::Passed
             | SearchCommandPreflightOutcome::NotApplicable => {}
@@ -277,29 +277,18 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         context.provider_context,
     )?;
     let current_snapshot = context.source_index_snapshot;
-    let mut acquisition =
-        dependency_manifest_fast_acquisition(DependencyManifestFastAcquisitionRequest {
-            language_id: context.language_id,
-            project_root: &project_root,
-            query: &pipe_args.seed_query,
-            source: pipe_args.source,
-            view: &pipe_args.view,
-        })
-        .map(Ok)
-        .unwrap_or_else(|| {
-            collect_search_pipe_candidates(
-                context.language_id,
-                &project_root,
-                &current_snapshot,
-                context.locator_root,
-                &pipe_args.seed_query,
-                &pipe_args.scopes,
-                pipe_args.source,
-                context.config,
-                context.provider_context,
-                true,
-            )
-        })?;
+    let mut acquisition = collect_search_pipe_candidates(
+        context.language_id,
+        &project_root,
+        &current_snapshot,
+        context.locator_root,
+        &pipe_args.seed_query,
+        &pipe_args.scopes,
+        pipe_args.source,
+        context.config,
+        context.provider_context,
+        true,
+    )?;
     let query_requests_semantic_facts = if let Some(provider_context) = context.provider_context {
         super::search_pipe_provider_facts::query_requests_semantic_facts(
             provider_context.provider,
@@ -390,8 +379,9 @@ fn admit_search_pipe_candidates(
 ) {
     let input_count = acquisition.candidates.len();
     let mut rejection_kinds = std::collections::BTreeSet::new();
+    let language_id = language_id.into();
     acquisition.candidates.retain(|candidate| {
-        match scope.admit_candidate_from(locator_root, Path::new(&candidate.path), language_id) {
+        match scope.admit_candidate_from(locator_root, Path::new(&candidate.path), &language_id) {
             Ok(_) => true,
             Err(rejection) => {
                 rejection_kinds.insert(rejection.reason_kind);
@@ -602,71 +592,6 @@ fn source_trace_with_provider_facts(
 
 fn elapsed_millis(duration: Duration) -> u64 {
     duration.as_millis().try_into().unwrap_or(u64::MAX)
-}
-
-struct DependencyManifestFastAcquisitionRequest<'a> {
-    language_id: &'a str,
-    project_root: &'a Path,
-    query: &'a str,
-    source: SourceSpec,
-    view: &'a str,
-}
-
-fn dependency_manifest_fast_acquisition(
-    request: DependencyManifestFastAcquisitionRequest<'_>,
-) -> Option<CandidateAcquisition> {
-    let DependencyManifestFastAcquisitionRequest {
-        language_id,
-        project_root,
-        query,
-        source,
-        view,
-    } = request;
-    if source != SourceSpec::Auto
-        || view != "graph-turbo-request"
-        || !is_single_dependency_query(query)
-    {
-        return None;
-    }
-    let facts = super::search_pipe_dependency_facts::collect_manifest_dependency_facts(
-        language_id,
-        project_root,
-    );
-    let matched_manifest_facts = facts
-        .iter()
-        .filter(|fact| fact.source == "manifest")
-        .filter(|fact| dependency_matches_query(&fact.dependency, query))
-        .count();
-    if matched_manifest_facts == 0 {
-        return None;
-    }
-    let mut manifest_fields = BTreeMap::new();
-    manifest_fields.insert("seedCache".to_string(), Value::from("bypass"));
-    manifest_fields.insert("topology".to_string(), Value::from("asp-owned"));
-    Some(CandidateAcquisition {
-        candidates: Vec::new(),
-        candidate_sources: vec!["manifest".to_string(), "finder".to_string()],
-        source_trace: vec![
-            SearchPipeSourceTrace::new(
-                "manifest",
-                "used",
-                matched_manifest_facts,
-                0,
-                matched_manifest_facts,
-            )
-            .with_fields(manifest_fields),
-            SearchPipeSourceTrace::new("finder", "skipped", 0, 0, 0),
-        ],
-        source_snapshot: None,
-    })
-}
-
-fn is_single_dependency_query(query: &str) -> bool {
-    query
-        .split(|character: char| character == ',' || character == '|' || character.is_whitespace())
-        .filter(|term| !term.trim().is_empty())
-        .count()
-        == 1
 }
 
 pub(super) fn search_workspace_root(

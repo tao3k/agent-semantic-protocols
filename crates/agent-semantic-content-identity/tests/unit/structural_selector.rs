@@ -31,11 +31,8 @@ fn canonical_item_identity_path_rejects_lowercase_percent_escapes() {
     let identity_path = crate::structural_selector::CanonicalItemIdentityPath::from(
         "item/function/run_search_view/scope/conditional-compilation/cfg/feature%3djson",
     );
-    let error = decode_canonical_item_identity_path(
-        &language_id,
-        &identity_path,
-    )
-    .expect_err("lowercase percent escape must fail");
+    let error = decode_canonical_item_identity_path(&language_id, &identity_path)
+        .expect_err("lowercase percent escape must fail");
 
     assert!(error.to_string().contains("uppercase hex"));
 }

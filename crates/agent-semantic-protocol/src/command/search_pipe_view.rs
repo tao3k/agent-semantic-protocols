@@ -1,16 +1,11 @@
 //! Graph-turbo view rendering for ASP-owned search pipelines.
 
 use std::collections::BTreeMap;
-use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use super::graph::{
-    GraphTurboReceiptCapture, GraphTurboReceiptRequest, render_graph_turbo_value_rust_compact,
-    write_graph_turbo_receipt,
-};
+use super::graph::{GraphTurboReceiptCapture, GraphTurboReceiptRequest, write_graph_turbo_receipt};
 use super::search_config::AspConfig;
-use super::search_pipe_dependency_facts::dependency_matches_query;
 use super::search_pipe_graph_turbo::{
     GraphTurboSearchPipeRequest, graph_turbo_request, render_graph_turbo_request,
 };
@@ -166,7 +161,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                         query,
                         candidates,
                         quality: quality.clone(),
-                        ranked_compact: None,
+                        ranked_projection: None,
                         read_memory_selectors,
                         dependency_action_targets: &[],
                     })
@@ -255,7 +250,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         config,
         read_memory_selectors,
         action_frontier: &[],
-    });
+    })?;
     let graph_elapsed = graph_started_at.elapsed();
     let receipt_started_at = Instant::now();
     if frontier_receipt.is_some() {
@@ -270,18 +265,33 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
     }
     let receipt_elapsed = receipt_started_at.elapsed();
     let seed_started_at = Instant::now();
-    let dependency_action_targets = dependency_action_targets_from_graph(&request_packet, query);
+    let dependency_action_targets =
+        super::search_pipe_graph_turbo::dependency_action_targets_from_graph(&request_packet);
     let seed_plan_line = include_pipe_plan
         .then(|| seed_plan_detail_line(&request_packet))
         .flatten();
     let seed_elapsed = seed_started_at.elapsed();
-    let compact_started_at = Instant::now();
-    let output = render_graph_turbo_value_rust_compact(&request_packet)?;
-    let compact_elapsed = compact_started_at.elapsed();
-    let ranked_compact = std::str::from_utf8(output.as_ref())
-        .ok()
-        .map(str::to_string);
-    let projection_elapsed = Duration::ZERO;
+    let projection_started_at = Instant::now();
+    let request_bytes = serde_json::to_vec(&request_packet)
+        .map_err(|error| format!("failed to serialize graph turbo request: {error}"))?;
+    let ranked_packet =
+        super::graph::rank_graph_turbo_packet(&request_bytes)?.ok_or_else(|| {
+            "search seeds requires the activated asp-graph-turbo typed ranker".to_string()
+        })?;
+    let projection_request = agent_semantic_search_projection::SearchProjectionRequestV1::new(
+        "ranked-frontier",
+        agent_semantic_search_projection::SearchProjectionDensityV1::Terse,
+    );
+    let output = agent_semantic_search_projection::SearchProjectionRenderer::render(
+        &agent_semantic_search_projection::RankedFrontierSearchProjectionRenderer,
+        &ranked_packet,
+        &projection_request,
+    )
+    .map_err(|error| error.to_string())?
+    .content()
+    .to_string();
+    let projection_elapsed = projection_started_at.elapsed();
+    let ranked_projection = Some(output.as_str());
     let plan_started_at = Instant::now();
     let plan_output = if include_pipe_plan {
         query.map(|query| {
@@ -295,7 +305,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
                 quality: quality
                     .clone()
                     .expect("quality is computed whenever a query exists"),
-                ranked_compact: ranked_compact.as_deref(),
+                ranked_projection,
                 read_memory_selectors,
                 dependency_action_targets: &dependency_action_targets,
             })
@@ -315,7 +325,6 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
                 graph: graph_elapsed,
                 receipt: receipt_elapsed,
                 seed: seed_elapsed,
-                compact: compact_elapsed,
                 projection: projection_elapsed,
                 plan: plan_elapsed,
             },
@@ -337,9 +346,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         println!("{seed_plan_line}");
     }
     if !include_pipe_plan {
-        io::stdout()
-            .write_all(output.as_ref())
-            .map_err(|error| format!("failed to write graph compact stdout: {error}"))?;
+        print!("{output}");
     }
     if let Some(plan_output) = plan_output {
         print!("{plan_output}");
@@ -353,7 +360,6 @@ struct RenderPhaseTimings {
     graph: Duration,
     receipt: Duration,
     seed: Duration,
-    compact: Duration,
     projection: Duration,
     plan: Duration,
 }
@@ -382,10 +388,6 @@ fn render_phase_source_trace(
     fields.insert(
         "seedMs".to_string(),
         Value::from(elapsed_millis(timings.seed)),
-    );
-    fields.insert(
-        "compactMs".to_string(),
-        Value::from(elapsed_millis(timings.compact)),
     );
     fields.insert(
         "projectionMs".to_string(),
@@ -557,132 +559,6 @@ fn compact_u64(value: Option<&Value>) -> String {
         .and_then(Value::as_u64)
         .map(|value| value.to_string())
         .unwrap_or_else(|| "-".to_string())
-}
-
-fn dependency_action_targets_from_graph(packet: &Value, query: Option<&str>) -> Vec<String> {
-    let Some(query) = query.filter(|query| !query.trim().is_empty()) else {
-        return Vec::new();
-    };
-    let dependency_route_intent = query_has_dependency_route_intent(query);
-    packet
-        .get("graph")
-        .and_then(|graph| graph.get("nodes"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|node| node.get("kind").and_then(Value::as_str) == Some("dependency"))
-        .filter_map(|node| node.get("value").and_then(Value::as_str))
-        .filter(|dependency| {
-            dependency_route_preconditions_met(dependency, query, dependency_route_intent)
-        })
-        .fold(Vec::new(), |mut targets, dependency| {
-            if !targets.iter().any(|target| target == dependency) {
-                targets.push(dependency.to_string());
-            }
-            targets
-        })
-}
-
-fn dependency_route_preconditions_met(
-    dependency: &str,
-    query: &str,
-    dependency_route_intent: bool,
-) -> bool {
-    if query_has_search_protocol_meta_intent(query) {
-        return false;
-    }
-    dependency_literal_in_query(dependency, query)
-        || (dependency_route_intent && dependency_matches_query(dependency, query))
-}
-
-fn dependency_literal_in_query(dependency: &str, query: &str) -> bool {
-    let dependency = dependency.to_ascii_lowercase();
-    query
-        .split(token_boundary_for_dependency_literal)
-        .filter(|token| !token.is_empty())
-        .map(str::to_ascii_lowercase)
-        .any(|token| token == dependency)
-}
-
-fn query_has_dependency_route_intent(query: &str) -> bool {
-    if query_has_search_protocol_meta_intent(query) {
-        return false;
-    }
-    dependency_route_query_tokens(query).iter().any(|token| {
-        matches!(
-            token.as_str(),
-            "cargo"
-                | "crate"
-                | "crates"
-                | "dep"
-                | "deps"
-                | "dependencies"
-                | "dependency"
-                | "import"
-                | "imports"
-                | "manifest"
-                | "npm"
-                | "package"
-                | "packages"
-                | "pip"
-                | "requirements"
-                | "uv"
-        )
-    })
-}
-
-fn query_has_search_protocol_meta_intent(query: &str) -> bool {
-    let tokens = dependency_route_query_tokens(query);
-    let has_meta_term = tokens.iter().any(|token| {
-        matches!(
-            token.as_str(),
-            "audit"
-                | "conclusion"
-                | "conclusions"
-                | "evidence"
-                | "expected"
-                | "frontier"
-                | "meta"
-                | "not"
-                | "plan"
-                | "protocol"
-                | "reasoning"
-                | "router"
-                | "routing"
-                | "should"
-                | "test"
-                | "tests"
-        )
-    });
-    let has_search_surface_term = tokens.iter().any(|token| {
-        matches!(
-            token.as_str(),
-            "action"
-                | "deps"
-                | "line"
-                | "owner"
-                | "pipe"
-                | "query"
-                | "route"
-                | "search"
-                | "seed"
-                | "selector"
-                | "symbol"
-        )
-    });
-    has_meta_term && has_search_surface_term
-}
-
-fn dependency_route_query_tokens(query: &str) -> Vec<String> {
-    query
-        .split(|character: char| !(character == '_' || character.is_ascii_alphanumeric()))
-        .filter(|token| !token.is_empty())
-        .map(str::to_ascii_lowercase)
-        .collect()
-}
-
-fn token_boundary_for_dependency_literal(character: char) -> bool {
-    !(character == '-' || character == '_' || character == '.' || character.is_ascii_alphanumeric())
 }
 
 fn workspace_label(project_root: &Path, locator_root: &Path) -> Option<String> {

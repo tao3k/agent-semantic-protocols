@@ -43,19 +43,19 @@ pub(in crate::command::hook_runtime::hook_runtime_agent_session) fn session_star
     append_resident_agent_fields(&mut fields, platform, asp_session_policy);
     fields.insert(
         "rootSessionId".to_string(),
-        serde_json::Value::String(session.root_session_id.clone()),
+        serde_json::Value::String(session.root_session_id.to_string()),
     );
     fields.insert(
         "childSessionId".to_string(),
-        serde_json::Value::String(session.session_id.clone()),
+        serde_json::Value::String(session.session_id.to_string()),
     );
     fields.insert(
         "agentSessionExistingChildId".to_string(),
-        serde_json::Value::String(session.session_id.clone()),
+        serde_json::Value::String(session.session_id.to_string()),
     );
     fields.insert(
         "childSessionName".to_string(),
-        serde_json::Value::String(session.name.clone()),
+        serde_json::Value::String(session.name.to_string()),
     );
     fields.insert(
         "nextAction".to_string(),
@@ -65,8 +65,8 @@ pub(in crate::command::hook_runtime::hook_runtime_agent_session) fn session_star
         asp_session_policy.messages.session_start_reuse.as_deref(),
         &[
             template_value("residentChildName", resident_child_name),
-            template_value("childSessionId", &session.session_id),
-            template_value("rootSessionId", &session.root_session_id),
+            template_value("childSessionId", &*session.session_id),
+            template_value("rootSessionId", &*session.root_session_id),
         ],
     );
     HookDecision {
@@ -103,23 +103,23 @@ pub(in crate::command::hook_runtime::hook_runtime_agent_session) fn session_star
     append_resident_agent_fields(&mut fields, platform, asp_session_policy);
     fields.insert(
         "rootSessionId".to_string(),
-        serde_json::Value::String(session.root_session_id.clone()),
+        serde_json::Value::String(session.root_session_id.to_string()),
     );
     fields.insert(
         "childSessionId".to_string(),
-        serde_json::Value::String(session.session_id.clone()),
+        serde_json::Value::String(session.session_id.to_string()),
     );
     fields.insert(
         "agentSessionResumeId".to_string(),
-        serde_json::Value::String(session.session_id.clone()),
+        serde_json::Value::String(session.session_id.to_string()),
     );
     fields.insert(
         "childSessionName".to_string(),
-        serde_json::Value::String(session.name.clone()),
+        serde_json::Value::String(session.name.to_string()),
     );
     fields.insert(
         "childSessionStatus".to_string(),
-        serde_json::Value::String(session.status.clone()),
+        serde_json::Value::String(session.status.to_string()),
     );
     fields.insert(
         "nextAction".to_string(),

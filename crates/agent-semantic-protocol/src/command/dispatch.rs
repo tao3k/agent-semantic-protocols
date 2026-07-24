@@ -173,7 +173,7 @@ fn normalize_agent_session_command_args(args: &mut Vec<String>) -> Result<(), St
     };
     if session.name == resident_child_name && session.is_routable_at(now) {
         args.push("--session".to_string());
-        args.push(session.root_session_id);
+        args.push(session.root_session_id.to_string());
     }
     Ok(())
 }

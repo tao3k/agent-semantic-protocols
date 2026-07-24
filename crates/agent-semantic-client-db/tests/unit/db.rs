@@ -75,17 +75,17 @@ fn absent_host_target_atomically_revokes_live_binding() {
     .to_string();
     let record = registry
         .register_session(AgentSessionRegisterRequest {
-            project_id: "project-1",
-            root_session_id: "root-session",
-            session_id: "child-session",
-            message_target_id: Some("child-session"),
-            parent_session_id: Some("root-session"),
-            name: "asp-explore",
-            role: "asp_explorer",
+            project_id: "project-1".into(),
+            root_session_id: "root-session".into(),
+            session_id: "child-session".into(),
+            message_target_id: Some("child-session".into()),
+            parent_session_id: Some("root-session".into()),
+            name: "asp-explore".into(),
+            role: "asp_explorer".into(),
             model_observation: None,
-            status: "active",
+            status: "active".into(),
             expires_at: None,
-            metadata_json: &metadata,
+            metadata_json: (&metadata).into(),
             now: 10,
         })
         .expect("register live child");
@@ -156,33 +156,33 @@ fn typed_profile_evidence_survives_same_generation_heartbeat() {
     let typed_start = r#"{"event":"subagent-start","native":true,"rootSessionId":"root-session","childSessionId":"child-1","agentType":"asp_testing"}"#;
     registry
         .register_session(AgentSessionRegisterRequest {
-            project_id: "project-1",
-            root_session_id: "root-session",
-            session_id: "child-1",
+            project_id: "project-1".into(),
+            root_session_id: "root-session".into(),
+            session_id: "child-1".into(),
             message_target_id: None,
-            parent_session_id: Some("root-session"),
-            name: "asp-testing",
-            role: "build,subagent,testing",
+            parent_session_id: Some("root-session".into()),
+            name: "asp-testing".into(),
+            role: "build,subagent,testing".into(),
             model_observation: None,
-            status: "active",
+            status: "active".into(),
             expires_at: None,
-            metadata_json: typed_start,
+            metadata_json: typed_start.into(),
             now: 10,
         })
         .expect("register typed start");
     let heartbeat = registry
         .register_session(AgentSessionRegisterRequest {
-            project_id: "project-1",
-            root_session_id: "root-session",
-            session_id: "child-1",
+            project_id: "project-1".into(),
+            root_session_id: "root-session".into(),
+            session_id: "child-1".into(),
             message_target_id: None,
-            parent_session_id: Some("root-session"),
-            name: "asp-testing",
-            role: "build,subagent,testing",
+            parent_session_id: Some("root-session".into()),
+            name: "asp-testing".into(),
+            role: "build,subagent,testing".into(),
             model_observation: None,
-            status: "idle",
+            status: "idle".into(),
             expires_at: None,
-            metadata_json: r#"{"event":"task_complete"}"#,
+            metadata_json: r#"{"event":"task_complete"}"#.into(),
             now: 11,
         })
         .expect("record same-generation heartbeat");
@@ -205,17 +205,17 @@ fn resident_session_replacement_is_exact_compare_and_swap() {
         .expect("create registry");
     registry
         .register_session(AgentSessionRegisterRequest {
-            project_id: "project-1",
-            root_session_id: "root-session",
-            session_id: "child-old",
+            project_id: "project-1".into(),
+            root_session_id: "root-session".into(),
+            session_id: "child-old".into(),
             message_target_id: None,
-            parent_session_id: Some("root-session"),
-            name: "asp-explore",
-            role: "asp_explorer",
+            parent_session_id: Some("root-session".into()),
+            name: "asp-explore".into(),
+            role: "asp_explorer".into(),
             model_observation: None,
-            status: "orphan-risk",
+            status: "orphan-risk".into(),
             expires_at: None,
-            metadata_json: "{}",
+            metadata_json: "{}".into(),
             now: 10,
         })
         .expect("register old child");
@@ -228,17 +228,17 @@ fn resident_session_replacement_is_exact_compare_and_swap() {
         1
     );
     let non_cas_replacement = registry.register_session(AgentSessionRegisterRequest {
-        project_id: "project-1",
-        root_session_id: "root-session",
-        session_id: "child-rogue",
+        project_id: "project-1".into(),
+        root_session_id: "root-session".into(),
+        session_id: "child-rogue".into(),
         message_target_id: None,
-        parent_session_id: Some("root-session"),
-        name: "asp-explore",
-        role: "asp_explorer",
+        parent_session_id: Some("root-session".into()),
+        name: "asp-explore".into(),
+        role: "asp_explorer".into(),
         model_observation: None,
-        status: "active",
+        status: "active".into(),
         expires_at: None,
-        metadata_json: "{}",
+        metadata_json: "{}".into(),
         now: 10,
     });
     assert!(
@@ -252,17 +252,17 @@ fn resident_session_replacement_is_exact_compare_and_swap() {
         .replace_resident_session(
             "child-old",
             AgentSessionRegisterRequest {
-                project_id: "project-1",
-                root_session_id: "root-session",
-                session_id: "child-new",
-                message_target_id: Some("/root/asp_explorer"),
-                parent_session_id: Some("root-session"),
-                name: "asp-explore",
-                role: "asp_explorer",
+                project_id: "project-1".into(),
+                root_session_id: "root-session".into(),
+                session_id: "child-new".into(),
+                message_target_id: Some("/root/asp_explorer".into()),
+                parent_session_id: Some("root-session".into()),
+                name: "asp-explore".into(),
+                role: "asp_explorer".into(),
                 model_observation: None,
-                status: "active",
+                status: "active".into(),
                 expires_at: None,
-                metadata_json: binding,
+                metadata_json: binding.into(),
                 now: 11,
             },
         )
@@ -279,17 +279,17 @@ fn resident_session_replacement_is_exact_compare_and_swap() {
     let stale = registry.replace_resident_session(
         "child-old",
         AgentSessionRegisterRequest {
-            project_id: "project-1",
-            root_session_id: "root-session",
-            session_id: "child-late",
-            message_target_id: Some("/root/asp_explorer"),
-            parent_session_id: Some("root-session"),
-            name: "asp-explore",
-            role: "asp_explorer",
+            project_id: "project-1".into(),
+            root_session_id: "root-session".into(),
+            session_id: "child-late".into(),
+            message_target_id: Some("/root/asp_explorer".into()),
+            parent_session_id: Some("root-session".into()),
+            name: "asp-explore".into(),
+            role: "asp_explorer".into(),
             model_observation: None,
-            status: "active",
+            status: "active".into(),
             expires_at: None,
-            metadata_json: "{}",
+            metadata_json: "{}".into(),
             now: 12,
         },
     );
@@ -310,17 +310,17 @@ fn dispatch_rebind_replays_once_and_terminal_receipt_stops_replay() {
         .expect("create registry");
     registry
         .register_session(AgentSessionRegisterRequest {
-            project_id: "project-1",
-            root_session_id: "root-session",
-            session_id: "child-1",
-            message_target_id: Some("child-1"),
-            parent_session_id: Some("root-session"),
-            name: "asp-explore",
-            role: "asp_explorer",
+            project_id: "project-1".into(),
+            root_session_id: "root-session".into(),
+            session_id: "child-1".into(),
+            message_target_id: Some("child-1".into()),
+            parent_session_id: Some("root-session".into()),
+            name: "asp-explore".into(),
+            role: "asp_explorer".into(),
             model_observation: None,
-            status: "active",
+            status: "active".into(),
             expires_at: None,
-            metadata_json: r#"{"messageTargetBinding":{"source":"codex.subagent-start","boundRootSessionId":"root-session","childSessionId":"child-1","messageTargetId":"child-1"}}"#,
+            metadata_json: r#"{"messageTargetBinding":{"source":"codex.subagent-start","boundRootSessionId":"root-session","childSessionId":"child-1","messageTargetId":"child-1"}}"#.into(),
             now: 10,
         })
         .expect("register first child");
@@ -366,17 +366,17 @@ fn dispatch_rebind_replays_once_and_terminal_receipt_stops_replay() {
     );
     registry
         .replace_resident_session("child-1", AgentSessionRegisterRequest {
-            project_id: "project-1",
-            root_session_id: "root-session",
-            session_id: "child-2",
-            message_target_id: Some("child-2"),
-            parent_session_id: Some("root-session"),
-            name: "asp-explore",
-            role: "asp_explorer",
+            project_id: "project-1".into(),
+            root_session_id: "root-session".into(),
+            session_id: "child-2".into(),
+            message_target_id: Some("child-2".into()),
+            parent_session_id: Some("root-session".into()),
+            name: "asp-explore".into(),
+            role: "asp_explorer".into(),
             model_observation: None,
-            status: "active",
+            status: "active".into(),
             expires_at: None,
-            metadata_json: r#"{"messageTargetBinding":{"source":"codex.subagent-start","boundRootSessionId":"root-session","childSessionId":"child-2","messageTargetId":"child-2"}}"#,
+            metadata_json: r#"{"messageTargetBinding":{"source":"codex.subagent-start","boundRootSessionId":"root-session","childSessionId":"child-2","messageTargetId":"child-2"}}"#.into(),
             now: 14,
         })
         .expect("register replacement child");
@@ -438,12 +438,12 @@ fn agent_session_registry_storage_is_turso_owned() {
         AgentSessionRegistry::open_or_create_state_root(&state_root).expect("create registry");
     let record = registry
         .register_session(AgentSessionRegisterRequest {
-            project_id: "project-1",
-            root_session_id: "root-session",
-            session_id: "child-session",
-            parent_session_id: Some("parent-session"),
-            name: "asp-explore",
-            role: "search",
+            project_id: "project-1".into(),
+            root_session_id: "root-session".into(),
+            session_id: "child-session".into(),
+            parent_session_id: Some("parent-session".into()),
+            name: "asp-explore".into(),
+            role: "search".into(),
             model_observation: Some(agent_semantic_client_db::AgentSessionModelObservationRef {
                 model: "gpt-test",
                 source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexSubagentStart,
@@ -451,9 +451,9 @@ fn agent_session_registry_storage_is_turso_owned() {
                 evidence_ref: Some("turn:test"),
             }),
             message_target_id: None,
-            status: "active",
+            status: "active".into(),
             expires_at: Some(1_900_000_000),
-            metadata_json: "{\"route\":\"db-owned\"}",
+            metadata_json: "{\"route\":\"db-owned\"}".into(),
             now: 1_800_000_000,
         })
         .expect("register session through Turso DB crate");
@@ -486,12 +486,12 @@ fn agent_session_registry_storage_is_turso_owned() {
 
     registry
         .register_session(AgentSessionRegisterRequest {
-            project_id: "project-1",
-            root_session_id: "root-session",
-            session_id: "child-session",
-            parent_session_id: Some("parent-session"),
-            name: "asp-explore",
-            role: "search",
+            project_id: "project-1".into(),
+            root_session_id: "root-session".into(),
+            session_id: "child-session".into(),
+            parent_session_id: Some("parent-session".into()),
+            name: "asp-explore".into(),
+            role: "search".into(),
             model_observation: Some(agent_semantic_client_db::AgentSessionModelObservationRef {
                 model: "gpt-stale",
                 source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexRollout,
@@ -499,9 +499,9 @@ fn agent_session_registry_storage_is_turso_owned() {
                 evidence_ref: Some("rollout:stale"),
             }),
             message_target_id: None,
-            status: "active",
+            status: "active".into(),
             expires_at: Some(1_900_000_000),
-            metadata_json: "{\"route\":\"db-owned\"}",
+            metadata_json: "{\"route\":\"db-owned\"}".into(),
             now: 1_800_000_001,
         })
         .expect("ignore stale model observation");
@@ -516,10 +516,10 @@ fn agent_session_registry_storage_is_turso_owned() {
     assert!(
         registry
             .record_tool_event(AgentSessionToolEventRequest {
-                session_id: "child-session",
-                tool_event: "search",
-                command: Some("asp rust search owner"),
-                evidence_ref: Some("receipt:1"),
+                session_id: "child-session".into(),
+                tool_event: "search".into(),
+                command: Some("asp rust search owner".into()),
+                evidence_ref: Some("receipt:1".into()),
                 now: 1_800_000_010,
             })
             .expect("record tool event")
@@ -595,34 +595,34 @@ fn agent_session_register_moves_same_child_from_stale_root_mapping() {
         AgentSessionRegistry::open_or_create_state_root(&state_root).expect("create registry");
     registry
         .register_session(AgentSessionRegisterRequest {
-            project_id: "project-1",
-            root_session_id: "old-root",
-            session_id: "child-session",
-            parent_session_id: Some("old-root"),
-            name: "asp-explore",
-            role: "asp-explore",
+            project_id: "project-1".into(),
+            root_session_id: "old-root".into(),
+            session_id: "child-session".into(),
+            parent_session_id: Some("old-root".into()),
+            name: "asp-explore".into(),
+            role: "asp-explore".into(),
             model_observation: None,
             message_target_id: None,
-            status: "closed",
+            status: "closed".into(),
             expires_at: None,
-            metadata_json: "{}",
+            metadata_json: "{}".into(),
             now: 1_800_000_000,
         })
         .expect("register stale mapping");
 
     let record = registry
         .register_session(AgentSessionRegisterRequest {
-            project_id: "project-1",
-            root_session_id: "new-root",
-            session_id: "child-session",
-            parent_session_id: Some("new-root"),
-            name: "asp-explore",
-            role: "asp-explore",
+            project_id: "project-1".into(),
+            root_session_id: "new-root".into(),
+            session_id: "child-session".into(),
+            parent_session_id: Some("new-root".into()),
+            name: "asp-explore".into(),
+            role: "asp-explore".into(),
             model_observation: None,
             message_target_id: None,
-            status: "active",
+            status: "active".into(),
             expires_at: None,
-            metadata_json: "{}",
+            metadata_json: "{}".into(),
             now: 1_800_000_010,
         })
         .expect("move stale child mapping to new root");
@@ -686,12 +686,12 @@ fn agent_session_registry_process_register_helper() {
     };
     registry
         .register_session(AgentSessionRegisterRequest {
-            project_id: "project-process-stress",
-            root_session_id: &root_session_id,
-            session_id: &format!("child-session-{writer_id}"),
-            parent_session_id: Some("main-session"),
-            name: "asp-explore",
-            role: "asp-explore",
+            project_id: "project-process-stress".into(),
+            root_session_id: (&root_session_id).into(),
+            session_id: format!("child-session-{writer_id}").into(),
+            parent_session_id: Some("main-session".into()),
+            name: "asp-explore".into(),
+            role: "asp-explore".into(),
             model_observation: Some(agent_semantic_client_db::AgentSessionModelObservationRef {
                 model: "gpt-test",
                 source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexSubagentStart,
@@ -699,9 +699,9 @@ fn agent_session_registry_process_register_helper() {
                 evidence_ref: Some("turn:test"),
             }),
             message_target_id: None,
-            status: "active",
+            status: "active".into(),
             expires_at: None,
-            metadata_json: "{\"route\":\"process-stress\"}",
+            metadata_json: "{\"route\":\"process-stress\"}".into(),
             now: 1_800_001_000 + writer_id as i64,
         })
         .expect("register process stress session");
@@ -851,10 +851,10 @@ fn source_index_import_assembly_uses_turso_ready_contract_rows() {
             schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
             selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
             file_text_bytes_limit: 4096,
-            previous_file_hashes: None,
             registry_fingerprint: "registry:v1".to_string(),
             extra_scope_dirs: Vec::new(),
             files: vec![scope_file.clone()],
+            source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::default(),
         },
     )
     .expect("assemble source-index import");

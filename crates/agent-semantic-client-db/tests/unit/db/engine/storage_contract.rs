@@ -24,9 +24,9 @@ fn storage_contract_batch(batch_id: &str, start: usize, count: usize) -> Session
         retry_policy: StorageRetryPolicy::default(),
         events: (start..start + count)
             .map(|index| SessionEvent {
-                event_id: format!("event-{index:04}"),
-                turn_id: "turn".to_string(),
-                event_kind: "test".to_string(),
+                event_id: format!("event-{index:04}").into(),
+                turn_id: "turn".to_string().into(),
+                event_kind: "test".to_string().into(),
                 payload: vec![index as u8],
                 created_at_ms: index as i64,
             })
@@ -62,7 +62,7 @@ async fn storage_contract_in_memory_batch_is_atomic_and_receipted() {
         .await
         .expect("list in-memory session events");
     assert_eq!(page.items.len(), 4);
-    assert_eq!(page.items.last().expect("last event").event_id, "event-0003");
+    assert_eq!(page.items.last().expect("last event").event_id, "event-0003".into());
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -89,6 +89,6 @@ async fn storage_contract_in_memory_keyset_page_uses_stable_tie_break_cursor() {
         })
         .await
         .expect("second page");
-    assert_eq!(second.items[0].event_id, "event-0002");
+    assert_eq!(second.items[0].event_id, "event-0002".into());
     assert!(second.next.is_some());
 }

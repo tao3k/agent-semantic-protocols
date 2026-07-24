@@ -1,0 +1,64 @@
+#+TITLE: 10.05.37 Tree-sitter Query Diagnostics
+#+STATUS: Draft
+
+* Context
+
+The public =asp <language> query --treesitter-query= surface currently renders
+implementation vocabulary such as =frontier=I.code= and =omit=capture-text=
+without first explaining what the query did. A zero-match result is therefore
+indistinguishable from a broken query, an invalid identifier value, an empty
+workspace, or an unavailable source snapshot.
+
+Tree-sitter query mode is an exact structural interface. It must not silently
+fall back to lexical or semantic search, but its output must make that boundary
+understandable.
+
+* Decision
+
+Human stdout for a structural query MUST render these fields in order:
+
+1. =status=: =matches= or =no-matches=.
+2. =language=, =matches=, =retained=, and =truncated=.
+3. =mode=: Tree-sitter structural matching with exact capture predicates.
+4. =result=: what the match count means.
+5. On a miss, a language-aware identifier hint and a discovery-oriented next
+   action.
+6. On a hit, an explanation of each compact capture row and the intentionally
+   omitted source text.
+
+The first line remains machine-tokenizable and keeps the
+=[query-treesitter]= tag. Internal frontier and omission vocabulary MUST NOT be
+the only explanation presented to a human.
+
+Semantic replay MAY remain a compact single line, but a miss MUST include
+=status=no-matches=, a stable reason token, and a stable next-action token.
+
+* Query Semantics
+
+- A raw Tree-sitter query matches syntax nodes, not concepts or arbitrary
+  source terms.
+- =#eq?= and =#match?= predicates constrain captured source text exactly.
+- Predicate placement remains owned by Tree-sitter query syntax. ASP does not
+  rewrite a structurally valid query.
+- A value compared with an identifier capture must be a valid identifier for
+  that language. For example, Rust identifiers use underscores rather than
+  hyphens.
+- Discovery of an unknown symbol or concept belongs to =search=; structural
+  =query= is appropriate once the syntax shape is known.
+
+* Non-goals
+
+- Guessing a replacement query from a zero-match result.
+- Exposing capture source text or code by default.
+- Treating a miss as a provider failure.
+- Adding client feature flags to the shared query contract.
+
+* Validation
+
+- A zero-match direct query renders one summary header and explanatory
+  =mode/result/hint/next= lines.
+- A successful direct query explains the compact capture rows.
+- A forwarded semantic replay miss carries stable status, reason, and next
+  tokens.
+- Tests prove that one renderer invocation emits one header.
+- JSON packet fields and execution semantics remain unchanged.

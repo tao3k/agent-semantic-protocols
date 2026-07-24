@@ -49,13 +49,21 @@ fn turso_cache_hot_path(c: &mut Criterion) {
         selector,
     );
     let packet = build_exact_selector_projection_packet_v1(
-        "rust",
-        "rs-harness",
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketLanguageIdV1::from(
+            "rust",
+        ),
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketProviderIdV1::from(
+            "rs-harness",
+        ),
         canonical_item_selector,
         &parser_identity_digest,
         &query_pack_digest,
-        owner_path,
-        selector,
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketOwnerPathV1::from(
+            owner_path,
+        ),
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketStructuralSelectorV1::from(
+            selector,
+        ),
         projection_mode,
         source,
         br#"{"kind":"fn","name":"warm_symbol"}"#,

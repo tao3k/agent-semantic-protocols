@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+#[allow(dead_code)]
 pub(super) fn rank_frontier_has_only_owner_or_topology_nodes(
     kinds: &HashMap<String, String>,
 ) -> bool {

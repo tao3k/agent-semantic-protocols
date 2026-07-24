@@ -70,12 +70,19 @@ pub struct TursoSyncStatsReceipt {
 pub struct TursoSyncOperationReceipt {
     schema_id: String,
     operation: TursoSyncOperation,
-    outcome: TursoSyncOperationOutcome,
+    pub outcome: TursoSyncOperationOutcome,
     elapsed_ms: u64,
-    pulled_changes: Option<bool>,
-    stats: Option<TursoSyncStatsReceipt>,
+    pub pulled_changes: Option<bool>,
+    pub stats: Option<TursoSyncStatsReceipt>,
     error_kind: Option<String>,
     error_digest: Option<String>,
+}
+
+impl TursoSyncOperationReceipt {
+    #[must_use]
+    pub const fn outcome(&self) -> TursoSyncOperationOutcome {
+        self.outcome
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

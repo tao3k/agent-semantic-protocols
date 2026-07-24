@@ -80,7 +80,6 @@ impl ClientDbEngine {
         let source_snapshot = source_snapshot.clone();
         let query = query.to_string();
         block_on_db_engine_async(async move {
-            bootstrap_turso_client_db(&db_path).await?;
             search_turso_documents(&db_path, "source-index", &source_snapshot, &query, limit).await
         })
     }

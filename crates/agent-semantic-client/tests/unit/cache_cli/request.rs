@@ -138,46 +138,6 @@ fn selector_code_query_uses_code_export_method_not_direct_source_read() {
 }
 
 #[test]
-fn split_from_hook_direct_source_read_uses_query_code_method() {
-    let request = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
-        "--selector".to_string(),
-        "src/lib.rs:10:20".to_string(),
-        "--workspace".to_string(),
-        ".".to_string(),
-        "--code".to_string(),
-    ]);
-
-    assert_eq!(
-        request_export_method(&request)
-            .expect("export method")
-            .as_str(),
-        "query/code"
-    );
-}
-
-#[test]
-fn inline_from_hook_direct_source_read_uses_query_code_method() {
-    let request = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
-        "--from-hook=direct-source-read".to_string(),
-        "--selector".to_string(),
-        "src/lib.rs:10:20".to_string(),
-        "--workspace".to_string(),
-        ".".to_string(),
-        "--code".to_string(),
-    ]);
-
-    assert_eq!(
-        request_export_method(&request)
-            .expect("export method")
-            .as_str(),
-        "query/code"
-    );
-    assert!(request.is_source_content_output());
-}
-
-#[test]
 fn selector_code_query_is_source_content_output() {
     let split_selector = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
         "--selector".to_string(),

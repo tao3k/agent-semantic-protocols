@@ -1,0 +1,71 @@
+#+title: Live Snapshot Memory Candidate Projection
+
+* Status
+
+This document defines the version 1 search contract for candidate lookup from
+authoritative live source-snapshot facts.  It extends the source-index evidence
+lifecycle; it does not introduce a compatibility fallback or a Turso-specific
+agent-facing state.
+
+* One candidate projection, two acquisition adapters
+
+Owner, query-key, language, provider, and canonical-selector facts belong to
+the provider projection for one =SourceSnapshotEvidence=.  A single
+language-neutral candidate projection and scoring contract consumes those
+facts.
+
+The client may acquire the same typed facts from either:
+
+- =live-snapshot=: an already assembled in-memory source-index import whose
+  source snapshot and artifact identity match the requested evidence;
+- =persisted-index=: a published source-index generation whose source snapshot
+  and artifact identity match the requested evidence.
+
+Turso is a persisted-fact acquisition adapter.  It does not own candidate
+semantics, scoring, lookup state, or agent-facing routing.
+
+* Live-first routing
+
+When complete live owner and selector facts for the requested snapshot are
+resident, the client MUST project candidates in memory before opening the
+persisted database.  The in-memory and persisted adapters MUST call the same
+candidate projection and deterministic ranking contract.
+
+The client MUST NOT infer search state from lower-level database diagnostics
+such as a numeric index root or depth.  In particular, =root=0= and =depth=0=
+are not version 1 ASP lookup states.
+
+The live adapter produces these typed outcomes:
+
+- =Hit=: at least one deterministically ranked candidate;
+- =Miss=: owner facts exist, but no candidate satisfies the query;
+- =EmptyIndex=: the matching live snapshot contains no owner facts;
+- =ColdRequired=: live evidence is absent, stale, incomplete, or has a
+  mismatched snapshot or artifact identity.
+
+=ColdRequired= and =needs-cold-scan= MUST NOT be emitted merely because a
+persisted database is missing or empty when authoritative live facts are
+available.
+
+* Receipt
+
+Every candidate lookup receipt MUST expose:
+
+- acquisition source: =live-snapshot= or =persisted-index=;
+- source-snapshot root digest;
+- provider/query-pack or projection artifact digest;
+- typed lookup state;
+- candidate proofs and canonical selectors;
+- database-open count and candidate-projection latency.
+
+A live-snapshot hit, miss, or empty-index receipt MUST report
+=databaseOpenCount=0=.  Missing provenance is a contract error, not permission
+to perform an untyped filesystem scan.
+
+* Language alignment
+
+Rust, TypeScript, Python, Julia, Gerbil Scheme, Org, Markdown, and future
+providers emit compatible owner/query-key/canonical-selector projection facts.
+Providers do not implement Turso branches.  Provider-specific parser payloads
+remain provider-owned, while lookup provenance, state, candidate identity, and
+ranking are shared version 1 semantics.

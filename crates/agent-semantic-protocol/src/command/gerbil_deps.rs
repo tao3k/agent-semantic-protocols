@@ -37,7 +37,7 @@ pub(super) fn try_run_gerbil_deps_index_command(
         println!(
             "|use import=\"{}\"",
             escape_field(&gerbil_deps_minimal_import(
-                &result.module_id,
+                &*result.module_id,
                 &result.exports
             ))
         );
@@ -45,7 +45,7 @@ pub(super) fn try_run_gerbil_deps_index_command(
             println!(
                 "|item kind=export name={} selector={}",
                 name,
-                gerbil_deps_selector_for(&result.module_id, &name)
+                gerbil_deps_selector_for(&*result.module_id, &name)
             );
         }
         return Ok(true);
@@ -56,7 +56,7 @@ pub(super) fn try_run_gerbil_deps_index_command(
         println!(
             ";;; import: {}",
             gerbil_deps_minimal_import(
-                &result.module_id,
+                &*result.module_id,
                 std::slice::from_ref(&result.export_name)
             )
         );
@@ -87,7 +87,11 @@ fn parse_search_request(args: &[String]) -> Result<Option<GerbilDepsSearchReques
     let Some(module_id) = args.get(3) else {
         return Err(search_usage_error("missing-module"));
     };
-    gerbil_deps_validate_module_id(module_id).map_err(|reason| search_usage_error(&reason))?;
+    gerbil_deps_validate_module_id(
+        gerbil_deps_validate_module_id(module_id.as_str())
+            .map_err(|reason| search_usage_error(&reason))?,
+    )
+    .map_err(|reason| search_usage_error(&reason))?;
     if !matches!(args.get(4).map(String::as_str), Some("items")) {
         return Err(search_usage_error("items-required"));
     }
@@ -169,7 +173,7 @@ fn parse_query_request(args: &[String]) -> Result<Option<GerbilDepsQueryRequest>
         ));
     }
     let module_id = format!(":{module_path}");
-    gerbil_deps_validate_module_id(&module_id).map_err(|reason| search_usage_error(&reason))?;
+    gerbil_deps_validate_module_id(&*module_id).map_err(|reason| search_usage_error(&reason))?;
     gerbil_deps_validate_symbol(export_name)?;
     Ok(Some(GerbilDepsQueryRequest {
         selector: selector.clone(),

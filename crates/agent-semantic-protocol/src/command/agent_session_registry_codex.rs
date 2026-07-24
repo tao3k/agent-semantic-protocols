@@ -72,7 +72,7 @@ fn resolved_codex_target_session(
     let record = registry
         .session_by_name(&project_id, &root_session_id, name)?
         .ok_or_else(|| format!("session registry entry `{name}` not found"))?;
-    Ok(Some(record.session_id))
+    Ok(Some(record.session_id.to_string()))
 }
 
 fn sync_codex_lifecycle_to_registry(

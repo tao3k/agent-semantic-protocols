@@ -13,6 +13,25 @@ selects the provider vocabulary and file predicate; the search package owns
 query planning, candidate acquisition, evidence graph construction, graph
 routing, ranking, next-action selection, and performance receipts.
 
+** GraphRouter authority calibration
+
+Within this module, =GraphRouter= names the algorithmic route-evaluation facet:
+it derives candidate next hops from the lexical =SearchFrame= and reports
+provenance mismatch evidence.  Candidate generation is evidence for a routing
+decision; it is not admission.
+
+The broader =GraphRouter= state machine specified in
+[[file:../10.06-agent-search-projection.org][Agent Search Projection]] is the
+authority for route admission, graph merge, obligation delta, and closure.
+This module's algorithmic facet cannot normalize raw intent, execute provider
+actions, or claim completeness or closure from zero, one, or many candidates.
+Candidate cardinality alone never proves that exactly one transition is
+admissible.
+
+The =SearchRouter= admitted-stage executor role and the
+=SearchReasoningRouter= proposal role are defined in 10.06.  They are not
+redefined or duplicated here.
+
 ** TopLogic
 
 The lexical frame is:

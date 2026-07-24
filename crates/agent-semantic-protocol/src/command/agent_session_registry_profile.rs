@@ -131,7 +131,7 @@ fn adopt_unique_root_attributed_rollout_session(
     now: i64,
 ) -> Result<Option<AgentSessionRecord>, String> {
     let host_records =
-        agent_semantic_runtime::codex_app_server_child_session_metadata(root_session_id)?;
+        agent_semantic_runtime::codex_app_server_child_session_metadata(&root_session_id.into())?;
     let host_candidates = host_records
         .iter()
         .filter(|metadata| excluded_session_id != Some(metadata.session_id.as_str()))
@@ -158,7 +158,8 @@ fn adopt_unique_root_attributed_rollout_session(
         [] => {}
         _ => return Ok(None),
     }
-    let Some(index) = agent_semantic_runtime::codex_rollout_session_index(root_session_id)? else {
+    let Some(index) = agent_semantic_runtime::codex_rollout_session_index(&root_session_id.into())?
+    else {
         return Ok(None);
     };
     let candidates = index
@@ -217,31 +218,32 @@ fn register_recovered_rollout_session(
     })
     .to_string();
     registry.register_session(AgentSessionRegisterRequest {
-        project_id,
-        root_session_id,
-        session_id: &candidate.session_id,
+        project_id: project_id.into(),
+        root_session_id: root_session_id.into(),
+        session_id: candidate.session_id.as_str().into(),
         message_target_id: None,
         parent_session_id: candidate
             .parent_thread_id
             .as_deref()
-            .or(Some(root_session_id)),
-        name,
-        role,
+            .or(Some(root_session_id))
+            .map(Into::into),
+        name: name.into(),
+        role: role.into(),
         model_observation: observed_model.map(|model| AgentSessionModelObservationRef {
             model,
             source: AgentSessionModelObservationSource::CodexRollout,
             observed_at: now,
             evidence_ref: None,
         }),
-        status: "existing-child-discovered",
+        status: "existing-child-discovered".into(),
         expires_at,
-        metadata_json: &metadata_json,
+        metadata_json: (&metadata_json).into(),
         now,
     })?;
     registry.lookup_session(AgentSessionLookupRequest {
-        project_id,
-        session_id: Some(&candidate.session_id),
-        root_session_id: Some(root_session_id),
-        name: Some(name),
+        project_id: project_id.into(),
+        session_id: Some(candidate.session_id.as_str().into()),
+        root_session_id: Some(root_session_id.into()),
+        name: Some(name.into()),
     })
 }

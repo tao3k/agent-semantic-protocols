@@ -22,17 +22,17 @@ fn search_pipe_source_index_lookup_projection_preserves_payload_proof() {
             db_path: PathBuf::from("live/client/client.turso"),
             state: ClientDbSourceIndexLookupState::Hit,
             candidates: vec![ClientDbSourceIndexCandidate {
-                path: "src/lib.rs".to_string(),
+                path: "src/lib.rs".to_string().into(),
                 language_id: Some(LanguageId::from("rust")),
                 provider_id: Some(ProviderId::from("rs-harness")),
                 source_kind: ClientDbSourceIndexSourceKind::File,
                 line_count: Some(12),
-                query_keys: vec!["owner".to_string()],
+                query_keys: vec!["owner".to_string().into()],
                 selector_kind: None,
                 selector_symbol: None,
                 selector_proof: Some(ClientDbSourceIndexSelectorPayloadProof {
-                    structural_selector: "rust://src/lib.rs#item/function/owner".to_string(),
-                    payload_kind: "code".to_string(),
+                    structural_selector: "rust://src/lib.rs#item/function/owner".to_string().into(),
+                    payload_kind: "code".to_string().into(),
                     bounded: true,
                 }),
             }],
@@ -43,10 +43,16 @@ fn search_pipe_source_index_lookup_projection_preserves_payload_proof() {
     let proof = lookup.candidates[0].selector_proof.as_ref().unwrap();
     assert_eq!(
         proof.structural_selector,
-        "rust://src/lib.rs#item/function/owner"
+        "rust://src/lib.rs#item/function/owner".into()
     );
-    assert_eq!(proof.payload_kind, "code");
+    assert_eq!(proof.payload_kind, "code".into());
     assert!(proof.bounded);
     assert_eq!(lookup.source_snapshot, Some(snapshot));
-    assert_eq!(lookup.index_artifact_digest, Some(index_artifact_digest));
+    assert_eq!(
+        lookup
+            .index_artifact_digest
+            .as_ref()
+            .map(|value| value.as_str()),
+        Some(index_artifact_digest.as_str())
+    );
 }

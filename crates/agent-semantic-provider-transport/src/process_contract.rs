@@ -84,13 +84,13 @@ pub struct ProviderProcessFraming {
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 pub struct ProviderProcessLimits {
     /// Maximum wall-clock runtime before timeout.
-    timeout: Option<Duration>,
+    pub timeout: Option<Duration>,
     /// Maximum stdout bytes retained in memory.
-    max_stdout_bytes: Option<usize>,
+    pub max_stdout_bytes: Option<usize>,
     /// Maximum stderr bytes retained in memory.
-    max_stderr_bytes: Option<usize>,
+    pub max_stderr_bytes: Option<usize>,
     /// Maximum provider address-space bytes on supported platforms.
-    memory_limit_bytes: Option<u64>,
+    pub memory_limit_bytes: Option<u64>,
 }
 
 impl ProviderProcessLimits {
@@ -171,6 +171,84 @@ impl ProviderProcessReceipt {
     #[must_use]
     pub const fn stdout_bytes(&self) -> usize {
         self.stdout_bytes
+    }
+
+    /// Return the full stderr byte count before truncation.
+    #[must_use]
+    pub const fn stderr_bytes(&self) -> usize {
+        self.stderr_bytes
+    }
+
+    /// Return the SHA-256 digest of full stdout bytes.
+    #[must_use]
+    pub fn stdout_sha256(&self) -> Option<&str> {
+        self.stdout_sha256.as_deref()
+    }
+
+    /// Return the SHA-256 digest of full stderr bytes.
+    #[must_use]
+    pub fn stderr_sha256(&self) -> Option<&str> {
+        self.stderr_sha256.as_deref()
+    }
+
+    /// Whether the retained stdout buffer was truncated.
+    #[must_use]
+    pub const fn stdout_truncated(&self) -> bool {
+        self.stdout_truncated
+    }
+
+    /// Whether the retained stderr buffer was truncated.
+    #[must_use]
+    pub const fn stderr_truncated(&self) -> bool {
+        self.stderr_truncated
+    }
+
+    /// Whether the provider exceeded its timeout.
+    #[must_use]
+    pub const fn timed_out(&self) -> bool {
+        self.timed_out
+    }
+
+    /// Return the terminating Unix signal, when available.
+    #[must_use]
+    pub const fn exit_signal(&self) -> Option<i32> {
+        self.exit_signal
+    }
+
+    /// Return the configured provider memory ceiling.
+    #[must_use]
+    pub const fn memory_limit_bytes(&self) -> Option<u64> {
+        self.memory_limit_bytes
+    }
+
+    /// Whether the current platform enforced the memory ceiling.
+    #[must_use]
+    pub const fn memory_limit_enforced(&self) -> bool {
+        self.memory_limit_enforced
+    }
+
+    /// Whether the provider exceeded its memory ceiling.
+    #[must_use]
+    pub const fn memory_limit_exceeded(&self) -> bool {
+        self.memory_limit_exceeded
+    }
+
+    /// Whether the provider terminated abnormally.
+    #[must_use]
+    pub const fn abnormal_termination(&self) -> bool {
+        self.abnormal_termination
+    }
+
+    /// Return the stable termination classification.
+    #[must_use]
+    pub fn termination_reason(&self) -> &str {
+        &self.termination_reason
+    }
+
+    /// Return the elapsed wall-clock duration.
+    #[must_use]
+    pub const fn elapsed(&self) -> Duration {
+        self.elapsed
     }
 }
 

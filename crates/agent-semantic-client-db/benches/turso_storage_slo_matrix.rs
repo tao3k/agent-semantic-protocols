@@ -200,7 +200,7 @@ fn main() {
     assert_eq!(recovered_rows, LONG_INGESTION_ROWS);
 
     let receipt = StorageSloMatrixReceipt {
-        schema_id: STORAGE_SLO_MATRIX_RECEIPT_SCHEMA_ID.to_owned(),
+        schema_id: STORAGE_SLO_MATRIX_RECEIPT_SCHEMA_ID.into(),
         long_ingestion_rows: LONG_INGESTION_ROWS,
         long_ingestion_batch_rows: LONG_INGESTION_BATCH_ROWS,
         long_ingestion_latency_micros: StorageLatencyDistributionMicros::from_samples(
@@ -214,13 +214,13 @@ fn main() {
         )
         .expect("mixed-pressure latency samples"),
         resident_set_kib: resident_set_kib(),
-        database_bytes: maintenance.database_bytes,
-        wal_bytes: maintenance.wal_bytes,
+        database_bytes: maintenance.database_bytes(),
+        wal_bytes: maintenance.wal_bytes(),
         shm_bytes: file_len(&PathBuf::from(format!(
             "{}-shm",
             mvcc_path.to_string_lossy()
         ))),
-        passive_checkpoint: maintenance.passive_checkpoint,
+        passive_checkpoint: maintenance.passive_checkpoint(),
     };
     println!(
         "{}",

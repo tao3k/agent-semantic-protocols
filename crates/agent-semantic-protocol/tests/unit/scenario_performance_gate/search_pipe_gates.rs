@@ -391,14 +391,14 @@ pub(super) fn asp_search_pipe_evidence_classifier_cold_functional_path_stays_ins
 
     let started_at = Instant::now();
     let declaration_match = agent_semantic_search::search_pipe_declaration_header_match(
-        "rust",
+        &"rust".into(),
         &candidates[0],
         &terms[0],
     );
     let compound_match =
-        agent_semantic_search::search_pipe_strong_match("rust", &candidates[0], &terms[2]);
+        agent_semantic_search::search_pipe_strong_match(&"rust".into(), &candidates[0], &terms[2]);
     let parser_handles =
-        agent_semantic_search::search_pipe_parser_handles("rust", &candidates, &terms);
+        agent_semantic_search::search_pipe_parser_handles(&"rust".into(), &candidates, &terms);
     let search_overlay_handles =
         agent_semantic_search::search_pipe_search_overlay_handles(&candidates, &terms);
     let weak_reason = agent_semantic_search::search_pipe_weak_reason(&terms[0], &candidates);

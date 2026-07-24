@@ -10,10 +10,7 @@ use super::search_config::AspConfig;
 use super::search_pipe_args::parse_search_owner_items_query_args;
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use super::search_pipe_view::reject_non_graph_turbo_receipt;
-use agent_semantic_client::{
-    LanguageOwnerItemsAttempt, LanguageOwnerItemsDispatchPlan, language_owner_items_workspace_root,
-    run_language_owner_items_dispatch_plan,
-};
+use agent_semantic_client::language_owner_items_workspace_root;
 
 pub(super) struct SearchOwnerItemsFastContext<'a> {
     pub(super) language_id: &'a str,
@@ -53,19 +50,18 @@ impl<'a> OwnerItemsSearchState<'a> {
         }
     }
 
-    fn try_provider(&self) -> Result<LanguageOwnerItemsAttempt, String> {
-        Ok(
-            dispatch_language_owner_items(LanguageOwnerItemsDispatchRequest {
-                language_id: self.language_id,
-                args: self.args,
-                owner: self.owner,
-                project_root: &self.owner_project_root,
-                cache_home: self.cache_home,
-                config: self.config,
-                provider_context: self.provider_context,
-            })?
-            .into(),
-        )
+    fn try_provider(
+        &self,
+    ) -> Result<super::language_owner_items::LanguageOwnerItemsDispatchResult, String> {
+        dispatch_language_owner_items(LanguageOwnerItemsDispatchRequest {
+            language_id: self.language_id,
+            args: self.args,
+            owner: self.owner,
+            project_root: &self.owner_project_root,
+            cache_home: self.cache_home,
+            config: self.config,
+            provider_context: self.provider_context,
+        })
     }
 }
 
@@ -92,12 +88,15 @@ pub(super) fn run_search_owner_items_query_command(
     let state =
         OwnerItemsSearchState::new(args, context, &owner_query_args.owner, owner_project_root);
     emit_source_index_trace(&state)?;
-    run_language_owner_items_dispatch_plan(LanguageOwnerItemsDispatchPlan {
-        language_id: state.language_id,
-        owner: state.owner,
-        project_root: &state.owner_project_root,
-        provider: || state.try_provider(),
-    })?;
+    if state.try_provider()?
+        == super::language_owner_items::LanguageOwnerItemsDispatchResult::Unsupported
+    {
+        return Err(format!(
+            "activated {} provider does not implement parser-owned owner-items for {}",
+            state.language_id,
+            state.owner.display()
+        ));
+    }
     Ok(())
 }
 

@@ -464,10 +464,16 @@ pub(super) fn turso_search_projection_db_path(db_path: &Path) -> PathBuf {
     db_path.with_file_name(TURSO_SEARCH_PROJECTION_DB_FILE)
 }
 
-pub(super) async fn connect_turso_search_projection_db(
+pub(super) async fn connect_turso_search_projection_db_for_write(
     db_path: &Path,
 ) -> Result<TursoConnectionLease, String> {
     shared_turso_write_connection(&turso_search_projection_db_path(db_path)).await
+}
+
+pub(super) async fn connect_turso_search_projection_db_read_only(
+    db_path: &Path,
+) -> Result<turso::Connection, String> {
+    shared_turso_read_only_connection(&turso_search_projection_db_path(db_path)).await
 }
 
 pub(super) async fn connect_turso_client_db_read_only(

@@ -36,10 +36,10 @@ fn density_does_not_change_semantic_digest() {
         )
         .expect("expanded projection");
 
-    assert_eq!(terse.semantic_digest, expanded.semantic_digest);
-    assert_ne!(terse.content, expanded.content);
-    assert!(terse.content.contains("density=terse"));
-    assert!(expanded.content.contains("density=expanded"));
+    assert_eq!(terse.semantic_digest(), expanded.semantic_digest());
+    assert_ne!(terse.content(), expanded.content());
+    assert!(terse.content().contains("density=terse"));
+    assert!(expanded.content().contains("density=expanded"));
 }
 
 #[test]
@@ -122,9 +122,9 @@ fn ranked_graph_packet_uses_shared_projection_renderer() {
         agent_semantic_search_projection::SearchProjectionSource::semantic_digest(&second)
     );
     assert_eq!(
-        rendered.semantic_digest,
+        rendered.semantic_digest(),
         agent_semantic_search_projection::SearchProjectionSource::semantic_digest(&first)
     );
-    assert!(rendered.content.contains("density=terse"));
-    assert!(rendered.content.contains("I=owner:cli kind=owner"));
+    assert!(rendered.content().contains("density=terse"));
+    assert!(rendered.content().contains("I=owner:cli kind=owner"));
 }

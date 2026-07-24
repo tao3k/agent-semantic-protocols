@@ -67,26 +67,18 @@ pub fn refresh_source_index(
 fn source_index_snapshot_from_files(
     index_root: &Path,
     files: &[SourceIndexScopeFile],
-    previous_file_hashes: Option<&[ClientCacheFileHash]>,
     registry: &ProviderRegistryEvidence,
 ) -> Result<
     (
         Vec<ClientCacheFileHash>,
         agent_semantic_artifacts::WorkspaceSnapshot,
         agent_semantic_content_identity::SourceSnapshotEvidence,
-        std::collections::BTreeMap<String, Vec<u8>>,
+        agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
     ),
     String,
 > {
-    let file_hashes = source_index_file_hashes(
-        index_root,
-        files,
-        previous_file_hashes,
-        &registry.fingerprint,
-        registry.scope_dirs.iter().map(String::as_str),
-    )?;
     let mut workspace_file_hashes = Vec::with_capacity(files.len());
-    let mut source_blobs = std::collections::BTreeMap::new();
+    let mut source_blobs = Vec::with_capacity(files.len());
     for file in files {
         let source_path = if file.path.is_absolute() {
             file.path.clone()
@@ -108,8 +100,20 @@ fn source_index_snapshot_from_files(
             snapshot_path.clone(),
             blake3::hash(&bytes).to_hex().to_string(),
         ));
-        source_blobs.insert(snapshot_path, bytes);
+        source_blobs.push((
+            agent_semantic_client_db::ClientDbSourceIndexPath::new(snapshot_path),
+            bytes,
+        ));
     }
+    let typed_source_blobs =
+        agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(source_blobs);
+    let file_hashes = source_index_file_hashes(
+        index_root,
+        files,
+        &typed_source_blobs,
+        &registry.fingerprint,
+        registry.scope_dirs.iter().map(String::as_str),
+    )?;
     let workspace_snapshot =
         agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(workspace_file_hashes);
     let source_snapshot = workspace_snapshot.evidence(
@@ -120,7 +124,7 @@ fn source_index_snapshot_from_files(
         file_hashes,
         workspace_snapshot,
         source_snapshot,
-        source_blobs,
+        typed_source_blobs,
     ))
 }
 
@@ -130,7 +134,7 @@ pub struct CurrentSourceIndexSnapshot {
     pub workspace_snapshot: agent_semantic_artifacts::WorkspaceSnapshot,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     /// Owner bytes captured in the same read pass that produced the Merkle root.
-    pub source_blobs: std::collections::BTreeMap<String, Vec<u8>>,
+    pub source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -191,7 +195,7 @@ pub fn publish_provider_source_snapshot_envelope(
         .map(|extension| extension.trim_start_matches('.').to_ascii_lowercase())
         .collect::<std::collections::BTreeSet<_>>();
     let mut owners = Vec::new();
-    for (path, bytes) in &snapshot.source_blobs {
+    for (path, bytes) in snapshot.source_blobs.iter() {
         let extension = Path::new(path)
             .extension()
             .map(|extension| extension.to_string_lossy().to_ascii_lowercase());
@@ -230,7 +234,7 @@ pub fn publish_provider_source_snapshot_envelope(
             .to_string_lossy()
             .replace('\\', "/");
         owners.push(ProviderSourceSnapshotOwnerV1 {
-            path: path.clone(),
+            path: path.to_string(),
             snapshot_leaf_digest: snapshot_leaf_digest.to_string(),
             blob_digest,
             source_content_digest,
@@ -361,7 +365,7 @@ fn current_source_index_snapshot_for_owner_with_registry(
         selector_receipts: Vec::new(),
     }];
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
-        source_index_snapshot_from_files(project_root, &files, None, &registry)?;
+        source_index_snapshot_from_files(project_root, &files, &registry)?;
     Ok(CurrentSourceIndexSnapshot {
         workspace_snapshot,
         source_snapshot,
@@ -424,7 +428,7 @@ pub(crate) fn current_source_index_snapshot_with_registry(
     let registry = provider_registry.evidence(project_root);
     let files = collect_source_index_files(project_root, &provider_registry)?;
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
-        source_index_snapshot_from_files(project_root, &files, None, &registry)?;
+        source_index_snapshot_from_files(project_root, &files, &registry)?;
     Ok(CurrentSourceIndexSnapshot {
         workspace_snapshot,
         source_snapshot,
@@ -479,7 +483,7 @@ pub(crate) fn current_runtime_source_index_snapshot(
         scope_dirs: BTreeSet::new(),
     };
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
-        source_index_snapshot_from_files(&runtime_context.checkout_root, &files, None, &registry)?;
+        source_index_snapshot_from_files(&runtime_context.checkout_root, &files, &registry)?;
     Ok(CurrentSourceIndexSnapshot {
         workspace_snapshot,
         source_snapshot,
@@ -575,7 +579,7 @@ impl SourceIndexRefreshContext {
     fn resolve(project_root: &Path) -> Result<Self, String> {
         let project_context = ProjectContext::resolve(project_root)?;
         project_context.require_inside_workspace(project_root)?;
-        let db_engine = ClientDbEngine::resolve(project_root)?;
+        let db_engine = ClientDbEngine::resolve_for_write(project_root)?;
         let db_path = db_engine.db_path().to_path_buf();
         let client_cache_dir = db_engine.client_dir().to_path_buf();
         let db_session = ClientDbEngine::open_write_session_client_dir(db_engine.client_dir())?;
@@ -608,13 +612,8 @@ impl SourceIndexRefreshContext {
         request: SourceIndexGenerationRefresh<'_>,
     ) -> Result<SourceIndexRefreshReport, String> {
         let trace_started = Instant::now();
-        let (file_hashes, workspace_snapshot, mut source_snapshot, _) =
-            source_index_snapshot_from_files(
-                request.index_root,
-                request.files,
-                request.previous_file_hashes,
-                request.registry,
-            )?;
+        let (file_hashes, workspace_snapshot, mut source_snapshot, source_blobs) =
+            source_index_snapshot_from_files(request.index_root, request.files, request.registry)?;
         source_index_trace("generation-file-hashes-built", trace_started);
         let reusable_stats = self.db_session.reusable_source_index_generation(
             request.index_root,
@@ -653,10 +652,10 @@ impl SourceIndexRefreshContext {
                 schema_version: self.schema_version.clone(),
                 selector_source: SOURCE_INDEX_PROVIDER_ID.into(),
                 file_text_bytes_limit: SOURCE_INDEX_FILE_BYTES_LIMIT,
-                previous_file_hashes: None,
                 registry_fingerprint: request.registry.fingerprint.clone(),
                 extra_scope_dirs: request.registry.scope_dirs.iter().cloned().collect(),
                 files: request.files.to_vec(),
+                source_blobs,
             },
             file_hashes,
         )?;

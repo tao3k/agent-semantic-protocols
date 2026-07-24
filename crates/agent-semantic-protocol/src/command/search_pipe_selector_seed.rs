@@ -53,9 +53,20 @@ pub fn render_selector_seeded_search_pipe(request: SelectorSeededSearchPipeReque
         query,
         workspace,
     } = request;
-    let owner = selector_owner(selector);
-    let symbol = selector_symbol(selector).unwrap_or("-");
-    let actions = selector_seed_actions(language_id, selector, &owner, symbol, query, workspace);
+    let canonical_selector =
+        agent_semantic_content_identity::CanonicalItemSelectorV1::parse(selector)
+            .ok()
+            .filter(|selector| selector.language_id.as_str() == language_id);
+    let owner = canonical_selector
+        .as_ref()
+        .map(selector_owner)
+        .unwrap_or("-");
+    let symbol = canonical_selector
+        .as_ref()
+        .map(selector_symbol)
+        .unwrap_or("-");
+    let actions =
+        selector_seed_actions(canonical_selector.as_ref(), owner, symbol, query, workspace);
     let mut output = String::new();
     output.push_str(&format!(
         "[search-pipe] lang={} view=seeds source=selector ranker=selector-seed\n",
@@ -71,7 +82,7 @@ pub fn render_selector_seeded_search_pipe(request: SelectorSeededSearchPipeReque
     output.push_str(&render_action_frontier_line(&actions));
     output.push_str(&render_recommended_next_line(&actions));
     output.push_str(&render_next_command_line(&actions));
-    output.push_str("nextClasses=query-selector,owner-items,rg-query\n");
+    output.push_str("nextClasses=query-selector,owner-items\n");
     output.push_str(
         "avoid=shell-and,manual-command-join,repeat-search-pipe,raw-read,direct-source-read\n",
     );
@@ -113,49 +124,39 @@ fn reject_unsupported_view(
 }
 
 fn selector_seed_actions(
-    language_id: &str,
-    selector: &str,
+    selector: Option<&agent_semantic_content_identity::CanonicalItemSelectorV1>,
     owner: &str,
     symbol: &str,
     query: &str,
     workspace: &str,
 ) -> Vec<ActionNode> {
     let mut actions = Vec::new();
-    if is_executable_structural_selector(selector) {
+    if let Some(selector) = selector {
+        let language_id = selector.language_id.as_str();
         actions.push(ActionNode {
             id: "A1".to_string(),
             kind: "query-code".to_string(),
             suffix: "selector-seed".to_string(),
             route: ActionRoute::QueryCode {
                 language_id: language_id.to_string(),
-                selector: selector.to_string(),
+                selector: selector.clone(),
                 owner: owner.to_string(),
                 symbol: symbol.to_string(),
                 workspace: workspace.to_string(),
             },
         });
+        actions.push(ActionNode {
+            id: String::new(),
+            kind: "owner-items".to_string(),
+            suffix: "selector-owner-items".to_string(),
+            route: ActionRoute::OwnerItems {
+                language_id: language_id.to_string(),
+                owner: owner.to_string(),
+                query: query.to_string(),
+                scope: workspace.to_string(),
+            },
+        });
     }
-    actions.push(ActionNode {
-        id: String::new(),
-        kind: "owner-items".to_string(),
-        suffix: "selector-owner-items".to_string(),
-        route: ActionRoute::OwnerItems {
-            language_id: language_id.to_string(),
-            owner: owner.to_string(),
-            query: query.to_string(),
-            scope: workspace.to_string(),
-        },
-    });
-    actions.push(ActionNode {
-        id: String::new(),
-        kind: "rg-query".to_string(),
-        suffix: "selector-context".to_string(),
-        route: ActionRoute::RgQuery {
-            query: query.to_string(),
-            scope: workspace.to_string(),
-            command_scope: Some(owner.to_string()),
-        },
-    });
     actions
         .into_iter()
         .enumerate()
@@ -166,75 +167,17 @@ fn selector_seed_actions(
         .collect()
 }
 
-fn is_executable_structural_selector(selector: &str) -> bool {
-    let Some(kind) = structural_selector_item_kind(selector) else {
-        return false;
-    };
-    matches!(
-        kind,
-        "const"
-            | "enum"
-            | "field"
-            | "fn"
-            | "function"
-            | "impl"
-            | "macro"
-            | "method"
-            | "mod"
-            | "module"
-            | "static"
-            | "struct"
-            | "trait"
-            | "type"
-    )
-}
-
-fn structural_selector_item_kind(selector: &str) -> Option<&str> {
-    let (_, item) = selector.split_once("#item/")?;
-    let (kind, _) = item.split_once('/')?;
-    (!kind.is_empty()).then_some(kind)
-}
-
-fn selector_owner(selector: &str) -> String {
-    let without_scheme = selector
-        .split_once("://")
-        .map(|(_, rest)| rest)
-        .unwrap_or(selector);
-    let without_fragment = without_scheme
-        .split_once('#')
-        .map(|(owner, _)| owner)
-        .unwrap_or(without_scheme);
-    strip_line_range(without_fragment)
-}
-
-fn strip_line_range(value: &str) -> String {
-    let Some((path, range)) = value.rsplit_once(':') else {
-        return value.to_string();
-    };
-    let mut parts = range.split('-');
-    let Some(start) = parts.next() else {
-        return value.to_string();
-    };
-    let Some(end) = parts.next() else {
-        return value.to_string();
-    };
-    if parts.next().is_none()
-        && !start.is_empty()
-        && !end.is_empty()
-        && start.chars().all(|character| character.is_ascii_digit())
-        && end.chars().all(|character| character.is_ascii_digit())
-    {
-        path.to_string()
-    } else {
-        value.to_string()
-    }
-}
-
-fn selector_symbol(selector: &str) -> Option<&str> {
+fn selector_owner(selector: &agent_semantic_content_identity::CanonicalItemSelectorV1) -> &str {
     selector
-        .split_once('#')
-        .map(|(_, fragment)| fragment)
-        .and_then(|fragment| fragment.rsplit('/').find(|part| !part.is_empty()))
+        .structural_selector()
+        .split_once("://")
+        .and_then(|(_, rest)| rest.split_once('#'))
+        .map(|(owner, _)| owner)
+        .expect("validated canonical selector has an owner")
+}
+
+fn selector_symbol(selector: &agent_semantic_content_identity::CanonicalItemSelectorV1) -> &str {
+    selector.symbol.as_str()
 }
 
 fn command_workspace(

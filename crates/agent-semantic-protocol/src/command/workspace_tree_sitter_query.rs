@@ -27,7 +27,7 @@ pub(super) fn try_run_workspace_tree_sitter_query(
     let Some(request) = WorkspaceTreeSitterRequest::parse(args)? else {
         return Ok(false);
     };
-    let language = agent_semantic_tree_sitter::registered_language_grammar(language_id)?;
+    let language = agent_semantic_tree_sitter::registered_language_grammar(language_id.into())?;
     let query =
         agent_semantic_tree_sitter::compile_native_query_source(&language, &request.query_source)?;
     if !query.unsupported_predicates().is_empty() {
@@ -100,7 +100,7 @@ fn option_value(args: &[String], option: &str) -> Result<Option<String>, String>
 fn collect_workspace_captures(
     language: &tree_sitter::Language,
     query: &agent_semantic_tree_sitter::CompiledNativeSyntaxQuery,
-    source_blobs: &std::collections::BTreeMap<String, Vec<u8>>,
+    source_blobs: &agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
     source_extensions: &[String],
 ) -> Result<(Vec<WorkspaceTreeSitterCapture>, usize), String> {
     source_blobs
@@ -121,9 +121,9 @@ fn collect_workspace_captures(
                     .fold((retained, total), |(mut retained, total), capture| {
                         if retained.len() < MAX_RETAINED_CAPTURES {
                             retained.push(WorkspaceTreeSitterCapture {
-                                owner_path: owner_path.clone(),
+                                owner_path: owner_path.to_string(),
                                 capture_name: capture.capture_name,
-                                node_kind: capture.node.node_kind,
+                                node_kind: capture.node.node_kind.as_str().to_string(),
                                 start_line: capture.node.start_line,
                                 end_line: capture.node.end_line,
                             });
@@ -177,10 +177,22 @@ fn render_workspace_query(
         return Ok(());
     }
     println!(
-        "[query-treesitter] frontier=I.code omit=code,full-node-list,capture-text ts=query-capture matches={} retained={} truncated={}",
-        total_captures,
-        captures.len(),
-        total_captures > captures.len()
+        "{}",
+        super::tree_sitter_query_diagnostics::render_query_summary(
+            language_id,
+            total_captures,
+            captures.len(),
+        )
+    );
+    if total_captures == 0 {
+        super::tree_sitter_query_diagnostics::render_query_miss_guidance(language_id)
+            .iter()
+            .for_each(|line| println!("{line}"));
+        return Ok(());
+    }
+    println!(
+        "{}",
+        super::tree_sitter_query_diagnostics::render_query_match_guidance()
     );
     captures
         .iter()

@@ -117,7 +117,7 @@ fn turso_sync_local(c: &mut Criterion) {
                 drop(statement);
                 transaction.commit().await.expect("commit sync local batch");
                 let stats = storage.stats().await;
-                assert_eq!(stats.outcome, TursoSyncOperationOutcome::Observed);
+                assert_eq!(stats.outcome(), TursoSyncOperationOutcome::Observed);
                 black_box(stats);
             });
         });
@@ -145,7 +145,7 @@ fn turso_sync_local(c: &mut Criterion) {
                 drop(statement);
                 transaction.commit().await.expect("commit checkpoint batch");
                 let checkpoint = storage.checkpoint().await;
-                assert_eq!(checkpoint.outcome, TursoSyncOperationOutcome::Applied);
+                assert_eq!(checkpoint.outcome(), TursoSyncOperationOutcome::Applied);
                 black_box(checkpoint);
             });
         });
@@ -176,7 +176,7 @@ fn turso_sync_local(c: &mut Criterion) {
                     .await
                     .expect("commit large checkpoint batch");
                 let checkpoint = storage.checkpoint().await;
-                assert_eq!(checkpoint.outcome, TursoSyncOperationOutcome::Applied);
+                assert_eq!(checkpoint.outcome(), TursoSyncOperationOutcome::Applied);
                 black_box(checkpoint);
             });
         });

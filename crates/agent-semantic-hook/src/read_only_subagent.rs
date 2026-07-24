@@ -9,17 +9,35 @@ use crate::protocol::{
 use crate::tool_action::{ToolAction, collect_tool_actions};
 
 pub struct HookSubagentPermissionContext<'a> {
-    resident_enabled: bool,
-    managed_child_name: &'a str,
-    configured_codex_agent_name: &'a str,
-    configured_role: &'a str,
-    codex_hook_agent_id: Option<&'a str>,
-    codex_hook_agent_type: Option<&'a str>,
-    resident_child_identity_proof: Option<&'a str>,
-    resident_child_session_id: Option<&'a str>,
-    identity_status: &'a str,
-    sandbox_mode: Option<&'a str>,
-    session_id: &'a str,
+    pub resident_enabled: bool,
+    pub managed_child_name: &'a str,
+    pub configured_codex_agent_name: &'a str,
+    pub configured_role: &'a str,
+    pub codex_hook_agent_id: Option<&'a str>,
+    pub codex_hook_agent_type: Option<&'a str>,
+    pub resident_child_identity_proof: Option<&'a str>,
+    pub resident_child_session_id: Option<&'a str>,
+    pub identity_status: &'a str,
+    pub sandbox_mode: Option<&'a str>,
+    pub session_id: &'a str,
+}
+
+impl HookSubagentPermissionContext<'_> {
+    pub fn resident_enabled(&self) -> bool {
+        self.resident_enabled
+    }
+
+    pub fn codex_hook_agent_type(&self) -> Option<&str> {
+        self.codex_hook_agent_type
+    }
+
+    pub fn resident_child_identity_proof(&self) -> Option<&str> {
+        self.resident_child_identity_proof
+    }
+
+    pub fn resident_child_session_id(&self) -> Option<&str> {
+        self.resident_child_session_id
+    }
 }
 
 impl HookSubagentPermissionContext<'_> {

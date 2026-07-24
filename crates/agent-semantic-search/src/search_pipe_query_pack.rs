@@ -38,10 +38,10 @@ struct QueryTokenFragment {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SearchPipeLanguageId<'a>(&'a str);
+pub struct SearchPipeLanguageId<'a>(pub(crate) &'a str);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SearchPipeQueryText<'a>(&'a str);
+pub struct SearchPipeQueryText<'a>(pub(crate) &'a str);
 
 impl<'a> SearchPipeLanguageId<'a> {
     pub const fn from_language_id(language_id: Self) -> Self {
@@ -70,7 +70,7 @@ impl SearchPipeTermRole {
 pub fn search_pipe_query_clauses<'a>(
     request: SearchPipeQueryClausesRequest<'a, SearchPipeQueryPackDescriptor<'a>>,
 ) -> Vec<SearchPipeQueryClause> {
-    let language_id = request.language_id.as_str();
+    let language_id = request.language_id;
     let query = request.query.as_str();
     let query_pack_descriptor = request.query_pack_descriptor;
     let explicit = query
@@ -78,7 +78,7 @@ pub fn search_pipe_query_clauses<'a>(
         .map(str::trim)
         .filter(|clause| !clause.is_empty())
         .map(|raw_clause| SearchPipeQueryClause {
-            terms: search_pipe_query_terms(language_id, raw_clause, query_pack_descriptor),
+            terms: search_pipe_query_terms(language_id.as_str(), raw_clause, query_pack_descriptor),
         })
         .filter(|clause| !clause.terms.is_empty())
         .collect::<Vec<_>>();
@@ -550,8 +550,8 @@ pub fn search_pipe_semantic_facts_intent(
     }
     let clauses = search_pipe_query_clauses(
         SearchPipeQueryClausesRequest::new(
-            SearchPipeLanguageId::new(language_id),
-            SearchPipeQueryText::new(query),
+            SearchPipeLanguageId::new((language_id).as_str()),
+            SearchPipeQueryText::new((query).as_str()),
         )
         .with_query_pack_descriptor(query_pack_descriptor),
     );

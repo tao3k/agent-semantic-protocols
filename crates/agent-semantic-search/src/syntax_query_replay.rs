@@ -8,7 +8,7 @@ const SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID: &str =
 macro_rules! syntax_query_replay_text {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Clone, Debug, Eq, PartialEq)]
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $name(String);
 
         impl $name {
@@ -20,6 +20,44 @@ macro_rules! syntax_query_replay_text {
         impl From<String> for $name {
             fn from(value: String) -> Self {
                 Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+
+        impl From<&String> for $name {
+            fn from(value: &String) -> Self {
+                Self(value.clone())
+            }
+        }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::borrow::Borrow<str> for $name {
+            fn borrow(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::ops::Deref for $name {
+            type Target = str;
+
+            fn deref(&self) -> &Self::Target {
+                self.as_str()
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(self.as_str())
             }
         }
     };
@@ -115,15 +153,17 @@ pub fn render_semantic_tree_sitter_query_stdout(packet: &Value) -> Option<String
                 })
                 .unwrap_or_else(|| capture_locator.clone());
             rows.push(SyntaxQueryReplayCapture {
-                match_locator: item_locator,
-                capture_locator,
-                capture_name: string_field(capture, "name")
+                match_locator: (item_locator).into(),
+                capture_locator: (capture_locator).into(),
+                capture_name: (string_field(capture, "name")
                     .unwrap_or("capture")
-                    .to_string(),
-                capture_node_type: string_field(capture, "nodeType")
+                    .to_string())
+                .into(),
+                capture_node_type: (string_field(capture, "nodeType")
                     .map(str::to_string)
-                    .or_else(|| query_capture_node_type.clone()),
-                item_node_type: syntax_item_node_type(item, capture)
+                    .or_else(|| query_capture_node_type.clone()))
+                .map(Into::into),
+                item_node_type: (syntax_item_node_type(item, capture)
                     .map(str::to_string)
                     .or_else(|| {
                         let capture_node_type = string_field(capture, "nodeType");
@@ -133,11 +173,13 @@ pub fn render_semantic_tree_sitter_query_stdout(packet: &Value) -> Option<String
                             capture_node_type.map(str::to_string)
                         }
                     })
-                    .or_else(|| query_node_type.clone()),
-                field: string_field(capture, "field")
+                    .or_else(|| query_node_type.clone()))
+                .map(Into::into),
+                field: (string_field(capture, "field")
                     .map(str::to_string)
-                    .or_else(|| query_field.clone()),
-                text: text.to_string(),
+                    .or_else(|| query_field.clone()))
+                .map(Into::into),
+                text: (text.to_string()).into(),
             });
         }
     }
@@ -415,7 +457,7 @@ fn render_syntax_query_miss_line(
         captures.len()
     };
     format!(
-        "|syntax-query inputForm={input_form} input={input} grammar={grammar} grammarProfile={grammar_profile} dialect=tree-sitter-query matchStatus=miss match=0 rows=0 truncated=false captureCount={capture_count} captures={captures_display}\n"
+        "|syntax-query status=no-matches mode=structural inputForm={input_form} input={input} grammar={grammar} grammarProfile={grammar_profile} dialect=tree-sitter-query match=0 rows=0 truncated=false captureCount={capture_count} captures={captures_display} reason=no-syntax-capture-satisfied-full-pattern next=use-search-for-discovery\n"
     )
 }
 

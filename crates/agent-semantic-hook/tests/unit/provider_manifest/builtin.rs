@@ -28,8 +28,6 @@ fn builtin_manifests_include_julia_juliac_provider() {
         [
             "asp-julia-harness",
             "query",
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "{owner}",
             "--workspace",
@@ -57,6 +55,99 @@ fn builtin_manifests_include_julia_juliac_provider() {
             .source
             .default_ignored_path_prefixes
             .contains(&".devenv".to_string())
+    );
+}
+
+fn json_string_paths_containing(
+    value: &serde_json::Value,
+    path: &str,
+    needle: &str,
+    matches: &mut Vec<String>,
+) {
+    match value {
+        serde_json::Value::String(text) if text.contains(needle) => {
+            matches.push(path.to_string());
+        }
+        serde_json::Value::Array(values) => {
+            for (index, value) in values.iter().enumerate() {
+                json_string_paths_containing(value, &format!("{path}/{index}"), needle, matches);
+            }
+        }
+        serde_json::Value::Object(fields) => {
+            for (field, value) in fields {
+                json_string_paths_containing(value, &format!("{path}/{field}"), needle, matches);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn registered_provider_query_routes_are_exact_selector_only() {
+    let registry_source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../schemas/semantic-language-registry.providers.v1.json"
+    ));
+    let registry_json =
+        serde_json::from_str::<serde_json::Value>(registry_source).expect("valid v1 registry JSON");
+    for legacy_method in ["query/document", "query/direct-source-read"] {
+        let mut legacy_paths = Vec::new();
+        json_string_paths_containing(&registry_json, "", legacy_method, &mut legacy_paths);
+        assert!(
+            legacy_paths.is_empty(),
+            "shared v1 registry retains legacy query method {legacy_method} at {legacy_paths:?}"
+        );
+    }
+
+    let manifests = builtin_provider_manifests();
+    let mut exact_selector_languages = Vec::new();
+    for manifest in &manifests {
+        let language_id = manifest.language_id.as_str();
+        let routes = agent_semantic_hook::materialize_provider_routes(manifest)
+            .unwrap_or_else(|error| panic!("materialize {language_id} routes: {error}"));
+        let Some(query) = routes.query.as_ref() else {
+            continue;
+        };
+        exact_selector_languages.push(language_id);
+
+        assert!(
+            query.argv.iter().any(|arg| arg == "--selector"),
+            "{language_id} query route must require an exact selector: {:?}",
+            query.argv
+        );
+        assert!(
+            !query.argv.iter().any(|arg| {
+                matches!(
+                    arg.as_str(),
+                    "--from-hook" | "direct-source-read" | "--term" | "{query}"
+                )
+            }),
+            "{language_id} exact-selector route retains discovery or direct-read arguments: {:?}",
+            query.argv
+        );
+        let synthetic_selector =
+            format!("{language_id}://src/provider#item/function/provider_contract");
+        let canonical =
+            agent_semantic_content_identity::CanonicalItemSelectorV1::parse(&synthetic_selector)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{language_id} query provider has no canonical selector identity: {error}"
+                    )
+                });
+        assert_eq!(canonical.language_id.as_str(), language_id);
+    }
+    assert!(
+        !exact_selector_languages.is_empty(),
+        "provider registry must expose at least one exact-selector query route"
+    );
+
+    let rust = manifests
+        .iter()
+        .find(|manifest| manifest.language_id == "rust")
+        .expect("rust provider manifest");
+    assert!(
+        rust.search_capabilities.owner_items,
+        "Rust harness implements owner-items and must advertise the capability"
     );
 }
 

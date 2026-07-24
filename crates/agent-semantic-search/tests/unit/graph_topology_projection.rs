@@ -36,7 +36,7 @@ fn graph_topology_projection_discovers_project_and_dependency_markers() {
         "high",
     )];
     let projection = graph_project_topology_projection(GraphTopologyProjectionRequest::new(
-        "rust",
+        &"rust".into(),
         root.path(),
         &candidates,
     ));

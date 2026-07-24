@@ -183,7 +183,7 @@ fn run_install_for_client(
         activation_status,
         user_config_receipt,
         display_path(&project_root, &active_artifact.receipt_path),
-        active_artifact.receipt.artifact_root_digest.as_str(),
+        active_artifact.receipt.artifact_root_digest().as_str(),
         display_path(&project_root, &agent_config_path),
         display_path(&project_root, &runtime_state.protocol_home.join("org")),
         org_state_sync.status,

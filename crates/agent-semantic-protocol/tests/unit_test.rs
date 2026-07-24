@@ -80,3 +80,7 @@ mod scenario_performance_gate;
 mod source_access_command;
 #[path = "unit/sync_command.rs"]
 mod sync_command;
+#[path = "unit/tree_sitter_query_diagnostics.rs"]
+mod tree_sitter_query_diagnostics;
+#[path = "unit/workspace_tree_sitter_query_diagnostics.rs"]
+mod workspace_tree_sitter_query_diagnostics;

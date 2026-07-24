@@ -4,6 +4,8 @@ use super::{
     consume_fresh_unroutable_resident_target_observation, fresh_host_resident_target_observation,
     write_host_tree_observation,
 };
+use crate::command::agent_session_registry::agent_session_registry_host_capability::TRUSTED_RESIDENT_HOOK_SOURCE;
+use crate::command::agent_session_registry::agent_session_registry_host_capability::TrustedResidentHookTargetPresentInput;
 
 #[test]
 fn host_resident_target_observation_accepts_followup_ack_source() {

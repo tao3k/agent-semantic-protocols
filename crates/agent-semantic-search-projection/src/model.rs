@@ -59,7 +59,7 @@ pub struct SearchProjectionRequestV1 {
     pub(crate) projection_id: SearchProjectionIdV1,
     pub(crate) density: SearchProjectionDensityV1,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) max_rows: Option<usize>,
+    pub max_rows: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) max_bytes: Option<usize>,
 }
@@ -116,4 +116,16 @@ pub struct RenderedSearchProjectionV1 {
     pub(crate) semantic_digest: String,
     pub(crate) content_type: String,
     pub(crate) content: String,
+}
+
+impl RenderedSearchProjectionV1 {
+    /// Stable digest of the density-independent projection semantics.
+    pub fn semantic_digest(&self) -> &str {
+        &self.semantic_digest
+    }
+
+    /// Rendered projection payload.
+    pub fn content(&self) -> &str {
+        &self.content
+    }
 }

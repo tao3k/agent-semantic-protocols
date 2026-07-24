@@ -235,13 +235,13 @@ async fn exact_selector_projection_round_trip_hydrates_a_validated_merkle_record
     ])
     .expect("build exact-selector workspace tree");
     let packet = agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
-        "rust",
-        "rs-harness",
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketLanguageIdV1::from("rust"),
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketProviderIdV1::from("rs-harness"),
         canonical_item_selector,
         &parser_identity_digest,
         &query_pack_digest,
-        owner_path,
-        selector,
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketOwnerPathV1::from(owner_path),
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketStructuralSelectorV1::from(selector),
         agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code,
         source,
         br#"{"kind":"fn","name":"cached_symbol"}"#,

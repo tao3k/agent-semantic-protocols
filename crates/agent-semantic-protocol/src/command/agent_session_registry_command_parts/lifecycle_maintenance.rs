@@ -17,11 +17,11 @@ pub(in crate::command::agent_session_registry) fn close_session(
     registry.refresh_expired_sessions()?;
     let record = lifecycle_target_session(registry, args, &project_id)?;
     let now = agent_session_unix_timestamp()?;
-    let archived = registry.archive_session(&project_id, &record.session_id, now)?;
+    let archived = registry.archive_session(&project_id, &*record.session_id, now)?;
     if args.json {
         print_lifecycle_json(
             "close",
-            std::slice::from_ref(&record.session_id),
+            &[record.session_id.as_str().to_string()],
             1,
             usize::from(archived),
             Some("archived"),
@@ -60,7 +60,7 @@ pub(in crate::command::agent_session_registry) fn gc_sessions(
         .into_iter()
         .map(|record| {
             let eligible = args.force || is_gc_candidate_status(&record.status);
-            let deleted = eligible && registry.delete_session(&project_id, &record.session_id)?;
+            let deleted = eligible && registry.delete_session(&project_id, &*record.session_id)?;
             Ok(deleted.then_some(record.session_id))
         })
         .collect::<Result<Vec<_>, String>>()?
@@ -68,7 +68,13 @@ pub(in crate::command::agent_session_registry) fn gc_sessions(
         .flatten()
         .collect::<Vec<_>>();
     if args.json {
-        print_lifecycle_json("gc", &deleted, inspected, deleted.len(), None)
+        print_lifecycle_json(
+            "gc",
+            &deleted.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            inspected,
+            deleted.len(),
+            None,
+        )
     } else {
         println!(
             "[agent-session-gc] inspected={} deleted={}",
@@ -104,7 +110,7 @@ pub(in crate::command::agent_session_registry) fn reconcile_sessions(
         .map(|record| {
             let stale = stale_invalid_session_should_be_idle(record, now)?;
             let reconciled = stale
-                && registry.update_session_status(&project_id, &record.session_id, "idle", now)?;
+                && registry.update_session_status(&project_id, &*record.session_id, "idle", now)?;
             Ok(reconciled.then(|| record.session_id.clone()))
         })
         .collect::<Result<Vec<_>, String>>()?
@@ -118,7 +124,10 @@ pub(in crate::command::agent_session_registry) fn reconcile_sessions(
     if args.json {
         print_lifecycle_json(
             "reconcile",
-            &reconciled_session_ids,
+            &reconciled_session_ids
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
             sessions.len(),
             gc_candidates,
             Some("refreshed-expired-and-reconciled-rollout-sessions"),
@@ -145,10 +154,10 @@ pub(super) fn lifecycle_target_session(
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
     registry
         .lookup_session(AgentSessionLookupRequest {
-            project_id,
-            session_id: args.child_session_id.as_deref(),
-            root_session_id: root_session_id.as_deref(),
-            name: args.name.as_deref(),
+            project_id: project_id.into(),
+            session_id: args.child_session_id.as_deref().map(Into::into),
+            root_session_id: root_session_id.as_deref().map(Into::into),
+            name: args.name.as_deref().map(Into::into),
         })?
         .ok_or_else(|| "session lifecycle target not found".to_string())
 }

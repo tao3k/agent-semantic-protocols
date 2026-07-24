@@ -3,7 +3,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use agent_semantic_client_core::{ClientCacheFileHash, SemanticSchemaId, SemanticSchemaVersion};
 use sha2::{Digest, Sha256};
@@ -29,7 +28,7 @@ pub fn assemble_source_index_import(
     let file_hashes = source_index_file_hashes(
         &request.project_root,
         &request.files,
-        request.previous_file_hashes.as_deref(),
+        &request.source_blobs,
         &request.registry_fingerprint,
         request.extra_scope_dirs.iter().map(String::as_str),
     )?;
@@ -44,7 +43,7 @@ pub fn source_index_import_from_language_projection(
     let file_hashes = source_index_file_hashes(
         &request.project_root,
         &rows.scope_files,
-        request.previous_file_hashes.as_deref(),
+        &request.source_blobs,
         &request.registry_fingerprint,
         std::iter::empty(),
     )?;
@@ -81,28 +80,13 @@ pub fn source_index_import_from_language_projection(
 pub fn source_index_file_hashes<'a>(
     project_root: &Path,
     files: &[ClientDbSourceIndexScopeFile],
-    previous_file_hashes: Option<&[ClientCacheFileHash]>,
+    source_blobs: &super::types::ClientDbSourceIndexSourceBlobs,
     registry_fingerprint: &str,
     extra_scope_dirs: impl IntoIterator<Item = &'a str>,
 ) -> Result<Vec<ClientCacheFileHash>, String> {
-    let previous_by_path = previous_file_hashes.map(|file_hashes| {
-        file_hashes
-            .iter()
-            .map(|file_hash| (file_hash.path.as_str(), file_hash))
-            .collect::<BTreeMap<_, _>>()
-    });
-    let force_content_hash =
-        previous_file_hashes.is_some() && source_index_tracked_worktree_is_dirty(project_root);
     let mut file_hashes = files
         .iter()
-        .map(|file| {
-            source_index_file_hash(
-                project_root,
-                file,
-                previous_by_path.as_ref(),
-                force_content_hash,
-            )
-        })
+        .map(|file| source_index_file_hash(project_root, file, source_blobs))
         .collect::<Result<Vec<_>, _>>()?;
     let _ = extra_scope_dirs;
     file_hashes.extend(source_scope_evidence_hashes(registry_fingerprint));
@@ -133,13 +117,12 @@ pub fn source_index_import_with_file_hashes(
         };
         let relative_path = file_hash.path.clone();
         let text = if file_hash.byte_len <= request.file_text_bytes_limit {
-            let bytes = fs::read(&file.path).map_err(|error| {
-                format!(
-                    "failed to read source index file {}: {error}",
-                    file.path.display()
-                )
-            })?;
-            String::from_utf8(bytes).unwrap_or_default()
+            let source_blob_path = ClientDbSourceIndexPath::new(relative_path.clone());
+            let bytes = request
+                .source_blobs
+                .get(&source_blob_path)
+                .ok_or_else(|| format!("missing same-pass source blob for {relative_path}"))?;
+            String::from_utf8(bytes.to_vec()).unwrap_or_default()
         } else {
             String::new()
         };
@@ -216,9 +199,9 @@ fn build_source_index_import_from_started(
         });
         selectors.push(ClientDbSourceIndexSelector {
             owner_path,
-            selector_id: format!("{}://{relative_path}#file", file.language_id.as_str()),
-            symbol: file_symbol(&relative_path),
-            kind: Some("file".to_string()),
+            selector_id: format!("{}://{relative_path}#file", file.language_id.as_str()).into(),
+            symbol: file_symbol(&relative_path).map(Into::into),
+            kind: Some("file".into()),
             start_line: 1,
             end_line: line_count.max(1),
             source: request.selector_source.clone(),
@@ -234,7 +217,7 @@ fn build_source_index_import_from_started(
                     "source index selector owner mismatch: file={} selectorOwner={} selector={}",
                     relative_path,
                     selector.owner_path.as_str(),
-                    selector.selector_id
+                    selector.selector_id.as_str()
                 ));
             }
             selectors.push(selector.clone());
@@ -333,8 +316,7 @@ fn source_scope_evidence_hashes(registry_fingerprint: &str) -> Vec<ClientCacheFi
 fn source_index_file_hash(
     project_root: &Path,
     file: &ClientDbSourceIndexScopeFile,
-    previous_by_path: Option<&BTreeMap<&str, &ClientCacheFileHash>>,
-    force_content_hash: bool,
+    source_blobs: &super::types::ClientDbSourceIndexSourceBlobs,
 ) -> Result<ClientCacheFileHash, String> {
     let source_path = if file.path.is_absolute() {
         file.path.clone()
@@ -349,44 +331,15 @@ fn source_index_file_hash(
     })?;
     let mtime_ms = metadata_mtime_ms(&metadata, &source_path)?;
     let relative_path = source_index_relative_path(project_root, &source_path);
-    if !force_content_hash
-        && let Some(previous) =
-            previous_by_path.and_then(|hashes| hashes.get(relative_path.as_str()))
-        && previous.byte_len == metadata.len()
-        && previous.mtime_ms == mtime_ms
-    {
-        return Ok((*previous).clone());
-    }
-    let bytes = fs::read(&source_path).map_err(|error| {
-        format!(
-            "failed to read source index file {}: {error}",
-            source_path.display()
-        )
-    })?;
+    let bytes = source_blobs
+        .get(&ClientDbSourceIndexPath::new(relative_path.clone()))
+        .ok_or_else(|| format!("missing same-pass source blob for {relative_path}"))?;
     Ok(ClientCacheFileHash {
         path: relative_path,
-        sha256: format!("{:x}", Sha256::digest(&bytes)),
-        byte_len: metadata.len(),
+        sha256: format!("{:x}", Sha256::digest(bytes)),
+        byte_len: bytes.len() as u64,
         mtime_ms,
     })
-}
-
-fn source_index_tracked_worktree_is_dirty(project_root: &Path) -> bool {
-    let Some(git_root) = project_root
-        .ancestors()
-        .find(|candidate| candidate.join(".git").exists())
-    else {
-        return false;
-    };
-    let Ok(output) = Command::new("git")
-        .arg("-C")
-        .arg(git_root)
-        .args(["diff", "--quiet", "HEAD", "--"])
-        .output()
-    else {
-        return true;
-    };
-    !output.status.success()
 }
 
 fn metadata_mtime_ms(metadata: &fs::Metadata, path: &Path) -> Result<u64, String> {

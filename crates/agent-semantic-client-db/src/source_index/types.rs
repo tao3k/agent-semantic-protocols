@@ -106,8 +106,44 @@ macro_rules! source_index_value_type {
                 Self(value)
             }
         }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::ops::Deref for $name {
+            type Target = str;
+
+            fn deref(&self) -> &Self::Target {
+                self.as_str()
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
+
+        impl PartialEq<&str> for $name {
+            fn eq(&self, other: &&str) -> bool {
+                self.as_str() == *other
+            }
+        }
+
+        impl PartialEq<$name> for &str {
+            fn eq(&self, other: &$name) -> bool {
+                *self == other.as_str()
+            }
+        }
     };
 }
+
+source_index_value_type!(ClientDbSourceIndexCandidatePath);
+source_index_value_type!(ClientDbSourceIndexStructuralSelector);
+source_index_value_type!(ClientDbSourceIndexSelectorPayloadKind);
 
 source_index_value_type!(
     /// Project-relative path retained by the DB Engine source index.
@@ -146,6 +182,69 @@ pub struct ClientDbSourceIndexImport {
     pub selectors: Vec<ClientDbSourceIndexSelector>,
 }
 
+/// Immutable source bytes captured by the same pass that produced snapshot evidence.
+///
+/// The normalized path newtype is required at construction. Consumers can
+/// borrow bytes without reopening workspace files.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ClientDbSourceIndexSourceBlobs {
+    blobs: std::sync::Arc<std::collections::BTreeMap<String, std::sync::Arc<[u8]>>>,
+}
+impl ClientDbSourceIndexSourceBlobs {
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.blobs.len()
+    }
+
+    #[must_use]
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.blobs.contains_key(key)
+    }
+}
+
+impl ClientDbSourceIndexSourceBlobs {
+    pub fn from_normalized(
+        blobs: impl IntoIterator<Item = (ClientDbSourceIndexPath, Vec<u8>)>,
+    ) -> Self {
+        Self {
+            blobs: std::sync::Arc::new(
+                blobs
+                    .into_iter()
+                    .map(|(path, bytes)| {
+                        (
+                            path.as_str().to_string(),
+                            std::sync::Arc::<[u8]>::from(bytes),
+                        )
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    pub fn get(&self, path: &ClientDbSourceIndexPath) -> Option<&[u8]> {
+        self.blobs
+            .get(path.as_str())
+            .map(std::convert::AsRef::as_ref)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &[u8])> {
+        self.blobs
+            .iter()
+            .map(|(path, bytes)| (path.as_str(), bytes.as_ref()))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.blobs.is_empty()
+    }
+}
+
+/// Request-scoped live source-index facts bound to their authoritative snapshot.
+#[derive(Clone, Copy, Debug)]
+pub struct ClientDbLiveSourceIndexFacts<'a> {
+    pub source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub import: &'a ClientDbSourceIndexImport,
+}
+
 /// Source file projection used to assemble a DB-owned source-index import
 /// packet without storing raw source text.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -179,10 +278,10 @@ pub struct ClientDbSourceIndexImportAssemblyRequest {
     pub schema_version: SemanticSchemaVersion,
     pub selector_source: ClientDbSourceIndexSource,
     pub file_text_bytes_limit: u64,
-    pub previous_file_hashes: Option<Vec<ClientCacheFileHash>>,
     pub registry_fingerprint: String,
     pub extra_scope_dirs: Vec<String>,
     pub files: Vec<ClientDbSourceIndexScopeFile>,
+    pub source_blobs: ClientDbSourceIndexSourceBlobs,
 }
 
 /// Rust-owned owner row retained for index-first broad search.
@@ -286,16 +385,12 @@ impl From<ClientDbSourceIndexOwner> for ClientDbSourceIndexCandidate {
             selector_symbol: None,
             selector_kind: None,
             selector_proof: None,
-            path: owner.owner_path.as_str().to_string(),
+            path: owner.owner_path.as_str().to_string().into(),
             language_id: owner.language_id,
             provider_id: owner.provider_id,
             source_kind: owner.source_kind.into(),
             line_count: owner.line_count,
-            query_keys: owner
-                .query_keys
-                .into_iter()
-                .map(|key| key.as_str().to_string())
-                .collect(),
+            query_keys: owner.query_keys,
         }
     }
 }
@@ -319,6 +414,7 @@ pub struct ClientDbSourceIndexProjectLookupRequest<'a> {
     pub limit: u32,
     pub expected_snapshot_root: &'a str,
     pub expected_index_artifact_digest: &'a str,
+    pub live_facts: Option<ClientDbLiveSourceIndexFacts<'a>>,
 }
 
 /// Request for looking up source-index candidates from an already resolved
@@ -331,6 +427,7 @@ pub struct ClientDbSourceIndexClientDirLookupRequest<'a> {
     pub limit: u32,
     pub expected_snapshot_root: &'a str,
     pub expected_index_artifact_digest: &'a str,
+    pub live_facts: Option<ClientDbLiveSourceIndexFacts<'a>>,
 }
 
 /// DB-owned source-index candidate lookup result without path projection.

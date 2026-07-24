@@ -396,7 +396,7 @@ pub(crate) fn normalized_metadata(
     );
     object.insert(
         "validationStatus".to_string(),
-        serde_json::Value::String(validation.status.clone()),
+        serde_json::Value::String(validation.status.as_str().to_string()),
     );
     object.insert(
         "validationReason".to_string(),

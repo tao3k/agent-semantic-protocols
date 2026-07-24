@@ -29,8 +29,8 @@ fn workspace_query_request_requires_query_source_without_selector() {
 
 #[test]
 fn runtime_executes_predicates_without_capture_text_projection() {
-    let language =
-        agent_semantic_tree_sitter::registered_language_grammar("rust").expect("Rust grammar");
+    let language = agent_semantic_tree_sitter::registered_language_grammar("rust".into())
+        .expect("Rust grammar");
     let query = agent_semantic_tree_sitter::compile_native_query_source(
         &language,
         r#"((string_literal) @value (#match? @value "asp install plugin --codex"))"#,
@@ -46,9 +46,17 @@ fn runtime_executes_predicates_without_capture_text_projection() {
             br#"VALUE = "asp install plugin --codex""#.to_vec(),
         ),
     ]);
-    let (captures, total) =
-        collect_workspace_captures(&language, &query, &source_blobs, &["rs".to_string()])
-            .expect("execute query");
+    let (captures, total) = collect_workspace_captures(
+        &language,
+        &query,
+        &agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+            source_blobs
+                .into_iter()
+                .map(|(path, bytes)| (path.into(), bytes)),
+        ),
+        &["rs".to_string()],
+    )
+    .expect("execute query");
     assert_eq!(total, 1);
     assert_eq!(captures.len(), 1);
     assert_eq!(captures[0].owner_path, "src/lib.rs");
@@ -58,8 +66,8 @@ fn runtime_executes_predicates_without_capture_text_projection() {
 
 #[test]
 fn runtime_executes_one_capture_across_multiple_node_kinds() {
-    let language =
-        agent_semantic_tree_sitter::registered_language_grammar("rust").expect("Rust grammar");
+    let language = agent_semantic_tree_sitter::registered_language_grammar("rust".into())
+        .expect("Rust grammar");
     let query = agent_semantic_tree_sitter::compile_native_query_source(
         &language,
         "[(function_item name: (identifier) @declaration.name) (struct_item name: (type_identifier) @declaration.name) (enum_item name: (type_identifier) @declaration.name) (trait_item name: (type_identifier) @declaration.name) (type_item name: (type_identifier) @declaration.name)]",
@@ -69,9 +77,17 @@ fn runtime_executes_one_capture_across_multiple_node_kinds() {
         "src/lib.rs".to_string(),
         b"pub fn run() {}\npub struct Record;\npub enum Choice { A }\npub trait Worker {}\npub type Alias = usize;\n".to_vec(),
     )]);
-    let (captures, total) =
-        collect_workspace_captures(&language, &query, &source_blobs, &[".rs".to_string()])
-            .expect("execute query");
+    let (captures, total) = collect_workspace_captures(
+        &language,
+        &query,
+        &agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+            source_blobs
+                .into_iter()
+                .map(|(path, bytes)| (path.into(), bytes)),
+        ),
+        &[".rs".to_string()],
+    )
+    .expect("execute query");
     assert_eq!(total, 5);
     assert_eq!(captures.len(), 5);
     assert!(

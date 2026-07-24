@@ -2,8 +2,48 @@ use std::collections::BTreeSet;
 
 use crate::{SearchPipeQueryTerm, SearchPipeTermRole, search_pipe_package_key};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(
+    Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 pub struct SearchPipeEvidenceLanguageId(String);
+
+impl AsRef<str> for SearchPipeEvidenceLanguageId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::borrow::Borrow<str> for SearchPipeEvidenceLanguageId {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for SearchPipeEvidenceLanguageId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for SearchPipeEvidenceLanguageId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl From<&str> for SearchPipeEvidenceLanguageId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+impl From<&String> for SearchPipeEvidenceLanguageId {
+    fn from(value: &String) -> Self {
+        Self(value.clone())
+    }
+}
 
 impl SearchPipeEvidenceLanguageId {
     pub fn as_str(&self) -> &str {
@@ -49,7 +89,11 @@ pub fn search_pipe_strong_match(
 ) -> bool {
     !matches!(term.role, SearchPipeTermRole::Context)
         && (search_pipe_path_exact_match(candidate, term)
-            || search_pipe_declaration_header_match(language_id.as_str(), candidate, term)
+            || search_pipe_declaration_header_match(
+                &SearchPipeEvidenceLanguageId::from(language_id.as_str()),
+                candidate,
+                term,
+            )
             || rust_path_compound_match(language_id.as_str(), candidate, term)
             || owner_local_symbol_exact_match(candidate, term))
 }
@@ -257,7 +301,11 @@ fn rust_path_compound_match(
         lower: member.to_ascii_lowercase(),
         role: SearchPipeTermRole::Concept,
     };
-    search_pipe_declaration_header_match(language_id, candidate, &member_term)
+    search_pipe_declaration_header_match(
+        &SearchPipeEvidenceLanguageId::from(language_id),
+        candidate,
+        &member_term,
+    )
 }
 
 fn owner_fragment_matches(candidate: &SearchPipeEvidenceCandidate, fragment: &str) -> bool {

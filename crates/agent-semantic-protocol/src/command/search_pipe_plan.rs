@@ -16,7 +16,7 @@ pub(super) struct SearchPipePlanRequest<'a> {
     pub(super) query: &'a str,
     pub(super) candidates: &'a [Candidate],
     pub(super) quality: SearchPipeQuality,
-    pub(super) ranked_compact: Option<&'a str>,
+    pub(super) ranked_projection: Option<&'a str>,
     pub(super) read_memory_selectors: &'a [String],
     pub(super) dependency_action_targets: &'a [String],
 }
@@ -30,7 +30,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         query,
         candidates,
         quality,
-        ranked_compact,
+        ranked_projection,
         read_memory_selectors,
         dependency_action_targets,
     } = request;
@@ -38,14 +38,14 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
     let projected_selector_actions = rank_projected_selector_actions(
         query,
         &quality,
-        ranked_compact
-            .map(concrete_pipe_actions_from_compact)
+        ranked_projection
+            .map(concrete_pipe_actions_from_projection)
             .unwrap_or_default(),
     );
     if quality.query_pack_quality != "low"
         && quality.package_cohesion != "low"
-        && ranked_compact
-            .map(|compact| compact_has_provider_semantic_answer(query, compact))
+        && ranked_projection
+            .map(|projection| projection_has_provider_semantic_answer(query, projection))
             .unwrap_or(false)
     {
         quality.allow_query_selector = true;
@@ -53,7 +53,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
     let actions = if !projected_selector_actions.is_empty() {
         projected_selector_actions
     } else if quality.allow_query_selector {
-        concrete_pipe_actions(candidates, ranked_compact)
+        concrete_pipe_actions(candidates, ranked_projection)
     } else {
         Vec::new()
     };
@@ -63,7 +63,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
         locator_root,
         scopes,
         quality: &quality,
-        ranked_compact,
+        ranked_projection,
         selector_actions: &actions,
         read_memory_selectors,
         dependency_action_targets,
@@ -77,7 +77,7 @@ avoid=repeat-search-pipe,broad-lexical,raw-rg,manual-window-scan,direct-source-r
     )
 }
 
-fn compact_has_provider_semantic_answer(query: &str, compact: &str) -> bool {
+fn projection_has_provider_semantic_answer(query: &str, projection: &str) -> bool {
     let lower_query = query.to_ascii_lowercase();
     let requests_structural_field = [
         "field",
@@ -90,8 +90,8 @@ fn compact_has_provider_semantic_answer(query: &str, compact: &str) -> bool {
     .iter()
     .any(|term| lower_query.contains(term));
     requests_structural_field
-        && compact.contains("field:")
-        && (compact.contains("collection:") || compact.contains("type:"))
+        && projection.contains("field:")
+        && (projection.contains("collection:") || projection.contains("type:"))
 }
 
 fn rank_projected_selector_actions(
@@ -173,10 +173,10 @@ fn package_prefix(path: &str) -> Option<String> {
 
 fn concrete_pipe_actions(
     candidates: &[Candidate],
-    ranked_compact: Option<&str>,
+    ranked_projection: Option<&str>,
 ) -> Vec<PipeAction> {
-    if let Some(compact) = ranked_compact {
-        let actions = concrete_pipe_actions_from_compact(compact);
+    if let Some(projection) = ranked_projection {
+        let actions = concrete_pipe_actions_from_projection(projection);
         if !actions.is_empty() {
             return actions;
         }
@@ -188,10 +188,12 @@ pub(super) fn concrete_pipe_actions_from_candidates(candidates: &[Candidate]) ->
     let mut actions = Vec::new();
     let mut selectors = HashSet::new();
     for candidate in candidates.iter().take(12) {
-        let Some(selector) = candidate_executable_selector(candidate) else {
+        let Some(selector) = candidate_executable_selector(candidate).and_then(|selector| {
+            agent_semantic_content_identity::CanonicalItemSelectorV1::parse(selector).ok()
+        }) else {
             continue;
         };
-        if !selectors.insert(selector.clone()) {
+        if !selectors.insert(selector.structural_selector().to_string()) {
             continue;
         }
         actions.push(PipeAction {
@@ -208,16 +210,16 @@ pub(super) fn concrete_pipe_actions_from_candidates(candidates: &[Candidate]) ->
     actions
 }
 
-fn concrete_pipe_actions_from_compact(compact: &str) -> Vec<PipeAction> {
-    let mut projected = concrete_pipe_actions_from_projected_frontier(compact);
-    let ranked_actions = concrete_pipe_actions_from_ranked_compact(compact);
+fn concrete_pipe_actions_from_projection(projection: &str) -> Vec<PipeAction> {
+    let mut projected = concrete_pipe_actions_from_projected_frontier(projection);
+    let ranked_actions = concrete_pipe_actions_from_ranked_projection(projection);
     if !projected.is_empty() {
         let mut selectors = projected
             .iter()
-            .map(|action| action.selector.clone())
+            .map(|action| action.selector.structural_selector().to_string())
             .collect::<HashSet<_>>();
         for action in ranked_actions {
-            if selectors.insert(action.selector.clone()) {
+            if selectors.insert(action.selector.structural_selector().to_string()) {
                 projected.push(action);
             }
         }
@@ -229,10 +231,10 @@ fn concrete_pipe_actions_from_compact(compact: &str) -> Vec<PipeAction> {
     ranked_actions
 }
 
-fn concrete_pipe_actions_from_ranked_compact(compact: &str) -> Vec<PipeAction> {
+fn concrete_pipe_actions_from_ranked_projection(projection: &str) -> Vec<PipeAction> {
     let mut nodes = HashMap::new();
     let mut rank = Vec::new();
-    for line in compact.lines() {
+    for line in projection.lines() {
         if let Some(rank_value) = line.strip_prefix("rank=") {
             rank = rank_value
                 .split_whitespace()
@@ -253,7 +255,7 @@ fn concrete_pipe_actions_from_ranked_compact(compact: &str) -> Vec<PipeAction> {
     let mut selectors = HashSet::new();
     for alias in rank {
         if let Some(action) = nodes.get(&alias) {
-            if !selectors.insert(action.selector.clone()) {
+            if !selectors.insert(action.selector.structural_selector().to_string()) {
                 continue;
             }
             let mut action = action.clone();
@@ -343,7 +345,7 @@ fn parse_selector_action(value: &str) -> Option<PipeAction> {
     let (index, rest) = rest.split_once(".selector(")?;
     let index = index.parse::<usize>().ok()?;
     let fields = rest.split_once(")!")?.0;
-    let selector = executable_structural_selector_from_action_fields(fields)?.to_string();
+    let selector = executable_structural_selector_from_action_fields(fields)?;
     let owner = action_field(fields, "owner")
         .unwrap_or_default()
         .to_string();
@@ -367,10 +369,7 @@ fn parse_query_code_action(value: &str) -> Option<PipeAction> {
     let (index, rest) = rest.split_once(".query-code(")?;
     let index = index.parse::<usize>().ok()?;
     let fields = rest.split_once(")!")?.0;
-    let selector = action_field(fields, "sourceLocatorHint")
-        .or_else(|| action_field(fields, "structuralSelector"))
-        .or_else(|| action_field(fields, "selector"))?
-        .to_string();
+    let selector = executable_structural_selector_from_action_fields(fields)?;
     let owner = action_field(fields, "owner")
         .unwrap_or_default()
         .to_string();
@@ -423,47 +422,25 @@ fn pipe_action_from_node_segment(segment: &str) -> Option<(String, PipeAction)> 
     ))
 }
 
-fn owner_and_selector(locator: &str) -> Option<(String, String)> {
-    if !is_executable_structural_selector(locator) {
-        return None;
-    }
-    let owner = structural_selector_owner(locator)?;
-    Some((owner.to_string(), locator.to_string()))
+fn owner_and_selector(
+    locator: &str,
+) -> Option<(
+    String,
+    agent_semantic_content_identity::CanonicalItemSelectorV1,
+)> {
+    let selector = agent_semantic_content_identity::CanonicalItemSelectorV1::parse(locator).ok()?;
+    let owner = structural_selector_owner(selector.structural_selector())?;
+    Some((owner.to_string(), selector))
 }
 
-fn executable_structural_selector_from_action_fields(fields: &str) -> Option<&str> {
+fn executable_structural_selector_from_action_fields(
+    fields: &str,
+) -> Option<agent_semantic_content_identity::CanonicalItemSelectorV1> {
     action_field(fields, "structuralSelector")
         .or_else(|| action_field(fields, "selector"))
-        .filter(|selector| is_executable_structural_selector(selector))
-}
-
-fn is_executable_structural_selector(selector: &str) -> bool {
-    let Some(kind) = structural_selector_item_kind(selector) else {
-        return false;
-    };
-    matches!(
-        kind,
-        "const"
-            | "enum"
-            | "field"
-            | "fn"
-            | "function"
-            | "impl"
-            | "macro"
-            | "method"
-            | "mod"
-            | "module"
-            | "static"
-            | "struct"
-            | "trait"
-            | "type"
-    )
-}
-
-fn structural_selector_item_kind(selector: &str) -> Option<&str> {
-    let (_, item) = selector.split_once("#item/")?;
-    let (kind, _) = item.split_once('/')?;
-    (!kind.is_empty()).then_some(kind)
+        .and_then(|selector| {
+            agent_semantic_content_identity::CanonicalItemSelectorV1::parse(selector).ok()
+        })
 }
 
 fn structural_selector_owner(selector: &str) -> Option<&str> {

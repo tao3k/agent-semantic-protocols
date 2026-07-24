@@ -53,7 +53,7 @@ fn observation(reasoning: Option<&str>) -> SubagentRuntimeRebindVerifiedObservat
         previous_observed_model: None,
         previous_observed_reasoning_effort: None,
         observed_model: "gpt-5.4-mini".into(),
-        observed_reasoning_effort: reasoning.map(str::to_string),
+        observed_reasoning_effort: reasoning.map(Into::into),
         expected_model: "gpt-5.4-mini".into(),
         expected_reasoning_effort: Some("low".into()),
         reasoning_evidence,
@@ -71,18 +71,18 @@ fn attestation_applies_only_when_reasoning_is_unobservable() {
     assert!(profile_attestation_is_valid(
         Some(&observation(None)),
         "asp_explorer",
-        Some(&reasoning),
-        Some(&child),
-        Some(&model),
+        Some(&reasoning.as_str().to_string()),
+        Some(&child.as_str().to_string()),
+        Some(&model.as_str().to_string()),
         true,
         None,
     ));
     assert!(!profile_attestation_is_valid(
         Some(&observation(Some("high"))),
         "asp_explorer",
-        Some(&reasoning),
-        Some(&child),
-        Some(&model),
+        Some(&reasoning.as_str().to_string()),
+        Some(&child.as_str().to_string()),
+        Some(&model.as_str().to_string()),
         true,
         None,
     ));
@@ -92,17 +92,17 @@ fn attestation_applies_only_when_reasoning_is_unobservable() {
     assert!(!profile_attestation_is_valid(
         Some(&observation(None)),
         "asp_explorer",
-        Some(&reasoning),
+        Some(&reasoning.as_str().to_string()),
         Some(&wrong_child),
-        Some(&model),
+        Some(&model.as_str().to_string()),
         true,
         None,
     ));
     assert!(!profile_attestation_is_valid(
         Some(&observation(None)),
         "asp_explorer",
-        Some(&reasoning),
-        Some(&child),
+        Some(&reasoning.as_str().to_string()),
+        Some(&child.as_str().to_string()),
         Some(&wrong_model),
         true,
         None,
@@ -110,9 +110,9 @@ fn attestation_applies_only_when_reasoning_is_unobservable() {
     assert!(!profile_attestation_is_valid(
         Some(&observation(None)),
         "asp_explorer",
-        Some(&reasoning),
-        Some(&child),
-        Some(&model),
+        Some(&reasoning.as_str().to_string()),
+        Some(&child.as_str().to_string()),
+        Some(&model.as_str().to_string()),
         false,
         None,
     ));
@@ -125,11 +125,11 @@ fn synthesized_attestation_does_not_invent_reasoning_evidence() {
     let reasoning = "low".to_string();
     let observation = profile_attested_runtime_observation(
         Some("root"),
-        Some(&child),
+        Some(&child.as_str().to_string()),
         "asp_explorer",
-        Some(&model),
-        Some(&model),
-        Some(&reasoning),
+        Some(&model.as_str().to_string()),
+        Some(&model.as_str().to_string()),
+        Some(&reasoning.as_str().to_string()),
         true,
         Some("subagent-start-profile-attestation"),
     )
@@ -153,7 +153,8 @@ fn live_typed_record() -> AgentSessionRecord {
                 "childSessionId": "child",
                 "agentType": "asp_explorer",
             })
-            .to_string(),
+            .to_string()
+            .into(),
         ),
         project_id: "project".into(),
         root_session_id: "root".into(),
@@ -189,7 +190,8 @@ fn live_typed_record() -> AgentSessionRecord {
                 "messageTargetId": "child"
             }
         })
-        .to_string(),
+        .to_string()
+        .into(),
     }
 }
 
@@ -208,7 +210,8 @@ fn typed_subagent_start_binding_uses_configured_resident_type() {
             "childSessionId": "child",
             "agentType": "asp_testing",
         })
-        .to_string(),
+        .to_string()
+        .into(),
     );
     record.metadata_json = serde_json::json!({
         "event": "subagent-start",
@@ -223,7 +226,8 @@ fn typed_subagent_start_binding_uses_configured_resident_type() {
             "messageTargetId": "/root/asp_testing"
         }
     })
-    .to_string();
+    .to_string()
+    .into();
 
     assert!(typed_subagent_start_proves_canonical_typed_binding(
         &record,
@@ -249,29 +253,29 @@ fn profile_attestation_uses_configured_resident_type() {
     assert!(profile_attestation_is_valid(
         Some(&testing_observation),
         "asp_testing",
-        Some(&reasoning),
-        Some(&child),
-        Some(&model),
+        Some(&reasoning.as_str().to_string()),
+        Some(&child.as_str().to_string()),
+        Some(&model.as_str().to_string()),
         true,
         None,
     ));
     assert!(!profile_attestation_is_valid(
         Some(&testing_observation),
         "asp_explorer",
-        Some(&reasoning),
-        Some(&child),
-        Some(&model),
+        Some(&reasoning.as_str().to_string()),
+        Some(&child.as_str().to_string()),
+        Some(&model.as_str().to_string()),
         true,
         None,
     ));
 
     let synthesized = profile_attested_runtime_observation(
         Some("root"),
-        Some(&child),
+        Some(&child.as_str().to_string()),
         "asp_testing",
-        Some(&model),
-        Some(&model),
-        Some(&reasoning),
+        Some(&model.as_str().to_string()),
+        Some(&model.as_str().to_string()),
+        Some(&reasoning.as_str().to_string()),
         true,
         Some("subagent-start-profile-attestation"),
     )
@@ -292,7 +296,8 @@ fn durable_rollout_binding_rehydrates_profile_attestation_without_rollout_file()
             "messageTargetId": "/root/asp_explorer"
         }
     })
-    .to_string();
+    .to_string()
+    .into();
 
     assert_eq!(
         profile_attestation_identity(
@@ -318,9 +323,9 @@ fn trusted_rollout_recovery_can_attest_unobservable_reasoning() {
     assert!(profile_attestation_is_valid(
         Some(&recovered),
         "asp_explorer",
-        Some(&reasoning),
-        Some(&child),
-        Some(&model),
+        Some(&reasoning.as_str().to_string()),
+        Some(&child.as_str().to_string()),
+        Some(&model.as_str().to_string()),
         true,
         None,
     ));
@@ -347,20 +352,20 @@ fn reasoning_unobservable_attestation_reaches_ready() {
     let attested = profile_attestation_is_valid(
         Some(&observation(None)),
         "asp_explorer",
-        Some(&reasoning),
-        Some(&child),
-        Some(&model),
+        Some(&reasoning.as_str().to_string()),
+        Some(&child.as_str().to_string()),
+        Some(&model.as_str().to_string()),
         true,
         None,
     );
     assert!(attested);
     let attested_observation = profile_attested_runtime_observation(
         Some("root"),
-        Some(&child),
+        Some(&child.as_str().to_string()),
         "asp_explorer",
-        Some(&model),
-        Some(&model),
-        Some(&reasoning),
+        Some(&model.as_str().to_string()),
+        Some(&model.as_str().to_string()),
+        Some(&reasoning.as_str().to_string()),
         true,
         Some("subagent-start-profile-attestation"),
     )
@@ -386,11 +391,14 @@ fn reasoning_unobservable_attestation_reaches_ready() {
         attested,
         &attested_observation,
         "asp_explorer",
-        (Some(&child), Some(&reasoning)),
+        (
+            Some(&child.as_str().to_string()),
+            Some(&reasoning.as_str().to_string()),
+        ),
     );
     assert_eq!(receipt["typedSpawnIdentityVerified"], true);
     assert_eq!(receipt["rolloutRecoveryIdentityVerified"], false);
-    assert_eq!(receipt["attestedChildId"], child);
+    assert_eq!(receipt["attestedChildId"], child.as_str());
     assert_eq!(
         receipt["attestationOrigin"],
         "subagent-start-profile-attestation"

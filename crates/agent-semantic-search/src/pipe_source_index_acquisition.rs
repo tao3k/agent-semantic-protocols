@@ -8,7 +8,7 @@ use crate::pipe_source::intent_terms_all_path_like;
 macro_rules! source_index_acquisition_text {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Clone, Debug, Eq, PartialEq)]
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $name(String);
 
         impl $name {
@@ -20,6 +20,44 @@ macro_rules! source_index_acquisition_text {
         impl From<String> for $name {
             fn from(value: String) -> Self {
                 Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+
+        impl From<&String> for $name {
+            fn from(value: &String) -> Self {
+                Self(value.clone())
+            }
+        }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::borrow::Borrow<str> for $name {
+            fn borrow(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::ops::Deref for $name {
+            type Target = str;
+
+            fn deref(&self) -> &Self::Target {
+                self.as_str()
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(self.as_str())
             }
         }
     };
@@ -111,9 +149,9 @@ pub fn collect_search_pipe_source_index_acquisition(
             )
         })
         .collect::<Vec<_>>();
-    let decision = if lookup.state == "busy" && candidates.is_empty() {
+    let decision = if lookup.state == "busy".into() && candidates.is_empty() {
         SearchPipeSourceIndexDecision::Busy
-    } else if lookup.state == "cold-required" && candidates.is_empty() {
+    } else if lookup.state == "cold-required".into() && candidates.is_empty() {
         SearchPipeSourceIndexDecision::ColdRequired
     } else if intent_terms_all_path_like(request.intent)
         && matches!(lookup.state.as_str(), "missing-db" | "empty-index" | "miss")
@@ -134,7 +172,8 @@ pub fn collect_search_pipe_source_index_acquisition(
         gate: None,
         candidates,
         source_snapshot: lookup.source_snapshot.clone(),
-        index_artifact_digest: lookup.index_artifact_digest.clone(),
+        index_artifact_digest: (lookup.index_artifact_digest.clone())
+            .map(|value| value.to_string()),
     })
 }
 

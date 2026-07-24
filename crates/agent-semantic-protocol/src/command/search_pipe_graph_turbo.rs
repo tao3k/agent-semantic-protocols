@@ -6,10 +6,9 @@ use serde_json::{Value, json};
 
 use super::{
     search_config::AspConfig,
-    search_pipe_dependency_facts::{
-        DependencyFact, candidate_usage_dependency_matches_query, dependency_matches_query,
+    search_pipe_dependency_seed_cache::{
+        ProviderDependencyTopologyFact, collect_cached_dependency_facts,
     },
-    search_pipe_dependency_seed_cache::collect_cached_dependency_facts,
     search_pipe_graph_nodes::{
         append_candidate_nodes, append_hot_nodes, append_project_topology_nodes,
         append_submodule_owner_edges, candidate_node_id, hot_node_id, stable_node_id,
@@ -51,7 +50,7 @@ pub(super) struct GraphTurboSearchPipeRequest<'a> {
 pub(super) fn render_graph_turbo_request(
     request: GraphTurboSearchPipeRequest<'_>,
 ) -> Result<String, String> {
-    let packet = graph_turbo_request(&request);
+    let packet = graph_turbo_request(&request)?;
     serde_json::to_string(&packet)
         .map(|mut text| {
             text.push('\n');
@@ -60,7 +59,9 @@ pub(super) fn render_graph_turbo_request(
         .map_err(|error| format!("failed to serialize graph turbo request: {error}"))
 }
 
-pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> Value {
+pub(super) fn graph_turbo_request(
+    request: &GraphTurboSearchPipeRequest<'_>,
+) -> Result<Value, String> {
     let language_id = request.language_id;
     let dependency_root = request.dependency_root;
     let source_snapshot = request.source_snapshot;
@@ -78,7 +79,7 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
     let config = request.config;
     let read_memory_selectors = request.read_memory_selectors;
     let external_action_frontier = request.action_frontier;
-    let mut surfaces = normalized_search_surfaces(pipes);
+    let surfaces = normalized_search_surfaces(pipes);
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
     let mut seed_ids = Vec::new();
@@ -129,46 +130,15 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
             dependency_root,
             cache_home,
             config,
-            provider_context_for_dependency_seed(
-                surface,
-                language_id,
-                provider_context,
-                &surfaces,
-                query,
-                &graph_candidates,
-            ),
+            provider_context_for_dependency_seed(provider_context, &surfaces),
             query,
             &graph_candidates,
-        )
+        )?
     } else {
-        let manifest_facts = super::search_pipe_dependency_facts::collect_manifest_dependency_facts(
-            language_id,
-            dependency_root,
-        );
-        if should_auto_include_dependency_surface(query, &surfaces, &manifest_facts) {
-            surfaces.push("deps".to_string());
-            collect_cached_dependency_facts(
-                language_id,
-                dependency_root,
-                cache_home,
-                config,
-                provider_context_for_dependency_seed(
-                    surface,
-                    language_id,
-                    provider_context,
-                    &surfaces,
-                    query,
-                    &graph_candidates,
-                ),
-                query,
-                &graph_candidates,
-            )
-        } else {
-            super::search_pipe_dependency_seed_cache::CachedDependencyFacts {
-                cache_status: "skipped",
-                topology_source: "not-requested",
-                facts: Vec::new(),
-            }
+        super::search_pipe_dependency_seed_cache::CachedDependencyFacts {
+            cache_status: "skipped",
+            topology_source: "not-requested",
+            facts: Vec::new(),
         }
     };
     let dependency_seed_cache_status = dependency_seed.cache_status;
@@ -340,7 +310,7 @@ pub(super) fn graph_turbo_request(request: &GraphTurboSearchPipeRequest<'_>) -> 
     if !external_action_frontier.is_empty() {
         packet["actionFrontier"] = Value::Array(external_action_frontier.to_vec());
     }
-    packet
+    Ok(packet)
 }
 
 pub(crate) fn graph_route_next_action(language_id: &str, owner_path: &str, query: &str) -> Value {
@@ -443,22 +413,11 @@ fn graph_route_score(score: &agent_semantic_search::GraphOwnerRankScore) -> Valu
 }
 
 fn provider_context_for_dependency_seed<'a>(
-    surface: &str,
-    language_id: &str,
     provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     surfaces: &[String],
-    query: Option<&str>,
-    candidates: &[Candidate],
 ) -> Option<&'a ProviderGraphFactsContext<'a>> {
     let context = provider_context?;
-    if include_deps(surfaces) && surface != "search-lexical" {
-        return Some(context);
-    }
-    let search_pipe_dependency_query = surface == "search-pipe"
-        && query.is_some_and(|query| {
-            candidate_usage_dependency_matches_query(language_id, candidates, query)
-        });
-    search_pipe_dependency_query.then_some(context)
+    include_deps(surfaces).then_some(context)
 }
 
 fn query_adjustment_policy_from_env() -> Option<Value> {
@@ -522,7 +481,37 @@ fn append_provider_fact_nodes(nodes: &mut Vec<Value>, provider_facts: &ProviderG
     ));
 }
 
-fn append_dependency_nodes(nodes: &mut Vec<Value>, dependency_facts: &[DependencyFact]) {
+pub(super) fn dependency_action_targets_from_graph(packet: &Value) -> Vec<String> {
+    let dependency_nodes = packet
+        .get("graph")
+        .and_then(|graph| graph.get("nodes"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|node| node.get("kind").and_then(Value::as_str) == Some("dependency"))
+        .filter_map(|node| {
+            Some(agent_semantic_search::DependencyActionNodeV1 {
+                id: node.get("id")?.as_str()?,
+                dependency: node.get("value")?.as_str()?,
+            })
+        })
+        .collect::<Vec<_>>();
+    let matched_edge_targets = packet
+        .get("graph")
+        .and_then(|graph| graph.get("edges"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|edge| edge.get("relation").and_then(Value::as_str) == Some("matches"))
+        .filter_map(|edge| edge.get("target").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    agent_semantic_search::matched_dependency_action_targets(dependency_nodes, matched_edge_targets)
+}
+
+fn append_dependency_nodes(
+    nodes: &mut Vec<Value>,
+    dependency_facts: &[ProviderDependencyTopologyFact],
+) {
     let mut seen = HashSet::new();
     let mut seen_versions = HashSet::new();
     for fact in dependency_facts {
@@ -533,8 +522,8 @@ fn append_dependency_nodes(nodes: &mut Vec<Value>, dependency_facts: &[Dependenc
                 "role": "pkg",
                 "value": fact.dependency,
                 "action": "deps",
-                "source": "finder",
-                "confidence": dependency_confidence(fact),
+                "source": "provider-owned",
+                "confidence": "exact",
             }));
         }
         if let Some(version) = fact.version.as_deref()
@@ -546,18 +535,10 @@ fn append_dependency_nodes(nodes: &mut Vec<Value>, dependency_facts: &[Dependenc
                 "role": "version",
                 "value": format!("{}@{version}", fact.dependency),
                 "action": "evidence",
-                "source": "finder",
-                "confidence": dependency_confidence(fact),
+                "source": "provider-owned",
+                "confidence": "exact",
             }));
         }
-    }
-}
-
-fn dependency_confidence(fact: &DependencyFact) -> &'static str {
-    if fact.source == "manifest" {
-        "exact"
-    } else {
-        "likely"
     }
 }
 
@@ -579,7 +560,7 @@ struct GraphEdgeInputs<'a> {
     candidates: &'a [Candidate],
     owners: &'a [String],
     workspace_root: &'a std::path::Path,
-    dependency_facts: &'a [DependencyFact],
+    dependency_facts: &'a [ProviderDependencyTopologyFact],
     provider_facts: &'a ProviderGraphFacts,
     surfaces: &'a [String],
 }
@@ -630,13 +611,14 @@ fn append_query_match_edges(
     }
 }
 
-fn append_query_dependency_edges(edges: &mut Vec<Value>, query: &str, facts: &[DependencyFact]) {
+fn append_query_dependency_edges(
+    edges: &mut Vec<Value>,
+    query: &str,
+    facts: &[ProviderDependencyTopologyFact],
+) {
     for term in query_terms(query) {
         let query_id = stable_node_id("query", &term);
-        for fact in facts
-            .iter()
-            .filter(|fact| dependency_matches_query(&fact.dependency, &term))
-        {
+        for fact in facts.iter().filter(|fact| fact.dependency == term) {
             edges.push(edge(
                 &query_id,
                 &stable_node_id("dependency", &fact.dependency),
@@ -670,24 +652,27 @@ fn append_provider_fact_edges(edges: &mut Vec<Value>, provider_facts: &ProviderG
     edges.extend(provider_facts.edges.iter().cloned());
 }
 
-fn append_owner_dependency_edges(edges: &mut Vec<Value>, dependency_facts: &[DependencyFact]) {
+fn append_owner_dependency_edges(
+    edges: &mut Vec<Value>,
+    dependency_facts: &[ProviderDependencyTopologyFact],
+) {
     let mut seen = HashSet::new();
     for fact in dependency_facts {
-        if fact.source == "manifest" {
-            continue;
-        }
         let key = format!("{}:{}", fact.owner_path, fact.dependency);
         if seen.insert(key) {
             edges.push(edge(
                 &stable_node_id("owner", &fact.owner_path),
                 &stable_node_id("dependency", &fact.dependency),
-                "imports",
+                "uses",
             ));
         }
     }
 }
 
-fn append_dependency_version_edges(edges: &mut Vec<Value>, dependency_facts: &[DependencyFact]) {
+fn append_dependency_version_edges(
+    edges: &mut Vec<Value>,
+    dependency_facts: &[ProviderDependencyTopologyFact],
+) {
     let mut seen = HashSet::new();
     for fact in dependency_facts {
         let Some(version) = fact.version.as_deref() else {
@@ -720,20 +705,6 @@ fn edge(source: &str, target: &str, relation: &str) -> Value {
         "target": target,
         "relation": relation,
     })
-}
-
-fn should_auto_include_dependency_surface(
-    query: Option<&str>,
-    surfaces: &[String],
-    dependency_facts: &[DependencyFact],
-) -> bool {
-    let Some(query) = query else {
-        return false;
-    };
-    !include_deps(surfaces)
-        && dependency_facts
-            .iter()
-            .any(|fact| dependency_matches_query(&fact.dependency, query))
 }
 
 fn profile_for_surfaces(surfaces: &[String]) -> &'static str {

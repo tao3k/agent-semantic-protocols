@@ -155,6 +155,30 @@ pub struct CanonicalItemSelectorV1 {
 }
 
 impl CanonicalItemSelectorV1 {
+    pub fn parse(structural_selector: impl Into<String>) -> Result<Self, String> {
+        let structural_selector = structural_selector.into();
+        let (language_id, selector_body) =
+            structural_selector.split_once("://").ok_or_else(|| {
+                "canonical item structuralSelector must include <language>://".to_string()
+            })?;
+        let (owner_path, identity_path) = selector_body.split_once('#').ok_or_else(|| {
+            "canonical item structuralSelector must include an owner and item fragment".to_string()
+        })?;
+        if owner_path.trim().is_empty() {
+            return Err(
+                "canonical item structuralSelector owner path must not be empty".to_string(),
+            );
+        }
+        let identity = crate::structural_selector::decode_canonical_item_identity_path(
+            &crate::structural_selector::StructuralSelectorLanguageId::from(language_id),
+            &crate::structural_selector::CanonicalItemIdentityPath::from(identity_path),
+        )
+        .map_err(|error| format!("canonical item structuralSelector is invalid: {error}"))?;
+        let selector = CanonicalItemSelectorV1::new(identity, structural_selector);
+        selector.validate()?;
+        Ok(selector)
+    }
+
     pub fn new(identity: CanonicalItemIdentityV1, structural_selector: impl Into<String>) -> Self {
         let CanonicalItemIdentityV1 {
             language_id,

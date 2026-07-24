@@ -73,3 +73,30 @@ fn exact_structural_selector_does_not_require_a_term() {
 
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+#[test]
+fn document_exact_selector_crosses_the_language_neutral_owner_boundary() {
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args([
+            "org",
+            "query",
+            "--selector",
+            "org://docs/missing.org#item/heading/missing",
+            "--workspace",
+            ".",
+            "--code",
+        ])
+        .current_dir(workspace_root())
+        .output()
+        .expect("run org exact structural selector query");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("provider-owned structural query is missing an exact owner path"),
+        "org selector was rejected by a language-hardcoded owner boundary: {stderr}"
+    );
+    assert!(
+        !stderr.contains("query requires at least one --term"),
+        "org exact selector was misrouted into lexical query: {stderr}"
+    );
+}

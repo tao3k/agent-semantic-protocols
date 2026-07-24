@@ -591,8 +591,14 @@ pub(super) fn turso_source_index_selector_fingerprint(
     for selector in &import.selectors {
         update_text(&mut hasher, selector.owner_path.as_str());
         update_text(&mut hasher, selector.selector_id.as_str());
-        update_text(&mut hasher, selector.symbol.as_deref().unwrap_or_default());
-        update_text(&mut hasher, selector.kind.as_deref().unwrap_or_default());
+        update_text(
+            &mut hasher,
+            selector.symbol.as_ref().map_or("", |value| value.as_str()),
+        );
+        update_text(
+            &mut hasher,
+            selector.kind.as_ref().map_or("", |value| value.as_str()),
+        );
         hasher.update(selector.start_line.to_be_bytes());
         hasher.update(selector.end_line.to_be_bytes());
         update_text(&mut hasher, selector.source.as_str());
@@ -806,7 +812,7 @@ pub(in crate::engine) async fn lookup_exact_selector_projection_v1(
     if !db_path.exists() {
         return Ok(None);
     }
-    let connection = match connect_turso_client_db(db_path).await {
+    let connection = match crate::engine::turso::connect_turso_client_db_read_only(db_path).await {
         Ok(connection) => connection,
         Err(error) if crate::engine::turso_lock_policy::is_turso_lock_error(&error) => {
             return Ok(None);

@@ -24,7 +24,7 @@ pub(super) fn source_index_structured_candidate_score(
     language_id: Option<&str>,
     provider_id: Option<&str>,
     source_kind: &str,
-    query_keys: &[String],
+    query_keys: &[crate::ClientDbSourceIndexQueryKey],
     selector_haystack: &str,
     terms: &[String],
 ) -> usize {
@@ -35,7 +35,10 @@ pub(super) fn source_index_structured_candidate_score(
         + language_id.map_or(0, str::len)
         + provider_id.map_or(0, str::len)
         + source_kind.len()
-        + query_keys.iter().map(String::len).sum::<usize>()
+        + query_keys
+            .iter()
+            .map(|query_key| query_key.as_str().len())
+            .sum::<usize>()
         + selector_haystack.len()
         + query_keys.len()
         + 4;
@@ -53,7 +56,7 @@ pub(super) fn source_index_structured_candidate_score(
     haystack.push_str(source_kind);
     haystack.push(' ');
     for query_key in query_keys {
-        haystack.push_str(query_key);
+        haystack.push_str(query_key.as_str());
         haystack.push(' ');
     }
     haystack.push_str(selector_haystack);

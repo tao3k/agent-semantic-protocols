@@ -384,10 +384,11 @@ pub(crate) fn run_cache(
                 cache_project_root: project_root,
                 indexed_project_root: &spec.index_root,
                 language_id: facade_language_id,
-                query: &spec.query,
-                limit: spec.limit,
-                source_snapshot: &source_snapshot.source_snapshot,
-            })?;
+    query: &spec.query,
+    limit: spec.limit,
+    source_snapshot: &source_snapshot.source_snapshot,
+    live_import: None,
+})?;
             if result.candidates.is_empty() {
                 println!(
                     "noOutput reason=source-index-{} query={} indexRoot={} snapshotRoot={} providerDigest={} indexArtifactDigest={}",
@@ -439,7 +440,12 @@ pub(crate) fn run_cache(
                             .line_count
                             .map(|count| count.to_string())
                             .unwrap_or_else(|| "-".to_string()),
-                        candidate.query_keys.join(",")
+                        candidate
+                            .query_keys
+                            .iter()
+                            .map(|key| key.as_str())
+                            .collect::<Vec<_>>()
+                            .join(",")
                     );
                 }
             }
@@ -460,12 +466,16 @@ pub(crate) fn run_cache(
                     "rawSourceStored": false,
                     "candidates": result.candidates.iter().map(|candidate| {
                         json!({
-                            "path": candidate.path,
+                            "path": *candidate.path,
                             "languageId": candidate.language_id.as_ref().map(LanguageId::as_str),
                             "providerId": candidate.provider_id.as_ref().map(ProviderId::as_str),
                             "sourceKind": candidate.source_kind.as_str(),
                             "lineCount": candidate.line_count,
-                            "queryKeys": candidate.query_keys
+                            "queryKeys": candidate
+                                .query_keys
+                                .iter()
+                                .map(|key| key.as_str())
+                                .collect::<Vec<_>>()
                         })
                     }).collect::<Vec<_>>()
                 });
@@ -854,10 +864,10 @@ fn print_db_status(db_report: Option<&ClientDbReport>) {
             .map(|pragmas| {
                 format!(
                     " journalMode={} synchronous={} busyTimeoutMs={} foreignKeys={}",
-                    pragmas.journal_mode.as_str(),
-                    pragmas.synchronous,
-                    pragmas.busy_timeout_ms,
-                    pragmas.foreign_keys
+                    pragmas.journal_mode(),
+                    pragmas.synchronous(),
+                    pragmas.busy_timeout_ms(),
+                    pragmas.foreign_keys()
                 )
             })
             .unwrap_or_default();
@@ -903,10 +913,10 @@ fn apply_db_report_to_receipt(receipt: &mut ClientReceipt, db_report: &ClientDbR
     receipt.client_db_artifact_event_count = Some(db_report.artifact_event_count);
     receipt.client_db_raw_source_stored = Some(db_report.raw_source_stored);
     if let Some(pragmas) = &db_report.runtime_pragmas {
-        receipt.client_db_journal_mode = Some(pragmas.journal_mode.as_str().into());
-        receipt.client_db_synchronous = Some(pragmas.synchronous);
-        receipt.client_db_busy_timeout_ms = u64::try_from(pragmas.busy_timeout_ms).ok();
-        receipt.client_db_foreign_keys = Some(pragmas.foreign_keys);
+        receipt.client_db_journal_mode = Some(pragmas.journal_mode().into());
+        receipt.client_db_synchronous = Some(pragmas.synchronous());
+        receipt.client_db_busy_timeout_ms = u64::try_from(pragmas.busy_timeout_ms()).ok();
+        receipt.client_db_foreign_keys = Some(pragmas.foreign_keys());
     }
 }
 

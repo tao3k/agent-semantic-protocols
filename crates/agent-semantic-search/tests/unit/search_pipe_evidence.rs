@@ -17,11 +17,15 @@ fn search_pipe_evidence_matches_declarations_and_rust_compound_paths() {
     let compound = term("router::SearchRouter", SearchPipeTermRole::Symbol);
 
     assert!(search_pipe_declaration_header_match(
-        "rust",
+        &"rust".into(),
         &candidate,
         &declaration
     ));
-    assert!(search_pipe_strong_match("rust", &candidate, &compound));
+    assert!(search_pipe_strong_match(
+        &"rust".into(),
+        &candidate,
+        &compound
+    ));
 }
 
 #[test]
@@ -48,7 +52,7 @@ fn search_pipe_evidence_projects_parser_and_search_overlay_handles() {
     ];
 
     assert_eq!(
-        search_pipe_parser_handles("rust", &candidates, &terms),
+        search_pipe_parser_handles(&"rust".into(), &candidates, &terms),
         vec!["SearchRouter@src/router.rs:7".to_string()]
     );
     assert_eq!(

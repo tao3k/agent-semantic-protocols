@@ -85,7 +85,7 @@ fn validate_session_profile_with_rollout_lookup(
 ) -> Result<SessionValidationReport, String> {
     let Some(agent_kind) = validated_agent_kind(name, role) else {
         return Ok(SessionValidationReport {
-            status: "skipped".to_string(),
+            status: "skipped".to_string().into(),
             reason: "session role does not require Codex rollout profile validation".to_string(),
             config_path: None,
             rollout_path: None,
@@ -109,7 +109,7 @@ fn validate_session_profile_with_rollout_lookup(
         Ok(expected) => expected,
         Err(error) => {
             return Ok(SessionValidationReport {
-                status: "failed".to_string(),
+                status: "failed".to_string().into(),
                 reason: error,
                 config_path: None,
                 rollout_path: None,
@@ -132,12 +132,12 @@ fn validate_session_profile_with_rollout_lookup(
     };
     let metadata = match rollout_lookup {
         RolloutMetadataLookup::Historical | RolloutMetadataLookup::Registration => {
-            codex_rollout_session_metadata(session_id)?
+            codex_rollout_session_metadata(&session_id.into())?
         }
     };
     let Some(metadata) = metadata else {
         return Ok(SessionValidationReport {
-            status: "failed".to_string(),
+            status: "failed".to_string().into(),
             reason: rollout_lookup.missing_reason(session_id),
             config_path: Some(expected.config_path.display().to_string()),
             rollout_path: None,
@@ -312,11 +312,11 @@ fn validate_session_profile_with_rollout_lookup(
     }
     Ok(SessionValidationReport {
         status: if !failures.is_empty() {
-            "failed".to_string()
+            "failed".to_string().into()
         } else if !warnings.is_empty() {
-            "warning".to_string()
+            "warning".to_string().into()
         } else {
-            "passed".to_string()
+            "passed".to_string().into()
         },
         reason: if !failures.is_empty() {
             failures.join("; ")

@@ -15,14 +15,31 @@ pub struct TursoMvccMaintenanceReceipt {
     schema_id: String,
     backend: String,
     backend_version: String,
-    passive_checkpoint: bool,
-    cache_flush_count: usize,
+    pub passive_checkpoint: bool,
+    pub cache_flush_count: usize,
     database_bytes: u64,
     wal_bytes: u64,
     shared_memory_bytes: u64,
-    total_file_bytes: u64,
+    pub total_file_bytes: u64,
     elapsed_micros: u64,
-    checkpoint_counter_observable: bool,
+    pub checkpoint_counter_observable: bool,
+}
+
+impl TursoMvccMaintenanceReceipt {
+    #[must_use]
+    pub const fn passive_checkpoint(&self) -> bool {
+        self.passive_checkpoint
+    }
+
+    #[must_use]
+    pub const fn database_bytes(&self) -> u64 {
+        self.database_bytes
+    }
+
+    #[must_use]
+    pub const fn wal_bytes(&self) -> u64 {
+        self.wal_bytes
+    }
 }
 
 impl TursoMvccStore {

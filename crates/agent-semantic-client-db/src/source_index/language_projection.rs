@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
-use agent_semantic_client_core::{ClientCacheFileHash, LanguageId, ProviderId};
+use agent_semantic_client_core::{LanguageId, ProviderId};
 use serde::Deserialize;
 
 use super::types::{
@@ -39,6 +39,10 @@ impl ClientDbLanguageProjection {
     #[must_use]
     pub fn language_id(&self) -> &str {
         &self.language_id
+    }
+
+    pub fn sources(&self) -> &[ClientDbLanguageProjectionSource] {
+        &self.sources
     }
 
     #[must_use]
@@ -145,7 +149,7 @@ pub enum ClientDbLanguageProjectionNodeKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbLanguageProjectionImportRequest {
     pub project_root: PathBuf,
-    pub previous_file_hashes: Option<Vec<ClientCacheFileHash>>,
+    pub source_blobs: super::types::ClientDbSourceIndexSourceBlobs,
     pub registry_fingerprint: String,
     pub projection: ClientDbLanguageProjection,
 }
@@ -306,16 +310,16 @@ pub(crate) fn language_projection_source_index_rows(
             .iter()
             .map(|item| ClientDbSourceIndexSelector {
                 owner_path: owner_path.clone(),
-                selector_id: item.selector.clone(),
-                symbol: Some(item.name.clone()),
-                kind: Some(item.kind.clone()),
+                selector_id: item.selector.clone().into(),
+                symbol: Some(item.name.clone().into()),
+                kind: Some(item.kind.clone().into()),
                 start_line: 0,
                 end_line: 0,
                 source: ClientDbSourceIndexSource::from("harness-projection"),
                 query_keys: projection_query_keys([item.kind.as_str(), item.name.as_str()]),
                 payload_proof: Some(ClientDbSourceIndexSelectorPayloadProof {
-                    structural_selector: item.selector.clone(),
-                    payload_kind: "code".to_string(),
+                    structural_selector: item.selector.clone().into(),
+                    payload_kind: "code".into(),
                     bounded: true,
                 }),
             })

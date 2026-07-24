@@ -48,18 +48,18 @@ pub struct CodexRolloutActivityHeartbeat {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexRolloutActivityReport {
-    pub(crate) status: CodexRolloutActivityStatus,
+    pub status: CodexRolloutActivityStatus,
     pub(crate) rollout_path: PathBuf,
-    pub(crate) last_event_at: Option<i64>,
+    pub last_event_at: Option<i64>,
     pub(crate) last_event_kind: Option<CodexRolloutActivityKind>,
-    pub(crate) last_heartbeat_at: Option<i64>,
+    pub last_heartbeat_at: Option<i64>,
     pub(crate) last_heartbeat_kind: Option<CodexRolloutActivityKind>,
     pub(crate) recent_heartbeats: Vec<CodexRolloutActivityHeartbeat>,
     pub(crate) seconds_since_heartbeat: Option<i64>,
     pub(crate) current_turn_id: Option<CodexRolloutTurnId>,
     pub(crate) last_running_session_id: Option<CodexRolloutSessionId>,
-    pub(crate) running_session_closed: bool,
-    pub(crate) last_terminal_event: Option<CodexRolloutTerminalEvent>,
+    pub running_session_closed: bool,
+    pub last_terminal_event: Option<CodexRolloutTerminalEvent>,
     pub(crate) agent_instruction: Option<CodexRolloutAgentInstruction>,
     pub(crate) scanned_line_count: usize,
 }
@@ -70,9 +70,9 @@ pub struct CodexRolloutActivityReport {
 pub struct CodexRolloutSessionIndex {
     pub(crate) root_session_id: CodexRolloutSessionId,
     pub(crate) sessions_dir: PathBuf,
-    pub(crate) scanned_rollout_count: usize,
-    pub(crate) skipped_rollout_count: usize,
-    pub(crate) records: Vec<CodexRolloutSessionMetadata>,
-    pub(crate) activity_by_session: BTreeMap<CodexRolloutSessionId, CodexRolloutActivityReport>,
-    pub(crate) missing_rollout_by_session: BTreeMap<CodexRolloutSessionId, String>,
+    pub scanned_rollout_count: usize,
+    pub skipped_rollout_count: usize,
+    pub records: Vec<CodexRolloutSessionMetadata>,
+    pub activity_by_session: BTreeMap<CodexRolloutSessionId, CodexRolloutActivityReport>,
+    pub missing_rollout_by_session: BTreeMap<CodexRolloutSessionId, String>,
 }

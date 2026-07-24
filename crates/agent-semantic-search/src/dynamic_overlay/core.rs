@@ -65,37 +65,7 @@ pub(crate) struct DynamicOverlayDocument {
     pub(crate) search_text: String,
 }
 
-impl DynamicOverlayDocument {
-    #[must_use]
-    pub(crate) fn owner_item(
-        owner_path: impl Into<String>,
-        kind: impl Into<String>,
-        name: impl Into<String>,
-        start: usize,
-        end: usize,
-        source_hash: impl Into<String>,
-    ) -> Self {
-        let owner_path = owner_path.into();
-        let kind = kind.into();
-        let name = name.into();
-        let selector = format!(
-            "dynamic-overlay://{owner_path}#item/{}/{}",
-            kind,
-            name.replace(char::is_whitespace, "-")
-        );
-        Self {
-            owner_path: owner_path.clone(),
-            entity_id: selector.clone(),
-            selector,
-            kind: kind.clone(),
-            name: name.clone(),
-            signature: None,
-            display_range: Some((start, end.max(start))),
-            source_hash: source_hash.into(),
-            search_text: expanded_identifier_text(&[&owner_path, &kind, &name]),
-        }
-    }
-}
+impl DynamicOverlayDocument {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DynamicOverlayQuery {
@@ -112,12 +82,6 @@ impl DynamicOverlayQuery {
             owner_path: None,
             limit: 8,
         }
-    }
-
-    #[must_use]
-    pub(crate) fn owner_path(mut self, owner_path: impl Into<String>) -> Self {
-        self.owner_path = Some(owner_path.into());
-        self
     }
 
     #[must_use]

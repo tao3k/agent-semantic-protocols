@@ -64,20 +64,20 @@ pub(super) fn register_session(
         &roles,
         &permissions,
     )?;
-    if validation.status == "failed" {
+    if validation.status == "failed".into() {
         let _ = registry.mark_session_invalid(&project_id, &session_id, now);
         let _ = registry.register_session(AgentSessionRegisterRequest {
-            project_id: &project_id,
-            root_session_id: &root_session_id,
-            session_id: &session_id,
-            message_target_id: args.message_target_id.as_deref(),
-            parent_session_id: args.parent_session_id.as_deref(),
-            name: &name,
-            role: &role,
+            project_id: (&project_id).into(),
+            root_session_id: (&root_session_id).into(),
+            session_id: (&session_id).into(),
+            message_target_id: args.message_target_id.as_deref().map(Into::into),
+            parent_session_id: args.parent_session_id.as_deref().map(Into::into),
+            name: (&name).into(),
+            role: (&role).into(),
             model_observation,
-            status: AGENT_SESSION_STATUS_INVALID,
+            status: AGENT_SESSION_STATUS_INVALID.into(),
             expires_at: args.expires_at,
-            metadata_json: &metadata_json,
+            metadata_json: (&metadata_json).into(),
             now,
         });
         return Err(format!(
@@ -87,12 +87,12 @@ pub(super) fn register_session(
     }
     if !args.replace
         && let Some(existing) = registry.lookup_session(AgentSessionLookupRequest {
-            project_id: &project_id,
+            project_id: (&project_id).into(),
             session_id: None,
-            root_session_id: Some(&root_session_id),
-            name: Some(&name),
+            root_session_id: Some((&root_session_id).into()),
+            name: Some((&name).into()),
         })?
-        && existing.session_id != session_id
+        && *existing.session_id != *session_id
         && registered_session_is_reusable(registry, &existing, now)?
     {
         return print_reuse_session(
@@ -127,17 +127,17 @@ pub(super) fn register_session(
     }
 
     let record = registry.register_session(AgentSessionRegisterRequest {
-        project_id: &project_id,
-        root_session_id: &root_session_id,
-        session_id: &session_id,
-        message_target_id: args.message_target_id.as_deref(),
-        parent_session_id: args.parent_session_id.as_deref(),
-        name: &name,
-        role: &role,
+        project_id: (&project_id).into(),
+        root_session_id: (&root_session_id).into(),
+        session_id: (&session_id).into(),
+        message_target_id: args.message_target_id.as_deref().map(Into::into),
+        parent_session_id: args.parent_session_id.as_deref().map(Into::into),
+        name: (&name).into(),
+        role: (&role).into(),
         model_observation,
-        status: &status,
+        status: (&status).into(),
         expires_at: args.expires_at,
-        metadata_json: &metadata_json,
+        metadata_json: (&metadata_json).into(),
         now,
     })?;
     if args.json {
@@ -511,10 +511,10 @@ pub(super) fn show_session(
     };
     let record = registry
         .lookup_session(AgentSessionLookupRequest {
-            project_id: &project_id,
-            session_id: args.child_session_id.as_deref(),
-            root_session_id: root_session_id.as_deref(),
-            name,
+            project_id: (&project_id).into(),
+            session_id: args.child_session_id.as_deref().map(Into::into),
+            root_session_id: root_session_id.as_deref().map(Into::into),
+            name: name.map(Into::into),
         })?
         .ok_or_else(|| "session registry entry not found".to_string())?;
 

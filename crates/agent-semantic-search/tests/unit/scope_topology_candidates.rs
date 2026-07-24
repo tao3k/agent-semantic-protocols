@@ -40,7 +40,7 @@ fn workspace_scope_topology_projects_only_bounded_admitted_source_files() {
         acquisition.candidate_sources,
         [SEARCH_PIPE_SCOPE_TOPOLOGY_SOURCE]
     );
-    assert_eq!(acquisition.source_trace[0].status, "used");
+    assert_eq!(acquisition.source_trace[0].status, "used".into());
     assert_eq!(acquisition.source_trace[0].matched, 2);
     assert!(!paths.contains(&"ignored/hidden.py"));
     assert!(!paths.contains(&"src/not_python.rs"));
@@ -66,7 +66,7 @@ fn workspace_scope_topology_stops_at_the_hard_entry_budget() {
         })
         .expect("collect bounded scope topology");
 
-    assert_eq!(acquisition.source_trace[0].status, "truncated");
+    assert_eq!(acquisition.source_trace[0].status, "truncated".into());
     assert_eq!(acquisition.source_trace[0].normalized, 1);
     assert!(acquisition.candidates.len() <= 1);
     let _ = std::fs::remove_dir_all(root);

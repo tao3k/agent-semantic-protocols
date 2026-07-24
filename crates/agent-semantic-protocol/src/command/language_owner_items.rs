@@ -5,7 +5,7 @@ use super::provider_process::{provider_invocation_with_profile, run_provider_com
 use super::search_config::AspConfig;
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use agent_semantic_runtime::{
-    LanguageOwnerItemsAttempt, LanguageOwnerItemsCacheRequest, LanguageOwnerItemsProviderOutput,
+    LanguageOwnerItemsCacheRequest, LanguageOwnerItemsProviderOutput,
     LanguageOwnerItemsRuntimeOutcome, language_owner_path_exists,
     resolve_language_owner_items_runtime_outcome,
 };
@@ -14,15 +14,6 @@ use agent_semantic_runtime::{
 pub(super) enum LanguageOwnerItemsDispatchResult {
     Handled,
     Unsupported,
-}
-
-impl From<LanguageOwnerItemsDispatchResult> for LanguageOwnerItemsAttempt {
-    fn from(value: LanguageOwnerItemsDispatchResult) -> Self {
-        match value {
-            LanguageOwnerItemsDispatchResult::Handled => LanguageOwnerItemsAttempt::Handled,
-            LanguageOwnerItemsDispatchResult::Unsupported => LanguageOwnerItemsAttempt::Unsupported,
-        }
-    }
 }
 
 pub(super) struct LanguageOwnerItemsDispatchRequest<'a> {

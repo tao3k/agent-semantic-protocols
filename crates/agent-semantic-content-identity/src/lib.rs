@@ -4,12 +4,16 @@
 //! deterministic hashing, and source-snapshot evidence. Public APIs remain available
 //! from the crate root while each implementation branch retains a single owner.
 
+pub mod canonical_item_identity;
 mod derived_artifact_evidence;
 mod domain;
 mod hashing;
 mod model;
 mod source_snapshot;
+pub mod structural_selector;
 mod value;
+
+pub use canonical_item_identity::*;
 
 pub use derived_artifact_evidence::{
     DERIVED_SOURCE_ARTIFACT_CACHE_DISPOSITION, DERIVED_SOURCE_ARTIFACT_EVIDENCE_SCHEMA_ID,
@@ -59,8 +63,6 @@ mod store_tests;
 mod hashing_tests;
 
 pub mod active_artifact_merkle_v1;
-pub mod canonical_item_identity;
-pub mod structural_selector;
 
 #[cfg(test)]
 #[path = "../tests/unit/canonical_item_identity.rs"]

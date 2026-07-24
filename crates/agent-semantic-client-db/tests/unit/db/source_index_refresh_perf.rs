@@ -432,16 +432,21 @@ fn source_index_hash_reuse_ignores_scope_dir_mtime() {
     std::fs::write(&source_path, "pub fn source_index_perf_fixture() {}\n")
         .expect("write source fixture");
     let files = vec![agent_semantic_client_db::ClientDbSourceIndexScopeFile {
-        path: source_path,
+        path: source_path.clone(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
         selector_receipts: Vec::new(),
     }];
+    let source_blobs =
+        agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized([(
+            agent_semantic_client_db::ClientDbSourceIndexPath::from("src/source_index_perf.rs"),
+            std::fs::read(&source_path).expect("read source fixture"),
+        )]);
 
     let first = agent_semantic_client_db::source_index_file_hashes(
         &project_root,
         &files,
-        None,
+        &source_blobs,
         "registry-fingerprint",
         std::iter::empty(),
     )
@@ -455,7 +460,7 @@ fn source_index_hash_reuse_ignores_scope_dir_mtime() {
     let second = agent_semantic_client_db::source_index_file_hashes(
         &project_root,
         &files,
-        Some(&first),
+        &source_blobs,
         "registry-fingerprint",
         std::iter::empty(),
     )
@@ -503,30 +508,30 @@ fn source_index_dirty_git_path_forces_content_hash_despite_metadata_collision() 
         provider_id: ProviderId::from("rs-harness"),
         selector_receipts: Vec::new(),
     }];
+    let first_source_blobs =
+        agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized([(
+            agent_semantic_client_db::ClientDbSourceIndexPath::from("src/dirty_hash.rs"),
+            std::fs::read(&source_path).expect("read initial source fixture"),
+        )]);
     let first = agent_semantic_client_db::source_index_file_hashes(
         &project_root,
         &files,
-        None,
+        &first_source_blobs,
         "registry-fingerprint",
         std::iter::empty(),
     )
     .expect("initial source-index file hashes");
 
     std::fs::write(&source_path, "pub fn other() {}\n").expect("rewrite source fixture");
-    let mut colliding_previous = first.clone();
-    colliding_previous[0].mtime_ms = std::fs::metadata(&source_path)
-        .expect("read rewritten source metadata")
-        .modified()
-        .expect("read rewritten source mtime")
-        .duration_since(UNIX_EPOCH)
-        .expect("rewritten source mtime after epoch")
-        .as_millis()
-        .try_into()
-        .expect("rewritten source mtime fits u64");
+    let second_source_blobs =
+        agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized([(
+            agent_semantic_client_db::ClientDbSourceIndexPath::from("src/dirty_hash.rs"),
+            std::fs::read(&source_path).expect("read rewritten source fixture"),
+        )]);
     let second = agent_semantic_client_db::source_index_file_hashes(
         &project_root,
         &files,
-        Some(&colliding_previous),
+        &second_source_blobs,
         "registry-fingerprint",
         std::iter::empty(),
     )
@@ -654,9 +659,9 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
             }],
             selectors: vec![ClientDbSourceIndexSelector {
                 owner_path: "src/source_index_perf.rs".into(),
-                selector_id: "source_index_perf_fixture".to_string(),
-                symbol: Some("source_index_perf_fixture".to_string()),
-                kind: Some("function".to_string()),
+                selector_id: "source_index_perf_fixture".into(),
+                symbol: Some("source_index_perf_fixture".into()),
+                kind: Some("function".into()),
                 start_line: 1,
                 end_line: 3,
                 source: "pub fn source_index_perf_fixture() {}".to_string().into(),
@@ -694,9 +699,9 @@ fn large_refresh_request(
         });
         selectors.push(ClientDbSourceIndexSelector {
             owner_path: owner_path.into(),
-            selector_id,
-            symbol: Some(symbol.clone()),
-            kind: Some("function".to_string()),
+            selector_id: selector_id.into(),
+            symbol: Some(symbol.clone().into()),
+            kind: Some("function".into()),
             start_line: 1,
             end_line: 1,
             source: format!("pub fn {symbol}() {{}}").into(),

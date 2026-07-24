@@ -80,8 +80,10 @@ fn pipe_candidates_reject_empty_query_before_any_route() {
 fn source_index_acquisition_gates_broad_generic_queries() {
     let terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
         crate::search_pipe_typed_query_terms(
-            "rust",
-            "search query budget block generic provider",
+            crate::search_pipe_query_pack::SearchPipeLanguageId("rust"),
+            crate::search_pipe_query_pack::SearchPipeQueryText(
+                "search query budget block generic provider",
+            ),
             descriptor,
         )
     });
@@ -98,8 +100,8 @@ fn source_index_acquisition_defers_backend_for_path_like_miss() {
         agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
         source_snapshot: Some(snapshot.evidence.clone()),
-        index_artifact_digest: Some(index_artifact_digest.clone()),
-        state: "miss".to_string(),
+        index_artifact_digest: Some((index_artifact_digest.clone()).into()),
+        state: ("miss".to_string()).into(),
         candidates: Vec::new(),
     };
 
@@ -129,15 +131,15 @@ fn source_index_acquisition_quarantines_stale_candidates_and_defers_overlay() {
         agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
         source_snapshot: Some(snapshot.evidence.clone()),
-        index_artifact_digest: Some(index_artifact_digest.clone()),
-        state: "hit".to_string(),
+        index_artifact_digest: Some((index_artifact_digest.clone()).into()),
+        state: ("hit".to_string()).into(),
         candidates: vec![SearchPipeSourceIndexCandidate {
-            path: "crates/agent-semantic-client/src/search_pipe_source.rs".to_string(),
-            language_id: Some("rust".to_string()),
-            provider_id: Some("rs-harness".to_string()),
-            source_kind: "file".to_string(),
+            path: ("crates/agent-semantic-client/src/search_pipe_source.rs".to_string()).into(),
+            language_id: Some(("rust".to_string()).into()),
+            provider_id: Some(("rs-harness".to_string()).into()),
+            source_kind: ("file".to_string()).into(),
             line_count: Some(42),
-            query_keys: vec!["source_index_owner".to_string()],
+            query_keys: vec![("source_index_owner".to_string()).into()],
             selector_proof: None,
         }],
     };
@@ -182,15 +184,15 @@ fn source_index_acquisition_keeps_existing_rows_inventory_only() {
         agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
         source_snapshot: Some(snapshot.evidence.clone()),
-        index_artifact_digest: Some(index_artifact_digest.clone()),
-        state: "hit".to_string(),
+        index_artifact_digest: Some((index_artifact_digest.clone()).into()),
+        state: ("hit".to_string()).into(),
         candidates: vec![SearchPipeSourceIndexCandidate {
-            path: "src/lib.rs".to_string(),
-            language_id: Some("rust".to_string()),
-            provider_id: Some("rs-harness".to_string()),
-            source_kind: "file".to_string(),
+            path: ("src/lib.rs".to_string()).into(),
+            language_id: Some(("rust".to_string()).into()),
+            provider_id: Some(("rs-harness".to_string()).into()),
+            source_kind: ("file".to_string()).into(),
             line_count: Some(1),
-            query_keys: vec!["current_owner".to_string()],
+            query_keys: vec![("current_owner".to_string()).into()],
             selector_proof: None,
         }],
     };
@@ -229,18 +231,19 @@ fn source_index_acquisition_uses_bounded_payload_proof_as_selector_ready() {
         agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
     let lookup = SearchPipeSourceIndexLookup {
         source_snapshot: Some(snapshot.evidence.clone()),
-        index_artifact_digest: Some(index_artifact_digest.clone()),
-        state: "hit".to_string(),
+        index_artifact_digest: Some((index_artifact_digest.clone()).into()),
+        state: ("hit".to_string()).into(),
         candidates: vec![SearchPipeSourceIndexCandidate {
-            path: "src/lib.rs".to_string(),
-            language_id: Some("rust".to_string()),
-            provider_id: Some("rs-harness".to_string()),
-            source_kind: "file".to_string(),
+            path: ("src/lib.rs".to_string()).into(),
+            language_id: Some(("rust".to_string()).into()),
+            provider_id: Some(("rs-harness".to_string()).into()),
+            source_kind: ("file".to_string()).into(),
             line_count: Some(1),
-            query_keys: vec!["current_owner".to_string()],
+            query_keys: vec![("current_owner".to_string()).into()],
             selector_proof: Some(SearchPipeSelectorPayloadProof {
-                structural_selector: "rust://src/lib.rs#item/function/current_owner".to_string(),
-                payload_kind: "code".to_string(),
+                structural_selector: ("rust://src/lib.rs#item/function/current_owner".to_string())
+                    .into(),
+                payload_kind: ("code".to_string()).into(),
                 bounded: true,
             }),
         }],

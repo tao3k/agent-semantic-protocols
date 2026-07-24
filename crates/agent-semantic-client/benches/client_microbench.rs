@@ -75,12 +75,14 @@ fn exact_selector_merkle_turso_scenario(c: &mut Criterion) {
     ])
     .expect("exact-selector benchmark workspace tree");
     let packet = agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
-        "rust",
-        "rs-harness",
+        &("rust").into(),
+        &("rs-harness").into(),
+        agent_semantic_content_identity::CanonicalItemSelectorV1::parse("rust://src/lib.rs#item/function/bench_symbol")
+            .expect("canonical benchmark selector"),
         &parser_identity_digest,
         &query_pack_digest,
-        owner_path,
-        selector,
+        &(owner_path).into(),
+        &(selector).into(),
         agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code,
         source,
         br#"{"kind":"fn","name":"bench_symbol"}"#,

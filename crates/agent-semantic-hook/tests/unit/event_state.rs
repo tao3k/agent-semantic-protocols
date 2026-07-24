@@ -83,11 +83,11 @@ fn recorded_subagent_context_tracks_latest_lifecycle_event() {
     .expect("record subagent start");
 
     assert!(
-        has_recorded_subagent_context(&project_root, Some(session_id), None)
+        has_recorded_subagent_context(&project_root, Some(session_id.into()), None)
             .expect("lookup by session")
     );
     assert!(
-        has_recorded_subagent_context(&project_root, None, Some(transcript_path))
+        has_recorded_subagent_context(&project_root, None, Some(transcript_path.into()))
             .expect("lookup by transcript")
     );
 
@@ -98,8 +98,12 @@ fn recorded_subagent_context_tracks_latest_lifecycle_event() {
     .expect("record subagent stop");
 
     assert!(
-        !has_recorded_subagent_context(&project_root, Some(session_id), Some(transcript_path))
-            .expect("latest matching lifecycle event wins")
+        !has_recorded_subagent_context(
+            &project_root,
+            Some(session_id.into()),
+            Some(transcript_path.into()),
+        )
+        .expect("latest matching lifecycle event wins")
     );
 
     fs::remove_dir_all(&project_root).ok();
@@ -253,7 +257,7 @@ fn configured_resident_dispatch_requires_complete_canonical_fields() {
         .configured_resident_interactive_command()
         .expect("configured resident command");
     assert_eq!(
-        command.argv,
+        command.argv(),
         [
             "asp",
             "agent",

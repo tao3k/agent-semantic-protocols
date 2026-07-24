@@ -29,9 +29,6 @@ use super::provider_roots::{
 pub(crate) use super::provider_selector::{
     is_language_facade, unsupported_language_facade_message,
 };
-use super::query_direct_read::{
-    is_asp_fast_direct_source_read, run_asp_fast_direct_source_read_command,
-};
 use super::search_config::AspConfig;
 use super::search_dependency_seed::{
     is_search_dependency_seed, run_search_dependency_seed_command,
@@ -202,14 +199,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
 
     if !config.language_enabled(language_id) {
         return Err(format!("language `{language_id}` is disabled by asp.toml"));
-    }
-
-    if is_asp_fast_direct_source_read(&provider_args) {
-        return run_asp_fast_direct_source_read_command(
-            &provider_args,
-            &project_root,
-            &invocation_root,
-        );
     }
 
     let provider = runtime
@@ -386,9 +375,9 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     let mut provider_argv = provider_process_args(&provider_args);
     if is_provider_owned_structural_selector_query(language_id, &provider_args) {
         let parser_identity_digest = agent_semantic_content_identity::exact_selector_projection_packet::derive_parser_identity_digest_v1(
-            &provider.provider_id,
-            &provider.execution_command_digest,
-            &provider.semantic_registry_digest,
+            &provider.provider_id.as_str().into(),
+            &provider.execution_command_digest.as_str().into(),
+            &provider.semantic_registry_digest.as_str().into(),
         );
         let canonical_query_pack =
             serde_json::to_vec(&provider.query_pack_descriptor).map_err(|error| {
@@ -417,11 +406,14 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             &runtime,
             owner_path,
             language_id,
-            &provider.provider_id,
+            &*provider.provider_id,
         )?;
-        let source = snapshot.source_blobs.get(owner_path).ok_or_else(|| {
-            format!("current source snapshot omitted exact-selector owner bytes: {owner_path}")
-        })?;
+        let source = snapshot
+            .source_blobs
+            .get(&owner_path.into())
+            .ok_or_else(|| {
+                format!("current source snapshot omitted exact-selector owner bytes: {owner_path}")
+            })?;
         let source_blob_digest =
             agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
                 source,
@@ -483,7 +475,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         let envelope =
             agent_semantic_client::source_index::publish_provider_source_snapshot_envelope(
                 &snapshot,
-                &provider.provider_id,
+                &*provider.provider_id,
                 &provider.source_extensions,
                 &cache_home,
             )?;
@@ -541,10 +533,10 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 agent_semantic_content_identity::exact_selector_projection_packet::EXACT_SELECTOR_PROJECTION_PACKET_DIGEST_ALGORITHM,
             )
         })?;
-        if packet.language_id != language_id
-            || packet.provider_id != provider.provider_id
-            || packet.owner_path != owner_path
-            || packet.structural_selector != structural_selector
+        if packet.language_id != language_id.into()
+            || packet.provider_id != provider.provider_id.as_str().into()
+            || packet.owner_path != owner_path.into()
+            || packet.structural_selector != structural_selector.into()
         {
             return Err(
                 "exact-selector provider packet identity does not match activated request"

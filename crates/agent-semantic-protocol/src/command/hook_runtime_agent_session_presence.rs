@@ -8,7 +8,8 @@ pub(super) fn rehydrate_trusted_resident_hook_session(
     resident_agent_role: &str,
     resident_codex_agent_name: &str,
 ) -> Result<Option<agent_semantic_client_db::AgentSessionRecord>, String> {
-    let Some(rollout) = agent_semantic_runtime::codex_rollout_session_metadata(child_session_id)?
+    let Some(rollout) =
+        agent_semantic_runtime::codex_rollout_session_metadata(&child_session_id.into())?
     else {
         return Ok(None);
     };
@@ -29,7 +30,7 @@ pub(super) fn rehydrate_trusted_resident_hook_session(
         resident_agent_role,
         agent_semantic_client_db::agent_session_unix_timestamp()?,
     )?;
-    if validation.status == "failed"
+    if validation.status == "failed".into()
         || validation.actual_model != validation.expected_model
         || validation.actual_reasoning_effort.is_some()
             && validation.actual_reasoning_effort != validation.expected_reasoning_effort
@@ -78,19 +79,19 @@ pub(super) fn rehydrate_trusted_resident_hook_session(
     };
     registry
         .replace_resident_session(
-            &existing.session_id,
+            &*existing.session_id,
             agent_semantic_client_db::AgentSessionRegisterRequest {
-                project_id: &project_id,
-                root_session_id,
-                session_id: child_session_id,
-                message_target_id: Some(&canonical_target),
-                parent_session_id: Some(root_session_id),
-                name: resident_child_name,
-                role: resident_agent_role,
+                project_id: (&project_id).into(),
+                root_session_id: root_session_id.into(),
+                session_id: child_session_id.into(),
+                message_target_id: Some((&canonical_target).into()),
+                parent_session_id: Some(root_session_id.into()),
+                name: resident_child_name.into(),
+                role: resident_agent_role.into(),
                 model_observation: Some(model_observation),
-                status: agent_semantic_client_db::AGENT_SESSION_STATUS_ACTIVE,
+                status: agent_semantic_client_db::AGENT_SESSION_STATUS_ACTIVE.into(),
                 expires_at: existing.expires_at,
-                metadata_json: &metadata_json,
+                metadata_json: (&metadata_json).into(),
                 now,
             },
         )

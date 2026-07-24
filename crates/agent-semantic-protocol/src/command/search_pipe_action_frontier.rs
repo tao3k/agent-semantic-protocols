@@ -14,15 +14,10 @@ pub(super) struct ActionNode {
 pub(super) enum ActionRoute {
     QueryCode {
         language_id: String,
-        selector: String,
+        selector: agent_semantic_content_identity::CanonicalItemSelectorV1,
         owner: String,
         symbol: String,
         workspace: String,
-    },
-    RgQuery {
-        query: String,
-        scope: String,
-        command_scope: Option<String>,
     },
     OwnerItems {
         language_id: String,
@@ -55,18 +50,9 @@ impl ActionNode {
                 let projection_flag = query_projection_flag(language_id);
                 Some(format!(
                     "asp {language_id} query --selector {} --workspace {workspace} {projection_flag}",
-                    shell_arg(selector)
+                    shell_arg(selector.structural_selector())
                 ))
             }
-            ActionRoute::RgQuery {
-                query,
-                scope,
-                command_scope,
-            } => Some(format!(
-                "asp rg -query {} --workspace {}",
-                shell_arg(query),
-                command_scope.as_deref().unwrap_or(scope)
-            )),
             ActionRoute::OwnerItems {
                 language_id,
                 owner,

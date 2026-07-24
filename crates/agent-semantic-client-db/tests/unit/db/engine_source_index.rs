@@ -171,14 +171,13 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
         }],
     })
     .expect("build Turso source-index payload proof import");
-    source_index_import.selectors[0].selector_id = selector.to_string();
-    source_index_import.selectors[0].symbol =
-        Some("source_index_payload_proof_fixture".to_string());
-    source_index_import.selectors[0].kind = Some("function".to_string());
+    source_index_import.selectors[0].selector_id = selector.into();
+    source_index_import.selectors[0].symbol = Some("source_index_payload_proof_fixture".into());
+    source_index_import.selectors[0].kind = Some("function".into());
     source_index_import.selectors[0].payload_proof =
         Some(ClientDbSourceIndexSelectorPayloadProof {
-            structural_selector: selector.to_string(),
-            payload_kind: "code".to_string(),
+            structural_selector: selector.into(),
+            payload_kind: "code".into(),
             bounded: true,
         });
 
@@ -253,7 +252,6 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
             schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
             selector_source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
             file_text_bytes_limit: 4096,
-            previous_file_hashes: None,
             registry_fingerprint: "scope-payload-proof-registry".to_string(),
             extra_scope_dirs: Vec::new(),
             files: vec![ClientDbSourceIndexScopeFile {
@@ -264,9 +262,9 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
                     owner_path: ClientDbSourceIndexPath::from(
                         "src/source_index_scope_payload_proof.rs",
                     ),
-                    selector_id: selector.to_string(),
-                    symbol: Some("source_index_scope_payload_proof_fixture".to_string()),
-                    kind: Some("function".to_string()),
+                    selector_id: selector.into(),
+                    symbol: Some("source_index_scope_payload_proof_fixture".into()),
+                    kind: Some("function".into()),
                     start_line: 1,
                     end_line: 1,
                     source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
@@ -274,12 +272,13 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
                         "source_index_scope_payload_proof_fixture",
                     )],
                     payload_proof: Some(ClientDbSourceIndexSelectorPayloadProof {
-                        structural_selector: selector.to_string(),
-                        payload_kind: "code".to_string(),
+                        structural_selector: selector.into(),
+                        payload_kind: "code".into(),
                         bounded: true,
                     }),
                 }],
             }],
+            source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::default(),
         },
         vec![ClientCacheFileHash {
             path: "src/source_index_scope_payload_proof.rs".to_string(),

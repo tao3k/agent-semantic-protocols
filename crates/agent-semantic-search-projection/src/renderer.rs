@@ -25,10 +25,10 @@ impl SearchProjectionRenderer for TopologySearchProjectionRenderer {
         request: &SearchProjectionRequestV1,
     ) -> Result<RenderedSearchProjectionV1, SearchProjectionError> {
         request.validate()?;
-        if request.projection_id != "topology" {
+        if request.projection_id.as_str() != "topology" {
             return Err(SearchProjectionError::InvalidRequest(format!(
                 "topology renderer does not support projectionId={}",
-                request.projection_id
+                request.projection_id.as_str()
             )));
         }
         let content = topology::render_search_topology_projection(
@@ -68,10 +68,10 @@ impl SearchProjectionRenderer for RankedFrontierSearchProjectionRenderer {
         request: &SearchProjectionRequestV1,
     ) -> Result<RenderedSearchProjectionV1, SearchProjectionError> {
         request.validate()?;
-        if request.projection_id != "ranked-frontier" {
+        if request.projection_id.as_str() != "ranked-frontier" {
             return Err(SearchProjectionError::InvalidRequest(format!(
                 "ranked-frontier renderer does not support projectionId={}",
-                request.projection_id
+                request.projection_id.as_str()
             )));
         }
         let value = packet.as_value();

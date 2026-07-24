@@ -37,39 +37,39 @@ validation_report_text!(AgentSessionValidationStatus);
 #[serde(rename_all = "camelCase")]
 pub struct AgentSessionValidationReport {
     /// Validation status such as `passed`, `warning`, `failed`, or `skipped`.
-    status: AgentSessionValidationStatus,
+    pub status: AgentSessionValidationStatus,
     /// Human-readable validation reason.
-    reason: String,
+    pub reason: String,
     /// Canonical agent config path used for validation.
     #[serde(rename = "configPath", skip_serializing_if = "Option::is_none")]
-    config_path: Option<String>,
+    pub config_path: Option<String>,
     /// Codex rollout path used for validation.
     #[serde(rename = "rolloutPath", skip_serializing_if = "Option::is_none")]
-    rollout_path: Option<String>,
+    pub rollout_path: Option<String>,
     /// Expected root session id.
     #[serde(
         rename = "expectedRootSessionId",
         skip_serializing_if = "Option::is_none"
     )]
-    expected_root_session_id: Option<String>,
+    pub expected_root_session_id: Option<String>,
     /// Actual root session id from rollout metadata.
     #[serde(
         rename = "actualRootSessionId",
         skip_serializing_if = "Option::is_none"
     )]
-    actual_root_session_id: Option<String>,
+    pub actual_root_session_id: Option<String>,
     /// Expected Codex parent thread id.
     #[serde(
         rename = "expectedParentThreadId",
         skip_serializing_if = "Option::is_none"
     )]
-    expected_parent_thread_id: Option<String>,
+    pub expected_parent_thread_id: Option<String>,
     /// Actual Codex parent thread id.
     #[serde(
         rename = "actualParentThreadId",
         skip_serializing_if = "Option::is_none"
     )]
-    actual_parent_thread_id: Option<String>,
+    pub actual_parent_thread_id: Option<String>,
     /// Expected configured agent path.
     #[serde(rename = "expectedAgentPath", skip_serializing_if = "Option::is_none")]
     pub expected_agent_path: Option<String>,

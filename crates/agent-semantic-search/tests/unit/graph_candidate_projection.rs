@@ -21,7 +21,7 @@ fn graph_candidate_item_nodes_use_registered_language_structural_identity_withou
 
     for language_id in language_ids {
         let nodes = graph_candidate_item_nodes(GraphCandidateItemNodesRequest::new(
-            language_id.as_str(),
+            &language_id.as_str().into(),
             std::slice::from_ref(&candidate),
             8,
         ));
@@ -77,8 +77,11 @@ fn graph_candidate_hot_nodes_keep_code_policy_and_context_window() {
         "medium",
     );
 
-    let nodes =
-        graph_candidate_hot_nodes(GraphCandidateHotNodesRequest::new("rust", &[candidate], 8));
+    let nodes = graph_candidate_hot_nodes(GraphCandidateHotNodesRequest::new(
+        &"rust".into(),
+        &[candidate],
+        8,
+    ));
 
     assert_eq!(nodes.len(), 1);
     assert_eq!(nodes[0]["kind"], "hot");

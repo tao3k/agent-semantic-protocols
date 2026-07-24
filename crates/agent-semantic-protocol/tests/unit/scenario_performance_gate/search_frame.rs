@@ -38,7 +38,7 @@ pub(in super::super) fn asp_selector_seeded_search_pipe_frontier_stays_inside_sc
         "ranker=selector-seed",
         "ownerSeed=crates/agent-semantic-protocol/src/command/provider_process.rs",
         "symbolSeed=provider_invocation_with_profile",
-        "actionFrontier=A1.query-code,A2.owner-items,A3.rg-query",
+        "actionFrontier=A1.query-code,A2.owner-items",
         "recommendedNext=A1.query-code",
     ] {
         assert!(
@@ -302,18 +302,13 @@ fn file_range_selector_seeded_search_pipe_does_not_materialize_query_code() {
         !stdout.contains("nextCommand=asp rust query --selector src/lib.rs:1:5"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("actionFrontier=A1.owner-items,A2.rg-query"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("recommendedNext=A1.owner-items"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("actionFrontier=\n"), "{stdout}");
+    assert!(stdout.contains("recommendedNext=-"), "{stdout}");
+    assert!(stdout.contains("nextCommand=-"), "{stdout}");
 }
 
 #[test]
-fn symbol_selector_seeded_search_pipe_does_not_materialize_query_code() {
+fn provider_defined_symbol_selector_materializes_typed_query_code() {
     let selector = "rust://src/lib.rs#item/symbol/vec";
     let query = "Vec collection fields";
     let stdout = render_selector_seeded_search_pipe(SelectorSeededSearchPipeRequest {
@@ -328,13 +323,29 @@ fn symbol_selector_seeded_search_pipe_does_not_materialize_query_code() {
         stdout.contains("selectorSeed=rust://src/lib.rs#item/symbol/vec"),
         "{stdout}"
     );
-    assert!(!stdout.contains("query-code"), "{stdout}");
     assert!(
-        stdout.contains("actionFrontier=A1.owner-items,A2.rg-query"),
+        stdout.contains("actionFrontier=A1.query-code,A2.owner-items"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("recommendedNext=A1.owner-items"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("recommendedNext=A1.query-code"), "{stdout}");
+    assert!(!stdout.contains("rg-query"), "{stdout}");
+}
+
+#[test]
+fn cross_language_or_malformed_selector_seed_cannot_materialize_query_code() {
+    for (language_id, selector) in [
+        ("rust", "typescript://src/index.ts#item/function/parse"),
+        ("rust", "rust://#item/function/parse"),
+    ] {
+        let stdout = render_selector_seeded_search_pipe(SelectorSeededSearchPipeRequest {
+            language_id,
+            selector,
+            query: "parse",
+            workspace: ".",
+        });
+
+        assert!(!stdout.contains("query-code"), "{stdout}");
+        assert!(stdout.contains("recommendedNext=-"), "{stdout}");
+        assert!(stdout.contains("nextCommand=-"), "{stdout}");
+    }
 }

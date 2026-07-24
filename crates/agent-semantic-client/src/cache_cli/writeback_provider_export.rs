@@ -58,7 +58,7 @@ pub(super) fn export_provider_packet(
     .ok()?;
     if !output.status.success()
         || output.stdout.is_empty()
-        || output.receipt.stdout_bytes as u64 > MAX_CACHE_REPLAY_ARTIFACT_BYTES
+        || output.receipt.stdout_bytes() as u64 > MAX_CACHE_REPLAY_ARTIFACT_BYTES
     {
         return None;
     }
@@ -69,20 +69,20 @@ pub(super) fn export_provider_packet(
             provider_id: provider.provider_id.clone(),
             argv,
             exit_code: output.status.code().unwrap_or(1),
-            stdout_bytes: ByteCount::from_len(output.receipt.stdout_bytes),
-            stderr_bytes: ByteCount::from_len(output.receipt.stderr_bytes),
-            stdout_sha256: output.receipt.stdout_sha256.clone(),
-            stderr_sha256: output.receipt.stderr_sha256.clone(),
-            stdout_truncated: output.receipt.stdout_truncated,
-            stderr_truncated: output.receipt.stderr_truncated,
-            timed_out: output.receipt.timed_out,
-            exit_signal: output.receipt.exit_signal,
-            memory_limit_bytes: output.receipt.memory_limit_bytes,
-            memory_limit_enforced: output.receipt.memory_limit_enforced,
-            memory_limit_exceeded: output.receipt.memory_limit_exceeded,
-            abnormal_termination: output.receipt.abnormal_termination,
-            termination_reason: Some(output.receipt.termination_reason.clone()),
-            elapsed_ms: ElapsedMillis::from_duration(output.receipt.elapsed),
+            stdout_bytes: ByteCount::from_len(output.receipt.stdout_bytes()),
+            stderr_bytes: ByteCount::from_len(output.receipt.stderr_bytes()),
+            stdout_sha256: output.receipt.stdout_sha256().map(str::to_owned),
+            stderr_sha256: output.receipt.stderr_sha256().map(str::to_owned),
+            stdout_truncated: output.receipt.stdout_truncated(),
+            stderr_truncated: output.receipt.stderr_truncated(),
+            timed_out: output.receipt.timed_out(),
+            exit_signal: output.receipt.exit_signal(),
+            memory_limit_bytes: output.receipt.memory_limit_bytes(),
+            memory_limit_enforced: output.receipt.memory_limit_enforced(),
+            memory_limit_exceeded: output.receipt.memory_limit_exceeded(),
+            abnormal_termination: output.receipt.abnormal_termination(),
+            termination_reason: Some(output.receipt.termination_reason().to_string()),
+            elapsed_ms: ElapsedMillis::from_duration(output.receipt.elapsed()),
         },
         elapsed_ms: ElapsedMillis::from_duration(started.elapsed()),
     })

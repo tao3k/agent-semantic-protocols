@@ -60,9 +60,9 @@ async fn turso_replace_resident_session(
     .await?;
     turso_session_by_name(
         db_path,
-        request.project_id,
-        request.root_session_id,
-        request.name,
+        request.project_id.as_str(),
+        request.root_session_id.as_str(),
+        request.name.as_str(),
     )
     .await?
     .ok_or_else(|| "replaced Turso resident session was not readable".to_string())
@@ -82,10 +82,10 @@ async fn replace_resident_session_in_transaction(
                        AND session_id = ?2
                        AND NOT (root_session_id = ?3 AND name = ?4)",
                     (
-                        request.project_id,
-                        request.session_id,
-                        request.root_session_id,
-                        request.name,
+                        &request.project_id,
+                        &request.session_id,
+                        &request.root_session_id,
+                        &request.name,
                     ),
                 )
                 .await
@@ -122,10 +122,10 @@ async fn replace_resident_session_in_transaction(
                        AND name = ?15
                        AND session_id = ?16",
                     (
-                        request.session_id,
-                        request.message_target_id,
-                        request.parent_session_id,
-                        request.role,
+                        &request.session_id,
+                        request.message_target_id.as_ref(),
+                        request.parent_session_id.as_ref(),
+                        &request.role,
                         request
                             .model_observation
                             .as_ref()
@@ -142,13 +142,13 @@ async fn replace_resident_session_in_transaction(
                             .model_observation
                             .as_ref()
                             .and_then(|observation| observation.evidence_ref),
-                        request.status,
+                        &request.status,
                         request.now,
                         request.expires_at,
-                        request.metadata_json,
-                        request.project_id,
-                        request.root_session_id,
-                        request.name,
+                        &request.metadata_json,
+                        &request.project_id,
+                        &request.root_session_id,
+                        &request.name,
                         expected_session_id,
                     ),
                 )

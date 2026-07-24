@@ -106,6 +106,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
             limit: 8,
             expected_snapshot_root: &expected_snapshot_root,
             expected_index_artifact_digest: &expected_index_artifact_digest,
+            live_facts: None,
         },
     )
     .expect("lookup missing source-index control DB");
@@ -128,6 +129,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
                 limit: 8,
                 expected_snapshot_root: &expected_snapshot_root,
                 expected_index_artifact_digest: &expected_index_artifact_digest,
+                live_facts: None,
             },
         )
         .expect("lookup missing source-index control DB from project root");

@@ -149,7 +149,11 @@ fn runtime_matches_cached_provider_commands(
                     && selection.provider_id() == provider.provider_id
                     && selection.binary() == provider.binary
                     && selection.execution() == provider.execution.as_str()
-                    && selection.provider_command_prefix() == provider.provider_command_prefix
+                    && selection
+                        .provider_command_prefix()
+                        .iter()
+                        .map(|arg| arg.as_str())
+                        .eq(provider.provider_command_prefix.iter().map(String::as_str))
             })
         })
 }
@@ -167,7 +171,11 @@ fn runtime_matches_provider_commands(
                     && selection.provider_id() == provider.provider_id
                     && selection.binary() == provider.binary
                     && *selection.execution() == provider.execution
-                    && selection.provider_command_prefix() == provider.provider_command_prefix
+                    && selection
+                        .provider_command_prefix()
+                        .iter()
+                        .map(|value| value.as_str())
+                        .eq(provider.provider_command_prefix.iter().map(String::as_str))
             })
         })
 }
@@ -180,14 +188,21 @@ fn provider_command_selection_row(
         .first()
         .and_then(|path| executable_metadata(path));
     ClientDbProviderCommandSelection::new(
-        selection.manifest_id().to_string(),
-        selection.manifest_digest().to_string(),
-        selection.language_id().to_string(),
-        selection.provider_id().to_string(),
-        selection.binary().to_string(),
-        selection.execution().as_str().to_string(),
-        selection.provider_command_prefix().to_vec(),
-        executable.as_ref().map(|metadata| metadata.path.clone()),
+        selection.manifest_id().to_string().into(),
+        selection.manifest_digest().to_string().into(),
+        selection.language_id().to_string().into(),
+        selection.provider_id().to_string().into(),
+        selection.binary().to_string().into(),
+        selection.execution().as_str().to_string().into(),
+        selection
+            .provider_command_prefix()
+            .iter()
+            .cloned()
+            .map(Into::into)
+            .collect(),
+        executable
+            .as_ref()
+            .map(|metadata| metadata.path.clone().into()),
         executable.as_ref().map(|metadata| metadata.len),
         executable.as_ref().and_then(|metadata| metadata.mtime_ms),
     )

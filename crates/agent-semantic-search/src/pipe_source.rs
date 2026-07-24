@@ -385,8 +385,8 @@ fn source_index_auto_route_is_terminal(
 
 fn skipped_search_overlay_trace() -> SearchPipeSourceAcquisitionTrace {
     SearchPipeSourceAcquisitionTrace {
-        source: "search-overlay".to_string(),
-        status: "skipped".to_string(),
+        source: ("search-overlay".to_string()).into(),
+        status: ("skipped".to_string()).into(),
         matched: 0,
         missing: 0,
         normalized: 0,

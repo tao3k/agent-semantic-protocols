@@ -62,14 +62,14 @@ fn provider_command_selection_fixture(
     manifest_digest: &str,
 ) -> ClientDbProviderCommandSelection {
     ClientDbProviderCommandSelection::new(
-        format!("agent.semantic-protocols.languages.{language_id}.{provider_id}"),
-        manifest_digest.to_string(),
-        language_id.to_string(),
-        provider_id.to_string(),
-        provider_id.to_string(),
-        "external-process".to_string(),
-        vec![format!("/tmp/{provider_id}")],
-        Some(format!("/tmp/{provider_id}")),
+        format!("agent.semantic-protocols.languages.{language_id}.{provider_id}").into(),
+        manifest_digest.to_string().into(),
+        language_id.to_string().into(),
+        provider_id.to_string().into(),
+        provider_id.to_string().into(),
+        "external-process".to_string().into(),
+        vec![format!("/tmp/{provider_id}").into()],
+        Some(format!("/tmp/{provider_id}").into()),
         Some(42),
         Some(1234),
     )

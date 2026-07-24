@@ -107,16 +107,28 @@ pub enum TursoCdcChangeKind {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoCdcChange {
-    change_id: i64,
+    pub change_id: i64,
     change_time: i64,
     change_txn_id: i64,
-    kind: TursoCdcChangeKind,
+    pub kind: TursoCdcChangeKind,
     raw_change_type: i64,
-    table_name: Option<String>,
+    pub table_name: Option<String>,
     row_id: Option<String>,
     before: Option<Vec<u8>>,
     after: Option<Vec<u8>>,
     updates: Option<Vec<u8>>,
+}
+
+impl TursoCdcChange {
+    #[must_use]
+    pub const fn kind(&self) -> TursoCdcChangeKind {
+        self.kind
+    }
+
+    #[must_use]
+    pub fn table_name(&self) -> Option<&str> {
+        self.table_name.as_deref()
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -127,9 +139,26 @@ pub struct TursoCdcPageReceipt {
     capture_mode: TursoCdcCaptureMode,
     after_change_id: Option<i64>,
     limit: usize,
-    has_more: bool,
-    next_change_id: Option<i64>,
-    changes: Vec<TursoCdcChange>,
+    pub has_more: bool,
+    pub next_change_id: Option<i64>,
+    pub changes: Vec<TursoCdcChange>,
+}
+
+impl TursoCdcPageReceipt {
+    #[must_use]
+    pub const fn has_more(&self) -> bool {
+        self.has_more
+    }
+
+    #[must_use]
+    pub const fn next_change_id(&self) -> Option<i64> {
+        self.next_change_id
+    }
+
+    #[must_use]
+    pub fn changes(&self) -> &[TursoCdcChange] {
+        &self.changes
+    }
 }
 
 pub struct TursoCdcStorage {

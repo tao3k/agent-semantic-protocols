@@ -20,17 +20,17 @@ fn resident<'a>(
     now: i64,
 ) -> AgentSessionRegisterRequest<'a> {
     AgentSessionRegisterRequest {
-        project_id: "project",
-        root_session_id: "root",
-        session_id,
-        message_target_id: Some(message_target_id),
-        parent_session_id: Some("root"),
-        name: "asp-explore",
-        role: "asp_explorer",
+        project_id: "project".into(),
+        root_session_id: "root".into(),
+        session_id: session_id.into(),
+        message_target_id: Some(message_target_id.into()),
+        parent_session_id: Some("root".into()),
+        name: "asp-explore".into(),
+        role: "asp_explorer".into(),
         model_observation: None,
-        status: "active",
+        status: "active".into(),
         expires_at: None,
-        metadata_json: "{}",
+        metadata_json: "{}".into(),
         now,
     }
 }

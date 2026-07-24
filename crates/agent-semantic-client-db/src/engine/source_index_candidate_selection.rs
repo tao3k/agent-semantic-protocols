@@ -22,8 +22,8 @@ pub(super) fn decode_turso_source_index_canonical_selectors(
 ) -> Result<
     (
         String,
-        Option<String>,
-        Option<String>,
+        Option<crate::ClientDbSourceIndexSelectorSymbol>,
+        Option<crate::ClientDbSourceIndexSelectorKind>,
         Option<ClientDbSourceIndexSelectorPayloadProof>,
     ),
     String,
@@ -43,11 +43,11 @@ pub(super) fn decode_turso_source_index_canonical_selectors(
                 .payload_kind
                 .filter(|value| !value.trim().is_empty())
         {
-            selector_symbol = selector.symbol.clone();
-            selector_kind = selector.kind.clone();
+            selector_symbol = selector.symbol.clone().map(Into::into);
+            selector_kind = selector.kind.clone().map(Into::into);
             selector_proof = Some(ClientDbSourceIndexSelectorPayloadProof {
-                structural_selector: selector.selector_id.clone(),
-                payload_kind,
+                structural_selector: selector.selector_id.clone().into(),
+                payload_kind: payload_kind.into(),
                 bounded: selector.payload_bounded,
             });
         }
@@ -349,10 +349,13 @@ JOIN asp_source_index_owner_v1 AS owner
             let selector_facts_json = row.get::<String>(6).map_err(|error| {
                 format!("failed to read Turso source-index canonical selectors: {error}")
             })?;
-            let query_keys =
-                serde_json::from_str::<Vec<String>>(&query_keys_json).map_err(|error| {
+            let query_keys = serde_json::from_str::<Vec<String>>(&query_keys_json)
+                .map_err(|error| {
                     format!("failed to decode Turso source-index query keys: {error}")
-                })?;
+                })?
+                .into_iter()
+                .map(crate::ClientDbSourceIndexQueryKey::from)
+                .collect::<Vec<_>>();
             let (selector_haystack, selector_symbol, selector_kind, selector_proof) =
                 decode_turso_source_index_canonical_selectors(&selector_facts_json)?;
             let match_score = source_index_structured_candidate_score(
@@ -370,7 +373,7 @@ JOIN asp_source_index_owner_v1 AS owner
             candidates.push((
                 match_score,
                 ClientDbSourceIndexCandidate {
-                    path,
+                    path: path.into(),
                     language_id: row_language_id.map(LanguageId::from),
                     provider_id: provider_id.map(ProviderId::from),
                     source_kind: ClientDbSourceIndexSourceKind::Other(

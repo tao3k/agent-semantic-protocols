@@ -4,7 +4,6 @@ use std::{
     collections::HashSet,
     fs,
     path::{Path, PathBuf},
-    time::UNIX_EPOCH,
 };
 
 use serde_json::Value;
@@ -13,25 +12,28 @@ use sha2::{Digest, Sha256};
 use super::search_config::AspConfig;
 use super::{
     provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin},
-    search_pipe_dependency_facts::{
-        DependencyFact, append_usage_dependency_facts, collect_manifest_dependency_facts,
-        rank_filter_truncate_dependency_facts,
-    },
     search_pipe_model::Candidate,
     search_pipe_provider_facts::ProviderGraphFactsContext,
 };
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(super) struct ProviderDependencyTopologyFact {
+    pub(super) owner_path: String,
+    pub(super) dependency: String,
+    pub(super) version: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub(super) struct CachedDependencyFacts {
     pub(super) cache_status: &'static str,
     pub(super) topology_source: &'static str,
-    pub(super) facts: Vec<DependencyFact>,
+    pub(super) facts: Vec<ProviderDependencyTopologyFact>,
 }
 
 struct DependencySeedCacheRecord {
     fingerprint: String,
     sources: Vec<DependencySeedSource>,
-    facts: Vec<DependencyFact>,
+    facts: Vec<ProviderDependencyTopologyFact>,
 }
 
 struct DependencySeedSource {
@@ -46,32 +48,24 @@ pub(super) fn collect_cached_manifest_dependency_facts(
     cache_home: &Path,
     config: &AspConfig,
     provider_context: Option<&ProviderGraphFactsContext<'_>>,
-) -> CachedDependencyFacts {
-    if let Some(facts) = collect_provider_dependency_topology_facts(
+) -> Result<CachedDependencyFacts, String> {
+    let context = provider_context.ok_or_else(|| {
+        format!(
+            "dependency topology requires an activated {language_id} provider with parser-owned manifest facts"
+        )
+    })?;
+    if !context.provider.search_capabilities.dependency_topology {
+        return Err(format!(
+            "activated {language_id} provider does not declare parser-owned dependency topology"
+        ));
+    }
+    collect_provider_dependency_topology_facts(
         language_id,
         project_root,
         cache_home,
         config,
-        provider_context,
-    ) {
-        return facts;
-    }
-    let fingerprint = dependency_seed_fingerprint(language_id, project_root);
-    let cache_path = dependency_seed_cache_path(cache_home, language_id);
-    if let Some(record) = read_dependency_seed_cache(&cache_path, &fingerprint) {
-        return CachedDependencyFacts {
-            cache_status: "hit",
-            topology_source: "asp-owned",
-            facts: record.facts,
-        };
-    }
-    let facts = collect_manifest_dependency_facts(language_id, project_root);
-    write_dependency_seed_cache(&cache_path, &fingerprint, &[], &facts);
-    CachedDependencyFacts {
-        cache_status: "miss",
-        topology_source: "asp-owned",
-        facts,
-    }
+        context,
+    )
 }
 
 pub(super) fn collect_cached_dependency_facts(
@@ -80,24 +74,16 @@ pub(super) fn collect_cached_dependency_facts(
     cache_home: &Path,
     config: &AspConfig,
     provider_context: Option<&ProviderGraphFactsContext<'_>>,
-    query: Option<&str>,
-    candidates: &[Candidate],
-) -> CachedDependencyFacts {
-    let mut seed = collect_cached_manifest_dependency_facts(
+    _query: Option<&str>,
+    _candidates: &[Candidate],
+) -> Result<CachedDependencyFacts, String> {
+    collect_cached_manifest_dependency_facts(
         language_id,
         project_root,
         cache_home,
         config,
         provider_context,
-    );
-    let mut seen_facts = seed
-        .facts
-        .iter()
-        .map(|fact| format!("{}:{}:{}", fact.owner_path, fact.dependency, fact.source))
-        .collect::<HashSet<_>>();
-    append_usage_dependency_facts(language_id, candidates, &mut seen_facts, &mut seed.facts);
-    rank_filter_truncate_dependency_facts(&mut seed.facts, query);
-    seed
+    )
 }
 
 fn collect_provider_dependency_topology_facts(
@@ -105,15 +91,11 @@ fn collect_provider_dependency_topology_facts(
     project_root: &Path,
     cache_home: &Path,
     config: &AspConfig,
-    provider_context: Option<&ProviderGraphFactsContext<'_>>,
-) -> Option<CachedDependencyFacts> {
-    let context = provider_context?;
-    if !context.provider.search_capabilities.dependency_topology {
-        return None;
-    }
+    context: &ProviderGraphFactsContext<'_>,
+) -> Result<CachedDependencyFacts, String> {
     let cache_path = dependency_seed_cache_path(cache_home, language_id);
     if let Some(facts) = read_current_dependency_seed_cache(&cache_path, project_root) {
-        return Some(CachedDependencyFacts {
+        return Ok(CachedDependencyFacts {
             cache_status: "hit",
             topology_source: "provider-owned",
             facts,
@@ -127,13 +109,18 @@ fn collect_provider_dependency_topology_facts(
     ) && let Some(record) = read_dependency_seed_cache(&cache_path, &fingerprint)
         && !record.sources.is_empty()
     {
-        return Some(CachedDependencyFacts {
+        return Ok(CachedDependencyFacts {
             cache_status: "hit",
             topology_source: "provider-owned",
             facts: record.facts,
         });
     }
-    let invocation = provider_dependency_topology_invocation(context, project_root, config).ok()?;
+    let invocation = provider_dependency_topology_invocation(context, project_root, config)
+        .map_err(|error| {
+            format!(
+                "failed to build parser-owned {language_id} dependency topology invocation: {error}"
+            )
+        })?;
     let output = run_provider_command_with_stdin(
         language_id,
         context.provider,
@@ -142,24 +129,34 @@ fn collect_provider_dependency_topology_facts(
         cache_home,
         Vec::new(),
     )
-    .ok()?;
+    .map_err(|error| {
+        format!("parser-owned {language_id} dependency topology invocation failed: {error}")
+    })?;
     if !output.status.success() {
-        return None;
+        return Err(format!(
+            "parser-owned {language_id} dependency topology provider failed: status={:?} stderr={}",
+            output.status.code(),
+            String::from_utf8_lossy(output.stderr.as_ref()),
+        ));
     }
     let (fingerprint, sources, facts) =
-        provider_dependency_facts_from_stdout(output.stdout.as_ref())?;
+        provider_dependency_facts_from_stdout(output.stdout.as_ref()).ok_or_else(|| {
+            format!(
+                "parser-owned {language_id} dependency topology returned no typed dependency packet"
+            )
+        })?;
     if let Some(record) = read_dependency_seed_cache(&cache_path, &fingerprint) {
         if record.sources.is_empty() && !sources.is_empty() {
             write_dependency_seed_cache(&cache_path, &fingerprint, &sources, &record.facts);
         }
-        return Some(CachedDependencyFacts {
+        return Ok(CachedDependencyFacts {
             cache_status: "hit",
             topology_source: "provider-owned",
             facts: record.facts,
         });
     }
     write_dependency_seed_cache(&cache_path, &fingerprint, &sources, &facts);
-    Some(CachedDependencyFacts {
+    Ok(CachedDependencyFacts {
         cache_status: "miss",
         topology_source: "provider-owned",
         facts,
@@ -273,7 +270,11 @@ fn provider_dependency_topology_invocation(
 
 fn provider_dependency_facts_from_stdout(
     stdout: &[u8],
-) -> Option<(String, Vec<DependencySeedSource>, Vec<DependencyFact>)> {
+) -> Option<(
+    String,
+    Vec<DependencySeedSource>,
+    Vec<ProviderDependencyTopologyFact>,
+)> {
     let value = provider_dependency_topology_json(stdout)?;
     provider_dependency_facts_from_value(&value)
 }
@@ -292,7 +293,11 @@ fn provider_dependency_topology_json(stdout: &[u8]) -> Option<Value> {
 
 fn provider_dependency_facts_from_value(
     value: &Value,
-) -> Option<(String, Vec<DependencySeedSource>, Vec<DependencyFact>)> {
+) -> Option<(
+    String,
+    Vec<DependencySeedSource>,
+    Vec<ProviderDependencyTopologyFact>,
+)> {
     if value.get("packetKind").and_then(Value::as_str) != Some("dependency-topology") {
         return None;
     }
@@ -357,11 +362,10 @@ fn provider_dependency_facts_from_value(
         let version = version_target_by_dependency.get(id).cloned();
         let key = format!("{owner_path}:{dependency}:manifest");
         if seen.insert(key) {
-            facts.push(DependencyFact {
+            facts.push(ProviderDependencyTopologyFact {
                 owner_path,
                 dependency,
                 version,
-                source: "manifest",
             });
         }
     }
@@ -435,7 +439,7 @@ fn dependency_cache_key_fingerprint(value: &Value) -> Option<String> {
 fn read_current_dependency_seed_cache(
     path: &Path,
     project_root: &Path,
-) -> Option<Vec<DependencyFact>> {
+) -> Option<Vec<ProviderDependencyTopologyFact>> {
     let record = parse_dependency_seed_cache(path)?;
     if record.sources.is_empty() {
         return None;
@@ -481,15 +485,13 @@ fn parse_dependency_seed_cache(path: &Path) -> Option<DependencySeedCacheRecord>
                     "" => None,
                     value => Some(value.to_string()),
                 };
-                let source = match parts.next()? {
-                    "manifest" => "manifest",
-                    _ => continue,
-                };
-                facts.push(DependencyFact {
+                if parts.next()? != "manifest" {
+                    continue;
+                }
+                facts.push(ProviderDependencyTopologyFact {
                     owner_path,
                     dependency,
                     version,
-                    source,
                 });
             }
             _ => {}
@@ -506,7 +508,7 @@ fn write_dependency_seed_cache(
     path: &Path,
     fingerprint: &str,
     sources: &[DependencySeedSource],
-    facts: &[DependencyFact],
+    facts: &[ProviderDependencyTopologyFact],
 ) {
     let Some(parent) = path.parent() else {
         return;
@@ -524,7 +526,7 @@ fn write_dependency_seed_cache(
         text.push_str(&source.sha256);
         text.push('\n');
     }
-    for fact in facts.iter().filter(|fact| fact.source == "manifest") {
+    for fact in facts {
         text.push_str("fact\t");
         text.push_str(&fact.owner_path);
         text.push('\t');
@@ -573,43 +575,4 @@ fn safe_cache_key(value: &str) -> String {
             }
         })
         .collect()
-}
-
-fn dependency_seed_fingerprint(language_id: &str, project_root: &Path) -> String {
-    dependency_manifest_paths(language_id)
-        .iter()
-        .map(|relative_path| manifest_file_fingerprint(project_root, relative_path))
-        .collect::<Vec<_>>()
-        .join("|")
-}
-
-fn dependency_manifest_paths(language_id: &str) -> &'static [&'static str] {
-    match language_id {
-        "rust" => &["Cargo.toml", "Cargo.lock"],
-        "typescript" => &["package.json"],
-        "python" => &["pyproject.toml"],
-        "julia" => &["Project.toml", "Manifest.toml"],
-        "gerbil-scheme" => &["gerbil.pkg"],
-        _ => &[],
-    }
-}
-
-fn manifest_file_fingerprint(project_root: &Path, relative_path: &str) -> String {
-    let path = project_root.join(relative_path);
-    let Ok(metadata) = fs::metadata(path) else {
-        return format!("{relative_path}:missing");
-    };
-    let modified = metadata
-        .modified()
-        .ok()
-        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok());
-    match modified {
-        Some(modified) => format!(
-            "{relative_path}:{}:{}:{}",
-            metadata.len(),
-            modified.as_secs(),
-            modified.subsec_nanos()
-        ),
-        None => format!("{relative_path}:{}:unknown", metadata.len()),
-    }
 }

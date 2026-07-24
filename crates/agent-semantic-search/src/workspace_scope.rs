@@ -4,118 +4,40 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_json::Value;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WorkspaceScopeProviderId(String);
+#[path = "workspace_scope_types.rs"]
+mod types;
 
-impl WorkspaceScopeProviderId {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<String> for WorkspaceScopeProviderId {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WorkspaceScopeLanguageId(String);
-
-impl WorkspaceScopeLanguageId {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<String> for WorkspaceScopeLanguageId {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WorkspaceScopeId(String);
-
-impl WorkspaceScopeId {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<String> for WorkspaceScopeId {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WorkspaceScopePackageId(String);
-
-impl WorkspaceScopePackageId {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<String> for WorkspaceScopePackageId {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WorkspaceScopeAnchorKind(String);
-
-impl From<String> for WorkspaceScopeAnchorKind {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WorkspaceScopeAnchorSha256(String);
-
-impl From<String> for WorkspaceScopeAnchorSha256 {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WorkspaceScopePackageName(String);
-
-impl From<String> for WorkspaceScopePackageName {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
+pub use types::{
+    WorkspaceScopeAnchorKind, WorkspaceScopeAnchorSha256, WorkspaceScopeId,
+    WorkspaceScopeLanguageId, WorkspaceScopePackageId, WorkspaceScopePackageName,
+    WorkspaceScopeProviderId,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticWorkspaceAnchor {
-    kind: WorkspaceScopeAnchorKind,
-    path: PathBuf,
-    sha256: WorkspaceScopeAnchorSha256,
+    pub kind: WorkspaceScopeAnchorKind,
+    pub path: PathBuf,
+    pub sha256: WorkspaceScopeAnchorSha256,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticWorkspacePackage {
-    package_id: WorkspaceScopePackageId,
+    pub package_id: WorkspaceScopePackageId,
     name: WorkspaceScopePackageName,
-    root: PathBuf,
+    pub root: PathBuf,
     manifest_path: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticWorkspaceScope {
-    workspace_id: String,
-    language_id: String,
-    provider_id: String,
-    package_manager: String,
-    source_extensions: Vec<String>,
-    discovery_root: PathBuf,
-    anchors: Vec<SemanticWorkspaceAnchor>,
-    packages: Vec<SemanticWorkspacePackage>,
+    pub workspace_id: String,
+    pub language_id: String,
+    pub provider_id: String,
+    pub package_manager: String,
+    pub source_extensions: Vec<String>,
+    pub discovery_root: PathBuf,
+    pub anchors: Vec<SemanticWorkspaceAnchor>,
+    pub packages: Vec<SemanticWorkspacePackage>,
     pub fingerprint: String,
 }
 
@@ -127,10 +49,10 @@ pub struct SemanticWorkspaceScopeSet {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkspaceCandidateAdmission {
     workspace_id: WorkspaceScopeId,
-    package_id: WorkspaceScopePackageId,
-    language_id: WorkspaceScopeLanguageId,
-    provider_id: WorkspaceScopeProviderId,
-    canonical_path: PathBuf,
+    pub package_id: WorkspaceScopePackageId,
+    pub language_id: WorkspaceScopeLanguageId,
+    pub provider_id: WorkspaceScopeProviderId,
+    pub canonical_path: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -142,12 +64,12 @@ pub struct WorkspaceCandidateRejection {
 impl SemanticWorkspaceScope {
     pub fn matches_provider_identity(
         &self,
-        provider_id: &WorkspaceScopeProviderId,
-        language_id: &WorkspaceScopeLanguageId,
+        provider_id: &str,
+        language_id: &str,
         discovery_root: &Path,
     ) -> bool {
-        self.provider_id == provider_id.as_str()
-            && self.language_id == language_id.as_str()
+        self.provider_id == provider_id
+            && self.language_id == language_id
             && self.discovery_root == discovery_root
     }
 
@@ -189,7 +111,11 @@ impl SemanticWorkspaceScope {
             let kind = identifier_field(anchor, "kind")?.to_owned();
             let path = absolute_path_field(anchor, "path")?;
             let sha256 = sha256_field(anchor, "sha256")?.to_owned();
-            anchors.push(SemanticWorkspaceAnchor { kind, path, sha256 });
+            anchors.push(SemanticWorkspaceAnchor {
+                kind: kind.into(),
+                path,
+                sha256: sha256.into(),
+            });
         }
         if anchors.is_empty() {
             return Err("workspace scope must contain at least one anchor".to_owned());
@@ -234,8 +160,8 @@ impl SemanticWorkspaceScope {
                 ));
             }
             packages.push(SemanticWorkspacePackage {
-                package_id,
-                name,
+                package_id: (package_id).into(),
+                name: (name).into(),
                 root,
                 manifest_path,
             });
@@ -327,10 +253,10 @@ impl SemanticWorkspaceScope {
         let Some(package) = package else {
             if is_anchor {
                 return Ok(WorkspaceCandidateAdmission {
-                    workspace_id: self.workspace_id.clone(),
-                    package_id: self.workspace_id.clone(),
-                    language_id: self.language_id.clone(),
-                    provider_id: self.provider_id.clone(),
+                    workspace_id: (self.workspace_id.clone()).into(),
+                    package_id: (self.workspace_id.clone()).into(),
+                    language_id: (self.language_id.clone()).into(),
+                    provider_id: (self.provider_id.clone()).into(),
                     canonical_path,
                 });
             }
@@ -363,10 +289,10 @@ impl SemanticWorkspaceScope {
             });
         }
         Ok(WorkspaceCandidateAdmission {
-            workspace_id: self.workspace_id.clone(),
+            workspace_id: (self.workspace_id.clone()).into(),
             package_id: package.package_id.clone(),
-            language_id: self.language_id.clone(),
-            provider_id: self.provider_id.clone(),
+            language_id: (self.language_id.clone()).into(),
+            provider_id: (self.provider_id.clone()).into(),
             canonical_path,
         })
     }
@@ -401,7 +327,11 @@ impl SemanticWorkspaceScopeSet {
             .iter()
             .filter_map(|scope| {
                 scope
-                    .admit_candidate_from(candidate_base, candidate, &scope.language_id)
+                    .admit_candidate_from(
+                        candidate_base,
+                        candidate,
+                        &WorkspaceScopeLanguageId::from(&scope.language_id),
+                    )
                     .ok()
                     .map(|admission| (scope_admission_specificity(scope, &admission), admission))
             })

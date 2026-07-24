@@ -146,6 +146,127 @@ Machine output: compact JSON artifacts and local SQL rows outside the prompt; Ar
    ARI rows such as =next=, =frontier=, =recommendedNext=, or =nextCommand= are
    display/advisory output, not production command APIs.
 
+14. /Search closure is a client-normalized receipt, not a provider stdout
+    convention./  Resident =search= loops may execute provider search, cache
+    lookup, and exact query internally, but the normalized result is a
+    =SearchClosureReceipt=. The receipt carries =EvidenceScope=,
+    =QueryHandoff=, validator-computed =qualityProof=, and =closureProof=.
+    Exact source materialization after closure is performed by main-agent
+    =asp <language> query --selector ...= commands generated from typed
+    handoff data. The client and hook MUST NOT expose =search --choice read:*=
+    or any equivalent prompt-visible read action as a public command surface.
+
+15. /Search event payloads are typed envelopes over backend-neutral rows./  The
+    storage row may remain backend-neutral, but search loop events written into
+    it must be schema-validated envelopes with ordered sequence, =causes[]=,
+    hash-chain fields, optional graph roots, and optional batch/branch IDs for
+   evidence DAG execution. =ClosureFinalized= is the canonical terminal event
+   and is valid only when it references the authoritative graph, join,
+   freshness, intent-coverage, and obligation proofs; prompt text is not
+   closure authority.
+
+* Route-program admission and event authority
+** Canonical runtime event vocabulary
+
+Backend-neutral event rows MUST carry exactly these schema-owned runtime event
+kinds.  Storage engines may add backend metadata to the envelope, but MUST NOT
+rename, alias, or infer a second event vocabulary.
+
+#+begin_src text
+RouteProposalObserved
+RouteProgramAdmitted
+RouteProgramInvalidated
+ActionAdmitted
+ExecutionGrantIssued
+ActionStarted
+ActionResultObserved
+ActionCompleted
+GraphDeltaCommitted
+GraphDeltaRejected
+JoinEvaluated
+BudgetReserved
+BudgetConsumed
+BudgetReleased
+CancellationRequested
+LateResultQuarantined
+CheckpointIssued
+CheckpointResolved
+QualityGateEvaluated
+ClosureFinalized
+#+end_src
+
+=RouteProposalObserved= records advisory reasoning output and grants no provider,
+graph, budget, or closure authority.  =RouteProgramAdmitted= records only the
+structural admission and bindings of a finite typed route DAG;
+=RouteProgramInvalidated= ends that admission when a binding no longer holds.
+
+=ActionAdmitted= records per-node live validation against the current evidence
+graph, source snapshot, control epoch, policy, dependencies, and budget.
+=ExecutionGrantIssued= is the separate just-in-time capability that permits the
+validated node to cross the provider invocation boundary.
+
+=ActionStarted=, =ActionResultObserved=, and =ActionCompleted= are provider
+invocation observations.  They may repeat for one =ActionKey= after an
+outcome-unknown crash or retry and do not themselves admit graph state.
+=GraphDeltaCommitted= and =BudgetConsumed= are exactly-once per =ActionKey=;
+=GraphDeltaRejected= records non-admission, while =BudgetReserved= and
+=BudgetReleased= record reservation ownership.
+
+=CancellationRequested= cannot erase work already in flight.  A result observed
+after cancellation or grant invalidation emits =LateResultQuarantined= by
+default and cannot mutate the active graph without a new live admission.
+=JoinEvaluated= consumes admitted branch outcomes.  =CheckpointIssued= and
+=CheckpointResolved= delimit semantic decisions.  =QualityGateEvaluated= records
+only a recomputable gate verdict and its proof references; it is not terminal
+authority.  =ClosureFinalized= is the only terminal closure event.
+
+A reasoning component MAY submit a =RouteProposal=, but that proposal is
+advisory.  It cannot authorize provider work, mutate the evidence graph,
+consume budget, or close an obligation.  The client runtime is the authority
+that validates and normalizes an acceptable proposal into an admitted
+=RouteProgram=.  Admission binds the program to the current intent,
+obligation-set, graph-root, source-snapshot, policy, provider-artifact, and
+budget identities; a change to any required binding invalidates the affected
+program or stage before another provider action may start.
+
+Every executable action MUST receive a client-normalized per-action grant
+derived from an admitted program.  The grant binds the plan, stage, action,
+preconditions, snapshot, budget reservation, and idempotency identity.  A
+provider receipt is evidence about an invocation or result; it is not plan
+admission authority and cannot upgrade an advisory proposal into an executable
+program.
+
+The backend-neutral event history MUST distinguish at least:
+
+- route-program admission, rejection, and invalidation;
+- action admission, start, completion, and rejection;
+- graph-delta commit;
+- deterministic stage or branch join;
+- budget reservation, release, and exhaustion;
+- cancellation request and cancellation observation; and
+- late-result observation and disposition.
+
+These distinctions prevent an intended action from being reported as an
+executed action.  =ActionAdmitted= proves that the runtime granted authority;
+it does not prove that a provider was invoked.  =ActionStarted= proves that
+the client crossed its recorded invocation boundary; it does not by itself
+prove provider acceptance or completion.  =ActionCompleted= MUST link the
+validated provider outcome or an explicit client-side terminal outcome.
+Stronger claims about provider acceptance or durable completion require the
+corresponding provider receipt.
+
+Only a committed graph delta may affect an obligation delta, join result, or
+closure decision.  Cancellation and timeout do not silently erase an
+in-flight invocation: a result observed after cancellation or after its grant
+became stale is recorded as late and MUST NOT mutate the current graph unless
+the runtime explicitly re-admits it against the current state.  Joins and
+budget accounting consume authoritative action and commit events rather than
+reasoner claims or planned branch counts.
+
+This section specifies protocol authority and event semantics only.  It does
+not require a particular storage engine, event-log implementation, process
+layout, or provider transport.
+
 * Architecture
 
 #+begin_example

@@ -725,6 +725,7 @@ fn print_help_if_requested_unchecked(args: &[String]) -> Result<bool, String> {
     Ok(true)
 }
 
+#[allow(dead_code)]
 pub(crate) fn print_install_plugin_help() -> Result<(), String> {
     print_command_help(install_plugin_command())
 }

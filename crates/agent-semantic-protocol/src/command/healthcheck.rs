@@ -235,11 +235,11 @@ fn check_binary(activation_path: &Path) -> BinaryCheck {
                 ) {
                     Ok(receipt) => (
                         "ok",
-                        Some(receipt.artifact_root_digest.as_str().to_string()),
+                        Some(receipt.artifact_root_digest().as_str().to_string()),
                         Some(
                             receipt
                                 .asp_binary_leaf()
-                                .artifact_digest
+                                .artifact_digest()
                                 .as_str()
                                 .to_string(),
                         ),

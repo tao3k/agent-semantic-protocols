@@ -6,8 +6,42 @@
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(
+    Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 pub struct SearchPreflightLanguageId(String);
+
+impl AsRef<str> for SearchPreflightLanguageId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::borrow::Borrow<str> for SearchPreflightLanguageId {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for SearchPreflightLanguageId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for SearchPreflightLanguageId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl From<&String> for SearchPreflightLanguageId {
+    fn from(value: &String) -> Self {
+        Self(value.clone())
+    }
+}
 
 impl SearchPreflightLanguageId {
     pub fn as_str(&self) -> &str {
@@ -135,7 +169,7 @@ fn preflight_search_command_args_with_admission(
     match validate_search_owner_query_shape(args) {
         Ok(owner) => {
             match preflight_search_command(SearchCommandPreflightRequest::owner_items(
-                language_id,
+                &SearchPreflightLanguageId::from(language_id),
                 owner,
                 workspace.as_deref(),
                 project_root,

@@ -52,6 +52,44 @@ macro_rules! agent_session_registry_id {
                 formatter.write_str(self.as_str())
             }
         }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::ops::Deref for $name {
+            type Target = str;
+
+            fn deref(&self) -> &Self::Target {
+                self.as_str()
+            }
+        }
+
+        impl PartialEq<&str> for $name {
+            fn eq(&self, other: &&str) -> bool {
+                self.as_str() == *other
+            }
+        }
+
+        impl PartialEq<$name> for &str {
+            fn eq(&self, other: &$name) -> bool {
+                *self == other.as_str()
+            }
+        }
+
+        impl From<$name> for turso::Value {
+            fn from(value: $name) -> Self {
+                value.into_string().into()
+            }
+        }
+
+        impl From<&$name> for turso::Value {
+            fn from(value: &$name) -> Self {
+                value.as_str().into()
+            }
+        }
     };
 }
 
@@ -489,7 +527,7 @@ pub fn agent_session_unix_timestamp() -> Result<i64, String> {
 }
 
 /// Request for registering or updating one named agent session.
-pub struct AgentSessionRegisterRequest {
+pub struct AgentSessionRegisterRequest<'a> {
     /// Stable State Core project scope that owns the registration.
     pub project_id: AgentSessionProjectId,
     /// Root Codex session id for this agent topology.
@@ -505,7 +543,7 @@ pub struct AgentSessionRegisterRequest {
     /// Agent role advertised to routing and validation.
     pub role: AgentSessionRole,
     /// Optional model observation produced by a trusted native host source.
-    pub model_observation: Option<AgentSessionModelObservationRef>,
+    pub model_observation: Option<AgentSessionModelObservationRef<'a>>,
     /// Durable routing status to store.
     pub status: AgentSessionStatus,
     /// Optional expiration timestamp for routability.

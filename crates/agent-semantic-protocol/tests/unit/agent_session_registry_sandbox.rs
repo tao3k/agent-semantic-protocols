@@ -15,7 +15,7 @@ fn sandbox_drift_is_explicit_without_becoming_a_ready_gate() {
 #[test]
 fn normalized_metadata_projects_machine_readable_warning_only_sandbox_drift() {
     let validation = SessionValidationReport {
-        status: "warning".to_string(),
+        status: "warning".to_string().into(),
         reason: "sandbox drift is warning-only".to_string(),
         config_path: None,
         rollout_path: None,

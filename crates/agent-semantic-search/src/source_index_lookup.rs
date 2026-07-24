@@ -18,6 +18,7 @@ pub struct SourceIndexLookupRequest<'a> {
     pub query: &'a str,
     pub limit: u32,
     pub source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub live_import: Option<&'a agent_semantic_client_db::ClientDbSourceIndexImport>,
 }
 
 /// Request for looking up source-index owners from an already resolved client
@@ -30,6 +31,7 @@ pub struct SourceIndexClientCacheLookupRequest<'a> {
     pub query: &'a str,
     pub limit: u32,
     pub source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub live_import: Option<&'a agent_semantic_client_db::ClientDbSourceIndexImport>,
 }
 
 fn source_index_artifact_digest(
@@ -72,6 +74,7 @@ pub fn lookup_source_index_for_language(
         query,
         limit,
         source_snapshot,
+        live_import: None,
     })
 }
 
@@ -90,6 +93,12 @@ pub fn lookup_source_index_in_cache(
             limit: request.limit,
             expected_snapshot_root: &request.source_snapshot.root_digest,
             expected_index_artifact_digest: &expected_index_artifact_digest,
+            live_facts: request.live_import.map(|import| {
+                agent_semantic_client_db::ClientDbLiveSourceIndexFacts {
+                    source_snapshot: request.source_snapshot,
+                    import,
+                }
+            }),
         },
     )?;
     let lookup = rank_source_index_lookup_result(lookup, request.query);
@@ -116,6 +125,12 @@ pub fn lookup_source_index_in_client_cache_dir(
             limit: request.limit,
             expected_snapshot_root: &request.source_snapshot.root_digest,
             expected_index_artifact_digest: &expected_index_artifact_digest,
+            live_facts: request.live_import.map(|import| {
+                agent_semantic_client_db::ClientDbLiveSourceIndexFacts {
+                    source_snapshot: request.source_snapshot,
+                    import,
+                }
+            }),
         },
     )?;
     let lookup = rank_source_index_lookup_result(lookup, request.query);
@@ -164,12 +179,12 @@ fn source_index_file_locator_lookup(
         .map(|candidate| {
             let path = candidate.workspace_relative_path;
             agent_semantic_client_db::ClientDbSourceIndexCandidate {
-                path: path.clone(),
+                path: path.clone().into(),
                 language_id: request.language_id.cloned(),
                 provider_id: None,
                 source_kind: agent_semantic_client_db::ClientDbSourceIndexSourceKind::File,
                 line_count: None,
-                query_keys: vec![path],
+                query_keys: vec![path.into()],
                 selector_symbol: None,
                 selector_kind: None,
                 selector_proof: None,
@@ -212,8 +227,13 @@ fn rank_source_index_lookup_result(
     lookup.candidates = reorder_source_index_candidates(
         lookup.candidates,
         query,
-        |candidate| candidate.path.clone(),
-        |candidate| candidate.query_keys.clone(),
+        |candidate| (candidate.path.clone()).to_string(),
+        |candidate| {
+            (candidate.query_keys.clone())
+                .into_iter()
+                .map(|value| value.to_string())
+                .collect()
+        },
     );
     lookup
 }

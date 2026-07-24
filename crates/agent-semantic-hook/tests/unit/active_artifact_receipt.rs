@@ -35,9 +35,31 @@ fn fixture() -> (PathBuf, PathBuf, PathBuf, String) {
     (root, binary, activation, digest)
 }
 
+fn write_provider_closure(activation: &std::path::Path, providers: &[(&str, &str)]) {
+    let providers = providers
+        .iter()
+        .map(|(language_id, provider_id)| {
+            serde_json::json!({
+                "languageId": language_id,
+                "providerId": provider_id,
+            })
+        })
+        .collect::<Vec<_>>();
+    fs::write(
+        activation,
+        serde_json::to_vec(&serde_json::json!({
+            "schemaVersion": "1",
+            "providers": providers,
+        }))
+        .expect("provider closure JSON"),
+    )
+    .expect("provider closure");
+}
+
 #[test]
 fn receipt_binds_materialized_targets_and_rejects_drift() {
     let (root, binary, activation, digest) = fixture();
+    write_provider_closure(&activation, &[("rust", "rs-harness")]);
     let provider = root.join("providers/rs-harness");
     fs::create_dir_all(provider.parent().expect("provider parent")).expect("provider parent");
     fs::write(&provider, b"provider").expect("provider");
@@ -53,7 +75,7 @@ fn receipt_binds_materialized_targets_and_rejects_drift() {
     let verified =
         verify_active_asp_artifact_receipt(&activation, &[&binary]).expect("verified receipt");
     assert_eq!(verified, materialized.receipt);
-    assert_eq!(verified.leaves.len(), 3);
+    assert_eq!(verified.leaves().len(), 3);
 
     fs::write(&provider, b"provider-drift").expect("drift provider");
     let error = verify_active_asp_artifact_receipt(&activation, &[&binary])
@@ -91,8 +113,34 @@ fn receipt_accepts_content_equivalent_binary_alias_and_rejects_alias_drift() {
 }
 
 #[test]
+fn receipt_rejects_missing_active_provider_artifact_closure() {
+    let (root, binary, activation, digest) = fixture();
+    write_provider_closure(&activation, &[("rust", "rs-harness")]);
+    materialize_active_asp_artifact_receipt(&binary, &digest, &activation, &[])
+        .expect("materialize incomplete receipt");
+
+    let error = verify_active_asp_artifact_receipt(&activation, &[&binary])
+        .expect_err("missing provider artifact must fail closed");
+    assert!(
+        error.contains("active ASP provider artifact closure mismatch"),
+        "{error}"
+    );
+    fs::remove_dir_all(root).expect("remove fixture");
+}
+
+#[test]
 fn warm_receipt_metadata_verification_p95_is_under_ten_milliseconds() {
     let (root, binary, activation, digest) = fixture();
+    let provider_identities = (0..7)
+        .map(|index| (format!("language-{index}"), format!("provider-{index}")))
+        .collect::<Vec<_>>();
+    write_provider_closure(
+        &activation,
+        &provider_identities
+            .iter()
+            .map(|(language_id, provider_id)| (language_id.as_str(), provider_id.as_str()))
+            .collect::<Vec<_>>(),
+    );
     let mut providers = Vec::new();
     let mut additional = Vec::new();
     for index in 0..7 {

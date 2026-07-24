@@ -155,7 +155,7 @@ fn load_cached_provider_workspace_scope(
         || !scope.anchors.iter().all(|anchor| {
             fs::read(&anchor.path)
                 .ok()
-                .is_some_and(|bytes| sha256_bytes(&bytes) == anchor.sha256)
+                .is_some_and(|bytes| *sha256_bytes(&bytes) == *anchor.sha256)
         })
     {
         return None;
@@ -401,8 +401,8 @@ pub(super) fn query_requests_semantic_facts(
         .collect::<Vec<_>>();
     with_activated_provider_query_pack_descriptor(provider, |query_pack_descriptor| {
         Some(agent_semantic_search::search_pipe_semantic_facts_intent(
-            &provider.language_id,
-            query,
+            agent_semantic_search::SearchPipeLanguageId::new(&provider.language_id),
+            agent_semantic_search::SearchPipeQueryText::new(query),
             query_pack_descriptor,
             agent_semantic_search::SearchPipeSemanticFactsDescriptor {
                 descriptor_id: &descriptor.descriptor_id,

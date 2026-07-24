@@ -131,7 +131,7 @@ pub(super) fn release_terminal_owner_before_typed_start(
         )?
         .into_iter()
         .find(|existing| {
-            existing.session_id != native.agent_id
+            *existing.session_id != *native.agent_id
                 && (replacement_lease
                     || matches!(
                         existing.status.as_str(),
@@ -142,6 +142,6 @@ pub(super) fn release_terminal_owner_before_typed_start(
         return Ok(());
     };
     registry
-        .delete_session(&project_id, &existing.session_id)
+        .delete_session(&project_id, &*existing.session_id)
         .map(|_| ())
 }

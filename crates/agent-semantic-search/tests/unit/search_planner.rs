@@ -85,6 +85,7 @@ fn source_index_adapter_uses_file_locator_on_cache_miss() {
                 query: "search_planner.rs",
                 limit: 8,
                 source_snapshot: &fixture.evidence,
+                live_import: None,
             },
             file_locator: Some(&locator),
         },

@@ -31,8 +31,8 @@ pub fn search_query_budget_block(
     );
     let has_typed_anchor = clauses.len() >= 2
         || crate::search_pipe_typed_query_terms(
-            request.language_id,
-            request.query,
+            crate::search_pipe_query_pack::SearchPipeLanguageId(request.language_id),
+            crate::search_pipe_query_pack::SearchPipeQueryText(request.query),
             request.query_pack_descriptor,
         )
         .iter()

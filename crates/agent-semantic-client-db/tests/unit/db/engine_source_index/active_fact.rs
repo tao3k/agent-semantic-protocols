@@ -158,6 +158,7 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
             limit: 8,
             expected_snapshot_root: source_snapshot_a.root_digest.as_str(),
             expected_index_artifact_digest: expected_index_artifact_digest.as_str(),
+            live_facts: None,
         },
     )
     .expect("lookup project A scope");

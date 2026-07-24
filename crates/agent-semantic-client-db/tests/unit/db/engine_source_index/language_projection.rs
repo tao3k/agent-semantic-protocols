@@ -36,9 +36,9 @@ async fn harness_projection_imports_without_source_text_projection() {
     let import =
         source_index_import_from_language_projection(ClientDbLanguageProjectionImportRequest {
             project_root: project_root.clone(),
-            previous_file_hashes: None,
             registry_fingerprint: "language-projection-registry".to_string(),
             projection: projection.clone(),
+            source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::default(),
         })
         .expect("assemble language projection import");
     let source_snapshot = import.source_snapshot.clone();

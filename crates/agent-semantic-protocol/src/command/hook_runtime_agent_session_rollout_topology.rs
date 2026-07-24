@@ -55,11 +55,12 @@ pub(super) fn current_rollout_topology() -> Result<Option<CurrentRolloutTopology
     let Some(session) = current_agent_runtime_session() else {
         return Ok(None);
     };
-    let Some(metadata) = codex_rollout_session_metadata(session.recall_session_id())? else {
+    let Some(metadata) = codex_rollout_session_metadata(&session.recall_session_id().into())?
+    else {
         return Ok(None);
     };
     Ok(Some(CurrentRolloutTopology {
-        session_id: metadata.session_id,
+        session_id: metadata.session_id.to_string(),
         root_session_id: metadata.root_session_id,
         parent_thread_id: metadata.parent_thread_id,
         thread_source: metadata.thread_source,

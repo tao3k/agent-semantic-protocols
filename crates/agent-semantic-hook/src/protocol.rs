@@ -238,10 +238,12 @@ impl HookDecision {
             .command
             .as_deref()
             .and_then(|command| serde_json::to_string(&["/bin/sh", "-c", command]).ok());
+        let resident_name = agent_semantic_loop::ResidentName::from(resident_name);
+        let root_session_id = root_session_id.map(agent_semantic_loop::RootSessionId::from);
         Some(
             agent_semantic_loop::ResidentInteractiveCommand::bootstrap_with_dispatch(
-                resident_name,
-                root_session_id,
+                &resident_name,
+                root_session_id.as_ref(),
                 receipt_kind,
                 command_json.as_deref(),
             ),
@@ -250,7 +252,7 @@ impl HookDecision {
 
     pub fn configured_resident_interactive_command_line(&self) -> Option<String> {
         let command = self.configured_resident_interactive_command()?;
-        Some(crate::classifier::command_line(&command.argv))
+        Some(crate::classifier::command_line(command.argv()))
     }
 }
 

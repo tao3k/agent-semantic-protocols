@@ -14,6 +14,10 @@
 #+SEE_ALSO: docs/10-19-rfcs/10.14-semantic-fact-frontier-feedback.org (014) — next-stage
 #+  ontology, flow profiles, receipt memory, and context precision benchmarks.
 
+* Sandtable evidence
+
+- [[file:10.06-agent-search-projection-sandtable-proof.org][Search Loop Sandtable Proof Dossier]] :: Real-project pre-Rust search-loop traces, fault injection, design gaps, and implementation gates.
+
 * Search projection summary
 
 Every agent-facing =search= response carries a typed decision graph feature:
@@ -94,6 +98,1269 @@ owner/item expansion rather than manufacture a selector. This is a shared
 invariant: every selector carried by a recommended exact-read command must
 execute through that provider's exact query surface. A scenario gate must
 exercise the invariant across every registered language provider.
+
+** Search closure, quality proof, and query handoff
+
+Agent-facing =search= is the reasoning plane. Exact =query= is the evidence
+materialization plane. A resident search loop MUST NOT expose =query= grammar,
+line ranges, provider-private selector syntax, or shell commands as choices.
+When search has closed enough evidence for source understanding or editing, it
+returns a =SearchClosureReceipt= containing an =EvidenceScope= and a
+=QueryHandoff=. The main agent may then execute only the exact =query= commands
+described by that handoff.
+
+The invalid design is:
+
+#+begin_src text
+asp <language> search --scope <scope-id> --choice read:R1
+#+end_src
+
+That shape mixes reasoning search with exact source materialization and lets a
+prompt-visible choice become a read authority. =read:R1=, selector strings, and
+projection details are receipt data, not public search actions.
+
+The corrected boundary is:
+
+#+begin_src text
+resident search loop
+  -> SearchClosureReceipt
+       EvidenceScope
+       QueryHandoff
+
+main agent
+  -> asp <language> query --selector <exact structural selector> --workspace . --code
+#+end_src
+
+=SearchClosureReceipt= is not a polished summary. It is a replayable closure
+claim derived from the event stream and graph proof. It MUST carry a
+=qualityProof= whose terminal decision is validator-computed, not model-filled.
+Flat labels such as =strong=, =closed=, =top1-confirmed=, or =recall-covered=
+are not sufficient unless they are derived from typed obligations and proof
+refs.
+
+The core receipt shape is:
+
+#+begin_src text
+SearchClosureReceipt
+  evidenceScope:
+    scopeId
+    intent
+    workspaceSnapshotRoot
+    graphRoot
+    obligations[]
+    evidenceChain
+    qualityProof
+  queryHandoff:
+    groups[]
+      id
+      mode: single|serial|parallel-all|parallel-first-proof|parallel-disambiguate|hybrid
+      joinPolicy: all-required|first-exact|disambiguate-all|complete-enumeration|best-supported
+      queries[]
+        id
+        languageId
+        selector
+        projection
+        reason
+  closureProof:
+    allowed
+    resultKind: partial|clarification|handoff|answer|protocol-error
+    searchClosure: open|closed|failed
+    loopTerminal
+    eventStreamRoot
+    graphRoot
+    workspaceSnapshotRoot
+    gateEventRefs[]
+#+end_src
+
+Claim closure is obligation-driven. Exact selector identity closes only an
+=identity= obligation; it does not close enumeration, absence, causal-flow, or
+cross-language handoff claims. The v1 claim classes are:
+
+| Claim class | Closure rule |
+|-------------+--------------|
+| =identity= | unique canonical selector plus owner snapshot proof |
+| =existential= | at least one exact support path |
+| =enumeration= | complete admitted scope, untruncated enumeration, snapshot/provider proof |
+| =absence= | complete negative proof over the admitted scope; ordinary no-hit is partial |
+| =causal-flow= | continuous typed edges with exact pivots when required |
+| =handoff= | provider/language admission proof plus downstream scope receipt |
+
+Freshness is two-dimensional. =acquisition.mode= records how evidence was
+obtained, such as =live-parser=, =validated-cache=, =cold-scan=, or
+=snapshot-replay=. =freshness.verdict= records whether the evidence matches the
+requested source authority: =verified=, =mismatch=, or =unknown=. A validated
+cache hit can be strong evidence when it is bound to the same source snapshot,
+provider identity, parser facts, and artifact digest. The unsafe state is cache
+without snapshot proof.
+
+Runtime quality proof MUST express what it can actually know: selector
+uniqueness, provider admission, obligation coverage, truncation, snapshot
+continuity, ambiguity, and coverage of declared semantic axes. Runtime MUST NOT
+claim benchmark-only metrics such as true precision or recall. Benchmarks derive
+precision/recall from golden sets; receipts expose identity and coverage proof.
+
+The search loop is an execution DAG over evidence obligations, not just a single
+choice chain. A ChoicePanel may present one choice that represents a whole
+execution bundle, including serial or parallel branches, a join policy, cost,
+and stop condition. The runtime should auto-advance deterministic transitions
+and ask the resident model only when a semantic choice or budget tradeoff
+remains.
+
+Parallel execution is legal only when independence is proven: no data
+dependency, a shared immutable snapshot/provider/query-pack authority,
+independent obligations or axes, a deterministic join rule, and no loss of
+enumeration or absence completeness. Default is serial. Cross-language ownership
+disambiguation MUST use =disambiguate-all=, never first-hit-wins.
+
+Choice validation remains compare-and-swap over:
+
+#+begin_src text
+loopId
+sessionEpoch
+step
+panelId
+graphRootDigest
+choiceId
+choicesDigest
+executionPlanDigest
+#+end_src
+
+A stale or invented choice records an invalid attempt, changes no graph state,
+executes no provider action, and consumes no search budget. Only repeated
+invalid attempts or an explicit protocol attack may become =protocol-error=.
+
+*** Proof-carrying context reconciliation
+
+**** Decision status
+
+The architecture keeps =ContextReconciler= as a deterministic internal phase
+of =GraphRouter=.  It is not a new public router, it is not a second closure
+authority, and it does not move exact-query authority out of =QueryHandoff=.
+
+The following direction is admitted:
+
+- prior graph evidence may be reused only after claim applicability and proof
+  freshness have been re-evaluated;
+- valid proof branches may be crossed without replaying their search actions;
+- invalidation may reopen only the obligations that depend on stale evidence;
+- =SearchReasoningRouter= is reserved for bounded semantic alternatives rather
+  than ordinary cache or lifecycle recovery;
+- model context may contribute intent, hypotheses, and route priors, but never
+  evidence authority.
+
+The following stronger claims are *not* admitted yet:
+
+- the current runtime can already close the Rust buffer-reuse example from
+  memory;
+- the current Python provider can already jump from the FastAPI HTTP selector
+  to an executable WebSocket sibling selector;
+- =supportOwners ∩ changedPaths = ∅= is a sufficient freshness proof;
+- PPR, Dijkstra, or Yen path rank can admit a proof or close an obligation;
+- the labels =MEMORY_CLOSED=, =MEMORY_JUMP=, =MEMORY_REBASE=,
+  =PARTIAL_REFRESH=, =AUTO_EXECUTE=, =REASONING_CHECKPOINT=, and
+  =COLD_SEARCH= form one mutually exclusive router state machine.
+
+Rust implementation remains blocked until the entry gates in
+[[*Context-reconciliation benchmark contract][Context-reconciliation benchmark contract]]
+are satisfied.
+
+**** Authority boundary
+
+The authority split is:
+
+#+begin_src text
+GraphRouter
+  ContextReconciler
+    validate bindings
+    evaluate claim applicability
+    admit or reject ClosureProof inputs
+    propagate invalidation
+    compile the residual obligation DAG
+    project a decision requirement
+
+  SearchRouter
+    execute only actions that reached ActionAdmitted
+    require ExecutionGrantIssued immediately before provider invocation
+
+  SearchReasoningRouter
+    compare bounded semantic alternatives
+    propose hypotheses or search axes
+    never admit evidence and never issue SearchClosureReceipt
+
+  QueryHandoff
+    retain the exact structural-selector boundary
+    materialize an admitted exact projection when required
+#+end_src
+
+=GraphRouter= remains the sole admission and closure authority.  Reconciliation
+may reuse an existing =ClosureProof=, produce a new =QualityGateEvaluated=
+event, or require a new =JoinEvaluated= event, but it cannot declare closure
+without a valid =SearchClosureReceipt=.
+
+=SearchRouter= remains execution-only.  The existence of a cached selector,
+projection, route, or prior action does not imply =ActionAdmitted= and cannot
+substitute for =ExecutionGrantIssued=.
+
+**** Reconciliation result is a product, not a seven-way enum
+
+The reconciliation result MUST preserve orthogonal protocol axes.  The
+following is a contract sketch, not a Rust implementation commitment:
+
+#+begin_src text
+ContextReconcileResult
+  bindingValidation
+    workspaceSnapshot
+    dirtyOverlay
+    providerIdentity
+    parserIdentity
+    queryPackIdentity
+    schemaIdentity
+    policyIdentity
+    graphRevision
+
+  obligationStates[]
+    obligationId
+    claimClass
+    state = reused | rebased | refresh-required | open | contradicted
+    qualityGateRef?
+    closureProofRef?
+    reason
+
+  proofReuse
+    none | partial | complete
+    retainedProofRefs[]
+    invalidatedProofRefs[]
+
+  frontier
+    maximalValidNodes[]
+    openOutgoingObligations[]
+    frontierProofDigest
+
+  decisionRequirement
+    deterministic | search | reason | clarify | blocked
+
+  executionState
+    none | candidate | admitted | granted | terminal
+    actionKey?
+    actionAdmittedRef?
+    executionGrantIssuedRef?
+
+  closureState
+    open | partial | finalized
+    closedObligations[]
+    openObligations[]
+    searchClosureReceiptRef?
+
+  projectionDelivery
+    resident | cached-redelivery | provider-projection-required
+    deliveryEpoch
+    deliveredProjectionRefs[]
+
+  diagnostics[]
+#+end_src
+
+The former labels are derived views over this product:
+
+| Legacy label | Required projection; never an authority by itself |
+|--------------+--------------------------------------------------|
+| =MEMORY_CLOSED= | =closureState= is =finalized=, the residual obligation set is empty, and the referenced =SearchClosureReceipt= is valid |
+| =MEMORY_JUMP= | at least one proof is retained and deterministic residual work begins from a non-root frontier |
+| =MEMORY_REBASE= | one or more prior proofs were transported to the current snapshot by a validated rebase and received new current-root proof bindings |
+| =PARTIAL_REFRESH= | proof reuse is partial and invalidation reopened a strict subset of obligations |
+| =AUTO_EXECUTE= | the deterministic plan contains a current =ActionAdmitted= event and provider invocation still waits for =ExecutionGrantIssued= |
+| =REASONING_CHECKPOINT= | =decisionRequirement= is =reason= because bounded semantic alternatives remain |
+| =COLD_SEARCH= | no prior proof was admitted and a capable provider route exists |
+
+These views may coexist.  For example:
+
+- rebase, partial refresh, and deterministic execution may occur together;
+- partial refresh may expose a genuine reasoning checkpoint;
+- cold search may be required while provider lifecycle is blocked;
+- evidence may be closed while cached projections still require redelivery
+  after context compaction.
+
+Protocol implementations MUST NOT encode the views as one mutually exclusive
+enum.
+
+**** Deterministic reconciliation algorithm
+
+For a new intent, =ContextReconciler= evaluates these stages in order:
+
+1. Normalize the intent into typed mandatory and optional obligations.
+2. Bind the request to exact workspace, dirty-overlay, provider, parser,
+   query-pack, schema, policy, and graph revisions.
+3. Locate prior =ClosureProof= candidates by typed claim identity, not lexical
+   similarity alone.
+4. Evaluate claim implication through a registered predicate rule.
+5. Re-evaluate every referenced =QualityGateEvaluated= input against the
+   current bindings.
+6. Propagate invalidation through reverse proof dependencies and joins.
+7. Select the maximal valid frontier antichain that preserves every open
+   obligation.
+8. Compile a residual obligation DAG from the open obligations and their
+   prerequisites.
+9. Project =deterministic=, =search=, =reason=, =clarify=, or =blocked=.
+10. Issue closure only when the residual set is empty and
+    =SearchClosureReceipt= validation succeeds.
+
+The algorithm MUST be a deterministic reducer over typed packet state.  Model
+reasoning may create or rank candidate claim mappings, but those mappings enter
+the reducer as untrusted candidates.
+
+**** Claim applicability and implication
+
+Keyword overlap is not claim applicability.  Every reusable claim family MUST
+be registered with:
+
+- a stable predicate identifier and version;
+- a canonical parameter schema;
+- a quantifier and declared scope;
+- an evidence class;
+- explicit variance or monotonicity rules;
+- an implication checker version.
+
+Exact parameter equality is the default.  A wider implication relation is
+allowed only when the registered predicate proves it.
+
+#+begin_src text
+proved claim
+  predicate = dependency_scope_lifetime
+  framework = fastapi
+  transport = http
+  scope = function
+  quantifier = one-runtime-path
+
+requested claim
+  predicate = dependency_scope_lifetime
+  framework = fastapi
+  transport = websocket
+  scope = function
+  quantifier = one-runtime-path
+
+result
+  identity/topology anchors may be retained
+  conclusion reuse is rejected
+#+end_src
+
+The internal evaluation outcomes are:
+
+- full implication: the old proof may close the matching new obligation;
+- anchor only: selectors or topology may seed the residual search, but the old
+  conclusion cannot close it;
+- reopen: the prior claim family matches, but freshness or scope validation
+  failed;
+- contradicted: admitted evidence conflicts with the old conclusion;
+- no match: the prior claim is irrelevant.
+
+These are internal evaluation outcomes.  They do not replace
+=QualityGateEvaluated=, =ClosureProof=, or =SearchClosureReceipt= as canonical
+protocol records.
+
+At minimum, the implication checker MUST reject:
+
+- existence as proof of complete enumeration;
+- one hit as proof of absence;
+- exact identity as proof of causal flow;
+- a local positive claim as proof of repository-wide uniqueness;
+- =find-one= evidence as proof of =find-all=;
+- claims whose quantifier, scope, transport, feature set, platform, or policy
+  parameters differ without a registered monotone rule.
+
+**** ClosureProof support closure
+
+The earlier =supportOwners= concept is too weak.  Reuse is admitted through the
+support closure already owned by =ClosureProof=.  The proof MUST bind every
+input whose semantic change could alter the conclusion:
+
+- canonical source anchors and source blob digests;
+- parser facts and projection digests;
+- provider, parser, query-pack, schema, and policy identities;
+- transitive semantic dependencies used by the derivation;
+- build manifests, feature selections, generated inputs, and toolchain
+  identities when they affect the claim;
+- dirty-overlay, rename, deletion, symlink, and submodule state;
+- the declared scope-completeness proof for absence, uniqueness, enumeration,
+  or coverage claims;
+- the claim predicate, parameters, quantifier, and evidence class;
+- the derivation algorithm and join-policy versions;
+- workspace inclusion proofs for all current-root anchors.
+
+Therefore:
+
+#+begin_src text
+supportOwners ∩ changedPaths = empty
+#+end_src
+
+is neither sufficient nor necessary.
+
+It is not sufficient when a feature manifest, generated input, parser identity,
+query pack, policy, transitive dependency, or enumeration scope changes.  It is
+not necessary when the source owner changed in a way that leaves all admitted
+parser facts and the typed conclusion invariant.
+
+An implementation may use changed paths as a fast invalidation index, but a
+path comparison never becomes the closure proof.
+
+**** Branch and join reuse
+
+A branch outcome is reusable only when its =ClosureProof= remains valid under
+the current bindings.  A join is reusable only through =JoinEvaluated= and MUST
+bind:
+
+- the digests of the consumed branch proofs, not branch names alone;
+- the exact mandatory and optional obligation set;
+- the join-policy identifier and version;
+- shared prerequisites and cross-branch dependencies;
+- the union of admitted support bindings;
+- negative or enumeration scopes when present;
+- the output claim and output proof digest.
+
+For a diamond graph:
+
+#+begin_src text
+          split
+         /     \
+       B1       B2
+         \     /
+           J
+#+end_src
+
+the rules are:
+
+- if =B1= and =B2= remain valid and the new obligations are covered by the
+  current =JoinEvaluated= record, reconciliation may cross =J=;
+- if =B1= remains valid and =B2= is stale, invalidation reopens =B2= and any
+  downstream proof depending on the old join;
+- if both branches remain valid but a new mandatory obligation is added,
+  reconciliation continues from the valid frontier without replaying the
+  branches;
+- if the join policy, shared prerequisite, or claim parameters changed, the old
+  join is rejected even when both owner blobs are unchanged;
+- conflicting admitted branch outcomes require =decisionRequirement=reason=;
+  missing branch evidence requires search or blocked, not reasoning-generated
+  facts.
+
+**** Proof rebase
+
+Rebase never mutates an old receipt into a current receipt.  It validates a
+provenance-preserving mapping and emits new current-root proof bindings.
+
+Rebase policy is evidence-class dependent:
+
+| Evidence class | Minimum rebase rule |
+|----------------+---------------------|
+| content-local positive fact | source blob, parser, query pack, schema, policy, and projection facts are unchanged; generate a new workspace inclusion proof |
+| dependency-closed fact | every transitive support input and derivation identity is unchanged |
+| scope-complete fact | the entire declared enumeration or absence scope is unchanged and completeness is re-proven |
+| runtime or external fact | do not Merkle-rebase; rerun the owning observation |
+
+A valid rebase produces a new =QualityGateEvaluated= result and a new
+=ClosureProof= bound to the current root.  It may reference the old proof as
+provenance, but it MUST NOT reuse the old =SearchClosureReceipt= identity as a
+current closure receipt.
+
+Deleted anchors, unmapped renames, ambiguous case-folding, changed symlink
+targets, parser/query-pack drift, or incomplete scope mapping reopen affected
+obligations.
+
+**** Maximal valid frontier and residual obligation DAG
+
+The frontier is not one scalar "deepest node".  In a DAG, two equally deep
+valid nodes may be incomparable and jointly required.  Reconciliation MUST
+return a maximal antichain of valid nodes such that:
+
+- every retained node has valid prerequisites;
+- every open mandatory obligation is reachable from at least one frontier
+  node;
+- no retained node silently drops a required sibling branch;
+- downstream joins are retained only when their =JoinEvaluated= inputs remain
+  valid.
+
+The residual obligation DAG is compiled by subtracting obligations closed by
+admitted proofs, then restoring every prerequisite required by the remaining
+open obligations.  It records:
+
+#+begin_src text
+originalProgramRef
+retainedProofRefs[]
+invalidatedProofRefs[]
+closedObligations[]
+openObligations[]
+irrelevantBranches[]
+executionNodes[]
+joinNodes[]
+residualDigest
+#+end_src
+
+Residual compilation MUST preserve shared prerequisites and MUST NOT assume
+that one action is sufficient for one changed branch.
+
+PPR, Dijkstra, and Yen remain heuristic facilities:
+
+- PPR may expand candidates from retained context nodes;
+- Dijkstra may rank an additive single-source path;
+- Yen may retain alternative paths for a bounded reasoning checkpoint.
+
+They MUST NOT admit =ClosureProof=, validate =JoinEvaluated=, determine claim
+implication, or issue =SearchClosureReceipt=.  A multi-obligation residual DAG
+with fan-out and joins is not reduced to a single Dijkstra path.
+
+**** Projection cache and model-context residency
+
+Evidence validity and model delivery are separate.
+
+#+begin_src text
+evidence admitted
+projection cached
+projection delivered to current model context
+projection believed resident after host events
+#+end_src
+
+=contextEpoch=, when available, is delivery metadata.  It is not a proof of
+workspace, provider, parser, query-pack, schema, policy, or graph freshness.
+
+When an admitted projection is cached but no longer resident after compaction,
+the delivery plan may redeliver the cached projection without restarting the
+parser.  The system may claim =zero parser restart= only when the cached
+projection and its proof validate.  It may claim =zero query/delivery action=
+only when the host supplies a trustworthy delivery-residency acknowledgement.
+
+If the host cannot attest residency, safe behavior is compact cached
+redelivery.  The system MUST NOT infer that the model remembers code from the
+conversation transcript.
+
+**** Execution and lifecycle separation
+
+Evidence state, provider capability, resident liveness, and execution authority
+are distinct.
+
+A deterministic residual action does not become executable until:
+
+1. the action is validated against the live snapshot and policy;
+2. =ActionAdmitted= binds its exact =actionKey= and attempt identity;
+3. the configured provider or resident target is live and canonical;
+4. =ExecutionGrantIssued= is created just in time;
+5. terminal receipt identity is committed exactly once.
+
+Provider parse failure, owner-outside-workspace, low-quality no-hit,
+=needs-cold-scan=, lifecycle mismatch, DB lock, timeout, and repeated
+=recommendedNext= are distinct terminal or recoverable classifications.  None
+may be converted into absence, closure, or successful memory reuse.
+
+**** Current reproducible evidence
+
+The design is grounded in negative and partial controls rather than a claimed
+successful implementation:
+
+| Evidence lane | Reproduced result | Admissible conclusion |
+|---------------+-------------------+-----------------------|
+| current repository | HEAD =53665efc1023d0f39563e022ea5782e2b21f749c=, active =.bin/asp= SHA-256 =597aa87daf1bbed8f20f60dafb0b44c5beff6be73831821686bff95d442c5ae9=, materially dirty overlay | commit identity alone is not the active source snapshot |
+| Rust fixed snapshot | =rust-lang/rust@1498f9968f75e8e5ded6892b9c97bfe66b5a966f=; claimed implementation and test blob SHA prefixes exist | fixture identity is real |
+| Rust implementation branch | owner parse failed at =conflict_errors.rs= with =expected `,`= and no provider action | no implementation proof or reusable branch certificate |
+| Rust test branch | owner search emitted four function selectors, including the three buffer-reuse cases | selector discovery only |
+| Rust exact materialization | the emitted absolute selector was rejected as =owner-outside-workspace= | the test branch is not executable proof |
+| FastAPI fixed control | this replay fixed =fastapi/fastapi@a64dfbbd21a445288ff583d58e1f646fe6baf3af= because the prior proposal named no commit | earlier FastAPI result was not reproducible as stated |
+| FastAPI owner branch | Python owner search found =request_response= and =websocket_session= names but emitted no canonical structural selectors | sibling topology is a candidate anchor, not =MEMORY_JUMP= |
+| FastAPI continuation | =recommendedNext= repeated owner search; owner/term query then required the absent exact selector | current route has no bounded executable continuation |
+| workspace canonicalization | =/tmp= versus =/private/tmp= produced an erroneous outside-workspace classification | canonical workspace identity is an entry control |
+| resident lifecycle | root bootstrap required native rebind; a content projection later completed with =receipt-output-missing= | context pointer or historical child identity is not liveness proof |
+
+The Rust and FastAPI cases remain valuable fixtures, but current failures become
+explicit negative controls.  They MUST NOT be described as successful
+=MEMORY_CLOSED= or =MEMORY_JUMP= runs until the packets contain executable
+selectors, exact snapshot digests, admitted proofs, and terminal receipts.
+
+The current-project evidence ledger is
+[[file:10.06-agent-search-projection-sandtable-proof.org][the agent-search projection sandtable proof]].
+
+**** Context-reconciliation benchmark contract
+
+This subsection owns normative implementation-entry and acceptance requirements.
+Executable fixtures, fault schedules, oracle construction, and per-cell receipts
+live in
+[[file:10.06-agent-search-projection-sandtable-proof.org::*Context reconciliation benchmark matrix][the context reconciliation benchmark matrix]].
+The sandtable may falsify this contract, but it MUST NOT redefine router,
+closure, query-handoff, join, or execution-grant authority.
+
+Correctness gates precede performance measurement.
+
+***** Reproducibility manifest
+
+Every case MUST record:
+
+- case identifier and deterministic mutation seed;
+- fixture revision and canonical workspace root;
+- source-root digest and dirty-overlay digest;
+- language, provider, parser, query-pack, schema, policy, and registry digests;
+- resolved =asp= path, version, and binary digest;
+- index digest, quality, freshness, and preparation mode;
+- initial cache image digest and cache state;
+- root and resident session identities plus live-binding receipt;
+- initial claim set, mandatory/optional obligations, and expected scope class;
+- mutation descriptor, renamed/deleted paths, and dependency depth;
+- expected impacted and residual obligations;
+- cold-oracle frame and residual digests;
+- fault-injection point and concurrency schedule;
+- every action, proof, join, execution, and terminal receipt.
+
+A packet that says only =snapshot=present= is not comparable evidence.
+
+***** Independent baselines
+
+| Baseline | Purpose |
+|----------+---------|
+| =B0= independent fixture oracle | hand-authored expected applicability, impacted obligations, allowed reuse, and failure class; MUST NOT call reconciler invalidation or cache-key code |
+| =B1= isolated cold full recompute | fresh process, cache, index view, and resident binding on the same source digest; supplies canonical frame, residual, and closure digests |
+| =B2= cache-disabled current runtime | separates provider/parser/lifecycle behavior from reconciliation behavior |
+| =B3= naive snapshot-only reuse | negative baseline proving that the suite detects dependency, overlay, obligation, and rebase errors |
+
+No case is scored unless =B0= and =B1= agree.
+
+***** Entry gates
+
+| Gate | Required proof |
+|------+----------------|
+| =G0= environment freeze | complete reproducibility manifest and exact active snapshot |
+| =G1= Rust owner control | a known real implementation owner parses and emits an owner-local item result |
+| =G2= exact selector control | at least one provider-emitted selector materializes inside the same canonical workspace |
+| =G3= Python selector control | Python owner search emits executable canonical selectors and a bounded non-repeating continuation |
+| =G4= resident control | verified root-to-resident binding plus deliberate absent, expired, and mismatched controls |
+| =G5= deterministic reducer | identical typed inputs produce identical applicability, invalidation, frontier, residual, and decision digests |
+
+The current runtime fails or does not yet prove =G1= through =G4=.  Performance
+claims are therefore =NO-GO= until these gates pass.
+
+***** Deterministic cohorts
+
+The first benchmark version includes:
+
+- =C0 route controls=: valid owner/selector, valid no-hit, malformed selector,
+  owner-outside-workspace, verified resident, absent resident, expired binding,
+  and repeated-next detection;
+- =C1 core reuse=: two languages × nine snapshot relations × four cache states
+  × four selector states × three lifecycle states = 864 cases;
+- =C2 rebase=: two languages × four rebase modes × four cache states × three
+  schedules = 96 cases;
+- =C3 partial refresh=: two languages × six mutation locations × three
+  dependency depths × four cache states = 144 cases;
+- =C4 failure recovery=: two languages × eight injection points × three restart
+  schedules = 48 cases;
+- =C5 language parity=: isomorphic Rust and Python evidence graphs with the same
+  language-neutral obligations and expected decisions;
+- =C6 adversarial generator=: at least 100,000 seeded mutations per language
+  only after deterministic cohorts pass.
+
+Every deterministic case runs at least three times from isolated cache and
+session state.  Parallel and serial schedules MUST be separate cells because
+parallel execution may alter cache ordering and packet timing.
+
+***** Correctness acceptance
+
+Unsafe reuse is any reuse for which =B1= produces a different frame digest,
+residual digest, mandatory obligation state, or failure class.
+
+Hard gates are:
+
+- zero unsafe reuse decisions across every deterministic case;
+- zero mixed-snapshot closure events;
+- zero reuse of uncommitted or partially written cache records;
+- impacted-obligation recall = 1.0 for partial refresh;
+- final frame and residual digests equal =B1= in every accepted case;
+- unknown, parse failure, lifecycle denial, DB lock, timeout, and
+  repeated-next never count as absence, closure, or successful recovery;
+- no duplicate dispatch identity or duplicate terminal receipt;
+- Rust/Python parity for normalized reuse, recompute, unknown, blocked, and
+  failure decisions;
+- every language emits executable in-workspace canonical selectors before
+  parity performance is compared.
+
+An unrelated edit may claim zero parser restarts only for evidence classes
+whose complete proof support was validated and safely rebased.
+
+A single changed branch is not required to use exactly one action.  Instead:
+
+#+begin_src text
+no unrelated branch actions
+impacted obligation recall = 1.0
+final frame digest = B1 frame digest
+final residual digest = B1 residual digest
+#+end_src
+
+***** Metric definitions
+
+Metrics MUST publish their denominator and eligibility predicate.
+
+| Metric | Contract |
+|--------+----------|
+| =falseMemoryReuseRate= | unsafe reuse decisions / all reuse decisions in the declared transition space |
+| =eligibleZeroSearchClosureRate= | zero-search closures / cases whose normalized obligations are already fully covered by fresh admitted proofs |
+| =proofRebaseCount= | accepted current-root proof transports, partitioned by evidence class |
+| =partialRefreshRecall= | oracle-impacted obligations refreshed or reopened / all oracle-impacted obligations |
+| =partialRefreshPrecision= | oracle-impacted obligations / all refreshed obligations; never traded against recall |
+| =savedCertifiedActionCost= | cold-oracle certified action cost minus reconciled certified action cost |
+| =parserRestartAvoidanceRate= | validated cache deliveries without parser process / all eligible projection deliveries |
+| =reasoningInvocationAvoidance= | avoided reasoning checkpoints / cases with a unique deterministic residual plan |
+| =boundedContinuationFailureRate= | repeated or cyclic next actions terminated as unknown/failure / all detected continuation cycles |
+
+=contextJumpDepth= and =commandsFromDeepestValidFrontier= are diagnostic only;
+graph shape can manipulate them and they are not correctness metrics.
+
+Zero observed adversarial failures is not universal proof.  For =N= independent
+random trials with zero failures, reports SHOULD publish the approximate
+one-sided 95% upper bound =3/N=.  The protocol may claim zero false reuse only
+over the explicitly enumerated deterministic transition space.
+
+***** Performance acceptance
+
+Latency and work savings are measured only after correctness gates pass.
+
+For cases where the oracle-impacted subgraph is at most ten percent of the
+proof graph:
+
+- median refreshed certified work MUST be below =B1=;
+- p95 wall time SHOULD be no worse than cache-disabled =B2=;
+- parser start count, provider action count, bytes, packet count, and model
+  delivery bytes MUST be reported separately;
+- index preparation, cache warming, and resident bootstrap time MUST NOT be
+  silently excluded from a cold comparison;
+- shared Turso or mutable cache state MUST be isolated or explicitly modeled.
+
+***** Implementation admission order
+
+The implementation path is:
+
+#+begin_src text
+RFC authority and reconciliation semantics
+  -> versioned shared schema changes
+  -> language-neutral fixture and oracle contracts
+  -> Rust/Python provider selector entry controls
+  -> deterministic reconciliation reducer
+  -> branch/join and rebase validation
+  -> fault and replay cohorts
+  -> cross-language parity
+  -> real-project performance
+#+end_src
+
+No provider-private string heuristic, path-only shortcut, or Rust-only
+certificate format may bypass this order.
+
+*** Calibrated router authority and admission contract
+
+This subsection is normative architecture.  It sharpens router ownership
+without asserting that the contract is already implemented.
+
+- =GraphRouter= is the deterministic state and transition evaluator.  It is
+  the sole authority for graph state, admissible transitions, obligation
+  coverage, and closure.
+- =SearchReasoningRouter= produces =RouteProposal= values only.  A proposal may
+  recommend a semantic choice or budget, but it cannot mutate graph state,
+  admit a transition, satisfy an obligation, or declare closure.
+- =SearchRouter= executes only an admitted stage.  It cannot author or admit a
+  route, and its execution receipt returns to =GraphRouter= for evaluation
+  before any later stage may execute.
+
+Before the first evaluation, the request MUST have a typed initial intent and
+an explicit set of obligations.  Every admitted transition MUST identify the
+obligations it advances, and =Closed= is legal only when =GraphRouter= can
+account for every required obligation with validated closure evidence.
+
+=GraphRouteEvaluation= has exactly these outcomes:
+
+- =Closed= :: all required obligations have validated closure evidence.
+- =Execute= :: exactly one admissible next transition is proven and its stage
+  may be admitted for execution.
+- =NeedsReasoning= :: a =ReasoningCheckpoint= may obtain a permitted semantic
+  choice or budget proposal.
+- =NeedsClarification= :: required typed intent, user-owned information, or
+  authority is missing or contradictory.
+- =Blocked= :: no legal progress can be admitted because an invariant,
+  capability, or required evidence condition has failed and neither reasoning
+  nor clarification can repair it.
+
+When obligations remain, the runtime MUST NOT execute unless =GraphRouter= can
+prove exactly one admissible transition.  Failure to prove that fact escalates
+to =NeedsReasoning=, =NeedsClarification=, or =Blocked= according to the typed
+cause.  Escalation is therefore a proof boundary, not a claim that the runtime
+understands semantic ambiguity.
+
+The admission path is:
+
+#+begin_example
+RouteProposal -> deterministic validator -> admitted RouteProgram
+#+end_example
+
+The validator is owned by the =GraphRouter= boundary and rejects stale,
+invented, unreachable, unauthorized, obligation-losing, or over-budget
+proposals.  =PlanOnce= means that one reasoning pass may propose multiple
+stages; it does not mean validate once.  Every stage MUST be validated against
+the then-current graph state, obligations, budget, and receipts immediately
+before admission.
+
+=ChoicePanel= is one projection of =ReasoningCheckpoint=, not the checkpoint
+contract itself.  Other projections may collect the same permitted choice, but
+all resulting proposals pass through the same validator.  Resident memory is
+advisory only: it may seed a proposal, but it cannot establish graph facts,
+cover obligations, admit a stage, or prove closure.
+
+=QueryHandoff= remains the authoritative query-materialization boundary.  The
+question whether a future internal typed query should precede or live inside
+=QueryHandoff= is unresolved and MUST NOT be inferred from this router split;
+until a separate contract revision resolves it, no router takes query
+materialization authority from =QueryHandoff=.
+
+P0 invariants and anti-claims:
+
+- There is exactly one admissibility and closure authority: =GraphRouter=.
+- No =RouteProposal= or remembered route is executable before validation.
+- No admitted earlier stage grants admission to a later stage.
+- No executor receipt self-certifies obligation coverage or closure.
+- =NeedsReasoning= records an admissibility proof gap; it does not certify
+  machine understanding.
+- This contract does not claim a Rust or other provider implementation exists.
+
+*** Design argument
+
+This change is not a formatting improvement for compact search output. It moves
+agent search memory, routing discipline, progressive reasoning, and stop
+conditions out of prompts and into a stateful, replayable runtime contract.
+
+The previous prompt-centered model gave the language model too many hidden
+responsibilities:
+
+- remember which owners and selectors were already tried;
+- decide when a broad search should narrow into an exact selector;
+- distinguish cache acceleration from source authority;
+- infer whether a no-hit was a true absence proof or merely a weak search miss;
+- avoid stale choices after graph state changed;
+- decide whether independent evidence branches could safely run in parallel;
+- decide when a polished answer was actually terminal.
+
+Those responsibilities are protocol responsibilities. The model may choose
+between bounded semantic alternatives, but it must not own state authority,
+selector syntax, cache truth, join legality, or terminal closure.
+
+The new invariant is:
+
+#+begin_src text
+LLM chooses among bounded semantic choices.
+Runtime owns state, evidence graph, event replay, quality gates, and closure.
+Provider owns parser facts and exact materialization.
+#+end_src
+
+This is why =search= and =query= are separated by plane rather than by
+convenience:
+
+| Plane | Public use | Owns | Must not own |
+|-------+------------+------+--------------|
+| =search= | reasoning intent and closure receipt | discovery, disambiguation, evidence graph, obligations, quality gates | exact source materialization by prompt-visible read action |
+| =query= | exact materialization after handoff | structural selector projection, code/outline/skeleton | broad discovery or route reasoning |
+
+The handoff is deliberate. After =search= closes, the main agent should have
+less freedom, not more: it receives exact query work items that are already
+bound to language id, selector, projection, reason, and evidence lineage.
+
+*** Why =search --choice read:*= is invalid
+
+=search --choice read:R1= looks attractive because it keeps one public command
+family, but it collapses two different authorities:
+
+1. a reasoning-loop choice selected by a model;
+2. an exact source materialization capability accepted by a parser.
+
+Once those are mixed, a prompt-visible token such as =read:R1= can accidentally
+become read authority. That reintroduces the same failure modes the search loop
+was meant to remove:
+
+- the model can replay a stale read choice from an old graph root;
+- the model can confuse a graph-only evidence node with an executable selector;
+- the runtime has to interpret prompt-visible labels as capability IDs;
+- a search loop can consume source before proving the evidence scope is closed;
+- query authority becomes coupled to the resident search lifecycle.
+
+The correct design keeps =read:R1=, if present at all, inside receipt data. The
+runtime materializes a =QueryHandoff= from validated =EvidenceScope= state. The
+main agent then executes exact =query= commands generated from that handoff. A
+failed or stale handoff is a query/materialization failure, not a new search
+choice.
+
+*** Selector closure is not search closure
+
+The core correctness bug this RFC prevents is:
+
+#+begin_src text
+exact selector found
+  != user claim proved
+#+end_src
+
+Examples:
+
+| User claim | Exact selector proves | Still open |
+|------------+-----------------------+------------|
+| "What item owns this symbol?" | identity of one item | nothing, if expected cardinality is one |
+| "Find all constructors" | one constructor identity | complete enumeration of admitted scope |
+| "There is no producer" | maybe no local hit | negative completeness over all admitted providers |
+| "Rust owns this behavior" | Rust ingress or candidate owner | cross-language disambiguation |
+| "A triggers B" | one endpoint identity | typed edge chain from A to B |
+
+This is why =obligations[]= are mandatory. Each obligation declares a
+=claimClass=, expected cardinality, admitted scope, and closure rule. A terminal
+receipt is valid only when every mandatory obligation is closed or explicitly
+waived by a non-terminal result kind such as =partial=, =clarification=, or
+=handoff=.
+
+Claim classes have different proof burdens:
+
+- =identity= closes with unique selector identity and owner snapshot proof.
+- =existential= closes with at least one exact support path.
+- =enumeration= closes only with untruncated complete enumeration over the
+  admitted scope.
+- =absence= closes only with a negative-completeness proof. Ordinary no-hit is
+  partial evidence.
+- =causal-flow= closes only with continuous typed edges, and exact pivots where
+  the graph edge is not independently materializable.
+- =handoff= closes only when provider/language admission proves the downstream
+  owner and records a downstream scope receipt.
+
+Any output containing "all", "none", "only", "does not exist", "belongs to
+Rust", or "fully migrated" must map to one of these closure rules. If it does
+not, the receipt must fail closed.
+
+*** Runtime quality versus benchmark quality
+
+Runtime quality proof is not a self-score. It is a set of facts the runtime can
+prove from events, graph roots, provider packets, and source authority.
+
+Runtime may prove:
+
+- selector identity is unresolved, a candidate set, unique exact, or relocated
+  exact;
+- provider and language admission matched the requested scope;
+- every mandatory obligation has support paths or remains open;
+- an enumeration was untruncated and covered the admitted roots;
+- a negative query was complete over the admitted scope;
+- acquisition used live parser, validated cache, cold scan, or snapshot replay;
+- observed snapshot roots and artifact digests matched the request authority;
+- ambiguity remains between owners, languages, providers, or semantic axes;
+- budget, packet size, and branch counts stayed inside policy.
+
+Runtime must not claim:
+
+- true precision or recall against the real world;
+- gold =precision@1=, =precision@3=, or =recall@3=;
+- that a user's natural-language intent was fully captured in an open world;
+- that a top-ranked candidate is "correct" without identity proof.
+
+Benchmark suites compute those external metrics from golden sets. Receipts
+expose the proof inputs that make benchmark failures diagnosable.
+
+*** Freshness and cache authority
+
+Cache is an acquisition mode, not a freshness verdict. A cache hit can be
+authoritative when it is bound to the same:
+
+- workspace source snapshot root;
+- provider identity and provider activation digest;
+- parser/query-pack identity;
+- index artifact digest;
+- graph artifact digest.
+
+The unsafe state is:
+
+#+begin_src text
+cache hit + missing or mismatched source authority
+#+end_src
+
+Therefore quality proof splits:
+
+#+begin_src text
+acquisition.mode:
+  live-parser | validated-cache | cold-scan | snapshot-replay
+
+freshness.verdict:
+  verified | mismatch | unknown
+#+end_src
+
+=validated-cache + freshness.verified= may close obligations. =validated-cache
++ freshness.unknown= may rank candidates but cannot authorize terminal closure.
+=freshness.mismatch= must force retry, partial, or fail-closed.
+
+*** Event replay and terminal proof
+
+Events are append-only facts about state transitions. They are not log lines and
+not prompt summaries. A terminal receipt must be recomputable from:
+
+- the ordered event stream;
+- the hash chain;
+- graph roots before and after graph-mutating events;
+- evidence action results and provider provenance;
+- quality gate decisions;
+- final obligation states.
+
+The v1 event vocabulary should stay small:
+
+| Event | Purpose |
+|-------+---------|
+| =SearchLoopStarted= | bind loop/session/workspace authority |
+| =IntentNormalized= | record semantic axes and admitted scope |
+| =RouteFrontierUpdated= | record candidate routes and discriminators |
+| =ChoicePanelIssued= | project bounded choices |
+| =ChoiceDecisionRecorded= | record attempted choice |
+| =ChoiceValidated= | CAS validation before any provider action |
+| =EvidenceBatchPlanned= | plan serial/parallel execution bundle |
+| =EvidenceActionStarted= | record one provider/cache/query action start |
+| =EvidenceActionCompleted= | record result artifact and provenance |
+| =EvidenceBatchJoined= | deterministic graph delta merge |
+| =QualityGateEvaluated= | freshness/identity/coverage/ambiguity/noise/budget/terminality |
+| =ReceiptFinalized= | derive partial/handoff/answer/protocol-error |
+| =SearchLoopClosed= | close loop terminal state |
+
+All event payloads use a typed envelope over the backend-neutral storage row:
+
+#+begin_src text
+eventId
+loopId
+sessionEpoch
+sequence
+domain
+kind
+actor
+causes[]
+context?
+payloadRef
+inputDigest
+outputDigest
+previousEventDigest
+eventDigest
+occurredAtMs
+recordedAtMs
+batchId?
+branchId?
+dependsOn[]
+#+end_src
+
+=causes[]= is required because quality gates and receipt finalization often
+join multiple evidence actions. =graphRootBefore= and =graphRootAfter= are
+required only for graph-mutating events. Time is diagnostic; sequence and
+hash-chain identity are replay authority.
+
+*** Choice safety
+
+Choice IDs are opaque, bounded to one panel epoch, and single-use unless the
+panel explicitly marks them resumable. Validation happens before any provider,
+cache, or query action.
+
+A choice token binds:
+
+#+begin_src text
+loopId
+sessionEpoch
+step
+panelId
+graphRootDigest
+choiceId
+choicesDigest
+executionPlanDigest
+#+end_src
+
+Validation is compare-and-swap:
+
+| Validation result | Runtime behavior |
+|-------------------+------------------|
+| current and valid | execute the planned bundle exactly once |
+| stale panel | record invalid attempt, return current panel, no provider action |
+| unknown choice | record invalid attempt, return current panel, no provider action |
+| graph-root mismatch | record stale/mismatch, no provider action |
+| language mismatch | fail closed or handoff, no ownership claim |
+| expired | no provider action, reissue panel or close partial |
+
+Invalid choice attempts do not consume search budget and do not mutate graph
+state. The system should tolerate occasional weak-model mistakes. It should
+escalate to =protocol-error= only after a threshold or attack pattern.
+
+*** Execution DAG and parallelism
+
+The search loop is an execution DAG over obligations. A ChoicePanel can offer
+one choice that represents an execution bundle:
+
+#+begin_src text
+choice
+  execution.mode
+  branches[]
+  joinPolicy
+  cost
+  expectedGain
+  stopCondition
+#+end_src
+
+Default is serial. Parallel execution is legal only when runtime proof shows:
+
+1. no data dependency between branches;
+2. shared immutable =workspaceSnapshotRoot=;
+3. fixed provider activation and query-pack authority;
+4. distinct obligations or independent evidence axes;
+5. deterministic join policy;
+6. no loss of enumeration, absence, or cross-language completeness.
+
+Allowed modes:
+
+| Mode | Legal use |
+|------+-----------|
+| =single= | one deterministic next transition |
+| =serial= | later branch depends on earlier evidence |
+| =parallel-all= | independent mandatory branches all required |
+| =parallel-first-proof= | existential alternatives where any exact proof closes |
+| =parallel-disambiguate= | competing owners/languages/providers |
+| =hybrid= | staged serial setup, parallel evidence, serial closure |
+
+Allowed join policies:
+
+| Join policy | Closure behavior |
+|-------------+------------------|
+| =all-required= | any mandatory branch failure yields partial/fail-closed |
+| =first-exact= | existential exact proof closes and cancels remaining alternatives |
+| =disambiguate-all= | all competing routes must produce discriminators before closure |
+| =complete-enumeration= | any uncovered scope forbids terminal |
+| =best-supported= | ranking only; never terminal by itself |
+
+Cross-language ownership must use =disambiguate-all=. A Rust branch returning
+first cannot claim ownership while TypeScript, Python, Julia, Gerbil, or other
+admitted providers remain unresolved.
+
+Parallel branches must join deterministically. Branch-local graph deltas are
+merged by branch id and semantic identity. If the same selector appears with
+different source blob digests, the join emits =GraphMergeConflict= and
+=FreshnessMismatch=; terminal closure is forbidden.
+
+*** Sandtable validation matrix
+
+The design is accepted only if sandtables prove quality, not merely protocol
+viability.
+
+| Scenario | Required result |
+|----------+-----------------|
+| known symbol owner | 1-2 steps to unique identity, at most 3 candidates before closure |
+| unknown natural intent | semantic axes extracted before owner search |
+| ambiguous routing | competing routes carry discriminator evidence or close as clarification |
+| exact selector need | search closes identity internally and hands off exact query; selector grammar is not prompt-owned |
+| all constructors | terminal only with complete untruncated enumeration proof |
+| no producer | terminal only with negative-complete admitted scope proof |
+| cross-language owner | no false ownership; handoff or disambiguate-all |
+| stale cache | freshness mismatch visible; no terminal |
+| stale choice | no provider action, no graph mutation, current panel reissued |
+| invalid choice | no provider action, invalid attempt recorded |
+| noisy failure log | structural owner evidence outranks repeated log tokens or closes partial |
+| budget exhausted | partial receipt with open obligations, not polished terminal |
+| adversarial prompt | raw read/query/grep detour is rejected by hook/runtime |
+| resident restart | event replay reconstructs loop state and prevents duplicate execution |
+| parallel branch mismatch | deterministic join conflict, terminal=false |
+
+P0 pass gates:
+
+#+begin_src text
+falseTerminalRate = 0
+staleChoiceProviderAction = 0
+invalidChoiceProviderAction = 0
+crossLanguageFalseOwnership = 0
+absenceWithoutCompleteScope = 0
+enumerationTerminalWhenTruncated = 0
+cacheHitWithoutFreshnessProofTerminal = 0
+dependentBranchParallelViolation = 0
+#+end_src
+
+Performance gates must report:
+
+#+begin_src text
+choiceDepth
+internalActionCount
+sequentialStageCount
+maxObservedParallelism
+packetBytes
+latencyMs
+criticalPathLatencyMs
+totalProviderCpuMs
+branchCancellationCount
+duplicateBranchCount
+joinLatencyMs
+#+end_src
+
+Wall-clock latency alone is not enough. Parallel execution can reduce wall time
+while increasing total provider cost; both must be visible.
+
+*** Worked sandtable: typed payload migration
+
+For an intent such as:
+
+#+begin_src text
+find all ClientDbSourceIndexSelectorPayloadProof construction and payload_kind usage sites
+#+end_src
+
+the obligations are:
+
+| Obligation | Claim class | Closure |
+|------------+-------------+---------|
+| O1 | =identity= | exact type selector and owner snapshot proof |
+| O2 | =enumeration= | all struct literal construction sites in admitted Rust scope |
+| O3 | =enumeration= | all payload_kind reads/comparisons |
+| O4 | =classification= via graph facts | production/test/decode classification |
+| O5 | =handoff= if non-Rust evidence appears | downstream provider receipt |
+
+If the type selector is already known, =search prime= is forbidden and owner
+discovery is unnecessary. The loop may auto-close O1. It should then issue a
+panel offering an execution bundle:
+
+#+begin_src text
+C1 recommended:
+  mode=parallel-all
+  B1 enumerate constructors -> O2
+  B2 enumerate payload_kind usages -> O3
+  joinPolicy=all-required
+
+C2:
+  mode=serial
+  constructors first, then usages
+
+C3:
+  close partial
+#+end_src
+
+If B1 returns three constructor hits from a top-N or truncated query, O2 remains
+partial. The receipt may say "found at least 3"; it must not say "all 3". A
+second panel can request complete enumeration. Only when O2/O3 are untruncated
+under the same snapshot and provider authority may the receipt return
+=resultKind=handoff= with exact query items for the remaining source pivots.
+
+*** Worked sandtable: absence of a live producer
+
+For an intent such as:
+
+#+begin_src text
+prove whether a live workspace/editor-buffer envelope producer exists
+#+end_src
+
+the key claim is =absence=. A Rust no-hit cannot close absence if TypeScript,
+Python, Julia, Gerbil, build scripts, fixtures, or schema generators are in the
+admitted scope and unresolved.
+
+The legal plan is:
+
+#+begin_src text
+Stage 0 serial:
+  establish workspace scope, activated providers, snapshot authority
+
+Stage 1 parallel-disambiguate:
+  Rust producers
+  TypeScript/Python/Julia/Gerbil producers
+  schema fixtures/build scripts
+  joinPolicy=complete-enumeration
+#+end_src
+
+If a provider is unavailable, the receipt is partial or handoff. It must not
+claim no producer exists. Absence becomes terminal only when every admitted
+branch has a negative-complete proof under the same snapshot authority.
+
+The matching draft schema surface is recorded in
+=schemas/search-closure-receipt-v1.org=. This RFC owns the semantics; concrete
+JSON schemas must preserve the same Search/EvidenceScope/QueryHandoff boundary.
 
 * Research line and invariants
 

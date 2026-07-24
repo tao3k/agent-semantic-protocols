@@ -238,8 +238,17 @@ pub struct ClientDbEngineStructuralIndexReadModelReport {
 }
 
 impl ClientDbEngine {
-    /// Resolve the DB Engine from State Core and create the minimal layout.
+    /// Resolve the DB Engine descriptor from State Core without mutating runtime state.
+    ///
+    /// Directory creation, schema bootstrap, and manifest persistence belong
+    /// exclusively to explicit write-session operations.
     pub fn resolve(project_root: impl AsRef<Path>) -> Result<Self, String> {
+        let state = ResolvedState::resolve(project_root)?;
+        Ok(Self::from_resolved_state(&state))
+    }
+
+    /// Resolve a DB Engine for an explicit state-mutating operation.
+    pub fn resolve_for_write(project_root: impl AsRef<Path>) -> Result<Self, String> {
         let state = ResolvedState::resolve(project_root)?;
         state.ensure_minimal_layout()?;
         let engine = Self::from_resolved_state(&state);

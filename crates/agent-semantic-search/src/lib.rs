@@ -5,9 +5,10 @@
 mod document_candidates;
 mod dynamic_candidates;
 mod dynamic_overlay;
-mod dynamic_search;
 mod evidence_graph_rank;
+mod graph_action_frontier;
 mod graph_candidate_projection;
+pub use graph_action_frontier::{DependencyActionNodeV1, matched_dependency_action_targets};
 mod graph_candidate_sparsity;
 mod graph_evidence_projection;
 mod graph_node_projection;
@@ -66,11 +67,6 @@ pub use dynamic_candidates::{
 };
 pub use dynamic_overlay::{
     DynamicOverlayLane, QUERY_OVERLAY_ROUTE_SOURCE, SEARCH_OVERLAY_ROUTE_SOURCE,
-};
-pub use dynamic_search::{
-    DynamicOwnerItem, DynamicOwnerItemsRequest, DynamicOwnerPath, DynamicOwnerQuery,
-    DynamicSearchLanguage, DynamicSearchRoots, render_dynamic_owner_items_code,
-    render_dynamic_owner_items_frontier,
 };
 pub use evidence_graph_rank::{
     EvidenceGraphRankNode, EvidenceGraphRankScore, EvidenceGraphRankedNode,
@@ -322,3 +318,5 @@ extern crate self as agent_semantic_search;
 #[cfg(test)]
 #[path = "../tests/unit/query_pack_fixture.rs"]
 mod query_pack_fixture;
+pub use search_pipe_evidence::SearchPipeEvidenceLanguageId;
+pub use workspace_scope::WorkspaceScopeLanguageId;

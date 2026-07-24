@@ -100,7 +100,7 @@
             ]
           },
           "command": "query",
-          "method": "query/direct-source-read",
+          "method": "query/exact-selector",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-query-packet"
           ],
@@ -117,8 +117,6 @@
             "argv": [
               "rs-harness",
               "query",
-              "--from-hook",
-              "direct-source-read",
               "--selector",
               "{owner}",
               "--workspace",
@@ -220,7 +218,7 @@
         "search/lexical",
         "search/ingest",
         "search/semantic-facts",
-        "query/direct-source-read",
+        "query/exact-selector",
         "check/changed",
         "guide"
       ],
@@ -452,7 +450,7 @@
             ]
           },
           "command": "query",
-          "method": "query/direct-source-read",
+          "method": "query/exact-selector",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-query-packet"
           ],
@@ -469,8 +467,6 @@
             "argv": [
               "ts-harness",
               "query",
-              "--from-hook",
-              "direct-source-read",
               "--selector",
               "{owner}",
               "--workspace",
@@ -572,7 +568,7 @@
         "search/lexical",
         "search/ingest",
         "search/semantic-facts",
-        "query/direct-source-read",
+        "query/exact-selector",
         "check/changed",
         "guide"
       ],
@@ -829,7 +825,7 @@
             ]
           },
           "command": "query",
-          "method": "query/direct-source-read",
+          "method": "query/exact-selector",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-query-packet"
           ],
@@ -846,8 +842,6 @@
             "argv": [
               "py-harness",
               "query",
-              "--from-hook",
-              "direct-source-read",
               "--selector",
               "{owner}",
               "--workspace",
@@ -949,7 +943,7 @@
         "search/lexical",
         "search/ingest",
         "search/semantic-facts",
-        "query/direct-source-read",
+        "query/exact-selector",
         "check/changed",
         "guide"
       ],
@@ -1175,7 +1169,7 @@
         {
           "acceptsStdin": false,
           "command": "search",
-          "method": "search/query",
+          "method": "query/exact-selector",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-search-packet"
           ],
@@ -1194,8 +1188,6 @@
             "argv": [
               "asp-julia-harness",
               "query",
-              "--from-hook",
-              "direct-source-read",
               "--selector",
               "{owner}",
               "--workspace",
@@ -1677,7 +1669,7 @@
             ]
           },
           "command": "query",
-          "method": "query/direct-source-read",
+          "method": "query/exact-selector",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-query-packet"
           ],
@@ -1692,11 +1684,10 @@
           "supportsJson": false,
           "invocation": {
             "argv": [
-              "gslph",
-              "query",
-              "{owner}",
-              "--term",
-              "{query}",
+            "gslph",
+            "query",
+            "--selector",
+            "{owner}",
               "--workspace",
               "{workspace}",
               "--names-only"
@@ -1772,7 +1763,7 @@
         "search/compiler-evidence",
         "search/proof",
         "search/compare",
-        "query/direct-source-read",
+        "query/exact-selector",
         "check/changed",
         "guide"
       ],
@@ -1996,7 +1987,7 @@
         },
         {
           "command": "query",
-          "method": "query/document",
+          "method": "query/exact-selector",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-query-packet"
           ],
@@ -2018,8 +2009,8 @@
               "asp",
               "org",
               "query",
-              "--term",
-              "{query}",
+              "--selector",
+              "{selector}",
               "--view",
               "metadata",
               "{workspace}"
@@ -2071,7 +2062,7 @@
         "search/prime",
         "search/toc",
         "search/lexical",
-        "query/document",
+        "query/exact-selector",
         "guide",
         "search/ingest"
       ],
@@ -2295,7 +2286,7 @@
         },
         {
           "command": "query",
-          "method": "query/document",
+          "method": "query/exact-selector",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-document-query-packet"
           ],
@@ -2317,8 +2308,8 @@
               "asp",
               "md",
               "query",
-              "--term",
-              "{query}",
+              "--selector",
+              "{selector}",
               "--view",
               "metadata",
               "{workspace}"
@@ -2370,7 +2361,7 @@
         "search/prime",
         "search/toc",
         "search/lexical",
-        "query/document",
+        "query/exact-selector",
         "guide",
         "search/ingest"
       ],

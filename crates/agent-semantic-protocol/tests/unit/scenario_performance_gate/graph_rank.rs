@@ -19,32 +19,43 @@ pub(super) fn asp_evidence_graph_rank_cold_functional_path_stays_inside_scenario
     let nodes = vec![
         agent_semantic_search::EvidenceGraphRankNode {
             ordinal: 0,
-            id: "structural-owner:generation:src/lib.rs".to_string(),
-            kind: "structural-owner".to_string(),
-            label: "src/lib.rs".to_string(),
-            path: Some("src/lib.rs".to_string()),
+            id: "structural-owner:generation:src/lib.rs".to_string().into(),
+            kind: "structural-owner".to_string().into(),
+            label: "src/lib.rs".to_string().into(),
+            path: Some("src/lib.rs".to_string().into()),
             selector: None,
-            query_keys: vec!["lib".to_string()],
+            query_keys: vec!["lib".to_string().into()],
             outgoing_edge_count: 8,
         },
         agent_semantic_search::EvidenceGraphRankNode {
             ordinal: 1,
-            id: "selector:rust://src/lib.rs#item/struct/EvidenceFixture".to_string(),
-            kind: "selector".to_string(),
-            label: "EvidenceFixture".to_string(),
-            path: Some("src/lib.rs".to_string()),
-            selector: Some("rust://src/lib.rs#item/struct/EvidenceFixture".to_string()),
-            query_keys: vec!["EvidenceFixture".to_string(), "serde".to_string()],
+            id: "selector:rust://src/lib.rs#item/struct/EvidenceFixture"
+                .to_string()
+                .into(),
+            kind: "selector".to_string().into(),
+            label: "EvidenceFixture".to_string().into(),
+            path: Some("src/lib.rs".to_string().into()),
+            selector: Some(
+                "rust://src/lib.rs#item/struct/EvidenceFixture"
+                    .to_string()
+                    .into(),
+            ),
+            query_keys: vec![
+                "EvidenceFixture".to_string().into(),
+                "serde".to_string().into(),
+            ],
             outgoing_edge_count: 0,
         },
         agent_semantic_search::EvidenceGraphRankNode {
             ordinal: 2,
-            id: "symbol:rust://src/lib.rs#item/impl/Serialize".to_string(),
-            kind: "symbol".to_string(),
-            label: "Serialize impl".to_string(),
-            path: Some("src/lib.rs".to_string()),
-            selector: Some("rust://src/lib.rs#item/impl/Serialize".to_string()),
-            query_keys: vec!["serde".to_string()],
+            id: "symbol:rust://src/lib.rs#item/impl/Serialize"
+                .to_string()
+                .into(),
+            kind: "symbol".to_string().into(),
+            label: "Serialize impl".to_string().into(),
+            path: Some("src/lib.rs".to_string().into()),
+            selector: Some("rust://src/lib.rs#item/impl/Serialize".to_string().into()),
+            query_keys: vec!["serde".to_string().into()],
             outgoing_edge_count: 2,
         },
     ];

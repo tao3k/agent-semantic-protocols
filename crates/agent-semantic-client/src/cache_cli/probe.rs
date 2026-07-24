@@ -353,10 +353,10 @@ pub(crate) fn apply_provider_cache_probe(receipt: &mut ClientReceipt, probe: &Pr
     receipt.client_db_syntax_row_capture_count = Some(probe.db_report.syntax_row_capture_count);
     receipt.client_db_raw_source_stored = Some(probe.db_report.raw_source_stored);
     if let Some(pragmas) = &probe.db_report.runtime_pragmas {
-        receipt.client_db_journal_mode = Some(pragmas.journal_mode.as_str().into());
-        receipt.client_db_synchronous = Some(pragmas.synchronous);
-        receipt.client_db_busy_timeout_ms = u64::try_from(pragmas.busy_timeout_ms).ok();
-        receipt.client_db_foreign_keys = Some(pragmas.foreign_keys);
+        receipt.client_db_journal_mode = Some(pragmas.journal_mode().into());
+        receipt.client_db_synchronous = Some(pragmas.synchronous());
+        receipt.client_db_busy_timeout_ms = u64::try_from(pragmas.busy_timeout_ms()).ok();
+        receipt.client_db_foreign_keys = Some(pragmas.foreign_keys());
     }
     receipt.db_read_count = Some(probe.db_read_count);
     receipt.db_write_count = Some(probe.db_write_count);

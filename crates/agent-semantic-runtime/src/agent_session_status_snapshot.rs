@@ -45,37 +45,37 @@ status_snapshot_text!(AgentSessionHostStatusReason);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AgentSessionRuntimeStatusSnapshot {
     /// Host client that owns the probed thread, when one is known.
-    host_client: Option<AgentSessionHostClient>,
+    pub host_client: Option<AgentSessionHostClient>,
     /// Host thread id used for status probing.
-    host_thread_id: Option<AgentSessionHostThreadId>,
+    pub host_thread_id: Option<AgentSessionHostThreadId>,
     /// Source that produced host status.
-    host_status_source: AgentSessionHostStatusSource,
+    pub host_status_source: AgentSessionHostStatusSource,
     /// Normalized host status.
-    host_status: AgentSessionHostStatus,
+    pub host_status: AgentSessionHostStatus,
     /// Human-readable reason for the host status.
-    host_status_reason: AgentSessionHostStatusReason,
+    pub host_status_reason: AgentSessionHostStatusReason,
     /// Raw host status payload when the host exposes one.
-    host_raw_status: Option<String>,
+    pub host_raw_status: Option<String>,
     /// Combined registry/host/artifact health status.
-    health_status: String,
+    pub health_status: String,
     /// Timeout semantics used by resident agent sessions.
-    timeout_semantics: &'static str,
+    pub timeout_semantics: &'static str,
     /// Whether duplicate resident workers are allowed.
-    duplicate_worker_allowed: bool,
+    pub duplicate_worker_allowed: bool,
     /// Artifact directory inspected for session activity.
-    artifacts_dir: String,
+    pub artifacts_dir: String,
     /// Normalized artifact freshness status.
-    artifact_status: String,
+    pub artifact_status: String,
     /// Staleness threshold used for artifact freshness.
-    artifact_stale_after_seconds: i64,
+    pub artifact_stale_after_seconds: i64,
     /// Latest artifact update timestamp.
-    last_artifact_updated_at: Option<i64>,
+    pub last_artifact_updated_at: Option<i64>,
     /// Latest artifact age in seconds.
-    artifact_age_seconds: Option<i64>,
+    pub artifact_age_seconds: Option<i64>,
     /// Latest artifact path, when available.
-    last_artifact_path: Option<String>,
+    pub last_artifact_path: Option<String>,
     /// Suggested next action for the session.
-    next_action: String,
+    pub next_action: String,
 }
 
 /// Request for building one runtime status snapshot.

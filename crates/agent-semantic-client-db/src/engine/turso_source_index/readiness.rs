@@ -88,11 +88,12 @@ pub(super) fn validate_turso_source_index_selector_payload_proofs(
 ) -> Result<(), String> {
     for selector in &import.selectors {
         if let Some(proof) = &selector.payload_proof
-            && proof.structural_selector != selector.selector_id
+            && proof.structural_selector.as_str() != selector.selector_id.as_str()
         {
             return Err(format!(
                 "source-index selector payload proof selector mismatch: selector_id={} proof={}",
-                selector.selector_id, proof.structural_selector
+                selector.selector_id.as_str(),
+                proof.structural_selector.as_str()
             ));
         }
     }

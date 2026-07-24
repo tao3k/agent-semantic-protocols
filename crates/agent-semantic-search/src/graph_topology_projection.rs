@@ -4,8 +4,42 @@ use serde_json::{Value, json};
 
 use crate::{GraphProjectionCandidate, language_file_spec, stable_graph_node_id};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(
+    Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 pub struct GraphTopologyLanguageId(String);
+
+impl AsRef<str> for GraphTopologyLanguageId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::borrow::Borrow<str> for GraphTopologyLanguageId {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for GraphTopologyLanguageId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for GraphTopologyLanguageId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl From<&String> for GraphTopologyLanguageId {
+    fn from(value: &String) -> Self {
+        Self(value.clone())
+    }
+}
 
 impl GraphTopologyLanguageId {
     pub fn as_str(&self) -> &str {
@@ -32,7 +66,7 @@ pub struct GraphTopologyProjection {
 }
 
 pub struct GraphTopologyProjectionRequest<'a> {
-    language_id: &'a GraphTopologyLanguageId,
+    language_id: GraphTopologyLanguageId,
     workspace_root: &'a Path,
     candidates: &'a [GraphProjectionCandidate],
 }
@@ -44,7 +78,7 @@ impl<'a> GraphTopologyProjectionRequest<'a> {
         candidates: &'a [GraphProjectionCandidate],
     ) -> Self {
         Self {
-            language_id,
+            language_id: language_id.clone(),
             workspace_root,
             candidates,
         }
@@ -62,7 +96,7 @@ impl<'a> From<(&'a str, &'a Path, &'a [GraphProjectionCandidate])>
         ),
     ) -> Self {
         Self {
-            language_id,
+            language_id: language_id.into(),
             workspace_root,
             candidates,
         }
@@ -108,7 +142,7 @@ pub fn graph_project_topology_projection(
     }));
 
     let submodule_paths = graph_project_submodule_paths(workspace_root);
-    let language_projects = language_project_roots(workspace_root, language_id, candidates);
+    let language_projects = language_project_roots(workspace_root, &language_id, candidates);
     for submodule_path in &submodule_paths {
         let submodule_id = stable_graph_node_id("submodule", submodule_path);
         projection.nodes.push(json!({

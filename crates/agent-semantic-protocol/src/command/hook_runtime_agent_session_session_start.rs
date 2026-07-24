@@ -193,16 +193,16 @@ pub(super) fn classify_session_start_bootstrap(
         None
     };
     let codex_native_rollout_metadata = if let Some(native) = codex_native_event.as_ref() {
-        match codex_rollout_session_metadata(&native.agent_id) {
+        match codex_rollout_session_metadata(&native.agent_id.as_str().into()) {
             Ok(metadata) => metadata,
             Err(error)
-                if error.starts_with(
+                if String::from(error.clone()).starts_with(
                     "Codex rollout invariant broken: no rollout JSONL found for session",
                 ) =>
             {
                 None
             }
-            Err(error) => return Err(error),
+            Err(error) => return Err(error.into()),
         }
     } else {
         None
@@ -458,7 +458,7 @@ pub(super) fn classify_session_start_bootstrap(
                         asp_session_policy.resident_agent_role(),
                     )?;
                 if let Some(existing) = reconciliation.current.as_ref()
-                    && existing.session.session_id != child_session_id
+                    && *existing.session.session_id != *child_session_id
                     && !matches!(existing.session.status.as_str(), "archived" | "closed")
                 {
                     let mut decision = super::hook_runtime_agent_session_typed_replacement::session_start_decision_for_reconciled_resident(
@@ -512,7 +512,7 @@ pub(super) fn classify_session_start_bootstrap(
                     asp_session_policy.resident_child_name(),
                 )?
                 .filter(|existing| {
-                    existing.session_id != child_session_id
+                    *existing.session_id != *child_session_id
                         && matches!(
                             existing.status.as_str(),
                             "archived" | "closed" | "invalid" | "replacement-required"
@@ -520,16 +520,16 @@ pub(super) fn classify_session_start_bootstrap(
                 })
                 .map(|existing| existing.session_id);
                 if let Some(terminal_existing_owner) = terminal_existing_owner {
-                    registry.delete_session(&project_id, &terminal_existing_owner)?;
+                    registry.delete_session(&project_id, &*terminal_existing_owner)?;
                     registry.register_session(
                         agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                            project_id: &project_id,
-                            root_session_id: &root_session_id,
-                            session_id: &child_session_id,
-                            message_target_id: message_target_id.as_deref(),
-                            parent_session_id: Some(&root_session_id),
-                            name: asp_session_policy.resident_child_name(),
-                            role: asp_session_policy.resident_agent_role(),
+                            project_id: (&project_id).into(),
+                            root_session_id: (&root_session_id).into(),
+                            session_id: (&child_session_id).into(),
+                            message_target_id: message_target_id.as_deref().map(Into::into),
+                            parent_session_id: Some((&root_session_id).into()),
+                            name: asp_session_policy.resident_child_name().into(),
+                            role: asp_session_policy.resident_agent_role().into(),
                             model_observation: string_field(payload, &["model", "modelId"])
                                 .as_deref()
                                 .map(|model| {
@@ -541,14 +541,14 @@ pub(super) fn classify_session_start_bootstrap(
                                     }
                                 }),
                             status: if native_runtime_drift_decision.is_some() {
-                                "replacement-required"
+                                "replacement-required".into()
                             } else if message_target_id.is_some() {
-                                "active"
+                                "active".into()
                             } else {
-                                "pending-target"
+                                "pending-target".into()
                             },
                             expires_at: None,
-                            metadata_json: &metadata_json,
+                            metadata_json: (&metadata_json).into(),
                             now,
                         },
                     )?;
@@ -565,13 +565,13 @@ pub(super) fn classify_session_start_bootstrap(
                 }
                 let claimed = registry.claim_resident_session(
                     agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                        project_id: &project_id,
-                        root_session_id: &root_session_id,
-                        session_id: &child_session_id,
-                        message_target_id: message_target_id.as_deref(),
-                        parent_session_id: Some(&root_session_id),
-                        name: asp_session_policy.resident_child_name(),
-                        role: asp_session_policy.resident_agent_role(),
+                        project_id: (&project_id).into(),
+                        root_session_id: (&root_session_id).into(),
+                        session_id: (&child_session_id).into(),
+                        message_target_id: message_target_id.as_deref().map(Into::into),
+                        parent_session_id: Some((&root_session_id).into()),
+                        name: asp_session_policy.resident_child_name().into(),
+                        role: asp_session_policy.resident_agent_role().into(),
                         model_observation: string_field(payload, &["model", "modelId"])
                             .as_deref()
                             .map(|model| {
@@ -583,28 +583,28 @@ pub(super) fn classify_session_start_bootstrap(
                                 }
                             }),
                         status: if native_runtime_drift_decision.is_some() {
-                            "replacement-required"
+                            "replacement-required".into()
                         } else if message_target_id.is_some() {
-                            "active"
+                            "active".into()
                         } else {
-                            "pending-target"
+                            "pending-target".into()
                         },
                         expires_at: None,
-                        metadata_json: &metadata_json,
+                        metadata_json: (&metadata_json).into(),
                         now,
                     },
                 )?;
-                if claimed.session_id == child_session_id {
+                if *claimed.session_id == *child_session_id {
                     if message_target_id.is_some() {
                         registry.register_session(
                             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                                project_id: &project_id,
-                                root_session_id: &root_session_id,
-                                session_id: &child_session_id,
-                                message_target_id: message_target_id.as_deref(),
-                                parent_session_id: Some(&root_session_id),
-                                name: asp_session_policy.resident_child_name(),
-                                role: asp_session_policy.resident_agent_role(),
+                                project_id: (&project_id).into(),
+                                root_session_id: (&root_session_id).into(),
+                                session_id: (&child_session_id).into(),
+                                message_target_id: message_target_id.as_deref().map(Into::into),
+                                parent_session_id: Some((&root_session_id).into()),
+                                name: asp_session_policy.resident_child_name().into(),
+                                role: asp_session_policy.resident_agent_role().into(),
                                 model_observation: string_field(payload, &["model", "modelId"])
                                     .as_deref()
                                     .map(|model| agent_semantic_client_db::AgentSessionModelObservationRef {
@@ -614,12 +614,12 @@ pub(super) fn classify_session_start_bootstrap(
                                         evidence_ref: None,
                                     }),
                                 status: if native_runtime_drift_decision.is_some() {
-                                    "replacement-required"
+                                    "replacement-required".into()
                                 } else {
-                                    "active"
+                                    "active".into()
                                 },
                                 expires_at: None,
-                                metadata_json: &metadata_json,
+                                metadata_json: (&metadata_json).into(),
                                 now,
                             },
                         )?;

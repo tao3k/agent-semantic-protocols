@@ -38,6 +38,7 @@ impl ClientDbEngine {
             limit: request.limit,
             expected_snapshot_root: request.expected_snapshot_root,
             expected_index_artifact_digest: request.expected_index_artifact_digest,
+            live_facts: request.live_facts,
         })
     }
 
@@ -45,27 +46,46 @@ impl ClientDbEngine {
     pub fn lookup_source_index_from_client_dir(
         request: ClientDbSourceIndexClientDirLookupRequest<'_>,
     ) -> Result<ClientDbSourceIndexLookupResult, String> {
-        let query = request
-            .query_keys
+        let ClientDbSourceIndexClientDirLookupRequest {
+            client_dir,
+            indexed_project_root,
+            language_id,
+            query_keys,
+            limit,
+            expected_snapshot_root,
+            expected_index_artifact_digest,
+            live_facts,
+        } = request;
+        let query = query_keys
             .iter()
             .map(|key| key.as_str())
             .collect::<Vec<_>>()
             .join(" ");
-        let db_path = Self::turso_path_for_client_dir(request.client_dir);
+        let db_path = Self::turso_path_for_client_dir(client_dir);
         let lookup_scope = TursoSourceIndexLookupRequestScope {
-            project_root: request
-                .indexed_project_root
+            project_root: indexed_project_root
                 .canonicalize()
-                .unwrap_or_else(|_| request.indexed_project_root.to_path_buf())
+                .unwrap_or_else(|_| indexed_project_root.to_path_buf())
                 .display()
                 .to_string(),
             schema_id: crate::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID.to_string(),
             schema_version: crate::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION.to_string(),
         };
-        let language_id = request.language_id.cloned();
-        let limit = request.limit;
-        let expected_snapshot_root = request.expected_snapshot_root.to_string();
-        let expected_index_artifact_digest = request.expected_index_artifact_digest.to_string();
+        let language_id = language_id.cloned();
+        let expected_snapshot_root = expected_snapshot_root.to_string();
+        let expected_index_artifact_digest = expected_index_artifact_digest.to_string();
+        if let Some(result) = lookup_live_source_index_read_model(
+            db_path.as_path(),
+            Some(&lookup_scope),
+            live_facts,
+            query.as_str(),
+            language_id.as_ref(),
+            limit,
+            expected_snapshot_root.as_str(),
+            expected_index_artifact_digest.as_str(),
+        )? {
+            return Ok(result);
+        }
         block_on_db_engine_async(async move {
             lookup_source_index_read_model_at_path(
                 db_path,
@@ -198,6 +218,71 @@ fn is_turso_source_index_schema_missing_error(error: &str) -> bool {
     normalized.contains("no such table") || normalized.contains("no such column")
 }
 
+fn lookup_live_source_index_read_model(
+    db_path: &std::path::Path,
+    requested_scope: Option<&TursoSourceIndexLookupRequestScope>,
+    live_facts: Option<crate::source_index::ClientDbLiveSourceIndexFacts<'_>>,
+    query: &str,
+    language_id: Option<&LanguageId>,
+    limit: u32,
+    expected_snapshot_root: &str,
+    expected_index_artifact_digest: &str,
+) -> Result<Option<ClientDbSourceIndexLookupResult>, String> {
+    let Some(live_facts) = live_facts else {
+        return Ok(None);
+    };
+    if limit == 0 {
+        return Ok(Some(source_index_lookup_result(
+            db_path.to_path_buf(),
+            ClientDbSourceIndexLookupState::Miss,
+            Vec::new(),
+        )));
+    }
+    let terms = source_index_read_model_terms(query)?;
+    let live_artifact_digest =
+        crate::client_db_source_index_artifact_digest(live_facts.source_snapshot);
+    let live_generation =
+        crate::client_db_source_index_generation_id_for_snapshot(live_facts.source_snapshot);
+    let live_project_root = live_facts
+        .import
+        .project_root
+        .canonicalize()
+        .unwrap_or_else(|_| live_facts.import.project_root.clone())
+        .display()
+        .to_string();
+    let live_scope_matches = requested_scope.is_none_or(|scope| {
+        scope.project_root == live_project_root
+            && scope.schema_id == live_facts.import.schema_id.as_str()
+            && scope.schema_version == live_facts.import.schema_version.as_str()
+    });
+    if live_facts.source_snapshot.root_digest.as_str() != expected_snapshot_root
+        || live_artifact_digest != expected_index_artifact_digest
+        || live_generation != live_facts.import.generation_id
+        || !live_scope_matches
+    {
+        return Ok(None);
+    }
+    let candidates =
+        crate::engine::source_index_candidate_projection::rank_live_source_index_candidates(
+            live_facts.import,
+            &terms,
+            language_id.map(LanguageId::as_str),
+            limit,
+        );
+    let state = if !candidates.is_empty() {
+        ClientDbSourceIndexLookupState::Hit
+    } else if live_facts.import.owners.is_empty() {
+        ClientDbSourceIndexLookupState::EmptyIndex
+    } else {
+        ClientDbSourceIndexLookupState::Miss
+    };
+    Ok(Some(source_index_lookup_result(
+        db_path.to_path_buf(),
+        state,
+        candidates,
+    )))
+}
+
 async fn lookup_source_index_read_model_at_path(
     db_path: PathBuf,
     requested_scope: Option<TursoSourceIndexLookupRequestScope>,
@@ -207,17 +292,18 @@ async fn lookup_source_index_read_model_at_path(
     expected_snapshot_root: &str,
     expected_index_artifact_digest: &str,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
-    if !crate::engine::turso::turso_client_db_exists(&db_path) {
-        return Ok(source_index_lookup_result(
-            db_path,
-            ClientDbSourceIndexLookupState::MissingDb,
-            Vec::new(),
-        ));
-    }
     if limit == 0 {
         return Ok(source_index_lookup_result(
             db_path,
             ClientDbSourceIndexLookupState::Miss,
+            Vec::new(),
+        ));
+    }
+    let terms = source_index_read_model_terms(query)?;
+    if !crate::engine::turso::turso_client_db_exists(&db_path) {
+        return Ok(source_index_lookup_result(
+            db_path,
+            ClientDbSourceIndexLookupState::MissingDb,
             Vec::new(),
         ));
     }
@@ -228,7 +314,6 @@ async fn lookup_source_index_read_model_at_path(
             Ok(guard) => guard,
             Err(_) => return Ok(source_index_busy_lookup_result(db_path)),
         };
-    let terms = source_index_read_model_terms(query)?;
     let connection = match connect_turso_client_db_read_only(&db_path).await {
         Ok(connection) => connection,
         Err(error) if is_turso_lock_error(&error) => {

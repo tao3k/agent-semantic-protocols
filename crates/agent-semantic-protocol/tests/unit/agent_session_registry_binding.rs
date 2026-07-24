@@ -4,21 +4,21 @@ use super::insert_non_present_canonical_target_receipt;
 
 fn record_for_testing_lane() -> AgentSessionRecord {
     AgentSessionRecord {
-        project_id: "project".to_string(),
-        root_session_id: "root".to_string(),
-        session_id: "child-testing".to_string(),
+        project_id: "project".to_string().into(),
+        root_session_id: "root".to_string().into(),
+        session_id: "child-testing".to_string().into(),
         physical_generation: 1,
-        configured_agent_type: Some("asp_testing".to_string()),
+        configured_agent_type: Some("asp_testing".to_string().into()),
         profile_evidence_json: None,
-        message_target_id: Some("/root/asp_testing".to_string()),
-        parent_session_id: Some("root".to_string()),
-        name: "asp-testing".to_string(),
-        role: "asp_testing".to_string(),
-        model: Some("gpt-5.4-mini".to_string()),
-        model_observation_source: Some("test".to_string()),
+        message_target_id: Some("/root/asp_testing".to_string().into()),
+        parent_session_id: Some("root".to_string().into()),
+        name: "asp-testing".to_string().into(),
+        role: "asp_testing".to_string().into(),
+        model: Some("gpt-5.4-mini".to_string().into()),
+        model_observation_source: Some("test".to_string().into()),
         model_observed_at: Some(1),
-        model_evidence_ref: Some("child-testing".to_string()),
-        status: "orphan-risk".to_string(),
+        model_evidence_ref: Some("child-testing".to_string().into()),
+        status: "orphan-risk".to_string().into(),
         created_at: 1,
         updated_at: 1,
         last_seen_at: Some(1),
@@ -28,7 +28,7 @@ fn record_for_testing_lane() -> AgentSessionRecord {
         last_tool_event: None,
         last_command: None,
         last_evidence_ref: None,
-        metadata_json: "{}".to_string(),
+        metadata_json: "{}".to_string().into(),
     }
 }
 

@@ -20,9 +20,9 @@ fn turso_agent_storage_batch(profile: StorageOptimizationProfile) -> SessionEven
         retry_policy: StorageRetryPolicy::default(),
         events: (0..4)
             .map(|index| SessionEvent {
-                event_id: format!("event-{index}"),
-                turn_id: "turn".to_string(),
-                event_kind: "tool".to_string(),
+                event_id: format!("event-{index}").into(),
+                turn_id: "turn".to_string().into(),
+                event_kind: "tool".to_string().into(),
                 payload: vec![index],
                 created_at_ms: index as i64,
             })
@@ -64,7 +64,7 @@ async fn turso_agent_storage_implements_atomic_batch_and_keyset_contract() {
         })
         .await
         .expect("read second Turso keyset page");
-    assert_eq!(second.items[0].event_id, "event-2");
+    assert_eq!(second.items[0].event_id, "event-2".into());
     drop(storage);
     let _ = std::fs::remove_dir_all(temp);
 }

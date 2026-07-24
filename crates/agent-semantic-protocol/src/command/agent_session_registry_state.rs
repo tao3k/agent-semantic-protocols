@@ -29,7 +29,7 @@ pub(crate) fn registered_root_session_id(
     let project_id = project_session_scope_id(&registry, project_root)?;
     Ok(registry
         .session_by_id(&project_id, session_id)?
-        .map(|record| record.root_session_id))
+        .map(|record| record.root_session_id.as_str().to_string()))
 }
 
 pub(crate) fn current_registered_session(
@@ -79,7 +79,8 @@ pub(crate) fn current_resident_child_identity_proof(
         );
     }
 
-    let Some(metadata) = agent_semantic_runtime::codex_rollout_session_metadata(&session_id)?
+    let Some(metadata) =
+        agent_semantic_runtime::codex_rollout_session_metadata(&session_id.as_str().into())?
     else {
         return Ok(None);
     };
@@ -120,7 +121,7 @@ pub(crate) fn transcript_resident_child_identity_proof(
         return Ok(None);
     };
     Ok((record.root_session_id == root_session_id
-        && record.session_id != record.root_session_id
+        && *record.session_id != *record.root_session_id
         && (record.name == resident_child_name || record.role == resident_agent_role))
         .then_some(ResidentChildIdentityProof::CodexTranscriptRegistryExact))
 }
@@ -150,7 +151,7 @@ pub(crate) fn payload_live_target_resident_identity_proof(
     };
     let expected_target = format!("/root/{resident_codex_agent_name}");
     Ok((record.root_session_id == root_session_id
-        && record.session_id != record.root_session_id
+        && *record.session_id != *record.root_session_id
         && (record.name == resident_child_name || record.role == resident_agent_role)
         && record.message_target_id() == Some(expected_target.as_str())
         && agent_semantic_client_db::agent_session_message_target_is_live_bound(
@@ -184,7 +185,7 @@ pub(crate) fn payload_live_target_resident_identity_status(
     else {
         return Ok("missing-resident-slot");
     };
-    if record.root_session_id != root_session_id || record.session_id == record.root_session_id {
+    if record.root_session_id != root_session_id || *record.session_id == *record.root_session_id {
         return Ok("root-or-session-mismatch");
     }
     if record.name != resident_child_name && record.role != resident_agent_role {
@@ -282,7 +283,7 @@ pub(crate) fn registered_resident_session_for_root(
         return Ok(None);
     };
     let project_id = project_session_scope_id(&registry, project_root)?;
-    let Some(record) = registry.session_by_name(&project_id, &root_session_id, session_name)?
+    let Some(record) = registry.session_by_name(&project_id, &*root_session_id, session_name)?
     else {
         return Ok(None);
     };
@@ -335,7 +336,7 @@ pub(super) fn current_recall_session_id(
     };
     let project_id = current_project_session_scope_id(registry)?;
     if let Some(record) = registry.session_by_id(&project_id, &session.id)? {
-        return Ok(Some(record.root_session_id));
+        return Ok(Some(record.root_session_id.to_string()));
     }
     if let Some(root_session_id) = current_agent_runtime_root_session_id() {
         return Ok(Some(root_session_id));
@@ -349,7 +350,7 @@ fn current_agent_project_scope_id(
     if let Some(session) = current_agent_runtime_session()
         && let Some(record) = registry.session_by_id_any_project(&session.id)?
     {
-        return Ok(Some(record.project_id));
+        return Ok(Some(record.project_id.to_string()));
     }
     if let Some(root_session_id) = current_agent_runtime_root_session_id() {
         return registry.project_id_for_root_session_id(&root_session_id);
@@ -379,7 +380,7 @@ pub(super) fn session_record_validation_allows_routing(
         &record.role,
         now,
     )?;
-    if validation.status == "failed" {
+    if validation.status == "failed".into() {
         if validation
             .reason
             .starts_with("Codex rollout metadata not found")
@@ -387,8 +388,12 @@ pub(super) fn session_record_validation_allows_routing(
         {
             return Ok(true);
         }
-        let _ =
-            registry.update_session_status(&record.project_id, &record.session_id, "invalid", now);
+        let _ = registry.update_session_status(
+            &*record.project_id,
+            &*record.session_id,
+            "invalid",
+            now,
+        );
     }
     Ok(matches!(
         validation.status.as_str(),

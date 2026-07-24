@@ -68,8 +68,11 @@ pub(super) fn turso_source_index_canonical_selectors_by_owner(
             .entry(selector_id.clone())
             .or_insert_with(|| TursoSourceIndexCanonicalSelectorFact {
                 selector_id,
-                symbol: selector.symbol.clone(),
-                kind: selector.kind.clone(),
+                symbol: selector
+                    .symbol
+                    .as_ref()
+                    .map(|symbol| symbol.as_str().to_string()),
+                kind: selector.kind.as_ref().map(|kind| kind.as_str().to_string()),
                 start_line: selector.start_line,
                 end_line: selector.end_line,
                 source: selector.source.as_str().to_string(),

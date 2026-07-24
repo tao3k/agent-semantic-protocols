@@ -10,16 +10,16 @@ fn active_record(model: Option<&str>, message_target_id: Option<&str>) -> AgentS
         root_session_id: "root".into(),
         session_id: "child".into(),
         physical_generation: 1,
-        configured_agent_type: Some("asp_explorer".to_string()),
+        configured_agent_type: Some("asp_explorer".to_string().into()),
         profile_evidence_json: None,
-        message_target_id: message_target_id.map(str::to_string),
+        message_target_id: message_target_id.map(Into::into),
         parent_session_id: Some("root".into()),
         name: "asp-explore".into(),
-        role: "asp_explorer".to_string(),
-        model: model.map(str::to_string),
-        model_observation_source: model.map(|_| "test".to_string()),
+        role: "asp_explorer".to_string().into(),
+        model: model.map(Into::into),
+        model_observation_source: model.map(|_| "test".into()),
         model_observed_at: model.map(|_| 1),
-        model_evidence_ref: Some("child".to_string()),
+        model_evidence_ref: Some("child".to_string().into()),
         status: "idle".into(),
         created_at: 1,
         updated_at: 1,
@@ -39,14 +39,15 @@ fn active_record(model: Option<&str>, message_target_id: Option<&str>) -> AgentS
                 "observedAt": 1,
             }
         })
-        .to_string(),
+        .to_string()
+        .into(),
     }
 }
 
 #[test]
 fn stale_binding_followup_ack_restores_ready_without_create() {
     let mut record = active_record(Some("gpt-5.4-mini"), Some("/root/asp_explorer"));
-    record.metadata_json = "{}".to_string();
+    record.metadata_json = "{}".to_string().into();
 
     let unbound = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
         platform: "codex",
@@ -80,7 +81,8 @@ fn stale_binding_followup_ack_restores_ready_without_create() {
             "observedAt": 3,
         }
     })
-    .to_string();
+    .to_string()
+    .into();
 
     assert!(agent_session_message_target_is_live_bound(&record, "root"));
 
@@ -112,7 +114,7 @@ fn stale_binding_followup_ack_restores_ready_without_create() {
 #[test]
 fn host_present_running_resident_is_resumed_not_duplicated() {
     let mut record = active_record(Some("gpt-5.4-mini"), Some("child"));
-    record.metadata_json = "{}".to_string();
+    record.metadata_json = "{}".to_string().into();
     let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
         platform: "codex",
         name: "asp-explore",
@@ -159,7 +161,7 @@ fn host_present_running_resident_is_resumed_not_duplicated() {
 #[test]
 fn host_tree_absent_requires_canonical_probe_before_replacement() {
     let mut record = active_record(Some("gpt-5.4-mini"), Some("/root/asp_explorer"));
-    record.metadata_json = "{}".to_string();
+    record.metadata_json = "{}".to_string().into();
     let menu = resident_child_bootstrap_menu(ResidentChildBootstrapMenuInput {
         platform: "codex",
         name: "asp-explore",

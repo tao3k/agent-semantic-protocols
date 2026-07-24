@@ -115,8 +115,10 @@ pub(super) fn install_codex_plugin_hooks(
             remove_codex_project_plugin_config(&project_config_path, &plugin_id)?;
             if agent_semantic_config::codex_config_plugin_enabled(
                 &codex_agent_config_path,
-                &plugin_id,
-            )? {
+                plugin_id.as_str().into(),
+            )
+            .map_err(|error| error.to_string())?
+            {
                 format!(
                     " pluginInstalledPath={}",
                     super::display_path(project_root, &global_plugin_cache)

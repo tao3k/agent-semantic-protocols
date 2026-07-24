@@ -509,8 +509,8 @@ fn archive_stopped_managed_child(
     };
     let project_id = AgentSessionRegistry::project_scope_id(project_root);
     let Some(session) = registry.lookup_session(AgentSessionLookupRequest {
-        project_id: &project_id,
-        session_id: Some(&session_id),
+        project_id: (&project_id).into(),
+        session_id: Some((&session_id).into()),
         root_session_id: None,
         name: None,
     })?
@@ -601,12 +601,15 @@ fn annotate_payload_context(
             decision
                 .fields
                 .get("sessionId")
-                .and_then(serde_json::Value::as_str),
+                .and_then(serde_json::Value::as_str)
+                .map(Into::into),
             decision
                 .fields
                 .get("transcriptPath")
-                .and_then(serde_json::Value::as_str),
-        )?;
+                .and_then(serde_json::Value::as_str)
+                .map(Into::into),
+        )
+        .map_err(|error| error.to_string())?;
     if !decision.fields.contains_key("subagentContext") && subagent_context {
         decision
             .fields

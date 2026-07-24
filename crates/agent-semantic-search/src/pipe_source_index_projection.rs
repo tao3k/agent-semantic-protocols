@@ -15,7 +15,7 @@ pub(crate) fn source_index_candidate(
     let line_count = candidate.line_count.unwrap_or(1).max(1) as usize;
     let confidence = source_index_candidate_confidence(project_root, candidate);
     SearchPipeCandidate {
-        path: candidate.path.clone(),
+        path: (candidate.path.clone()).to_string(),
         line: 1,
         end_line: line_count,
         symbol: source_index_symbol(intent, candidate),
@@ -41,8 +41,8 @@ pub(crate) fn source_index_trace(
         SearchPipeSourceIndexDecision::Fallthrough => "fallthrough",
     };
     SearchPipeSourceAcquisitionTrace {
-        source: "sourceIndex".to_string(),
-        status: status.to_string(),
+        source: ("sourceIndex".to_string()).into(),
+        status: (status.to_string()).into(),
         matched: acquisition.candidates.len(),
         missing: acquisition
             .candidates
@@ -56,7 +56,7 @@ pub(crate) fn source_index_trace(
             .count(),
         elapsed: None,
         source_snapshot: acquisition.source_snapshot.clone(),
-        artifact_digest: acquisition.index_artifact_digest.clone(),
+        artifact_digest: (acquisition.index_artifact_digest.clone()).map(Into::into),
     }
 }
 
@@ -67,7 +67,7 @@ fn source_index_candidate_confidence(
     if candidate.path.trim().is_empty() {
         return "invalid-selector";
     }
-    if !project_root.join(&candidate.path).is_file() {
+    if !project_root.join(candidate.path.as_str()).is_file() {
         return "stale-index";
     }
     if source_index_candidate_has_payload_proof(candidate) {
@@ -80,7 +80,9 @@ fn source_index_candidate_has_payload_proof(candidate: &SearchPipeSourceIndexCan
     let Some(proof) = candidate.selector_proof.as_ref() else {
         return false;
     };
-    if !proof.bounded || proof.payload_kind != "code" || proof.structural_selector.trim().is_empty()
+    if !proof.bounded
+        || proof.payload_kind != "code".into()
+        || proof.structural_selector.trim().is_empty()
     {
         return false;
     }
@@ -104,7 +106,7 @@ fn source_index_symbol(intent: &str, candidate: &SearchPipeSourceIndexCandidate)
         let normalized = normalize_source_index_symbol_key(key);
         query_terms.iter().any(|term| term == &normalized)
     }) {
-        return key.clone();
+        return (key.clone()).to_string();
     }
     if let Some(key) = candidate.query_keys.iter().find(|key| {
         let normalized = normalize_source_index_symbol_key(key);
@@ -112,13 +114,14 @@ fn source_index_symbol(intent: &str, candidate: &SearchPipeSourceIndexCandidate)
             .iter()
             .any(|term| normalized.contains(term) || term.contains(&normalized))
     }) {
-        return key.clone();
+        return key.to_string();
     }
     candidate
         .query_keys
         .first()
         .cloned()
-        .unwrap_or_else(|| symbol_from_path(&candidate.path))
+        .unwrap_or_else(|| symbol_from_path(candidate.path.as_str()).into())
+        .to_string()
 }
 
 fn normalize_source_index_symbol_key(value: &str) -> String {

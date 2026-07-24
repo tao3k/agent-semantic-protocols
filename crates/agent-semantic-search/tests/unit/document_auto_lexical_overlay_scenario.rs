@@ -64,8 +64,8 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
         vec!["search-overlay".to_string()]
     );
     assert_eq!(acquisition.source_trace.len(), 1);
-    assert_eq!(acquisition.source_trace[0].source, "search-overlay");
-    assert_eq!(acquisition.source_trace[0].status, "used");
+    assert_eq!(acquisition.source_trace[0].source, "search-overlay".into());
+    assert_eq!(acquisition.source_trace[0].status, "used".into());
     let source_snapshot = acquisition
         .source_snapshot
         .as_ref()
@@ -108,7 +108,7 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
     );
     assert_eq!(
         provider_acquisition.source_trace[0].source,
-        "document-element"
+        "document-element".into()
     );
 }
 

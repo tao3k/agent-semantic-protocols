@@ -177,7 +177,8 @@ fn install_plugin_codex_help_is_non_mutating() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("usage: asp install plugin --codex"),
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Usage: asp install plugin [OPTIONS] --codex [PROJECT_ROOT]"),
         "stdout: {}",
         String::from_utf8_lossy(&output.stdout)
     );

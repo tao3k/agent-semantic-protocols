@@ -310,8 +310,8 @@ pub(super) fn merge_candidate_acquisitions(
 
 fn search_source_trace(trace: SearchPipeSourceAcquisitionTrace) -> SearchPipeSourceTrace {
     let mut source_trace = SearchPipeSourceTrace::new(
-        trace.source,
-        trace.status,
+        trace.source.as_str(),
+        trace.status.as_str(),
         trace.matched,
         trace.missing,
         trace.normalized,
@@ -330,7 +330,7 @@ fn search_source_trace(trace: SearchPipeSourceAcquisitionTrace) -> SearchPipeSou
     if let Some(artifact_digest) = trace.artifact_digest {
         fields.insert(
             "indexArtifactDigest".to_owned(),
-            serde_json::Value::String(artifact_digest),
+            serde_json::Value::String(artifact_digest.to_string()),
         );
     }
     if !fields.is_empty() {

@@ -5,8 +5,42 @@ use crate::stable_graph_node_id;
 const HOT_CONTEXT_BEFORE_LINES: usize = 8;
 const HOT_CONTEXT_AFTER_LINES: usize = 12;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(
+    Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 pub struct GraphCandidateLanguageId(String);
+
+impl AsRef<str> for GraphCandidateLanguageId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::borrow::Borrow<str> for GraphCandidateLanguageId {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for GraphCandidateLanguageId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for GraphCandidateLanguageId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl From<&String> for GraphCandidateLanguageId {
+    fn from(value: &String) -> Self {
+        Self(value.clone())
+    }
+}
 
 impl GraphCandidateLanguageId {
     pub fn as_str(&self) -> &str {
@@ -118,7 +152,7 @@ impl GraphProjectionCandidate {
 }
 
 pub struct GraphCandidateItemNodesRequest<'a> {
-    language_id: &'a GraphCandidateLanguageId,
+    language_id: GraphCandidateLanguageId,
     candidates: &'a [GraphProjectionCandidate],
     limit: usize,
 }
@@ -130,7 +164,7 @@ impl<'a> GraphCandidateItemNodesRequest<'a> {
         limit: usize,
     ) -> Self {
         Self {
-            language_id,
+            language_id: language_id.clone(),
             candidates,
             limit,
         }
@@ -138,7 +172,7 @@ impl<'a> GraphCandidateItemNodesRequest<'a> {
 }
 
 pub struct GraphCandidateHotNodesRequest<'a> {
-    language_id: &'a GraphCandidateLanguageId,
+    language_id: GraphCandidateLanguageId,
     candidates: &'a [GraphProjectionCandidate],
     limit: usize,
 }
@@ -150,7 +184,7 @@ impl<'a> GraphCandidateHotNodesRequest<'a> {
         limit: usize,
     ) -> Self {
         Self {
-            language_id,
+            language_id: language_id.clone(),
             candidates,
             limit,
         }
@@ -173,7 +207,7 @@ impl<'a> From<(&'a str, &'a [GraphProjectionCandidate], usize)>
         (language_id, candidates, limit): (&'a str, &'a [GraphProjectionCandidate], usize),
     ) -> Self {
         Self {
-            language_id,
+            language_id: language_id.into(),
             candidates,
             limit,
         }
@@ -187,7 +221,7 @@ impl<'a> From<(&'a str, &'a [GraphProjectionCandidate], usize)>
         (language_id, candidates, limit): (&'a str, &'a [GraphProjectionCandidate], usize),
     ) -> Self {
         Self {
-            language_id,
+            language_id: language_id.into(),
             candidates,
             limit,
         }
@@ -195,7 +229,7 @@ impl<'a> From<(&'a str, &'a [GraphProjectionCandidate], usize)>
 }
 
 pub fn graph_candidate_item_nodes(request: GraphCandidateItemNodesRequest<'_>) -> Vec<Value> {
-    let language_id = request.language_id;
+    let language_id = request.language_id.clone();
     request
         .candidates
         .iter()
@@ -210,11 +244,11 @@ pub fn graph_candidate_item_nodes(request: GraphCandidateItemNodesRequest<'_>) -
                 "inventory-only-refine-before-code"
             };
             let source_locator_hint = graph_candidate_selector(GraphCandidateSelectorRequest {
-                language_id: request.language_id,
+                language_id: &request.language_id,
                 candidate,
             });
             let structural_selector = graph_candidate_structural_selector(
-                request.language_id,
+                &request.language_id,
                 candidate,
                 "item",
                 "symbol",
@@ -236,7 +270,7 @@ pub fn graph_candidate_item_nodes(request: GraphCandidateItemNodesRequest<'_>) -
                 "displayLineRange": display_line_range,
                 "sourceLocatorHint": source_locator_hint,
                 "matchText": candidate.text,
-                "syntaxQuery": graph_candidate_tree_sitter_pattern(language_id, &candidate.symbol),
+                "syntaxQuery": graph_candidate_tree_sitter_pattern(&language_id, &candidate.symbol),
                 "projection": "outline",
                 "candidateState": candidate_state,
                 "rankEligible": rank_eligible,
@@ -263,7 +297,7 @@ pub fn graph_candidate_hot_nodes(request: GraphCandidateHotNodesRequest<'_>) -> 
         .iter()
         .take(request.limit)
         .map(|candidate| {
-            let document = graph_projection_document_language(request.language_id);
+            let document = graph_projection_document_language(&request.language_id);
             let (start_line, end_line) = if document {
                 (candidate.line, candidate.end_line())
             } else {
@@ -271,17 +305,21 @@ pub fn graph_candidate_hot_nodes(request: GraphCandidateHotNodesRequest<'_>) -> 
             };
             let source_locator_hint = if document {
                 graph_candidate_selector(GraphCandidateSelectorRequest {
-                    language_id: request.language_id,
+                    language_id: &request.language_id,
                     candidate,
                 })
             } else {
                 format!("{}:{}:{end_line}", candidate.path, start_line)
             };
-            let structural_selector =
-                graph_candidate_structural_selector(request.language_id, candidate, "range", "hot");
+            let structural_selector = graph_candidate_structural_selector(
+                &request.language_id,
+                candidate,
+                "range",
+                "hot",
+            );
             let display_line_range = display_line_range(start_line, end_line);
             let action = graph_projection_action(GraphProjectionActionRequest {
-                language_id: request.language_id,
+                language_id: &request.language_id,
             });
             let (projection, code_policy) = if action == "code" {
                 ("code", "requires-exact-code")

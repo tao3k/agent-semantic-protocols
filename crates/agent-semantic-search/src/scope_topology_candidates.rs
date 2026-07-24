@@ -103,8 +103,8 @@ pub fn collect_search_pipe_scope_topology_acquisition(
         candidates,
         candidate_sources: vec![SEARCH_PIPE_SCOPE_TOPOLOGY_SOURCE.to_string()],
         source_trace: vec![SearchPipeSourceAcquisitionTrace {
-            source: SEARCH_PIPE_SCOPE_TOPOLOGY_SOURCE.to_string(),
-            status: status.to_string(),
+            source: (SEARCH_PIPE_SCOPE_TOPOLOGY_SOURCE.to_string()).into(),
+            status: (status.to_string()).into(),
             matched,
             missing: visited.saturating_sub(matched),
             normalized: visited,

@@ -280,13 +280,17 @@ pub(super) fn write_echo_provider(bin_dir: &Path, binary: &str, label: &str) {
 
 pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path) {
     let delegate = bin_dir.join(format!(".{binary}-delegate"));
-    let (language_id, source_extensions) = match binary {
-        "rs-harness" => ("rust", r#"[".rs"]"#),
-        "ts-harness" => ("typescript", r#"[".ts",".tsx"]"#),
-        "python-harness" | "py-harness" => ("python", r#"[".py"]"#),
-        "julia-harness" | "asp-julia-harness" => ("julia", r#"[".jl"]"#),
-        "gslph" => ("gerbil-scheme", r#"[".ss",".ssi",".scm",".sld"]"#),
-        _ => ("test", r#"[".txt"]"#),
+    let (language_id, provider_id, source_extensions) = match binary {
+        "rs-harness" => ("rust", binary, r#"[".rs"]"#),
+        "ts-harness" => ("typescript", binary, r#"[".ts",".tsx"]"#),
+        "python-harness" | "py-harness" => ("python", binary, r#"[".py"]"#),
+        "julia-harness" | "asp-julia-harness" => ("julia", binary, r#"[".jl"]"#),
+        "gslph" => (
+            "gerbil-scheme",
+            "gerbil-scheme-harness",
+            r#"[".ss",".ssi",".scm",".sld"]"#,
+        ),
+        _ => ("test", binary, r#"[".txt"]"#),
     };
     write_provider_script(
         bin_dir,
@@ -296,7 +300,7 @@ pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path)
 # agent-semantic-protocol-test-workspace-scope-shim-v1
 if [ "$1" = "search" ] && [ "$2" = "workspace-scope" ] && [ "$3" = "--json" ]; then
   root=$(pwd -P)
-  printf '{{"schemaId":"agent.semantic-protocols.semantic-workspace-scope","schemaVersion":"1","workspaceId":"test:%s","languageId":"{language_id}","providerId":"{binary}","packageManager":"test","sourceExtensions":{source_extensions},"discoveryRoot":"%s","anchors":[{{"kind":"test-manifest","path":"%s/Cargo.toml","sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}],"packages":[{{"packageId":"test:%s","name":"fixture","languageId":"{language_id}","root":"%s","manifestPath":"%s/Cargo.toml"}}],"admittedRoots":["%s"],"fingerprint":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}\n' "$root" "$root" "$root" "$root" "$root" "$root" "$root"
+  printf '{{"schemaId":"agent.semantic-protocols.semantic-workspace-scope","schemaVersion":"1","workspaceId":"test:%s","languageId":"{language_id}","providerId":"{provider_id}","packageManager":"test","sourceExtensions":{source_extensions},"discoveryRoot":"%s","anchors":[{{"kind":"test-manifest","path":"%s/Cargo.toml","sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}],"packages":[{{"packageId":"test:%s","name":"fixture","languageId":"{language_id}","root":"%s","manifestPath":"%s/Cargo.toml"}}],"admittedRoots":["%s"],"fingerprint":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}\n' "$root" "$root" "$root" "$root" "$root" "$root" "$root"
   exit 0
 fi
 if [ -x '{}' ]; then

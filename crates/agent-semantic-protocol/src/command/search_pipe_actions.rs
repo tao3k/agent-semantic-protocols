@@ -13,7 +13,7 @@ pub(super) struct SearchPipeActionRequest<'a> {
     pub(super) locator_root: &'a Path,
     pub(super) scopes: &'a [PathBuf],
     pub(super) quality: &'a SearchPipeQuality,
-    pub(super) ranked_compact: Option<&'a str>,
+    pub(super) ranked_projection: Option<&'a str>,
     pub(super) selector_actions: &'a [PipeAction],
     pub(super) read_memory_selectors: &'a [String],
     pub(super) dependency_action_targets: &'a [String],
@@ -54,7 +54,7 @@ fn action_nodes(request: &SearchPipeActionRequest<'_>, scope_arg: &str) -> Vec<A
     {
         actions.push(action);
     }
-    if let Some(handle) = tree_sitter_action_handle(request.quality, request.ranked_compact) {
+    if let Some(handle) = tree_sitter_action_handle(request.quality, request.ranked_projection) {
         let recipe = handle_field(&handle, "recipe").map(str::to_string);
         let names = handle_field(&handle, "names").map(|names| {
             names
@@ -135,7 +135,7 @@ fn query_code_action(request: &SearchPipeActionRequest<'_>, action: &PipeAction)
         kind: "query-code".to_string(),
         suffix: "terminal-code".to_string(),
         route: ActionRoute::QueryCode {
-            language_id: request.language_id.to_string(),
+            language_id: selector.language_id.as_str().to_string(),
             selector,
             owner: action.owner.clone(),
             symbol: action.symbol.clone(),
@@ -144,7 +144,9 @@ fn query_code_action(request: &SearchPipeActionRequest<'_>, action: &PipeAction)
     }
 }
 
-fn query_code_selector(action: &PipeAction) -> String {
+fn query_code_selector(
+    action: &PipeAction,
+) -> agent_semantic_content_identity::CanonicalItemSelectorV1 {
     action.selector.clone()
 }
 
@@ -154,8 +156,8 @@ fn selector_seen_in_read_memory(
 ) -> bool {
     let query_selector = query_code_selector(action);
     request.read_memory_selectors.iter().any(|selector| {
-        selector_matches_seen(selector, &action.selector)
-            || selector_matches_seen(selector, &query_selector)
+        selector_matches_seen(selector, action.selector.structural_selector())
+            || selector_matches_seen(selector, query_selector.structural_selector())
     })
 }
 
@@ -190,8 +192,11 @@ fn owner_items_action_from_quality(
     (!query.is_empty()).then(|| owner_items_action(request.language_id, scope_arg, owner, &query))
 }
 
-fn tree_sitter_action_handle(quality: &SearchPipeQuality, compact: Option<&str>) -> Option<String> {
-    let fields = compact_symbols(compact, "field");
+fn tree_sitter_action_handle(
+    quality: &SearchPipeQuality,
+    projection: Option<&str>,
+) -> Option<String> {
+    let fields = projection_symbols(projection, "field");
     if !fields.is_empty() {
         return Some(format!(
             "recipe=interface-fields,names={}",
@@ -214,11 +219,11 @@ fn handle_field<'a>(handle: &'a str, key: &str) -> Option<&'a str> {
     })
 }
 
-fn compact_symbols(compact: Option<&str>, kind: &str) -> Vec<String> {
-    let Some(compact) = compact else {
+fn projection_symbols(projection: Option<&str>, kind: &str) -> Vec<String> {
+    let Some(projection) = projection else {
         return Vec::new();
     };
-    compact
+    projection
         .lines()
         .flat_map(|line| line.split(';'))
         .filter(|segment| segment.contains(&format!("={kind}:")) || segment.starts_with(kind))
@@ -250,7 +255,7 @@ fn action_root_arg(
     locator_root: &Path,
     scopes: &[PathBuf],
 ) -> String {
-    let Some(path) = selector_path(&action.selector) else {
+    let Some(path) = selector_path(action.selector.structural_selector()) else {
         return display_project_root_arg(project_root);
     };
     let path = Path::new(path);

@@ -80,15 +80,15 @@ fn admits_relative_and_external_workspace_members() {
     let scope = SemanticWorkspaceScope::from_packet(&packet()).expect("valid scope");
 
     let local = scope
-        .admit_candidate(Path::new("src/app.py"), "python")
+        .admit_candidate(Path::new("src/app.py"), &"python".into())
         .expect("local candidate");
-    assert_eq!(local.package_id, "python:root");
+    assert_eq!(local.package_id, "python:root".into());
     assert_eq!(local.canonical_path, Path::new("/work/root/src/app.py"));
 
     let external = scope
-        .admit_candidate(Path::new("/work/shared/src/api.py"), "python")
+        .admit_candidate(Path::new("/work/shared/src/api.py"), &"python".into())
         .expect("external workspace member");
-    assert_eq!(external.package_id, "python:shared");
+    assert_eq!(external.package_id, "python:shared".into());
 }
 
 #[test]
@@ -96,24 +96,24 @@ fn rejects_parent_repository_and_language_drift_before_rank() {
     let scope = SemanticWorkspaceScope::from_packet(&packet()).expect("valid scope");
 
     let outside = scope
-        .admit_candidate(Path::new("/work/crates/unrelated.rs"), "python")
+        .admit_candidate(Path::new("/work/crates/unrelated.rs"), &"python".into())
         .expect_err("outside candidate");
     assert_eq!(outside.reason_kind, "candidate-out-of-scope");
 
     let language = scope
-        .admit_candidate(Path::new("src/app.py"), "rust")
+        .admit_candidate(Path::new("src/app.py"), &"rust".into())
         .expect_err("language drift");
     assert_eq!(language.reason_kind, "candidate-language-mismatch");
 
     let extension = scope
-        .admit_candidate(Path::new("src/app.rs"), "python")
+        .admit_candidate(Path::new("src/app.rs"), &"python".into())
         .expect_err("provider-owned source extension drift");
     assert_eq!(extension.reason_kind, "candidate-language-mismatch");
 
     let anchor = scope
-        .admit_candidate(Path::new("pyproject.toml"), "python")
+        .admit_candidate(Path::new("pyproject.toml"), &"python".into())
         .expect("provider anchor remains admissible");
-    assert_eq!(anchor.package_id, "python:root");
+    assert_eq!(anchor.package_id, "python:root".into());
 }
 
 #[test]
@@ -121,15 +121,19 @@ fn resolves_repository_relative_candidates_before_scope_admission() {
     let scope = SemanticWorkspaceScope::from_packet(&packet()).expect("valid scope");
 
     let admitted = scope
-        .admit_candidate_from(Path::new("/work"), Path::new("root/src/app.py"), "python")
+        .admit_candidate_from(
+            Path::new("/work"),
+            Path::new("root/src/app.py"),
+            &"python".into(),
+        )
         .expect("repository-relative Python owner");
-    assert_eq!(admitted.package_id, "python:root");
+    assert_eq!(admitted.package_id, "python:root".into());
 
     let rejected = scope
         .admit_candidate_from(
             Path::new("/work"),
             Path::new("crates/unrelated.rs"),
-            "python",
+            &"python".into(),
         )
         .expect_err("repository-relative Rust owner");
     assert_eq!(rejected.reason_kind, "candidate-out-of-scope");
@@ -194,9 +198,9 @@ fn admits_virtual_workspace_anchor_with_workspace_identity() {
 
     let scope = SemanticWorkspaceScope::from_packet(&value).expect("virtual workspace scope");
     let admission = scope
-        .admit_candidate(Path::new("pyproject.toml"), "python")
+        .admit_candidate(Path::new("pyproject.toml"), &"python".into())
         .expect("virtual workspace anchor");
-    assert_eq!(admission.package_id, "python:virtual");
+    assert_eq!(admission.package_id, "python:virtual".into());
 }
 
 #[test]
@@ -226,11 +230,11 @@ fn scope_set_routes_candidates_from_provider_owned_extensions() {
     let python_admission = scopes
         .admit_candidate_from(Path::new("/work"), Path::new("root/src/app.py"))
         .expect("Python admission");
-    assert_eq!(python_admission.provider_id, "py-harness");
+    assert_eq!(python_admission.provider_id, "py-harness".into());
     let rust_admission = scopes
         .admit_candidate_from(Path::new("/work"), Path::new("root/src/lib.rs"))
         .expect("Rust admission");
-    assert_eq!(rust_admission.provider_id, "rs-harness");
+    assert_eq!(rust_admission.provider_id, "rs-harness".into());
 }
 
 #[test]

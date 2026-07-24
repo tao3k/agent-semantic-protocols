@@ -2,7 +2,10 @@
 
 use std::path::Path;
 
-use super::turso::connect_turso_search_projection_db;
+use super::turso::{
+    connect_turso_search_projection_db_for_write, connect_turso_search_projection_db_read_only,
+};
+
 use super::turso_statement::{
     execute_turso_operation, execute_turso_prepared_statement_with_lock_retry,
     execute_turso_statement,
@@ -50,7 +53,7 @@ pub async fn replace_turso_search_document_generation(
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     documents: &[TursoClientDbSearchDocument],
 ) -> Result<usize, String> {
-    let connection = connect_turso_search_projection_db(db_path).await?;
+    let connection = connect_turso_search_projection_db_for_write(db_path).await?;
     replace_turso_search_document_generation_with_connection(
         &connection,
         namespace,
@@ -230,7 +233,7 @@ pub async fn search_turso_documents(
             hits: Vec::new(),
         });
     }
-    let connection = connect_turso_search_projection_db(db_path).await?;
+    let connection = connect_turso_search_projection_db_read_only(db_path).await?;
     let mut generation_rows = connection
         .query(
             "SELECT snapshot_root, provider_digest

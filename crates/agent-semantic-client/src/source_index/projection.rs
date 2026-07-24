@@ -27,13 +27,28 @@ pub fn import_language_projection(
     let db_session = ClientDbEngine::open_write_session_client_dir(&client_dir)?;
     let schema_id = SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID);
     let schema_version = SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION);
-    let previous_file_hashes =
-        db_session.latest_source_index_file_hashes(project_root, &schema_id, &schema_version)?;
     let registry_fingerprint = language_projection_registry_fingerprint(&projection);
+    let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+        projection
+            .sources()
+            .iter()
+            .map(|source| {
+                let path =
+                    agent_semantic_client_db::ClientDbSourceIndexPath::new(source.path.clone());
+                let bytes = std::fs::read(project_root.join(&source.path)).map_err(|error| {
+                    format!(
+                        "failed to capture language projection source {}: {error}",
+                        source.path
+                    )
+                })?;
+                Ok((path, bytes))
+            })
+            .collect::<Result<Vec<_>, String>>()?,
+    );
     let prepared =
         source_index_import_from_language_projection(ClientDbLanguageProjectionImportRequest {
             project_root: project_root.to_path_buf(),
-            previous_file_hashes: previous_file_hashes.clone(),
+            source_blobs,
             registry_fingerprint: registry_fingerprint.clone(),
             projection: projection.clone(),
         })?;

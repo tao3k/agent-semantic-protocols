@@ -93,9 +93,9 @@ pub fn derive_agent_session_dispatch_identity(
     let dispatch_identity = format!("dispatch-v1:{:x}", identity_hasher.finalize());
 
     Ok(super::types::AgentSessionDispatchDerivedIdentity {
-        dispatch_identity,
-        command_digest,
-        canonical_command_json,
+        dispatch_identity: dispatch_identity.into(),
+        command_digest: command_digest.into(),
+        canonical_command_json: canonical_command_json.into(),
     })
 }
 
@@ -188,28 +188,36 @@ fn agent_dispatch_lease_from_turso_row(
     Ok(AgentSessionDispatchLeaseRecord {
         project_id: row
             .get::<String>(0)
-            .map_err(|error| format!("failed to read dispatch project id: {error}"))?,
+            .map_err(|error| format!("failed to read dispatch project id: {error}"))?
+            .into(),
         root_session_id: row
             .get::<String>(1)
-            .map_err(|error| format!("failed to read dispatch root session id: {error}"))?,
+            .map_err(|error| format!("failed to read dispatch root session id: {error}"))?
+            .into(),
         name: row
             .get::<String>(2)
-            .map_err(|error| format!("failed to read dispatch resident name: {error}"))?,
+            .map_err(|error| format!("failed to read dispatch resident name: {error}"))?
+            .into(),
         dispatch_identity: row
             .get::<String>(3)
-            .map_err(|error| format!("failed to read dispatch identity: {error}"))?,
+            .map_err(|error| format!("failed to read dispatch identity: {error}"))?
+            .into(),
         command_digest: row
             .get::<String>(4)
-            .map_err(|error| format!("failed to read dispatch command digest: {error}"))?,
+            .map_err(|error| format!("failed to read dispatch command digest: {error}"))?
+            .into(),
         delivery_target_id: row
             .get::<Option<String>>(5)
-            .map_err(|error| format!("failed to read dispatch delivery target: {error}"))?,
+            .map_err(|error| format!("failed to read dispatch delivery target: {error}"))?
+            .map(Into::into),
         delivery_generation_id: row
             .get::<Option<String>>(6)
-            .map_err(|error| format!("failed to read dispatch delivery generation: {error}"))?,
+            .map_err(|error| format!("failed to read dispatch delivery generation: {error}"))?
+            .map(Into::into),
         status: row
             .get::<String>(7)
-            .map_err(|error| format!("failed to read dispatch status: {error}"))?,
+            .map_err(|error| format!("failed to read dispatch status: {error}"))?
+            .into(),
         attempt_count: row
             .get::<i64>(8)
             .map_err(|error| format!("failed to read dispatch attempt count: {error}"))?
@@ -226,7 +234,8 @@ fn agent_dispatch_lease_from_turso_row(
             .map_err(|error| format!("failed to read dispatch completed time: {error}"))?,
         evidence_ref: row
             .get::<Option<String>>(12)
-            .map_err(|error| format!("failed to read dispatch evidence ref: {error}"))?,
+            .map_err(|error| format!("failed to read dispatch evidence ref: {error}"))?
+            .map(Into::into),
     })
 }
 

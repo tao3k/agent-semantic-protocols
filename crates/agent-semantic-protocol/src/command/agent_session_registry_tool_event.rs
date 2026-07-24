@@ -18,10 +18,10 @@ pub(crate) fn record_current_session_tool_event(
         return Ok(false);
     };
     conn.record_tool_event(AgentSessionToolEventRequest {
-        session_id: &session.id,
-        tool_event,
-        command,
-        evidence_ref,
+        session_id: (&session.id).into(),
+        tool_event: tool_event.into(),
+        command: command.map(Into::into),
+        evidence_ref: evidence_ref.map(Into::into),
         now: agent_session_unix_timestamp()?,
     })
 }

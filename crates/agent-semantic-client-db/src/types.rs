@@ -15,10 +15,32 @@ pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 1;
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbRuntimePragmas {
-    journal_mode: String,
-    synchronous: i64,
-    busy_timeout_ms: i64,
-    foreign_keys: bool,
+    pub journal_mode: String,
+    pub synchronous: i64,
+    pub busy_timeout_ms: i64,
+    pub foreign_keys: bool,
+}
+
+impl ClientDbRuntimePragmas {
+    #[must_use]
+    pub fn journal_mode(&self) -> &str {
+        &self.journal_mode
+    }
+
+    #[must_use]
+    pub fn synchronous(&self) -> i64 {
+        self.synchronous
+    }
+
+    #[must_use]
+    pub fn busy_timeout_ms(&self) -> i64 {
+        self.busy_timeout_ms
+    }
+
+    #[must_use]
+    pub fn foreign_keys(&self) -> bool {
+        self.foreign_keys
+    }
 }
 
 /// Read-only diagnostic summary for the active DB Engine path.
@@ -93,7 +115,8 @@ pub struct ClientDbGenerationHit {
 macro_rules! client_db_provider_command_text {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Clone, Debug, Eq, PartialEq)]
+        #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+        #[serde(transparent)]
         pub struct $name(String);
 
         impl $name {
@@ -298,41 +321,41 @@ impl ClientDbArtifactEvent {
 /// Graph-turbo artifact event row stored in the active DB Engine.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbArtifactEvent {
-    artifact_path: String,
-    event_ordinal: u32,
-    timestamp_ms: i64,
-    kind: String,
-    language: String,
-    method: String,
-    target: String,
-    query: String,
-    project_root: String,
-    project_root_arg: String,
-    bytes: u64,
+    pub artifact_path: String,
+    pub event_ordinal: u32,
+    pub timestamp_ms: i64,
+    pub kind: String,
+    pub language: String,
+    pub method: String,
+    pub target: String,
+    pub query: String,
+    pub project_root: String,
+    pub project_root_arg: String,
+    pub bytes: u64,
 }
 
 /// Merkle hash value used by artifact graph roots, edges, and proof receipts.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactHash {
-    algorithm: String,
-    value: String,
+    pub(crate) algorithm: String,
+    pub(crate) value: String,
 }
 
 /// Queryable Merkle artifact root stored in the active DB Engine.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactRoot {
-    repo_id: String,
-    workspace_id: String,
-    scope_id: String,
-    generation: String,
-    root_kind: String,
-    root_hash: ClientDbArtifactHash,
-    node_hash: ClientDbArtifactHash,
-    producer_hash: Option<ClientDbArtifactHash>,
-    schema_hash: Option<ClientDbArtifactHash>,
-    content_hash: Option<ClientDbArtifactHash>,
+    pub(crate) repo_id: String,
+    pub(crate) workspace_id: String,
+    pub(crate) scope_id: String,
+    pub(crate) generation: String,
+    pub(crate) root_kind: String,
+    pub(crate) root_hash: ClientDbArtifactHash,
+    pub(crate) node_hash: ClientDbArtifactHash,
+    pub(crate) producer_hash: Option<ClientDbArtifactHash>,
+    pub(crate) schema_hash: Option<ClientDbArtifactHash>,
+    pub(crate) content_hash: Option<ClientDbArtifactHash>,
 }
 
 /// Queryable edge between two Merkle artifact roots.
@@ -350,34 +373,34 @@ pub struct ClientDbArtifactEdge {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactRepairChainFrame {
-    frame_kind: String,
-    root: ClientDbArtifactRoot,
-    content_hash: ClientDbArtifactHash,
-    parents: Vec<ClientDbArtifactEdge>,
+    pub(crate) frame_kind: String,
+    pub(crate) root: ClientDbArtifactRoot,
+    pub(crate) content_hash: ClientDbArtifactHash,
+    pub(crate) parents: Vec<ClientDbArtifactEdge>,
 }
 
 /// Compact proof receipt summary persisted for artifact graph queries.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbProofReceipt {
-    receipt_id: String,
-    obligation_id: String,
-    recipe_id: String,
-    checker: String,
-    environment: String,
-    okay: bool,
-    trust_level: String,
-    summary_for_agent: String,
-    root: ClientDbArtifactRoot,
+    pub(crate) receipt_id: String,
+    pub(crate) obligation_id: String,
+    pub(crate) recipe_id: String,
+    pub(crate) checker: String,
+    pub(crate) environment: String,
+    pub(crate) okay: bool,
+    pub(crate) trust_level: String,
+    pub(crate) summary_for_agent: String,
+    pub(crate) root: ClientDbArtifactRoot,
 }
 
 /// Compact agent-facing render of queryable artifact graph facts.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbArtifactGraphCompactRender {
-    frame_count: u32,
-    proof_receipt_count: u32,
-    lines: Vec<String>,
+    pub(crate) frame_count: u32,
+    pub(crate) proof_receipt_count: u32,
+    pub(crate) lines: Vec<String>,
 }
 
 impl ClientDbArtifactGraphCompactRender {

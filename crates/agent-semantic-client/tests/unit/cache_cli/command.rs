@@ -175,6 +175,7 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
             limit: 8,
             expected_snapshot_root: &baseline.source_snapshot.root_digest,
             expected_index_artifact_digest: &baseline.index_artifact_digest,
+            live_facts: None,
         },
     )
     .expect("lookup runtime source index");
@@ -212,6 +213,7 @@ fn cache_runtime_source_acquire_clones_versioned_source() {
             limit: 8,
             expected_snapshot_root: &refreshed.source_snapshot.root_digest,
             expected_index_artifact_digest: &refreshed.index_artifact_digest,
+            live_facts: None,
         },
     )
     .expect("lookup newly added runtime source");

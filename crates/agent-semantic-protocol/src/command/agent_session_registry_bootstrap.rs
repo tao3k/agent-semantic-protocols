@@ -57,7 +57,8 @@ pub(super) fn bootstrap_session(
                 now,
             )
         })
-        .transpose()?
+        .transpose()
+        .map_err(|error| error.to_string())?
         .flatten();
     let host_resident_target_observation = root_session_id
         .as_deref()
@@ -69,7 +70,8 @@ pub(super) fn bootstrap_session(
                 now,
             )
         })
-        .transpose()?
+        .transpose()
+        .map_err(|error| error.to_string())?
         .flatten();
     let host_resident_target_present = host_resident_target_observation
         .as_ref()
@@ -96,10 +98,10 @@ pub(super) fn bootstrap_session(
     }
     let mut record = if let Some(root_session_id) = root_session_id.as_deref() {
         registry.lookup_session(AgentSessionLookupRequest {
-            project_id: &project_id,
+            project_id: (&project_id).into(),
             session_id: None,
-            root_session_id: Some(root_session_id),
-            name: Some(name),
+            root_session_id: Some(root_session_id.into()),
+            name: Some(name.into()),
         })?
     } else {
         None
@@ -150,7 +152,7 @@ pub(super) fn bootstrap_session(
     }
     if host_resident_target_unroutable {
         if let Some(session) = record.as_mut() {
-            session.status = "orphan-risk".to_string();
+            session.status = "orphan-risk".to_string().into();
             session.message_target_id = None;
         }
         registry_routable = false;
@@ -205,7 +207,9 @@ pub(super) fn bootstrap_session(
     let profile_attestation_target_verified = host_resident_transport_verified;
     let (attested_child_id, attestation_source) = reasoning::profile_attestation_identity(
         record.as_ref(),
-        subagent_start_registered_child_id.as_ref(),
+        subagent_start_registered_child_id
+            .as_ref()
+            .map(|session_id| session_id.as_str()),
         root_session_id.as_deref(),
         &expected_agent_type,
         &expected_canonical_target,
@@ -222,9 +226,13 @@ pub(super) fn bootstrap_session(
     let runtime_drift = root_session_id
         .as_deref()
         .map(|root_session_id| {
-            agent_semantic_hook::latest_subagent_runtime_drift(project_root, root_session_id)
+            agent_semantic_hook::latest_subagent_runtime_drift(
+                project_root,
+                &root_session_id.into(),
+            )
         })
-        .transpose()?
+        .transpose()
+        .map_err(|error| error.to_string())?
         .flatten()
         .filter(|observation| {
             observation::matches_resident_slot(
@@ -239,10 +247,11 @@ pub(super) fn bootstrap_session(
         .map(|root_session_id| {
             agent_semantic_hook::latest_subagent_runtime_rebind_verified(
                 project_root,
-                root_session_id,
+                &root_session_id.into(),
             )
         })
-        .transpose()?
+        .transpose()
+        .map_err(|error| error.to_string())?
         .flatten()
         .filter(|observation| {
             observation::matches_resident_slot(
@@ -269,16 +278,16 @@ pub(super) fn bootstrap_session(
                             observed_reasoning_effort,
                         );
                     agent_semantic_hook::SubagentRuntimeRebindVerifiedObservation {
-                        root_session_id: root_session_id.to_string(),
-                        child_session_id: child_session_id.clone(),
-                        observed_agent_type: expected_agent_type.clone(),
-                        expected_agent_type: expected_agent_type.clone(),
+                        root_session_id: root_session_id.to_string().into(),
+                        child_session_id: child_session_id.as_str().into(),
+                        observed_agent_type: expected_agent_type.clone().into(),
+                        expected_agent_type: expected_agent_type.clone().into(),
                         previous_observed_model: None,
                         previous_observed_reasoning_effort: None,
-                        observed_model: observed_model.clone(),
-                        observed_reasoning_effort: Some(observed_reasoning_effort.clone()),
-                        expected_model: expected_model.clone(),
-                        expected_reasoning_effort: Some(expected_reasoning_effort.clone()),
+                        observed_model: observed_model.clone().into(),
+                        observed_reasoning_effort: Some(observed_reasoning_effort.clone().into()),
+                        expected_model: expected_model.clone().into(),
+                        expected_reasoning_effort: Some(expected_reasoning_effort.clone().into()),
                         reasoning_evidence,
                         reasoning_assessment,
                         observation_source: "codex-app-server-thread-resume-after-subagent-start",
@@ -291,7 +300,10 @@ pub(super) fn bootstrap_session(
                 root_session_id.as_deref(),
                 attested_child_id.as_ref(),
                 &expected_agent_type,
-                record.as_ref().and_then(|record| record.model.as_ref()),
+                record
+                    .as_ref()
+                    .and_then(|record| record.model.as_ref())
+                    .map(|model| model.as_str()),
                 expected_model.as_ref(),
                 expected_reasoning_effort.as_ref(),
                 profile_attestation_target_verified,
@@ -305,7 +317,8 @@ pub(super) fn bootstrap_session(
     if runtime_reasoning_from_host
         && let Some(observation) = runtime_verification_observation.as_mut()
     {
-        observation.observed_reasoning_effort = host_observed_reasoning_effort.clone();
+        observation.observed_reasoning_effort =
+            host_observed_reasoning_effort.clone().map(Into::into);
     }
     let runtime_reasoning_profile_attested = reasoning::profile_attestation_is_valid(
         runtime_verification_observation.as_ref(),
@@ -340,13 +353,13 @@ pub(super) fn bootstrap_session(
         (root_session_id.as_deref(), runtime_verified.as_ref())
         && host_resident_target_present
         && let Some(mut verified_record) = registry.lookup_session(AgentSessionLookupRequest {
-            project_id: &project_id,
-            session_id: Some(&observation.child_session_id),
-            root_session_id: Some(root_session_id),
-            name: Some(name),
+            project_id: (&project_id).into(),
+            session_id: Some(observation.child_session_id.as_str().into()),
+            root_session_id: Some(root_session_id.into()),
+            name: Some(name.into()),
         })?
     {
-        verified_record.status = "active".to_string();
+        verified_record.status = "active".to_string().into();
         registry_routable = registry_record_routable(
             &verified_record,
             Some(root_session_id),
@@ -592,7 +605,7 @@ pub(super) fn bootstrap_session(
                         "replace-drifted-resident-with-typed-role"
                     },
                     "target": canonical_target,
-                    "childSessionId": observation.child_session_id,
+                    "childSessionId": *observation.child_session_id,
                     "managedAgentKind": menu.host_requirement.managed_agent_kind.as_ref(),
                     "identityPolicy": "retire-before-replacement",
                     "createPolicy": "single-typed-replacement-only",
@@ -647,9 +660,9 @@ pub(super) fn bootstrap_session(
                 serde_json::json!({
                     "status": "resident-child-runtime-drift",
                     "rootSessionId": observation.root_session_id,
-                    "childSessionId": observation.child_session_id,
-                    "observedAgentType": observation.observed_agent_type,
-                    "expectedAgentType": observation.expected_agent_type,
+                    "childSessionId": *observation.child_session_id,
+                    "observedAgentType": *observation.observed_agent_type,
+                    "expectedAgentType": *observation.expected_agent_type,
                     "observedModel": observation.observed_model,
                     "observedReasoningEffort": observation.observed_reasoning_effort,
                     "driftDimensions": diagnosis.drift_dimensions,
@@ -862,7 +875,7 @@ pub(super) fn bootstrap_session(
                         "typed-resident-replacement-verified"
                     },
                     "target": canonical_resident_target(&menu.host_requirement),
-                    "childSessionId": observation.child_session_id,
+                    "childSessionId": *observation.child_session_id,
                     "managedAgentKind": menu.host_requirement.managed_agent_kind.as_ref(),
                     "identityPolicy": if followup_ack_rebind {
                         "same-canonical-child-rebound-by-native-followup-ack"
@@ -886,14 +899,14 @@ pub(super) fn bootstrap_session(
                 serde_json::json!({
                     "status": reasoning::profile_attested_lifecycle_status(runtime_reasoning_profile_attested),
                     "rootSessionId": observation.root_session_id,
-                    "childSessionId": observation.child_session_id,
+                    "childSessionId": *observation.child_session_id,
                     "sameChildIdentity": followup_ack_rebind,
                     "typedReplacementVerified": !followup_ack_rebind,
                     "verificationSource": observation.observation_source,
                     "observationCount": observation.observation_count,
                     "previousObservedModel": observation.previous_observed_model,
                     "previousObservedReasoningEffort": observation.previous_observed_reasoning_effort,
-                    "observedModel": observation.observed_model,
+                    "observedModel": *observation.observed_model,
                     "observedReasoningEffort": observation.observed_reasoning_effort,
                     "expectedModel": expected_model,
                     "expectedReasoningEffort": expected_reasoning_effort,

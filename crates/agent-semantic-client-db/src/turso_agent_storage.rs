@@ -55,7 +55,7 @@ impl TursoMvccAgentStorage {
                 row.event_id
             ))
         })?;
-        if event.event_id != row.event_id || event.created_at_ms != row.created_at_ms {
+        if event.event_id.as_str() != row.event_id || event.created_at_ms != row.created_at_ms {
             return Err(StorageError::backend(format!(
                 "Turso MVCC session event envelope mismatch: {}",
                 row.event_id
@@ -78,7 +78,7 @@ impl AgentStorage for TursoMvccAgentStorage {
             for event in &batch.events {
                 rows.push(TursoMvccEvent {
                     partition_key: partition_key.clone(),
-                    event_id: event.event_id.clone(),
+                    event_id: event.event_id.as_str().to_owned(),
                     payload: serde_json::to_vec(event).map_err(|error| {
                         StorageError::backend(format!(
                             "encode Turso MVCC session event {}: {error}",
@@ -94,11 +94,11 @@ impl AgentStorage for TursoMvccAgentStorage {
                 .await
                 .map_err(classify_typed_turso_storage_error)?;
             Ok(SessionEventBatchWriteReceipt {
-                schema_id: SESSION_EVENT_BATCH_RECEIPT_SCHEMA_ID.to_string(),
-                batch_id: batch.batch_id.clone(),
+                schema_id: SESSION_EVENT_BATCH_RECEIPT_SCHEMA_ID.into(),
+                batch_id: batch.batch_id.clone().into(),
                 partition: batch.partition.clone(),
                 authority: StorageAuthorityKind::Local,
-                backend: "turso".to_string(),
+                backend: "turso".into(),
                 backend_version: "0.7.0".to_string(),
                 optimization_profile: batch.optimization_profile,
                 transaction_mode: batch.transaction_mode,
@@ -164,7 +164,7 @@ impl AgentStorage for TursoMvccAgentStorage {
                 let last = selected.last().expect("non-empty Turso keyset page");
                 SessionEventCursor {
                     created_at_ms: last.created_at_ms,
-                    event_id: last.event_id.clone(),
+                    event_id: last.event_id.as_str().to_owned(),
                 }
             });
             Ok(SessionEventPage {

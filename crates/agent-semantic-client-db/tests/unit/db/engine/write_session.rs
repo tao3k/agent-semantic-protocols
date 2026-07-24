@@ -245,13 +245,13 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
     let first = registry
         .claim_resident_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                project_id,
-                root_session_id,
-                session_id: first_child_id,
+                project_id: project_id.into(),
+                root_session_id: root_session_id.into(),
+                session_id: first_child_id.into(),
                 message_target_id: None,
-                parent_session_id: Some(root_session_id),
-                name: "asp-explore",
-                role: "asp_explorer",
+                parent_session_id: Some(root_session_id.into()),
+                name: "asp-explore".into(),
+                role: "asp_explorer".into(),
                 model_observation: Some(
                     agent_semantic_client_db::AgentSessionModelObservationRef {
                         model: "gpt-5.4-mini",
@@ -260,9 +260,9 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
                         evidence_ref: Some("turn:test"),
                     },
                 ),
-                status: "pending-target",
+                status: "pending-target".into(),
                 expires_at: None,
-                metadata_json: "{}",
+                metadata_json: "{}".into(),
                 now: 1,
             },
         )
@@ -270,13 +270,13 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
     let duplicate = registry
         .claim_resident_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                project_id,
-                root_session_id,
-                session_id: "claim-child-duplicate",
+                project_id: project_id.into(),
+                root_session_id: root_session_id.into(),
+                session_id: "claim-child-duplicate".into(),
                 message_target_id: None,
-                parent_session_id: Some(root_session_id),
-                name: "asp-explore",
-                role: "asp_explorer",
+                parent_session_id: Some(root_session_id.into()),
+                name: "asp-explore".into(),
+                role: "asp_explorer".into(),
                 model_observation: Some(
                     agent_semantic_client_db::AgentSessionModelObservationRef {
                         model: "gpt-5.4-mini",
@@ -285,9 +285,9 @@ fn agent_session_claim_keeps_first_resident_child_for_root_and_name() {
                         evidence_ref: Some("turn:test-2"),
                     },
                 ),
-                status: "pending-target",
+                status: "pending-target".into(),
                 expires_at: None,
-                metadata_json: "{}",
+                metadata_json: "{}".into(),
                 now: 2,
             },
         )
@@ -328,13 +328,13 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
     registry
         .claim_resident_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                project_id,
-                root_session_id,
-                session_id: first_child_id,
+                project_id: project_id.into(),
+                root_session_id: root_session_id.into(),
+                session_id: first_child_id.into(),
                 message_target_id: None,
-                parent_session_id: Some(root_session_id),
-                name: "asp-explore",
-                role: "asp_explorer",
+                parent_session_id: Some(root_session_id.into()),
+                name: "asp-explore".into(),
+                role: "asp_explorer".into(),
                 model_observation: Some(
                     agent_semantic_client_db::AgentSessionModelObservationRef {
                         model: "gpt-5.4-mini",
@@ -343,9 +343,9 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
                         evidence_ref: Some("turn:test"),
                     },
                 ),
-                status: "pending-target",
+                status: "pending-target".into(),
                 expires_at: None,
-                metadata_json: "{}",
+                metadata_json: "{}".into(),
                 now: 1,
             },
         )
@@ -359,13 +359,13 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
     let replacement = registry
         .claim_resident_session(
             agent_semantic_client_db::agent_session_registry::AgentSessionRegisterRequest {
-                project_id,
-                root_session_id,
-                session_id: "archived-claim-replacement",
+                project_id: project_id.into(),
+                root_session_id: root_session_id.into(),
+                session_id: "archived-claim-replacement".into(),
                 message_target_id: None,
-                parent_session_id: Some(root_session_id),
-                name: "asp-explore",
-                role: "asp_explorer",
+                parent_session_id: Some(root_session_id.into()),
+                name: "asp-explore".into(),
+                role: "asp_explorer".into(),
                 model_observation: Some(
                     agent_semantic_client_db::AgentSessionModelObservationRef {
                         model: "gpt-5.4-mini",
@@ -374,9 +374,9 @@ fn agent_session_claim_replaces_archived_resident_child_for_root_and_name() {
                         evidence_ref: Some("turn:test-2"),
                     },
                 ),
-                status: "pending-target",
+                status: "pending-target".into(),
                 expires_at: None,
-                metadata_json: "{}",
+                metadata_json: "{}".into(),
                 now: 3,
             },
         )

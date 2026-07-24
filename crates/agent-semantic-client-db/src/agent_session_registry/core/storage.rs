@@ -415,7 +415,7 @@ pub(super) async fn turso_claim_resident_session(
                        AND root_session_id = ?2
                        AND name = ?3
                        AND status IN ('archived', 'closed')",
-                    (request.project_id, request.root_session_id, request.name),
+                    (&request.project_id, &request.root_session_id, &request.name),
                 )
                 .await
                 .map_err(|error| error.to_string())?;
@@ -444,13 +444,13 @@ pub(super) async fn turso_claim_resident_session(
     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13, ?13, ?13, ?14, ?15)
     ON CONFLICT DO NOTHING",
                     (
-                        request.project_id,
-                        request.root_session_id,
-                        request.session_id,
-                        request.message_target_id,
-                        request.parent_session_id,
-                        request.name,
-                        request.role,
+                        &request.project_id,
+                        &request.root_session_id,
+                        &request.session_id,
+                        request.message_target_id.as_ref(),
+                        request.parent_session_id.as_ref(),
+                        &request.name,
+                        &request.role,
                         request
                             .model_observation
                             .as_ref()
@@ -467,10 +467,10 @@ pub(super) async fn turso_claim_resident_session(
                             .model_observation
                             .as_ref()
                             .and_then(|observation| observation.evidence_ref),
-                        request.status,
+                        &request.status,
                         request.now,
                         request.expires_at,
-                        request.metadata_json,
+                        &request.metadata_json,
                     ),
                 )
                 .await
@@ -481,9 +481,9 @@ pub(super) async fn turso_claim_resident_session(
     .await?;
     turso_session_by_name(
         db_path,
-        request.project_id,
-        request.root_session_id,
-        request.name,
+        request.project_id.as_str(),
+        request.root_session_id.as_str(),
+        request.name.as_str(),
     )
     .await?
     .ok_or_else(|| "claimed Turso resident session was not readable".to_string())
@@ -503,10 +503,10 @@ async fn turso_register_session_once(
                AND session_id = ?2
                AND NOT (root_session_id = ?3 AND name = ?4)",
                     (
-                        request.project_id,
-                        request.session_id,
-                        request.root_session_id,
-                        request.name,
+                        &request.project_id,
+                        &request.session_id,
+                        &request.root_session_id,
+                        &request.name,
                     ),
                 )
                 .await
@@ -583,13 +583,13 @@ async fn turso_register_session_once(
                 profile_evidence_json = COALESCE(excluded.profile_evidence_json, asp_agent_sessions.profile_evidence_json)
         WHERE asp_agent_sessions.session_id = excluded.session_id",
                     (
-                        request.project_id,
-                        request.root_session_id,
-                        request.session_id,
-                        request.message_target_id,
-                        request.parent_session_id,
-                        request.name,
-                        request.role,
+                        &request.project_id,
+                        &request.root_session_id,
+                        &request.session_id,
+                        request.message_target_id.as_ref(),
+                        request.parent_session_id.as_ref(),
+                        &request.name,
+                        &request.role,
                         request.model_observation.as_ref().map(|observation| observation.model),
                         request
                             .model_observation
@@ -603,10 +603,10 @@ async fn turso_register_session_once(
                             .model_observation
                             .as_ref()
                             .and_then(|observation| observation.evidence_ref),
-                        request.status,
+                        &request.status,
                         request.now,
                         request.expires_at,
-                        request.metadata_json,
+                        &request.metadata_json,
                     ),
                 )
                 .await
@@ -617,9 +617,9 @@ async fn turso_register_session_once(
     .await?;
     let registered = turso_session_by_name(
         db_path,
-        request.project_id,
-        request.root_session_id,
-        request.name,
+        request.project_id.as_str(),
+        request.root_session_id.as_str(),
+        request.name.as_str(),
     )
     .await?
     .ok_or_else(|| "registered Turso session was not readable".to_string())?;
@@ -824,7 +824,7 @@ pub(super) async fn turso_session_for_root_session_id_any_project(
 
 pub(super) async fn turso_record_tool_event(
     db_path: &Path,
-    request: AgentSessionToolEventRequest<'_>,
+    request: AgentSessionToolEventRequest,
 ) -> Result<bool, String> {
     let connection = connect_turso_agent_session_registry(db_path).await?;
     let updated = execute_turso_operation(
@@ -839,11 +839,11 @@ pub(super) async fn turso_record_tool_event(
                          last_seen_at = ?4
                      WHERE session_id = ?5",
                     (
-                        request.tool_event,
-                        request.command,
-                        request.evidence_ref,
+                        &request.tool_event,
+                        request.command.as_ref(),
+                        request.evidence_ref.as_ref(),
                         request.now,
-                        request.session_id,
+                        &request.session_id,
                     ),
                 )
                 .await

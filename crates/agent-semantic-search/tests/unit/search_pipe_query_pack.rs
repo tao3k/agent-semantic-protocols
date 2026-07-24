@@ -69,8 +69,8 @@ fn semantic_facts_intent_requires_compound_typed_evidence() {
     let explicit_axes =
         crate::query_pack_fixture::with_typescript_query_pack("python", |query_pack| {
             crate::search_pipe_semantic_facts_intent(
-                "python",
-                "list|collection fields",
+                crate::search_pipe_query_pack::SearchPipeLanguageId("python"),
+                crate::search_pipe_query_pack::SearchPipeQueryText("list|collection fields"),
                 query_pack,
                 descriptor,
             )
@@ -84,8 +84,8 @@ fn semantic_facts_intent_requires_compound_typed_evidence() {
     let symbol_anchor =
         crate::query_pack_fixture::with_typescript_query_pack("rust", |query_pack| {
             crate::search_pipe_semantic_facts_intent(
-                "rust",
-                "Snapshot fields",
+                crate::search_pipe_query_pack::SearchPipeLanguageId("rust"),
+                crate::search_pipe_query_pack::SearchPipeQueryText("Snapshot fields"),
                 query_pack,
                 descriptor,
             )
@@ -96,8 +96,10 @@ fn semantic_facts_intent_requires_compound_typed_evidence() {
     assert!(
         !crate::query_pack_fixture::with_typescript_query_pack("rust", |query_pack| {
             crate::search_pipe_semantic_facts_intent(
-                "rust",
-                "low cohesion rg query set command scope package",
+                crate::search_pipe_query_pack::SearchPipeLanguageId("rust"),
+                crate::search_pipe_query_pack::SearchPipeQueryText(
+                    "low cohesion rg query set command scope package",
+                ),
                 query_pack,
                 descriptor,
             )
@@ -107,8 +109,8 @@ fn semantic_facts_intent_requires_compound_typed_evidence() {
     assert!(
         !crate::query_pack_fixture::with_typescript_query_pack("python", |query_pack| {
             crate::search_pipe_semantic_facts_intent(
-                "python",
-                "list workflow cache",
+                crate::search_pipe_query_pack::SearchPipeLanguageId("python"),
+                crate::search_pipe_query_pack::SearchPipeQueryText("list workflow cache"),
                 query_pack,
                 descriptor,
             )
@@ -119,8 +121,8 @@ fn semantic_facts_intent_requires_compound_typed_evidence() {
     assert!(
         !crate::query_pack_fixture::with_typescript_query_pack("rust", |query_pack| {
             crate::search_pipe_semantic_facts_intent(
-                "rust",
-                "vec collection",
+                crate::search_pipe_query_pack::SearchPipeLanguageId("rust"),
+                crate::search_pipe_query_pack::SearchPipeQueryText("vec collection"),
                 query_pack,
                 descriptor,
             )
@@ -136,8 +138,8 @@ fn semantic_facts_intent_requires_compound_typed_evidence() {
     assert!(
         crate::query_pack_fixture::with_typescript_query_pack("rust", |query_pack| {
             crate::search_pipe_semantic_facts_intent(
-                "rust",
-                "vec collection",
+                crate::search_pipe_query_pack::SearchPipeLanguageId("rust"),
+                crate::search_pipe_query_pack::SearchPipeQueryText("vec collection"),
                 query_pack,
                 crate::SearchPipeSemanticFactsDescriptor {
                     descriptor_id: "rust.semantic-facts",

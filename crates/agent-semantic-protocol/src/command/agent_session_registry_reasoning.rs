@@ -9,34 +9,37 @@ pub(super) fn rollout_proves_canonical_typed_binding(
     expected_agent_type: &str,
     canonical_target: &str,
 ) -> bool {
-    agent_semantic_runtime::codex_rollout_session_metadata(child_session_id).is_ok_and(|metadata| {
-        metadata.is_some_and(|metadata| {
-            metadata.session_id == child_session_id
-                && metadata.root_session_id.as_deref() == Some(root_session_id)
-                && metadata.parent_thread_id.as_deref() == Some(root_session_id)
-                && metadata.agent_role.as_deref() == Some(expected_agent_type)
-                && metadata.agent_path.as_deref() == Some(canonical_target)
-        })
-    })
+    agent_semantic_runtime::codex_rollout_session_metadata(&child_session_id.into()).is_ok_and(
+        |metadata| {
+            metadata.is_some_and(|metadata| {
+                metadata.session_id == child_session_id.into()
+                    && metadata.root_session_id.as_deref() == Some(root_session_id)
+                    && metadata.parent_thread_id.as_deref() == Some(root_session_id)
+                    && metadata.agent_role.as_deref() == Some(expected_agent_type)
+                    && metadata.agent_path.as_deref() == Some(canonical_target)
+            })
+        },
+    )
 }
 
 pub(super) fn profile_attestation_identity(
     record: Option<&AgentSessionRecord>,
-    subagent_start_child_id: Option<&String>,
+    subagent_start_child_id: Option<&str>,
     root_session_id: Option<&str>,
     expected_agent_type: &str,
     canonical_target: &str,
     target_present: bool,
 ) -> Option<(String, &'static str)> {
     if let Some(child_id) = subagent_start_child_id {
-        return Some((child_id.clone(), "subagent-start-profile-attestation"));
+        return Some((child_id.to_string(), "subagent-start-profile-attestation"));
     }
     let record = record?;
     let root_session_id = root_session_id?;
+    let mut target_bound_record = record.clone();
+    target_bound_record.message_target_id = Some(canonical_target.into());
     (target_present
-        && record.message_target_id.as_deref() == Some(canonical_target)
         && agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
-            record,
+            &target_bound_record,
             root_session_id,
         )
         && (stored_rollout_recovery_binding_is_valid(record)
@@ -48,7 +51,7 @@ pub(super) fn profile_attestation_identity(
             )))
     .then(|| {
         (
-            record.session_id.clone(),
+            record.session_id.to_string(),
             "rollout-recovery-profile-attestation",
         )
     })
@@ -165,7 +168,7 @@ pub(super) fn profile_attested_runtime_observation(
     root_session_id: Option<&str>,
     child_id: Option<&String>,
     expected_agent_type: &str,
-    observed_model: Option<&String>,
+    observed_model: Option<&str>,
     expected_model: Option<&String>,
     expected_reasoning: Option<&String>,
     target_present: bool,
@@ -206,16 +209,16 @@ pub(super) fn profile_attested_runtime_observation(
             &reasoning_evidence,
         );
         SubagentRuntimeRebindVerifiedObservation {
-            root_session_id: root_session_id.to_string(),
-            child_session_id: child_id.clone(),
-            observed_agent_type: expected_agent_type.to_string(),
-            expected_agent_type: expected_agent_type.to_string(),
+            root_session_id: root_session_id.to_string().into(),
+            child_session_id: child_id.clone().into(),
+            observed_agent_type: expected_agent_type.to_string().into(),
+            expected_agent_type: expected_agent_type.to_string().into(),
             previous_observed_model: None,
             previous_observed_reasoning_effort: None,
-            observed_model: observed_model.clone(),
+            observed_model: observed_model.into(),
             observed_reasoning_effort: None,
-            expected_model: expected_model.clone(),
-            expected_reasoning_effort: Some(expected_reasoning.clone()),
+            expected_model: expected_model.clone().into(),
+            expected_reasoning_effort: Some(expected_reasoning.clone().into()),
             reasoning_evidence,
             reasoning_assessment,
             observation_source,
@@ -267,10 +270,10 @@ fn profile_attestation_reasoning_assessment(
                 | "subagent-start-profile-attestation"
                 | "rollout-recovery-profile-attestation"
         )
-        && child_id == &observation.child_session_id
+        && **child_id == *observation.child_session_id
         && observation.observed_agent_type == expected_agent_type
         && observation.expected_agent_type == expected_agent_type
-        && observation.observed_model == *expected_model
+        && *observation.observed_model == **expected_model
         && target_present
         && runtime_drift.is_none_or(|drift| drift.child_session_id != observation.child_session_id);
     if !identity_attested {
@@ -280,8 +283,8 @@ fn profile_attestation_reasoning_assessment(
     let profile_digest = format!("{expected_agent_type}|{expected_model}|{expected_reasoning}");
     let evidence = [
         agent_semantic_hook::ReasoningEvidence {
-            root_session_id: observation.root_session_id.clone(),
-            child_session_id: observation.child_session_id.clone(),
+            root_session_id: observation.root_session_id.as_str().to_string(),
+            child_session_id: observation.child_session_id.to_string(),
             resident_generation: None,
             value: None,
             visibility: agent_semantic_hook::ReasoningEvidenceVisibility::FieldOmitted,
@@ -290,8 +293,8 @@ fn profile_attestation_reasoning_assessment(
             profile_digest: None,
         },
         agent_semantic_hook::ReasoningEvidence {
-            root_session_id: observation.root_session_id.clone(),
-            child_session_id: observation.child_session_id.clone(),
+            root_session_id: observation.root_session_id.as_str().to_string(),
+            child_session_id: observation.child_session_id.to_string(),
             resident_generation: None,
             value: Some(expected_reasoning.clone()),
             visibility: agent_semantic_hook::ReasoningEvidenceVisibility::Observed,
@@ -326,7 +329,7 @@ pub(super) fn insert_runtime_evidence_incomplete_receipt(
             "schemaVersion": "1",
             "intent": "report-host-runtime-reasoning-evidence-unavailable",
             "target": target,
-            "childSessionId": observation.child_session_id,
+            "childSessionId": *observation.child_session_id,
             "managedAgentKind": managed_agent_kind,
             "identityPolicy": "preserve-existing-typed-child",
             "createPolicy": "forbidden-runtime-evidence-incomplete",
@@ -343,12 +346,12 @@ pub(super) fn insert_runtime_evidence_incomplete_receipt(
         serde_json::json!({
             "status": "typed-replacement-host-runtime-evidence-unavailable",
             "rootSessionId": observation.root_session_id,
-            "childSessionId": observation.child_session_id,
+            "childSessionId": *observation.child_session_id,
             "typedReplacementVerified": false,
             "verificationSource": observation.observation_source,
-            "observedAgentType": observation.observed_agent_type,
+            "observedAgentType": *observation.observed_agent_type,
             "expectedAgentType": managed_agent_kind,
-            "observedModel": observation.observed_model,
+            "observedModel": *observation.observed_model,
             "observedReasoningEffort": observation.observed_reasoning_effort,
             "expectedModel": expected_model,
             "expectedReasoningEffort": expected_reasoning,

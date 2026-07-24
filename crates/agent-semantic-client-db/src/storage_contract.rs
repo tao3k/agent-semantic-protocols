@@ -42,6 +42,71 @@ pub enum StorageAuthorityKind {
     InMemory,
 }
 
+macro_rules! storage_value_type {
+    ($name:ident) => {
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+        #[serde(transparent)]
+        pub struct $name(String);
+
+        impl $name {
+            #[must_use]
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+
+            #[must_use]
+            pub fn into_string(self) -> String {
+                self.0
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(value: String) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_string())
+            }
+        }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::ops::Deref for $name {
+            type Target = str;
+
+            fn deref(&self) -> &Self::Target {
+                self.as_str()
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
+    };
+}
+
+storage_value_type!(StorageRepoId);
+storage_value_type!(StorageWorkspaceId);
+storage_value_type!(StorageScopeId);
+storage_value_type!(StorageSessionId);
+storage_value_type!(StorageAgentId);
+storage_value_type!(StorageSessionEventId);
+storage_value_type!(StorageTurnId);
+storage_value_type!(StorageSessionEventKind);
+storage_value_type!(StorageReceiptSchemaId);
+storage_value_type!(StorageSessionEventBatchId);
+storage_value_type!(StorageBackendId);
+storage_value_type!(StorageSloMatrixReceiptSchemaId);
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoragePartitionKey {
@@ -98,10 +163,10 @@ pub struct SessionEvent {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageRetryPolicy {
-    max_attempts: u32,
-    base_delay_ms: u64,
-    max_delay_ms: u64,
-    jitter_ms: u64,
+    pub(crate) max_attempts: u32,
+    pub(crate) base_delay_ms: u64,
+    pub(crate) max_delay_ms: u64,
+    pub(crate) jitter_ms: u64,
 }
 
 impl Default for StorageRetryPolicy {
@@ -373,14 +438,17 @@ impl AgentStorage for InMemoryAgentStorage {
                 )));
             }
             for event in &batch.events {
-                existing.insert((event.created_at_ms, event.event_id.clone()), event.clone());
+                existing.insert(
+                    (event.created_at_ms, event.event_id.as_str().to_owned()),
+                    event.clone(),
+                );
             }
             Ok(SessionEventBatchWriteReceipt {
-                schema_id: SESSION_EVENT_BATCH_RECEIPT_SCHEMA_ID.to_string(),
-                batch_id: batch.batch_id.clone(),
+                schema_id: SESSION_EVENT_BATCH_RECEIPT_SCHEMA_ID.into(),
+                batch_id: batch.batch_id.clone().into(),
                 partition: batch.partition.clone(),
                 authority: StorageAuthorityKind::InMemory,
-                backend: "in-memory".to_string(),
+                backend: "in-memory".into(),
                 backend_version: env!("CARGO_PKG_VERSION").to_string(),
                 optimization_profile: batch.optimization_profile,
                 transaction_mode: batch.transaction_mode,
@@ -435,7 +503,7 @@ impl AgentStorage for InMemoryAgentStorage {
                 let last = selected.last().expect("non-empty limited keyset page");
                 SessionEventCursor {
                     created_at_ms: last.created_at_ms,
-                    event_id: last.event_id.clone(),
+                    event_id: last.event_id.as_str().to_owned(),
                 }
             });
             Ok(SessionEventPage {

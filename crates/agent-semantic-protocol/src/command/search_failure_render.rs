@@ -43,7 +43,7 @@ pub(super) fn render_failure_frontier(
         &request,
     )
     .map_err(|error| format!("failed to render ranked failure frontier: {error}"))?;
-    Ok(rendered.content)
+    Ok(rendered.content().to_string())
 }
 
 pub(super) fn render_failure_graph_turbo_request(

@@ -5,6 +5,7 @@ mod facade;
 mod facade_turso_report;
 mod search_facade;
 mod session_facade;
+mod source_index_candidate_projection;
 mod source_index_candidate_selection;
 mod source_index_candidate_types;
 mod source_index_facade;

@@ -82,11 +82,11 @@ fn provider_runtime_storage_maps_runtime_identity_into_one_atomic_batch() {
     let page = agent_semantic_runtime::runtime_block_on_current_thread(
         storage.list_session_events(&SessionEventPageRequest {
             partition: StoragePartitionKey {
-                repo_id: "repo".to_owned(),
-                workspace_id: "workspace".to_owned(),
-                scope_id: "scope".to_owned(),
-                session_id: "session".to_owned(),
-                agent_id: "codex".to_owned(),
+                repo_id: "repo".to_owned().into(),
+                workspace_id: "workspace".to_owned().into(),
+                scope_id: "scope".to_owned().into(),
+                session_id: "session".to_owned().into(),
+                agent_id: "codex".to_owned().into(),
             },
             after: None,
             limit: 10,
@@ -95,8 +95,11 @@ fn provider_runtime_storage_maps_runtime_identity_into_one_atomic_batch() {
     .expect("runtime bridge")
     .expect("read recorded provider event");
     assert_eq!(page.items.len(), 1);
-    assert_eq!(page.items[0].turn_id, "invocation-0001");
-    assert_eq!(page.items[0].event_kind, "provider-execution:cache-hit");
+    assert_eq!(page.items[0].turn_id, "invocation-0001".into());
+    assert_eq!(
+        page.items[0].event_kind,
+        "provider-execution:cache-hit".into()
+    );
     let decoded: ProviderExecutionStorageEvent =
         serde_json::from_slice(&page.items[0].payload).expect("decode provider event");
     assert_eq!(decoded, event);
@@ -131,11 +134,11 @@ fn provider_runtime_storage_rejects_invalid_identity_without_partial_write() {
     let page = agent_semantic_runtime::runtime_block_on_current_thread(
         storage.list_session_events(&SessionEventPageRequest {
             partition: StoragePartitionKey {
-                repo_id: "repo".to_owned(),
-                workspace_id: "workspace".to_owned(),
-                scope_id: "scope".to_owned(),
-                session_id: "session".to_owned(),
-                agent_id: "codex".to_owned(),
+                repo_id: "repo".to_owned().into(),
+                workspace_id: "workspace".to_owned().into(),
+                scope_id: "scope".to_owned().into(),
+                session_id: "session".to_owned().into(),
+                agent_id: "codex".to_owned().into(),
             },
             after: None,
             limit: 10,
@@ -159,7 +162,7 @@ fn provider_runtime_storage_real_binding_persists_to_isolated_turso_profile() {
     let receipt = binding
         .record_invocation_start("search", "rust")
         .expect("record real provider invocation start");
-    assert_eq!(receipt.backend, "turso");
+    assert_eq!(receipt.backend, "turso".into());
     assert_eq!(receipt.backend_version, "0.7.0");
     assert_eq!(
         receipt.optimization_profile,
@@ -183,11 +186,11 @@ fn provider_runtime_storage_real_binding_persists_to_isolated_turso_profile() {
     let page = agent_semantic_runtime::runtime_block_on_current_thread(
         reopened.list_session_events(&SessionEventPageRequest {
             partition: StoragePartitionKey {
-                repo_id: recorded_context.repo_id,
-                workspace_id: recorded_context.workspace_id,
-                scope_id: recorded_context.scope_id,
-                session_id: recorded_context.session_id,
-                agent_id: recorded_context.agent_id,
+                repo_id: recorded_context.repo_id.into(),
+                workspace_id: recorded_context.workspace_id.into(),
+                scope_id: recorded_context.scope_id.into(),
+                session_id: recorded_context.session_id.into(),
+                agent_id: recorded_context.agent_id.into(),
             },
             after: None,
             limit: 10,
@@ -198,6 +201,6 @@ fn provider_runtime_storage_real_binding_persists_to_isolated_turso_profile() {
     assert_eq!(page.items.len(), 1);
     assert_eq!(
         page.items[0].event_kind,
-        "provider-execution:invocation-start"
+        "provider-execution:invocation-start".into()
     );
 }

@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::storage_contract::StorageSloMatrixReceiptSchemaId;
+
 pub const STORAGE_SLO_MATRIX_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.client-db.storage-slo-matrix-receipt.v1";
 
@@ -35,18 +37,18 @@ impl StorageLatencyDistributionMicros {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageSloMatrixReceipt {
-    schema_id: StorageSloMatrixReceiptSchemaId,
-    long_ingestion_rows: usize,
-    long_ingestion_batch_rows: usize,
-    long_ingestion_latency_micros: StorageLatencyDistributionMicros,
-    recovered_rows: usize,
-    mixed_pressure_iterations: usize,
-    mixed_pressure_latency_micros: StorageLatencyDistributionMicros,
-    resident_set_kib: u64,
-    database_bytes: u64,
-    wal_bytes: u64,
-    shm_bytes: u64,
-    passive_checkpoint: bool,
+    pub schema_id: StorageSloMatrixReceiptSchemaId,
+    pub long_ingestion_rows: usize,
+    pub long_ingestion_batch_rows: usize,
+    pub long_ingestion_latency_micros: StorageLatencyDistributionMicros,
+    pub recovered_rows: usize,
+    pub mixed_pressure_iterations: usize,
+    pub mixed_pressure_latency_micros: StorageLatencyDistributionMicros,
+    pub resident_set_kib: u64,
+    pub database_bytes: u64,
+    pub wal_bytes: u64,
+    pub shm_bytes: u64,
+    pub passive_checkpoint: bool,
 }
 
 fn percentile(sorted: &[u64], percentile: usize) -> u64 {

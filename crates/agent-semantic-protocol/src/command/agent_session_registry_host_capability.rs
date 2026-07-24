@@ -222,10 +222,10 @@ pub(super) fn observe_host_ack(
     let project_id =
         super::agent_session_registry_state::project_session_scope_id(registry, &project_root)?;
     let record = registry.lookup_session(agent_semantic_client_db::AgentSessionLookupRequest {
-        project_id: &project_id,
+        project_id: (&project_id).into(),
         session_id: None,
-        root_session_id: Some(root_session_id.as_str()),
-        name: Some(resident_name),
+        root_session_id: Some(root_session_id.as_str().into()),
+        name: Some(resident_name.into()),
     })?;
 
     let registers_resident_child =
@@ -366,10 +366,10 @@ pub(super) fn observe_host_tree(
         super::agent_session_registry_state::project_session_scope_id(registry, &project_root)?;
     let mut record =
         registry.lookup_session(agent_semantic_client_db::AgentSessionLookupRequest {
-            project_id: &project_id,
+            project_id: (&project_id).into(),
             session_id: None,
-            root_session_id: Some(observation.root_session_id.as_str()),
-            name: Some(observation.resident_name.as_str()),
+            root_session_id: Some(observation.root_session_id.as_str().into()),
+            name: Some(observation.resident_name.as_str().into()),
         })?;
     let existing_live_binding = record.as_ref().is_some_and(|existing| {
         observation.target_status == "present"
@@ -605,10 +605,10 @@ pub(in crate::command) fn record_trusted_resident_hook_target_present(
     write_host_tree_observation(registry, &input.observation())?;
     if let Some(record) =
         registry.lookup_session(agent_semantic_client_db::AgentSessionLookupRequest {
-            project_id: input.project_id,
+            project_id: input.project_id.into(),
             session_id: None,
-            root_session_id: Some(input.root_session_id),
-            name: Some(input.resident_name),
+            root_session_id: Some(input.root_session_id.into()),
+            name: Some(input.resident_name.into()),
         })?
     {
         let expected_agent_type = record

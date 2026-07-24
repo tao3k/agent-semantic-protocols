@@ -1,6 +1,6 @@
 //! `asp graph` command adapter.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -71,7 +71,7 @@ fn run_graph_render_command(args: &[String]) -> Result<(), String> {
             &projection_request,
         )
         .map_err(|error| error.to_string())?;
-        print!("{}", output.content);
+        print!("{}", output.content());
         return Ok(());
     }
     if request.frontier_receipt_out.is_some() {
@@ -90,7 +90,7 @@ fn run_graph_render_command(args: &[String]) -> Result<(), String> {
         &projection_request,
     )
     .map_err(|error| error.to_string())?;
-    print!("{}", output.content);
+    print!("{}", output.content());
     Ok(())
 }
 
@@ -207,14 +207,6 @@ pub(super) fn rank_graph_turbo_packet(
     let packet = agent_semantic_search_projection::GraphTurboResultPacketV1::from_value(value)
         .map_err(|error| format!("asp-graph-turbo emitted invalid typed result: {error}"))?;
     Ok(Some(packet))
-}
-
-fn json_scalar_text(value: Option<&Value>) -> Option<&str> {
-    value.and_then(Value::as_str)
-}
-
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 pub(super) struct GraphTurboReceiptCapture<'a> {

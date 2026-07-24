@@ -18,10 +18,10 @@ pub(super) fn resume_session(
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
     let name = args.name.clone();
     let mut record = registry.lookup_session(AgentSessionLookupRequest {
-        project_id: &project_id,
-        session_id: args.child_session_id.as_deref(),
-        root_session_id: root_session_id.as_deref(),
-        name: name.as_deref(),
+        project_id: (&project_id).into(),
+        session_id: args.child_session_id.as_deref().map(Into::into),
+        root_session_id: root_session_id.as_deref().map(Into::into),
+        name: name.as_deref().map(Into::into),
     })?;
     if record
         .as_ref()

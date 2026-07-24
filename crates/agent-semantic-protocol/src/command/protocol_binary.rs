@@ -193,7 +193,8 @@ fn digest_addressed_protocol_binary_path(target: &Path, digest: &str) -> Result<
     {
         return Err(format!("invalid BLAKE3 protocol artifact digest: {digest}"));
     }
-    Ok(parent
+    let install_root = parent.parent().unwrap_or(parent);
+    Ok(install_root
         .join(".asp-artifacts")
         .join("blake3-256")
         .join(digest)

@@ -130,19 +130,19 @@ impl From<&str> for ProviderRuntimeMethod {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ProviderRuntimeStorageContext {
+pub struct ProviderRuntimeStorageContext {
     pub(crate) repo_id: String,
     pub(crate) workspace_id: String,
     pub(crate) scope_id: String,
     pub(crate) session_id: String,
-    pub(crate) root_session_id: String,
+    pub root_session_id: String,
     pub(crate) agent_id: String,
     pub(crate) invocation_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ProviderExecutionStorageEvent {
+pub struct ProviderExecutionStorageEvent {
     phase: String,
     provider_method: String,
     language_id: String,
@@ -150,11 +150,11 @@ pub(crate) struct ProviderExecutionStorageEvent {
     stdout_digest: String,
     stderr_digest: String,
     receipt_present: bool,
-    root_session_id: String,
+    pub(crate) root_session_id: String,
 }
 
 impl ProviderExecutionStorageEvent {
-    fn from_output(
+    pub fn from_output(
         phase: impl Into<String>,
         provider_method: impl Into<String>,
         language_id: impl Into<String>,
@@ -188,7 +188,7 @@ pub struct ProviderRuntimeStorageAdapter {
 #[derive(Clone)]
 pub struct ProviderRuntimeStorageBinding {
     pub adapter: ProviderRuntimeStorageAdapter,
-    pub(crate) context: ProviderRuntimeStorageContext,
+    pub context: ProviderRuntimeStorageContext,
     event_db_path: std::path::PathBuf,
 }
 
@@ -372,9 +372,9 @@ impl ProviderRuntimeStorageAdapter {
             transaction_mode: self.transaction_mode,
             retry_policy: self.retry_policy.clone(),
             events: vec![SessionEvent {
-                event_id,
-                turn_id: context.invocation_id.clone(),
-                event_kind: format!("provider-execution:{}", event.phase),
+                event_id: event_id.into(),
+                turn_id: context.invocation_id.clone().into(),
+                event_kind: format!("provider-execution:{}", event.phase).into(),
                 payload: event_payload,
                 created_at_ms,
             }],
@@ -385,7 +385,7 @@ impl ProviderRuntimeStorageAdapter {
             .map_err(|error| format!("{:?}: {}", error.code, error.message))
     }
 
-    pub(crate) fn append_provider_execution(
+    pub fn append_provider_execution(
         &self,
         context: &ProviderRuntimeStorageContext,
         event: &ProviderExecutionStorageEvent,

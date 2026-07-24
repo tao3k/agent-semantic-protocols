@@ -73,6 +73,59 @@ pub struct ActiveArtifactLeafV1 {
     change_time_unix_nanos: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveArtifactLeafInputV1 {
+    pub logical_path: String,
+    pub materialized_path: String,
+    pub artifact_kind: ActiveArtifactKindV1,
+    pub artifact_digest: ContentDigestV1,
+    pub size_bytes: u64,
+    pub modified_unix_nanos: u64,
+    pub change_time_unix_nanos: Option<i64>,
+}
+
+impl ActiveArtifactLeafV1 {
+    pub fn from_input(input: ActiveArtifactLeafInputV1) -> Self {
+        Self {
+            logical_path: input.logical_path,
+            materialized_path: input.materialized_path,
+            artifact_kind: input.artifact_kind,
+            artifact_digest: input.artifact_digest,
+            size_bytes: input.size_bytes,
+            modified_unix_nanos: input.modified_unix_nanos,
+            change_time_unix_nanos: input.change_time_unix_nanos,
+        }
+    }
+
+    pub fn logical_path(&self) -> &str {
+        &self.logical_path
+    }
+
+    pub fn materialized_path(&self) -> &str {
+        &self.materialized_path
+    }
+
+    pub fn artifact_kind(&self) -> ActiveArtifactKindV1 {
+        self.artifact_kind
+    }
+
+    pub fn artifact_digest(&self) -> &ContentDigestV1 {
+        &self.artifact_digest
+    }
+
+    pub fn size_bytes(&self) -> u64 {
+        self.size_bytes
+    }
+
+    pub fn modified_unix_nanos(&self) -> u64 {
+        self.modified_unix_nanos
+    }
+
+    pub fn change_time_unix_nanos(&self) -> Option<i64> {
+        self.change_time_unix_nanos
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActiveAspArtifactReceiptV1 {
@@ -100,6 +153,18 @@ pub enum ActiveAspArtifactReceiptV1Error {
 }
 
 impl ActiveAspArtifactReceiptV1 {
+    pub fn artifact_root_digest(&self) -> &ContentDigestV1 {
+        &self.artifact_root_digest
+    }
+
+    pub fn materialization_root_digest(&self) -> &ContentDigestV1 {
+        &self.materialization_root_digest
+    }
+
+    pub fn leaves(&self) -> &[ActiveArtifactLeafV1] {
+        &self.leaves
+    }
+
     pub fn build(
         artifact_set_id: impl Into<String>,
         mut leaves: Vec<ActiveArtifactLeafV1>,

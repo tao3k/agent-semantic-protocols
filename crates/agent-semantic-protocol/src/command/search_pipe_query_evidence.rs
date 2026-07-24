@@ -16,7 +16,7 @@ pub(super) fn weak_match(candidate: &Candidate, term: &QueryTerm) -> bool {
 
 pub(super) fn strong_match(language_id: &str, candidate: &Candidate, term: &QueryTerm) -> bool {
     agent_semantic_search::search_pipe_strong_match(
-        language_id,
+        &language_id.into(),
         &search_candidate_from_protocol(candidate),
         &search_term_from_protocol(term),
     )
@@ -56,7 +56,7 @@ pub(super) fn declaration_header_match(
     term: &QueryTerm,
 ) -> bool {
     agent_semantic_search::search_pipe_declaration_header_match(
-        language_id,
+        &language_id.into(),
         &search_candidate_from_protocol(candidate),
         &search_term_from_protocol(term),
     )
@@ -100,7 +100,7 @@ pub(super) fn parser_handles(
         .map(search_term_from_protocol)
         .collect::<Vec<_>>();
     agent_semantic_search::search_pipe_parser_handles(
-        language_id,
+        &language_id.into(),
         &search_candidates,
         &search_terms,
     )

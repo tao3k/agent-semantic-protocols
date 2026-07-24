@@ -22,7 +22,7 @@ pub(super) fn run_pre_activation_search_command_preflight(
 ) -> Result<(), String> {
     let outcome =
         agent_semantic_search::search_command_preflight::preflight_search_command_args_at_invocation_root(
-        language_id,
+        &language_id.into(),
         command_args,
         invocation_root,
     );
@@ -64,7 +64,7 @@ pub(super) fn run_activated_owner_language_preflight(
         });
     let outcome = agent_semantic_search::search_command_preflight::
         preflight_search_command_args_with_owner_language_admission(
-            language_id,
+            &language_id.into(),
             command_args,
             project_root,
             agent_semantic_search::search_command_preflight::OwnerItemsLanguageAdmission::new(

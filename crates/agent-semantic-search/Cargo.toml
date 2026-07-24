@@ -22,6 +22,7 @@ description = "Search orchestration services for ASP agent-facing queries."
 license = "MIT"
 
 [dependencies]
+serde = { workspace = true, features = ["derive"] }
 agent-semantic-content-identity.workspace = true
 blake3.workspace = true
 agent-semantic-artifacts = { path = "../agent-semantic-artifacts" }
@@ -42,6 +43,7 @@ which = { workspace = true }
 asp-rust-project-harness-policy = { workspace = true }
 
 [dev-dependencies]
+agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 rust-lang-project-harness = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }

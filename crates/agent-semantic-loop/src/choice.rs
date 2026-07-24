@@ -58,6 +58,13 @@ pub struct ResidentInteractiveCommand {
 }
 
 impl ResidentInteractiveCommand {
+    /// Canonical argv for the resident-loop command.
+    pub fn argv(&self) -> &[String] {
+        &self.argv
+    }
+}
+
+impl ResidentInteractiveCommand {
     pub fn bootstrap(
         resident_name: &ResidentName,
         root_session_id: Option<&RootSessionId>,

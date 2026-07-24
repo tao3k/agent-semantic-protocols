@@ -10,7 +10,7 @@ use crate::document_candidates::{
 macro_rules! search_pipe_source_text {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Clone, Debug, Eq, PartialEq)]
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub struct $name(String);
 
         impl $name {
@@ -22,6 +22,44 @@ macro_rules! search_pipe_source_text {
         impl From<String> for $name {
             fn from(value: String) -> Self {
                 Self(value)
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(value: &str) -> Self {
+                Self(value.to_owned())
+            }
+        }
+
+        impl From<&String> for $name {
+            fn from(value: &String) -> Self {
+                Self(value.clone())
+            }
+        }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::borrow::Borrow<str> for $name {
+            fn borrow(&self) -> &str {
+                self.as_str()
+            }
+        }
+
+        impl std::ops::Deref for $name {
+            type Target = str;
+
+            fn deref(&self) -> &Self::Target {
+                self.as_str()
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str(self.as_str())
             }
         }
     };
@@ -136,11 +174,11 @@ fn document_element_acquisition(
         .collect::<Vec<_>>();
     Ok(SearchPipeSourceAcquisition {
         source_trace: vec![SearchPipeSourceAcquisitionTrace {
-            source: "document-element".to_string(),
+            source: ("document-element".to_string()).into(),
             status: if candidates.is_empty() {
-                "empty".to_string()
+                ("empty".to_string()).into()
             } else {
-                "used".to_string()
+                ("used".to_string()).into()
             },
             matched: candidates.len(),
             missing: usize::from(candidates.is_empty()),
@@ -237,17 +275,17 @@ pub(super) fn candidate_trace(
     artifact_digest: Option<String>,
 ) -> SearchPipeSourceAcquisitionTrace {
     SearchPipeSourceAcquisitionTrace {
-        source: source.to_string(),
+        source: (source.to_string()).into(),
         status: if candidates.is_empty() {
-            "empty".to_string()
+            ("empty".to_string()).into()
         } else {
-            "used".to_string()
+            ("used".to_string()).into()
         },
         matched: candidates.len(),
         missing: usize::from(candidates.is_empty()),
         normalized: candidates.len(),
         elapsed,
         source_snapshot,
-        artifact_digest,
+        artifact_digest: (artifact_digest).map(Into::into),
     }
 }

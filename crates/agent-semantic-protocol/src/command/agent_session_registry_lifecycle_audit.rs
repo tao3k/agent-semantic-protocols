@@ -33,7 +33,7 @@ pub(super) fn lifecycle_audit_session(
     let (rollout_session_index, rollout_index_error) = match root_filter.as_deref() {
         Some(root_session_id) if !sessions.is_empty() => {
             let session_ids = sessions.iter().map(|session| session.session_id.as_str());
-            match codex_rollout_session_index_for_sessions(root_session_id, session_ids) {
+            match codex_rollout_session_index_for_sessions(&root_session_id.into(), session_ids) {
                 Ok(index) => (index, None),
                 Err(error) => (None, Some(error)),
             }
@@ -94,11 +94,16 @@ pub(super) fn lifecycle_audit_report(
 ) -> Result<serde_json::Value, String> {
     let registered_session_ids: std::collections::BTreeSet<String> = sessions
         .iter()
-        .map(|session| session.session_id.clone())
+        .map(|session| session.session_id.as_str().to_string())
         .collect();
     let registered_status_by_session: std::collections::BTreeMap<String, String> = sessions
         .iter()
-        .map(|session| (session.session_id.clone(), session.status.clone()))
+        .map(|session| {
+            (
+                session.session_id.as_str().to_string(),
+                session.status.as_str().to_string(),
+            )
+        })
         .collect();
     let registry_sessions: Vec<serde_json::Value> = sessions
         .iter()
@@ -122,7 +127,7 @@ pub(super) fn lifecycle_audit_report(
         let visible_missing_rollout_by_session: std::collections::BTreeMap<_, _> = index
             .missing_rollout_by_session
             .iter()
-            .filter(|(session_id, _)| registered_session_ids.contains(*session_id))
+            .filter(|(session_id, _)| registered_session_ids.contains(session_id.as_str()))
             .map(|(session_id, reason)| (session_id.clone(), reason.clone()))
             .collect();
         missing_rollout_count = visible_missing_rollout_by_session.len();
@@ -184,7 +189,7 @@ pub(super) fn lifecycle_audit_report(
 
     let missing_registered_rollout_sessions: Vec<serde_json::Value> = sessions
         .iter()
-        .filter(|session| !rollout_session_ids.contains(&session.session_id))
+        .filter(|session| !rollout_session_ids.contains(session.session_id.as_str()))
         .map(lifecycle_registry_session_entry)
         .collect();
 
@@ -288,7 +293,14 @@ fn lifecycle_rollout_session_entry(
         if let Some(status) = registry_status {
             object.insert("registryStatus".to_string(), serde_json::json!(status));
         }
-        if let Some(activity) = index.activity_by_session.get(&session_id) {
+        if let Some(activity) =
+            index
+                .activity_by_session
+                .iter()
+                .find_map(|(candidate_id, activity)| {
+                    (candidate_id.as_str() == session_id).then_some(activity)
+                })
+        {
             let rollout_status =
                 lifecycle_final_rollout_status(registry_status, activity.status.as_str());
             object.insert(

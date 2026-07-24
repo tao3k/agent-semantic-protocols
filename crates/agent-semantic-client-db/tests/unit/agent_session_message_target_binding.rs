@@ -6,16 +6,16 @@ fn record_with_binding_source(source: &str) -> AgentSessionRecord {
         root_session_id: "root".into(),
         session_id: "child".into(),
         physical_generation: 1,
-        configured_agent_type: Some("asp_explorer".to_string()),
+        configured_agent_type: Some("asp_explorer".into()),
         profile_evidence_json: None,
-        message_target_id: Some("/root/asp_explorer".to_string()),
+        message_target_id: Some("/root/asp_explorer".into()),
         parent_session_id: Some("root".into()),
         name: "asp-explore".into(),
-        role: "asp_explorer".to_string(),
-        model: Some("gpt-5.4-mini".to_string()),
-        model_observation_source: Some("codex.rollout".to_string()),
+        role: "asp_explorer".into(),
+        model: Some("gpt-5.4-mini".into()),
+        model_observation_source: Some("codex.rollout".into()),
         model_observed_at: Some(1),
-        model_evidence_ref: Some("child".to_string()),
+        model_evidence_ref: Some("child".into()),
         status: "idle".into(),
         created_at: 1,
         updated_at: 1,
@@ -35,7 +35,8 @@ fn record_with_binding_source(source: &str) -> AgentSessionRecord {
                 "observedAt": 1,
             }
         })
-        .to_string(),
+        .to_string()
+        .into(),
     }
 }
 

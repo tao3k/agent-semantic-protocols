@@ -66,14 +66,18 @@ impl LanguageProjectionImportRequest {
         let stdout = std::str::from_utf8(stdout)
             .map_err(|error| format!("projection import emitted non-UTF-8 JSON: {error}"))?;
         let projection = ClientDbLanguageProjection::from_json(stdout)?;
-        if projection.language_id != language_id {
+        if projection.language_id() != language_id {
             return Err(format!(
                 "projection import language mismatch: requested={language_id} received={}",
-                projection.language_id
+                projection.language_id()
             ));
         }
         let owner = self.owner.to_string_lossy();
-        if !projection.sources.iter().any(|source| source.path == owner) {
+        if !projection
+            .sources()
+            .iter()
+            .any(|source| source.path == owner)
+        {
             return Err(format!(
                 "projection import did not contain requested owner source `{owner}`"
             ));

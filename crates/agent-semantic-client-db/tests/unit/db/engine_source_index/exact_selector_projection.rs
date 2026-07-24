@@ -36,13 +36,21 @@ fn turso_round_trip_returns_only_a_validated_merkle_projection() {
     )])
     .expect("workspace Merkle tree");
     let packet = build_exact_selector_projection_packet_v1(
-        "rust",
-        "rs-harness",
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketLanguageIdV1::from(
+            "rust",
+        ),
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketProviderIdV1::from(
+            "rs-harness",
+        ),
         canonical_item_selector,
         &parser_identity_digest,
         &query_pack_digest,
-        owner_path,
-        selector,
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketOwnerPathV1::from(
+            owner_path,
+        ),
+        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketStructuralSelectorV1::from(
+            selector,
+        ),
         ExactProjectionModeV1::Code,
         source,
         br#"{"kind":"fn","name":"example"}"#,

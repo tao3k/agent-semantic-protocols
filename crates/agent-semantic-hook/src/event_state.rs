@@ -67,6 +67,14 @@ impl From<&str> for HookEventTranscriptPath {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HookEventStateError(String);
 
+impl std::fmt::Display for HookEventStateError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for HookEventStateError {}
+
 impl From<String> for HookEventStateError {
     fn from(value: String) -> Self {
         Self(value)
@@ -287,7 +295,13 @@ pub fn has_recorded_subagent_context(
         if !is_recent_for_window(&event, now, PROMPT_SCOPE_WINDOW_MS) {
             break;
         }
-        if !event_matches_prompt_scope(&event, session_id, transcript_path) {
+        if !event_matches_prompt_scope(
+            &event,
+            session_id.as_ref().map(HookEventSessionId::as_str),
+            transcript_path
+                .as_ref()
+                .map(HookEventTranscriptPath::as_str),
+        ) {
             continue;
         }
         if is_prompt_scope_boundary(&event) {

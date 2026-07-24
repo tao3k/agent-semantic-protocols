@@ -85,10 +85,7 @@ impl AgentSessionRegistry {
     }
 
     /// Record the latest tool event for one registered session.
-    pub fn record_tool_event(
-        &self,
-        request: AgentSessionToolEventRequest<'_>,
-    ) -> Result<bool, String> {
+    pub fn record_tool_event(&self, request: AgentSessionToolEventRequest) -> Result<bool, String> {
         block_on_agent_session_registry_async(turso_record_tool_event(&self.db_path, request))
     }
 
@@ -131,19 +128,22 @@ impl AgentSessionRegistry {
     /// Generic lookup used by registry CLI commands.
     pub fn lookup_session(
         &self,
-        request: AgentSessionLookupRequest<'_>,
+        request: AgentSessionLookupRequest,
     ) -> Result<Option<AgentSessionRecord>, String> {
-        if let Some(session_id) = request.session_id {
-            return self.session_by_id(request.project_id, session_id);
+        if let Some(session_id) = request.session_id.as_ref() {
+            return self.session_by_id(request.project_id.clone(), session_id.clone());
         }
-        if let (Some(root_session_id), Some(name)) = (request.root_session_id, request.name) {
-            return self.session_by_name(request.project_id, root_session_id, name);
+        if let (Some(root_session_id), Some(name)) =
+            (request.root_session_id.as_ref(), request.name.as_ref())
+        {
+            return self.session_by_name(
+                request.project_id.clone(),
+                root_session_id.clone(),
+                name.clone(),
+            );
         }
-        let sessions = self.query_sessions(
-            request.project_id,
-            request.root_session_id.map(AgentSessionRootSessionId::from),
-            request.name.map(AgentSessionResidentName::from),
-        )?;
+        let sessions =
+            self.query_sessions(request.project_id, request.root_session_id, request.name)?;
         Ok(sessions.into_iter().next())
     }
 
@@ -261,7 +261,7 @@ impl AgentSessionRegistry {
                 &self.db_path,
                 root_session_id.as_str(),
             ))?
-            .map(|record| record.project_id),
+            .map(|record| record.project_id.into_string()),
         )
     }
 }

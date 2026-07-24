@@ -37,6 +37,73 @@ code:
 - dependency and ownership constraints
 - high-value safety and correctness properties
 
+Search quality uses the same obligation discipline even when no formal proof
+worker is involved. A =SearchClosureReceipt= may close only the claim classes
+that have explicit obligations and support paths. Exact selector identity closes
+an =identity= obligation; it does not imply =enumeration=, =absence=,
+=causal-flow=, or =handoff= closure. Enumeration and absence claims require
+complete admitted-scope proof, untruncated execution, snapshot continuity, and
+provider admission evidence. Runtime receipts expose obligation coverage and
+identity proof; benchmark precision and recall are derived later from golden
+sets.
+
+The search loop's execution plan is a proof-obligation DAG. Branches may run in
+parallel only when independence is proven under one immutable workspace
+snapshot, provider activation digest, and query-pack authority. Joins are
+deterministic: =all-required=, =first-exact=, =disambiguate-all=,
+=complete-enumeration=, or =best-supported=. =best-supported= is ranking
+evidence and cannot by itself close a terminal claim.
+
+This is runtime proof discipline, not a claim that every search receipt is a
+formal theorem. Formal verification remains selective. Search closure proof is
+validated by event replay, graph roots, source snapshot continuity, provider
+admission, and obligation gates. Lean/AXLE-style formal proof should be reserved
+for stable contracts whose statements are worth formalizing, such as selector
+identity laws, cache invalidation laws, and state-machine transition safety.
+
+** Runtime route-program proof discipline
+
+A search reasoner proposes targets and expected relevance; it does not prove
+execution or closure.  Route proposals MAY declare =targets= and
+=maySatisfy= obligation identifiers so that the runtime can validate intent
+and schedule useful work.  After evidence is committed, the =GraphRouter=
+recomputes obligation deltas from the authoritative graph, claim-class rules,
+freshness proofs, and completeness proofs.  A reasoner-reported delta or
+closure claim is never authoritative.
+
+=BypassReasoning=, =PlanOnce=, and =CheckpointedReasoning= are execution
+profiles of one route state machine, not separate proof machines.
+=PlanOnce= means that one semantic planning pass may produce several stages;
+it does not waive validation between stages.  Before each stage starts, the
+runtime MUST revalidate its graph root, source snapshot, policy and budget
+bindings, dependency assumptions, action grants, and still-open obligations.
+When a completed stage reveals a new dependency or invalidates a continuation
+guard, unstarted downstream work is invalidated or replanned before execution.
+
+A unique candidate or outgoing edge permits reasoning bypass only when the
+runtime also proves that the relevant search scope is complete, fresh, and
+non-truncated for the obligation's claim class.  Identity evidence cannot
+close enumeration, absence, causal-flow, or handoff obligations merely because
+only one candidate is currently visible.
+
+The runtime proof suite MUST include the following P0 counterexample gates:
+
+- *Dependency revealed after planning:* no newly dependent branch may start
+  under a stale parallelism assumption, and unstarted affected grants are
+  invalidated.
+- *Competing owner discovered:* a prior unique-edge bypass cannot become a
+  terminal receipt; the competing ownership obligation is reopened or routed
+  to a disambiguation checkpoint.
+- *Snapshot or policy drift:* no provider action may start under the obsolete
+  program or grant, even when its semantic target is unchanged.
+- *Timeout, cancellation, or late result:* a late outcome cannot enter the
+  current graph, satisfy an obligation, or complete a join without an explicit
+  current-state admission and commit decision.
+
+These gates test the boundary between a reasoner's prediction and the
+runtime's proof.  They do not require formal verification of model reasoning;
+they require deterministic validation of every authority-bearing transition.
+
 * Research Source
 
 This document is grounded in the local research checkout:

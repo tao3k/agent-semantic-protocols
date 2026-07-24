@@ -44,10 +44,10 @@ pub(in crate::command::agent_session_registry) fn status_session(
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
     let name = args.name.clone();
     let mut record = registry.lookup_session(AgentSessionLookupRequest {
-        project_id: &project_id,
-        session_id: args.child_session_id.as_deref(),
-        root_session_id: root_session_id.as_deref(),
-        name: name.as_deref(),
+        project_id: (&project_id).into(),
+        session_id: args.child_session_id.as_deref().map(Into::into),
+        root_session_id: root_session_id.as_deref().map(Into::into),
+        name: name.as_deref().map(Into::into),
     })?;
     let now = agent_session_unix_timestamp()?;
     let host_resident_target_observation = root_session_id
@@ -73,12 +73,12 @@ pub(in crate::command::agent_session_registry) fn status_session(
         .as_ref()
         .is_some_and(|observation| observation.target_status == "absent");
     if host_target_absent && let Some(session) = record.as_mut() {
-        session.status = "orphan-risk".to_string();
+        session.status = "orphan-risk".to_string().into();
     }
     if let Some(session) = record.as_mut()
         && stale_invalid_session_should_be_idle(session, now)?
     {
-        session.status = "idle".to_string();
+        session.status = "idle".to_string().into();
     }
     let validation = record
         .as_ref()
@@ -93,9 +93,9 @@ pub(in crate::command::agent_session_registry) fn status_session(
         })
         .transpose()?;
     if let (Some(session), Some(validation)) = (record.as_mut(), validation.as_ref())
-        && validation.status == "failed"
+        && validation.status == "failed".into()
     {
-        session.status = "invalid".to_string();
+        session.status = "invalid".to_string().into();
     }
     let registry_allows_routing = record
         .as_ref()
@@ -103,7 +103,7 @@ pub(in crate::command::agent_session_registry) fn status_session(
             !matches!(session.status.as_str(), "archived" | "closed")
                 && agent_semantic_client_db::agent_session_message_target_is_currently_routable(
                     session,
-                    &session.root_session_id,
+                    &*session.root_session_id,
                     fresh_host_transport_verified,
                     now,
                 )
@@ -142,7 +142,7 @@ pub(in crate::command::agent_session_registry) fn status_session(
     let registry_status = record
         .as_ref()
         .map(|session| session.status.clone())
-        .unwrap_or_else(|| "missing".to_string());
+        .unwrap_or_else(|| "missing".to_string().into());
     let host_thread_id = record
         .as_ref()
         .map(|session| session.session_id.as_str())
@@ -174,8 +174,12 @@ pub(in crate::command::agent_session_registry) fn status_session(
     }
     let session_lifecycle_index = None;
     let activity_snapshot_short = None;
-    let (host_thread_existence, host_thread_existence_reason) =
-        host_thread_existence_snapshot(runtime_status.host_thread_id.as_deref());
+    let (host_thread_existence, host_thread_existence_reason) = host_thread_existence_snapshot(
+        runtime_status
+            .host_thread_id
+            .as_ref()
+            .map(|value| value.as_str()),
+    );
     let multi_agent_child_state = multi_agent_child_state_snapshot(
         record.as_ref().map(|session| session.status.as_str()),
         routable,
@@ -184,7 +188,10 @@ pub(in crate::command::agent_session_registry) fn status_session(
     let session_lifetime = resolve_session_lifetime(
         project_root,
         name.as_deref(),
-        runtime_status.host_client.as_deref(),
+        runtime_status
+            .host_client
+            .as_ref()
+            .map(|value| value.as_str()),
     );
     let mut report = SessionStatusReport {
         owner: "rust",
@@ -192,14 +199,14 @@ pub(in crate::command::agent_session_registry) fn status_session(
         root_session_id,
         name,
         session: record,
-        registry_status,
+        registry_status: registry_status.to_string(),
         routable,
         session_lifetime: session_lifetime.value,
         resident: session_lifetime.resident,
         session_lifetime_source: session_lifetime.source,
         validation_status: validation
             .as_ref()
-            .map(|validation| validation.status.clone())
+            .map(|validation| validation.status.as_str().to_string())
             .unwrap_or_else(|| "missing-registry".to_string()),
         validation_reason: validation
             .as_ref()
@@ -210,11 +217,15 @@ pub(in crate::command::agent_session_registry) fn status_session(
         rollout_activity,
         session_lifecycle_index,
         activity_snapshot_short,
-        host_client: runtime_status.host_client,
-        host_thread_id: runtime_status.host_thread_id,
-        host_status_source: runtime_status.host_status_source,
-        host_status: runtime_status.host_status,
-        host_status_reason: runtime_status.host_status_reason,
+        host_client: runtime_status
+            .host_client
+            .map(|value| value.as_str().to_string()),
+        host_thread_id: runtime_status
+            .host_thread_id
+            .map(|value| value.as_str().to_string()),
+        host_status_source: runtime_status.host_status_source.as_str().to_string(),
+        host_status: runtime_status.host_status.as_str().to_string(),
+        host_status_reason: runtime_status.host_status_reason.as_str().to_string(),
         host_thread_existence,
         host_thread_existence_reason,
         multi_agent_child_state,
@@ -293,7 +304,7 @@ pub(in crate::command::agent_session_registry) fn registered_session_is_reusable
     if !record.is_routable_at(now) {
         return Ok(false);
     }
-    if !agent_session_message_target_is_live_bound(record, &record.root_session_id) {
+    if !agent_session_message_target_is_live_bound(record, &*record.root_session_id) {
         return Ok(false);
     }
     if !session_record_validation_allows_routing(registry, record, now)? {

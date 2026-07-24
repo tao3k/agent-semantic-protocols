@@ -1,6 +1,6 @@
-use agent_semantic_search::{
-    GraphSearchProjectionRenderer, SearchProjectionDensityV1, SearchProjectionRenderer,
-    SearchProjectionRequestV1, SemanticSearchPacketV1,
+use agent_semantic_search_projection::{
+    SearchProjectionDensityV1, SearchProjectionRenderer, SearchProjectionRequestV1,
+    SemanticSearchPacketV1, TopologySearchProjectionRenderer,
 };
 use serde_json::json;
 
@@ -22,21 +22,21 @@ fn packet() -> SemanticSearchPacketV1 {
 #[test]
 fn density_does_not_change_semantic_digest() {
     let packet = packet();
-    let renderer = GraphSearchProjectionRenderer;
+    let renderer = TopologySearchProjectionRenderer;
     let terse = renderer
         .render(
             &packet,
-            &SearchProjectionRequestV1::new("owner", SearchProjectionDensityV1::Terse),
+            &SearchProjectionRequestV1::new("topology", SearchProjectionDensityV1::Terse),
         )
         .expect("terse projection");
     let expanded = renderer
         .render(
             &packet,
-            &SearchProjectionRequestV1::new("owner", SearchProjectionDensityV1::Expanded),
+            &SearchProjectionRequestV1::new("topology", SearchProjectionDensityV1::Expanded),
         )
         .expect("expanded projection");
 
-    assert_eq!(terse.semantic_digest, expanded.semantic_digest);
+    assert_eq!(terse.semantic_digest(), expanded.semantic_digest());
 }
 
 #[test]

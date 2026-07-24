@@ -167,7 +167,7 @@ fn typed_subagent_start_plus_native_host_tree_is_a_live_canonical_binding() {
         serde_json::from_str(&record.metadata_json).expect("metadata");
     metadata["messageTargetBinding"]["source"] =
         serde_json::Value::String("codex-typed-subagent-start-plus-native-host-tree".to_string());
-    record.metadata_json = metadata.to_string();
+    record.metadata_json = metadata.to_string().into();
 
     assert!(
         agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
@@ -183,7 +183,7 @@ fn followup_ack_is_a_live_canonical_binding() {
         serde_json::from_str(&record.metadata_json).expect("metadata");
     metadata["messageTargetBinding"]["source"] =
         serde_json::Value::String("native-collaboration-followup-ack".to_string());
-    record.metadata_json = metadata.to_string();
+    record.metadata_json = metadata.to_string().into();
 
     assert!(
         agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
@@ -205,7 +205,7 @@ fn rollout_host_tree_binding_rejects_root_child_and_target_mismatch() {
         let mut metadata: serde_json::Value =
             serde_json::from_str(&invalid.metadata_json).expect("metadata");
         metadata["messageTargetBinding"][field] = serde_json::Value::String(value.to_string());
-        invalid.metadata_json = metadata.to_string();
+        invalid.metadata_json = metadata.to_string().into();
         assert!(
             !agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
                 &invalid, "root"
@@ -221,7 +221,7 @@ fn canonical_path_without_trusted_identity_source_is_not_live_bound() {
     let mut metadata: serde_json::Value =
         serde_json::from_str(&record.metadata_json).expect("metadata");
     metadata["messageTargetBinding"]["source"] = serde_json::Value::String("path-only".to_string());
-    record.metadata_json = metadata.to_string();
+    record.metadata_json = metadata.to_string().into();
 
     assert!(
         !agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(

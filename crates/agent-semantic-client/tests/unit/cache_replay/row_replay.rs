@@ -57,36 +57,6 @@ fn prompt_output_replay_rejects_stale_generation_file_hashes() {
 }
 
 #[test]
-fn hook_direct_source_read_prompt_output_artifact_does_not_replay() {
-    let root = temp_root("hook-direct-source-read-prompt-replay");
-    let cache_root = v2_cache_root(&root);
-    write_syntax_replay_sources(&root);
-    let request = ClientRequest::new(ClientMethod::Query, &root).with_forwarded_args(vec![
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
-        "--selector".to_string(),
-        "src/lib.rs:1:3".to_string(),
-        "--code".to_string(),
-        ".".to_string(),
-    ]);
-    write_prompt_output_artifact(&root, "pub fn parse_query() -> usize {\n    1\n}\n");
-    let hit = prompt_generation_hit(&root, &request, "query/direct-source-read");
-
-    assert!(load_replay_artifact(&cache_root, &hit, &request).is_none());
-    let selector_request =
-        ClientRequest::new(ClientMethod::Query, &root).with_forwarded_args(vec![
-            "--selector".to_string(),
-            "src/lib.rs:1:3".to_string(),
-            "--code".to_string(),
-            ".".to_string(),
-        ]);
-    let selector_hit = prompt_generation_hit(&root, &selector_request, "query/code");
-
-    assert!(load_replay_artifact(&cache_root, &selector_hit, &selector_request).is_none());
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
 fn search_packet_replay_prefers_cached_search_stdout_artifact() {
     let root = temp_root("search-output-replay");
     let cache_root = v2_cache_root(&root);

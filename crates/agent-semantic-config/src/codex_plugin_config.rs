@@ -27,6 +27,14 @@ impl From<&str> for CodexPluginId {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CodexPluginConfigError(String);
 
+impl std::fmt::Display for CodexPluginConfigError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for CodexPluginConfigError {}
+
 impl From<String> for CodexPluginConfigError {
     fn from(value: String) -> Self {
         Self(value)

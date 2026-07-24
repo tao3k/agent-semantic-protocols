@@ -20,7 +20,7 @@ pub(in crate::command) fn invalidate_unroutable_canonical_target(
         return Ok(false);
     };
     *existing = registry
-        .invalidate_session_live_binding(project_id, &existing.session_id, "orphan-risk", now)?
+        .invalidate_session_live_binding(project_id, &*existing.session_id, "orphan-risk", now)?
         .ok_or_else(|| {
             format!(
                 "failed to invalidate absent resident child `{}`",
@@ -75,20 +75,20 @@ fn bind_verified_canonical_target(
         }
         _ => None,
     };
-    registry.archive_session(project_id, &existing.session_id, now)?;
+    registry.archive_session(project_id, &*existing.session_id, now)?;
     Ok(
         registry.claim_resident_session(AgentSessionRegisterRequest {
-            project_id,
-            root_session_id,
-            session_id: &existing.session_id,
-            message_target_id: Some(message_target_id),
-            parent_session_id: Some(root_session_id),
-            name,
-            role: &existing.role,
+            project_id: project_id.into(),
+            root_session_id: root_session_id.into(),
+            session_id: existing.session_id.clone(),
+            message_target_id: Some(message_target_id.into()),
+            parent_session_id: Some(root_session_id.into()),
+            name: name.into(),
+            role: existing.role.clone(),
             model_observation,
-            status: "idle",
+            status: "idle".into(),
             expires_at: None,
-            metadata_json: &metadata.to_string(),
+            metadata_json: (&metadata.to_string()).into(),
             now,
         })?,
     )

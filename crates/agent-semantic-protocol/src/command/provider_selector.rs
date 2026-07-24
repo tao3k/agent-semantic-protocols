@@ -42,11 +42,7 @@ pub(crate) fn unsupported_language_facade_message(
         let command = command.unwrap_or("guide");
         lines.push(format!("asp {suggested_facade} {command} ..."));
     } else {
-        lines.extend([
-            "asp providers".to_string(),
-            "asp fd -query '<path-or-language-term>' '.'".to_string(),
-            "asp rg -query '<feature-term>' '<bounded-scope>'".to_string(),
-        ]);
+        lines.push("asp providers".to_string());
     }
     lines.extend([
         String::new(),
@@ -117,7 +113,7 @@ pub(super) fn invalid_source_selector_query_message(
 ) -> String {
     let workspace = option_value(args, "--workspace").unwrap_or(".");
     format!(
-        "invalid query selector `{selector}`: file selectors are not executable query selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items\nselectorState=file-selector\nprojection=query\nallowed=false\nreason=file-selectors-are-not-query-selectors\nnextAction=materialize-owner-items\nnextCommand=asp {language_id} search owner {selector} items --workspace {workspace} --view seeds\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
+        "invalid query selector `{selector}`: file selectors are not executable query selectors; query an exact parser-owned item selector such as {language_id}://path#item/<kind>/<symbol>; recover with search owner <path> items\nselectorState=file-selector\nprojection=query\nallowed=false\nreason=file-selectors-are-not-query-selectors\nnextAction=materialize-owner-items\nnextCommand=asp {language_id} search owner {selector} items --workspace {workspace} --view seeds\nrequiredSelector={language_id}://{selector}#item/<kind>/<symbol>"
     )
 }
 
@@ -170,9 +166,8 @@ pub(super) fn is_provider_owned_structural_selector_query(
     let Some(selector) = option_value(args, "--selector") else {
         return false;
     };
-    selector
-        .strip_prefix(language_id)
-        .is_some_and(|suffix| suffix.starts_with("://") && suffix.contains("#item/"))
+    agent_semantic_content_identity::CanonicalItemSelectorV1::parse(selector)
+        .is_ok_and(|selector| selector.language_id.as_str() == language_id)
 }
 
 pub(super) fn provider_owned_structural_owner_path<'a>(
@@ -182,13 +177,9 @@ pub(super) fn provider_owned_structural_owner_path<'a>(
     if !is_provider_owned_structural_selector_query(language_id, args) {
         return None;
     }
-    let selector_prefix = match language_id {
-        "rust" => "rust://",
-        "typescript" => "typescript://",
-        _ => return None,
-    };
-    option_value(args, "--selector")?
-        .strip_prefix(selector_prefix)?
+    provider_owned_structural_selector(language_id, args)?
+        .split_once("://")?
+        .1
         .split_once('#')
         .map(|(owner_path, _)| owner_path)
 }

@@ -36,8 +36,8 @@ pub(crate) fn lexical_search_frame_trace(
     route: &LexicalSearchFrameRoute,
 ) -> SearchPipeSourceAcquisitionTrace {
     SearchPipeSourceAcquisitionTrace {
-        source: "lexical-search-frame".to_string(),
-        status: route.render_receipt(),
+        source: ("lexical-search-frame".to_string()).into(),
+        status: (route.render_receipt()).into(),
         matched: route.selected_candidate_count,
         missing: usize::from(route.fallback_reason != "none"),
         normalized: route.selected_candidate_count,

@@ -41,7 +41,7 @@ fn turso_cdc_profile(c: &mut Criterion) {
     let mut cursor = runtime
         .block_on(storage.read_page(None, 1_000.into()))
         .expect("read CDC setup cursor")
-        .next_change_id;
+        .next_change_id();
     let mut next_id = 0_i64;
     let payload = vec![0x3c_u8; 1_024];
 
@@ -76,17 +76,17 @@ fn turso_cdc_profile(c: &mut Criterion) {
                     .await
                     .expect("read CDC benchmark tail");
                 assert_eq!(
-                    page.changes
+                    page.changes()
                         .iter()
                         .filter(|change| {
-                            change.table_name.as_deref() == Some("cdc_bench_fixture")
-                                && change.kind == TursoCdcChangeKind::Insert
+                            change.table_name() == Some("cdc_bench_fixture")
+                                && change.kind() == TursoCdcChangeKind::Insert
                         })
                         .count(),
                     256
                 );
-                assert!(!page.has_more);
-                cursor = page.next_change_id;
+                assert!(!page.has_more());
+                cursor = page.next_change_id();
                 black_box(page);
             });
         });
@@ -119,9 +119,9 @@ fn turso_cdc_profile(c: &mut Criterion) {
                     .await
                     .expect("read CDC tail after rollback");
                 assert!(
-                    page.changes.iter().all(|change| {
-                        change.table_name.as_deref() != Some("cdc_bench_fixture")
-                    }),
+                    page.changes()
+                        .iter()
+                        .all(|change| { change.table_name() != Some("cdc_bench_fixture") }),
                     "rolled-back rows must not be visible in CDC"
                 );
                 black_box(page);

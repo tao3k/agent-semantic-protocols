@@ -218,7 +218,7 @@ fn missing_message_target_requires_same_child_live_rebind() {
 #[test]
 fn stale_persisted_target_is_unbound_and_requires_same_child_rebind() {
     let mut record = active_record(Some("gpt-5.4-mini"), Some("target"));
-    record.metadata_json = "{}".to_string();
+    record.metadata_json = "{}".into();
 
     assert!(!agent_session_message_target_is_live_bound(&record, "root"));
     assert!(!resident_child_host_runtime_refresh_eligible(
@@ -262,7 +262,8 @@ fn wrong_root_binding_is_not_ready() {
             "observedAt": 1,
         }
     })
-    .to_string();
+    .to_string()
+    .into();
 
     assert!(!agent_session_message_target_is_live_bound(&record, "root"));
 }
@@ -270,7 +271,7 @@ fn wrong_root_binding_is_not_ready() {
 #[test]
 fn model_observation_refresh_preserves_independent_live_binding() {
     let mut record = active_record(Some("gpt-5.4-mini"), Some("target"));
-    record.model_observation_source = Some("codex.rollout".to_string());
+    record.model_observation_source = Some("codex.rollout".into());
     record.model_observed_at = Some(2);
 
     assert!(agent_session_message_target_is_live_bound(&record, "root"));
