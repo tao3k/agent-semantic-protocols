@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 use super::{WorkspaceTreeSitterRequest, collect_workspace_captures, registered_source_path};
 
 #[test]
-fn workspace_query_request_requires_query_source_without_selector() {
+fn workspace_search_request_requires_query_source_without_selector() {
     let request = WorkspaceTreeSitterRequest::parse(&[
-        "query".to_string(),
+        "search".to_string(),
         "--treesitter-query".to_string(),
         "(string_literal) @value".to_string(),
         "--workspace".to_string(),
@@ -25,6 +25,15 @@ fn workspace_query_request_requires_query_source_without_selector() {
     ])
     .expect("parse exact query");
     assert!(exact.is_none());
+
+    let migration_error = WorkspaceTreeSitterRequest::parse(&[
+        "query".to_string(),
+        "--treesitter-query".to_string(),
+        "(function_item) @function".to_string(),
+    ])
+    .expect_err("workspace discovery must move to search");
+    assert!(migration_error.contains("search-owned"));
+    assert!(migration_error.contains("search --treesitter-query"));
 }
 
 #[test]

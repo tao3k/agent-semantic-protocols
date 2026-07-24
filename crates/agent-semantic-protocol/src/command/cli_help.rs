@@ -488,7 +488,7 @@ fn facade_command(name: &'static str, bin_name: &'static str) -> Command {
 }
 
 fn facade_leaf_command(name: &'static str, bin_name: &'static str) -> Command {
-    Command::new(name)
+    let mut command = Command::new(name)
         .bin_name(bin_name)
         .about("Run a language-owned ASP command")
         .arg(
@@ -496,13 +496,25 @@ fn facade_leaf_command(name: &'static str, bin_name: &'static str) -> Command {
                 .long("workspace")
                 .value_name("ROOT")
                 .help("Select the workspace"),
-        )
-        .arg(
-            Arg::new("args")
-                .value_name("ARGS")
-                .num_args(0..)
-                .allow_hyphen_values(true),
-        )
+        );
+    if name == "search" {
+        command = command
+            .arg(
+                Arg::new("treesitter-query")
+                    .long("treesitter-query")
+                    .value_name("QUERY")
+                    .help("Run a workspace-wide structural reasoning search"),
+            )
+            .after_help(
+                "Tree-sitter discovery belongs to search. Use query with an exact --selector for deterministic projection.",
+            );
+    }
+    command.arg(
+        Arg::new("args")
+            .value_name("ARGS")
+            .num_args(0..)
+            .allow_hyphen_values(true),
+    )
 }
 
 fn root_facade_command(language: &str) -> Command {
@@ -611,16 +623,8 @@ fn facade_leaf_bin(language: &str, leaf: &str) -> Option<&'static str> {
 
 fn facade_leaf_help(language: &str, leaf: &str) -> Option<Command> {
     Some(
-        Command::new(facade_leaf_name(leaf)?)
-            .bin_name(facade_leaf_bin(language, leaf)?)
-            .about("Run a language-provider command")
-            .arg(
-                Arg::new("args")
-                    .value_name("ARGS")
-                    .num_args(0..)
-                    .trailing_var_arg(true)
-                    .allow_hyphen_values(true),
-            ),
+        facade_leaf_command(facade_leaf_name(leaf)?, facade_leaf_bin(language, leaf)?)
+            .about("Run a language-provider command"),
     )
 }
 

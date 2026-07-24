@@ -75,6 +75,24 @@ fn codex_plugin_help_states_the_default_and_explicit_scopes() {
 }
 
 #[test]
+fn search_help_owns_tree_sitter_discovery() {
+    for args in [&["search", "--help"][..], &["rust", "search", "--help"][..]] {
+        let mut command = help_model::selected_command(&owned_args(args));
+        let help = command.render_help().to_string();
+
+        assert!(help.contains("--treesitter-query <QUERY>"), "help={help}");
+        assert!(
+            help.contains("workspace-wide structural reasoning search"),
+            "help={help}",
+        );
+        assert!(
+            help.contains("query with an exact --selector"),
+            "help={help}",
+        );
+    }
+}
+
+#[test]
 fn install_language_path_selects_language_command() {
     assert_selected(
         &["install", "language", "--help"],

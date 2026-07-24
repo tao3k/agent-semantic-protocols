@@ -1,12 +1,9 @@
 //! Thin root `asp search` / `asp query` router over language facades.
 
 use std::env;
-use std::fs;
 use std::path::{Path, PathBuf};
 
-use agent_semantic_hook::{
-    HookRuntime, default_activation_path, discover_activation_path, parse_hook_activation,
-};
+use agent_semantic_hook::HookRuntime;
 
 use super::provider_dispatch::{
     is_language_facade, run_language_command, unsupported_language_facade_message,
@@ -40,7 +37,7 @@ fn root_language_and_args(
         ));
     }
 
-    infer_root_facade_language(&provider_args, cwd, runtime.as_ref())
+    infer_root_facade_language(&provider_args, cwd, runtime.as_ref())?
         .map(|language| (language, provider_args))
         .ok_or_else(|| root_facade_language_required(command, runtime.as_ref()))
 }
@@ -97,38 +94,48 @@ fn strip_query_view_seeds(args: Vec<String>) -> Vec<String> {
 }
 
 fn load_activation_runtime(cwd: &Path) -> Option<HookRuntime> {
-    let activation_path =
-        discover_activation_path(cwd).unwrap_or_else(|| default_activation_path(cwd));
-    let text = fs::read_to_string(activation_path).ok()?;
-    parse_hook_activation(&text).ok()
+    let activation_path = super::provider_activation::provider_activation_path(cwd);
+    super::provider_activation::load_activation(&activation_path, cwd).ok()
 }
 
 fn infer_root_facade_language(
     args: &[String],
     cwd: &Path,
     runtime: Option<&HookRuntime>,
-) -> Option<String> {
-    let runtime = runtime?;
+) -> Result<Option<String>, String> {
+    let Some(runtime) = runtime else {
+        return Ok(None);
+    };
     let path_languages = args
         .iter()
         .filter_map(|arg| language_from_path_like_arg(arg, runtime))
         .collect::<std::collections::BTreeSet<_>>();
     if path_languages.len() == 1 {
-        return path_languages.into_iter().next().map(str::to_string);
+        return Ok(path_languages.into_iter().next().map(str::to_string));
     }
 
     let project_roots = args
         .iter()
         .filter_map(|arg| project_root_candidate(arg, cwd))
         .collect::<Vec<_>>();
+    let tree_sitter_root = project_roots.first().map(PathBuf::as_path).unwrap_or(cwd);
+    if let Some(language) =
+        super::workspace_tree_sitter_query::infer_workspace_tree_sitter_search_language(
+            args,
+            tree_sitter_root,
+            &runtime.providers,
+        )?
+    {
+        return Ok(Some(language));
+    }
     let marker_languages = project_roots
         .iter()
         .flat_map(|root| marker_languages(root, runtime))
         .collect::<std::collections::BTreeSet<_>>();
     if marker_languages.len() == 1 {
-        return marker_languages.into_iter().next().map(str::to_string);
+        return Ok(marker_languages.into_iter().next().map(str::to_string));
     }
-    None
+    Ok(None)
 }
 
 fn language_from_path_like_arg<'a>(arg: &str, runtime: &'a HookRuntime) -> Option<&'a str> {

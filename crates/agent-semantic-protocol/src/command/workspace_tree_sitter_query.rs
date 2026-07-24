@@ -5,6 +5,7 @@ use serde_json::json;
 
 const MAX_RETAINED_CAPTURES: usize = 256;
 
+#[derive(Debug)]
 struct WorkspaceTreeSitterRequest {
     query_source: String,
     json: bool,
@@ -56,15 +57,25 @@ pub(super) fn try_run_workspace_tree_sitter_query(
 
 impl WorkspaceTreeSitterRequest {
     fn parse(args: &[String]) -> Result<Option<Self>, String> {
-        if args.first().map(String::as_str) != Some("query") || has_exact_selector(args) {
+        if has_exact_selector(args) {
             return Ok(None);
         }
         let Some(query_source) = option_value(args, "--treesitter-query")? else {
             return Ok(None);
         };
+        match args.first().map(String::as_str) {
+            Some("search") => {}
+            Some("query") => {
+                return Err(
+                    "workspace Tree-sitter discovery is search-owned; use `asp <language> search --treesitter-query <QUERY> --workspace <ROOT>`, or add an exact `--selector` for deterministic query projection"
+                        .to_string(),
+                );
+            }
+            _ => return Ok(None),
+        }
         if args.iter().any(|argument| argument == "--code") {
             return Err(
-                "tree-sitter query --code requires an exact --selector; run without --code for a capture frontier or add --selector <path-or-range> for pure code"
+                "tree-sitter search returns a capture frontier and does not accept --code; use `query --selector <exact-selector> --code` for deterministic source projection"
                     .to_string(),
             );
         }
@@ -95,6 +106,67 @@ fn option_value(args: &[String], option: &str) -> Result<Option<String>, String>
         }
     }
     Ok(None)
+}
+
+pub(super) fn infer_workspace_tree_sitter_search_language(
+    args: &[String],
+    project_root: &Path,
+    providers: &[ActivatedProvider],
+) -> Result<Option<String>, String> {
+    let Some(query_source) = option_value(args, "--treesitter-query")? else {
+        return Ok(None);
+    };
+    let snapshot =
+        agent_semantic_client::source_index::current_source_index_snapshot(project_root)?;
+    let mut compatible_languages = std::collections::BTreeSet::new();
+    let mut matching_languages = std::collections::BTreeSet::new();
+
+    for provider in providers {
+        let language_id = provider.language_id.as_str();
+        let Ok(language) =
+            agent_semantic_tree_sitter::registered_language_grammar(language_id.into())
+        else {
+            continue;
+        };
+        let Ok(query) =
+            agent_semantic_tree_sitter::compile_native_query_source(&language, &query_source)
+        else {
+            continue;
+        };
+        if !query.unsupported_predicates().is_empty() {
+            continue;
+        }
+        compatible_languages.insert(language_id.to_string());
+        let (_, total_captures) = collect_workspace_captures(
+            &language,
+            &query,
+            &snapshot.source_blobs,
+            &provider.source_extensions,
+        )?;
+        if total_captures > 0 {
+            matching_languages.insert(language_id.to_string());
+        }
+    }
+
+    match matching_languages.len() {
+        1 => Ok(matching_languages.into_iter().next()),
+        2.. => Err(format!(
+            "tree-sitter search matched multiple active languages: {}; add `--language <language>`",
+            matching_languages.into_iter().collect::<Vec<_>>().join("|"),
+        )),
+        _ if compatible_languages.len() == 1 => Ok(compatible_languages.into_iter().next()),
+        _ if compatible_languages.is_empty() => Err(
+            "tree-sitter search pattern did not compile for any active language; add `--language <language>` to select the intended grammar"
+                .to_string(),
+        ),
+        _ => Err(format!(
+            "tree-sitter search language is ambiguous across active grammars: {}; add `--language <language>`",
+            compatible_languages
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join("|"),
+        )),
+    }
 }
 
 fn collect_workspace_captures(
@@ -163,6 +235,7 @@ fn render_workspace_query(
             serde_json::to_string_pretty(&json!({
                 "schemaId": "agent.semantic-protocols.semantic-tree-sitter-query",
                 "schemaVersion": "1",
+                "operation": "search",
                 "adapterMode": "native-projection",
                 "compatibilityLevel": "native-only",
                 "selector": format!("workspace:{}", project_root.display()),
@@ -178,21 +251,21 @@ fn render_workspace_query(
     }
     println!(
         "{}",
-        super::tree_sitter_query_diagnostics::render_query_summary(
+        super::tree_sitter_query_diagnostics::render_search_summary(
             language_id,
             total_captures,
             captures.len(),
         )
     );
     if total_captures == 0 {
-        super::tree_sitter_query_diagnostics::render_query_miss_guidance(language_id)
+        super::tree_sitter_query_diagnostics::render_search_miss_guidance(language_id)
             .iter()
             .for_each(|line| println!("{line}"));
         return Ok(());
     }
     println!(
         "{}",
-        super::tree_sitter_query_diagnostics::render_query_match_guidance()
+        super::tree_sitter_query_diagnostics::render_search_match_guidance()
     );
     captures
         .iter()
