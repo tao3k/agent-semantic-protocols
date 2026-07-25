@@ -3,7 +3,8 @@
 use crate::command::{has_current_agent_session, record_current_session_tool_event};
 use agent_semantic_config::{
     HookClientAgentSessionMessagesConfig, HookClientAgentsConfig, HookClientConfigFile,
-    load_asp_project_config_file, load_hook_client_config_file, merge_asp_project_hook_config,
+    load_asp_project_config_file, load_hook_client_config_file,
+    load_hook_client_config_overlay_file, merge_asp_project_hook_config,
 };
 use agent_semantic_hook::{
     DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION,
@@ -76,6 +77,21 @@ pub(super) fn load_asp_session_policy(
     project_root: &Path,
 ) -> Result<AspSessionPolicy, String> {
     let base = load_hook_client_config_file(config_path)?;
+    load_asp_session_policy_from_base(base, project_root)
+}
+
+pub(super) fn load_asp_session_policy_overlay(
+    config_path: &Path,
+    project_root: &Path,
+) -> Result<AspSessionPolicy, String> {
+    let base = load_hook_client_config_overlay_file(config_path)?;
+    load_asp_session_policy_from_base(base, project_root)
+}
+
+fn load_asp_session_policy_from_base(
+    base: HookClientConfigFile,
+    project_root: &Path,
+) -> Result<AspSessionPolicy, String> {
     let project = load_asp_project_config_file(&agent_semantic_hook::project_agent_config_path(
         project_root,
     ))?;

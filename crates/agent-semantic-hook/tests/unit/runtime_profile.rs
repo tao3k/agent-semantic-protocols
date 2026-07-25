@@ -1,5 +1,6 @@
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use crate::protocol_activation::digest::provider_manifest_digest;
 use crate::protocol_activation::protocol_activation_manifest::{
@@ -13,6 +14,8 @@ use super::{
     runtime_profiles_for_runtime, runtime_project_root_for_activation,
 };
 
+static ASP_STATE_HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
+
 #[test]
 fn runtime_project_root_for_generated_activation_uses_activation_storage_root() {
     let activation_path =
@@ -25,24 +28,25 @@ fn runtime_project_root_for_generated_activation_uses_activation_storage_root() 
 }
 
 #[test]
-fn resolved_provider_binary_is_authoritative_over_activation_prefix() {
+fn resolved_provider_binary_materializes_authoritative_command() {
     let root = temp_root("resolved-provider");
     let resolved = write_executable_provider(&root, "rs-harness");
-    let wrapper = write_executable_provider(&root, "provider-wrapper");
-    let provider = activated_rust_provider(vec![
-        wrapper.display().to_string(),
-        "rs-harness".to_string(),
-    ]);
 
-    let command = runtime_provider_command(&provider, Some(&resolved));
+    let command = runtime_provider_command(Some(&resolved));
 
     assert_eq!(command.argv, [resolved.display().to_string()]);
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn runtime_profiles_for_activation_uses_provider_command_prefix() {
-    let root = temp_root("activation-prefix");
+fn runtime_profiles_for_activation_uses_state_home_provider_binary() {
+    let _state_home_lock = ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let root = temp_root("activation-state-home");
+    let state_home = root.join("state-home");
+    let runtime_provider = state_home.join("runtime/bin/rs-harness");
+    write_executable_file(&runtime_provider);
     let wrapper = write_executable_provider(&root, "provider-wrapper");
     let provider = activated_rust_provider(vec![
         wrapper.display().to_string(),
@@ -83,19 +87,36 @@ fn runtime_profiles_for_activation_uses_provider_command_prefix() {
             },
         }],
     };
+    let previous_state_home = env::var_os(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
+    unsafe {
+        env::set_var(
+            agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
+            &state_home,
+        );
+    }
 
     let profiles = runtime_profiles_for_activation(&root, &activation).expect("profiles");
     let invocation =
         runtime_profile_invocation(&profiles, &provider, &["query".into()]).expect("invocation");
 
+    match previous_state_home {
+        Some(value) => unsafe {
+            env::set_var(
+                agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
+                value,
+            );
+        },
+        None => unsafe {
+            env::remove_var(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
+        },
+    }
     assert_eq!(
         invocation,
         [
-            std::fs::canonicalize(&wrapper)
-                .expect("canonical wrapper")
+            std::fs::canonicalize(&runtime_provider)
+                .expect("canonical runtime provider")
                 .display()
                 .to_string(),
-            "rs-harness".to_string(),
             "query".to_string(),
         ]
     );
@@ -108,11 +129,14 @@ fn runtime_profiles_for_activation_uses_provider_command_prefix() {
 }
 
 #[test]
-fn runtime_profiles_for_runtime_prefers_home_local_gslph_for_gerbil() {
-    let root = temp_root("gerbil-home-local");
-    let home = root.join("home");
-    let home_gslph = home.join(".local/bin/gslph");
-    write_executable_file(&home_gslph);
+fn runtime_profiles_for_runtime_uses_state_home_provider_binary() {
+    let _state_home_lock = ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let root = temp_root("gerbil-state-home");
+    let state_home = root.join("state-home");
+    let runtime_gslph = state_home.join("runtime/bin/gslph");
+    write_executable_file(&runtime_gslph);
     let _project_gslph = write_executable_provider(&root, "gslph");
     let wrapper = write_executable_provider(&root, "asp");
     let provider = activated_gerbil_provider(vec![
@@ -124,28 +148,34 @@ fn runtime_profiles_for_runtime_prefers_home_local_gslph_for_gerbil() {
         providers: vec![provider],
     };
     let provider = &runtime.providers[0];
-    let previous_home = env::var_os("HOME");
+    let previous_state_home = env::var_os(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
     unsafe {
-        env::set_var("HOME", &home);
+        env::set_var(
+            agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
+            &state_home,
+        );
     }
 
     let profiles = runtime_profiles_for_runtime(&root, &runtime);
     let invocation =
         runtime_profile_invocation(&profiles, provider, &["query".into()]).expect("invocation");
 
-    match previous_home {
+    match previous_state_home {
         Some(value) => unsafe {
-            env::set_var("HOME", value);
+            env::set_var(
+                agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
+                value,
+            );
         },
         None => unsafe {
-            env::remove_var("HOME");
+            env::remove_var(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
         },
     }
     assert_eq!(
         invocation,
         [
-            std::fs::canonicalize(&home_gslph)
-                .expect("canonical home gslph")
+            std::fs::canonicalize(&runtime_gslph)
+                .expect("canonical runtime gslph")
                 .display()
                 .to_string(),
             "query".to_string(),
@@ -154,6 +184,68 @@ fn runtime_profiles_for_runtime_prefers_home_local_gslph_for_gerbil() {
     assert_eq!(
         profiles.providers[0].health.status,
         RuntimeProviderHealthStatus::Available
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn runtime_profiles_for_runtime_fails_closed_when_state_home_binary_is_missing() {
+    let _state_home_lock = ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let root = temp_root("missing-state-home-provider");
+    let state_home = root.join("state-home");
+    let wrapper = write_executable_provider(&root, "provider-wrapper");
+    let provider = activated_rust_provider(vec![
+        wrapper.display().to_string(),
+        "rs-harness".to_string(),
+    ]);
+    let runtime = HookRuntime {
+        project_root: root.display().to_string(),
+        providers: vec![provider],
+    };
+    let previous_state_home = env::var_os(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
+    unsafe {
+        env::set_var(
+            agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
+            &state_home,
+        );
+    }
+
+    let profiles = runtime_profiles_for_runtime(&root, &runtime);
+
+    match previous_state_home {
+        Some(value) => unsafe {
+            env::set_var(
+                agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
+                value,
+            );
+        },
+        None => unsafe {
+            env::remove_var(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
+        },
+    }
+    let profile = profiles
+        .providers
+        .first()
+        .expect("runtime provider profile");
+    assert_eq!(profile.health.status, RuntimeProviderHealthStatus::Missing);
+    assert!(profile.resolved_binary.is_none());
+    assert!(profile.argv.is_empty());
+    assert!(
+        profile
+            .health
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("state-home/runtime/bin/rs-harness")),
+        "{:?}",
+        profile.health.reason
+    );
+    assert!(
+        !profile
+            .argv
+            .iter()
+            .any(|arg| arg == &wrapper.display().to_string())
     );
     let _ = std::fs::remove_dir_all(root);
 }

@@ -37,14 +37,14 @@ use agent_semantic_hook::{
     ActiveContextRecord, DecisionKind, HookClassificationRequest, HookDecision, ReasonKind,
     append_hook_event_state, apply_repeated_deny_replay, classify_hook_with_config,
     default_activation_path, default_client_config_path, discover_activation_path,
-    has_recorded_subagent_context, load_activation, load_client_config_for_project, parse_payload,
-    record_active_context, subagent_deny_message,
+    has_recorded_subagent_context, load_activation, parse_payload, record_active_context,
+    subagent_deny_message,
 };
 use agent_semantic_runtime::project_state_paths;
 use hook_runtime_activation_failure::emit_activation_load_failure;
-use hook_runtime_agent_session::{classify_main_session_asp_exploration, load_asp_session_policy};
+use hook_runtime_agent_session::classify_main_session_asp_exploration;
 use hook_runtime_codex_plugin::codex_project_plugin_hooks_present;
-use hook_runtime_config_recovery::annotate_hook_config_repair;
+use hook_runtime_config_recovery::{annotate_hook_config_repair, load_hook_runtime_config};
 use hook_runtime_decision_render::{emit_decision, emit_hook_runtime_failure};
 use hook_runtime_doctor::run_doctor;
 pub(super) use hook_runtime_install::run_codex_plugin_install_args;
@@ -163,79 +163,11 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             return Ok(());
         }
     };
-    let mut hook_config_result = load_client_config_for_project(&config_path, &project_root);
-    let mut asp_session_policy_result = load_asp_session_policy(&config_path, &project_root);
-    let mut hook_config_repair_reasons = Vec::new();
-    if let Err(error) = hook_config_result.as_ref() {
-        hook_config_repair_reasons.push(error.clone());
-    }
-    if let Err(error) = asp_session_policy_result.as_ref()
-        && !hook_config_repair_reasons.contains(error)
-    {
-        hook_config_repair_reasons.push(error.clone());
-    }
-    let expected_contract_fingerprint = agent_semantic_config::hook_client_contract_fingerprint();
-    let matcher_contract_needs_refresh = hook_config_result.as_ref().is_ok_and(|config| {
-        config.contract_fingerprint() != Some(expected_contract_fingerprint.as_str())
-    });
-    if matcher_contract_needs_refresh {
-        hook_config_repair_reasons.push(format!(
-            "hook matcher config fingerprint must equal {expected_contract_fingerprint}"
-        ));
-    }
-    let needs_auto_refresh = hook_config_result.is_err()
-        || asp_session_policy_result.is_err()
-        || matcher_contract_needs_refresh;
-    let mut hook_config_auto_refresh = None;
-    if needs_auto_refresh {
-        match super::managed_hook_config::materialize(&config_path) {
-            Ok(status) => {
-                hook_config_auto_refresh =
-                    Some(format!("completed:{status}", status = status.as_str()));
-                hook_config_result = load_client_config_for_project(&config_path, &project_root);
-                asp_session_policy_result = load_asp_session_policy(&config_path, &project_root);
-            }
-            Err(error) => {
-                hook_config_auto_refresh =
-                    Some(format!("embedded-current:persistence-failed:{error}"));
-                hook_config_result =
-                    agent_semantic_hook::load_embedded_client_config_for_project(&project_root);
-                asp_session_policy_result =
-                    hook_runtime_agent_session::load_embedded_asp_session_policy(&project_root);
-            }
-        }
-    }
-    let hook_config_refresh_receipt = hook_config_auto_refresh
-        .as_deref()
-        .unwrap_or("not-required");
-
-    let hook_config = hook_config_result.map_err(|error| {
-        format!(
-            "hook matcher config freshness gate failed for {}: {error}; automatic refresh receipt: {hook_config_refresh_receipt}",
-            config_path.display(),
-        )
-    })?;
-    match hook_config.contract_fingerprint() {
-        Some(configured) if configured == expected_contract_fingerprint => {}
-        Some(configured) => {
-            return Err(format!(
-                "hook matcher config freshness gate failed for {}: configured fingerprint {configured} does not match binary fingerprint {expected_contract_fingerprint}; automatic refresh receipt: {hook_config_refresh_receipt}",
-                config_path.display()
-            ));
-        }
-        None => {
-            return Err(format!(
-                "hook matcher config freshness gate failed for {}: contract fingerprint is missing; automatic refresh receipt: {hook_config_refresh_receipt}",
-                config_path.display()
-            ));
-        }
-    }
-    let asp_session_policy = asp_session_policy_result.map_err(|error| {
-        format!(
-            "hook resident config freshness gate failed for {}: {error}; automatic refresh receipt: {hook_config_refresh_receipt}",
-            config_path.display(),
-        )
-    })?;
+    let hook_runtime_config = load_hook_runtime_config(&config_path, &project_root)?;
+    let hook_config = hook_runtime_config.hook_config;
+    let asp_session_policy = hook_runtime_config.asp_session_policy;
+    let hook_config_repair_reasons = hook_runtime_config.repair_reasons;
+    let hook_config_auto_refresh = hook_runtime_config.auto_refresh;
     let agent_session_decision = if classification_event == "pre-tool" {
         None
     } else {
@@ -605,14 +537,12 @@ fn annotate_payload_context(
                 .insert(field.to_string(), serde_json::Value::String(value));
         }
     }
+    // A root session id is shared by resident children, so historical
+    // inheritance is restricted to the child-specific transcript boundary.
     let subagent_context = payload_indicates_subagent_context(payload)
         || has_recorded_subagent_context(
             project_root,
-            decision
-                .fields
-                .get("sessionId")
-                .and_then(serde_json::Value::as_str)
-                .map(Into::into),
+            None,
             decision
                 .fields
                 .get("transcriptPath")

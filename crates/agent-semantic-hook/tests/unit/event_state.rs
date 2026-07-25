@@ -227,15 +227,15 @@ fn decision(run_id: &str, index: usize) -> HookDecision {
         event: "pre-tool".to_string(),
         decision: DecisionKind::Deny,
         reason_kind: ReasonKind::DirectSourceRead,
-        language_ids: vec!["rust".to_string()],
+        language_ids: vec!["rust".into()],
         subject: DecisionSubject {
             tool_name: Some("Read".to_string()),
             command: None,
             paths: vec![format!("{run_id}_event_state_{index}.rs")],
         },
         routes: vec![DecisionRoute {
-            language_id: "rust".to_string(),
-            provider_id: "rs-harness".to_string(),
+            language_id: "rust".into(),
+            provider_id: "rs-harness".into(),
             binary: "asp".to_string(),
             kind: DecisionRouteKind::Query,
             argv: vec!["asp".to_string(), "rust".to_string()],

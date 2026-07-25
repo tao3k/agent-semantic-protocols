@@ -1,4 +1,4 @@
-use agent_semantic_hook::{build_default_activation, builtin_provider_manifests};
+use agent_semantic_hook::build_default_activation;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -6,237 +6,124 @@ use std::sync::Mutex;
 
 use super::{git_init, make_executable, temp_root};
 
-pub(crate) static HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
+pub(crate) static STATE_HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
 
-struct HomeEnvGuard {
+pub(crate) struct StateHomeEnvGuard {
     previous: Option<OsString>,
 }
 
-impl HomeEnvGuard {
-    fn set(home: &std::path::Path) -> Self {
-        let previous = env::var_os("HOME");
+impl StateHomeEnvGuard {
+    pub(crate) fn set(home: &std::path::Path) -> Self {
+        let previous = env::var_os("ASP_STATE_HOME");
         unsafe {
-            env::set_var("HOME", home);
+            env::set_var("ASP_STATE_HOME", home);
         }
         Self { previous }
     }
 }
 
-impl Drop for HomeEnvGuard {
+impl Drop for StateHomeEnvGuard {
     fn drop(&mut self) {
         unsafe {
             if let Some(previous) = &self.previous {
-                env::set_var("HOME", previous);
+                env::set_var("ASP_STATE_HOME", previous);
             } else {
-                env::remove_var("HOME");
+                env::remove_var("ASP_STATE_HOME");
             }
         }
     }
 }
 
 #[test]
-fn default_activation_records_project_bin_provider_prefix() {
-    let root = temp_root("julia-project-bin-provider");
-    fs::create_dir_all(root.join(".bin")).expect("create project bin");
-    fs::create_dir_all(root.join("src")).expect("create src");
-    fs::write(root.join("Project.toml"), "name = \"Example\"\n").expect("write Project.toml");
-    let provider_bin = root.join(".bin/asp-julia-harness");
-    fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
-    make_executable(&provider_bin);
-
-    let activation = build_default_activation(&root).expect("build activation");
-    let julia = activation
-        .providers
-        .iter()
-        .find(|provider| provider.language_id == "julia")
-        .expect("julia provider activated from project .bin");
-
-    assert_eq!(julia.binary, "asp-julia-harness");
-    assert!(
-        julia
-            .provider_command_prefix
-            .first()
-            .is_some_and(|command| command.ends_with("/.bin/asp-julia-harness")),
-        "default project .bin provider should be recorded as a stable command prefix: {:?}",
-        julia.provider_command_prefix
-    );
-    assert!(julia.coverage.package_roots.contains(&".".to_string()));
-    assert_eq!(
-        julia.query_pack_descriptor.descriptor_id.as_str(),
-        "julia.query-pack"
-    );
-
-    fs::remove_dir_all(root).expect("remove temp root");
-}
-
-#[test]
-fn default_activation_uses_parent_workspace_bin_for_nested_gerbil_package() {
-    let _home_lock = HOME_ENV_LOCK.lock().expect("lock HOME env");
-    let root = temp_root("nested-gerbil-parent-bin-provider");
-    let home = temp_root("nested-gerbil-parent-bin-home");
-    let _home_guard = HomeEnvGuard::set(&home);
-    let child = root
-        .join("languages")
-        .join("gerbil-scheme-language-project-harness");
-    fs::create_dir_all(root.join(".bin")).expect("create workspace bin");
-    fs::create_dir_all(child.join("src")).expect("create child src");
-    write_agent_config(&root, "[providers]\n");
-    fs::write(child.join("gerbil.pkg"), "(package: sample/gerbil)\n").expect("write gerbil.pkg");
-    let gerbil_manifest = builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id == "gerbil-scheme")
-        .expect("builtin Gerbil provider manifest");
-    let provider_bin = root.join(".bin").join(&gerbil_manifest.binary);
-    fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
-    make_executable(&provider_bin);
-
-    let activation = build_default_activation(&child).expect("build activation");
-    let gerbil = activation
-        .providers
-        .iter()
-        .find(|provider| provider.language_id == "gerbil-scheme")
-        .expect("gerbil provider activated from parent workspace .bin");
-
-    assert_eq!(gerbil.binary, gerbil_manifest.binary);
-    let expected_bin_suffix = format!("/.bin/{}", gerbil.binary);
-    assert!(
-        gerbil
-            .provider_command_prefix
-            .first()
-            .is_some_and(|command| command.ends_with(&expected_bin_suffix)),
-        "nested Gerbil package should reuse the parent workspace provider bin: {:?}",
-        gerbil.provider_command_prefix
-    );
-    assert!(gerbil.coverage.package_roots.contains(&".".to_string()));
-
-    fs::remove_dir_all(root).expect("remove temp root");
-    fs::remove_dir_all(home).expect("remove temp home");
-}
-
-#[test]
-fn default_activation_uses_project_runtime_bin_provider_prefix() {
-    let root = temp_root("runtime-bin-provider");
+fn default_activation_uses_state_home_runtime_provider_receipt() {
+    let _state_home_lock = STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let root = temp_root("state-home-runtime-provider");
+    let state_home = root.join(".asp-state-home");
+    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
     git_init(&root);
-    fs::create_dir_all(root.join(".cache/agent-semantic-protocol/runtime/bin"))
-        .expect("create runtime bin");
     fs::create_dir_all(root.join("src")).expect("create src");
     fs::write(
         root.join("Cargo.toml"),
-        "[package]\nname = \"runtime-bin-provider\"\nversion = \"0.1.0\"\n",
+        "[package]\nname = \"state-home-runtime-provider\"\nversion = \"0.1.0\"\n",
     )
     .expect("write Cargo.toml");
-    let provider_bin = root.join(".cache/agent-semantic-protocol/runtime/bin/rs-harness");
-    fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
-    make_executable(&provider_bin);
+    let provider_bin = install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
 
     let activation = build_default_activation(&root).expect("build activation");
     let rust = activation
         .providers
         .iter()
         .find(|provider| provider.language_id == "rust")
-        .expect("rust provider activated from project runtime bin");
+        .expect("rust provider activated from State Home runtime bin");
 
     assert_eq!(rust.binary, "rs-harness");
-    assert!(
-        rust.provider_command_prefix
-            .first()
-            .is_some_and(|command| command.ends_with("/runtime/bin/rs-harness")),
-        "default project runtime bin provider should be recorded as a stable command prefix: {:?}",
-        rust.provider_command_prefix
-    );
-
-    fs::remove_dir_all(root).expect("remove temp root");
-}
-
-#[test]
-fn default_activation_uses_home_local_bin_before_project_bin_for_gerbil() {
-    let _home_lock = HOME_ENV_LOCK.lock().expect("lock HOME env");
-    let root = temp_root("home-local-gerbil-provider");
-    let home = temp_root("home-local-gerbil-home");
-    let home_bin = home.join(".local").join("bin");
-    fs::create_dir_all(&home_bin).expect("create home local bin");
-    fs::create_dir_all(root.join(".bin")).expect("create project bin");
-    fs::create_dir_all(root.join("src")).expect("create src");
-    fs::write(root.join("gerbil.pkg"), "(package: sample/gerbil)\n").expect("write gerbil.pkg");
-    let project_provider_bin = root.join(".bin").join("gslph");
-    fs::write(&project_provider_bin, "#!/bin/sh\nexit 0\n").expect("write project provider bin");
-    make_executable(&project_provider_bin);
-    let provider_bin = home_bin.join("gslph");
-    fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
-    make_executable(&provider_bin);
-    let _home_guard = HomeEnvGuard::set(&home);
-
-    let activation = build_default_activation(&root).expect("build activation");
-    let gerbil = activation
-        .providers
-        .iter()
-        .find(|provider| provider.language_id == "gerbil-scheme")
-        .expect("gerbil provider activated from HOME local bin");
-
-    assert_eq!(gerbil.binary, "gslph");
-    let expected_provider_bin =
-        fs::canonicalize(&provider_bin).unwrap_or_else(|_| provider_bin.clone());
-    assert_eq!(
-        gerbil.provider_command_prefix,
-        vec![expected_provider_bin.display().to_string()],
-        "Gerbil provider should prefer $HOME/.local/bin/gslph before project .bin/gslph"
-    );
-
-    fs::remove_dir_all(root).expect("remove temp root");
-    fs::remove_dir_all(home).expect("remove temp home");
-}
-
-#[test]
-fn default_activation_accepts_languages_bin_provider_override() {
-    let root = temp_root("languages-bin-provider-override");
-    fs::create_dir_all(root.join("tools")).expect("create tools");
-    fs::create_dir_all(root.join("src")).expect("create src");
-    fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"languages-bin-provider-override\"\nversion = \"0.1.0\"\n",
-    )
-    .expect("write Cargo.toml");
-    let provider_bin = root.join("tools/custom-rs-harness");
-    fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
-    make_executable(&provider_bin);
-    write_agent_config(
-        &root,
-        r#"[languages.rust]
-bin = "tools/custom-rs-harness"
-
-[providers.typescript]
-enabled = false
-
-[providers.python]
-enabled = false
-
-[providers.julia]
-enabled = false
-
-[providers.gerbil-scheme]
-enabled = false
-
-[providers.org]
-enabled = false
-
-[providers.md]
-enabled = false
-"#,
-    );
-
-    let activation = build_default_activation(&root).expect("build activation");
-    let rust = activation
-        .providers
-        .iter()
-        .find(|provider| provider.language_id == "rust")
-        .expect("rust provider activated from languages bin override");
-
-    assert_eq!(rust.binary, "rs-harness");
-    let expected_provider_bin =
-        fs::canonicalize(&provider_bin).unwrap_or_else(|_| provider_bin.clone());
     assert_eq!(
         rust.provider_command_prefix,
-        vec![expected_provider_bin.display().to_string()]
+        vec![provider_bin.display().to_string()],
+        "State Home v1 provider receipt must own the activated command prefix"
+    );
+
+    fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn default_activation_rejects_project_relative_provider_override() {
+    let _state_home_lock = STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let root = temp_root("reject-project-relative-provider");
+    let state_home = root.join(".asp-state-home");
+    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
+    fs::create_dir_all(root.join("src")).expect("create src");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"reject-project-relative-provider\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write Cargo.toml");
+    write_agent_config(
+        &root,
+        "[providers.rust]\nbinary = \".bin/custom-rs-harness\"\n",
+    );
+
+    let error = build_default_activation(&root)
+        .expect_err("project-relative provider override must fail closed");
+    assert!(
+        error.contains("binary must be a logical basename resolved under State Home runtime/bin"),
+        "{error}"
+    );
+
+    fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn default_activation_rejects_absolute_provider_override() {
+    let _state_home_lock = STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let root = temp_root("reject-absolute-provider");
+    let state_home = root.join(".asp-state-home");
+    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
+    fs::create_dir_all(root.join("src")).expect("create src");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"reject-absolute-provider\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write Cargo.toml");
+    write_agent_config(
+        &root,
+        &format!(
+            "[providers.rust]\nbinary = \"{}\"\n",
+            root.join("custom-rs-harness").display()
+        ),
+    );
+
+    let error =
+        build_default_activation(&root).expect_err("absolute provider override must fail closed");
+    assert!(
+        error.contains("binary must be a logical basename resolved under State Home runtime/bin"),
+        "{error}"
     );
 
     fs::remove_dir_all(root).expect("remove temp root");
@@ -244,11 +131,13 @@ enabled = false
 
 #[test]
 fn asp_toml_can_disable_document_language_hook_activation() {
+    let _state_home_lock = STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("document-provider-disable");
-    fs::create_dir_all(root.join(".bin")).expect("create project bin");
-    let asp_bin = root.join(".bin/orgize");
-    fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
-    make_executable(&asp_bin);
+    let state_home = root.join(".asp-state-home");
+    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
+    let orgize_bin = install_state_home_provider(&state_home, "md", "orgize", "orgize");
     write_agent_config(
         &root,
         r#"[providers.rust]
@@ -290,8 +179,8 @@ enabled = false
     assert!(
         md.provider_command_prefix
             .first()
-            .is_some_and(|command| command.ends_with("/.bin/orgize")),
-        "document provider should route through the project orgize binary: {:?}",
+            .is_some_and(|command| command == &orgize_bin.display().to_string()),
+        "document provider should route through the State Home orgize receipt: {:?}",
         md.provider_command_prefix
     );
 
@@ -300,14 +189,14 @@ enabled = false
 
 #[test]
 fn top_level_asp_toml_no_longer_configures_provider_activation() {
+    let _state_home_lock = STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("top-level-ignored");
-    fs::create_dir_all(root.join(".bin")).expect("create project bin");
-    let asp_bin = root.join(".bin/orgize");
-    fs::write(&asp_bin, "#!/bin/sh\nexit 0\n").expect("write asp bin");
-    make_executable(&asp_bin);
-    let gerbil_bin = root.join(".bin/gslph");
-    fs::write(&gerbil_bin, "#!/bin/sh\nexit 0\n").expect("write gerbil bin");
-    make_executable(&gerbil_bin);
+    let state_home = root.join(".asp-state-home");
+    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
+    install_state_home_provider(&state_home, "org", "orgize", "orgize");
+    install_state_home_provider(&state_home, "md", "orgize", "orgize");
     fs::write(root.join("asp.toml"), "[providers.org]\nenabled = false\n")
         .expect("write ignored top-level asp.toml");
 
@@ -322,6 +211,36 @@ fn top_level_asp_toml_no_longer_configures_provider_activation() {
     );
 
     fs::remove_dir_all(root).expect("remove temp root");
+}
+
+pub(crate) fn install_state_home_provider(
+    state_home: &std::path::Path,
+    language_id: &str,
+    provider_id: &str,
+    binary: &str,
+) -> std::path::PathBuf {
+    let provider_bin = state_home.join("runtime").join("bin").join(binary);
+    fs::create_dir_all(provider_bin.parent().expect("provider bin parent"))
+        .expect("create State Home runtime bin");
+    fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
+    make_executable(&provider_bin);
+
+    let entrypoint_digest = agent_semantic_content_identity::file_content_digest_v1(&provider_bin)
+        .expect("provider content digest");
+    let metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&provider_bin)
+            .expect("provider metadata digest");
+    let lock_dir = state_home.join("runtime").join("provider-locks");
+    fs::create_dir_all(&lock_dir).expect("create provider lock dir");
+    fs::write(
+        lock_dir.join(format!("{language_id}.lock.toml")),
+        format!(
+            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{provider_id}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{entrypoint_digest}\"\ninstalledEntrypointMetadataDigest = \"{metadata_digest}\"\n",
+            provider_bin.display()
+        ),
+    )
+    .expect("write provider install receipt");
+    fs::canonicalize(&provider_bin).unwrap_or(provider_bin)
 }
 
 fn write_agent_config(root: &std::path::Path, contents: &str) {

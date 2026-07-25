@@ -197,10 +197,7 @@ fn language_facade_normalizes_relative_nested_project_root_arg() {
     write_pwd_provider(&bin_dir, "rs-harness");
     write_activation(
         &root,
-        &[provider(
-            "rust",
-            vec![bin_dir.join("rs-harness").display().to_string()],
-        )],
+        &[provider("rust", Vec::new())],
     );
 
     let output = asp_command(&root)

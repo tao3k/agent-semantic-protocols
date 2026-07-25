@@ -35,7 +35,10 @@ pub(crate) fn rust_registry() -> HookRuntime {
 pub(super) fn builtin_provider_manifest(language_id: &str, provider_id: &str) -> ProviderManifest {
     builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == language_id && manifest.provider_id == provider_id)
+        .find(|manifest| {
+            manifest.language_id().as_str() == language_id
+                && manifest.provider_id().as_str() == provider_id
+        })
         .unwrap_or_else(|| {
             panic!(
                 "missing canonical provider manifest language={language_id} provider={provider_id}"
@@ -80,16 +83,16 @@ pub(super) fn provider(
     routes: HookRoutes,
 ) -> ActivatedProvider {
     ActivatedProvider {
-        manifest_id: manifest.manifest_id.clone(),
+        manifest_id: manifest.manifest_id().to_string(),
         manifest_digest: provider_manifest_digest(manifest)
             .expect("digest canonical provider manifest"),
-        language_id: manifest.language_id.clone(),
-        provider_id: manifest.provider_id.clone(),
-        binary: manifest.binary.clone(),
-        execution: manifest.execution,
+        language_id: manifest.language_id().clone(),
+        provider_id: manifest.provider_id().clone(),
+        binary: manifest.binary().to_string(),
+        execution: manifest.execution(),
         provider_command_prefix: Vec::new(),
         execution_command_digest: "test-execution-command-digest".to_string(),
-        namespace: manifest.namespace.clone(),
+        namespace: manifest.namespace().to_string(),
         package_roots: vec![".".to_string()],
         source_extensions: source_extensions
             .iter()
@@ -107,11 +110,11 @@ pub(super) fn provider(
             .iter()
             .map(|prefix| (*prefix).to_string())
             .collect(),
-        search_capabilities: manifest.search_capabilities.clone(),
-        semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
-        query_pack_descriptor: manifest.query_pack_descriptor.clone(),
+        search_capabilities: manifest.search_capabilities().clone(),
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+        query_pack_descriptor: manifest.query_pack_descriptor().clone(),
         semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
-        policy: manifest.policy.clone(),
+        policy: manifest.policy().clone(),
         routes,
     }
 }

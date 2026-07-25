@@ -42,7 +42,7 @@ struct FacadePerformanceProvider {
 #[test]
 fn language_facade_regular_commands_finish_inside_performance_gate() {
     let root = temp_project_root("language-facade-performance-gate");
-    let bin_dir = crate::provider_command::support::home_local_bin(&root);
+    let bin_dir = crate::provider_command::support::state_runtime_bin(&root);
     let cache_home = root.join(".cache");
     let providers = [
         FacadePerformanceProvider {
@@ -90,12 +90,7 @@ fn language_facade_regular_commands_finish_inside_performance_gate() {
         &root,
         &providers
             .iter()
-            .map(|provider_config| {
-                provider(
-                    provider_config.language,
-                    vec![bin_dir.join(provider_config.binary).display().to_string()],
-                )
-            })
+            .map(|provider_config| provider(provider_config.language, Vec::new()))
             .collect::<Vec<_>>(),
     );
 
@@ -183,7 +178,7 @@ fn language_facade_regular_commands_finish_inside_performance_gate() {
 #[test]
 fn provider_facts_receive_bounded_candidate_input() {
     let root = temp_project_root("provider-facts-candidate-budget-gate");
-    let bin_dir = crate::provider_command::support::home_local_bin(&root);
+    let bin_dir = crate::provider_command::support::state_runtime_bin(&root);
     let cache_home = root.join(".cache");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
@@ -210,10 +205,7 @@ fn provider_facts_receive_bounded_candidate_input() {
     )
     .expect("write provider");
     make_executable(&provider_path);
-    write_activation(
-        &root,
-        &[provider("rust", vec![provider_path.display().to_string()])],
-    );
+    write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
         .env_remove("CODEX_THREAD_ID")
@@ -283,13 +275,7 @@ fn search_pipe_does_not_call_provider_facts_without_capability() {
     )
     .expect("write provider");
     make_executable(&provider_path);
-    write_activation(
-        &root,
-        &[provider(
-            "gerbil-scheme",
-            vec![provider_path.display().to_string()],
-        )],
-    );
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
@@ -329,10 +315,7 @@ fn search_pipe_generic_action_query_skips_source_index_inside_phase_gate() {
     let provider_path = bin_dir.join("rs-harness");
     write_regular_search_fixtures(&root);
     write_echo_provider(&bin_dir, "rs-harness", "rs");
-    write_activation(
-        &root,
-        &[provider("rust", vec![provider_path.display().to_string()])],
-    );
+    write_activation(&root, &[provider("rust", Vec::new())]);
     refresh_source_index(&root);
 
     let output = asp_command(&root)
@@ -385,10 +368,7 @@ fn search_pipe_command_like_query_rejects_before_backend_collection_inside_gate(
     )
     .expect("write provider");
     make_executable(&provider_path);
-    write_activation(
-        &root,
-        &[provider("rust", vec![provider_path.display().to_string()])],
-    );
+    write_activation(&root, &[provider("rust", Vec::new())]);
 
     let started_at = Instant::now();
     let output = asp_command(&root)
@@ -447,13 +427,7 @@ fn search_pipe_broad_query_blocks_before_backend_collection() {
     )
     .expect("write provider");
     make_executable(&provider_path);
-    write_activation(
-        &root,
-        &[provider(
-            "gerbil-scheme",
-            vec![provider_path.display().to_string()],
-        )],
-    );
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
@@ -514,13 +488,7 @@ fn search_lexical_broad_query_blocks_before_backend_collection() {
     )
     .expect("write provider");
     make_executable(&provider_path);
-    write_activation(
-        &root,
-        &[provider(
-            "gerbil-scheme",
-            vec![provider_path.display().to_string()],
-        )],
-    );
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
@@ -763,9 +731,7 @@ fn dependency_manifest_graph_requests_finish_inside_performance_gate() {
         &root,
         &providers
             .iter()
-            .map(|(language, binary, _)| {
-                provider(*language, vec![bin_dir.join(binary).display().to_string()])
-            })
+            .map(|(language, binary, _)| provider(*language, Vec::new()))
             .collect::<Vec<_>>(),
     );
 

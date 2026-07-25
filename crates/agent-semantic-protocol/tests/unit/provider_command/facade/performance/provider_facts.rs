@@ -32,7 +32,7 @@ fn provider_facts_timeout_stays_inside_performance_gate() {
     let max_total_ms = provider_facts_timeout_max_total_ms(&benchmark);
 
     let root = temp_project_root("provider-facts-timeout-gate");
-    let bin_dir = crate::provider_command::support::home_local_bin(&root);
+    let bin_dir = crate::provider_command::support::state_runtime_bin(&root);
     let cache_home = root.join(".cache");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
@@ -55,10 +55,7 @@ fn provider_facts_timeout_stays_inside_performance_gate() {
     )
     .expect("write provider");
     make_executable(&provider_path);
-    write_activation(
-        &root,
-        &[provider("rust", vec![provider_path.display().to_string()])],
-    );
+    write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))

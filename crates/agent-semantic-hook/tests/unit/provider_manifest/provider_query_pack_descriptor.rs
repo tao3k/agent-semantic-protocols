@@ -24,22 +24,24 @@ fn every_builtin_language_owns_a_query_pack_descriptor() {
     let mut descriptor_ids = BTreeSet::new();
     for manifest in manifests {
         assert!(
-            provider_identities
-                .insert((manifest.language_id.clone(), manifest.provider_id.clone(),)),
+            provider_identities.insert((
+                manifest.language_id().clone(),
+                manifest.provider_id().clone(),
+            )),
             "duplicate builtin provider identity language={} provider={}",
-            manifest.language_id,
-            manifest.provider_id
+            manifest.language_id(),
+            manifest.provider_id()
         );
-        let descriptor = &manifest.query_pack_descriptor;
-        assert_eq!(descriptor.language_id, manifest.language_id);
-        assert_eq!(descriptor.descriptor_version, descriptor_version);
-        assert!(descriptor_ids.insert(descriptor.descriptor_id.clone()));
-        assert!(!descriptor.recipes.is_empty());
-        assert!(descriptor.term_role_overrides.iter().all(|override_| {
+        let descriptor = manifest.query_pack_descriptor();
+        assert_eq!(descriptor.language_id(), manifest.language_id().as_str());
+        assert_eq!(descriptor.descriptor_version(), descriptor_version);
+        assert!(descriptor_ids.insert(descriptor.descriptor_id().to_string()));
+        assert!(!descriptor.recipes().is_empty());
+        assert!(descriptor.term_role_overrides().iter().all(|override_| {
             !override_.term.is_empty()
                 && matches!(override_.role.as_str(), "context" | "symbol" | "concept")
         }));
-        assert!(descriptor.recipes.iter().all(|recipe| {
+        assert!(descriptor.recipes().iter().all(|recipe| {
             !recipe.recipe_id.is_empty()
                 && !recipe.trigger.terms.is_empty()
                 && matches!(recipe.trigger.r#match.as_str(), "all" | "any")
@@ -156,19 +158,20 @@ fn registry_v1_descriptors_match_builtin_provider_manifests() {
         let registration = registrations
             .iter()
             .find(|registration| {
-                registration["languageId"] == manifest.language_id
-                    && registration["providerId"] == manifest.provider_id
+                registration["languageId"] == manifest.language_id().as_str()
+                    && registration["providerId"] == manifest.provider_id().as_str()
             })
             .unwrap_or_else(|| {
                 panic!(
                     "missing registry entry for language={} provider={}",
-                    manifest.language_id, manifest.provider_id
+                    manifest.language_id(),
+                    manifest.provider_id()
                 )
             });
         let registry_descriptor: agent_semantic_hook::ProviderQueryPackDescriptor =
             serde_json::from_value(registration["queryPackDescriptor"].clone())
                 .expect("parse registry query-pack descriptor");
-        assert_eq!(registry_descriptor, manifest.query_pack_descriptor);
+        assert_eq!(&registry_descriptor, manifest.query_pack_descriptor());
     }
 }
 
@@ -231,25 +234,25 @@ fn activation_rejects_search_capabilities_drift() {
         },
         generated_at: None,
         providers: vec![agent_semantic_hook::ActivatedProviderConfig {
-            manifest_id: manifest.manifest_id.clone(),
+            manifest_id: manifest.manifest_id().to_string(),
             manifest_digest,
-            language_id: manifest.language_id.clone(),
-            provider_id: manifest.provider_id.clone(),
-            binary: manifest.binary.clone(),
-            execution: manifest.execution,
+            language_id: manifest.language_id().clone(),
+            provider_id: manifest.provider_id().clone(),
+            binary: manifest.binary().to_string(),
+            execution: manifest.execution(),
             provider_command_prefix: Vec::new(),
             execution_command_digest: "test-execution-command-digest".to_string(),
-            search_capabilities: manifest.search_capabilities.clone(),
-            semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
-            query_pack_descriptor: manifest.query_pack_descriptor.clone(),
+            search_capabilities: manifest.search_capabilities().clone(),
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+            query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest,
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
                 package_roots: vec![".".to_string()],
-                source_roots: manifest.source.default_source_roots.clone(),
-                config_files: manifest.source.default_config_files.clone(),
-                source_extensions: manifest.source.default_extensions.clone(),
-                ignored_path_prefixes: manifest.source.default_ignored_path_prefixes.clone(),
+                source_roots: manifest.source().default_source_roots.clone(),
+                config_files: manifest.source().default_config_files.clone(),
+                source_extensions: manifest.source().default_extensions.clone(),
+                ignored_path_prefixes: manifest.source().default_ignored_path_prefixes.clone(),
             },
         }],
     };
@@ -273,7 +276,7 @@ fn activation_rejects_search_capabilities_drift() {
 fn activation_rejects_semantic_facts_descriptor_drift() {
     let manifest = builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.semantic_facts_descriptor.is_some())
+        .find(|manifest| manifest.semantic_facts_descriptor().is_some())
         .expect("a builtin provider must own semantic-facts evidence");
     let manifest_digest =
         agent_semantic_hook::provider_manifest_digest(&manifest).expect("digest provider manifest");
@@ -293,25 +296,25 @@ fn activation_rejects_semantic_facts_descriptor_drift() {
         },
         generated_at: None,
         providers: vec![agent_semantic_hook::ActivatedProviderConfig {
-            manifest_id: manifest.manifest_id.clone(),
+            manifest_id: manifest.manifest_id().to_string(),
             manifest_digest,
-            language_id: manifest.language_id.clone(),
-            provider_id: manifest.provider_id.clone(),
-            binary: manifest.binary.clone(),
-            execution: manifest.execution,
+            language_id: manifest.language_id().clone(),
+            provider_id: manifest.provider_id().clone(),
+            binary: manifest.binary().to_string(),
+            execution: manifest.execution(),
             provider_command_prefix: Vec::new(),
             execution_command_digest: "test-execution-command-digest".to_string(),
-            search_capabilities: manifest.search_capabilities.clone(),
-            semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
-            query_pack_descriptor: manifest.query_pack_descriptor.clone(),
+            search_capabilities: manifest.search_capabilities().clone(),
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+            query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest,
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
                 package_roots: vec![".".to_string()],
-                source_roots: manifest.source.default_source_roots.clone(),
-                config_files: manifest.source.default_config_files.clone(),
-                source_extensions: manifest.source.default_extensions.clone(),
-                ignored_path_prefixes: manifest.source.default_ignored_path_prefixes.clone(),
+                source_roots: manifest.source().default_source_roots.clone(),
+                config_files: manifest.source().default_config_files.clone(),
+                source_extensions: manifest.source().default_extensions.clone(),
+                ignored_path_prefixes: manifest.source().default_ignored_path_prefixes.clone(),
             },
         }],
     };

@@ -4,8 +4,8 @@ use agent_semantic_hook::{
 use std::env;
 
 use crate::rust_harness_activation::support::{
-    asp_bin_dir, write_failing_provider_binary, write_fake_provider_binary,
-    write_fake_provider_file,
+    asp_bin_dir, write_failing_state_home_provider_binary, write_state_home_provider_binary,
+    write_unmanaged_provider_file,
 };
 
 use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
@@ -14,12 +14,15 @@ use super::support::{codex_plugin_install_args, git_project_root, protocol_comma
 fn cli_install_uses_static_provider_manifest_without_running_guide() {
     let root = git_project_root("install-static-provider-manifest");
     let asp_state_home = root.join(".asp-state-home");
-    let provider_path = write_failing_provider_binary(&root, "py-harness");
+    let provider_bin = write_failing_state_home_provider_binary(
+        &asp_state_home,
+        "python",
+        "py-harness",
+        "py-harness",
+    );
     let asp_bin_dir = asp_bin_dir();
-    let path = env::join_paths([provider_path.as_path(), asp_bin_dir.as_path()])
-        .expect("provider and asp PATH");
     let output = protocol_command()
-        .env("PATH", &path)
+        .env("PATH", &asp_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
         .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
@@ -54,8 +57,7 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
         .resolved_binary
         .as_deref()
         .expect("resolved provider binary");
-    assert!(resolved_binary.ends_with("/.bin/py-harness"));
-    assert!(std::path::Path::new(resolved_binary).is_file());
+    assert_eq!(resolved_binary, provider_bin.display().to_string());
     assert!(
         !root
             .join(".cache/agent-semantic-protocol/runtime/profiles.json")
@@ -65,12 +67,14 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
 }
 
 #[test]
-fn cli_install_runtime_profile_prefers_project_bin_provider() {
-    let root = git_project_root("install-project-bin-provider");
+fn cli_install_runtime_profile_uses_state_home_provider_only() {
+    let root = git_project_root("install-state-home-provider");
     let asp_state_home = root.join(".asp-state-home");
     let external_root = git_project_root("install-external-provider");
-    let project_provider_path = write_fake_provider_binary(&root, "py-harness");
-    let external_provider_path = write_fake_provider_file(&external_root, "py-harness", 0o755);
+    let state_home_provider =
+        write_state_home_provider_binary(&asp_state_home, "python", "py-harness", "py-harness");
+    let project_provider_path = write_unmanaged_provider_file(&root, "py-harness", 0o755);
+    let external_provider_path = write_unmanaged_provider_file(&external_root, "py-harness", 0o755);
     let asp_bin_dir = asp_bin_dir();
     let path = std::env::join_paths([
         external_provider_path.as_path(),
@@ -105,12 +109,7 @@ fn cli_install_runtime_profile_prefers_project_bin_provider() {
         .resolved_binary
         .as_deref()
         .expect("resolved provider binary");
-    let project_bin = std::fs::canonicalize(root.join(".bin")).expect("canonical project bin");
-    assert!(
-        std::path::Path::new(resolved_binary).starts_with(&project_bin),
-        "expected runtime profile to prefer {}, got {resolved_binary}",
-        project_bin.display()
-    );
+    assert_eq!(resolved_binary, state_home_provider.display().to_string());
     assert!(
         !root
             .join(".cache/agent-semantic-protocol/runtime/profiles.json")
@@ -121,13 +120,52 @@ fn cli_install_runtime_profile_prefers_project_bin_provider() {
 }
 
 #[test]
-fn cli_install_asp_toml_can_disable_language_and_override_provider_binary() {
+fn cli_install_rejects_project_and_path_provider_without_state_home_receipt() {
+    let root = git_project_root("install-reject-unmanaged-provider");
+    let asp_state_home = root.join(".asp-state-home");
+    let external_root = git_project_root("install-reject-path-provider");
+    let project_provider_path = write_unmanaged_provider_file(&root, "py-harness", 0o755);
+    let external_provider_path = write_unmanaged_provider_file(&external_root, "py-harness", 0o755);
+    let asp_bin_dir = asp_bin_dir();
+    let path = std::env::join_paths([
+        external_provider_path.as_path(),
+        project_provider_path.as_path(),
+        asp_bin_dir.as_path(),
+    ])
+    .expect("unmanaged providers and asp PATH");
+
+    let output = protocol_command()
+        .env("PATH", path)
+        .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
+        .env("ASP_STATE_HOME", &asp_state_home)
+        .env("CODEX_HOME", root.join(".codex-home"))
+        .args(codex_plugin_install_args(&root))
+        .output()
+        .expect("run agent-semantic-protocol install");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("expected State Home runtime bin to contain at least one executable"),
+        "{stderr}"
+    );
+    assert!(!installed_activation_path(&asp_state_home).is_file());
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&external_root);
+}
+
+#[test]
+fn cli_install_asp_toml_can_select_state_home_provider_basename() {
     let root = git_project_root("install-asp-toml-provider-config");
     let asp_state_home = root.join(".asp-state-home");
     let empty_path = root.join("empty-path");
     std::fs::create_dir_all(&empty_path).expect("empty path");
-    write_fake_provider_file(&root, "custom-py-harness", 0o755);
-    write_fake_provider_file(&root, "ts-harness", 0o755);
+    let custom_provider = write_state_home_provider_binary(
+        &asp_state_home,
+        "python",
+        "py-harness",
+        "custom-py-harness",
+    );
     let config_path = root.join(".agents").join("asp.toml");
     std::fs::create_dir_all(config_path.parent().expect("agent config parent"))
         .expect("create agent config parent");
@@ -141,7 +179,7 @@ enabled = false
 enabled = false
 
 [providers.python]
-binary = ".bin/custom-py-harness"
+binary = "custom-py-harness"
 
 [providers.julia]
 enabled = false
@@ -159,13 +197,7 @@ enabled = false
     .expect("write .agents/asp.toml");
 
     let asp_bin_dir = asp_bin_dir();
-    let project_bin = root.join(".bin");
-    let path = env::join_paths([
-        project_bin.as_path(),
-        empty_path.as_path(),
-        asp_bin_dir.as_path(),
-    ])
-    .expect("join PATH");
+    let path = env::join_paths([empty_path.as_path(), asp_bin_dir.as_path()]).expect("join PATH");
     let output = protocol_command()
         .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
@@ -192,7 +224,7 @@ enabled = false
     assert_eq!(python.binary, "py-harness");
     assert_eq!(python.provider_command_prefix.len(), 1);
     assert!(
-        python.provider_command_prefix[0].ends_with("/.bin/custom-py-harness"),
+        python.provider_command_prefix[0] == custom_provider.display().to_string(),
         "{:?}",
         python.provider_command_prefix
     );
@@ -206,7 +238,7 @@ enabled = false
         Some(profile.argv[0].as_str())
     );
     assert!(
-        profile.argv[0].ends_with("/.bin/custom-py-harness"),
+        profile.argv[0] == custom_provider.display().to_string(),
         "{:?}",
         profile.argv
     );
@@ -226,12 +258,10 @@ enabled = false
 fn cli_install_writes_executable_python_ingest_route() {
     let root = git_project_root("install-python");
     let asp_state_home = root.join(".asp-state-home");
-    let provider_path = write_fake_provider_binary(&root, "py-harness");
+    write_state_home_provider_binary(&asp_state_home, "python", "py-harness", "py-harness");
     let asp_bin_dir = asp_bin_dir();
-    let path = env::join_paths([provider_path.as_path(), asp_bin_dir.as_path()])
-        .expect("provider and asp PATH");
     let output = protocol_command()
-        .env("PATH", &path)
+        .env("PATH", &asp_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
         .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))

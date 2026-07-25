@@ -260,7 +260,6 @@ pub(crate) fn materialize_source_access_decision(
     event: &str,
     action: &ToolAction,
     agent_action: Option<&crate::tool_action::AgentAction>,
-    _tokens: Option<&[String]>,
     semantic_ast_patch_enabled: bool,
     recovery_prompt: &crate::hook_recovery_prompt::CompiledRecoveryPromptConfig,
 ) -> Option<HookDecision> {

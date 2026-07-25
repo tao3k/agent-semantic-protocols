@@ -1,21 +1,18 @@
 use crate::provider_command::support::{
-    asp_command, provider, temp_project_root, write_activation, write_echo_provider,
+    asp_command, install_state_home_provider, provider, temp_project_root, write_activation,
+    write_echo_provider,
 };
 
 #[test]
-fn gerbil_search_guide_resolves_repo_relative_provider_bin_with_workspace() {
-    let root = temp_project_root("search-guide-gerbil-workspace-bin");
+fn gerbil_search_guide_uses_state_home_provider_with_workspace() {
+    let root = temp_project_root("search-guide-gerbil-state-home");
     let workspace = root
         .join("languages")
         .join("gerbil-scheme-language-project-harness");
     let provider_bin_dir = workspace.join("bin");
     std::fs::create_dir_all(&workspace).expect("create workspace");
     write_echo_provider(&provider_bin_dir, "gslph", "gerbil");
-    std::fs::write(
-        root.join("asp.toml"),
-        "[languages.gerbil-scheme]\nbin = \"languages/gerbil-scheme-language-project-harness/bin/gslph\"\n",
-    )
-    .expect("write asp.toml");
+    install_state_home_provider(&root, "gerbil-scheme", &provider_bin_dir.join("gslph"));
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
@@ -46,21 +43,16 @@ fn gerbil_search_guide_resolves_repo_relative_provider_bin_with_workspace() {
 }
 
 #[test]
-fn gerbil_search_structural_json_uses_activation_provider_prefix_with_workspace() {
-    let root = temp_project_root("search-structural-gerbil-provider-prefix");
+fn gerbil_search_structural_json_uses_state_home_provider_with_workspace() {
+    let root = temp_project_root("search-structural-gerbil-state-home");
     let workspace = root
         .join("languages")
         .join("gerbil-scheme-language-project-harness");
     let provider_bin_dir = workspace.join("bin");
     std::fs::create_dir_all(&workspace).expect("create workspace");
     write_echo_provider(&provider_bin_dir, "gslph", "gerbil");
-    write_activation(
-        &root,
-        &[provider(
-            "gerbil-scheme",
-            vec![provider_bin_dir.join("gslph").display().to_string()],
-        )],
-    );
+    install_state_home_provider(&root, "gerbil-scheme", &provider_bin_dir.join("gslph"));
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))

@@ -38,7 +38,12 @@ async fn harness_projection_imports_without_source_text_projection() {
             project_root: project_root.clone(),
             registry_fingerprint: "language-projection-registry".to_string(),
             projection: projection.clone(),
-            source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::default(),
+            source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+                [(
+                    agent_semantic_client_db::ClientDbSourceIndexPath::new("src/projection.ss"),
+                    b"(def (run) 1)\n".to_vec(),
+                )],
+            ),
         })
         .expect("assemble language projection import");
     let source_snapshot = import.source_snapshot.clone();

@@ -1,9 +1,10 @@
 use agent_semantic_protocol::context_product_state::{
-    CONTEXT_PRODUCT_SCHEMA_ID, CONTEXT_PRODUCT_SCHEMA_VERSION, ClaimClass, ClosureDisposition,
-    ContextBinding, ContextProductStateV1, DecisionRequirement, Digest, ExecutionAuthority,
-    FrontierAntichain, FrontierNode, GraphRouter, Obligation, ObligationDisposition,
-    ParserOwnedCommandAdmission, ProofReuse, ProofReuseMode, ProtocolId, RecommendedNextCandidate,
-    RetainedProof, SearchBudget, ValidationError,
+    ActiveProgram, CONTEXT_PRODUCT_CANONICALIZATION_PROFILE, CONTEXT_PRODUCT_SCHEMA_ID,
+    CONTEXT_PRODUCT_SCHEMA_VERSION, ClaimClass, ClosureDisposition, ContextBinding,
+    DecisionRequirement, Digest, ExecutionAuthority, FrontierAntichain, FrontierNode, Obligation,
+    ObligationDisposition, ParserOwnedCommandAdmission, ProofReuse, ProofReuseMode, ProtocolId,
+    RecommendedNextCandidate, RetainedProof, SearchBudget, UncheckedContextProductStateV1,
+    ValidationError,
 };
 
 fn id(value: &str) -> ProtocolId {
@@ -14,7 +15,7 @@ fn digest(value: &str) -> Digest {
     Digest::from_bytes(value.as_bytes())
 }
 
-fn open_state(claim_class: ClaimClass) -> ContextProductStateV1 {
+fn open_state(claim_class: ClaimClass) -> UncheckedContextProductStateV1 {
     let mut context = ContextBinding {
         workspace_id: id("workspace-1"),
         workspace_root_digest: digest("workspace-root"),
@@ -41,11 +42,19 @@ fn open_state(claim_class: ClaimClass) -> ContextProductStateV1 {
         frontier_digest: digest("unset-frontier"),
     };
     frontier.frontier_digest = frontier.recompute_frontier_digest();
-    let mut state = ContextProductStateV1 {
+    let mut state = UncheckedContextProductStateV1 {
         schema_id: CONTEXT_PRODUCT_SCHEMA_ID.to_owned(),
         schema_version: CONTEXT_PRODUCT_SCHEMA_VERSION,
         run_id: id("run-1"),
         revision: 1,
+        previous_state_digest: Some(digest("previous-state")),
+        last_event_sequence: 0,
+        event_log_digest: digest("event-log"),
+        active_program: ActiveProgram::None,
+        spent_action_keys: vec![],
+        spent_action_ledger_digest: digest("unset-spent-action-ledger"),
+        authority_receipt_ref: id("authority-receipt-1"),
+        canonicalization_profile: CONTEXT_PRODUCT_CANONICALIZATION_PROFILE.to_owned(),
         context,
         obligations: vec![Obligation {
             obligation_id: obligation_id.clone(),
@@ -77,11 +86,12 @@ fn open_state(claim_class: ClaimClass) -> ContextProductStateV1 {
         },
         state_digest: digest("unset-state"),
     };
+    state.spent_action_ledger_digest = state.recompute_spent_action_ledger_digest();
     state.state_digest = state.recompute_state_digest();
     state
 }
 
-fn candidate(state: &ContextProductStateV1) -> RecommendedNextCandidate {
+fn candidate(state: &UncheckedContextProductStateV1) -> RecommendedNextCandidate {
     RecommendedNextCandidate {
         language_id: id("rust"),
         operation: id("search.owner"),
@@ -94,8 +104,8 @@ fn candidate(state: &ContextProductStateV1) -> RecommendedNextCandidate {
 
 #[test]
 fn accepts_open_search_state() {
-    GraphRouter
-        .validate_state(&open_state(ClaimClass::Identity))
+    open_state(ClaimClass::Identity)
+        .validate()
         .expect("valid open search state");
 }
 
@@ -107,8 +117,8 @@ fn rejects_unknown_legacy_state_field() {
         .expect("state object")
         .insert("legacyProjectFact".into(), serde_json::json!(true));
 
-    let error =
-        serde_json::from_value::<ContextProductStateV1>(value).expect_err("closed v1 object");
+    let error = serde_json::from_value::<UncheckedContextProductStateV1>(value)
+        .expect_err("closed v1 object");
     assert!(error.to_string().contains("unknown field"));
 }
 
@@ -124,6 +134,7 @@ fn rejects_resolved_obligation_without_proof_refs() {
     state.decision = DecisionRequirement::None;
     state.closure = ClosureDisposition::Finalized {
         receipt_id: id("receipt-1"),
+        receipt_digest: digest("receipt-1"),
     };
     state.state_digest = state.recompute_state_digest();
 
@@ -147,7 +158,12 @@ fn rejects_partial_reuse_without_invalidated_proof() {
     };
     state.state_digest = state.recompute_state_digest();
 
-    assert_eq!(state.validate(), Err(ValidationError::IncompleteProofReuse));
+    assert_eq!(
+        state.validate(),
+        Err(ValidationError::EmptyRequiredCollection(
+            "invalidatedProofRefs"
+        ))
+    );
 }
 
 #[test]
@@ -161,6 +177,7 @@ fn rejects_frontier_containing_predecessor_and_successor() {
             stage_id: id("stage-1"),
             depth: 1,
             predecessor_ids: vec![],
+            ancestor_node_ids: vec![],
             open_obligation_ids: vec![id("obligation-1")],
             proof_refs: vec![],
         },
@@ -170,6 +187,7 @@ fn rejects_frontier_containing_predecessor_and_successor() {
             stage_id: id("stage-2"),
             depth: 2,
             predecessor_ids: vec![predecessor],
+            ancestor_node_ids: vec![id("frontier-node-1")],
             open_obligation_ids: vec![id("obligation-1")],
             proof_refs: vec![],
         },
@@ -187,7 +205,7 @@ impl ParserOwnedCommandAdmission for RejectParser {
 
     fn validate(
         &self,
-        _state: &ContextProductStateV1,
+        _state: &UncheckedContextProductStateV1,
         _candidate: &RecommendedNextCandidate,
     ) -> Result<(), Self::Error> {
         Err("selector is not parser-admitted")
@@ -197,27 +215,22 @@ impl ParserOwnedCommandAdmission for RejectParser {
 #[test]
 fn rejects_recommended_next_not_admitted_by_parser() {
     let state = open_state(ClaimClass::Identity);
-    let error = GraphRouter
-        .admit_recommended_next(&state, candidate(&state), &RejectParser)
+    let error = RejectParser
+        .validate(&state, &candidate(&state))
         .expect_err("parser owns command admission");
-    assert_eq!(
-        error,
-        ValidationError::ParserRejectedCommand("selector is not parser-admitted".into())
-    );
+    assert_eq!(error, "selector is not parser-admitted");
 }
 
 #[test]
 fn rejects_duplicate_recommended_next_action_identity() {
     let mut state = open_state(ClaimClass::Identity);
     let next = candidate(&state);
-    state.execution = ExecutionAuthority::Admitted {
-        admission_id: id("admission-1"),
-        action_key: next.action_identity.clone(),
-    };
+    state.spent_action_keys = vec![next.action_identity.clone(), next.action_identity.clone()];
+    state.spent_action_ledger_digest = state.recompute_spent_action_ledger_digest();
     state.state_digest = state.recompute_state_digest();
 
     assert_eq!(
-        GraphRouter.admit_recommended_next(&state, next, &RejectParser),
+        state.validate(),
         Err(ValidationError::DuplicateActionIdentity)
     );
 }

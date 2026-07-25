@@ -1,6 +1,6 @@
 use crate::provider_command::support::{
-    asp_command, home_local_bin, make_executable, prepend_path, provider,
-    provider_with_owner_items, temp_project_root, write_activation,
+    asp_command, make_executable, prepend_path, provider, provider_with_owner_items,
+    state_runtime_bin, temp_project_root, write_activation,
 };
 use std::os::unix::fs::PermissionsExt;
 use std::time::{Duration, Instant};
@@ -51,7 +51,7 @@ fn language_owner_items_uses_provider_interface_without_core_fallback() {
 #[test]
 fn language_owner_items_reuses_provider_cache() {
     let root = temp_project_root("search-owner-language-harness-cache");
-    let bin_dir = home_local_bin(&root);
+    let bin_dir = state_runtime_bin(&root);
     let count_path = root.join("provider-count");
     std::fs::create_dir_all(root.join("crate/src")).expect("create source");
     std::fs::write(
@@ -116,7 +116,7 @@ fn language_owner_items_reuses_provider_cache() {
 #[test]
 fn language_owner_items_provider_stdout_is_compacted_without_language_special_case() {
     let root = temp_project_root("search-owner-language-provider-stdout-compact");
-    let bin_dir = home_local_bin(&root);
+    let bin_dir = state_runtime_bin(&root);
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src/pkg")).expect("create source");
     std::fs::write(
@@ -223,7 +223,7 @@ fn language_owner_items_provider_stdout_is_compacted_without_language_special_ca
 #[test]
 fn language_owner_items_missing_owner_errors_without_provider_fallback() {
     let root = temp_project_root("search-owner-language-items-no-fallback");
-    let bin_dir = home_local_bin(&root);
+    let bin_dir = state_runtime_bin(&root);
     let marker = root.join("provider-called");
     std::fs::create_dir_all(&bin_dir).expect("create bin dir");
     let provider_path = bin_dir.join("py-harness");

@@ -84,7 +84,7 @@ pub use event_state_subagent_model_drift::{
 pub use hook_config::{
     AspSessionPolicy, ClientHookConfig, ConfiguredResidentTarget, default_client_config_path,
     default_client_config_template, load_client_config, load_client_config_for_project,
-    load_embedded_client_config_for_project,
+    load_client_config_overlay_for_project, load_embedded_client_config_for_project,
 };
 pub use hook_config_global::default_global_client_config_path;
 pub use protocol::{

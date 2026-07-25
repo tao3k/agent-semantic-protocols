@@ -217,10 +217,10 @@ pub fn rank_graph_owner_report(request: GraphOwnerRankRequest) -> GraphOwnerRank
     }
 }
 
-pub fn ranked_graph_owner_paths_for_submodule_paths<'a>(
+pub fn ranked_graph_owner_paths_for_submodule_paths(
     candidates: &[GraphProjectionCandidate],
     query_terms: &[String],
-    submodule_paths: &'a [String],
+    submodule_paths: &[String],
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
 ) -> Vec<String> {
     rank_graph_owner_report(GraphOwnerRankRequest {

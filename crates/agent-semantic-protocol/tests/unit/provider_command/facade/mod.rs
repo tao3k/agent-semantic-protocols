@@ -5,7 +5,7 @@ mod language {
     fn language_facade_forwards_agent_doctor_to_provider() {
         let root =
             crate::provider_command::support::temp_project_root("language-agent-doctor-facade");
-        let bin_dir = crate::provider_command::support::home_local_bin(&root);
+        let bin_dir = crate::provider_command::support::state_runtime_bin(&root);
         let cache_home = root.join(".cache");
         std::fs::create_dir_all(&bin_dir).expect("create bin dir");
 
@@ -45,14 +45,14 @@ mod language {
     }
 
     #[test]
-    fn language_facade_prefers_home_local_provider_over_project_bin() {
+    fn language_facade_uses_state_home_provider_over_project_bin() {
         let root =
             crate::provider_command::support::temp_project_root("language-agent-doctor-bin-order");
         let bin_dir = root.join(".bin");
-        let home_bin_dir = crate::provider_command::support::home_local_bin(&root);
+        let runtime_bin_dir = crate::provider_command::support::state_runtime_bin(&root);
         let cache_home = root.join(".cache");
         std::fs::create_dir_all(&bin_dir).expect("create bin dir");
-        std::fs::create_dir_all(&home_bin_dir).expect("create home bin dir");
+        std::fs::create_dir_all(&runtime_bin_dir).expect("create state-home runtime bin dir");
 
         let project_provider = bin_dir.join("rs-harness");
         std::fs::write(
@@ -61,13 +61,13 @@ mod language {
         )
         .expect("write project provider");
         crate::provider_command::support::make_executable(&project_provider);
-        let home_provider = home_bin_dir.join("rs-harness");
+        let runtime_provider = runtime_bin_dir.join("rs-harness");
         std::fs::write(
-            &home_provider,
-            "#!/bin/sh\nprintf 'home-local:%s\n' \"$*\"\n",
+            &runtime_provider,
+            "#!/bin/sh\nprintf 'state-home:%s\n' \"$*\"\n",
         )
-        .expect("write home provider");
-        crate::provider_command::support::make_executable(&home_provider);
+        .expect("write state-home provider");
+        crate::provider_command::support::make_executable(&runtime_provider);
 
         crate::provider_command::support::write_activation(
             &root,
@@ -93,7 +93,7 @@ mod language {
         );
         let stdout = String::from_utf8(output.stdout).expect("stdout");
         assert!(
-            stdout.contains("home-local:agent doctor --json"),
+            stdout.contains("state-home:agent doctor --json"),
             "stdout={stdout}"
         );
         assert!(!stdout.contains("project-bin:"), "stdout={stdout}");

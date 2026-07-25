@@ -5,7 +5,6 @@ use std::{collections::HashSet, env, path::Path};
 use serde_json::{Value, json};
 
 use super::{
-    search_config::AspConfig,
     search_pipe_dependency_seed_cache::{
         ProviderDependencyTopologyFact, collect_cached_dependency_facts,
     },
@@ -42,7 +41,6 @@ pub(super) struct GraphTurboSearchPipeRequest<'a> {
     pub(super) source_trace: &'a [SearchPipeSourceTrace],
     pub(super) provider_facts: &'a ProviderGraphFacts,
     pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
-    pub(super) config: &'a AspConfig,
     pub(super) read_memory_selectors: &'a [String],
     pub(super) action_frontier: &'a [Value],
 }
@@ -76,7 +74,6 @@ pub(super) fn graph_turbo_request(
     let source_trace = request.source_trace;
     let provider_facts = request.provider_facts;
     let provider_context = request.provider_context;
-    let config = request.config;
     let read_memory_selectors = request.read_memory_selectors;
     let external_action_frontier = request.action_frontier;
     let surfaces = normalized_search_surfaces(pipes);
@@ -129,7 +126,6 @@ pub(super) fn graph_turbo_request(
             language_id,
             dependency_root,
             cache_home,
-            config,
             provider_context_for_dependency_seed(provider_context, &surfaces),
             query,
             &graph_candidates,

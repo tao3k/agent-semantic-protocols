@@ -1,6 +1,4 @@
-use std::env;
-
-use crate::rust_harness_activation::support::write_fake_provider_binary;
+use crate::rust_harness_activation::support::write_state_home_provider_binary;
 
 use super::support::{
     codex_plugin_install_args, codex_plugin_install_args_with_subagent_model, git_project_root,
@@ -12,13 +10,12 @@ fn cli_install_removes_legacy_project_marketplace_source() {
     let root = git_project_root("install-existing-marketplace-source");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
-    let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
-    let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
     write_legacy_project_codex_marketplace_source_dot(&root);
 
     let output = protocol_command()
-        .env("PATH", &path)
+        .env("PATH", &protocol_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
         .env("ASP_STATE_HOME", &asp_state_home)
@@ -71,12 +68,11 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
     let root = git_project_root("install-codex-subagent-model");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
-    let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
-    let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
 
     let output = protocol_command()
-        .env("PATH", &path)
+        .env("PATH", &protocol_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
         .env("ASP_STATE_HOME", &asp_state_home)
@@ -145,14 +141,15 @@ fn cli_install_rejects_missing_subagent_model_value() {
 fn cli_install_writes_claude_custom_subagent_by_default() {
     let root = git_project_root("install-claude-subagent");
     let codex_home = root.join(".codex-home");
-    let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    let asp_state_home = root.join(".asp-state-home");
+    write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
-    let path = env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
 
     let output = protocol_command()
-        .env("PATH", &path)
+        .env("PATH", &protocol_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
+        .env("ASP_STATE_HOME", &asp_state_home)
         .args([
             "install",
             "hook",

@@ -55,6 +55,28 @@ impl fmt::Display for ScopeId {
     }
 }
 
+/// Whether a resolved repository identity may own durable State Home data.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RepoPersistence {
+    /// Compatibility value for metadata written before persistence was explicit.
+    #[default]
+    Legacy,
+    /// A Git repository identified by its remote or Git metadata.
+    Git,
+    /// An explicitly declared non-Git project.
+    ExplicitNonGit,
+    /// An ordinary path used only as a transient search root.
+    EphemeralPath,
+}
+
+impl RepoPersistence {
+    /// Return whether this identity may be materialized in State Home.
+    pub fn is_durable(self) -> bool {
+        !matches!(self, Self::EphemeralPath)
+    }
+}
+
 /// Repository identity and the facts used to derive it.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,11 +89,13 @@ pub struct RepoIdentity {
     pub git_common_dir: Option<PathBuf>,
     pub remote_url: Option<RemoteUrl>,
     pub identity_basis: String,
+    #[serde(default)]
+    pub persistence: RepoPersistence,
 }
 
 impl RepoIdentity {
     pub(super) fn from_checkout(git: &GitIdentity, checkout: &CheckoutIdentity) -> Self {
-        let repo_basis = git
+        let git_basis = git
             .remote_url
             .as_ref()
             .and_then(RemoteUrl::canonical_identity)
@@ -85,8 +109,14 @@ impl RepoIdentity {
                 git.git_dir
                     .as_deref()
                     .map(|git_dir| format!("git-dir:{}", path_identity(git_dir)))
-            })
-            .unwrap_or_else(|| format!("path:{}", path_identity(&checkout.root)));
+            });
+        let persistence = if git_basis.is_some() {
+            RepoPersistence::Git
+        } else {
+            RepoPersistence::EphemeralPath
+        };
+        let repo_basis = git_basis
+            .unwrap_or_else(|| format!("ephemeral-path:{}", path_identity(&checkout.root)));
         let repo_id = RepoId(stable_id("repo", &repo_basis));
 
         Self {
@@ -98,6 +128,7 @@ impl RepoIdentity {
             git_common_dir: git.common_git_dir.clone(),
             remote_url: git.remote_url.clone(),
             identity_basis: repo_basis,
+            persistence,
         }
     }
 }

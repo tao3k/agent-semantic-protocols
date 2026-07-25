@@ -1,75 +1,99 @@
-use super::{resolve_provider_binary_install_target, resolve_provider_binary_invocation};
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+use super::resolve_provider_binary_install_target;
+
+static ASP_STATE_HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
-fn provider_install_target_uses_home_local_bin_by_default() {
-    let home = std::env::temp_dir().join("asp-install-target-home-only-home");
+fn provider_install_target_uses_state_home_runtime_bin() {
+    let _lock = ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let state_home = temp_state_home("install-target");
+    let _state_home = StateHomeEnvGuard::set(&state_home);
 
-    let target = resolve_provider_binary_install_target("rust", "rs-harness", Some(&home))
-        .expect("install target");
+    let target =
+        resolve_provider_binary_install_target("rust", "rs-harness").expect("install target");
 
-    assert_eq!(target.path, home.join(".local/bin/rs-harness"));
-    assert_eq!(target.source, "home-local-bin");
+    assert_eq!(target.path, state_home.join("runtime/bin/rs-harness"));
+    assert_eq!(target.source, "state-home-runtime-bin");
 }
 
 #[test]
-fn provider_install_target_requires_home() {
-    let error = resolve_provider_binary_install_target("rust", "rs-harness", None)
-        .expect_err("missing HOME should fail");
+fn provider_install_target_accepts_logical_binary_override_under_state_home() {
+    let _lock = ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let state_home = temp_state_home("logical-override");
+    let _state_home = StateHomeEnvGuard::set(&state_home);
 
-    assert!(error.contains("$HOME/.local/bin/rs-harness"), "{error}");
-    assert!(error.contains("HOME is not set"), "{error}");
-}
-
-#[test]
-fn provider_invocation_uses_home_local_even_when_other_bin_dir_exists() {
-    let home = std::env::temp_dir().join("asp-invocation-home-with-extra-bin");
-    let extra_bin = std::env::temp_dir().join("asp-invocation-extra-bin");
-    let home_bin = home.join(".local/bin");
-    std::fs::create_dir_all(&home_bin).expect("create home bin dir");
-    std::fs::create_dir_all(&extra_bin).expect("create extra bin dir");
-    std::fs::write(home_bin.join("rs-harness"), "").expect("write home provider");
-    std::fs::write(extra_bin.join("rs-harness"), "").expect("write extra provider");
-
-    let invocation =
-        resolve_provider_binary_invocation("rust", "rs-harness", Some(&home)).expect("invocation");
+    let target = resolve_provider_binary_install_target("python", "custom-py-harness")
+        .expect("logical provider override");
 
     assert_eq!(
-        invocation.command,
-        home.join(".local/bin/rs-harness").to_string_lossy()
+        target.path,
+        state_home.join("runtime/bin/custom-py-harness")
     );
-    assert_eq!(invocation.source, "home-local-bin");
+    assert_eq!(target.source, "state-home-runtime-bin");
 }
 
 #[test]
-fn provider_invocation_uses_home_local_bin_by_default() {
-    let home = std::env::temp_dir().join("asp-invocation-home-only-home");
-    let home_bin = home.join(".local/bin");
-    std::fs::create_dir_all(&home_bin).expect("create home bin dir");
-    std::fs::write(home_bin.join("rs-harness"), "").expect("write home provider");
+fn provider_install_target_rejects_paths_instead_of_creating_a_second_authority() {
+    let _lock = ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let state_home = temp_state_home("reject-paths");
+    let _state_home = StateHomeEnvGuard::set(&state_home);
 
-    let invocation =
-        resolve_provider_binary_invocation("rust", "rs-harness", Some(&home)).expect("invocation");
-
-    assert_eq!(
-        invocation.command,
-        home.join(".local/bin/rs-harness").to_string_lossy()
-    );
-    assert_eq!(invocation.source, "home-local-bin");
+    for binary in [".bin/rs-harness", "../rs-harness", "/tmp/rs-harness"] {
+        let error = resolve_provider_binary_install_target("rust", binary)
+            .expect_err("provider path override must fail");
+        assert!(
+            error.contains("logical basename resolved under State Home runtime/bin"),
+            "{error}"
+        );
+    }
 }
 
-#[test]
-fn provider_invocation_rejects_missing_home_local_bin_without_fallback() {
-    let home = std::env::temp_dir().join("asp-invocation-missing-home-home");
+struct StateHomeEnvGuard {
+    previous: Option<OsString>,
+}
 
-    let error = resolve_provider_binary_invocation("rust", "rs-harness", Some(&home))
-        .expect_err("missing home-local provider should fail");
+impl StateHomeEnvGuard {
+    fn set(path: &Path) -> Self {
+        let previous = std::env::var_os(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
+        unsafe {
+            std::env::set_var(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV, path);
+        }
+        Self { previous }
+    }
+}
 
-    assert!(error.contains("state=provider-binary-missing"), "{error}");
-    assert!(error.contains("language=rust"), "{error}");
-    assert!(error.contains("binary=rs-harness"), "{error}");
-    assert!(error.contains("installMode=locked-release"), "{error}");
-    assert!(
-        error.contains("nextCommand=asp install language rust"),
-        "{error}"
-    );
+impl Drop for StateHomeEnvGuard {
+    fn drop(&mut self) {
+        match self.previous.take() {
+            Some(value) => unsafe {
+                std::env::set_var(
+                    agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
+                    value,
+                );
+            },
+            None => unsafe {
+                std::env::remove_var(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
+            },
+        }
+    }
+}
+
+fn temp_state_home(label: &str) -> PathBuf {
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "agent-semantic-protocol-{label}-{}-{unique}",
+        std::process::id()
+    ))
 }

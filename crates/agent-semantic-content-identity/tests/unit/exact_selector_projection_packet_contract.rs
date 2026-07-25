@@ -18,25 +18,26 @@ fn packet() -> ExactSelectorProjectionPacketV1 {
     let language_id = "rust".to_owned().into();
     let provider_id = "asp-rust-harness".to_owned().into();
     let owner_path = "crates/example/src/lib.rs".to_owned().into();
-    let structural_selector =
-        "rust://crates/example/src/lib.rs#item/function/run"
-            .to_owned()
-            .into();
+    let structural_selector = "rust://crates/example/src/lib.rs#item/function/run"
+        .to_owned()
+        .into();
     agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
-        &language_id,
-        &provider_id,
-        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
-            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new("rust", "function", "run"),
-            "rust://crates/example/src/lib.rs#item/function/run",
-        ),
-        &digest('a'),
-        &digest('b'),
-        &owner_path,
-        &structural_selector,
-        ExactProjectionModeV1::Code,
-        b"fn run() {}",
-        b"normalized-parser-facts",
-        b"fn run() {}",
+        agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
+            language_id: &language_id,
+            provider_id: &provider_id,
+            canonical_item_selector: agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
+                agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new("rust", "function", "run"),
+                "rust://crates/example/src/lib.rs#item/function/run",
+            ),
+            parser_identity_digest: &digest('a'),
+            query_pack_digest: &digest('b'),
+            owner_path: &owner_path,
+            structural_selector: &structural_selector,
+            projection_mode: ExactProjectionModeV1::Code,
+            source: b"fn run() {}",
+            normalized_parser_facts: b"normalized-parser-facts",
+            projection: b"fn run() {}",
+        },
     )
 }
 

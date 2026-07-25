@@ -1,5 +1,5 @@
 use crate::provider_command::support::{
-    asp_command, home_local_bin, make_executable, prepend_path, provider, temp_project_root,
+    asp_command, make_executable, prepend_path, provider, state_runtime_bin, temp_project_root,
     write_activation, write_echo_provider, write_rust_owner_frontier_provider,
 };
 
@@ -112,8 +112,8 @@ fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider
 #[test]
 fn language_facade_query_allows_syntax_code_output_with_exact_selector() {
     let root = temp_project_root("provider-syntax-query-stdout-facade");
-    let home_bin = home_local_bin(&root);
-    std::fs::create_dir_all(&home_bin).expect("create home local bin");
+    let home_bin = state_runtime_bin(&root);
+    std::fs::create_dir_all(&home_bin).expect("create state-home runtime bin");
     let provider_path = home_bin.join("rs-harness");
     std::fs::write(
         &provider_path,
@@ -157,8 +157,8 @@ printf 'pub fn provider_owned() -> usize {
 #[test]
 fn language_facade_treesitter_file_selector_code_stays_provider_owned() {
     let root = temp_project_root("provider-syntax-query-file-selector-code");
-    let home_bin = home_local_bin(&root);
-    std::fs::create_dir_all(&home_bin).expect("create home local bin");
+    let home_bin = state_runtime_bin(&root);
+    std::fs::create_dir_all(&home_bin).expect("create state-home runtime bin");
     let provider_path = home_bin.join("rs-harness");
     std::fs::write(
         &provider_path,
@@ -240,12 +240,12 @@ fn registered_language_facade_query_source_selector_code_is_rejected() {
     let source_language_cases = agent_semantic_hook::builtin_provider_manifests()
         .into_iter()
         .filter(|manifest| {
-            manifest.execution == agent_semantic_hook::ProviderExecution::ExternalProcess
+            manifest.execution() == agent_semantic_hook::ProviderExecution::ExternalProcess
         })
         .filter_map(|manifest| {
-            let extension = manifest.source.default_extensions.first()?.clone();
+            let extension = manifest.source().default_extensions.first()?.clone();
             let selector = format!("src/core{}", extension);
-            Some((manifest.language_id, selector))
+            Some((manifest.language_id().clone(), selector))
         })
         .collect::<Vec<_>>();
     assert!(
@@ -285,7 +285,8 @@ fn registered_language_facade_query_source_selector_code_is_rejected() {
             "{language_id}: {stderr}"
         );
         assert!(
-            stderr.contains(&format!("{language_id}://path#item/function/name")),
+            stderr.contains(&format!("{language_id}://"))
+                && stderr.contains("#item/<kind>/<symbol>"),
             "{language_id}: {stderr}"
         );
         assert!(
@@ -302,16 +303,13 @@ fn registered_language_source_extensions_drive_file_selector_code_rejection() {
     let manifest = agent_semantic_hook::builtin_provider_manifests()
         .into_iter()
         .find(|manifest| {
-            manifest.execution == agent_semantic_hook::ProviderExecution::ExternalProcess
+            manifest.execution() == agent_semantic_hook::ProviderExecution::ExternalProcess
         })
         .expect("registered source-language provider manifest");
-    let language_id = manifest.language_id;
+    let language_id = manifest.language_id().clone();
     write_activation(&root, &[provider(language_id.clone(), Vec::new())]);
-    let activation_path = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("hooks")
-        .join("activation.json");
+    let activation_path =
+        agent_semantic_runtime::project_activation_path(&root).expect("project activation path");
     let mut activation: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&activation_path).expect("read activation"))
             .expect("parse activation");
@@ -341,11 +339,11 @@ fn registered_language_source_extensions_drive_file_selector_code_rejection() {
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).expect("stderr");
     assert!(
-        stderr.contains("invalid query --code selector `src/core.widget`"),
+        stderr.contains("invalid query selector `src/core.widget`"),
         "{stderr}"
     );
     assert!(
-        stderr.contains(&format!("{language_id}://path#item/function/name")),
+        stderr.contains(&format!("{language_id}://")) && stderr.contains("#item/<kind>/<symbol>"),
         "{stderr}"
     );
     assert!(!stderr.contains("direct-source-read"), "{stderr}");
@@ -384,7 +382,7 @@ fn language_facade_query_rejects_syntax_code_output_without_selector() {
     );
     assert!(
         String::from_utf8_lossy(&output.stderr)
-            .contains("tree-sitter query --code requires an exact --selector"),
+            .contains("workspace Tree-sitter discovery is search-owned"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -438,8 +436,8 @@ fn language_facade_rejects_direct_source_read_code_trailing_root_before_fast_pat
 #[test]
 fn language_facade_rejects_inline_code_in_compact_frontier_mode() {
     let root = temp_project_root("provider-compact-frontier-inline-code");
-    let home_bin = home_local_bin(&root);
-    std::fs::create_dir_all(&home_bin).expect("create home local bin");
+    let home_bin = state_runtime_bin(&root);
+    std::fs::create_dir_all(&home_bin).expect("create state-home runtime bin");
     let provider_path = home_bin.join("rs-harness");
     std::fs::write(
         &provider_path,

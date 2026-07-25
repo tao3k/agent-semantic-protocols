@@ -142,6 +142,7 @@ pub struct CurrentSourceIndexSnapshot {
 pub struct SourceIndexOwnerPath(String);
 
 /// Inputs for capturing one exact owner from an already-loaded activation.
+#[non_exhaustive]
 pub struct CurrentSourceIndexOwnerFromActivationRequest<'a> {
     project_root: &'a Path,
     activation_path: &'a Path,
@@ -462,7 +463,7 @@ pub(crate) fn current_source_index_snapshot_with_registry(
     provider_registry: &ProviderRegistrySnapshot,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let registry = provider_registry.evidence(project_root);
-    let files = collect_source_index_files(project_root, &provider_registry)?;
+    let files = collect_source_index_files(project_root, provider_registry)?;
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
         source_index_snapshot_from_files(project_root, &files, &registry)?;
     Ok(CurrentSourceIndexSnapshot {

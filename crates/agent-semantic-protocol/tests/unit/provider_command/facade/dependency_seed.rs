@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::provider_command::support::{
     asp_command, cache_root, make_executable, prepend_path, provider, temp_project_root,
-    write_activation, write_provider_bin_config,
+    write_activation,
 };
 
 const DIRECT_DEPENDENCY_SEED_GATE: Duration = Duration::from_millis(500);
@@ -52,7 +52,7 @@ fn direct_dependency_seed_falls_back_to_asp_manifest_without_topology_capability
 #[test]
 fn direct_dependency_seed_uses_provider_dependency_topology_when_available() {
     let root = temp_project_root("direct-dependency-seed-provider-topology");
-    let bin_dir = crate::provider_command::support::home_local_bin(&root);
+    let bin_dir = crate::provider_command::support::state_runtime_bin(&root);
     let marker = root.join("provider-called");
     std::fs::write(
         root.join("Cargo.toml"),
@@ -170,16 +170,11 @@ fn direct_dependency_seed_uses_provider_dependency_topology_when_available() {
 }
 
 #[test]
-fn direct_dependency_seed_resolves_provider_bin_from_activation_root_for_external_workspace() {
-    let activation_root = temp_project_root("direct-dependency-seed-provider-bin-activation-root");
+fn direct_dependency_seed_uses_state_home_provider_for_external_workspace() {
+    let activation_root = temp_project_root("direct-dependency-seed-state-home-external");
     let external_root = temp_project_root("direct-dependency-seed-provider-bin-external-root");
     let bin_dir = activation_root.join(".bin");
     let marker = activation_root.join("provider-called");
-    std::fs::write(
-        activation_root.join("asp.toml"),
-        "[languages.rust]\nbin = \".bin/rs-harness\"\n",
-    )
-    .expect("write asp.toml");
     std::fs::write(
         external_root.join("Cargo.toml"),
         "[package]\nname = \"dep-seed-rust-external\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\ntokio = \"1\"\n",
@@ -200,7 +195,7 @@ fn direct_dependency_seed_resolves_provider_bin_from_activation_root_for_externa
 
     assert!(
         !external_root.join(".bin").exists(),
-        "external workspace must not provide the configured provider bin"
+        "external workspace must not provide the State Home provider"
     );
     let output = asp_command(&activation_root)
         .args([
@@ -411,8 +406,6 @@ fn direct_dependency_seed_reuses_cached_manifest_topology_until_manifest_changes
     )
     .expect("write Cargo.toml");
     write_activation(&root, &[provider("rust", Vec::new())]);
-    write_provider_bin_config(&root, "rust", &root.join(".missing/rs-harness"));
-
     let first = run_dependency_seed_stdout(&root, "serde");
     assert!(first.contains("topology=asp-owned"), "{first}");
     assert!(first.contains("seedCache=miss"), "{first}");

@@ -1,6 +1,5 @@
 //! Provider install target resolution for language harness binaries.
 
-use std::env;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -9,73 +8,44 @@ pub(super) struct ProviderBinaryInstallTarget {
     pub(super) source: &'static str,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub(super) struct ProviderBinaryInvocation {
-    pub(super) command: String,
-    pub(super) source: &'static str,
-}
-
 pub(super) fn resolve_provider_binary_install_target(
     language_id: &str,
     provider_binary: &str,
-    home_dir: Option<&Path>,
 ) -> Result<ProviderBinaryInstallTarget, String> {
-    Ok(ProviderBinaryInstallTarget {
-        path: home_local_bin_required(provider_binary, home_dir, language_id)?,
-        source: "home-local-bin",
-    })
+    let state_home =
+        agent_semantic_runtime::state_core::resolve_state_home().map_err(|error| {
+            format!(
+                "failed to resolve ASP State Home for provider `{provider_binary}` language `{language_id}`: {error}"
+            )
+        })?;
+    resolve_provider_binary_install_target_at(language_id, provider_binary, &state_home)
 }
 
-pub(super) fn resolve_provider_binary_invocation(
+fn resolve_provider_binary_install_target_at(
     language_id: &str,
     provider_binary: &str,
-    home_dir: Option<&Path>,
-) -> Result<ProviderBinaryInvocation, String> {
-    let home_bin = home_local_bin_required(provider_binary, home_dir, language_id)?;
-    if !home_bin.is_file() {
-        let has_locked_release = super::install_provider::has_pinned_language_release(language_id)?;
-        let (install_mode, next_command) = if has_locked_release {
-            (
-                "locked-release",
-                format!("asp install language {language_id}"),
-            )
-        } else {
-            (
-                "develop-workspace-only",
-                format!("just agent-tools-install-language {language_id}"),
-            )
-        };
-        return Err(format!(
-            "[asp-provider-unavailable] state=provider-binary-missing language={language_id} binary={provider_binary} expectedPath={} installMode={install_mode} nextCommand={next_command}",
-            home_bin.display(),
-        ));
-    }
-    Ok(ProviderBinaryInvocation {
-        command: home_bin.to_string_lossy().to_string(),
-        source: "home-local-bin",
+    state_home: &Path,
+) -> Result<ProviderBinaryInstallTarget, String> {
+    Ok(ProviderBinaryInstallTarget {
+        path: state_home_provider_binary_at(state_home, provider_binary, language_id)?,
+        source: "state-home-runtime-bin",
     })
 }
 
-fn home_local_bin(binary: &str, home_dir: Option<&Path>) -> Option<PathBuf> {
-    home_dir.map(|home_dir| home_dir.join(".local/bin").join(binary))
-}
-
-fn home_local_bin_required(
+fn state_home_provider_binary_at(
+    state_home: &Path,
     binary: &str,
-    home_dir: Option<&Path>,
     language_id: &str,
 ) -> Result<PathBuf, String> {
-    home_local_bin(binary, home_dir).ok_or_else(|| {
-        format!(
-            "provider binary `{binary}` for language `{language_id}` must be installed at $HOME/.local/bin/{binary}; HOME is not set"
-        )
-    })
-}
-
-pub(super) fn home_dir() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
+    let binary_path = Path::new(binary);
+    if binary_path.components().count() != 1
+        || binary_path.file_name().and_then(|name| name.to_str()) != Some(binary)
+    {
+        return Err(format!(
+            "provider binary for language `{language_id}` must be a logical basename resolved under State Home runtime/bin, got `{binary}`"
+        ));
+    }
+    Ok(state_home.join("runtime").join("bin").join(binary_path))
 }
 
 #[cfg(test)]

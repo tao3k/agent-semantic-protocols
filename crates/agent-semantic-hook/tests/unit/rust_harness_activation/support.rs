@@ -122,26 +122,18 @@ pub(super) fn temp_project_root(name: &str) -> PathBuf {
 pub(super) fn root_owned_rust_activation_json() -> String {
     let manifest = builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == "rust")
+        .find(|manifest| manifest.language_id().as_str() == "rust")
         .expect("rust manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
     let routes = agent_semantic_hook::materialize_provider_routes(&manifest).expect("rust routes");
-    let provider_command_prefix = vec![
-        std::env::current_exe()
-            .expect("resolve test executable")
-            .display()
-            .to_string(),
-    ];
-    let executable_artifact_digest =
-        agent_semantic_content_identity::file_content_digest_v1(std::path::Path::new(
-            provider_command_prefix
-                .first()
-                .expect("provider command prefix"),
-        ))
-        .expect("digest provider test executable");
+    let provider_executable = std::env::current_exe().expect("resolve test executable");
+    let provider_command_prefix = vec![provider_executable.display().to_string()];
+    let provider_artifact_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&provider_executable)
+            .expect("digest provider test executable artifact");
     let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
         &provider_command_prefix,
-        &executable_artifact_digest,
+        &provider_artifact_digest,
     )
     .expect("digest provider execution command");
     let activation = agent_semantic_hook::HookActivation {
@@ -157,25 +149,25 @@ pub(super) fn root_owned_rust_activation_json() -> String {
         },
         generated_at: None,
         providers: vec![agent_semantic_hook::ActivatedProviderConfig {
-            manifest_id: manifest.manifest_id,
+            manifest_id: manifest.manifest_id().to_string(),
             manifest_digest,
-            language_id: manifest.language_id,
-            provider_id: manifest.provider_id,
-            binary: manifest.binary,
-            execution: manifest.execution,
+            language_id: manifest.language_id().clone(),
+            provider_id: manifest.provider_id().clone(),
+            binary: manifest.binary().to_string(),
+            execution: manifest.execution().clone(),
             provider_command_prefix,
             execution_command_digest,
-            search_capabilities: manifest.search_capabilities,
-            semantic_facts_descriptor: manifest.semantic_facts_descriptor,
-            query_pack_descriptor: manifest.query_pack_descriptor,
+            search_capabilities: manifest.search_capabilities().clone(),
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+            query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
                 package_roots: vec![".".to_string()],
-                source_roots: manifest.source.default_source_roots,
-                config_files: manifest.source.default_config_files,
-                source_extensions: manifest.source.default_extensions,
-                ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
+                source_roots: manifest.source().default_source_roots.clone(),
+                config_files: manifest.source().default_config_files.clone(),
+                source_extensions: manifest.source().default_extensions.clone(),
+                ignored_path_prefixes: manifest.source().default_ignored_path_prefixes.clone(),
             },
         }],
     };
@@ -199,32 +191,83 @@ pub(super) fn write_default_client_hook_config(root: &std::path::Path) -> PathBu
     path
 }
 
-pub(super) fn write_fake_provider_binary(root: &std::path::Path, binary: &str) -> PathBuf {
-    write_fake_provider_file(root, binary, 0o755)
+pub(super) fn write_state_home_provider_binary(
+    state_home: &std::path::Path,
+    language_id: &str,
+    provider_id: &str,
+    binary: &str,
+) -> PathBuf {
+    write_state_home_provider_file(state_home, language_id, provider_id, binary, 0o755, false)
 }
 
-pub(super) fn write_failing_provider_binary(root: &std::path::Path, binary: &str) -> PathBuf {
-    let bin_dir = root.join(".bin");
-    std::fs::create_dir_all(&bin_dir).expect("create fake provider bin dir");
+pub(super) fn write_failing_state_home_provider_binary(
+    state_home: &std::path::Path,
+    language_id: &str,
+    provider_id: &str,
+    binary: &str,
+) -> PathBuf {
+    write_state_home_provider_file(state_home, language_id, provider_id, binary, 0o755, true)
+}
+
+fn write_state_home_provider_file(
+    state_home: &std::path::Path,
+    language_id: &str,
+    provider_id: &str,
+    binary: &str,
+    mode: u32,
+    fail_on_execute: bool,
+) -> PathBuf {
+    let bin_dir = state_home.join("runtime").join("bin");
+    std::fs::create_dir_all(&bin_dir).expect("create State Home runtime bin");
     let path = bin_dir.join(binary);
-    std::fs::write(
-        &path,
-        "#!/bin/sh\nprintf 'provider process should not be executed\\n' >&2\nexit 42\n",
-    )
-    .expect("write failing provider binary");
+    let script = if fail_on_execute {
+        "#!/bin/sh\nprintf 'provider process should not be executed\\n' >&2\nexit 42\n".to_string()
+    } else {
+        let guide_marker = match binary {
+            "rs-harness" => {
+                "[agent-guide] runtime=agent-semantic-hook language=rust provider=rs-harness"
+            }
+            "ts-harness" => "[ts-harness-guide]",
+            "py-harness" | "custom-py-harness" => "[py-harness-guide]",
+            _ => "[agent-guide]",
+        };
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"guide\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nexit 0\n",
+            guide_marker
+        )
+    };
+    std::fs::write(&path, script).expect("write State Home provider binary");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mut permissions = std::fs::metadata(&path)
-            .expect("failing provider metadata")
+            .expect("State Home provider metadata")
             .permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&path, permissions).expect("chmod failing provider");
+        permissions.set_mode(mode);
+        std::fs::set_permissions(&path, permissions).expect("chmod State Home provider");
     }
-    bin_dir
+    let entrypoint_digest = agent_semantic_content_identity::file_content_digest_v1(&path)
+        .expect("provider content digest");
+    let metadata_digest = agent_semantic_content_identity::file_artifact_metadata_digest_v1(&path)
+        .expect("provider metadata digest");
+    let lock_dir = state_home.join("runtime").join("provider-locks");
+    std::fs::create_dir_all(&lock_dir).expect("create provider lock dir");
+    std::fs::write(
+        lock_dir.join(format!("{language_id}.lock.toml")),
+        format!(
+            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{provider_id}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{entrypoint_digest}\"\ninstalledEntrypointMetadataDigest = \"{metadata_digest}\"\n",
+            path.display()
+        ),
+    )
+    .expect("write provider install receipt");
+    std::fs::canonicalize(&path).unwrap_or(path)
 }
 
-pub(super) fn write_fake_provider_file(root: &std::path::Path, binary: &str, mode: u32) -> PathBuf {
+pub(super) fn write_unmanaged_provider_file(
+    root: &std::path::Path,
+    binary: &str,
+    mode: u32,
+) -> PathBuf {
     let bin_dir = root.join(".bin");
     std::fs::create_dir_all(&bin_dir).expect("create fake provider bin dir");
     let path = bin_dir.join(binary);

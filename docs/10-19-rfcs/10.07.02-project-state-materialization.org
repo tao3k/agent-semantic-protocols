@@ -1,0 +1,125 @@
+#+title: RFC 10.07.02 - Project State Materialization
+#+startup: overview
+
+* Status
+
+Proposed.
+
+This RFC narrows the normal-state contract described by
+=10.07.01-project-registry-retention.org=.  Prevention is the correctness
+mechanism.  Registry garbage collection is only a migration and recovery
+mechanism for state written by older identities or older materialization
+rules.
+
+* State Home is a singleton
+Runtime provider binaries are owned only by =$ASP_STATE_HOME/runtime/bin=. An activation records the provider's logical binary name; runtime resolution joins that name to the singleton State Home and validates the matching install lock and artifact receipt.
+
+Project-local =.bin= files, =~/.local/bin= provider fallbacks, and ambient =PATH= lookup are not provider authorities. A missing State Home binary or receipt is a typed =Missing= state and must fail closed. Runtime profile, active-artifact materialization, healthcheck, sync, and global plugin installation must all consume the same State Home path instead of independently re-resolving a legacy executable.
+
+A project provider configuration may select a different logical binary basename, but it cannot select an absolute path, a project-relative path, or any name containing path components. The selected basename is still resolved only beneath the singleton State Home =runtime/bin= directory. This keeps configuration data-driven without creating a second executable authority.
+
+
+ASP resolves one State Home from =ASP_STATE_HOME= or the platform default.
+=projects/by-id= is an internal layout below that root.  It is not a public
+CLI scope and callers do not pass a project path to a State Home garbage
+collector.
+
+If a maintenance command is exposed, its public shape is:
+
+#+begin_src sh
+asp cache gc [--apply] [--grace-days DAYS]
+#+end_src
+
+The runtime resolves State Home once.  An explicit =state_root: &Path=
+parameter remains valid only at library and test boundaries.
+
+* Identity must not materialize
+
+Repository, checkout, workspace, and State Home resolution are pure:
+
+- identity discovery must not create a directory or file
+- path construction must not create a directory or file
+- read-only status, locate, query, and search operations must not materialize
+  =projects/by-id=
+- only a command that is about to write project-scoped state may materialize
+  the selected repository and workspace layout
+
+Materialization ownership must remain explicit.  A path-returning API and a
+directory-creating API must not share an ambiguous name or hidden side effect.
+
+* Repository and worktree identity
+
+One Git repository maps to one repository ID.  Identity preference is:
+
+1. canonical remote identity
+2. canonical common Git directory
+3. canonical Git directory
+4. no implicit persistent identity for a non-Git path
+
+An ordinary non-Git directory is an ephemeral search root, not a repository.
+Resolving it MUST NOT allocate or materialize a =projects/by-id/<repo-id>=
+entry.  The resolved identity MUST expose that it is ephemeral so callers
+cannot accidentally promote a path-based search root into durable State Home
+state.
+
+A non-Git directory may become persistent only through an explicit,
+contract-visible project declaration.  That declaration must also be recorded
+in project metadata as an explicit non-Git identity; a bare path, =--workspace=
+argument, current working directory, plugin cache root, or temporary directory
+is never sufficient authorization to persist it.
+
+The resolved identity contract therefore carries an explicit persistence kind:
+
+- =git=: a durable identity derived from a canonical remote URL or Git metadata;
+- =explicit-non-git=: a durable identity authorized by a future explicit
+  declaration contract;
+- =ephemeral-path=: a diagnostic/search identity which MUST NOT be materialized.
+
+Legacy metadata without this field is migration input only.  New path fallback
+resolution MUST use =ephemeral-path:= rather than =path:=, and a durable writer
+MUST fail closed before creating State Home directories when it receives that
+identity.
+
+Read-only reasoning search over ordinary files remains valid.  It may resolve
+an ephemeral identity and inspect an already-existing cache, but a cold write,
+database bootstrap, manifest write, artifact write, or project/workspace
+materialization requires a durable identity.  This prevents a broad container
+such as =~/.codex/plugins/cache= from becoming a synthetic project while still
+allowing its files to be searched without persistence.
+
+Linked worktrees share the repository ID and receive distinct workspace IDs
+below the same repository directory.  Moving between subdirectories in one
+checkout does not create another repository or workspace directory.
+
+* Materialization gates
+
+A change is not closed until all of the following scenarios pass against a
+fresh temporary State Home:
+
+1. one thousand identity and path-resolution calls create zero
+   =projects/by-id= entries
+2. repeated writer calls from several directories in one checkout create
+   exactly one repository entry
+3. a main checkout and linked worktree create one repository entry and two
+   workspace entries
+4. repeating every scenario creates no additional entries
+5. a read-only command executed after the writer scenarios does not change the
+   directory set
+
+The receipt records repository count, workspace count, before/after directory
+sets, elapsed wall time, and the identity basis.
+
+* Historical state
+
+Old redundant directories are derived state.  They may be migrated or removed
+only after the prevention gates pass.  Garbage collection must never be the
+mechanism that keeps a healthy steady-state directory count bounded.
+
+For an existing checkout, GC recomputes the canonical repository identity with
+the current resolver.  A directory whose stored repository ID differs from the
+canonical ID is a legacy identity alias, not a second live project.  After the
+grace period it may be removed as derived state; linked worktrees that resolve
+to the same canonical repository ID remain nested below one repository entry.
+
+Apply remains dry-run by default, revalidates every candidate immediately
+before removal, and never accepts a project path as its scan root.

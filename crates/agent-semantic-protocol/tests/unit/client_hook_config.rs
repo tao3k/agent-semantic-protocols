@@ -454,7 +454,10 @@ fn root_owned_rust_activation_json(root: &std::path::Path) -> String {
         "[package]\nname = \"hook-config-fixture\"\nversion = \"0.1.0\"\n",
     )
     .expect("write Rust project anchor");
-    let provider = root.join(".bin/rs-harness");
+    let state_home = agent_semantic_runtime::state_core::ResolvedState::resolve(root)
+        .expect("resolve fixture State Home")
+        .state_home;
+    let provider = state_home.join("runtime").join("bin").join("rs-harness");
     std::fs::create_dir_all(provider.parent().expect("provider parent"))
         .expect("create provider bin dir");
     std::fs::write(&provider, "#!/bin/sh\nexit 0\n").expect("write fixture provider");
@@ -467,6 +470,21 @@ fn root_owned_rust_activation_json(root: &std::path::Path) -> String {
         permissions.set_mode(0o755);
         std::fs::set_permissions(&provider, permissions).expect("provider executable");
     }
+    let entrypoint_digest = agent_semantic_content_identity::file_content_digest_v1(&provider)
+        .expect("provider content digest");
+    let metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&provider)
+            .expect("provider metadata digest");
+    let lock_dir = state_home.join("runtime").join("provider-locks");
+    std::fs::create_dir_all(&lock_dir).expect("create provider lock dir");
+    std::fs::write(
+        lock_dir.join("rust.lock.toml"),
+        format!(
+            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"rs-harness\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{entrypoint_digest}\"\ninstalledEntrypointMetadataDigest = \"{metadata_digest}\"\n",
+            provider.display()
+        ),
+    )
+    .expect("write provider install receipt");
 
     let activation =
         agent_semantic_hook::build_default_activation(root).expect("build typed activation");

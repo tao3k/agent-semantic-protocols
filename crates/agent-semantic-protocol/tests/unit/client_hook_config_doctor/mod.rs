@@ -236,7 +236,7 @@ fn prepend_path(first: &std::path::Path) -> std::ffi::OsString {
 fn root_owned_rust_activation_json() -> String {
     let manifest = builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == "rust")
+        .find(|manifest| manifest.language_id().as_str() == "rust")
         .expect("rust manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
     let routes =
@@ -250,17 +250,17 @@ fn root_owned_rust_activation_json() -> String {
         "projectRoot": ".",
         "generatedBy": {"runtime": "agent-semantic-hook", "version": "test"},
         "providers": [{
-            "manifestId": manifest.manifest_id,
+            "manifestId": manifest.manifest_id(),
             "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "execution": manifest.execution,
+            "languageId": manifest.language_id(),
+            "providerId": manifest.provider_id(),
+            "binary": manifest.binary(),
+            "execution": manifest.execution(),
             "providerCommandPrefix": [],
             "executionCommandDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-            "searchCapabilities": manifest.search_capabilities,
-            "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
-            "queryPackDescriptor": manifest.query_pack_descriptor,
+            "searchCapabilities": manifest.search_capabilities(),
+            "semanticFactsDescriptor": manifest.semantic_facts_descriptor(),
+            "queryPackDescriptor": manifest.query_pack_descriptor(),
             "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
             "routes": routes,
             "coverage": {

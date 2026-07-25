@@ -9,13 +9,7 @@ fn julia_project_toml_owner_query_misses_without_provider_fallback() {
     let cache_home = root.join(".cache");
     std::fs::write(root.join("Project.toml"), "name = \"Demo\"\n").expect("write Project.toml");
     write_echo_provider(&bin_dir, "asp-julia-harness", "julia-provider");
-    write_activation(
-        &root,
-        &[provider(
-            "julia",
-            vec![bin_dir.join("asp-julia-harness").display().to_string()],
-        )],
-    );
+    write_activation(&root, &[provider("julia", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))

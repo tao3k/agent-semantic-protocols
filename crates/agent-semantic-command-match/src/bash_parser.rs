@@ -86,10 +86,11 @@ fn collect_heredoc_literal_candidates(
     candidates: &mut Vec<String>,
 ) {
     if node.kind() == "heredoc_body" {
-        if let Some(body) = node_text(node, source) {
-            if !collect_patch_header_paths(&body, candidates) {
-                collect_quoted_literals(&body, candidates);
-            }
+        let Some(body) = node_text(node, source) else {
+            return;
+        };
+        if !collect_patch_header_paths(&body, candidates) {
+            collect_quoted_literals(&body, candidates);
         }
         return;
     }
@@ -181,10 +182,11 @@ fn collect_bash_tokens(node: tree_sitter::Node<'_>, source: &[u8], tokens: &mut 
         return;
     }
     if node.child_count() == 0 {
-        if let Some(text) = node_text(node, source) {
-            if is_separator(&text) {
-                tokens.push(text);
-            }
+        let Some(text) = node_text(node, source) else {
+            return;
+        };
+        if is_separator(&text) {
+            tokens.push(text);
         }
         return;
     }
@@ -207,7 +209,10 @@ fn collect_command_words(node: tree_sitter::Node<'_>, source: &[u8], tokens: &mu
             for child in node.children(&mut cursor) {
                 collect_command_words(child, source, tokens);
             }
-        } else if let Some(text) = node_text(node, source).map(normalize_shell_word_text) {
+        } else {
+            let Some(text) = node_text(node, source).map(normalize_shell_word_text) else {
+                return;
+            };
             if !text.is_empty() {
                 tokens.push(text);
             }

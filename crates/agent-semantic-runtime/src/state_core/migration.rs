@@ -14,6 +14,12 @@ use std::{
 impl ResolvedState {
     /// Create the minimal State Core v2 directory layout.
     pub fn ensure_minimal_layout(&self) -> Result<(), String> {
+        if !self.repo.persistence.is_durable() {
+            return Err(format!(
+                "refusing to materialize ephemeral non-Git search root: {}",
+                self.repo.checkout_root.display()
+            ));
+        }
         fs::create_dir_all(&self.paths.registry_dir).map_err(io_error("create registry dir"))?;
         fs::create_dir_all(&self.paths.aliases_by_display_name_dir)
             .map_err(io_error("create aliases dir"))?;
@@ -50,6 +56,7 @@ impl ResolvedState {
                 "gitCommonDir": self.repo.git_common_dir,
                 "remoteUrl": self.repo.remote_url,
                 "identityBasis": self.repo.identity_basis,
+                "persistence": self.repo.persistence,
             }),
         )?;
         write_json_if_missing(

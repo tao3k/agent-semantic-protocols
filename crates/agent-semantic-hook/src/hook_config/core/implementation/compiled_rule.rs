@@ -91,6 +91,31 @@ struct RuleRoute {
 }
 
 impl CompiledHookRule {
+    fn rendered_message(&self) -> String {
+        let fallback = format!(
+            "client hook config rule `{}` matched this tool use",
+            self.id
+        );
+        let Some(template) = self.message.as_deref() else {
+            return fallback;
+        };
+        let Some(dispatch) = self.dispatch.as_ref() else {
+            return template.to_string();
+        };
+        let canonical_target = format!("/root/{}", dispatch.resident_codex_agent_name);
+        let execution_lane = self.fields.get("executionLane").map_or("", String::as_str);
+        agent_semantic_config::render_hook_client_message_template(
+            template,
+            &[
+                ("executionLane", execution_lane),
+                ("residentName", &dispatch.resident_name),
+                ("targetAgentName", &dispatch.resident_codex_agent_name),
+                ("canonicalTarget", &canonical_target),
+                ("receiptKind", &dispatch.receipt_kind),
+            ],
+        )
+    }
+
     fn needs_decision_paths(&self) -> bool {
         self.match_config.needs_source_paths()
     }
@@ -167,12 +192,7 @@ impl CompiledHookRule {
             .iter()
             .map(|route| route.decision_route(runtime))
             .collect::<Vec<_>>();
-        let message = self.message.clone().unwrap_or_else(|| {
-            format!(
-                "client hook config rule `{}` matched this tool use",
-                self.id
-            )
-        });
+        let message = self.rendered_message();
         let mut subject = subject_for_action(action);
         subject.paths = paths.to_vec();
         let mut decision_fields = self

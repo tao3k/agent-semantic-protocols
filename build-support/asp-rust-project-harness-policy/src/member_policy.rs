@@ -46,10 +46,8 @@ impl AspRustProjectHarnessMemberPolicy {
             config = config.with_availability_stability_owner(owner.path, owner.rationale);
         }
         for severity_override in self.rule_severity_overrides {
-            config = config.with_rule_severity(
-                severity_override.rule_code,
-                severity_override.severity.clone(),
-            );
+            config =
+                config.with_rule_severity(severity_override.rule_code, severity_override.severity);
         }
         config
     }

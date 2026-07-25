@@ -9,7 +9,7 @@ use agent_semantic_hook::{
 use serde_json::json;
 
 use crate::rust_harness_activation::support::{
-    asp_command, temp_project_root, write_fake_provider_binary,
+    asp_command, temp_project_root, write_state_home_provider_binary,
 };
 
 #[test]
@@ -111,12 +111,11 @@ fn cli_doctor_syncs_generated_activation_drift() {
     let state_home = root.join(".agent-semantic-protocols");
     super::super::support::write_default_client_hook_config(&root);
     let activation_path = write_invalid_generated_activation(&root);
-    let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    write_state_home_provider_binary(&state_home, "rust", "rs-harness", "rs-harness");
 
     let output = asp_command()
         .env_remove("PRJ_CACHE_HOME")
         .env("ASP_STATE_HOME", &state_home)
-        .env("PATH", &provider_path)
         .args([
             "hook",
             "doctor",

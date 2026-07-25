@@ -205,7 +205,7 @@ pub enum ActiveProgram {
         intent_digest: Digest,
         program_id: ProtocolId,
         program_digest: Digest,
-        program: super::RouteProgram,
+        program: Box<super::RouteProgram>,
         graph_digest: Digest,
         admitted_at_revision: u64,
         context_binding_digest: Digest,

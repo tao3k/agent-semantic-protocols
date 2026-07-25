@@ -1,14 +1,53 @@
-use super::{
-    ActiveAspArtifactInput, active_provider_artifact_input_from_lock_dir,
-    materialize_active_asp_artifact_receipt,
-};
 use agent_semantic_config::{LanguageId, ProviderId};
 use agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1;
 use agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1;
+use agent_semantic_hook::{
+    ActiveAspArtifactInput, active_provider_artifact_input, materialize_active_asp_artifact_receipt,
+};
 use std::{
+    ffi::OsString,
     fs,
+    path::Path,
+    sync::{Mutex, MutexGuard},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+static ASP_STATE_HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+struct AspStateHomeGuard {
+    previous: Option<OsString>,
+    _lock: MutexGuard<'static, ()>,
+}
+
+impl AspStateHomeGuard {
+    fn activate(state_home: &Path) -> Self {
+        let lock = ASP_STATE_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let previous = std::env::var_os("ASP_STATE_HOME");
+        // SAFETY: access to ASP_STATE_HOME is serialized for this integration test.
+        unsafe {
+            std::env::set_var("ASP_STATE_HOME", state_home);
+        }
+        Self {
+            previous,
+            _lock: lock,
+        }
+    }
+}
+
+impl Drop for AspStateHomeGuard {
+    fn drop(&mut self) {
+        // SAFETY: this guard retains the process-local environment lock.
+        unsafe {
+            if let Some(previous) = &self.previous {
+                std::env::set_var("ASP_STATE_HOME", previous);
+            } else {
+                std::env::remove_var("ASP_STATE_HOME");
+            }
+        }
+    }
+}
 
 #[test]
 fn unchanged_provider_artifacts_are_zero_byte_read_and_zero_write() {
@@ -80,7 +119,11 @@ fn provider_install_receipt_metadata_is_required_and_drift_fails_closed() {
             .expect("system time")
             .as_nanos()
     ));
-    let provider_lock_dir = root.join("provider-locks");
+    fs::create_dir_all(&root).expect("create project root");
+    let _state_home_guard = AspStateHomeGuard::activate(&root.join("state-home"));
+    let state_paths =
+        agent_semantic_runtime::project_state_paths(&root).expect("resolve project state paths");
+    let provider_lock_dir = state_paths.provider_lock_dir;
     let provider_path = root.join("runtime/bin/rs-harness");
     fs::create_dir_all(&provider_lock_dir).expect("create provider lock dir");
     fs::create_dir_all(provider_path.parent().expect("provider parent"))
@@ -103,23 +146,15 @@ fn provider_install_receipt_metadata_is_required_and_drift_fails_closed() {
 
     let language_id = LanguageId::new("rust");
     let provider_id = ProviderId::new("rs-harness");
-    let input = active_provider_artifact_input_from_lock_dir(
-        &provider_lock_dir,
-        &language_id,
-        &provider_id,
-        provider_path.clone(),
-    )
-    .expect("consume provider receipt");
+    let input =
+        active_provider_artifact_input(&root, &language_id, &provider_id, provider_path.clone())
+            .expect("consume provider receipt");
     assert_eq!(input.artifact_digest, provider_digest);
 
     fs::write(&provider_path, b"provider-drift").expect("drift provider");
-    let error = active_provider_artifact_input_from_lock_dir(
-        &provider_lock_dir,
-        &language_id,
-        &provider_id,
-        provider_path.clone(),
-    )
-    .expect_err("metadata drift must fail closed");
+    let error =
+        active_provider_artifact_input(&root, &language_id, &provider_id, provider_path.clone())
+            .expect_err("metadata drift must fail closed");
     assert!(
         error.contains("provider install receipt metadata drift"),
         "{error}"
@@ -133,13 +168,8 @@ fn provider_install_receipt_metadata_is_required_and_drift_fails_closed() {
         ),
     )
     .expect("write incomplete provider lock");
-    let error = active_provider_artifact_input_from_lock_dir(
-        &provider_lock_dir,
-        &language_id,
-        &provider_id,
-        provider_path,
-    )
-    .expect_err("missing metadata digest must fail closed");
+    let error = active_provider_artifact_input(&root, &language_id, &provider_id, provider_path)
+        .expect_err("missing metadata digest must fail closed");
     assert!(error.contains("failed to parse"), "{error}");
 
     fs::remove_dir_all(root).expect("remove test root");

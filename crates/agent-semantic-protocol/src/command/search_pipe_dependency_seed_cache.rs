@@ -9,7 +9,6 @@ use std::{
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use super::search_config::AspConfig;
 use super::{
     provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin},
     search_pipe_model::Candidate,
@@ -46,7 +45,6 @@ pub(super) fn collect_cached_manifest_dependency_facts(
     language_id: &str,
     project_root: &Path,
     cache_home: &Path,
-    config: &AspConfig,
     provider_context: Option<&ProviderGraphFactsContext<'_>>,
 ) -> Result<CachedDependencyFacts, String> {
     let context = provider_context.ok_or_else(|| {
@@ -59,20 +57,13 @@ pub(super) fn collect_cached_manifest_dependency_facts(
             "activated {language_id} provider does not declare parser-owned dependency topology"
         ));
     }
-    collect_provider_dependency_topology_facts(
-        language_id,
-        project_root,
-        cache_home,
-        config,
-        context,
-    )
+    collect_provider_dependency_topology_facts(language_id, project_root, cache_home, context)
 }
 
 pub(super) fn collect_cached_dependency_facts(
     language_id: &str,
     project_root: &Path,
     cache_home: &Path,
-    config: &AspConfig,
     provider_context: Option<&ProviderGraphFactsContext<'_>>,
     _query: Option<&str>,
     _candidates: &[Candidate],
@@ -81,7 +72,6 @@ pub(super) fn collect_cached_dependency_facts(
         language_id,
         project_root,
         cache_home,
-        config,
         provider_context,
     )
 }
@@ -90,7 +80,6 @@ fn collect_provider_dependency_topology_facts(
     language_id: &str,
     project_root: &Path,
     cache_home: &Path,
-    config: &AspConfig,
     context: &ProviderGraphFactsContext<'_>,
 ) -> Result<CachedDependencyFacts, String> {
     let cache_path = dependency_seed_cache_path(cache_home, language_id);
@@ -101,12 +90,9 @@ fn collect_provider_dependency_topology_facts(
             facts,
         });
     }
-    if let Some(fingerprint) = provider_dependency_topology_metadata_fingerprint(
-        language_id,
-        project_root,
-        config,
-        context,
-    ) && let Some(record) = read_dependency_seed_cache(&cache_path, &fingerprint)
+    if let Some(fingerprint) =
+        provider_dependency_topology_metadata_fingerprint(language_id, project_root, context)
+        && let Some(record) = read_dependency_seed_cache(&cache_path, &fingerprint)
         && !record.sources.is_empty()
     {
         return Ok(CachedDependencyFacts {
@@ -115,8 +101,8 @@ fn collect_provider_dependency_topology_facts(
             facts: record.facts,
         });
     }
-    let invocation = provider_dependency_topology_invocation(context, project_root, config)
-        .map_err(|error| {
+    let invocation =
+        provider_dependency_topology_invocation(context, project_root).map_err(|error| {
             format!(
                 "failed to build parser-owned {language_id} dependency topology invocation: {error}"
             )
@@ -166,7 +152,6 @@ fn collect_provider_dependency_topology_facts(
 fn provider_dependency_topology_metadata_fingerprint(
     language_id: &str,
     project_root: &Path,
-    config: &AspConfig,
     context: &ProviderGraphFactsContext<'_>,
 ) -> Option<String> {
     if !context
@@ -177,7 +162,7 @@ fn provider_dependency_topology_metadata_fingerprint(
         return None;
     }
     let invocation =
-        provider_dependency_topology_metadata_invocation(context, project_root, config).ok()?;
+        provider_dependency_topology_metadata_invocation(context, project_root).ok()?;
     let output = run_provider_command_with_stdin(
         language_id,
         context.provider,
@@ -197,7 +182,6 @@ fn provider_dependency_topology_metadata_fingerprint(
 fn provider_dependency_topology_metadata_invocation(
     context: &ProviderGraphFactsContext<'_>,
     project_root: &Path,
-    config: &AspConfig,
 ) -> Result<Vec<String>, String> {
     let template = context
         .provider
@@ -219,13 +203,7 @@ fn provider_dependency_topology_metadata_invocation(
         return Err("provider dependencyTopologyMetadata route argv is empty".to_string());
     };
     if program == &context.provider.binary {
-        provider_invocation_with_profile(
-            context.profiles,
-            context.provider,
-            forwarded,
-            project_root,
-            config,
-        )
+        provider_invocation_with_profile(context.profiles, context.provider, forwarded)
     } else {
         Ok(argv)
     }
@@ -234,7 +212,6 @@ fn provider_dependency_topology_metadata_invocation(
 fn provider_dependency_topology_invocation(
     context: &ProviderGraphFactsContext<'_>,
     project_root: &Path,
-    config: &AspConfig,
 ) -> Result<Vec<String>, String> {
     let template = context
         .provider
@@ -256,13 +233,7 @@ fn provider_dependency_topology_invocation(
         return Err("provider dependencyTopology route argv is empty".to_string());
     };
     if program == &context.provider.binary {
-        provider_invocation_with_profile(
-            context.profiles,
-            context.provider,
-            forwarded,
-            project_root,
-            config,
-        )
+        provider_invocation_with_profile(context.profiles, context.provider, forwarded)
     } else {
         Ok(argv)
     }

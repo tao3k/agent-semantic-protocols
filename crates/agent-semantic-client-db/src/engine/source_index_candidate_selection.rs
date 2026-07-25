@@ -17,17 +17,16 @@ use super::source_index_query_scoring::{
 };
 use super::turso_statement::run_turso_operation;
 
+pub(super) type TursoSourceIndexCanonicalSelectorProjection = (
+    String,
+    Option<crate::ClientDbSourceIndexSelectorSymbol>,
+    Option<crate::ClientDbSourceIndexSelectorKind>,
+    Option<ClientDbSourceIndexSelectorPayloadProof>,
+);
+
 pub(super) fn decode_turso_source_index_canonical_selectors(
     selector_facts_json: &str,
-) -> Result<
-    (
-        String,
-        Option<crate::ClientDbSourceIndexSelectorSymbol>,
-        Option<crate::ClientDbSourceIndexSelectorKind>,
-        Option<ClientDbSourceIndexSelectorPayloadProof>,
-    ),
-    String,
-> {
+) -> Result<TursoSourceIndexCanonicalSelectorProjection, String> {
     let selector_facts =
         serde_json::from_str::<Vec<TursoSourceIndexCanonicalSelectorFact>>(selector_facts_json)
             .map_err(|error| {

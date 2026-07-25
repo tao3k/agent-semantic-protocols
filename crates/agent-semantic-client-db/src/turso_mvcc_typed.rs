@@ -117,7 +117,7 @@ impl TursoMvccStore {
             .map_err(classify_turso_write_error)?;
 
         let write_result = async {
-            for shard in 0..INSERT_EVENT_SQL.len() {
+            for (shard, insert_sql) in INSERT_EVENT_SQL.iter().enumerate() {
                 let shard_events = events
                     .iter()
                     .filter(|event| event_shard(event.partition_key()) == shard)
@@ -126,7 +126,7 @@ impl TursoMvccStore {
                     continue;
                 }
                 let mut statement = lane
-                    .prepare_cached(INSERT_EVENT_SQL[shard])
+                    .prepare_cached(*insert_sql)
                     .await
                     .map_err(classify_turso_write_error)?;
                 for event in shard_events {

@@ -14,13 +14,15 @@ pub(super) const CACHE_SOURCE_SHA256: &str =
 
 pub(crate) struct ProviderSpec {
     language_id: String,
-    command_prefix: Vec<String>,
 }
 
 pub(crate) fn provider(language_id: impl AsRef<str>, command_prefix: Vec<String>) -> ProviderSpec {
+    assert!(
+        command_prefix.is_empty(),
+        "State Home v1 activation fixtures cannot embed provider command prefixes"
+    );
     ProviderSpec {
         language_id: language_id.as_ref().to_string(),
-        command_prefix,
     }
 }
 
@@ -39,11 +41,8 @@ pub(super) fn provider_with_dependency_topology(
 }
 
 pub(crate) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
-    let activation_path = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("hooks")
-        .join("activation.json");
+    let activation_path =
+        agent_semantic_runtime::project_activation_path(root).expect("project activation path");
     write_activation_to(root, &activation_path, providers);
 }
 
@@ -56,37 +55,40 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
         .map(|spec| {
             let manifest = builtin_provider_manifests()
                 .into_iter()
-                .find(|manifest| manifest.language_id == spec.language_id)
+                .find(|manifest| manifest.language_id().as_str() == spec.language_id)
                 .unwrap_or_else(|| panic!("missing manifest for {}", spec.language_id));
+            let runtime_bin = state_runtime_bin(root);
+            let installed_provider = runtime_bin.join(manifest.binary());
+            if !installed_provider.exists() {
+                write_marker_provider(
+                    &runtime_bin,
+                    manifest.binary(),
+                    &runtime_bin.join(format!(".{}-marker", manifest.binary())),
+                );
+            }
             let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
             let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
                 .expect("materialize provider routes");
-            let execution_command_digest = if spec.command_prefix.is_empty() {
-                format!("sha256:{}", "0".repeat(64))
-            } else {
-                agent_semantic_hook::provider_execution_command_digest(&spec.command_prefix)
-                    .expect("provider execution command digest")
-            };
             let provider = json!({
-                "manifestId": manifest.manifest_id,
+                "manifestId": manifest.manifest_id(),
                 "manifestDigest": manifest_digest,
-                "languageId": manifest.language_id,
-                "providerId": manifest.provider_id,
-                "binary": manifest.binary,
-                "execution": manifest.execution,
-                "providerCommandPrefix": spec.command_prefix,
-                "executionCommandDigest": execution_command_digest,
-                "searchCapabilities": manifest.search_capabilities,
-                "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
-                "queryPackDescriptor": manifest.query_pack_descriptor,
+                "languageId": manifest.language_id(),
+                "providerId": manifest.provider_id(),
+                "binary": manifest.binary(),
+                "execution": manifest.execution(),
+                "providerCommandPrefix": [],
+                "executionCommandDigest": format!("sha256:{}", "0".repeat(64)),
+                "searchCapabilities": manifest.search_capabilities(),
+                "semanticFactsDescriptor": manifest.semantic_facts_descriptor(),
+                "queryPackDescriptor": manifest.query_pack_descriptor(),
                 "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
                 "routes": routes,
                 "coverage": {
                     "packageRoots": [package_root.clone()],
-                    "sourceRoots": manifest.source.default_source_roots,
-                    "configFiles": manifest.source.default_config_files,
-                    "sourceExtensions": manifest.source.default_extensions,
-                    "ignoredPathPrefixes": manifest.source.default_ignored_path_prefixes
+                    "sourceRoots": manifest.source().default_source_roots,
+                    "configFiles": manifest.source().default_config_files,
+                    "sourceExtensions": manifest.source().default_extensions,
+                    "ignoredPathPrefixes": manifest.source().default_ignored_path_prefixes
                 }
             });
             provider
@@ -156,21 +158,19 @@ omit=code,projection-nodes,large-item-text\n\
 avoid=inline-code-in-search,raw-read,repeat-owner\n",
         "",
     );
-    write_provider_bin_config(root, "rust", &bin_dir.join("rs-harness"));
+    install_state_home_provider(root, "rust", &bin_dir.join("rs-harness"));
 }
 
-pub(crate) fn write_provider_bin_config(root: &Path, language_id: &str, binary: &Path) {
-    let config_path = root.join(".agents").join("asp.toml");
-    std::fs::create_dir_all(config_path.parent().expect("config parent"))
-        .expect("create asp config dir");
-    std::fs::write(
-        config_path,
-        format!(
-            "[providers.{language_id}]\nbin = \"{}\"\n",
-            binary.display().to_string().replace('"', "\\\"")
-        ),
-    )
-    .expect("write asp provider bin config");
+pub(crate) fn install_state_home_provider(root: &Path, language_id: &str, binary: &Path) {
+    let manifest = builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id().as_str() == language_id)
+        .unwrap_or_else(|| panic!("missing manifest for {language_id}"));
+    let installed = state_runtime_bin(root).join(manifest.binary());
+    std::fs::create_dir_all(installed.parent().expect("provider install parent"))
+        .expect("create state-home runtime bin");
+    std::fs::copy(binary, &installed).expect("install test provider in state home");
+    make_executable(&installed);
 }
 
 pub(super) fn write_cache_manifest(root: &Path, manifest: serde_json::Value) -> PathBuf {
@@ -221,12 +221,9 @@ pub(super) fn write_cache_source_fixture(root: &Path) {
 }
 
 pub(crate) fn asp_command(root: &Path) -> Command {
-    let runtime_bin = state_home(root).join("runtime/bin");
+    let runtime_bin = state_runtime_bin(root);
     write_default_workspace_scope_provider_shims(&runtime_bin);
-    write_default_workspace_scope_provider_shims(
-        &root.join(".cache/agent-semantic-protocol/runtime/bin"),
-    );
-    write_default_workspace_scope_provider_shims(&home_local_bin(root));
+    write_provider_install_receipts(root);
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command
         .current_dir(root)
@@ -245,8 +242,8 @@ pub(crate) fn asp_command(root: &Path) -> Command {
     command
 }
 
-pub(super) fn home_local_bin(root: &Path) -> PathBuf {
-    root.join("home").join(".local/bin")
+pub(super) fn state_runtime_bin(root: &Path) -> PathBuf {
+    state_home(root).join("runtime/bin")
 }
 
 pub(crate) fn prepend_path(path_prefix: &Path) -> OsString {
@@ -325,6 +322,9 @@ fn write_default_workspace_scope_provider_shims(bin_dir: &Path) {
         "gslph",
     ] {
         let provider = bin_dir.join(binary);
+        if !provider.exists() {
+            continue;
+        }
         let delegate = bin_dir.join(format!(".{binary}-delegate"));
         if provider.exists() && !is_default_workspace_scope_provider_shim(&provider) {
             if delegate.exists() {
@@ -438,14 +438,21 @@ fn write_provider_script(bin_dir: &Path, binary: &str, text: &str) {
     let path = bin_dir.join(binary);
     std::fs::write(&path, text).expect("write fake provider");
     make_executable(&path);
-    if bin_dir.file_name().and_then(|name| name.to_str()) == Some(".bin")
+    if !bin_dir.ends_with("runtime/bin")
+        && builtin_provider_manifests()
+            .into_iter()
+            .any(|manifest| manifest.binary() == binary)
         && let Some(root) = bin_dir.parent()
     {
-        let home_bin = home_local_bin(root);
-        std::fs::create_dir_all(&home_bin).expect("create fake home-local provider bin dir");
-        let home_path = home_bin.join(binary);
-        std::fs::write(&home_path, text).expect("write fake home-local provider");
-        make_executable(&home_path);
+        let installed = state_runtime_bin(root).join(binary);
+        std::fs::create_dir_all(installed.parent().expect("provider install parent"))
+            .expect("create state-home runtime bin");
+        std::fs::copy(&path, &installed).expect("install provider fixture in state home");
+        let permissions = std::fs::metadata(&path)
+            .expect("provider fixture metadata")
+            .permissions();
+        std::fs::set_permissions(&installed, permissions)
+            .expect("preserve installed provider fixture permissions");
     }
 }
 
@@ -462,5 +469,52 @@ pub(super) fn make_executable(path: &Path) {
     #[cfg(not(unix))]
     {
         let _ = path;
+    }
+    if path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+        == Some(".bin")
+        && let Some(root) = path.parent().and_then(Path::parent)
+        && let Some(file_name) = path.file_name()
+    {
+        let installed = state_runtime_bin(root).join(file_name);
+        std::fs::create_dir_all(installed.parent().expect("provider install parent"))
+            .expect("create state-home runtime bin");
+        std::fs::copy(path, &installed).expect("install executable fixture in state home");
+        let permissions = std::fs::metadata(path)
+            .expect("fixture metadata")
+            .permissions();
+        std::fs::set_permissions(&installed, permissions)
+            .expect("preserve installed fixture permissions");
+    }
+}
+
+fn write_provider_install_receipts(root: &Path) {
+    let runtime_bin = state_runtime_bin(root);
+    let provider_lock_dir = state_home(root).join("runtime/provider-locks");
+    std::fs::create_dir_all(&provider_lock_dir).expect("create provider lock registry");
+    for manifest in builtin_provider_manifests() {
+        let installed = runtime_bin.join(manifest.binary());
+        if !installed.is_file() {
+            continue;
+        }
+        let content_digest = agent_semantic_content_identity::file_content_digest_v1(&installed)
+            .expect("installed provider content digest");
+        let metadata_digest =
+            agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed)
+                .expect("installed provider metadata digest");
+        let lock_path = provider_lock_dir.join(format!("{}.lock.toml", manifest.language_id()));
+        std::fs::write(
+            lock_path,
+            format!(
+                "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\n",
+                manifest.provider_id(),
+                installed.display(),
+                content_digest,
+                metadata_digest,
+            ),
+        )
+        .expect("write provider install receipt");
     }
 }

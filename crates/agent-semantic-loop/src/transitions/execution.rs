@@ -304,9 +304,11 @@ where
     }
 }
 
+type RevocableIdentity = (Option<ProtocolId>, Option<ProtocolId>, Option<Digest>);
+
 fn revocable_identity(
     execution: &ExecutionAuthority,
-) -> Result<(Option<ProtocolId>, Option<ProtocolId>, Option<Digest>), GraphRouterError> {
+) -> Result<RevocableIdentity, GraphRouterError> {
     match execution {
         ExecutionAuthority::Admitted {
             admission_id,

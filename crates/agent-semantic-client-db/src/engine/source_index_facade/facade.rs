@@ -72,6 +72,7 @@ impl ClientDbEngine {
         let projection_mode = key.projection_mode;
         let record = record.clone();
         block_on_db_engine_async(async move {
+            crate::engine::turso_bootstrap::bootstrap_turso_client_db(&db_path).await?;
             let key = agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1 {
                 language_id: &language_id,
                 workspace_root_digest: &workspace_root_digest,
@@ -148,6 +149,7 @@ impl ClientDbEngine {
         let source_snapshot = source_snapshot.clone();
         let membership_change_set = membership_change_set.clone();
         block_on_db_engine_async(async move {
+            crate::engine::turso_bootstrap::bootstrap_turso_client_db(&db_path).await?;
             persist_language_projection_read_model_at_path(
                 &db_path,
                 &import,

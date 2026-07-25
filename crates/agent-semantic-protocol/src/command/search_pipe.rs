@@ -106,7 +106,6 @@ pub(super) fn run_asp_fast_search_command(
                 project_root: context.project_root,
                 locator_root: context.locator_root,
                 cache_home: context.cache_home,
-                config: context.config,
                 provider_context: context.provider_context,
                 frontier_receipt: context.frontier_receipt,
             },
@@ -273,7 +272,6 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     let workspace_scope = collect_provider_workspace_scope(
         context.language_id,
         &project_root,
-        context.config,
         context.provider_context,
     )?;
     let current_snapshot = context.source_index_snapshot;
@@ -327,7 +325,6 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         &project_root,
         Some(&pipe_args.seed_query),
         &acquisition.candidates,
-        context.config,
         context.provider_context,
     )?;
     let source_trace = source_trace_with_provider_facts(
@@ -359,7 +356,6 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         include_pipe_plan: true,
         provider_facts: &provider_facts,
         provider_context: context.provider_context,
-        config: context.config,
         read_memory_selectors: &read_loop_memory_selectors(
             context.cache_home,
             &project_root,
@@ -689,7 +685,6 @@ fn run_search_ingest_command(
         context.project_root,
         None,
         &candidates,
-        context.config,
         context.provider_context,
     )?;
     print_search_pipe_view(SearchPipeViewRequest {
@@ -716,7 +711,6 @@ fn run_search_ingest_command(
         include_pipe_plan: false,
         provider_facts: &provider_facts,
         provider_context: context.provider_context,
-        config: context.config,
         read_memory_selectors: &[],
         frontier_receipt: context.frontier_receipt,
     })?;
@@ -779,7 +773,6 @@ fn run_search_lexical_command(
         &project_root,
         Some(&pipe_args.query),
         &acquisition.candidates,
-        context.config,
         context.provider_context,
     )?;
     let source_label = acquisition
@@ -805,7 +798,6 @@ fn run_search_lexical_command(
         include_pipe_plan: false,
         provider_facts: &provider_facts,
         provider_context: context.provider_context,
-        config: context.config,
         read_memory_selectors: &[],
         frontier_receipt: context.frontier_receipt,
     })?;

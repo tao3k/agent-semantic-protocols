@@ -6,7 +6,7 @@ use crate::provider_command::support;
 #[test]
 fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
     let root = support::temp_project_root("search-pipe-rust-dependency-topology");
-    let bin_dir = support::home_local_bin(&root);
+    let bin_dir = support::state_runtime_bin(&root);
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(

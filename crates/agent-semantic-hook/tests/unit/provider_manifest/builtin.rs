@@ -5,17 +5,22 @@ fn builtin_manifests_include_julia_juliac_provider() {
     let manifests = builtin_provider_manifests();
     let julia = manifests
         .iter()
-        .find(|manifest| manifest.language_id == "julia")
+        .find(|manifest| manifest.language_id().as_str() == "julia")
         .expect("julia manifest");
     let julia_routes =
         agent_semantic_hook::materialize_provider_routes(julia).expect("julia routes");
 
-    assert_eq!(julia.provider_id, "julia-lang-project-harness");
-    assert_eq!(julia.binary, "asp-julia-harness");
-    assert!(julia.source.default_extensions.contains(&".jl".to_string()));
+    assert_eq!(julia.provider_id().as_str(), "julia-lang-project-harness");
+    assert_eq!(julia.binary(), "asp-julia-harness");
     assert!(
         julia
-            .source
+            .source()
+            .default_extensions
+            .contains(&".jl".to_string())
+    );
+    assert!(
+        julia
+            .source()
             .default_config_files
             .contains(&"Project.toml".to_string())
     );
@@ -52,7 +57,7 @@ fn builtin_manifests_include_julia_juliac_provider() {
     );
     assert!(
         julia
-            .source
+            .source()
             .default_ignored_path_prefixes
             .contains(&".devenv".to_string())
     );
@@ -102,7 +107,7 @@ fn registered_provider_query_routes_are_exact_selector_only() {
     let manifests = builtin_provider_manifests();
     let mut exact_selector_languages = Vec::new();
     for manifest in &manifests {
-        let language_id = manifest.language_id.as_str();
+        let language_id = manifest.language_id().as_str();
         let routes = agent_semantic_hook::materialize_provider_routes(manifest)
             .unwrap_or_else(|error| panic!("materialize {language_id} routes: {error}"));
         let Some(query) = routes.query.as_ref() else {
@@ -143,10 +148,10 @@ fn registered_provider_query_routes_are_exact_selector_only() {
 
     let rust = manifests
         .iter()
-        .find(|manifest| manifest.language_id == "rust")
+        .find(|manifest| manifest.language_id().as_str() == "rust")
         .expect("rust provider manifest");
     assert!(
-        rust.search_capabilities.owner_items,
+        rust.search_capabilities().owner_items,
         "Rust harness implements owner-items and must advertise the capability"
     );
 }
@@ -156,28 +161,32 @@ fn builtin_manifests_include_document_language_providers() {
     let manifests = builtin_provider_manifests();
     let org = manifests
         .iter()
-        .find(|manifest| manifest.language_id == "org")
+        .find(|manifest| manifest.language_id().as_str() == "org")
         .expect("org manifest");
     let md = manifests
         .iter()
-        .find(|manifest| manifest.language_id == "md")
+        .find(|manifest| manifest.language_id().as_str() == "md")
         .expect("md manifest");
     let org_routes = agent_semantic_hook::materialize_provider_routes(org).expect("org routes");
     let md_routes = agent_semantic_hook::materialize_provider_routes(md).expect("md routes");
 
-    assert_eq!(org.provider_id, "orgize");
-    assert_eq!(org.binary, "orgize");
-    assert_eq!(org.execution.as_str(), "external-process");
-    assert!(org.search_capabilities.owner_items);
-    assert!(org.source.default_extensions.contains(&".org".to_string()));
+    assert_eq!(org.provider_id().as_str(), "orgize");
+    assert_eq!(org.binary(), "orgize");
+    assert_eq!(org.execution().as_str(), "external-process");
+    assert!(org.search_capabilities().owner_items);
+    assert!(
+        org.source()
+            .default_extensions
+            .contains(&".org".to_string())
+    );
     assert_eq!(
         org_routes.query.as_ref().expect("org query route").argv,
         [
             "asp",
             "org",
             "query",
-            "--term",
-            "{query}",
+            "--selector",
+            "{selector}",
             "--view",
             "metadata",
             "{workspace}"
@@ -215,19 +224,19 @@ fn builtin_manifests_include_document_language_providers() {
         ]
     );
 
-    assert_eq!(md.provider_id, "orgize");
-    assert_eq!(md.binary, "orgize");
-    assert_eq!(md.execution.as_str(), "external-process");
-    assert!(md.search_capabilities.owner_items);
-    assert!(md.source.default_extensions.contains(&".md".to_string()));
+    assert_eq!(md.provider_id().as_str(), "orgize");
+    assert_eq!(md.binary(), "orgize");
+    assert_eq!(md.execution().as_str(), "external-process");
+    assert!(md.search_capabilities().owner_items);
+    assert!(md.source().default_extensions.contains(&".md".to_string()));
     assert_eq!(
         md_routes.query.as_ref().expect("md query route").argv,
         [
             "asp",
             "md",
             "query",
-            "--term",
-            "{query}",
+            "--selector",
+            "{selector}",
             "--view",
             "metadata",
             "{workspace}"

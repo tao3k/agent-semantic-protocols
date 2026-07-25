@@ -123,13 +123,7 @@ fn gerbil_check_changed_without_gerbil_changes_returns_without_provider_spawn() 
         "provider should not run\n",
         66,
     );
-    write_activation(
-        &root,
-        &[provider(
-            "gerbil-scheme",
-            vec![bin_dir.join("gslph").display().to_string()],
-        )],
-    );
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
@@ -168,13 +162,7 @@ fn gerbil_check_full_replays_valid_output_cache_without_provider_spawn() {
         "provider should not run\n",
         66,
     );
-    write_activation(
-        &root,
-        &[provider(
-            "gerbil-scheme",
-            vec![bin_dir.join("gslph").display().to_string()],
-        )],
-    );
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
     write_gerbil_check_text_cache(
         &root,
         &[source_path.display().to_string()],
@@ -226,13 +214,7 @@ fn gerbil_check_full_replays_workspace_output_cache_without_provider_spawn() {
         "provider should not run\n",
         66,
     );
-    write_activation(
-        &root,
-        &[provider(
-            "gerbil-scheme",
-            vec![bin_dir.join("gslph").display().to_string()],
-        )],
-    );
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
     write_gerbil_check_text_cache(
         &workspace,
         &[source_path.display().to_string()],

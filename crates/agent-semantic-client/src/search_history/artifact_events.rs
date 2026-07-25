@@ -232,6 +232,7 @@ fn text_artifact_event(
     kind: &str,
     workspace_root: &Path,
 ) -> Result<ClientDbArtifactEvent, String> {
+    let project_root = workspace_root.display().to_string();
     artifact_event(
         artifact_dir,
         path,
@@ -243,7 +244,7 @@ fn text_artifact_event(
             method: &method_from_name(path),
             target: "",
             query: "",
-            project_root: "",
+            project_root: &project_root,
         },
         workspace_root,
     )
@@ -290,6 +291,7 @@ fn artifact_event(
         ))
         .bytes(metadata.len())
         .build()
+        .map_err(|error| format!("invalid artifact event {}: {error}", path.display()))
 }
 
 fn metadata_modified_ms(metadata: &fs::Metadata) -> i64 {

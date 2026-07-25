@@ -14,7 +14,6 @@ use sha2::{Digest, Sha256};
 use super::provider_process::{
     provider_invocation_with_profile, run_provider_command_with_stdin_limits,
 };
-use super::search_config::AspConfig;
 use super::search_pipe_model::Candidate;
 
 const PROVIDER_GRAPH_FACT_CANDIDATE_LIMIT: usize = 12;
@@ -57,7 +56,6 @@ pub(super) struct ProviderGraphFactsContext<'a> {
 pub(super) fn collect_provider_workspace_scope(
     language_id: &str,
     project_root: &Path,
-    config: &AspConfig,
     context: Option<&ProviderGraphFactsContext<'_>>,
 ) -> Result<Option<agent_semantic_search::SemanticWorkspaceScope>, String> {
     let Some(context) = context else {
@@ -74,13 +72,7 @@ pub(super) fn collect_provider_workspace_scope(
         "workspace-scope".to_string(),
         "--json".to_string(),
     ];
-    let invocation = provider_invocation_with_profile(
-        context.profiles,
-        context.provider,
-        &args,
-        project_root,
-        config,
-    )?;
+    let invocation = provider_invocation_with_profile(context.profiles, context.provider, &args)?;
     let limits = ProviderProcessLimits::new(
         Some(Duration::from_millis(
             PROVIDER_WORKSPACE_SCOPE_COLD_TIMEOUT_MS,
@@ -232,7 +224,6 @@ pub(super) fn collect_provider_graph_facts(
     project_root: &Path,
     query: Option<&str>,
     candidates: &[Candidate],
-    config: &AspConfig,
     context: Option<&ProviderGraphFactsContext<'_>>,
 ) -> Result<ProviderGraphFacts, String> {
     let Some(context) = context else {
@@ -268,13 +259,7 @@ pub(super) fn collect_provider_graph_facts(
         query.to_string(),
         "--json".to_string(),
     ];
-    let invocation = provider_invocation_with_profile(
-        context.profiles,
-        context.provider,
-        &args,
-        project_root,
-        config,
-    )?;
+    let invocation = provider_invocation_with_profile(context.profiles, context.provider, &args)?;
     let output = match run_provider_command_with_stdin_limits(
         language_id,
         context.provider,

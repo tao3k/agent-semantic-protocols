@@ -130,9 +130,12 @@ fn healthcheck_rejects_stray_project_skill_when_plugin_skill_is_missing() {
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let stdout = stdout(&output);
     assert!(
-        stdout.contains("|skill authority=plugin-installed path=missing status=missing error=none")
+        stdout.contains(
+            "|skill authority=plugin-installed path=missing status=unresolved error=none"
+        ),
+        "{stdout}"
     );
-    assert!(stdout.contains("error code=missing-agent-skill"));
+    assert!(stdout.contains("error code=invalid-agent-skill"));
     assert!(!stdout.contains("agentsSkill="));
     assert!(!stdout.contains("pluginSkill="));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
@@ -154,6 +157,7 @@ fn healthcheck_json_reports_plugin_skill_resolver_error() {
     command.env_remove("PRJ_CACHE_HOME");
     command.env_remove("CODEX_HOME");
     command.env_remove("HOME");
+    command.env("ASP_NO_AGENT_PLATFORM", "1");
     let output = command
         .output()
         .expect("run asp healthcheck without Codex home");
@@ -203,7 +207,7 @@ fn healthcheck_prefers_git_toplevel_over_prj_cache_home_when_set() {
 }
 
 #[test]
-fn healthcheck_uses_prj_cache_home_outside_git_worktree() {
+fn healthcheck_rejects_prj_cache_home_outside_git_worktree() {
     let root = temp_project_root("healthcheck-prj-cache-home-no-git");
     let cache_home = root.join("cache-home");
 
@@ -216,15 +220,16 @@ fn healthcheck_uses_prj_cache_home_outside_git_worktree() {
         )],
     );
 
-    assert!(output.status.success(), "stderr: {}", stderr(&output));
-    let stdout = stdout(&output);
-    assert!(stdout.contains("[asp-healthcheck] status=error"));
-    assert!(stdout.contains("cacheSource=prj-cache-home"));
-    assert!(stdout.contains("PRJ_CACHE_HOME=set:"));
-    assert!(stdout.contains(&format!(
-        "|path activation={}",
-        canonical_activation_path(&root).display()
-    )));
+    assert!(!output.status.success(), "stdout: {}", stdout(&output));
+    let stderr = stderr(&output);
+    assert!(
+        stderr.contains("refusing to materialize ephemeral non-Git search root"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains(root.to_str().expect("utf8 root")),
+        "{stderr}"
+    );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -254,9 +259,14 @@ fn write_activation(root: &Path, provider: &Path) {
     let manifest = rust_manifest();
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let provider_command_prefix = vec![provider.display().to_string()];
-    let execution_command_digest =
-        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
-            .expect("provider execution command digest");
+    let provider_artifact_digest =
+        agent_semantic_content_identity::file_content_digest_v1(provider)
+            .expect("digest provider executable artifact");
+    let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
+        &provider_command_prefix,
+        &provider_artifact_digest,
+    )
+    .expect("provider execution command digest");
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
     let activation_path = canonical_activation_path(root);
@@ -271,25 +281,25 @@ fn write_activation(root: &Path, provider: &Path) {
         "projectRoot": root.canonicalize().expect("canonical root").display().to_string(),
         "generatedBy": { "runtime": "asp", "version": "test" },
         "providers": [{
-            "manifestId": manifest.manifest_id,
+            "manifestId": manifest.manifest_id(),
             "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "execution": manifest.execution,
+            "languageId": manifest.language_id(),
+            "providerId": manifest.provider_id(),
+            "binary": manifest.binary(),
+            "execution": manifest.execution(),
             "providerCommandPrefix": provider_command_prefix,
             "executionCommandDigest": execution_command_digest,
-            "searchCapabilities": manifest.search_capabilities,
-            "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
-            "queryPackDescriptor": manifest.query_pack_descriptor,
+            "searchCapabilities": manifest.search_capabilities(),
+            "semanticFactsDescriptor": manifest.semantic_facts_descriptor(),
+            "queryPackDescriptor": manifest.query_pack_descriptor(),
             "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
             "routes": routes,
             "coverage": {
                 "packageRoots": ["."],
-                "sourceRoots": manifest.source.default_source_roots,
-                "configFiles": manifest.source.default_config_files,
-                "sourceExtensions": manifest.source.default_extensions,
-                "ignoredPathPrefixes": manifest.source.default_ignored_path_prefixes
+                "sourceRoots": manifest.source().default_source_roots,
+                "configFiles": manifest.source().default_config_files,
+                "sourceExtensions": manifest.source().default_extensions,
+                "ignoredPathPrefixes": manifest.source().default_ignored_path_prefixes
             }
         }]
     });
@@ -311,7 +321,7 @@ fn canonical_activation_path(root: &Path) -> PathBuf {
 fn rust_manifest() -> agent_semantic_hook::ProviderManifest {
     builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == "rust")
+        .find(|manifest| manifest.language_id().as_str() == "rust")
         .expect("rust manifest")
 }
 

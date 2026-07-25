@@ -30,8 +30,9 @@ pub use hook_client_config::{
     HookClientRuleConfig, HookClientRuleDispatchConfig, HookClientRuleDispatchTransport,
     HookClientRuleMatchConfig, HookClientRuleRouteConfig, HookClientWrapperMatch,
     default_hook_client_config_file, default_hook_client_config_template,
-    load_asp_project_config_file, load_hook_client_config_file, merge_asp_project_hook_config,
-    render_hook_client_message_template,
+    load_asp_project_config_file, load_hook_client_config_declared_contract_fingerprint,
+    load_hook_client_config_file, load_hook_client_config_overlay_file,
+    merge_asp_project_hook_config, render_hook_client_message_template,
 };
 pub use hook_client_config::{
     HookClientStructuredFilterGrammar, HookClientStructuredProjectionMatchConfig,

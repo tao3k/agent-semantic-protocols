@@ -202,7 +202,7 @@ where
                     "closure proof obligation disappeared during reduction",
                 ))?;
             obligation.disposition = ObligationDisposition::Resolved {
-                verdict: proof.verdict.clone(),
+                verdict: proof.verdict,
                 proof_refs: proof.proof_refs.clone(),
             };
         }

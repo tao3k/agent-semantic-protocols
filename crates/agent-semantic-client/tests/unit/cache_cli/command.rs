@@ -42,7 +42,12 @@ fn cache_usage_lists_flush() {
     let root = temp_root("usage");
     let error = run_cache(&root, None, &["unknown".to_string()], false).expect_err("usage");
 
-    assert!(error.contains("status|import|source-index refresh"));
+    assert!(
+        error.contains(
+            "status|projects gc [--grace-days <n>] [--apply]|import|source-index refresh"
+        )
+    );
+    assert!(error.contains("source-index rebuild [--workspace <path>]"));
     assert!(error.contains("source-index lookup --query <term>"));
     assert!(error.contains("invalidate|flush [syntax-rows]"));
     assert!(error.contains("runtime-source acquire --language-id <id>"));
@@ -316,6 +321,16 @@ fn cache_import_replays_structural_index_artifact_into_db() {
         .lock()
         .expect("cache test lock");
     let root = temp_root("structural-index-import");
+    let _state_home =
+        crate::test_support::EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
+    let provider_binary = root.join("rs-harness");
+    crate::test_support::write_hermetic_provider_executable(&provider_binary);
+    crate::test_support::write_hermetic_provider_registry_config(
+        &root,
+        "rust",
+        provider_binary.to_str().expect("UTF-8 provider binary"),
+    );
+    crate::test_support::write_hermetic_provider_install_receipt(&root, "rust", &provider_binary);
     std::fs::create_dir_all(root.join("src")).expect("create source directory");
     std::fs::write(
         root.join("src/lib.rs"),

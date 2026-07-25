@@ -390,9 +390,10 @@ impl ClientDbEngine {
         })?;
         let db_path = Self::turso_path_for_client_dir(&client_dir);
         let events = events.to_vec();
-        block_on_db_engine_async(
-            async move { upsert_turso_artifact_events(&db_path, &events).await },
-        )
+        block_on_db_engine_async(async move {
+            bootstrap_turso_client_db(&db_path).await?;
+            upsert_turso_artifact_events(&db_path, &events).await
+        })
     }
 
     /// Return cached provider command selections through the DB Engine facade.
@@ -429,6 +430,7 @@ impl ClientDbEngine {
         let context_fingerprint = context_fingerprint.to_string();
         let selections = selections.to_vec();
         block_on_db_engine_async(async move {
+            bootstrap_turso_client_db(&db_path).await?;
             replace_turso_provider_command_selections(
                 &db_path,
                 &project_root,
@@ -480,6 +482,7 @@ impl ClientDbEngine {
         let db_path = Self::turso_path_for_client_dir(&client_dir);
         let source_snapshot = source_snapshot.clone();
         block_on_db_engine_async(async move {
+            bootstrap_turso_client_db(&db_path).await?;
             persist_structural_index_read_model_at_path(&db_path, &import, &source_snapshot)
                 .await
                 .map(|_| ())
@@ -522,6 +525,7 @@ impl ClientDbEngine {
         })?;
         let db_path = Self::turso_path_for_client_dir(&client_dir);
         block_on_db_engine_async(async move {
+            bootstrap_turso_client_db(&db_path).await?;
             refresh_turso_source_index_import(&db_path, request).await
         })
     }

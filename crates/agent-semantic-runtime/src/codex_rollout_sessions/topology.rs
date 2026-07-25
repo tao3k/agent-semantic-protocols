@@ -20,7 +20,7 @@ pub(super) fn thread_spawn_child_session_ids_for_rollout(
         if !line.contains("thread_spawn") {
             continue;
         }
-        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
             continue;
         };
         if value.get("type").and_then(Value::as_str) != Some("response_item") {
@@ -49,7 +49,7 @@ pub(super) fn thread_spawn_child_session_ids_for_rollout(
 pub(super) fn spawned_agent_ids_for_rollout(lines: &[String]) -> Vec<String> {
     let mut ids = BTreeSet::new();
     for line in lines {
-        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
             continue;
         };
         collect_structured_subagent_spawn_evidence(&value, &mut ids, &mut BTreeMap::new());
@@ -89,7 +89,7 @@ pub(super) fn spawned_agent_paths_for_rollout(lines: &[String]) -> BTreeMap<Stri
     let mut task_name_by_call = BTreeMap::new();
     let mut agent_path_by_session = BTreeMap::new();
     for line in lines {
-        let Ok(value) = serde_json::from_str::<Value>(&line) else {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
             continue;
         };
         collect_structured_subagent_spawn_evidence(

@@ -66,6 +66,7 @@ pub(in super::super) fn claude_fixture() -> PathBuf {
     )
     .expect("write fake provider");
     make_executable(&provider_path);
+    install_state_home_provider_fixture(&root, &provider_path);
     crate::provider_command::support::write_activation(
         &root,
         &[crate::provider_command::support::provider(
@@ -76,6 +77,31 @@ pub(in super::super) fn claude_fixture() -> PathBuf {
     write_test_codex_plugin(&root);
     write_fake_codex_cli(&bin_dir);
     root
+}
+
+fn install_state_home_provider_fixture(root: &Path, provider_source: &Path) {
+    let state_home = root.join(".agent-semantic-protocols");
+    let provider = state_home.join("runtime/bin/rs-harness");
+    std::fs::create_dir_all(provider.parent().expect("provider parent"))
+        .expect("create State Home provider bin");
+    std::fs::copy(provider_source, &provider).expect("install State Home provider fixture");
+    make_executable(&provider);
+
+    let entrypoint_digest = agent_semantic_content_identity::file_content_digest_v1(&provider)
+        .expect("provider content digest");
+    let metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&provider)
+            .expect("provider metadata digest");
+    let lock_dir = state_home.join("runtime/provider-locks");
+    std::fs::create_dir_all(&lock_dir).expect("create provider lock dir");
+    std::fs::write(
+        lock_dir.join("rust.lock.toml"),
+        format!(
+            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"rs-harness\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{entrypoint_digest}\"\ninstalledEntrypointMetadataDigest = \"{metadata_digest}\"\n",
+            provider.display()
+        ),
+    )
+    .expect("write provider install receipt");
 }
 
 struct SmokeInstallRoots {

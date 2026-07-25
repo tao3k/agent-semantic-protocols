@@ -10,11 +10,15 @@ const PARTITIONS: [&str; 4] = ["agent-a", "agent-b", "agent-c", "agent-d"];
 fn workload(run: u64) -> [Vec<TursoMvccEvent>; 4] {
     PARTITIONS.map(|partition| {
         (0..EVENTS_PER_PARTITION)
-            .map(|offset| TursoMvccEvent {
-                partition_key: partition.to_string(),
-                event_id: format!("{run:016}-{offset:04}"),
-                payload: vec![b'x'; 128],
-                created_at_ms: run as i64,
+            .map(|offset| {
+                TursoMvccEvent::new(
+                    agent_semantic_client_db::TursoMvccPartitionKey::from(partition),
+                    agent_semantic_client_db::TursoMvccEventId::from(format!(
+                        "{run:016}-{offset:04}"
+                    )),
+                    vec![b'x'; 128],
+                    run as i64,
+                )
             })
             .collect()
     })

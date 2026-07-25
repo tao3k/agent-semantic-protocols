@@ -1,6 +1,6 @@
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, provider_with_owner_items, temp_project_root,
-    write_activation, write_marker_provider, write_provider_bin_config,
+    asp_command, install_state_home_provider, prepend_path, provider, provider_with_owner_items,
+    temp_project_root, write_activation, write_marker_provider,
 };
 
 fn refresh_source_index(root: &std::path::Path) {
@@ -115,7 +115,7 @@ fn search_owner_items_source_index_trace_includes_search_frame_receipt() {
         .permissions();
     permissions.set_mode(0o755);
     std::fs::set_permissions(&provider_path, permissions).expect("chmod provider");
-    write_provider_bin_config(&root, "rust", &provider_path);
+    install_state_home_provider(&root, "rust", &provider_path);
     write_activation(&root, &[provider_with_owner_items("rust", Vec::new())]);
     refresh_source_index(&root);
     let _ = std::fs::remove_file(&marker);

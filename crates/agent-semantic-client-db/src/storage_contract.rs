@@ -19,6 +19,8 @@ pub const MAX_KEYSET_PAGE_LIMIT: usize = 1_000;
 
 pub type StorageFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, StorageError>> + Send + 'a>>;
 
+type SessionEventPartitions = BTreeMap<String, BTreeMap<(i64, String), SessionEvent>>;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum StorageOptimizationProfile {
@@ -406,7 +408,7 @@ pub trait AgentStorage: Send + Sync {
 
 #[derive(Default)]
 pub struct InMemoryAgentStorage {
-    partitions: Mutex<BTreeMap<String, BTreeMap<(i64, String), SessionEvent>>>,
+    partitions: Mutex<SessionEventPartitions>,
 }
 
 impl AgentStorage for InMemoryAgentStorage {

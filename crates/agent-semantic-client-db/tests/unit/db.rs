@@ -854,7 +854,12 @@ fn source_index_import_assembly_uses_turso_ready_contract_rows() {
             registry_fingerprint: "registry:v1".to_string(),
             extra_scope_dirs: Vec::new(),
             files: vec![scope_file.clone()],
-            source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::default(),
+            source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+                [(
+                    agent_semantic_client_db::ClientDbSourceIndexPath::new("src/lib.rs"),
+                    b"pub fn turso_source_index_fixture() {}\n".to_vec(),
+                )],
+            ),
         },
     )
     .expect("assemble source-index import");

@@ -1,7 +1,5 @@
 use std::path::Path;
 
-use crate::command::search_config::AspConfig;
-
 use super::search_pipe_dependency_seed_cache::{
     ProviderDependencyTopologyFact, collect_cached_manifest_dependency_facts,
 };
@@ -24,7 +22,6 @@ pub(super) fn run_search_dependency_seed_command(
     args: &[String],
     project_root: &Path,
     cache_home: &Path,
-    config: &AspConfig,
     provider_context: Option<&ProviderGraphFactsContext<'_>>,
 ) -> Result<(), String> {
     let query = dependency_seed_query(args)?;
@@ -33,7 +30,6 @@ pub(super) fn run_search_dependency_seed_command(
         language_id,
         project_root,
         cache_home,
-        config,
         provider_context,
     )?;
     let facts = seed

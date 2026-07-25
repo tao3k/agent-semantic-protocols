@@ -38,14 +38,7 @@ impl SearchProjectionRenderer for TopologySearchProjectionRenderer {
                 seed_limit: request.max_rows,
             },
         );
-        if let Some(max_bytes) = request.max_bytes {
-            if content.len() > max_bytes {
-                return Err(SearchProjectionError::BudgetExceeded {
-                    actual_bytes: content.len(),
-                    max_bytes,
-                });
-            }
-        }
+        enforce_byte_budget(&content, request.max_bytes)?;
         Ok(RenderedSearchProjectionV1 {
             schema_id: RENDERED_SEARCH_PROJECTION_SCHEMA_ID.to_string().into(),
             schema_version: SEARCH_PROJECTION_SCHEMA_VERSION.to_string().into(),
@@ -118,31 +111,26 @@ impl SearchProjectionRenderer for RankedFrontierSearchProjectionRenderer {
             }
             lines.push(line);
         }
-        if matches!(request.density, SearchProjectionDensityV1::Expanded) {
-            if let Some(paths) = value
-                .get("typedPaths")
-                .and_then(serde_json::Value::as_array)
-            {
-                for path in paths.iter().take(row_limit) {
-                    lines.push(format!(
-                        "P={} source={} sink={} kind={}",
-                        scalar(path.get("id")),
-                        scalar(path.get("source")),
-                        scalar(path.get("sink")),
-                        scalar(path.get("pathKind"))
-                    ));
-                }
+        let expanded_paths = matches!(request.density, SearchProjectionDensityV1::Expanded)
+            .then(|| {
+                value
+                    .get("typedPaths")
+                    .and_then(serde_json::Value::as_array)
+            })
+            .flatten();
+        if let Some(paths) = expanded_paths {
+            for path in paths.iter().take(row_limit) {
+                lines.push(format!(
+                    "P={} source={} sink={} kind={}",
+                    scalar(path.get("id")),
+                    scalar(path.get("source")),
+                    scalar(path.get("sink")),
+                    scalar(path.get("pathKind"))
+                ));
             }
         }
         let content = format!("{}\n", lines.join("\n"));
-        if let Some(max_bytes) = request.max_bytes {
-            if content.len() > max_bytes {
-                return Err(SearchProjectionError::BudgetExceeded {
-                    actual_bytes: content.len(),
-                    max_bytes,
-                });
-            }
-        }
+        enforce_byte_budget(&content, request.max_bytes)?;
         Ok(RenderedSearchProjectionV1 {
             schema_id: RENDERED_SEARCH_PROJECTION_SCHEMA_ID.to_string().into(),
             schema_version: SEARCH_PROJECTION_SCHEMA_VERSION.to_string().into(),
@@ -170,6 +158,22 @@ fn scalar(value: Option<&serde_json::Value>) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn enforce_byte_budget(
+    content: &str,
+    max_bytes: Option<usize>,
+) -> Result<(), SearchProjectionError> {
+    let Some(max_bytes) = max_bytes else {
+        return Ok(());
+    };
+    if content.len() > max_bytes {
+        return Err(SearchProjectionError::BudgetExceeded {
+            actual_bytes: content.len(),
+            max_bytes,
+        });
+    }
+    Ok(())
 }
 
 pub fn render_search_topology_projection(

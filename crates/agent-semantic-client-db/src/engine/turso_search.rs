@@ -269,20 +269,20 @@ pub async fn search_turso_documents(
     }
     let mut hits = Vec::new();
     if let Some(fts_query) = turso_fts_query(query) {
-        let fts_result = collect_turso_search_hits(
-            &connection,
-            "projection",
-            "SELECT document_id, entity_id, selector, document
+        let fts_result = collect_turso_search_hits(CollectTursoSearchHitsRequest {
+            connection: &connection,
+            source: "projection",
+            sql: "SELECT document_id, entity_id, selector, document
              FROM asp_search_projection_document
              WHERE namespace = ?1 AND snapshot_root = ?2
                AND (document MATCH ?3 OR selector MATCH ?3)
              LIMIT ?4",
             namespace,
-            source_snapshot.root_digest.as_str(),
-            &fts_query,
+            snapshot_root: source_snapshot.root_digest.as_str(),
+            query: &fts_query,
             limit,
-            &mut hits,
-        )
+            hits: &mut hits,
+        })
         .await;
         if fts_result.is_ok() && !hits.is_empty() {
             return Ok(TursoClientDbSearchResult {
@@ -293,21 +293,21 @@ pub async fn search_turso_documents(
         hits.clear();
     }
     let like_query = format!("%{}%", query.trim());
-    collect_turso_search_hits(
-        &connection,
-        "projection",
-        "SELECT document_id, entity_id, selector, document
+    collect_turso_search_hits(CollectTursoSearchHitsRequest {
+        connection: &connection,
+        source: "projection",
+        sql: "SELECT document_id, entity_id, selector, document
          FROM asp_search_projection_document
          WHERE namespace = ?1 AND snapshot_root = ?2
            AND (document LIKE ?3 OR selector LIKE ?3)
          ORDER BY document_id
          LIMIT ?4",
         namespace,
-        source_snapshot.root_digest.as_str(),
-        &like_query,
+        snapshot_root: source_snapshot.root_digest.as_str(),
+        query: &like_query,
         limit,
-        &mut hits,
-    )
+        hits: &mut hits,
+    })
     .await?;
     let state = if hits.is_empty() {
         TursoClientDbSearchState::Miss
@@ -326,16 +326,30 @@ fn turso_fts_query(query: &str) -> Option<String> {
     (!terms.is_empty()).then(|| terms.join(" "))
 }
 
-async fn collect_turso_search_hits(
-    connection: &turso::Connection,
+struct CollectTursoSearchHitsRequest<'a> {
+    connection: &'a turso::Connection,
     source: &'static str,
-    sql: &str,
-    namespace: &str,
-    snapshot_root: &str,
-    query: &str,
+    sql: &'a str,
+    namespace: &'a str,
+    snapshot_root: &'a str,
+    query: &'a str,
     limit: u32,
-    hits: &mut Vec<TursoClientDbSearchHit>,
+    hits: &'a mut Vec<TursoClientDbSearchHit>,
+}
+
+async fn collect_turso_search_hits(
+    request: CollectTursoSearchHitsRequest<'_>,
 ) -> Result<(), String> {
+    let CollectTursoSearchHitsRequest {
+        connection,
+        source,
+        sql,
+        namespace,
+        snapshot_root,
+        query,
+        limit,
+        hits,
+    } = request;
     let mut rows = connection
         .query(sql, (namespace, snapshot_root, query, limit))
         .await

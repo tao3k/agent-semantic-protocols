@@ -6,7 +6,6 @@ use super::graph::GraphTurboReceiptRequest;
 use super::language_owner_items::{
     LanguageOwnerItemsDispatchRequest, dispatch_language_owner_items,
 };
-use super::search_config::AspConfig;
 use super::search_pipe_args::parse_search_owner_items_query_args;
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use super::search_pipe_view::reject_non_graph_turbo_receipt;
@@ -17,7 +16,6 @@ pub(super) struct SearchOwnerItemsFastContext<'a> {
     pub(super) project_root: &'a Path,
     pub(super) locator_root: &'a Path,
     pub(super) cache_home: &'a Path,
-    pub(super) config: &'a AspConfig,
     pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
 }
@@ -27,7 +25,6 @@ struct OwnerItemsSearchState<'a> {
     language_id: &'a str,
     owner_project_root: PathBuf,
     cache_home: &'a Path,
-    config: &'a AspConfig,
     provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     owner: &'a Path,
 }
@@ -44,7 +41,6 @@ impl<'a> OwnerItemsSearchState<'a> {
             language_id: context.language_id,
             owner_project_root,
             cache_home: context.cache_home,
-            config: context.config,
             provider_context: context.provider_context,
             owner,
         }
@@ -59,7 +55,6 @@ impl<'a> OwnerItemsSearchState<'a> {
             owner: self.owner,
             project_root: &self.owner_project_root,
             cache_home: self.cache_home,
-            config: self.config,
             provider_context: self.provider_context,
         })
     }

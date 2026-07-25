@@ -42,11 +42,14 @@ fn turso_source_index_terms(
     }
 }
 
+pub(super) type TursoSourceIndexCanonicalSelectorsByOwner =
+    std::collections::BTreeMap<String, (String, i64, Vec<String>)>;
+
 pub(super) fn turso_source_index_canonical_selectors_by_owner(
     import: &ClientDbSourceIndexImport,
     membership: &std::collections::HashMap<&str, &str>,
     changed_owner_paths: &std::collections::BTreeSet<&str>,
-) -> Result<std::collections::BTreeMap<String, (String, i64, Vec<String>)>, String> {
+) -> Result<TursoSourceIndexCanonicalSelectorsByOwner, String> {
     let mut selectors_by_owner = std::collections::BTreeMap::<
         String,
         std::collections::BTreeMap<String, TursoSourceIndexCanonicalSelectorFact>,
@@ -112,9 +115,8 @@ pub(super) fn turso_source_index_canonical_selectors_by_owner(
                 turso_source_index_terms(query_key.as_str(), &mut terms, &mut seen_terms);
             }
             for selector in &selectors {
-                for value in [selector.symbol.as_deref().unwrap_or_default()] {
-                    turso_source_index_terms(value, &mut terms, &mut seen_terms);
-                }
+                let value = selector.symbol.as_deref().unwrap_or_default();
+                turso_source_index_terms(value, &mut terms, &mut seen_terms);
                 for query_key in &selector.query_keys {
                     turso_source_index_terms(query_key, &mut terms, &mut seen_terms);
                 }

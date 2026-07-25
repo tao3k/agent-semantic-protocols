@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use super::graph::{GraphTurboReceiptCapture, GraphTurboReceiptRequest, write_graph_turbo_receipt};
-use super::search_config::AspConfig;
 use super::search_pipe_graph_turbo::{
     GraphTurboSearchPipeRequest, graph_turbo_request, render_graph_turbo_request,
 };
@@ -35,7 +34,6 @@ pub(super) struct SearchPipeViewRequest<'a> {
     pub(super) include_pipe_plan: bool,
     pub(super) provider_facts: &'a ProviderGraphFacts,
     pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
-    pub(super) config: &'a AspConfig,
     pub(super) read_memory_selectors: &'a [String],
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
 }
@@ -59,7 +57,6 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
         include_pipe_plan,
         provider_facts,
         provider_context,
-        config,
         read_memory_selectors,
         frontier_receipt,
     } = request;
@@ -95,7 +92,6 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 source_trace,
                 provider_facts,
                 provider_context,
-                config,
                 read_memory_selectors,
                 action_frontier: &[],
             })?;
@@ -124,7 +120,6 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
             include_pipe_plan,
             provider_facts,
             provider_context,
-            config,
             read_memory_selectors,
             frontier_receipt,
             graph_query_clauses: &graph_query_clauses,
@@ -189,7 +184,6 @@ struct SearchPipeSeedsViewRequest<'a> {
     include_pipe_plan: bool,
     provider_facts: &'a ProviderGraphFacts,
     provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
-    config: &'a AspConfig,
     read_memory_selectors: &'a [String],
     frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
     graph_query_clauses: &'a [String],
@@ -214,7 +208,6 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         include_pipe_plan,
         provider_facts,
         provider_context,
-        config,
         read_memory_selectors,
         frontier_receipt,
         graph_query_clauses,
@@ -247,7 +240,6 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         source_trace,
         provider_facts,
         provider_context,
-        config,
         read_memory_selectors,
         action_frontier: &[],
     })?;

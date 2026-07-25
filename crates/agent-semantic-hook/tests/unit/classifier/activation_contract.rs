@@ -54,7 +54,7 @@ fn activation_rejects_manifest_digest_drift() {
 fn activation_resolves_provider_manifest_and_project_coverage() {
     let manifest = provider_manifest();
     let digest = provider_manifest_digest(&manifest).expect("manifest digest");
-    let expected_source_roots = manifest.source.default_source_roots.clone();
+    let expected_source_roots = manifest.source().default_source_roots.clone();
     let expected_guide_argv = agent_semantic_hook::materialize_provider_routes(&manifest)
         .expect("materialize TypeScript routes")
         .guide
@@ -84,7 +84,8 @@ fn provider_manifest() -> ProviderManifest {
     builtin_provider_manifests()
         .into_iter()
         .find(|manifest| {
-            manifest.language_id == "typescript" && manifest.provider_id == "ts-harness"
+            manifest.language_id().as_str() == "typescript"
+                && manifest.provider_id().as_str() == "ts-harness"
         })
         .expect("builtin TypeScript provider manifest")
 }
@@ -97,25 +98,25 @@ fn activation_value(manifest: &ProviderManifest, manifest_digest: &str) -> Value
     let routes =
         agent_semantic_hook::materialize_provider_routes(manifest).expect("provider routes");
     let provider = ActivatedProviderConfig {
-        manifest_id: manifest.manifest_id.clone(),
+        manifest_id: manifest.manifest_id().to_string(),
         manifest_digest: manifest_digest.to_string(),
-        language_id: manifest.language_id.clone(),
-        provider_id: manifest.provider_id.clone(),
-        binary: manifest.binary.clone(),
-        execution: manifest.execution,
-        provider_command_prefix: vec![manifest.binary.clone()],
+        language_id: manifest.language_id().clone(),
+        provider_id: manifest.provider_id().clone(),
+        binary: manifest.binary().to_string(),
+        execution: manifest.execution(),
+        provider_command_prefix: vec![manifest.binary().to_string()],
         execution_command_digest: "test-execution-command-digest".to_string(),
-        search_capabilities: manifest.search_capabilities.clone(),
-        semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
-        query_pack_descriptor: manifest.query_pack_descriptor.clone(),
+        search_capabilities: manifest.search_capabilities().clone(),
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+        query_pack_descriptor: manifest.query_pack_descriptor().clone(),
         semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
         routes,
         coverage: ActivationCoverage {
             package_roots: vec![".".to_string()],
-            source_roots: manifest.source.default_source_roots.clone(),
-            config_files: manifest.source.default_config_files.clone(),
-            source_extensions: manifest.source.default_extensions.clone(),
-            ignored_path_prefixes: manifest.source.default_ignored_path_prefixes.clone(),
+            source_roots: manifest.source().default_source_roots.clone(),
+            config_files: manifest.source().default_config_files.clone(),
+            source_extensions: manifest.source().default_extensions.clone(),
+            ignored_path_prefixes: manifest.source().default_ignored_path_prefixes.clone(),
         },
     };
     json!({

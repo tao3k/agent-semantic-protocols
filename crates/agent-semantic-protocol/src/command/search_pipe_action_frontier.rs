@@ -80,7 +80,7 @@ impl ActionNode {
                 let borrowed_names = names.iter().map(String::as_str).collect::<Vec<_>>();
                 let query = tree_sitter_query_pattern(language_id, recipe, &borrowed_names)?;
                 Some(format!(
-                    "asp {language_id} query --treesitter-query {} --workspace {scope}",
+                    "asp {language_id} search --treesitter-query {} --workspace {scope}",
                     shell_arg(&query)
                 ))
             }
@@ -95,6 +95,10 @@ pub(super) fn render_next_command_line(actions: &[ActionNode]) -> String {
         .map(|command| format!("nextCommand={command}\n"))
         .unwrap_or_else(|| "nextCommand=-\n".to_string())
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/search_pipe_action_frontier.rs"]
+mod tests;
 
 fn tree_sitter_query_pattern(language_id: &str, recipe: &str, names: &[&str]) -> Option<String> {
     if names.is_empty() {

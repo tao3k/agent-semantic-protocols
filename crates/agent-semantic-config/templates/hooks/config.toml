@@ -40,7 +40,7 @@ priority = 90000
 intent = "test-build-command"
 decision = "deny"
 reasonKind = "subagent-receipt-required"
-message = "Test/build commands are dispatched to the configured asp-testing resident agent."
+message = "ASP denied this command in the main Agent. Route it exactly through hook-selected lane `{{executionLane}}` to configured resident `{{residentName}}` at `{{canonicalTarget}}` and return its digest-bound `{{receiptKind}}` receipt."
 event = "pre-tool"
 
 [rules.match]
@@ -61,6 +61,7 @@ receiptKind = "asp-testing-execution-v1"
 
 [rules.fields]
 executionLane = "testing"
+blockedCommandClass = "testing"
 
 [[rules]]
 id = "deny-raw-registered-source-search-action"

@@ -52,14 +52,16 @@ fn provider_runtime_storage(criterion: &mut Criterion) {
         bench.iter(|| {
             let sequence = sequence.fetch_add(1, Ordering::Relaxed);
             let event = ProviderExecutionStorageEvent::from_output(
-                "benchmark",
-                format!("search-{sequence}"),
-                "rust",
-                0,
-                b"fixed stdout",
-                b"",
-                true,
-                binding.context.root_session_id.clone(),
+                agent_semantic_client::provider_runtime_storage::ProviderExecutionStorageEventInput {
+                    phase: "benchmark",
+                    provider_method: format!("search-{sequence}"),
+                    language_id: "rust",
+                    status_code: 0,
+                    stdout: b"fixed stdout",
+                    stderr: b"",
+                    receipt_present: true,
+                    root_session_id: binding.context.root_session_id.clone(),
+                },
             );
             let receipt = binding
                 .adapter

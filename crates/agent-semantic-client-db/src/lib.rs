@@ -20,7 +20,9 @@ pub mod turso_agent_storage;
 pub mod turso_cdc_storage;
 pub mod turso_encrypted_storage;
 mod turso_mvcc_keyset;
-pub use turso_mvcc_keyset::{TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey};
+pub use turso_mvcc_keyset::{
+    TursoMvccEventId, TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey,
+};
 mod turso_mvcc_maintenance;
 pub mod turso_mvcc_partition;
 mod turso_mvcc_partition_sql;

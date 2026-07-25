@@ -75,18 +75,20 @@ fn exact_selector_merkle_turso_scenario(c: &mut Criterion) {
     ])
     .expect("exact-selector benchmark workspace tree");
     let packet = agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
-        &("rust").into(),
-        &("rs-harness").into(),
-        agent_semantic_content_identity::CanonicalItemSelectorV1::parse("rust://src/lib.rs#item/function/bench_symbol")
-            .expect("canonical benchmark selector"),
-        &parser_identity_digest,
-        &query_pack_digest,
-        &(owner_path).into(),
-        &(selector).into(),
-        agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code,
-        source,
-        br#"{"kind":"fn","name":"bench_symbol"}"#,
-        source,
+        agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
+            language_id: &("rust").into(),
+            provider_id: &("rs-harness").into(),
+            canonical_item_selector: agent_semantic_content_identity::CanonicalItemSelectorV1::parse("rust://src/lib.rs#item/function/bench_symbol")
+                .expect("canonical benchmark selector"),
+            parser_identity_digest: &parser_identity_digest,
+            query_pack_digest: &query_pack_digest,
+            owner_path: &(owner_path).into(),
+            structural_selector: &(selector).into(),
+            projection_mode: agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code,
+            source,
+            normalized_parser_facts: br#"{"kind":"fn","name":"bench_symbol"}"#,
+            projection: source,
+        },
     );
     let record = packet
         .enrich_projection_record(&tree)

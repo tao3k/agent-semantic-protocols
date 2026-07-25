@@ -700,7 +700,3 @@ fn unix_timestamp() -> Result<i64, String> {
         .map(|duration| duration.as_secs() as i64)
         .map_err(|error| format!("system clock precedes unix epoch: {error}"))
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/agent_session_registry_host_capability.rs"]
-mod agent_session_registry_host_capability_tests;

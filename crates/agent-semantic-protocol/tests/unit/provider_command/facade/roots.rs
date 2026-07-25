@@ -23,7 +23,10 @@ fn rust_search_facade_fans_out_multiple_trailing_scope_roots() {
         .find(|provider| provider.language_id == "rust")
         .expect("rust provider activation");
     assert!(
-        !rust_provider.query_pack_descriptor.descriptor_id.is_empty(),
+        !rust_provider
+            .query_pack_descriptor
+            .descriptor_id()
+            .is_empty(),
         "rust provider activation must carry query-pack descriptor"
     );
 

@@ -8,8 +8,8 @@ use super::owner_items_cold::OwnerItemsColdFunctionalScenario;
 use super::runtime_gates::{duration_millis_from_manifest, read_toml};
 use super::shared::SharedBenchmarkToml;
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider_with_owner_items, temp_project_root, write_activation,
-    write_provider_bin_config,
+    asp_command, install_state_home_provider, prepend_path, provider_with_owner_items,
+    temp_project_root, write_activation,
 };
 
 pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenario_gate() {
@@ -64,7 +64,7 @@ pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenari
         .permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&provider_path, permissions).expect("chmod provider");
-    write_provider_bin_config(&root, "rust", &provider_path);
+    install_state_home_provider(&root, "rust", &provider_path);
     write_activation(&root, &[provider_with_owner_items("rust", Vec::new())]);
     let command_args = [
         "rust",
@@ -224,7 +224,7 @@ pub(in super::super) fn asp_org_owner_items_cold_functional_path_stays_inside_sc
         .permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&provider_path, permissions).expect("chmod org provider");
-    write_provider_bin_config(&root, "org", &provider_path);
+    install_state_home_provider(&root, "org", &provider_path);
     write_activation(&root, &[provider_with_owner_items("org", Vec::new())]);
     let started_at = Instant::now();
     let output = asp_command(&root)
@@ -349,7 +349,7 @@ pub(super) fn assert_owner_items_cold_functional_path(spec: OwnerItemsColdFuncti
         .permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&provider_path, permissions).expect("chmod provider");
-    write_provider_bin_config(&root, spec.language_id, &provider_path);
+    install_state_home_provider(&root, spec.language_id, &provider_path);
     write_activation(
         &root,
         &[provider_with_owner_items(spec.language_id, Vec::new())],
@@ -638,7 +638,7 @@ pub(in super::super) fn asp_typescript_owner_items_cache_hot_path_stays_inside_s
         .permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&provider_path, permissions).expect("chmod provider");
-    write_provider_bin_config(&root, "typescript", &provider_path);
+    install_state_home_provider(&root, "typescript", &provider_path);
     write_activation(
         &root,
         &[provider_with_owner_items("typescript", Vec::new())],
@@ -831,7 +831,7 @@ pub(in super::super) fn asp_python_owner_items_cache_hot_path_stays_inside_scena
         .permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&provider_path, permissions).expect("chmod provider");
-    write_provider_bin_config(&root, "python", &provider_path);
+    install_state_home_provider(&root, "python", &provider_path);
     write_activation(&root, &[provider_with_owner_items("python", Vec::new())]);
 
     let command_args = [
