@@ -148,6 +148,25 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
 
         self.assertEqual([], self.manifest_errors(manifest))
 
+    def test_provider_manifest_accepts_fixed_command_prefix_args(self) -> None:
+        manifest = minimal_provider_manifest()
+        manifest["commandPrefixArgs"] = ["--language", "cpp"]
+
+        self.assertEqual([], self.manifest_errors(manifest))
+
+    def test_c_family_provider_manifests_follow_the_shared_schema(self) -> None:
+        for filename in [
+            "asp-c-provider-manifest.json",
+            "asp-cpp-provider-manifest.json",
+            "asp-objective-c-provider-manifest.json",
+        ]:
+            manifest = json.loads(
+                (
+                    _REPO_ROOT / "languages" / "ccls-asp" / "provider" / filename
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual([], self.manifest_errors(manifest), filename)
+
     def test_provider_manifest_rejects_unknown_execution_mode(self) -> None:
         manifest = minimal_provider_manifest()
         manifest["execution"] = "bin-wrap"

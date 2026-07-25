@@ -19,6 +19,9 @@ pub fn semantic_registry_digest() -> String {
 }
 
 const LANGUAGE_PROVIDER_MANIFEST_JSON: &[&str] = &[
+    include_str!("../../../languages/ccls-asp/provider/asp-c-provider-manifest.json"),
+    include_str!("../../../languages/ccls-asp/provider/asp-cpp-provider-manifest.json"),
+    include_str!("../../../languages/ccls-asp/provider/asp-objective-c-provider-manifest.json"),
     include_str!(
         "../../../languages/rust-lang-project-harness/provider/asp-provider-manifest.json"
     ),

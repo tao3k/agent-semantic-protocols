@@ -160,7 +160,12 @@ just agent-tools-install-hook "$HOME/.local/bin"
 just agent-tools-install-rust "$HOME/.local/bin"
 just agent-tools-install-typescript "$HOME/.local/bin"
 just agent-tools-install-python "$HOME/.local/bin"
+just agent-tools-install-ccls "$HOME/.local/bin"
 ```
+
+The `ccls-asp` binary is shared by the `asp c`, `asp cpp`, and
+`asp objective-c` facades. Its provider manifests keep the selected language in
+the activation command prefix.
 
 Run `asp-graph-turbo` through the native ASP wrapper when an agent step needs the
 ranking engine without depending on Python workspace internals:

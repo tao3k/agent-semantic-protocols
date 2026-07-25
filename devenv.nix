@@ -17,6 +17,11 @@
     pkgs.protobuf
     pkgs.just
     pkgs.codeql
+    pkgs.cmake
+    pkgs.ninja
+    pkgs.llvmPackages_21.clang
+    pkgs.llvmPackages_21.clang-unwrapped.dev
+    pkgs.llvmPackages_21.llvm.dev
     pkgs.fd
     pkgs.ripgrep
     pkgs.eza

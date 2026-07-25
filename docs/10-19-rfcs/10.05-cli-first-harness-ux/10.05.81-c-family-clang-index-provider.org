@@ -1,0 +1,114 @@
+#+TITLE: C-family Clang Index Provider
+#+PROPERTY: RFC 10.05.81
+
+* Status
+
+Proposed vertical slice for the =c=, =cpp=, and =objective-c= ASP language
+facades.
+
+* Decision
+
+ASP will consume =tao3k/ccls-asp= as the C-family language-provider submodule
+at =languages/ccls-asp=.  One external binary, =ccls-asp=, owns three explicit
+language identities:
+
+| ASP facade    | languageId  | source authority |
+|---------------+-------------+------------------|
+| =asp c=       | =c=         | Clang C AST      |
+| =asp cpp=     | =cpp=       | Clang C++ AST    |
+| =asp objective-c= | =objective-c= | Clang Objective-C AST |
+
+The shared binary does not infer the public language identity from the command
+name.  Every provider route passes =--language <languageId>= so registry,
+packet, cache, and receipt identities stay deterministic.
+The shared provider-manifest schema exposes optional =commandPrefixArgs=.
+Activation appends these fixed provider-owned arguments after the resolved
+binary path, so direct language facades retain the same identity as hook
+routes.
+
+* Ownership boundary
+
+=ccls-asp= is a compiler-native ASP provider, not an editor language server.
+It keeps the reusable ccls/Clang assets:
+
+- compilation database discovery and compiler argument fidelity;
+- Clang AST traversal for declarations, definitions, types, calls, inheritance,
+  templates, macros where Clang exposes them, and Objective-C declarations;
+- source locations and project-relative owner identity;
+- focused C-family index fixtures.
+
+The fork removes LSP-only surfaces:
+
+- JSON-RPC stdin/stdout framing and request identifiers;
+- =initialize=, workspace folders, and editor capability negotiation;
+- did-open/did-change/did-save document synchronization;
+- completion, signature help, hover, rename, and formatting;
+- diagnostic and semantic-token push notifications;
+- editor progress, cancellation, and UI-specific configuration.
+
+Those features are not hidden behind a compatibility flag.  Keeping them would
+retain a second agent-facing protocol, unnecessary mutable editor state, and
+request/notification semantics that cannot be represented as ASP receipts.
+
+* Provider contract
+
+The first slice exposes:
+
+- =guide= for executable command selection;
+- =search prime= for compilation units and parser-owned symbol seeds;
+- =search owner <path>= for declarations and relations owned by one source
+  file;
+- =search lexical <term> owner tests= for name/kind discovery;
+- =search ingest= as a packet-producing index export;
+- =query --selector <path-or-range>= for exact source and parser-owned item
+  projection;
+- =check changed= for compilation-database-backed parse verification.
+
+Search JSON conforms to =semantic-search-packet.v1=.  Query JSON conforms to
+=semantic-query-packet.v1=.  Compact output is a renderer over the same
+compiler-native facts; it is not a separate truth source.
+
+The protocol repository remains the authority for shared schemas.  Its
+=c-family= schema profile downsyncs the exact transitive schema set required by
+the provider into =languages/ccls-asp/schemas/=.  The provider must not edit
+those copies independently.  =tools schema profiles validate c-family= fails
+on missing, extra, or drifted copies before a root pointer can advance.
+
+The provider declares =semanticFacts=true= and
+=dependencyTopology=false=.  Include and compilation-command relations may
+appear as parser facts, but package-manager dependency topology is outside the
+C-family provider until a shared native-build dependency contract exists.
+
+* Search and query semantics
+
+Discovery and reasoning stay under =search=.  Exact source selectors and
+deterministic item projections stay under =query=.  An owner path returned by
+search is project-relative and may be followed by:
+
+#+begin_src shell
+asp cpp search owner src/widget.cc items --workspace . --view seeds
+asp cpp query --selector src/widget.cc:12:40 --workspace . --code
+asp objective-c search lexical WidgetController owner tests --workspace . --view seeds
+#+end_src
+
+The provider must not reinterpret an unresolved selector by basename or suffix.
+Compilation database paths are canonicalized and projected back to the selected
+workspace before packet emission.
+
+* Acceptance gates
+
+The vertical slice is accepted only when all of the following are recorded:
+
+1. all three provider manifests validate against the shared hook manifest
+   schema;
+2. all three registry entries validate against the language registry schema;
+3. activation records =ccls-asp --language <languageId>= for every C-family
+   facade;
+4. =tools schema profiles validate c-family= proves the synchronized provider
+   copies match the main repository;
+5. the provider builds against the active Clang/LLVM toolchain;
+6. C, C++, and Objective-C fixtures each produce a schema-valid search packet;
+7. an exact query returns only the selected source range in =--code= mode;
+8. root ASP dispatch invokes =ccls-asp= with the selected language identity.
+
+LSP feature parity is explicitly not an acceptance criterion.

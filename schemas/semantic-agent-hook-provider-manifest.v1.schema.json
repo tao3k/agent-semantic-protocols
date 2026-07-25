@@ -51,6 +51,9 @@
     "binary": {
       "$ref": "#/$defs/binary"
     },
+    "commandPrefixArgs": {
+      "$ref": "#/$defs/commandPrefixArgs"
+    },
     "execution": {
       "$ref": "#/$defs/providerExecution"
     },
@@ -75,6 +78,13 @@
     "binary": {
       "type": "string",
       "pattern": "^[A-Za-z0-9_.-]+$"
+    },
+    "commandPrefixArgs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "namespace": {
       "type": "string",

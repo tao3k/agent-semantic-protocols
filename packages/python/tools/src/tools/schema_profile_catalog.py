@@ -102,6 +102,24 @@ _AGENT_REASONING_SCHEMAS = (
 
 LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
     LanguageSchemaProfile(
+        language_id="c-family",
+        package_root="languages/ccls-asp",
+        shared_schema_files=(
+            "semantic-agent-hook-provider-manifest.v1.schema.json",
+            "semantic-content-compaction.v1.schema.json",
+            "semantic-handle.v1.schema.json",
+            "semantic-invariant-candidate.v1.schema.json",
+            "semantic-language-registry.v1.schema.json",
+            "semantic-native-syntax-fact-index.v1.schema.json",
+            "semantic-query-packet.v1.schema.json",
+            "semantic-search-packet.v1.schema.json",
+            "semantic-source-location.v1.schema.json",
+            "semantic-tree-sitter-provenance.v1.schema.json",
+            "semantic-type-surface.v1.schema.json",
+        ),
+        provider_schema_files=(),
+    ),
+    LanguageSchemaProfile(
         language_id="rust",
         package_root="languages/rust-lang-project-harness",
         shared_schema_files=(
