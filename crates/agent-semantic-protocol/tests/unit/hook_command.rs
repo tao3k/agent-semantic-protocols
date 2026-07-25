@@ -101,21 +101,18 @@ fn top_level_install_help_is_non_mutating_unified_surface() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("usage: asp install hook --client claude"),
+        stdout.contains("Usage: asp install [COMMAND]"),
         "stdout: {stdout}"
     );
-    assert!(
-        stdout.contains("asp install language <language> [PROJECT_ROOT]"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        stdout.contains("develop mode: use the repository Justfile recipes; they invoke the internal workspace mechanism (installMode=develop-workspace)"),
-        "stdout: {stdout}"
-    );
+    for command in ["binary", "hook", "plugin", "language"] {
+        let prefix = format!("{command} ");
+        assert!(
+            stdout
+                .lines()
+                .any(|line| line.trim_start().starts_with(&prefix)),
+            "missing {command}: {stdout}"
+        );
+    }
     assert!(
         !stdout.contains("--rev")
             && !stdout.contains("--archive")
@@ -148,10 +145,45 @@ fn install_hook_help_is_non_mutating() {
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        String::from_utf8_lossy(&output.stdout).contains("usage: asp install hook --client claude"),
-        "stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
+        stdout.contains("Usage: asp install hook --client <CLIENT> [PROJECT_ROOT]"),
+        "stdout: {stdout}"
+    );
+    assert!(stdout.contains("--client <CLIENT>"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("[possible values: claude]"),
+        "stdout: {stdout}"
+    );
+    assert!(!root.join(".codex/config.toml").exists());
+    assert!(
+        !root
+            .join(".cache/agent-semantic-protocol/hooks/activation.json")
+            .exists()
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn install_binary_help_is_non_mutating() {
+    let root = temp_project_root("install-binary-help");
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .current_dir(&root)
+        .env("PATH", "")
+        .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .args(["install", "binary", "--help"])
+        .output()
+        .expect("run asp install binary --help");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Usage: asp install binary --target <PATH>"),
+        "stdout: {stdout}"
     );
     assert!(!root.join(".codex/config.toml").exists());
     assert!(

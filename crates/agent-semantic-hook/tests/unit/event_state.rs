@@ -139,6 +139,92 @@ fn oversized_hook_event_state_is_truncated_before_append() {
     panic!("hook event state path changed repeatedly while testing oversized truncation");
 }
 
+#[test]
+fn oversized_hook_event_state_preserves_recent_valid_events() {
+    let project_root = unique_project_root();
+    let state_home = unique_state_home(&project_root);
+    let _state_home_guard = AspStateHomeGuard::activate(state_home);
+    let state_path =
+        append_hook_event_state(&project_root, &decision("retained", 0)).expect("seed event");
+    let seed = fs::read_to_string(&state_path).expect("read seed event");
+    let repeat_count = (5 * 1024 * 1024 / seed.len()) + 1;
+    fs::write(&state_path, seed.repeat(repeat_count)).expect("write oversized valid state");
+
+    append_hook_event_state(&project_root, &decision("current", 1)).expect("append event");
+
+    let content = fs::read_to_string(&state_path).expect("read compacted state");
+    let lines = content.lines().collect::<Vec<_>>();
+    assert!(lines.len() > 1, "recent events should survive compaction");
+    assert!(
+        lines.len() < repeat_count,
+        "oversized history should be bounded"
+    );
+    for line in &lines {
+        serde_json::from_str::<Value>(line).expect("retained event line should be valid JSON");
+    }
+    let latest =
+        serde_json::from_str::<Value>(lines.last().expect("latest event")).expect("latest JSON");
+    assert_eq!(latest["subject"]["paths"][0], "current_event_state_1.rs");
+
+    fs::remove_dir_all(&project_root).ok();
+}
+
+#[test]
+fn oversized_hook_event_state_skips_partial_utf8_tail_line() {
+    let project_root = unique_project_root();
+    let state_home = unique_state_home(&project_root);
+    let _state_home_guard = AspStateHomeGuard::activate(state_home);
+    let state_path =
+        append_hook_event_state(&project_root, &decision("retained", 0)).expect("seed event");
+    let seed = fs::read(&state_path).expect("read seed event");
+    let tail_bytes = 1024 * 1024;
+    let mut tail = vec![0x80, b'\n'];
+    tail.extend(std::iter::repeat_n(
+        b'x',
+        tail_bytes - tail.len() - seed.len() - 1,
+    ));
+    tail.push(b'\n');
+    tail.extend_from_slice(&seed);
+    assert_eq!(tail.len(), tail_bytes);
+    let mut oversized = vec![b'x'; 4 * 1024 * 1024];
+    oversized.extend_from_slice(&tail);
+    fs::write(&state_path, oversized).expect("write oversized state with partial UTF-8 tail");
+
+    append_hook_event_state(&project_root, &decision("current", 1)).expect("append event");
+
+    let content = fs::read_to_string(&state_path).expect("read compacted state");
+    let lines = content.lines().collect::<Vec<_>>();
+    assert_eq!(lines.len(), 2, "{content}");
+    for line in &lines {
+        serde_json::from_str::<Value>(line).expect("compacted event line should be valid JSON");
+    }
+    let latest =
+        serde_json::from_str::<Value>(lines.last().expect("latest event")).expect("latest JSON");
+    assert_eq!(latest["subject"]["paths"][0], "current_event_state_1.rs");
+
+    fs::remove_dir_all(&project_root).ok();
+}
+
+#[test]
+fn empty_hook_event_state_recovers_on_next_append() {
+    let project_root = unique_project_root();
+    let state_home = unique_state_home(&project_root);
+    let _state_home_guard = AspStateHomeGuard::activate(state_home);
+    let state_path =
+        append_hook_event_state(&project_root, &decision("seed", 0)).expect("seed event");
+    fs::write(&state_path, "").expect("empty state");
+
+    append_hook_event_state(&project_root, &decision("recovered", 1)).expect("append event");
+
+    let content = fs::read_to_string(&state_path).expect("read recovered state");
+    let lines = content.lines().collect::<Vec<_>>();
+    assert_eq!(lines.len(), 1, "{content}");
+    let event = serde_json::from_str::<Value>(lines[0]).expect("event line should be valid JSON");
+    assert_eq!(event["subject"]["paths"][0], "recovered_event_state_1.rs");
+
+    fs::remove_dir_all(&project_root).ok();
+}
+
 fn unique_project_root() -> PathBuf {
     static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 

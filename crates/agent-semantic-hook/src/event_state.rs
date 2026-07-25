@@ -193,6 +193,7 @@ pub fn append_hook_event_state(
 ) -> Result<PathBuf, String> {
     let state_dir = ensure_project_hook_state_dir(project_root)?;
     let state_path = state_dir.join(HOOK_EVENT_STATE_FILE);
+    let lock_path = state_dir.join(format!("{HOOK_EVENT_STATE_FILE}.lock"));
     let event = json!({
         "schemaId": HOOK_EVENT_SCHEMA_ID,
         "schemaVersion": "1",
@@ -209,68 +210,127 @@ pub fn append_hook_event_state(
         "fields": decision.fields,
         "denyReplayKey": decision.fields.get("denyReplayKey"),
     });
-    let mut file = OpenOptions::new()
+    let mut line = event.to_string();
+    line.push('\n');
+    let lock_file = OpenOptions::new()
         .create(true)
-        .append(true)
+        .truncate(false)
         .read(true)
-        .open(&state_path)
+        .write(true)
+        .open(&lock_path)
         .map_err(|error| {
             format!(
-                "failed to open hook state {}: {error}",
-                state_path.display()
+                "failed to open hook state lock {}: {error}",
+                lock_path.display()
             )
         })?;
-    file.lock_exclusive().map_err(|error| {
+    lock_file.lock_exclusive().map_err(|error| {
         format!(
-            "failed to lock hook state {}: {error}",
-            state_path.display()
+            "failed to lock hook state lock {}: {error}",
+            lock_path.display()
         )
     })?;
-    if file
-        .metadata()
+    let state_len = fs::metadata(&state_path)
+        .map(|metadata| metadata.len())
+        .or_else(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                Ok(0)
+            } else {
+                Err(error)
+            }
+        })
         .map_err(|error| {
             format!(
                 "failed to stat hook state {}: {error}",
                 state_path.display()
             )
-        })?
-        .len()
-        > HOOK_EVENT_STATE_MAX_BYTES
-    {
-        file.set_len(0).map_err(|error| {
+        })?;
+    if state_len.saturating_add(line.len() as u64) > HOOK_EVENT_STATE_MAX_BYTES {
+        let mut compacted = read_hook_event_state_tail(&state_path)?
+            .into_iter()
+            .filter(|retained| is_current_hook_event_state_line(retained))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !compacted.is_empty() {
+            compacted.push('\n');
+        }
+        compacted.push_str(&line);
+        replace_hook_event_state(&state_path, compacted.as_bytes())?;
+    } else {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&state_path)
+            .map_err(|error| {
+                format!(
+                    "failed to open hook state {}: {error}",
+                    state_path.display()
+                )
+            })?;
+        file.write_all(line.as_bytes()).map_err(|error| {
             format!(
-                "failed to truncate hook state {}: {error}",
+                "failed to write hook state {}: {error}",
                 state_path.display()
             )
         })?;
-        file.seek(SeekFrom::Start(0)).map_err(|error| {
+        file.flush().map_err(|error| {
             format!(
-                "failed to seek hook state {}: {error}",
+                "failed to flush hook state {}: {error}",
                 state_path.display()
             )
         })?;
     }
-    let mut line = event.to_string();
-    line.push('\n');
-    file.write_all(line.as_bytes()).map_err(|error| {
+    lock_file.unlock().map_err(|error| {
         format!(
-            "failed to write hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-    file.flush().map_err(|error| {
-        format!(
-            "failed to flush hook state {}: {error}",
-            state_path.display()
-        )
-    })?;
-    file.unlock().map_err(|error| {
-        format!(
-            "failed to unlock hook state {}: {error}",
-            state_path.display()
+            "failed to unlock hook state lock {}: {error}",
+            lock_path.display()
         )
     })?;
     Ok(state_path)
+}
+
+fn replace_hook_event_state(state_path: &Path, content: &[u8]) -> Result<(), String> {
+    let file_name = state_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(HOOK_EVENT_STATE_FILE);
+    let temporary_path = state_path.with_file_name(format!(".{file_name}.tmp"));
+    let replace_result = (|| {
+        let mut temporary = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&temporary_path)
+            .map_err(|error| {
+                format!(
+                    "failed to open temporary hook state {}: {error}",
+                    temporary_path.display()
+                )
+            })?;
+        temporary.write_all(content).map_err(|error| {
+            format!(
+                "failed to write temporary hook state {}: {error}",
+                temporary_path.display()
+            )
+        })?;
+        temporary.sync_all().map_err(|error| {
+            format!(
+                "failed to sync temporary hook state {}: {error}",
+                temporary_path.display()
+            )
+        })?;
+        fs::rename(&temporary_path, state_path).map_err(|error| {
+            format!(
+                "failed to replace hook state {} from {}: {error}",
+                state_path.display(),
+                temporary_path.display()
+            )
+        })
+    })();
+    if replace_result.is_err() {
+        let _ = fs::remove_file(&temporary_path);
+    }
+    replace_result
 }
 
 /// Return whether the current prompt/session already recorded subagent context.
@@ -438,18 +498,26 @@ pub(crate) fn read_hook_event_state_tail(state_path: &Path) -> Result<Vec<String
         )
     })?;
 
-    let mut content = String::new();
-    file.read_to_string(&mut content).map_err(|error| {
+    let mut content = Vec::new();
+    file.read_to_end(&mut content).map_err(|error| {
         format!(
             "failed to read hook state {}: {error}",
             state_path.display()
         )
     })?;
-
-    let mut lines = content.lines().collect::<Vec<_>>();
-    if start > 0 && !lines.is_empty() {
-        lines.remove(0);
+    if start > 0 {
+        let Some(first_newline) = content.iter().position(|byte| *byte == b'\n') else {
+            return Ok(Vec::new());
+        };
+        content.drain(..=first_newline);
     }
+    let content = String::from_utf8(content).map_err(|error| {
+        format!(
+            "failed to decode hook state {} as UTF-8: {error}",
+            state_path.display()
+        )
+    })?;
+    let lines = content.lines().collect::<Vec<_>>();
     let first_line = lines.len().saturating_sub(HOOK_EVENT_STATE_TAIL_LINE_CAP);
     Ok(lines[first_line..]
         .iter()
