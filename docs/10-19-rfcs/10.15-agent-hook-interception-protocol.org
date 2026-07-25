@@ -388,6 +388,19 @@ process:
   provider coverage for the project;
 - rule ordering: higher =priority= wins, and equal priorities keep config file
   order so the tie-break is deterministic and reviewable;
+- rule conjunction: non-empty match axes on one rule are conjunctive, while
+  values inside one =*Any= axis are alternatives.  Action, effect, subject,
+  authority, invocation, command, and path facts must all come from the same
+  normalized tool action; a fact from one nested action cannot complete the
+  match for another action;
+- policy reachability: every enabled default deny rule in the installed
+  =config.toml= must have a table-driven classifier witness that asserts its
+  exact =decision= and =fields.configRuleId=.  Capability-gated allow rules
+  additionally require available-capability and missing-capability
+  fail-closed tests.  The witness matrix must cover native tool payloads, shell
+  command payloads, nested actions, provider-owned source paths, structured
+  projection precedence, and configured resident dispatch.  Parsing the TOML
+  or asserting that a rule id exists is not policy enforcement evidence;
 - rule id contract: rule ids are unique across the loaded config because they
   become machine receipts;
 - rule receipts: config-derived decisions set =fields.configRuleId= to the

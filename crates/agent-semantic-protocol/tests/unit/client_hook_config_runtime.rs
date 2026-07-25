@@ -10,7 +10,7 @@ fn explicit_client_config_path_is_loaded() {
     let root = temp_project_root("client-config-explicit-path");
     let activation_path = write_rust_activation(&root);
     let config_path = root.join("custom-hook-config.toml");
-    std::fs::write(
+    write_complete_config(
         &config_path,
         r#"
 [[rules]]
@@ -20,8 +20,7 @@ message = "explicit config loaded"
 [rules.match]
 tool = "Bash"
 "#,
-    )
-    .expect("write explicit config");
+    );
 
     let decision = run_hook_decision_with_args(
         &root,
@@ -304,9 +303,20 @@ stdinMode = "none"
 
 fn write_config(root: &std::path::Path, content: &str) {
     let config_path = root.join(".agent-semantic-protocols/hooks/config.toml");
+    write_complete_config(&config_path, content);
+}
+
+fn write_complete_config(config_path: &std::path::Path, content: &str) {
     std::fs::create_dir_all(config_path.parent().expect("config parent"))
         .expect("create config dir");
-    std::fs::write(config_path, content).expect("write config");
+    std::fs::write(
+        config_path,
+        format!(
+            "{}\n{content}",
+            agent_semantic_config::default_hook_client_config_template()
+        ),
+    )
+    .expect("write config");
 }
 
 fn temp_project_root(name: &str) -> PathBuf {
