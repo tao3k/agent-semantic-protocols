@@ -14,11 +14,10 @@ fn clap_rejects_global_and_project_scope_together() {
 }
 
 #[test]
-fn clap_requires_one_explicit_plugin_scope() {
+fn clap_defaults_plugin_scope_to_global() {
     let args = vec!["--codex".to_string(), ".".to_string()];
-    let error = parse_codex_plugin_install_args(&args).expect_err("missing scope");
-    assert!(error.contains("--global"), "{error}");
-    assert!(error.contains("--project"), "{error}");
+    let request = parse_codex_plugin_install_args(&args).expect("default global scope");
+    assert!(matches!(request.scope, CodexPluginScope::Global));
 }
 
 #[test]
@@ -41,4 +40,16 @@ fn clap_parses_project_scope_explicitly() {
     ];
     let request = parse_codex_plugin_install_args(&args).expect("project scope");
     assert!(matches!(request.scope, CodexPluginScope::Project));
+}
+
+#[test]
+fn clap_preserves_visible_plugin_scope_aliases() {
+    for (flag, expected_scope) in [
+        ("--global-plugin", CodexPluginScope::Global),
+        ("--project-plugin", CodexPluginScope::Project),
+    ] {
+        let args = vec!["--codex".to_string(), flag.to_string(), ".".to_string()];
+        let request = parse_codex_plugin_install_args(&args).expect("aliased scope");
+        assert_eq!(request.scope, expected_scope);
+    }
 }

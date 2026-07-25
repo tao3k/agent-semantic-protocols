@@ -1,9 +1,10 @@
-use super::support::write_codex_asp_explorer_fixture;
-use crate::provider_command::support::{asp_command, temp_project_root};
+use super::support::{install_rust_owner_frontier_provider, write_codex_asp_explorer_fixture};
+use crate::provider_command::support::{asp_command, state_home, temp_project_root};
 
 #[test]
 fn asp_query_gate_invalid_child_enters_cleanup_bootstrap() {
     let root = temp_project_root("agent-command-session-invalid-child-gate");
+    install_rust_owner_frontier_provider(&state_home(&root));
     std::fs::write(root.join("build.rs"), "fn main() {}\n").expect("write owner fixture");
     let home = root.join("home");
     std::fs::create_dir_all(&home).expect("create temp home");
@@ -20,7 +21,6 @@ fn asp_query_gate_invalid_child_enters_cleanup_bootstrap() {
     let register = asp_command(&root)
         .env("HOME", &home)
         .env("CODEX_HOME", home.join(".codex"))
-        .env_remove("ASP_STATE_HOME")
         .env("CODEX_THREAD_ID", root_session_id)
         .args([
             "agent",
@@ -48,7 +48,6 @@ fn asp_query_gate_invalid_child_enters_cleanup_bootstrap() {
     let denied = asp_command(&root)
         .env("HOME", &home)
         .env("CODEX_HOME", home.join(".codex"))
-        .env_remove("ASP_STATE_HOME")
         .env("CODEX_THREAD_ID", root_session_id)
         .args([
             "rust",
@@ -63,7 +62,12 @@ fn asp_query_gate_invalid_child_enters_cleanup_bootstrap() {
         ])
         .output()
         .expect("run gated ASP search");
-    assert!(denied.status.success());
+    assert!(
+        denied.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&denied.stdout),
+        String::from_utf8_lossy(&denied.stderr)
+    );
     let stderr = String::from_utf8(denied.stderr).expect("denied stderr");
     assert!(
         !stderr.contains("start the configured ASP managed subagent"),

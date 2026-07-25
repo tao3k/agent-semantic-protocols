@@ -35,7 +35,16 @@ state and never reconstructs provider grammar from language-specific strings.
 * Breaking contract
 ** Provider execution identity
 
-Every activated provider MUST persist an =executionCommandDigest= using the =sha256:<lowercase-hex>= representation. The digest input is domain-separated as =asp-provider-execution-v1= and length-delimited. It includes the ordered full provider command-prefix argv. For every argv component that resolves to a regular file, it additionally includes that file's canonical path and exact bytes. Activation fails closed when a referenced execution artifact cannot be read. Hashing only a path, only the manifest, or only the argv strings is invalid.
+Every activated provider MUST persist an =executionCommandDigest= using the =sha256:<lowercase-hex>= representation. The digest input is domain-separated as =asp-provider-execution-v1= and length-delimited. It includes the ordered full provider command-prefix argv resolved at activation-construction time. For every argv component that resolves to a regular file, it additionally includes that file's canonical path and receipt-validated artifact digest. Hashing only a path, only the manifest, or only the argv strings is invalid.
+
+The resolved prefix is construction-time evidence, not durable execution
+authority.  State Home v1 activation persists the logical =binary= and the
+resulting digest, while =providerCommandPrefix= MUST be the canonical empty
+array.  Runtime dispatch resolves =binary= only beneath
+=$ASP_STATE_HOME/runtime/bin=, validates its install lock and artifact receipt,
+recomputes the same digest, and compares it with activation before execution.
+It MUST NOT execute a serialized absolute prefix or use project-local, HOME
+local, or ambient =PATH= fallbacks.
 
 The activation authority MUST pass the persisted digest to the provider process as =ASP_PROVIDER_EXECUTION_COMMAND_DIGEST=. Provider packets that carry execution evidence MUST echo that exact value. The dispatcher MUST compare the raw captured packet with activation before releasing stdout; missing or mismatched evidence is a protocol error. Runtime dispatch MUST NOT recompute a weaker identity or silently accept an older activation without this field.
 

@@ -376,12 +376,12 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
         serde_json::from_str(&audit_stdout).expect("parse lifecycle audit json");
     assert_eq!(
         audit_json["summary"]["rolloutSessionCount"].as_u64(),
-        Some(0),
+        Some(1),
         "{audit_stdout}"
     );
     assert_eq!(
         audit_json["summary"]["missingRegisteredRolloutCount"].as_u64(),
-        Some(1),
+        Some(0),
         "{audit_stdout}"
     );
     assert_eq!(
@@ -401,7 +401,7 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
     );
     assert_eq!(
         audit_json["summary"]["scannedRolloutCount"].as_u64(),
-        Some(0),
+        Some(2),
         "{audit_stdout}"
     );
     assert_eq!(
@@ -410,7 +410,7 @@ fn asp_agent_session_lifecycle_audit_stays_root_scoped_and_fast() {
         "{audit_stdout}"
     );
     assert_eq!(
-        audit_json["missingRegisteredRolloutSessions"][0]["status"].as_str(),
+        audit_json["registeredRolloutSessions"][0]["registryStatus"].as_str(),
         Some("archived"),
         "{audit_stdout}"
     );

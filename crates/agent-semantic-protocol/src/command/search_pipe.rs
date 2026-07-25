@@ -26,7 +26,10 @@ use super::search_pipe_render::{render_empty_ingest_diagnostic, render_owner_tes
 use super::search_pipe_selector_seed::{
     SelectorSeedSearchPipeRequest, print_selector_seeded_search_pipe,
 };
-use super::search_pipe_source::{CandidateAcquisition, SourceSpec, collect_search_pipe_candidates};
+use super::search_pipe_source::{
+    CandidateAcquisition, CollectSearchPipeCandidatesRequest, SourceSpec,
+    collect_search_pipe_candidates,
+};
 use super::search_pipe_surfaces::default_search_surfaces;
 use super::search_pipe_view::{
     SearchPipeViewRequest, print_search_pipe_view, reject_non_graph_turbo_receipt,
@@ -106,7 +109,6 @@ pub(super) fn run_asp_fast_search_command(
                 project_root: context.project_root,
                 locator_root: context.locator_root,
                 cache_home: context.cache_home,
-                config: context.config,
                 provider_context: context.provider_context,
                 frontier_receipt: context.frontier_receipt,
             },
@@ -273,22 +275,21 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     let workspace_scope = collect_provider_workspace_scope(
         context.language_id,
         &project_root,
-        context.config,
         context.provider_context,
     )?;
     let current_snapshot = context.source_index_snapshot;
-    let mut acquisition = collect_search_pipe_candidates(
-        context.language_id,
-        &project_root,
-        &current_snapshot,
-        context.locator_root,
-        &pipe_args.seed_query,
-        &pipe_args.scopes,
-        pipe_args.source,
-        context.config,
-        context.provider_context,
-        true,
-    )?;
+    let mut acquisition = collect_search_pipe_candidates(CollectSearchPipeCandidatesRequest {
+        language_id: context.language_id,
+        project_root: &project_root,
+        current_snapshot,
+        locator_root: context.locator_root,
+        intent: &pipe_args.seed_query,
+        scopes: &pipe_args.scopes,
+        source: pipe_args.source,
+        config: context.config,
+        provider_context: context.provider_context,
+        require_multi_clause: true,
+    })?;
     let query_requests_semantic_facts = if let Some(provider_context) = context.provider_context {
         super::search_pipe_provider_facts::query_requests_semantic_facts(
             provider_context.provider,
@@ -298,20 +299,18 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     } else {
         false
     };
-    if query_requests_semantic_facts {
-        if let Some(scope) = workspace_scope.as_ref() {
-            let topology_acquisition =
-                super::search_pipe_source::collect_workspace_scope_topology_acquisition(
-                    scope,
-                    context.locator_root,
-                    &context.config.search.ignore_dirs,
-                    &context.config.search.include_hidden_dirs,
-                )?;
-            super::search_pipe_source::merge_candidate_acquisitions(
-                &mut acquisition,
-                topology_acquisition,
-            );
-        }
+    if query_requests_semantic_facts && let Some(scope) = workspace_scope.as_ref() {
+        let topology_acquisition =
+            super::search_pipe_source::collect_workspace_scope_topology_acquisition(
+                scope,
+                context.locator_root,
+                &context.config.search.ignore_dirs,
+                &context.config.search.include_hidden_dirs,
+            )?;
+        super::search_pipe_source::merge_candidate_acquisitions(
+            &mut acquisition,
+            topology_acquisition,
+        );
     }
     if let Some(scope) = workspace_scope.as_ref() {
         admit_search_pipe_candidates(
@@ -327,7 +326,6 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         &project_root,
         Some(&pipe_args.seed_query),
         &acquisition.candidates,
-        context.config,
         context.provider_context,
     )?;
     let source_trace = source_trace_with_provider_facts(
@@ -359,7 +357,6 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         include_pipe_plan: true,
         provider_facts: &provider_facts,
         provider_context: context.provider_context,
-        config: context.config,
         read_memory_selectors: &read_loop_memory_selectors(
             context.cache_home,
             &project_root,
@@ -689,7 +686,6 @@ fn run_search_ingest_command(
         context.project_root,
         None,
         &candidates,
-        context.config,
         context.provider_context,
     )?;
     print_search_pipe_view(SearchPipeViewRequest {
@@ -716,7 +712,6 @@ fn run_search_ingest_command(
         include_pipe_plan: false,
         provider_facts: &provider_facts,
         provider_context: context.provider_context,
-        config: context.config,
         read_memory_selectors: &[],
         frontier_receipt: context.frontier_receipt,
     })?;
@@ -762,24 +757,23 @@ fn run_search_lexical_command(
     );
     let current_snapshot =
         agent_semantic_client::source_index::current_source_index_snapshot(&project_root)?;
-    let acquisition = collect_search_pipe_candidates(
-        context.language_id,
-        &project_root,
-        &current_snapshot,
-        context.locator_root,
-        &pipe_args.query,
-        &pipe_args.owners,
-        SourceSpec::Auto,
-        context.config,
-        context.provider_context,
-        false,
-    )?;
+    let acquisition = collect_search_pipe_candidates(CollectSearchPipeCandidatesRequest {
+        language_id: context.language_id,
+        project_root: &project_root,
+        current_snapshot: &current_snapshot,
+        locator_root: context.locator_root,
+        intent: &pipe_args.query,
+        scopes: &pipe_args.owners,
+        source: SourceSpec::Auto,
+        config: context.config,
+        provider_context: context.provider_context,
+        require_multi_clause: false,
+    })?;
     let provider_facts = collect_provider_graph_facts(
         context.language_id,
         &project_root,
         Some(&pipe_args.query),
         &acquisition.candidates,
-        context.config,
         context.provider_context,
     )?;
     let source_label = acquisition
@@ -805,7 +799,6 @@ fn run_search_lexical_command(
         include_pipe_plan: false,
         provider_facts: &provider_facts,
         provider_context: context.provider_context,
-        config: context.config,
         read_memory_selectors: &[],
         frontier_receipt: context.frontier_receipt,
     })?;

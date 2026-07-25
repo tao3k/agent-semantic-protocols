@@ -27,21 +27,36 @@ pub(super) struct AgentActionMatch {
     authority_exclude_any: Vec<HookClientActionAuthority>,
 }
 
+#[derive(Default)]
+pub(super) struct AgentActionMatchConfig {
+    pub(super) authority_rules: Vec<AgentActionAuthorityRule>,
+    pub(super) effect_rules: Vec<AgentActionEffectRule>,
+    pub(super) command_wrappers: Vec<HookClientCommandWrapper>,
+    pub(super) invocation_shape_any: Vec<HookClientInvocationShape>,
+    pub(super) wrapper_match_any: Vec<HookClientWrapperMatch>,
+    pub(super) flag_presence_any: Vec<HookClientFlagPresence>,
+    pub(super) action_any: Vec<HookClientActionKind>,
+    pub(super) effect_any: Vec<HookClientActionKind>,
+    pub(super) subject_kind_any: Vec<HookClientActionSubjectKind>,
+    pub(super) authority_any: Vec<HookClientActionAuthority>,
+    pub(super) authority_exclude_any: Vec<HookClientActionAuthority>,
+}
+
 impl AgentActionMatch {
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn new(
-        command_wrappers: Vec<HookClientCommandWrapper>,
-        invocation_shape_any: Vec<HookClientInvocationShape>,
-        wrapper_match_any: Vec<HookClientWrapperMatch>,
-        flag_presence_any: Vec<HookClientFlagPresence>,
-        action_any: Vec<HookClientActionKind>,
-        effect_any: Vec<HookClientActionKind>,
-        subject_kind_any: Vec<HookClientActionSubjectKind>,
-        authority_any: Vec<HookClientActionAuthority>,
-        authority_exclude_any: Vec<HookClientActionAuthority>,
-        authority_rules: Vec<AgentActionAuthorityRule>,
-        effect_rules: Vec<AgentActionEffectRule>,
-    ) -> Self {
+    pub(super) fn new(config: AgentActionMatchConfig) -> Self {
+        let AgentActionMatchConfig {
+            authority_rules,
+            effect_rules,
+            command_wrappers,
+            invocation_shape_any,
+            wrapper_match_any,
+            flag_presence_any,
+            action_any,
+            effect_any,
+            subject_kind_any,
+            authority_any,
+            authority_exclude_any,
+        } = config;
         Self {
             authority_rules,
             effect_rules,
@@ -93,6 +108,20 @@ impl AgentActionMatch {
         )
     }
 
+    pub(super) fn matching_subject_paths(
+        &self,
+        registry: &HookRuntime,
+        action: &ToolAction,
+        match_paths: &[String],
+    ) -> Vec<String> {
+        self.derive_agent_action(registry, action, Some(match_paths), true)
+            .0
+            .subjects
+            .into_iter()
+            .map(|subject| subject.value)
+            .collect()
+    }
+
     fn derive_agent_action(
         &self,
         registry: &HookRuntime,
@@ -134,6 +163,13 @@ impl AgentActionMatch {
             }
             agent_action.subjects =
                 crate::source_selector::derive_agent_action_subjects(registry, &subject_paths);
+            if !self.subject_kind_any.is_empty() {
+                agent_action.subjects.retain(|subject| {
+                    self.subject_kind_any.iter().copied().any(|configured| {
+                        crate::tool_action::subject_kind_matches(subject.kind, configured)
+                    })
+                });
+            }
         }
 
         (agent_action, invocations)

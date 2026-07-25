@@ -2,12 +2,11 @@
 
 use serde::Deserialize;
 use std::collections::BTreeMap;
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use crate::executable::{is_executable_file, resolve_executable_with_status};
+use crate::executable::resolve_executable_with_status;
 use crate::protocol::{
     HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION,
@@ -48,7 +47,8 @@ pub fn build_default_activation_from_selections(
 ) -> Result<HookActivation, String> {
     if selections.is_empty() {
         return Err(
-            "expected PATH to contain at least one executable semantic provider binary".to_string(),
+            "expected State Home runtime bin to contain at least one executable semantic provider binary"
+                .to_string(),
         );
     }
     let manifests = provider_manifests();
@@ -89,7 +89,7 @@ pub fn build_default_activation_from_selections(
             manifest,
             selection.manifest_digest.clone(),
             selection.execution_command_digest.clone(),
-            selection.provider_command_prefix.clone(),
+            selection.binary.clone(),
             roots,
             &semantic_registry_digest,
         )?);
@@ -171,15 +171,15 @@ pub fn provider_command_selections(
         else {
             continue;
         };
-        let Some(command_prefix) = provider_command_prefix(
-            project_root,
-            &manifest,
-            provider_config,
-            Some(&state_paths.runtime_bin_dir),
-        )?
+        let Some(resolved_command) =
+            provider_command_prefix(&manifest, provider_config, &state_paths.runtime_bin_dir)?
         else {
             continue;
         };
+        let ResolvedProviderCommand {
+            binary,
+            command_prefix,
+        } = resolved_command;
         let executable = command_prefix
             .first()
             .ok_or_else(|| {
@@ -206,15 +206,16 @@ pub fn provider_command_selections(
                 )?,
             language_id: manifest.language_id.clone(),
             provider_id: manifest.provider_id.clone(),
-            binary: manifest.binary.clone(),
+            binary,
             execution: manifest.execution,
             provider_command_prefix: command_prefix,
         });
     }
     if providers.is_empty() {
-        return Err(
-            "expected PATH to contain at least one executable semantic provider binary".to_string(),
-        );
+        return Err(format!(
+            "expected State Home runtime bin to contain at least one executable semantic provider binary: {}",
+            state_paths.runtime_bin_dir.display()
+        ));
     }
     Ok(providers)
 }
@@ -331,7 +332,7 @@ fn activate_provider(
     manifest: &ProviderManifest,
     manifest_digest: String,
     execution_command_digest: String,
-    provider_command_prefix: Vec<String>,
+    binary: String,
     package_roots: Vec<String>,
     semantic_registry_digest: &str,
 ) -> Result<ActivatedProviderConfig, String> {
@@ -356,10 +357,10 @@ fn activate_provider(
         manifest_digest,
         language_id: manifest.language_id.clone(),
         provider_id: manifest.provider_id.clone(),
-        binary: manifest.binary.clone(),
+        binary,
         execution: manifest.execution,
         execution_command_digest,
-        provider_command_prefix,
+        provider_command_prefix: Vec::new(),
         semantic_registry_digest: semantic_registry_digest.to_string(),
         routes,
         coverage: ActivationCoverage {
@@ -425,20 +426,36 @@ static DEFAULT_PROVIDER_CONFIG: ProjectProviderConfig = ProjectProviderConfig {
     binary: None,
 };
 
+struct ResolvedProviderCommand {
+    binary: String,
+    command_prefix: Vec<String>,
+}
+
 fn provider_command_prefix(
-    project_root: &Path,
     manifest: &ProviderManifest,
     config: &ProjectProviderConfig,
-    managed_bin_dir: Option<&Path>,
-) -> Result<Option<Vec<String>>, String> {
-    let has_binary_override = config.binary.is_some();
+    managed_bin_dir: &Path,
+) -> Result<Option<ResolvedProviderCommand>, String> {
     let configured_binary = config.binary.as_deref().unwrap_or(&manifest.binary);
-    let provider_binary = if has_binary_override {
-        project_root_relative_binary(project_root, configured_binary)
-    } else {
-        default_provider_binary(project_root, manifest, managed_bin_dir)
-    };
-    let resolution = resolve_executable_with_status(&provider_binary);
+    let configured_path = Path::new(configured_binary);
+    if configured_path.components().count() != 1
+        || configured_path.file_name().and_then(|name| name.to_str()) != Some(configured_binary)
+    {
+        return Err(format!(
+            "provider `{}` language `{}` binary must be a logical basename resolved under State Home runtime/bin, got `{configured_binary}`",
+            manifest.provider_id, manifest.language_id
+        ));
+    }
+    let provider_binary = managed_bin_dir.join(configured_path);
+    let provider_binary = provider_binary.to_str().ok_or_else(|| {
+        format!(
+            "provider `{}` language `{}` State Home binary path is not valid UTF-8: {}",
+            manifest.provider_id,
+            manifest.language_id,
+            provider_binary.display()
+        )
+    })?;
+    let resolution = resolve_executable_with_status(provider_binary);
     let Some(path) = resolution.path else {
         if config.enabled == Some(true) || config.binary.is_some() {
             return Err(format!(
@@ -452,66 +469,10 @@ fn provider_command_prefix(
         }
         return Ok(None);
     };
-    Ok(Some(vec![path.display().to_string()]))
-}
-
-fn default_provider_binary(
-    project_root: &Path,
-    manifest: &ProviderManifest,
-    managed_bin_dir: Option<&Path>,
-) -> String {
-    if provider_prefers_home_local_binary(manifest)
-        && let Some(user_bin) = home_local_provider_binary(&manifest.binary)
-    {
-        return user_bin.display().to_string();
-    }
-    let project_bin = project_root.join(".bin").join(&manifest.binary);
-    if is_executable_file(&project_bin) {
-        return project_bin.display().to_string();
-    }
-    if let Some(workspace_bin) = ancestor_workspace_provider_binary(project_root, &manifest.binary)
-    {
-        return workspace_bin.display().to_string();
-    }
-    if let Some(managed_bin_dir) = managed_bin_dir {
-        let managed_bin = managed_bin_dir.join(&manifest.binary);
-        if is_executable_file(&managed_bin) {
-            return managed_bin.display().to_string();
-        }
-    }
-    if let Some(user_bin) = home_local_provider_binary(&manifest.binary) {
-        return user_bin.display().to_string();
-    }
-    manifest.binary.clone()
-}
-
-fn provider_prefers_home_local_binary(manifest: &ProviderManifest) -> bool {
-    manifest.binary == "gslph"
-}
-
-fn ancestor_workspace_provider_binary(project_root: &Path, binary: &str) -> Option<PathBuf> {
-    project_root.ancestors().skip(1).find_map(|ancestor| {
-        let candidate = ancestor.join(".bin").join(binary);
-        (project_agent_config_path(ancestor).is_file() && is_executable_file(&candidate))
-            .then_some(candidate)
-    })
-}
-
-fn home_local_provider_binary(binary: &str) -> Option<PathBuf> {
-    let home = env::var_os("HOME")?;
-    let candidate = PathBuf::from(home).join(".local").join("bin").join(binary);
-    is_executable_file(&candidate).then_some(candidate)
-}
-
-fn project_root_relative_binary(project_root: &Path, binary: &str) -> String {
-    let path = PathBuf::from(binary);
-    if path.is_absolute() {
-        return binary.to_string();
-    }
-    if binary.contains('/') || binary.contains('\\') || binary.starts_with('.') {
-        return project_root.join(path).display().to_string();
-    }
-    binary.to_string()
+    Ok(Some(ResolvedProviderCommand {
+        binary: configured_binary.to_string(),
+        command_prefix: vec![path.display().to_string()],
+    }))
 }
 
 fn discover_package_roots_for_manifests<'a>(

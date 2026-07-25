@@ -1,7 +1,8 @@
 use super::support::{
+    install_rust_marker_provider, install_rust_owner_frontier_provider,
     write_codex_asp_explorer_fixture, write_codex_asp_explorer_fixture_with_actual_sandbox,
 };
-use crate::provider_command::support::{asp_command, temp_project_root};
+use crate::provider_command::support::{asp_command, state_home, temp_project_root};
 
 #[test]
 fn asp_agent_session_archived_child_does_not_block_missing_resident_bootstrap() {
@@ -19,6 +20,7 @@ fn asp_agent_session_archived_child_does_not_block_missing_resident_bootstrap() 
     );
 
     let state_home = root.join(".asp-home");
+    install_rust_owner_frontier_provider(&state_home);
     let register = asp_command(&root)
         .env("HOME", &home)
         .env("CODEX_HOME", home.join(".codex"))
@@ -114,6 +116,7 @@ fn asp_agent_session_invalid_child_does_not_block_missing_resident_bootstrap() {
     );
 
     let state_home = root.join(".asp-home");
+    install_rust_owner_frontier_provider(&state_home);
     let register = asp_command(&root)
         .env("HOME", &home)
         .env("CODEX_HOME", home.join(".codex"))
@@ -189,6 +192,7 @@ fn write_message_target_owner_fixture(root: &std::path::Path) {
 #[test]
 fn asp_agent_session_smoke_invalid_child_bootstrap_runs_one_step() {
     let root = temp_project_root("agent-command-session-smoke-invalid-child-bootstrap");
+    install_rust_owner_frontier_provider(&state_home(&root));
     let smoke = asp_command(&root)
         .args(["agent", "session", "smoke", "--json"])
         .output()
@@ -221,6 +225,7 @@ fn asp_agent_session_bootstrap_create_choice_uses_concrete_codex_native_action()
     )
     .expect("write asp explorer config");
     let state_home = root.join(".asp-home");
+    install_rust_marker_provider(&state_home);
     let root_session_id = "codex-root-thread";
 
     let sync = asp_command(&root)
@@ -341,6 +346,7 @@ fn asp_agent_session_host_typed_spawn_observation_makes_menu_paths_exclusive() {
     )
     .expect("write asp explorer config");
     let state_home = root.join(".asp-home");
+    install_rust_marker_provider(&state_home);
     let root_session_id = "codex-root-thread";
 
     let observe = |status: &str| {
@@ -368,21 +374,28 @@ fn asp_agent_session_host_typed_spawn_observation_makes_menu_paths_exclusive() {
         );
     };
     let observe_tree = |status: &str| {
+        let mut args = vec![
+            "agent",
+            "session",
+            "observe-host-tree",
+            "--name",
+            "asp-explore",
+            "--resident-target-status",
+            status,
+            "--json",
+        ];
+        if status != "absent" {
+            args.extend(["--canonical-target", "/root/asp_explorer"]);
+        }
+        if status == "unroutable" {
+            args.extend(["--evidence-ref", "typed-spawn-menu-unroutable-proof"]);
+        }
         let output = asp_command(&root)
             .env("HOME", &home)
             .env("CODEX_HOME", home.join(".codex"))
             .env("ASP_STATE_HOME", &state_home)
             .env("CODEX_THREAD_ID", root_session_id)
-            .args([
-                "agent",
-                "session",
-                "observe-host-tree",
-                "--name",
-                "asp-explore",
-                "--resident-target-status",
-                status,
-                "--json",
-            ])
+            .args(args)
             .output()
             .expect("record host resident target observation");
         assert!(
@@ -439,19 +452,40 @@ fn asp_agent_session_host_typed_spawn_observation_makes_menu_paths_exclusive() {
         unavailable["hostTypedSpawnClassification"]["fallbackAuthorized"],
         false
     );
-    assert!(unavailable_choices.is_empty());
+    assert_eq!(unavailable_choices.len(), 1, "{unavailable}");
+    assert_eq!(
+        unavailable_choices[0]["id"], "probe-hidden-routable-child-before-replacement",
+        "{unavailable}"
+    );
+    assert_eq!(unavailable["state"], "Audit", "{unavailable}");
     assert_eq!(
         unavailable["hostResidentTargetObservation"]["targetStatus"],
         "absent"
     );
 
     observe("present");
+    let probe_required = bootstrap();
+    let probe_choices = probe_required["choices"]
+        .as_array()
+        .expect("probe-required choices");
+    assert_eq!(probe_choices.len(), 1, "{probe_required}");
+    assert_eq!(
+        probe_choices[0]["id"], "probe-hidden-routable-child-before-replacement",
+        "{probe_required}"
+    );
+    assert_eq!(
+        probe_required["hostTypedSpawnClassification"]["status"],
+        "typed-spawn-available"
+    );
+
+    observe_tree("unroutable");
     let available = bootstrap();
     let available_choices = available["choices"].as_array().expect("available choices");
     assert!(
         available_choices
             .iter()
-            .any(|choice| { choice["id"] == "create-managed-resident-child-after-host-tree-miss" })
+            .any(|choice| { choice["id"] == "create-managed-resident-child-after-host-tree-miss" }),
+        "{available}"
     );
     assert!(!available_choices.iter().any(|choice| {
         choice["id"] == "audit-host-typed-spawn-schema"
@@ -477,6 +511,7 @@ fn asp_agent_session_bootstrap_rejects_model_authored_native_receipts() {
     )
     .expect("write asp explorer config");
     let state_home = root.join(".asp-home");
+    install_rust_marker_provider(&state_home);
     let root_session_id = "codex-root-thread";
     let child_session_id = "codex-child-thread";
 
@@ -655,6 +690,7 @@ fn asp_agent_session_status_from_temp_cwd_uses_root_project_scope() {
     );
 
     let state_home = root.join(".asp-home");
+    install_rust_marker_provider(&state_home);
     let register = asp_command(&root)
         .env("HOME", &home)
         .env("CODEX_HOME", home.join(".codex"))

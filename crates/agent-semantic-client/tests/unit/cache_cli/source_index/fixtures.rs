@@ -13,7 +13,7 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
     root: &Path,
     ignored: &[&str],
 ) -> std::path::PathBuf {
-    let provider_command_prefix = noop_provider_command_prefix();
+    let provider_command_prefix = noop_provider_command_prefix(root, "rust");
     let manifest = builtin_provider_manifests()
         .into_iter()
         .find(|manifest| manifest.language_id().as_str() == "rust")
@@ -97,6 +97,15 @@ pub(super) fn write_gerbil_activation_with_command_prefix(
     provider_command_prefix: Vec<String>,
     source_roots: &[&str],
 ) -> std::path::PathBuf {
+    crate::test_support::write_hermetic_provider_install_receipt(
+        root,
+        "gerbil-scheme",
+        Path::new(
+            provider_command_prefix
+                .first()
+                .expect("provider command prefix"),
+        ),
+    );
     let manifest = builtin_provider_manifests()
         .into_iter()
         .find(|manifest| manifest.language_id().as_str() == "gerbil-scheme")
@@ -174,28 +183,49 @@ pub(super) fn make_executable(path: &Path) {
     }
 }
 
-pub(super) fn noop_provider_command_prefix() -> Vec<String> {
-    ["/usr/bin/true", "/bin/true"]
+pub(super) fn noop_provider_command_prefix(root: &Path, language_id: &str) -> Vec<String> {
+    let manifest = builtin_provider_manifests()
         .into_iter()
-        .map(Path::new)
-        .find(|candidate| candidate.is_file())
-        .map(|candidate| vec![candidate.display().to_string()])
-        .expect("platform true executable")
+        .find(|manifest| manifest.language_id().as_str() == language_id)
+        .unwrap_or_else(|| panic!("{language_id} manifest"));
+    let binary = state_home_provider_path(root, manifest.binary());
+    std::fs::create_dir_all(binary.parent().expect("State Home runtime bin"))
+        .expect("create State Home runtime bin");
+    std::fs::write(&binary, "#!/bin/sh\nexit 0\n").expect("write noop provider");
+    make_executable(&binary);
+    crate::test_support::write_hermetic_provider_install_receipt(root, language_id, &binary);
+    vec![
+        std::fs::canonicalize(&binary)
+            .unwrap_or(binary)
+            .display()
+            .to_string(),
+    ]
 }
 
-pub(super) fn isolate_home(root: &Path) -> EnvVarGuard {
+pub(super) fn isolate_home(root: &Path) -> IsolatedRuntimeEnvironment {
     let home = root.join("home");
     std::fs::create_dir_all(&home).expect("create isolated home");
-    EnvVarGuard::set("HOME", home.as_os_str())
+    IsolatedRuntimeEnvironment {
+        _home: EnvVarGuard::set("HOME", home.as_os_str()),
+        _state_home: EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state").as_os_str()),
+    }
 }
 
-pub(super) fn home_local_provider_path(root: &Path, binary: &str) -> std::path::PathBuf {
-    root.join("home").join(".local/bin").join(binary)
+pub(super) fn state_home_provider_path(root: &Path, binary: &str) -> std::path::PathBuf {
+    agent_semantic_runtime::project_state_paths(root)
+        .expect("project State Home paths")
+        .runtime_bin_dir
+        .join(binary)
 }
 
 pub(super) struct EnvVarGuard {
     name: &'static str,
     previous: Option<OsString>,
+}
+
+pub(super) struct IsolatedRuntimeEnvironment {
+    _home: EnvVarGuard,
+    _state_home: EnvVarGuard,
 }
 
 impl EnvVarGuard {

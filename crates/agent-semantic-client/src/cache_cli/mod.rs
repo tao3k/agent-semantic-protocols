@@ -4,6 +4,7 @@ mod command;
 mod locator_artifact;
 mod probe;
 mod project_registry_gc_args;
+pub use project_registry_gc_args::project_registry_gc_clap_command;
 mod project_registry_gc_command;
 mod request;
 pub(crate) use request::search_cache_forwarded_args;

@@ -187,14 +187,16 @@ pub(super) async fn write_turso_source_index_rows(
         .await?;
         source_index_db_trace_posting_projection(cold_write_started, posting_count);
         super::publish::publish_turso_source_index_scope(
-            connection,
-            project_root,
-            import.schema_id.as_str(),
-            import.schema_version.as_str(),
-            physical_generation_id,
-            file_hashes_json,
-            source_snapshot_json,
-            selector_fingerprint.as_str(),
+            super::publish::PublishTursoSourceIndexScopeRequest {
+                connection,
+                project_root,
+                schema_id: import.schema_id.as_str(),
+                schema_version: import.schema_version.as_str(),
+                generation_id: physical_generation_id,
+                file_hashes_json,
+                source_snapshot_json,
+                selector_fingerprint: selector_fingerprint.as_str(),
+            },
         )
         .await?;
         source_index_db_trace("snapshot-scope-published", cold_write_started);

@@ -341,6 +341,21 @@ The classifier must operate primarily at the action layer:
 
 - structured tool payloads are normalized by extracting action fields such as
   =path=, =file=, =files=, =uri=, =resource=, =document=, and nested tool calls;
+- a payload containing several normalized actions is one policy unit.  Any
+  blocking decision wins over an allow decision, independent of action order;
+  an allow for an earlier action must not authorize a later denied action;
+- every classifier receipt exposes the sorted top-level =hookPayloadKeys= and
+  compact =normalizedActions= (tool name, surface, operation, and paths).  This
+  distinguishes a payload normalization miss from a host call that never
+  entered the ASP hook event stream;
+- =fields.normalizedActions= is a typed array of action objects in the v1
+  decision packet, never stringified JSON and never a scalar compatibility
+  field.  Each entry carries =toolName=, =toolSurface=, =operationIntent=, and
+  =paths=; =fields.hookPayloadKeys= remains a typed string array.  The action
+  =paths= preserve parser-produced candidates for normalization diagnostics,
+  while top-level =subject.paths= contains only the path-like subjects selected
+  for the decision.  Command flags and non-file operands therefore remain
+  available to matcher facts without leaking into the decision subject;
 - an unknown tool with a source selector path is treated as source access and
   routed through the same direct-source-read policy as Codex's built-in =Read=;
 - known tool names are hints for platform surface reporting, not the policy

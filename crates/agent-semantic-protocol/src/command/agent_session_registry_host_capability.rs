@@ -266,13 +266,12 @@ pub(super) fn observe_host_ack(
         );
     } else {
         println!(
-            "[agent-session-host-ack] rootSession=\"{}\" name=\"{}\" canonicalTarget=\"{}\" identityStatus={} source={} acknowledgementKind={} evidenceRef=\"{}\" expiresAt={} registersResidentChild={}",
+            "[agent-session-host-ack] rootSession=\"{}\" name=\"{}\" canonicalTarget=\"{}\" identityStatus={} source={} acknowledgementKind=host-native-followup-or-dispatch evidenceRef=\"{}\" expiresAt={} registersResidentChild={}",
             observation.root_session_id,
             observation.resident_name,
             observation.canonical_target.as_deref().unwrap_or(""),
             observation.identity_status,
             observation.source,
-            "host-native-followup-or-dispatch",
             args.evidence_ref.as_deref().unwrap_or(""),
             observation.expires_at,
             registers_resident_child,
@@ -700,7 +699,3 @@ fn unix_timestamp() -> Result<i64, String> {
         .map(|duration| duration.as_secs() as i64)
         .map_err(|error| format!("system clock precedes unix epoch: {error}"))
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/agent_session_registry_host_capability.rs"]
-mod agent_session_registry_host_capability_tests;

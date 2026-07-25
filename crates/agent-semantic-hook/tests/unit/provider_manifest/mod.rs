@@ -6,7 +6,7 @@ use std::process::Command;
 use std::os::unix::fs::PermissionsExt;
 
 mod activation_bin;
-pub(crate) use activation_bin::HOME_ENV_LOCK;
+pub(crate) use activation_bin::install_state_home_provider;
 mod activation_sync;
 mod builtin;
 mod provider_manifest_contract;

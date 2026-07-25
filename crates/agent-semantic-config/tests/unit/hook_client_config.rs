@@ -99,21 +99,17 @@ fn default_template_round_trips_through_config_parser() {
         config
             .agent_session_guide
             .register()
-            .as_deref()
             .is_some_and(|guide| guide.contains("asp agent session register guide"))
     );
     assert!(
         config
             .agent_session_guide
             .register()
-            .as_deref()
             .is_some_and(|guide| guide.contains("asp agent session bootstrap"))
     );
-    assert!(
-        config.agent_session_guide.status().as_deref().is_some_and(
-            |guide| guide.contains("bootstrap --name <residentChildName-from-hook-decision>")
-        )
-    );
+    assert!(config.agent_session_guide.status().is_some_and(|guide| {
+        guide.contains("bootstrap --name <residentChildName-from-hook-decision>")
+    }));
     assert!(config.agent_session_guide.reuse().is_none());
     assert!(
         config
@@ -171,8 +167,11 @@ fn default_template_round_trips_through_config_parser() {
         .find(|rule| rule.id == "resident-testing-dispatch")
         .and_then(|rule| rule.dispatch.as_ref())
         .expect("testing resident dispatch");
-    assert_eq!(testing_dispatch.resident_name, "asp-testing");
-    assert_eq!(testing_dispatch.receipt_kind, "asp-testing-execution-v1");
+    assert_eq!(testing_dispatch.resident_name.as_str(), "asp-testing");
+    assert_eq!(
+        testing_dispatch.receipt_kind.as_str(),
+        "asp-testing-execution-v1"
+    );
     assert_eq!(
         config
             .rules
@@ -230,7 +229,7 @@ fn default_template_round_trips_through_config_parser() {
         .expect("TOML projection matcher");
     assert_eq!(toml_projection.binary, "yq");
     assert_eq!(toml_projection.optional_subcommand_any, ["eval", "e"]);
-    assert_eq!(config.rules.len(), 15);
+    assert_eq!(config.rules.len(), 16);
     assert_eq!(
         config
             .rules
@@ -244,6 +243,7 @@ fn default_template_round_trips_through_config_parser() {
             "deny-raw-registered-source-action",
             "deny-agent-search-json",
             "materialize-apply-patch-policy",
+            "materialize-registered-source-read-action",
             "materialize-source-access-policy",
             "deny-uncontrolled-source-search-commands",
             "allow-bounded-json-projection",
@@ -407,21 +407,12 @@ reuse = "reuse guide"
         Some("default flow from config")
     );
     assert_eq!(
-        config.agent_session_guide.register().as_deref(),
+        config.agent_session_guide.register(),
         Some("register guide")
     );
-    assert_eq!(
-        config.agent_session_guide.list().as_deref(),
-        Some("list guide")
-    );
-    assert_eq!(
-        config.agent_session_guide.show().as_deref(),
-        Some("show guide")
-    );
-    assert_eq!(
-        config.agent_session_guide.reuse().as_deref(),
-        Some("reuse guide")
-    );
+    assert_eq!(config.agent_session_guide.list(), Some("list guide"));
+    assert_eq!(config.agent_session_guide.show(), Some("show guide"));
+    assert_eq!(config.agent_session_guide.reuse(), Some("reuse guide"));
     let asp_explore = resident_agent(&config, "asp-explore");
     assert!(asp_explore.enabled);
     assert_eq!(asp_explore.name, "asp-explore");

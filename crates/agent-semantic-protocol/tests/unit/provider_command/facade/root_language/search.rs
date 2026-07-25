@@ -34,7 +34,7 @@ fn root_search_facade_routes_explicit_language_to_provider() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.starts_with("[graph-frontier]"), "{stdout}");
+    assert!(stdout.starts_with("[search-frontier]"), "{stdout}");
     assert!(stdout.contains("profile=owner-query"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
@@ -112,7 +112,7 @@ fn root_search_facade_infers_language_from_single_project_marker() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.starts_with("[graph-frontier]"), "{stdout}");
+    assert!(stdout.starts_with("[search-frontier]"), "{stdout}");
     assert!(stdout.contains("profile=owner-query"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }
@@ -154,7 +154,7 @@ fn root_search_facade_rejects_unsupported_explicit_language_with_finder_recovery
         "{stderr}"
     );
     assert!(stderr.contains("asp providers"), "{stderr}");
-    assert!(stderr.contains("asp rg -query"), "{stderr}");
+    assert!(!stderr.contains("asp rg"), "{stderr}");
     assert!(
         stderr.contains("Do not switch to an unrelated active facade"),
         "{stderr}"

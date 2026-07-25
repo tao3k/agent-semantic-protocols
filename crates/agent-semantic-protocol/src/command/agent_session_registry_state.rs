@@ -283,8 +283,7 @@ pub(crate) fn registered_resident_session_for_root(
         return Ok(None);
     };
     let project_id = project_session_scope_id(&registry, project_root)?;
-    let Some(record) = registry.session_by_name(&project_id, &*root_session_id, session_name)?
-    else {
+    let Some(record) = registry.session_by_name(&project_id, root_session_id, session_name)? else {
         return Ok(None);
     };
     let now = agent_session_unix_timestamp()?;

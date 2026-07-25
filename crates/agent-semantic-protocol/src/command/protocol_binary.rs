@@ -37,9 +37,9 @@ impl ProtocolBinaryInstallPlan {
             .filter(|value| !value.is_empty())
             .map(PathBuf::from);
         if let Some(bin_dir) = explicit_bin_dir.as_ref() {
-            fs::create_dir_all(&bin_dir)
+            fs::create_dir_all(bin_dir)
                 .map_err(|error| format!("failed to create {}: {error}", bin_dir.display()))?;
-            require_path_contains_dir(&bin_dir)?;
+            require_path_contains_dir(bin_dir)?;
         }
         let target = resolve_protocol_binary_install_target(
             &current_exe,
@@ -61,7 +61,7 @@ pub(crate) fn ensure_protocol_binary_installed(
 
 pub(crate) fn protocol_binary_on_path() -> Option<PathBuf> {
     path_dirs()
-        .into_iter()
+        .iter()
         .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))
         .find(|candidate| candidate.is_file())
 }
@@ -81,7 +81,7 @@ fn resolve_protocol_binary_install_target(
         )
     })?;
     let target = path_dirs
-        .into_iter()
+        .iter()
         .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))
         .find(|candidate| candidate.is_file())
         .ok_or_else(|| {

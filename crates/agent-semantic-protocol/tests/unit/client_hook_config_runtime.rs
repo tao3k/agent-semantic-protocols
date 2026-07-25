@@ -3,15 +3,13 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_semantic_hook::{builtin_provider_manifests, provider_manifest_digest};
 use serde_json::{Value, json};
 
 #[test]
 fn explicit_client_config_path_is_loaded() {
     let root = temp_project_root("client-config-explicit-path");
-    let activation_path = root.join("activation.json");
+    let activation_path = write_rust_activation(&root);
     let config_path = root.join("custom-hook-config.toml");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
     std::fs::write(
         &config_path,
         r#"
@@ -42,8 +40,7 @@ tool = "Bash"
 #[test]
 fn client_config_is_reloaded_on_each_hook_invocation() {
     let root = temp_project_root("client-config-reload");
-    let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    let activation_path = write_rust_activation(&root);
     write_config(
         &root,
         r#"
@@ -89,8 +86,7 @@ tool = "Bash"
 #[test]
 fn hook_runtime_blocks_source_apply_patch_but_allows_non_source_patch() {
     let root = temp_project_root("source-apply-patch-gate");
-    let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    let activation_path = write_rust_activation(&root);
     write_config(&root, "");
 
     let source_command = r#"apply_patch <<'PATCH'
@@ -149,8 +145,7 @@ PATCH
 #[test]
 fn client_config_event_platform_and_language_filters_must_match() {
     let root = temp_project_root("client-config-filter");
-    let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    let activation_path = write_rust_activation(&root);
     write_config(
         &root,
         r#"
@@ -197,8 +192,7 @@ pathGlobAny = ["**/*.rs"]
 #[test]
 fn client_config_priority_selects_highest_matching_rule() {
     let root = temp_project_root("client-config-priority");
-    let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    let activation_path = write_rust_activation(&root);
     write_config(
         &root,
         r#"
@@ -235,8 +229,7 @@ tool = "Bash"
 #[test]
 fn client_config_equal_priority_preserves_config_order() {
     let root = temp_project_root("client-config-equal-priority");
-    let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    let activation_path = write_rust_activation(&root);
     write_config(
         &root,
         r#"
@@ -271,8 +264,7 @@ tool = "Bash"
 #[test]
 fn client_config_routes_can_override_provider_command_shape() {
     let root = temp_project_root("client-config-route");
-    let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
+    let activation_path = write_rust_activation(&root);
     write_config(
         &root,
         r#"
@@ -328,58 +320,10 @@ fn temp_project_root(name: &str) -> PathBuf {
     root
 }
 
-fn root_owned_rust_activation_json() -> String {
-    let manifest = builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id == "rust")
-        .expect("rust manifest");
-    let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
-    let routes =
-        agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
-    serde_json::to_string_pretty(&json!({
-        "schemaId": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID,
-        "schemaVersion": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION,
-        "schemaAuthority": "https://tao3k.github.io/agent-semantic-protocols/schemas/",
-        "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
-        "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
-        "projectRoot": ".",
-        "generatedBy": {"runtime": "agent-semantic-hook", "version": "test"},
-        "providers": [{
-            "manifestId": manifest.manifest_id,
-            "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "execution": manifest.execution,
-            "providerCommandPrefix": [],
-            "executionCommandDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-            "searchCapabilities": manifest.search_capabilities,
-            "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
-            "queryPackDescriptor": manifest.query_pack_descriptor,
-            "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
-            "routes": routes,
-            "coverage": {
-                "packageRoots": ["."],
-                "sourceRoots": ["src", "tests", "crates", "examples", "benches"],
-                "configFiles": ["Cargo.toml", "Cargo.lock"],
-                "sourceExtensions": [".rs"],
-                "ignoredPathPrefixes": [
-                    ".cache",
-                    ".direnv",
-                    ".git",
-                    ".idea",
-                    ".jj",
-                    ".run",
-                    ".vscode",
-                    "node_modules",
-                    "target",
-                    ".codex/harness-state",
-                    ".codex/rs-harness"
-                ]
-            }
-        }]
-    }))
-    .expect("serialize root-owned rust activation")
+fn write_rust_activation(root: &std::path::Path) -> PathBuf {
+    let state_home = crate::state_home_fixture::default_state_home(root);
+    crate::state_home_fixture::install_provider_script(&state_home, "rust", "#!/bin/sh\nexit 0\n");
+    crate::state_home_fixture::write_activation(root, &state_home, &["rust"])
 }
 
 fn run_hook_decision(

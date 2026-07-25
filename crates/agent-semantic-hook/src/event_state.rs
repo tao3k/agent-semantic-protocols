@@ -491,7 +491,16 @@ pub(crate) fn asp_command_tokens(tokens: &[String]) -> bool {
 }
 
 fn asp_token_index(tokens: &[String]) -> Option<usize> {
-    tokens
-        .iter()
-        .position(|token| token == "asp" || token.ends_with("/asp") || token.ends_with(".bin/asp"))
+    tokens.iter().position(|token| {
+        if token == "asp" {
+            return true;
+        }
+        let path = Path::new(token);
+        path.file_name().and_then(|value| value.to_str()) == Some("asp")
+            && path
+                .parent()
+                .and_then(Path::file_name)
+                .and_then(|value| value.to_str())
+                != Some(".bin")
+    })
 }

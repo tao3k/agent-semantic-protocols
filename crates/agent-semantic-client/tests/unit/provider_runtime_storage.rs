@@ -61,14 +61,16 @@ fn provider_runtime_storage_maps_runtime_identity_into_one_atomic_batch() {
     )
     .expect("construct provider runtime storage adapter");
     let event = ProviderExecutionStorageEvent::from_output(
-        "cache-hit",
-        "search",
-        "rust",
-        0,
-        b"stdout",
-        b"stderr",
-        true,
-        "root-session",
+        crate::provider_runtime_storage::ProviderExecutionStorageEventInput {
+            phase: "cache-hit",
+            provider_method: "search",
+            language_id: "rust",
+            status_code: 0,
+            stdout: b"stdout",
+            stderr: b"stderr",
+            receipt_present: true,
+            root_session_id: "root-session",
+        },
     );
     let receipt = adapter
         .append_provider_execution(&context(), &event, 42)
@@ -117,14 +119,16 @@ fn provider_runtime_storage_rejects_invalid_identity_without_partial_write() {
     let mut invalid = context();
     invalid.session_id.clear();
     let event = ProviderExecutionStorageEvent::from_output(
-        "final",
-        "query",
-        "rust",
-        1,
-        &[],
-        b"failed",
-        false,
-        "root-session",
+        crate::provider_runtime_storage::ProviderExecutionStorageEventInput {
+            phase: "final",
+            provider_method: "query",
+            language_id: "rust",
+            status_code: 1,
+            stdout: &[],
+            stderr: b"failed",
+            receipt_present: false,
+            root_session_id: "root-session",
+        },
     );
     let error = adapter
         .append_provider_execution(&invalid, &event, 43)

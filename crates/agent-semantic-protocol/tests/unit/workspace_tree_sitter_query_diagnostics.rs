@@ -65,7 +65,7 @@ fn zero_match_tree_sitter_query_explains_structural_semantics() {
 }
 
 #[test]
-fn root_tree_sitter_search_infers_rust_from_live_capture() {
+fn language_tree_sitter_search_uses_explicit_rust_facade() {
     let workspace = std::env::temp_dir().join(format!(
         "asp-tree-sitter-search-language-inference-{}",
         std::process::id()
@@ -95,6 +95,7 @@ fn root_tree_sitter_search_infers_rust_from_live_capture() {
     let output = command
         .current_dir(&workspace)
         .args([
+            "rust",
             "search",
             "--treesitter-query",
             AGENT_SESSION_LOOKUP_QUERY,

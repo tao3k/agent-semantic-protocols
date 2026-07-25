@@ -1,16 +1,23 @@
-use crate::rust_harness_activation::support::write_fake_provider_binary;
+use crate::rust_harness_activation::support::write_state_home_provider_binary;
 
-use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
+use super::support::{
+    codex_plugin_install_args, git_project_root, protocol_command, sync_test_state,
+};
 
 #[test]
 fn cli_install_refuses_protocol_bin_dir_outside_path() {
     let root = git_project_root("install-protocol-bin-path");
     let codex_home = root.join(".codex-home");
-    let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    let asp_state_home = root.join(".asp-state-home");
+    write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
+    sync_test_state(&root, &asp_state_home);
+    let unrelated_bin_dir = root.join(".unrelated-bin");
+    std::fs::create_dir_all(&unrelated_bin_dir).expect("create unrelated bin dir");
     let protocol_bin_dir = root.join(".agent-bin");
     let output = protocol_command()
-        .env("PATH", &provider_path)
+        .env("PATH", &unrelated_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
+        .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", &codex_home)
         .args(codex_plugin_install_args(&root))
         .output()
@@ -28,16 +35,18 @@ fn cli_install_refuses_protocol_bin_dir_outside_path() {
 #[test]
 fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     let root = git_project_root("install-invalid-toml");
-    let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    let asp_state_home = root.join(".asp-state-home");
+    write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
+    sync_test_state(&root, &asp_state_home);
     let protocol_bin_dir = root.join(".agent-bin");
-    let path = std::env::join_paths([&protocol_bin_dir, &provider_path]).expect("join PATH");
     std::fs::create_dir_all(root.join(".codex")).expect("create .codex");
     let config_path = root.join(".codex/config.toml");
     std::fs::write(&config_path, "unified_exec = \"unterminated\n").expect("write invalid config");
 
     let output = protocol_command()
-        .env("PATH", &path)
+        .env("PATH", &protocol_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
+        .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args(codex_plugin_install_args(&root))
         .output()

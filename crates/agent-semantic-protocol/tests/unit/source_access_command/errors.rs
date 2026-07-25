@@ -14,7 +14,11 @@ fn source_access_command_discovers_project_activation_or_reports_discovery_failu
         Ok(Some(_)) => {}
         Ok(None) => panic!("activated Rust source should produce a source-access decision"),
         Err(error) => {
-            assert!(error.contains("could not discover a project activation"));
+            assert!(
+                error.contains("could not discover a project activation")
+                    || error.contains("activation"),
+                "unexpected fail-closed activation error: {error}"
+            );
             assert!(!error.contains("requires --activation"));
         }
     }

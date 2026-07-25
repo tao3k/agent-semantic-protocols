@@ -5,30 +5,24 @@ use agent_semantic_config::{
     HookClientWrapperMatch,
 };
 
-use super::AgentActionMatch;
+use super::{AgentActionMatch, AgentActionMatchConfig};
 use crate::tool_action::{
     AgentAction, AgentActionAuthority, AgentActionKind, AgentActionSubject, AgentActionSubjectKind,
 };
 
 fn wrapped_matcher() -> AgentActionMatch {
-    AgentActionMatch::new(
-        vec![HookClientCommandWrapper {
+    AgentActionMatch::new(AgentActionMatchConfig {
+        command_wrappers: vec![HookClientCommandWrapper {
             executable: "rtk".to_string(),
         }],
-        vec![HookClientInvocationShape::WrappedCommand],
-        vec![HookClientWrapperMatch::Matched],
-        vec![
+        invocation_shape_any: vec![HookClientInvocationShape::WrappedCommand],
+        wrapper_match_any: vec![HookClientWrapperMatch::Matched],
+        flag_presence_any: vec![
             HookClientFlagPresence::Present,
             HookClientFlagPresence::Absent,
         ],
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-    )
+        ..Default::default()
+    })
 }
 
 #[test]
@@ -53,24 +47,22 @@ fn wrapper_match_is_registry_driven() {
 
 #[test]
 fn source_expansion_requires_read_effect_even_for_registered_source_patterns() {
-    let matcher = AgentActionMatch::new(
-        vec![HookClientCommandWrapper {
+    let matcher = AgentActionMatch::new(AgentActionMatchConfig {
+        command_wrappers: vec![HookClientCommandWrapper {
             executable: "rtk".to_string(),
         }],
-        vec![HookClientInvocationShape::WrappedCommand],
-        vec![HookClientWrapperMatch::Matched],
-        vec![
+        invocation_shape_any: vec![HookClientInvocationShape::WrappedCommand],
+        wrapper_match_any: vec![HookClientWrapperMatch::Matched],
+        flag_presence_any: vec![
             HookClientFlagPresence::Present,
             HookClientFlagPresence::Absent,
         ],
-        vec![HookClientActionKind::Execute],
-        vec![HookClientActionKind::Read],
-        vec![HookClientActionSubjectKind::RegisteredLanguageSourcePattern],
-        vec![HookClientActionAuthority::RawShell],
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-    );
+        action_any: vec![HookClientActionKind::Execute],
+        effect_any: vec![HookClientActionKind::Read],
+        subject_kind_any: vec![HookClientActionSubjectKind::RegisteredLanguageSourcePattern],
+        authority_any: vec![HookClientActionAuthority::RawShell],
+        ..Default::default()
+    });
     let invocations =
         normalize_bash_command_invocations("rtk git mv old.rs new.rs", &matcher.command_wrappers)
             .expect("wrapped command should parse");
@@ -92,36 +84,35 @@ fn source_expansion_requires_read_effect_even_for_registered_source_patterns() {
 
 #[test]
 fn wrapped_execute_with_inferred_read_effect_matches_registered_source_pattern() {
-    let matcher = AgentActionMatch::new(
-        vec![HookClientCommandWrapper {
+    let matcher = AgentActionMatch::new(AgentActionMatchConfig {
+        command_wrappers: vec![HookClientCommandWrapper {
             executable: "rtk".to_string(),
         }],
-        vec![
+        invocation_shape_any: vec![
             HookClientInvocationShape::HostNative,
             HookClientInvocationShape::Command,
             HookClientInvocationShape::WrappedCommand,
         ],
-        vec![
+        wrapper_match_any: vec![
             HookClientWrapperMatch::Matched,
             HookClientWrapperMatch::Unmatched,
             HookClientWrapperMatch::Unknown,
         ],
-        vec![
+        flag_presence_any: vec![
             HookClientFlagPresence::Present,
             HookClientFlagPresence::Absent,
         ],
-        vec![HookClientActionKind::Read, HookClientActionKind::Execute],
-        vec![HookClientActionKind::Read],
-        vec![HookClientActionSubjectKind::RegisteredLanguageSourcePattern],
-        vec![HookClientActionAuthority::RawShell],
-        Vec::new(),
-        Vec::new(),
-        vec![agent_semantic_config::AgentActionEffectRule {
+        action_any: vec![HookClientActionKind::Read, HookClientActionKind::Execute],
+        effect_any: vec![HookClientActionKind::Read],
+        subject_kind_any: vec![HookClientActionSubjectKind::RegisteredLanguageSourcePattern],
+        authority_any: vec![HookClientActionAuthority::RawShell],
+        effect_rules: vec![agent_semantic_config::AgentActionEffectRule {
             argv_prefix: vec!["read".to_string()],
             command_contains_any: Vec::new(),
             effect: HookClientActionKind::Read,
         }],
-    );
+        ..Default::default()
+    });
     let invocations =
         normalize_bash_command_invocations("rtk read *.rs", &matcher.command_wrappers)
             .expect("wrapped command should parse");
@@ -161,19 +152,16 @@ fn agent_action_and_invocation_schemas_are_valid_json_objects() {
 
 #[test]
 fn host_native_read_matches_registered_source_without_command_parsing() {
-    let matcher = AgentActionMatch::new(
-        Vec::new(),
-        vec![HookClientInvocationShape::HostNative],
-        vec![HookClientWrapperMatch::Unmatched],
-        vec![HookClientFlagPresence::Absent],
-        vec![HookClientActionKind::Read],
-        vec![HookClientActionKind::Read],
-        vec![HookClientActionSubjectKind::RegisteredLanguageSource],
-        vec![HookClientActionAuthority::RawHostAction],
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-    );
+    let matcher = AgentActionMatch::new(AgentActionMatchConfig {
+        invocation_shape_any: vec![HookClientInvocationShape::HostNative],
+        wrapper_match_any: vec![HookClientWrapperMatch::Unmatched],
+        flag_presence_any: vec![HookClientFlagPresence::Absent],
+        action_any: vec![HookClientActionKind::Read],
+        effect_any: vec![HookClientActionKind::Read],
+        subject_kind_any: vec![HookClientActionSubjectKind::RegisteredLanguageSource],
+        authority_any: vec![HookClientActionAuthority::RawHostAction],
+        ..Default::default()
+    });
     let agent_action = AgentAction {
         action: AgentActionKind::Read,
         effect: AgentActionKind::Read,
@@ -189,22 +177,19 @@ fn host_native_read_matches_registered_source_without_command_parsing() {
 
 #[test]
 fn parser_owned_authority_does_not_match_raw_shell_safety_rule() {
-    let matcher = AgentActionMatch::new(
-        Vec::new(),
-        vec![HookClientInvocationShape::Command],
-        vec![HookClientWrapperMatch::Unmatched],
-        vec![HookClientFlagPresence::Absent],
-        vec![HookClientActionKind::Execute],
-        vec![HookClientActionKind::Unknown],
-        vec![HookClientActionSubjectKind::RegisteredLanguageSource],
-        vec![
+    let matcher = AgentActionMatch::new(AgentActionMatchConfig {
+        invocation_shape_any: vec![HookClientInvocationShape::Command],
+        wrapper_match_any: vec![HookClientWrapperMatch::Unmatched],
+        flag_presence_any: vec![HookClientFlagPresence::Absent],
+        action_any: vec![HookClientActionKind::Execute],
+        effect_any: vec![HookClientActionKind::Unknown],
+        subject_kind_any: vec![HookClientActionSubjectKind::RegisteredLanguageSource],
+        authority_any: vec![
             HookClientActionAuthority::RawShell,
             HookClientActionAuthority::Unknown,
         ],
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-    );
+        ..Default::default()
+    });
     let invocations = normalize_bash_command_invocations("provider file.rs", &[])
         .expect("parser-owned command should parse");
     let agent_action = AgentAction {

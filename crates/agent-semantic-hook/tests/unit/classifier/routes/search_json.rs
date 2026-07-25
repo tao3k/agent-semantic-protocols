@@ -84,6 +84,24 @@ fn search_json_owner_routes_to_provider_owner_query() {
 }
 
 #[test]
+fn project_bin_asp_does_not_bypass_search_json_policy() {
+    let decision = classify_hook(
+        &registry(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {
+                "cmd": "/workspace/project/.bin/asp typescript search lexical projectRoot owner tests --json ."
+            }
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::SubagentReceiptRequired);
+}
+
+#[test]
 fn patch_text_with_search_json_example_is_not_a_command() {
     let patch_body = concat!(
         "*** Begin Patch\n",

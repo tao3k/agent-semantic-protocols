@@ -1,10 +1,10 @@
 use crate::provider_command::support::{
-    asp_command, home_local_bin, make_executable, prepend_path, provider, temp_project_root,
+    asp_command, make_executable, prepend_path, provider, state_runtime_bin, temp_project_root,
     write_activation, write_echo_provider, write_rust_owner_frontier_provider,
 };
 
 #[test]
-fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider() {
+fn language_facade_query_passes_tree_sitter_query_and_exact_selector_to_each_provider() {
     let root = temp_project_root("provider-syntax-query-plan-facade");
     let bin_dir = root.join(".bin");
     write_echo_provider(&bin_dir, "rs-harness", "rust-provider");
@@ -24,8 +24,6 @@ fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider
         label: &'static str,
         query: &'static str,
         selector: &'static str,
-        node_types: &'static str,
-        predicate_value: &'static str,
     }
 
     let cases = [
@@ -34,24 +32,18 @@ fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider
             label: "rust-provider",
             query: "(function_item name: (identifier) @function.name (#eq? @function.name \"parse_query\"))",
             selector: "src/cli/query.rs",
-            node_types: "function_item,identifier",
-            predicate_value: "parse_query",
         },
         SyntaxQueryCase {
             language: "typescript",
             label: "typescript-provider",
             query: "(function_declaration name: (identifier) @function.name (#eq? @function.name \"parseTreeSitterQueryArgs\"))",
             selector: "src/cli/protocol-tree-sitter-query.ts",
-            node_types: "function_declaration,identifier",
-            predicate_value: "parseTreeSitterQueryArgs",
         },
         SyntaxQueryCase {
             language: "python",
             label: "python-provider",
             query: "(function_definition name: (identifier) @function.name (#eq? @function.name \"run_query_command\"))",
             selector: "src/python_lang_project_harness/_cli_query.py",
-            node_types: "function_definition,identifier",
-            predicate_value: "run_query_command",
         },
     ];
 
@@ -85,26 +77,7 @@ fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider
             )),
             "stdout: {stdout}"
         );
-        assert!(
-            stdout.contains("[--asp-syntax-query-predicates-json]"),
-            "stdout: {stdout}"
-        );
-        assert!(
-            stdout.contains("\"capture\":\"function.name\""),
-            "stdout: {stdout}"
-        );
-        assert!(stdout.contains("\"op\":\"eq\""), "stdout: {stdout}");
-        assert!(
-            stdout.contains(&format!("\"value\":\"{}\"", case.predicate_value)),
-            "stdout: {stdout}"
-        );
-        assert!(
-            stdout.contains(&format!(
-                "[--asp-syntax-query-captures][function.name][--asp-syntax-query-node-types][{}][--asp-syntax-query-fields][name]",
-                case.node_types
-            )),
-            "stdout: {stdout}"
-        );
+        assert!(!stdout.contains("--asp-syntax-query-"), "stdout: {stdout}");
     }
     let _ = std::fs::remove_dir_all(root);
 }
@@ -112,8 +85,8 @@ fn language_facade_query_injects_asp_compiled_tree_sitter_plan_for_each_provider
 #[test]
 fn language_facade_query_allows_syntax_code_output_with_exact_selector() {
     let root = temp_project_root("provider-syntax-query-stdout-facade");
-    let home_bin = home_local_bin(&root);
-    std::fs::create_dir_all(&home_bin).expect("create home local bin");
+    let home_bin = state_runtime_bin(&root);
+    std::fs::create_dir_all(&home_bin).expect("create state-home runtime bin");
     let provider_path = home_bin.join("rs-harness");
     std::fs::write(
         &provider_path,
@@ -157,8 +130,8 @@ printf 'pub fn provider_owned() -> usize {
 #[test]
 fn language_facade_treesitter_file_selector_code_stays_provider_owned() {
     let root = temp_project_root("provider-syntax-query-file-selector-code");
-    let home_bin = home_local_bin(&root);
-    std::fs::create_dir_all(&home_bin).expect("create home local bin");
+    let home_bin = state_runtime_bin(&root);
+    std::fs::create_dir_all(&home_bin).expect("create state-home runtime bin");
     let provider_path = home_bin.join("rs-harness");
     std::fs::write(
         &provider_path,
@@ -240,12 +213,12 @@ fn registered_language_facade_query_source_selector_code_is_rejected() {
     let source_language_cases = agent_semantic_hook::builtin_provider_manifests()
         .into_iter()
         .filter(|manifest| {
-            manifest.execution == agent_semantic_hook::ProviderExecution::ExternalProcess
+            manifest.execution() == agent_semantic_hook::ProviderExecution::ExternalProcess
         })
         .filter_map(|manifest| {
-            let extension = manifest.source.default_extensions.first()?.clone();
+            let extension = manifest.source().default_extensions.first()?.clone();
             let selector = format!("src/core{}", extension);
-            Some((manifest.language_id, selector))
+            Some((manifest.language_id().clone(), selector))
         })
         .collect::<Vec<_>>();
     assert!(
@@ -285,7 +258,8 @@ fn registered_language_facade_query_source_selector_code_is_rejected() {
             "{language_id}: {stderr}"
         );
         assert!(
-            stderr.contains(&format!("{language_id}://path#item/function/name")),
+            stderr.contains(&format!("{language_id}://"))
+                && stderr.contains("#item/<kind>/<symbol>"),
             "{language_id}: {stderr}"
         );
         assert!(
@@ -294,62 +268,6 @@ fn registered_language_facade_query_source_selector_code_is_rejected() {
         );
         let _ = std::fs::remove_dir_all(root);
     }
-}
-
-#[test]
-fn registered_language_source_extensions_drive_file_selector_code_rejection() {
-    let root = temp_project_root("provider-query-registered-extension-selector-code-source");
-    let manifest = agent_semantic_hook::builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| {
-            manifest.execution == agent_semantic_hook::ProviderExecution::ExternalProcess
-        })
-        .expect("registered source-language provider manifest");
-    let language_id = manifest.language_id;
-    write_activation(&root, &[provider(language_id.clone(), Vec::new())]);
-    let activation_path = root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("hooks")
-        .join("activation.json");
-    let mut activation: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&activation_path).expect("read activation"))
-            .expect("parse activation");
-    activation["providers"][0]["coverage"]["sourceExtensions"] = serde_json::json!([".widget"]);
-    std::fs::write(
-        &activation_path,
-        serde_json::to_string_pretty(&activation).expect("serialize activation"),
-    )
-    .expect("write activation");
-    std::fs::create_dir_all(root.join("src")).expect("create src dir");
-    std::fs::write(root.join("src/core.widget"), "fixture source\n").expect("write fixture");
-
-    let output = asp_command(&root)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .args([
-            language_id.as_str(),
-            "query",
-            "--selector",
-            "src/core.widget",
-            "--workspace",
-            ".",
-            "--code",
-        ])
-        .output()
-        .expect("run asp registered extension selector query");
-
-    assert!(!output.status.success());
-    let stderr = String::from_utf8(output.stderr).expect("stderr");
-    assert!(
-        stderr.contains("invalid query --code selector `src/core.widget`"),
-        "{stderr}"
-    );
-    assert!(
-        stderr.contains(&format!("{language_id}://path#item/function/name")),
-        "{stderr}"
-    );
-    assert!(!stderr.contains("direct-source-read"), "{stderr}");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -384,7 +302,7 @@ fn language_facade_query_rejects_syntax_code_output_without_selector() {
     );
     assert!(
         String::from_utf8_lossy(&output.stderr)
-            .contains("tree-sitter query --code requires an exact --selector"),
+            .contains("workspace Tree-sitter discovery is search-owned"),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
@@ -436,10 +354,10 @@ fn language_facade_rejects_direct_source_read_code_trailing_root_before_fast_pat
 }
 
 #[test]
-fn language_facade_rejects_inline_code_in_compact_frontier_mode() {
+fn language_facade_accepts_bounded_read_owner_projection_for_direct_source_read() {
     let root = temp_project_root("provider-compact-frontier-inline-code");
-    let home_bin = home_local_bin(&root);
-    std::fs::create_dir_all(&home_bin).expect("create home local bin");
+    let home_bin = state_runtime_bin(&root);
+    std::fs::create_dir_all(&home_bin).expect("create state-home runtime bin");
     let provider_path = home_bin.join("rs-harness");
     std::fs::write(
         &provider_path,
@@ -468,20 +386,19 @@ printf '|code path=src/lib.rs lineRange=1:2 text="pub fn bad() {}"\n'
         .expect("run asp rust compact frontier");
 
     assert!(
-        !output.status.success(),
-        "stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
-    );
-    assert!(
-        output.stdout.is_empty(),
-        "stdout: {}",
-        String::from_utf8_lossy(&output.stdout)
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stderr)
-            .contains("provider violated ASP compact frontier mode"),
+        output.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("[read-owner] q=src/lib.rs"), "{stdout}");
+    assert!(
+        stdout.contains("|read path=src/lib.rs lineRange=1:2"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("|code path=src/lib.rs lineRange=1:2"),
+        "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
 }

@@ -1,19 +1,19 @@
 harness = "libtest"
 test = "scenario_performance_gate::gerbil_projection_owner_items::asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate"
-phase = "lifecycle"
+phase = "cold-functional"
 target_total = "50ms"
 max_total = "500ms"
 observed_total = "0ms"
 regression_budget = "450ms"
 memory_budget_bytes = 67108864
 observed_memory_bytes = 0
-route_source = "turso-evidence-graph"
-max_provider_process_count = 0
+route_source = "provider-owned-owner-items-cache"
+max_provider_process_count = 2
 max_stdout_bytes = 4096
 fallback_reason = "none"
-target_rationale = "Cold and warm owner-items reads must use only the Turso EvidenceGraph. The explicit projection lifecycle owns the one bounded harness process; normal search never starts a Gerbil provider."
+target_rationale = "Projection import and owner-items are distinct parser-owned packets. Import invokes the Gerbil harness once, cold owner-items invokes it once, and warm owner-items replays the runtime cache without a third provider process."
 
 [observed_timings]
-cold_graph_read = "0ms"
 projection_import = "0ms"
-warm_graph_read = "0ms"
+cold_owner_items = "0ms"
+warm_owner_items_cache = "0ms"

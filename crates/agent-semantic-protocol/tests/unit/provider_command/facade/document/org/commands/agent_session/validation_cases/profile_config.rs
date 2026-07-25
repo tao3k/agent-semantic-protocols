@@ -1,5 +1,5 @@
 use crate::provider_command::facade::document::org::commands::agent_session::support::{
-    write_codex_asp_explorer_fixture_with_actual_agent_path,
+    CodexAspExplorerFixtureProfile, write_codex_asp_explorer_fixture_with_actual_agent_path,
     write_codex_asp_explorer_fixture_with_actual_profile,
     write_codex_asp_explorer_fixture_with_default_agent_role,
     write_codex_asp_explorer_fixture_without_agent_path,
@@ -132,10 +132,12 @@ fn asp_agent_session_rejects_mismatched_codex_agent_config_path() {
         &home,
         "codex-root-thread",
         "codex-child-thread",
-        "gpt-5.3-codex-spark",
-        "gpt-5.3-codex-spark",
-        "read-only",
-        "read-only",
+        CodexAspExplorerFixtureProfile::new(
+            "gpt-5.3-codex-spark",
+            "gpt-5.3-codex-spark",
+            "read-only",
+            "read-only",
+        ),
         Some(&wrong_agent_path),
     );
 

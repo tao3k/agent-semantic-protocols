@@ -179,8 +179,11 @@ fn write_large_recent_nonmatching_hook_state(root: &Path) {
 }
 
 fn write_large_hook_state(root: &Path, recorded_at_unix_ms: u64, deny_replay_key: &str) {
-    let state_path = root
-        .join(".cache/agent-semantic-protocol/hooks")
+    let state_home = crate::state_home_fixture::default_state_home(root);
+    let activation_path = crate::state_home_fixture::canonical_activation_path(root, &state_home);
+    let state_path = activation_path
+        .parent()
+        .expect("canonical hook state directory")
         .join("events.jsonl");
     let mut file = fs::File::create(&state_path).expect("create hook state");
     let padding = "x".repeat(384);

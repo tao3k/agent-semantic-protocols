@@ -30,16 +30,15 @@ fn builtin_semantic_facts_descriptors_follow_shared_schema_contract() {
     let manifests = builtin_provider_manifests();
     let gerbil = manifests
         .iter()
-        .find(|manifest| manifest.language_id == "gerbil-scheme")
+        .find(|manifest| manifest.language_id().as_str() == "gerbil-scheme")
         .expect("gerbil-scheme provider manifest");
-    assert!(!gerbil.search_capabilities.semantic_facts);
-    assert!(gerbil.semantic_facts_descriptor.is_none());
+    assert!(!gerbil.search_capabilities().semantic_facts);
+    assert!(gerbil.semantic_facts_descriptor().is_none());
     let descriptors = manifests
         .iter()
         .filter_map(|manifest| {
             manifest
-                .semantic_facts_descriptor
-                .as_ref()
+                .semantic_facts_descriptor()
                 .map(|descriptor| (manifest, descriptor))
         })
         .collect::<Vec<_>>();
@@ -58,7 +57,7 @@ fn builtin_semantic_facts_descriptors_follow_shared_schema_contract() {
 
     for (manifest, descriptor) in descriptors {
         assert!(
-            manifest.search_capabilities.semantic_facts,
+            manifest.search_capabilities().semantic_facts,
             "{} has a semantic facts descriptor while semanticFacts is disabled",
             descriptor.descriptor_id
         );
@@ -71,10 +70,10 @@ fn builtin_semantic_facts_descriptors_follow_shared_schema_contract() {
                 .all(|fact_kind| fact_kinds.contains(fact_kind.as_str()))
         );
         assert!(descriptor.intent_axes.iter().all(|intent_axis| {
-            axes.contains(intent_axis.axis.as_str())
-                && !intent_axis.terms.is_empty()
+            axes.contains(intent_axis.axis())
+                && intent_axis.terms().next().is_some()
                 && intent_axis
-                    .roles
+                    .roles()
                     .iter()
                     .all(|role| roles.contains(role.as_str()))
         }));

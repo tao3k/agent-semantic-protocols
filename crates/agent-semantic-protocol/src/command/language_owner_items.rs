@@ -2,7 +2,6 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use super::provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin};
-use super::search_config::AspConfig;
 use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use agent_semantic_runtime::{
     LanguageOwnerItemsCacheRequest, LanguageOwnerItemsProviderOutput,
@@ -22,7 +21,6 @@ pub(super) struct LanguageOwnerItemsDispatchRequest<'a> {
     pub(super) owner: &'a Path,
     pub(super) project_root: &'a Path,
     pub(super) cache_home: &'a Path,
-    pub(super) config: &'a AspConfig,
     pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
 }
 
@@ -33,13 +31,8 @@ pub(super) fn dispatch_language_owner_items(
         return Ok(LanguageOwnerItemsDispatchResult::Unsupported);
     };
     let existing_owner_path = language_owner_path_exists(request.project_root, request.owner);
-    let invocation = provider_invocation_with_profile(
-        context.profiles,
-        context.provider,
-        request.args,
-        request.project_root,
-        request.config,
-    )?;
+    let invocation =
+        provider_invocation_with_profile(context.profiles, context.provider, request.args)?;
     let cache_request = LanguageOwnerItemsCacheRequest {
         language_id: request.language_id,
         args: request.args,

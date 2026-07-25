@@ -1,7 +1,51 @@
-use agent_semantic_hook::{classify_hook, render_platform_response};
+use agent_semantic_hook::{
+    CodexHookAgentId, CodexHookAgentType, ConfiguredCodexAgentName, ConfiguredResidentRole,
+    HookSubagentPermissionContext, ManagedChildName, ResidentChildIdentityProof,
+    ResidentChildSessionId, ResidentConfiguration, ResidentEnabled, ResidentIdentityStatus,
+    ResidentLiveIdentity, ResidentRootSessionId, ResidentSandboxMode, classify_hook,
+    render_platform_response,
+};
 use serde_json::json;
 
 use super::registry;
+
+fn permission_context<'a>(
+    resident_enabled: bool,
+    agent_id: &'a str,
+    agent_type: &'a str,
+    identity_proof: Option<ResidentChildIdentityProof>,
+    child_session_id: Option<&'a str>,
+    identity_status: ResidentIdentityStatus,
+    session_id: &'a str,
+) -> HookSubagentPermissionContext<'a> {
+    HookSubagentPermissionContext::new(
+        ResidentConfiguration {
+            resident_enabled: ResidentEnabled::new(resident_enabled),
+            managed_child_name: ManagedChildName::new("asp-explore").expect("managed child name"),
+            configured_codex_agent_name: ConfiguredCodexAgentName::new("asp_explorer")
+                .expect("configured Codex agent name"),
+            configured_role: ConfiguredResidentRole::new("asp_explorer")
+                .expect("configured resident role"),
+        },
+        ResidentLiveIdentity {
+            codex_hook_agent_id: Some(
+                CodexHookAgentId::new(agent_id).expect("Codex hook agent id"),
+            ),
+            codex_hook_agent_type: Some(
+                CodexHookAgentType::new(agent_type).expect("Codex hook agent type"),
+            ),
+            resident_child_identity_proof: identity_proof,
+            resident_child_session_id: child_session_id.map(|value| {
+                ResidentChildSessionId::new(value).expect("resident child session id")
+            }),
+            identity_status,
+            sandbox_mode: Some(
+                ResidentSandboxMode::new("read-only").expect("resident sandbox mode"),
+            ),
+        },
+        ResidentRootSessionId::new(session_id).expect("resident root session id"),
+    )
+}
 
 #[test]
 fn permission_request_allow_renders_explicit_allow_for_claude() {
@@ -161,19 +205,15 @@ fn read_only_subagent_write_denial_uses_sandbox_permission_context() {
             "path": "src/lib.rs"
         }
     });
-    let context = agent_semantic_hook::HookSubagentPermissionContext {
-        resident_enabled: true,
-        managed_child_name: "asp-explore",
-        configured_codex_agent_name: "asp_explorer",
-        configured_role: "asp_explorer",
-        codex_hook_agent_id: Some("child-agent"),
-        codex_hook_agent_type: Some("explorer"),
-        resident_child_identity_proof: Some("codex-hook-payload-live-target"),
-        resident_child_session_id: Some("child-session"),
-        identity_status: "live-target-verified",
-        sandbox_mode: Some("read-only"),
-        session_id: "child-session",
-    };
+    let context = permission_context(
+        true,
+        "child-agent",
+        "asp_explorer",
+        Some(ResidentChildIdentityProof::CodexHookPayloadLiveTarget),
+        Some("child-session"),
+        ResidentIdentityStatus::LiveTargetVerified,
+        "child-session",
+    );
 
     let decision = agent_semantic_hook::classify_read_only_subagent_write(
         "codex", "pre-tool", &payload, &context,
@@ -222,19 +262,15 @@ fn read_only_subagent_write_denial_ignores_unmanaged_subagents() {
             "path": "src/lib.rs"
         }
     });
-    let context = agent_semantic_hook::HookSubagentPermissionContext {
-        resident_enabled: false,
-        managed_child_name: "asp-explore",
-        configured_codex_agent_name: "asp_explorer",
-        configured_role: "asp_explorer",
-        codex_hook_agent_id: Some("user-subagent"),
-        codex_hook_agent_type: Some("default"),
-        resident_child_identity_proof: None,
-        resident_child_session_id: None,
-        identity_status: "unverified",
-        sandbox_mode: Some("read-only"),
-        session_id: "child-session",
-    };
+    let context = permission_context(
+        false,
+        "user-subagent",
+        "default",
+        None,
+        None,
+        ResidentIdentityStatus::Unverified,
+        "child-session",
+    );
 
     assert!(
         agent_semantic_hook::classify_read_only_subagent_write(
@@ -246,19 +282,15 @@ fn read_only_subagent_write_denial_ignores_unmanaged_subagents() {
 
 #[test]
 fn read_only_subagent_receipt_accepts_graph_route_receipts() {
-    let context = agent_semantic_hook::HookSubagentPermissionContext {
-        resident_enabled: true,
-        managed_child_name: "asp-explore",
-        configured_codex_agent_name: "asp_explorer",
-        configured_role: "asp_explorer",
-        codex_hook_agent_id: Some("child-agent"),
-        codex_hook_agent_type: Some("explorer"),
-        resident_child_identity_proof: Some("codex-hook-payload-live-target"),
-        resident_child_session_id: Some("child-session"),
-        identity_status: "live-target-verified",
-        sandbox_mode: Some("read-only"),
-        session_id: "child-session",
-    };
+    let context = permission_context(
+        true,
+        "child-agent",
+        "asp_explorer",
+        Some(ResidentChildIdentityProof::CodexHookPayloadLiveTarget),
+        Some("child-session"),
+        ResidentIdentityStatus::LiveTargetVerified,
+        "child-session",
+    );
 
     for message in [
         "[asp-search-subagent]\nschema=asp-search-subagent.graph.v1\nintent=receipt-validation\nroute=hook/read-only-subagent -> tests\nstate=selector-ready\nevidence=E1 kind=item role=primary owner=crates/agent-semantic-hook/src/read_only_subagent.rs selector=rust://crates/agent-semantic-hook/src/read_only_subagent.rs#item/function/classify_read_only_subagent_receipt relation=validates-receipt\nnext=E1 asp rust query --selector rust://crates/agent-semantic-hook/src/read_only_subagent.rs#item/function/classify_read_only_subagent_receipt --workspace . --code\navoid=raw-read,flat-selector-list\nomit=source,line-range,confidence,long-explanation",
@@ -287,19 +319,15 @@ fn read_only_subagent_receipt_accepts_graph_route_receipts() {
 
 #[test]
 fn read_only_subagent_receipt_blocks_broad_or_explanatory_receipts() {
-    let context = agent_semantic_hook::HookSubagentPermissionContext {
-        resident_enabled: true,
-        managed_child_name: "asp-explore",
-        configured_codex_agent_name: "asp_explorer",
-        configured_role: "asp_explorer",
-        codex_hook_agent_id: Some("child-agent"),
-        codex_hook_agent_type: Some("explorer"),
-        resident_child_identity_proof: Some("codex-hook-payload-live-target"),
-        resident_child_session_id: Some("child-session"),
-        identity_status: "live-target-verified",
-        sandbox_mode: Some("read-only"),
-        session_id: "child-session",
-    };
+    let context = permission_context(
+        true,
+        "child-agent",
+        "asp_explorer",
+        Some(ResidentChildIdentityProof::CodexHookPayloadLiveTarget),
+        Some("child-session"),
+        ResidentIdentityStatus::LiveTargetVerified,
+        "child-session",
+    );
 
     for message in [
         "[asp-search-subagent]\nowner=src/lib.rs\nread=src/lib.rs:1-80\nnext=asp rust query --selector src/lib.rs:1-80 --workspace . --code",
@@ -342,19 +370,15 @@ fn read_only_subagent_receipt_ignores_unmanaged_subagents() {
         "session_id": "child-session",
         "last_assistant_message": "ordinary user subagent final message"
     });
-    let context = agent_semantic_hook::HookSubagentPermissionContext {
-        resident_enabled: false,
-        managed_child_name: "asp-explore",
-        configured_codex_agent_name: "asp_explorer",
-        configured_role: "asp_explorer",
-        codex_hook_agent_id: Some("user-subagent"),
-        codex_hook_agent_type: Some("default"),
-        resident_child_identity_proof: None,
-        resident_child_session_id: None,
-        identity_status: "unverified",
-        sandbox_mode: Some("read-only"),
-        session_id: "child-session",
-    };
+    let context = permission_context(
+        false,
+        "user-subagent",
+        "default",
+        None,
+        None,
+        ResidentIdentityStatus::Unverified,
+        "child-session",
+    );
 
     assert!(
         agent_semantic_hook::classify_read_only_subagent_receipt(

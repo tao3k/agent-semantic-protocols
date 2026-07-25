@@ -221,7 +221,7 @@ fn provider_source_scope_workspace_scope_timeout_falls_back_to_manifest() {
 fn provider() -> ResolvedProvider {
     let manifest = agent_semantic_hook::builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == "rust")
+        .find(|manifest| manifest.language_id().as_str() == "rust")
         .expect("rust provider manifest");
     ResolvedProvider {
         manifest_id: "rust-test-manifest".to_string(),
@@ -240,9 +240,9 @@ fn provider() -> ResolvedProvider {
         config_files: Vec::new(),
         source_extensions: Vec::new(),
         ignored_path_prefixes: Vec::new(),
-        search_capabilities: manifest.search_capabilities,
-        query_pack_descriptor: manifest.query_pack_descriptor,
-        semantic_facts_descriptor: manifest.semantic_facts_descriptor,
+        search_capabilities: manifest.search_capabilities().clone(),
+        query_pack_descriptor: manifest.query_pack_descriptor().clone(),
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
     }
 }
 

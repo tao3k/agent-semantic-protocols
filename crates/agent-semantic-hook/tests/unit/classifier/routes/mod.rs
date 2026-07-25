@@ -1,6 +1,9 @@
 use agent_semantic_hook::{ActivatedProvider, HookRuntime, StdinMode};
 
-use super::{command, command_with_stdin, provider, provider_routes, typescript_provider};
+use super::{
+    ProviderFixtureLayout, command, command_with_stdin, provider, provider_routes,
+    typescript_provider,
+};
 
 mod codex_command_actions;
 mod python_priority;
@@ -19,7 +22,16 @@ fn document_provider(language_id: &str, extension: &str) -> ActivatedProvider {
     let manifest = builtin_provider_manifest(language_id, "orgize");
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("document routes");
-    provider(&manifest, &[extension], &[], &[], &[], routes)
+    provider(
+        &manifest,
+        ProviderFixtureLayout {
+            source_extensions: &[extension],
+            config_files: &[],
+            source_roots: &[],
+            ignored_path_prefixes: &[],
+        },
+        routes,
+    )
 }
 
 fn registry_with_documents() -> HookRuntime {
@@ -68,10 +80,12 @@ fn rust_provider() -> ActivatedProvider {
     );
     provider(
         &builtin_provider_manifest("rust", "rs-harness"),
-        &[".rs"],
-        &["Cargo.toml", "Cargo.lock"],
-        &["src", "tests", "crates"],
-        &["target"],
+        ProviderFixtureLayout {
+            source_extensions: &[".rs"],
+            config_files: &["Cargo.toml", "Cargo.lock"],
+            source_roots: &["src", "tests", "crates"],
+            ignored_path_prefixes: &["target"],
+        },
         routes,
     )
 }
@@ -82,10 +96,12 @@ fn python_provider() -> ActivatedProvider {
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("python routes");
     provider(
         &manifest,
-        &[".py", ".pyi"],
-        &["pyproject.toml"],
-        &["src", "tests"],
-        &[".venv", "__pycache__"],
+        ProviderFixtureLayout {
+            source_extensions: &[".py", ".pyi"],
+            config_files: &["pyproject.toml"],
+            source_roots: &["src", "tests"],
+            ignored_path_prefixes: &[".venv", "__pycache__"],
+        },
         routes,
     )
 }

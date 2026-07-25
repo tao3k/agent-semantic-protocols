@@ -26,22 +26,10 @@ fn empty_search_ingest_seeds_is_facade_diagnostic_for_all_languages() {
     write_activation(
         &root,
         &[
-            provider(
-                "rust",
-                vec![bin_dir.join("rs-harness").display().to_string()],
-            ),
-            provider(
-                "typescript",
-                vec![bin_dir.join("ts-harness").display().to_string()],
-            ),
-            provider(
-                "python",
-                vec![bin_dir.join("py-harness").display().to_string()],
-            ),
-            provider(
-                "julia",
-                vec![bin_dir.join("asp-julia-harness").display().to_string()],
-            ),
+            provider("rust", Vec::new()),
+            provider("typescript", Vec::new()),
+            provider("python", Vec::new()),
+            provider("julia", Vec::new()),
         ],
     );
 

@@ -6,6 +6,8 @@ mod hook_runtime_activation_failure;
 mod hook_runtime_agent_session;
 #[path = "hook_runtime_agent_session_dispatch.rs"]
 mod hook_runtime_agent_session_dispatch;
+#[path = "hook_runtime_cli_args.rs"]
+mod hook_runtime_cli_args;
 #[path = "hook_runtime_codex_plugin.rs"]
 mod hook_runtime_codex_plugin;
 #[path = "hook_runtime_codex_plugin_identity.rs"]
@@ -18,6 +20,8 @@ mod hook_runtime_decision_render;
 mod hook_runtime_doctor;
 #[path = "hook_runtime_install.rs"]
 mod hook_runtime_install;
+#[path = "hook_runtime_resident_permissions.rs"]
+mod hook_runtime_resident_permissions;
 #[path = "hook_runtime_skill.rs"]
 mod hook_runtime_skill;
 #[path = "hook_runtime_source_access_materialize.rs"]
@@ -43,12 +47,16 @@ use agent_semantic_hook::{
 use agent_semantic_runtime::project_state_paths;
 use hook_runtime_activation_failure::emit_activation_load_failure;
 use hook_runtime_agent_session::{classify_main_session_asp_exploration, load_asp_session_policy};
+use hook_runtime_cli_args::{display_path, optional_flag_value};
 use hook_runtime_codex_plugin::codex_project_plugin_hooks_present;
 use hook_runtime_config_recovery::annotate_hook_config_repair;
 use hook_runtime_decision_render::{emit_decision, emit_hook_runtime_failure};
 use hook_runtime_doctor::run_doctor;
 pub(super) use hook_runtime_install::run_codex_plugin_install_args;
 use hook_runtime_install::run_install;
+use hook_runtime_resident_permissions::{
+    classify_read_only_resident_receipt, classify_read_only_resident_write,
+};
 use hook_runtime_source_access_materialize::materialize_source_access_deny_message;
 use hook_runtime_stdin::read_hook_stdin_bounded;
 use std::env;
@@ -330,32 +338,30 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             }
         }
     }
-    if event == "subagent-stop" {
-        if let Some(session_id) =
+    if event == "subagent-stop"
+        && let Some(session_id) =
             archive_stopped_managed_child(client, &project_root, &payload, &asp_session_policy)?
-        {
-            decision.decision = DecisionKind::Allow;
-            decision.reason_kind = ReasonKind::None;
-            decision.message = if client == "codex" {
-                "ASP preserved the completed managed resident as idle; allow the native child turn to finish."
+    {
+        decision.decision = DecisionKind::Allow;
+        decision.reason_kind = ReasonKind::None;
+        decision.message = if client == "codex" {
+            "ASP preserved the completed managed resident as idle; allow the native child turn to finish."
                     .to_string()
+        } else {
+            "ASP archived the stopped managed child; allow native subagent shutdown.".to_string()
+        };
+        decision.fields.insert(
+            "agentSessionAction".to_string(),
+            serde_json::Value::String(if client == "codex" {
+                "subagent-stop-preserved-resident-idle".to_string()
             } else {
-                "ASP archived the stopped managed child; allow native subagent shutdown."
-                    .to_string()
-            };
-            decision.fields.insert(
-                "agentSessionAction".to_string(),
-                serde_json::Value::String(if client == "codex" {
-                    "subagent-stop-preserved-resident-idle".to_string()
-                } else {
-                    "subagent-stop-archived-managed-child".to_string()
-                }),
-            );
-            decision.fields.insert(
-                "childSessionId".to_string(),
-                serde_json::Value::String(session_id),
-            );
-        }
+                "subagent-stop-archived-managed-child".to_string()
+            }),
+        );
+        decision.fields.insert(
+            "childSessionId".to_string(),
+            serde_json::Value::String(session_id),
+        );
     }
     if let Err(error) = annotate_payload_context(&project_root, &mut decision, &payload) {
         eprintln!("[agent-semantic-hook] failed to annotate hook payload context: {error}");
@@ -383,97 +389,6 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         eprintln!("[agent-semantic-hook] failed to update hook state: {error}");
     }
     emit_decision(emit, &decision)
-}
-
-fn classify_read_only_resident_write(
-    project_root: &Path,
-    client: &str,
-    event: &str,
-    asp_session_policy: &hook_runtime_agent_session::AspSessionPolicy,
-    payload: &serde_json::Value,
-) -> Option<HookDecision> {
-    let sandbox_mode = resident_asp_explore_sandbox_mode();
-    let context = resident_permission_context(
-        project_root,
-        asp_session_policy,
-        payload,
-        sandbox_mode.as_deref(),
-    )?;
-    agent_semantic_hook::classify_read_only_subagent_write(client, event, payload, &context)
-}
-
-fn classify_read_only_resident_receipt(
-    project_root: &Path,
-    client: &str,
-    event: &str,
-    asp_session_policy: &hook_runtime_agent_session::AspSessionPolicy,
-    payload: &serde_json::Value,
-) -> Option<HookDecision> {
-    let sandbox_mode = resident_asp_explore_sandbox_mode();
-    let context = resident_permission_context(
-        project_root,
-        asp_session_policy,
-        payload,
-        sandbox_mode.as_deref(),
-    )?;
-    agent_semantic_hook::classify_read_only_subagent_receipt(client, event, payload, &context)
-}
-
-fn resident_permission_context<'a>(
-    project_root: &Path,
-    asp_session_policy: &'a hook_runtime_agent_session::AspSessionPolicy,
-    payload: &'a serde_json::Value,
-    sandbox_mode: Option<&'a str>,
-) -> Option<agent_semantic_hook::HookSubagentPermissionContext<'a>> {
-    let session_id = ["session_id", "sessionId"]
-        .iter()
-        .find_map(|key| payload.get(*key).and_then(serde_json::Value::as_str))?;
-    let codex_hook_agent_id = ["agent_id", "agentId"]
-        .iter()
-        .find_map(|key| payload.get(*key).and_then(serde_json::Value::as_str));
-    let codex_hook_agent_type = ["agent_type", "agentType"]
-        .iter()
-        .find_map(|key| payload.get(*key).and_then(serde_json::Value::as_str));
-    let identity_proof = hook_runtime_agent_session::current_session_resident_child_identity_proof(
-        project_root,
-        asp_session_policy,
-        payload,
-    )
-    .ok()
-    .flatten();
-    let live_target_proof = matches!(
-        identity_proof,
-        Some(crate::command::ResidentChildIdentityProof::CodexHookPayloadLiveTarget)
-    );
-
-    let managed_child_name =
-        agent_semantic_hook::ManagedChildName::new(asp_session_policy.resident_child_name())?;
-    let configured_codex_agent_name = agent_semantic_hook::ConfiguredCodexAgentName::new(
-        asp_session_policy.resident_codex_agent_name(),
-    )?;
-    let configured_role =
-        agent_semantic_hook::ConfiguredResidentRole::new(asp_session_policy.resident_agent_role())?;
-    let session_id = agent_semantic_hook::ResidentRootSessionId::new(session_id)?;
-    Some(agent_semantic_hook::HookSubagentPermissionContext::new(
-        agent_semantic_hook::ResidentEnabled::new(asp_session_policy.enabled()),
-        managed_child_name,
-        configured_codex_agent_name,
-        configured_role,
-        codex_hook_agent_id.and_then(agent_semantic_hook::CodexHookAgentId::new),
-        codex_hook_agent_type.and_then(agent_semantic_hook::CodexHookAgentType::new),
-        live_target_proof
-            .then_some(agent_semantic_hook::ResidentChildIdentityProof::CodexHookPayloadLiveTarget),
-        live_target_proof.then_some(agent_semantic_hook::ResidentChildSessionId::new(
-            session_id.as_str(),
-        )?),
-        if live_target_proof {
-            agent_semantic_hook::ResidentIdentityStatus::LiveTargetVerified
-        } else {
-            agent_semantic_hook::ResidentIdentityStatus::Unverified
-        },
-        sandbox_mode.and_then(agent_semantic_hook::ResidentSandboxMode::new),
-        session_id,
-    ))
 }
 
 fn archive_stopped_managed_child(
@@ -930,41 +845,10 @@ fn ensure_supported_client(client: &str) -> Result<(), String> {
     }
 }
 
-fn display_path(project_root: &Path, path: &Path) -> String {
-    if let Ok(relative) = path.strip_prefix(project_root) {
-        return relative.to_string_lossy().replace('\\', "/");
-    }
-    if let (Ok(root), Ok(path)) = (fs::canonicalize(project_root), fs::canonicalize(path))
-        && let Ok(relative) = path.strip_prefix(root)
-    {
-        return relative.to_string_lossy().replace('\\', "/");
-    }
-    path.to_string_lossy().replace('\\', "/")
-}
-
 fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|window| window[0] == flag)
         .map(|window| window[1].as_str())
-}
-
-fn optional_flag_value<'a>(args: &'a [String], flag: &str) -> Result<Option<&'a str>, String> {
-    let inline_prefix = format!("{flag}=");
-    for (index, arg) in args.iter().enumerate() {
-        if let Some(value) = arg.strip_prefix(&inline_prefix) {
-            return Ok(Some(value));
-        }
-        if arg == flag {
-            let value = args
-                .get(index + 1)
-                .ok_or_else(|| format!("{flag} requires a value"))?;
-            if value.starts_with("--") {
-                return Err(format!("{flag} requires a value"));
-            }
-            return Ok(Some(value));
-        }
-    }
-    Ok(None)
 }
 
 fn first_positional(args: &[String]) -> Option<&str> {

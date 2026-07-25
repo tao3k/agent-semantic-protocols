@@ -38,6 +38,24 @@ pub struct ResidentSandboxMode<'a>(&'a str);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ResidentRootSessionId<'a>(&'a str);
 
+#[derive(Clone, Copy)]
+pub struct ResidentConfiguration<'a> {
+    pub resident_enabled: ResidentEnabled,
+    pub managed_child_name: ManagedChildName<'a>,
+    pub configured_codex_agent_name: ConfiguredCodexAgentName<'a>,
+    pub configured_role: ConfiguredResidentRole<'a>,
+}
+
+#[derive(Clone, Copy)]
+pub struct ResidentLiveIdentity<'a> {
+    pub codex_hook_agent_id: Option<CodexHookAgentId<'a>>,
+    pub codex_hook_agent_type: Option<CodexHookAgentType<'a>>,
+    pub resident_child_identity_proof: Option<ResidentChildIdentityProof>,
+    pub resident_child_session_id: Option<ResidentChildSessionId<'a>>,
+    pub identity_status: ResidentIdentityStatus,
+    pub sandbox_mode: Option<ResidentSandboxMode<'a>>,
+}
+
 impl ResidentEnabled {
     pub fn new(enabled: bool) -> Self {
         Self(enabled)
@@ -99,20 +117,25 @@ pub struct HookSubagentPermissionContext<'a> {
 }
 
 impl HookSubagentPermissionContext<'_> {
-    #[allow(clippy::too_many_arguments)]
     pub fn new<'a>(
-        resident_enabled: ResidentEnabled,
-        managed_child_name: ManagedChildName<'a>,
-        configured_codex_agent_name: ConfiguredCodexAgentName<'a>,
-        configured_role: ConfiguredResidentRole<'a>,
-        codex_hook_agent_id: Option<CodexHookAgentId<'a>>,
-        codex_hook_agent_type: Option<CodexHookAgentType<'a>>,
-        resident_child_identity_proof: Option<ResidentChildIdentityProof>,
-        resident_child_session_id: Option<ResidentChildSessionId<'a>>,
-        identity_status: ResidentIdentityStatus,
-        sandbox_mode: Option<ResidentSandboxMode<'a>>,
+        configuration: ResidentConfiguration<'a>,
+        live_identity: ResidentLiveIdentity<'a>,
         session_id: ResidentRootSessionId<'a>,
     ) -> HookSubagentPermissionContext<'a> {
+        let ResidentConfiguration {
+            resident_enabled,
+            managed_child_name,
+            configured_codex_agent_name,
+            configured_role,
+        } = configuration;
+        let ResidentLiveIdentity {
+            codex_hook_agent_id,
+            codex_hook_agent_type,
+            resident_child_identity_proof,
+            resident_child_session_id,
+            identity_status,
+            sandbox_mode,
+        } = live_identity;
         HookSubagentPermissionContext {
             resident_enabled,
             managed_child_name,

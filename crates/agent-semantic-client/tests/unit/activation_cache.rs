@@ -8,24 +8,29 @@ use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard};
 fn cached_activation_loader_refreshes_stale_provider_command_prefix() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_project_root("activation-cache-refresh");
-    let provider_v1 = root.join("provider-v1");
-    let provider_v2 = root.join("provider-v2");
+    let state_home = root.join(".asp-state");
+    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", &state_home);
+    let runtime_bin = state_home.join("runtime").join("bin");
+    std::fs::create_dir_all(&runtime_bin).expect("create State Home runtime bin");
+    let provider_v1 = runtime_bin.join("provider-v1");
+    let provider_v2 = runtime_bin.join("provider-v2");
     write_executable(&provider_v1);
     write_executable(&provider_v2);
+    let _ignored_cache_home = EnvVarGuard::set("PRJ_CACHE_HOME", root.join(".cache-home"));
     let activation_path = root
         .join(".cache")
         .join("agent-semantic-protocol")
         .join("hooks")
         .join("activation.json");
 
-    write_python_provider_config(&root, "./provider-v1");
+    write_python_provider_config(&root, "provider-v1");
+    write_python_provider_install_receipt(&root, &provider_v1);
     let activation = build_default_activation(&root).expect("build initial activation");
     write_activation(&activation_path, &activation).expect("write initial activation");
-    write_python_provider_config(&root, "./provider-v2");
+    write_python_provider_config(&root, "provider-v2");
+    write_python_provider_install_receipt(&root, &provider_v2);
 
     let _activation_path = EnvVarGuard::set(ASP_PROVIDER_ACTIVATION_PATH_ENV, &activation_path);
-    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
-    let _ignored_cache_home = EnvVarGuard::set("PRJ_CACHE_HOME", root.join(".cache-home"));
 
     let snapshot = crate::activation_cache::load_provider_registry_snapshot(&root, &root, true)
         .expect("snapshot");
@@ -58,18 +63,16 @@ fn temp_project_root(name: &str) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!("asp-client-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("create temp project root");
+    std::fs::create_dir(root.join(".git")).expect("create git marker");
     root
 }
 
 fn write_python_provider_config(root: &std::path::Path, binary: &str) {
-    let config_path = root.join(".agents").join("asp.toml");
-    std::fs::create_dir_all(config_path.parent().expect("agent config parent"))
-        .expect("create agent config parent");
-    std::fs::write(
-        &config_path,
-        format!("[providers.python]\nenabled = true\nbinary = \"{binary}\"\n"),
-    )
-    .expect("write .agents/asp.toml");
+    crate::test_support::write_hermetic_provider_registry_config(root, "python", binary);
+}
+
+fn write_python_provider_install_receipt(root: &std::path::Path, binary: &std::path::Path) {
+    crate::test_support::write_hermetic_provider_install_receipt(root, "python", binary);
 }
 
 fn write_executable(path: &std::path::Path) {

@@ -10,7 +10,7 @@ use std::{
 
 /// Environment variable that overrides the ASP v2 state root.
 pub const ASP_STATE_HOME_ENV: &str = "ASP_STATE_HOME";
-/// Default directory under `HOME` for ASP v2 durable state.
+/// Default directory under `HOME` for ASP v1 durable state.
 pub const DEFAULT_STATE_HOME_DIR: &str = ".agent-semantic-protocols";
 /// Layout version for global ASP state directories.
 pub const STATE_LAYOUT_VERSION: &str = "state-v1";
@@ -23,7 +23,7 @@ pub const CLIENT_DB_FILE: &str = "facts.turso";
 /// State Core client manifest filename under `live/client`.
 pub const STATE_MANIFEST_FILE: &str = "manifest.json";
 
-/// Concrete paths for the State Core v2 layout.
+/// Concrete paths for the State Core v1 layout.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatePaths {
@@ -87,7 +87,7 @@ impl StatePaths {
     }
 }
 
-/// Resolve the active ASP v2 state root from process environment variables.
+/// Resolve the active ASP v1 state root from process environment variables.
 pub fn resolve_state_home() -> Result<PathBuf, String> {
     resolve_state_home_from(env::var_os(ASP_STATE_HOME_ENV), env::var_os("HOME"))
 }

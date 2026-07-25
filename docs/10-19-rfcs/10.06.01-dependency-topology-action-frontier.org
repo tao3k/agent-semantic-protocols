@@ -26,6 +26,27 @@ Dependency facts MUST originate from the activated language provider's typed
 =dependency-topology= packet. Protocol code MUST NOT reopen package-manager
 files, scan source imports, or synthesize fallback dependency facts.
 
+** Advertised capabilities require materialized activation routes
+
+A provider manifest MUST NOT advertise =dependencyTopology= or
+=dependencyTopologyMetadata= unless its =routeBindings= names a method that is
+present in the shared semantic language registry.  The registry method
+descriptor owns the exact provider argv and packet schema; activation
+materialization resolves that descriptor into the canonical hook route.
+
+The three declarations form one fail-closed contract:
+
+#+begin_src text
+search capability = true
+  -> provider route binding
+  -> shared registry method descriptor
+  -> materialized activation route
+#+end_src
+
+Missing links are installation or activation errors.  Protocol tests and
+fixtures MUST NOT manufacture a route that the shipped provider manifest and
+shared registry do not declare.
+
 Each fact carries:
 
 - manifest owner path

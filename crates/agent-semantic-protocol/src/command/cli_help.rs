@@ -162,6 +162,7 @@ fn cache_command() -> Command {
             .value_name("PATH")
             .help("Select the workspace"),
     )
+    .subcommand(agent_semantic_client::project_registry_gc_clap_command())
 }
 
 fn cloud_command() -> Command {
@@ -342,7 +343,6 @@ pub(crate) fn install_plugin_command() -> Command {
         .group(
             clap::ArgGroup::new("scope")
                 .args(["global", "project"])
-                .required(true)
                 .multiple(false),
         )
         .arg(
@@ -361,12 +361,14 @@ pub(crate) fn install_plugin_command() -> Command {
         .arg(
             Arg::new("global")
                 .long("global")
+                .visible_alias("global-plugin")
                 .action(ArgAction::SetTrue)
-                .help("Use the global Codex plugin installation"),
+                .help("Install globally (default when no scope flag is given)"),
         )
         .arg(
             Arg::new("project")
                 .long("project")
+                .visible_alias("project-plugin")
                 .action(ArgAction::SetTrue)
                 .help("Enable and cache the plugin only in PROJECT_ROOT"),
         )
@@ -553,12 +555,16 @@ fn install_language_command() -> Command {
     Command::new("language")
         .bin_name("asp install language")
         .about("Install a language provider")
+        .long_about(
+            "Install a language provider.\n\nrelease mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n\ndevelop mode: use the repository Justfile recipes; `--from-workspace` is the internal workspace materialization switch",
+        )
         .arg(Arg::new("language").value_name("LANGUAGE").required(true))
         .arg(project_root_arg())
         .arg(Arg::new("target").long("target").value_name("TARGET"))
         .arg(
             Arg::new("from-workspace")
                 .long("from-workspace")
+                .help("Materialize a provider from its workspace descriptor (develop mode)")
                 .action(ArgAction::SetTrue),
         )
         .arg(
@@ -670,6 +676,7 @@ fn selected_command_legacy(args: &[String]) -> Command {
         (Some("providers"), _) => providers_command(),
         (Some("tools"), _) => tools_command(),
         (Some("wrap"), _) => wrap_command(),
+        (Some("cache"), Some("gc")) => agent_semantic_client::project_registry_gc_clap_command(),
         (Some("cache"), _) => cache_command(),
         (Some("cloud"), _) => cloud_command(),
         (Some("sync"), _) => sync_command(),

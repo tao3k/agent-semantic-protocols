@@ -8,7 +8,9 @@ use agent_semantic_client_db::artifact_pointer_store::{
 };
 use agent_semantic_client_db::storage_contract::StorageRetryPolicy;
 use agent_semantic_client_db::storage_performance_receipt::{
-    STORAGE_SLO_MATRIX_RECEIPT_SCHEMA_ID, StorageLatencyDistributionMicros, StorageSloMatrixReceipt,
+    STORAGE_SLO_MATRIX_RECEIPT_SCHEMA_ID, StorageFootprintReceipt,
+    StorageLatencyDistributionMicros, StorageLongIngestionReceipt, StorageMixedPressureReceipt,
+    StorageSloMatrixReceipt,
 };
 use agent_semantic_client_db::turso_cdc_storage::{
     TursoCdcCaptureMode, TursoCdcProfileConfig, TursoCdcStorage,
@@ -203,22 +205,28 @@ fn main() {
 
     let receipt = StorageSloMatrixReceipt::new(
         STORAGE_SLO_MATRIX_RECEIPT_SCHEMA_ID.into(),
-        LONG_INGESTION_ROWS,
-        LONG_INGESTION_BATCH_ROWS,
-        StorageLatencyDistributionMicros::from_samples(&long_latencies)
-            .expect("long-ingestion latency samples"),
-        recovered_rows,
-        MIXED_PRESSURE_ITERATIONS,
-        StorageLatencyDistributionMicros::from_samples(&mixed_latencies)
-            .expect("mixed-pressure latency samples"),
-        resident_set_kib(),
-        maintenance.database_bytes(),
-        maintenance.wal_bytes(),
-        file_len(&PathBuf::from(format!(
-            "{}-shm",
-            mvcc_path.to_string_lossy()
-        ))),
-        maintenance.passive_checkpoint(),
+        StorageLongIngestionReceipt {
+            rows: LONG_INGESTION_ROWS,
+            batch_rows: LONG_INGESTION_BATCH_ROWS,
+            latency_micros: StorageLatencyDistributionMicros::from_samples(&long_latencies)
+                .expect("long-ingestion latency samples"),
+            recovered_rows,
+        },
+        StorageMixedPressureReceipt {
+            iterations: MIXED_PRESSURE_ITERATIONS,
+            latency_micros: StorageLatencyDistributionMicros::from_samples(&mixed_latencies)
+                .expect("mixed-pressure latency samples"),
+        },
+        StorageFootprintReceipt {
+            resident_set_kib: resident_set_kib(),
+            database_bytes: maintenance.database_bytes(),
+            wal_bytes: maintenance.wal_bytes(),
+            shm_bytes: file_len(&PathBuf::from(format!(
+                "{}-shm",
+                mvcc_path.to_string_lossy()
+            ))),
+            passive_checkpoint: maintenance.passive_checkpoint(),
+        },
     );
     println!(
         "{}",

@@ -9,9 +9,6 @@ use std::env;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
-use super::install_provider_target::{home_dir, resolve_provider_binary_invocation};
-use super::search_config::AspConfig;
-
 pub(super) fn run_provider_command(
     language_id: &str,
     provider: &ActivatedProvider,
@@ -80,10 +77,10 @@ fn validate_semantic_document_query_packet(
             provider.provider_id
         ));
     }
-    if !packet
+    if packet
         .get("itemDigest")
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|digest| !digest.is_empty())
+        .is_none_or(|digest| digest.is_empty())
     {
         return Err(format!(
             "provider `{}` returned semantic document query packet without itemDigest evidence",
@@ -262,11 +259,6 @@ fn run_provider_process_with_stdin(
     if let Some(path) = env::var_os("PATH") {
         path_entries.extend(env::split_paths(&path));
     }
-    if let Some(home_local_bin) = home_local_bin_dir()
-        && home_local_bin.is_dir()
-    {
-        path_entries.push(home_local_bin);
-    }
     if let Ok(path) = env::join_paths(path_entries) {
         envs.insert("PATH".to_string(), path.to_string_lossy().to_string());
     }
@@ -287,13 +279,6 @@ fn run_provider_process_with_stdin(
             provider.provider_id
         )
     })
-}
-
-fn home_local_bin_dir() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .map(|home| home.join(".local/bin"))
 }
 
 fn resolve_provider_program(program: &str, project_root: &Path) -> String {
@@ -334,10 +319,8 @@ pub(super) fn provider_invocation_with_profile(
     profiles: &RuntimeProfiles,
     provider: &ActivatedProvider,
     args: &[String],
-    project_root: &Path,
-    config: &AspConfig,
 ) -> Result<Vec<String>, String> {
-    let mut invocation = provider_command_prefix(profiles, provider, project_root, config)?;
+    let mut invocation = provider_command_prefix(profiles, provider)?;
     invocation.extend(args.iter().cloned());
     Ok(invocation)
 }
@@ -347,51 +330,23 @@ pub(super) fn provider_invocations(
     args: &[String],
     project_root: &Path,
     profiles: &RuntimeProfiles,
-    config: &AspConfig,
 ) -> Result<Vec<Vec<String>>, String> {
     search_scope_arg_sets(args, project_root)
         .into_iter()
-        .map(|args| {
-            provider_invocation_with_profile(profiles, provider, &args, project_root, config)
-        })
+        .map(|args| provider_invocation_with_profile(profiles, provider, &args))
         .collect()
 }
 
 fn provider_command_prefix(
-    _profiles: &RuntimeProfiles,
+    profiles: &RuntimeProfiles,
     provider: &ActivatedProvider,
-    project_root: &Path,
-    config: &AspConfig,
 ) -> Result<Vec<String>, String> {
-    let home = home_dir();
-    if let Some(binary) = config.provider_bin(provider.language_id.as_str()) {
-        return Ok(vec![resolve_configured_provider_binary(
-            provider.language_id.as_str(),
-            binary,
-            project_root,
-            home.as_deref(),
-        )?]);
-    }
-    resolve_provider_binary_invocation(
-        provider.language_id.as_str(),
-        &provider.binary,
-        home.as_deref(),
-    )
-    .map(|invocation| vec![invocation.command])
-}
-
-fn resolve_configured_provider_binary(
-    language_id: &str,
-    binary: &str,
-    project_root: &Path,
-    home: Option<&Path>,
-) -> Result<String, String> {
-    let binary_path = Path::new(binary);
-    if binary_path.components().count() <= 1 {
-        return resolve_provider_binary_invocation(language_id, binary, home)
-            .map(|invocation| invocation.command);
-    }
-    Ok(resolve_provider_program(binary, project_root))
+    agent_semantic_hook::runtime_profile_command_argv(profiles, provider).ok_or_else(|| {
+        format!(
+            "provider runtime profile is unavailable: language={} provider={} binary={} authority=state-home-runtime-bin",
+            provider.language_id, provider.provider_id, provider.binary
+        )
+    })
 }
 
 fn search_scope_arg_sets(args: &[String], project_root: &Path) -> Vec<Vec<String>> {

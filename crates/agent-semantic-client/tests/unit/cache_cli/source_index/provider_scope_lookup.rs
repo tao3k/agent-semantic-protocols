@@ -1,5 +1,5 @@
 use super::fixtures::{
-    EnvVarGuard, home_local_provider_path, isolate_home, make_executable, temp_root,
+    EnvVarGuard, isolate_home, make_executable, state_home_provider_path, temp_root,
     write_gerbil_activation_with_provider_scope, write_rust_activation_with_ignored_prefixes,
 };
 use crate::cache_cli::run_cache;
@@ -241,7 +241,7 @@ fn cache_source_index_refresh_prefers_provider_workspace_scope_packet() {
         "(def (provider-scope-symbol) 'excluded)\n",
     )
     .expect("write excluded source");
-    let provider_bin = home_local_provider_path(&root, "gslph");
+    let provider_bin = state_home_provider_path(&root, "gslph");
     std::fs::create_dir_all(provider_bin.parent().expect("provider parent"))
         .expect("create home local bin");
     std::fs::write(&provider_bin, r#"#!/bin/sh

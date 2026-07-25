@@ -2,14 +2,14 @@ use std::env;
 use std::process::Command;
 
 use crate::provider_command::support::{
-    asp_command, home_local_bin, make_executable, provider, temp_project_root, write_activation,
+    asp_command, make_executable, provider, state_runtime_bin, temp_project_root, write_activation,
     write_echo_provider,
 };
 
 #[test]
 fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
     let root = temp_project_root("provider-ast-patch-facade");
-    let home_bin = home_local_bin(&root);
+    let home_bin = state_runtime_bin(&root);
     write_echo_provider(&home_bin, "rs-harness", "rs");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
@@ -38,7 +38,7 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
     let _ = std::fs::remove_dir_all(&root);
 
     let root = temp_project_root("provider-ast-patch-real-apply");
-    let home_bin = home_local_bin(&root);
+    let home_bin = state_runtime_bin(&root);
     std::fs::create_dir_all(root.join("src")).expect("create src");
     let source_path = root.join("src/lib.rs");
     let before = "pub fn demo() -> usize {\n    1\n}\n";
@@ -74,7 +74,7 @@ fn provider_native_ast_patch_command_is_wrapped_by_language_facade() {
         .join("debug")
         .join(format!("rs-harness{}", std::env::consts::EXE_SUFFIX));
     assert!(harness_binary.exists(), "{}", harness_binary.display());
-    std::fs::create_dir_all(&home_bin).expect("create home local bin");
+    std::fs::create_dir_all(&home_bin).expect("create state-home runtime bin");
     let wrapper_path = home_bin.join("rs-harness");
     let harness_binary_quoted = harness_binary.to_string_lossy().replace('\'', "'\\''");
     std::fs::write(

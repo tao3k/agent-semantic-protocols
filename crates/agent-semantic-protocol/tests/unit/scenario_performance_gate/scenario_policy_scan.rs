@@ -459,8 +459,10 @@ pub(super) fn run_julia_batch(binary: &Path, workdir: &Path, batch_input: &str) 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "julia batch process failed status={} stderr={stderr}",
-        output.status
+        "julia batch process failed binary={} workdir={} status={} stderr={stderr} batchInput={batch_input:?}",
+        binary.display(),
+        workdir.display(),
+        output.status,
     );
     String::from_utf8(output.stdout).expect("julia batch stdout must be utf-8")
 }

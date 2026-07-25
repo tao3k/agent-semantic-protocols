@@ -24,7 +24,7 @@ fn cache_source_index_refresh_builds_db_engine_rows() {
     .expect("write gerbil source");
     let activation_path = write_gerbil_activation_with_command_prefix(
         &root,
-        super::fixtures::noop_provider_command_prefix(),
+        super::fixtures::noop_provider_command_prefix(&root, "gerbil-scheme"),
         &["src"],
     );
     let _activation_env = EnvVarGuard::set(
@@ -142,7 +142,7 @@ fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_file() {
     .expect("write gerbil source");
     let activation_path = write_gerbil_activation_with_command_prefix(
         &root,
-        super::fixtures::noop_provider_command_prefix(),
+        super::fixtures::noop_provider_command_prefix(&root, "gerbil-scheme"),
         &["src", "extra"],
     );
     let _activation_env = EnvVarGuard::set(

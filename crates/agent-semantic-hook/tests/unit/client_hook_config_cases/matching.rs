@@ -1,6 +1,7 @@
 use super::common::{
     ClientHookConfig, DecisionKind, HookClassificationRequest, classify_hook_with_config, fs, json,
     load_client_config, load_client_config_for_project, registry, temp_root,
+    with_required_resident_agents,
 };
 
 #[test]
@@ -430,6 +431,14 @@ fn action_first_rule_denies_inferred_reads_before_shell_expansion() {
         native_read.fields["agentAction"]["authority"],
         "raw-host-action"
     );
+    assert_eq!(
+        native_read.fields["configRuleId"],
+        "materialize-registered-source-read-action"
+    );
+    assert_eq!(
+        native_read.fields["normalizedActions"][0]["operationIntent"],
+        "direct-read"
+    );
 
     let non_source = classify_hook_with_config(HookClassificationRequest {
         registry: &registry,
@@ -442,6 +451,134 @@ fn action_first_rule_denies_inferred_reads_before_shell_expansion() {
         }),
     });
     assert_eq!(non_source.decision, DecisionKind::Allow);
+}
+
+#[test]
+fn registered_source_read_action_matches_real_payload_field_variants() {
+    let config = ClientHookConfig::default();
+    let registry = crate::classifier::rust_registry();
+
+    for (label, payload) in [
+        (
+            "codex-snake-case",
+            json!({
+                "tool_name": "Read",
+                "tool_input": {
+                    "file_path": "crates/agent-semantic-protocol/src/command/hook_runtime.rs"
+                }
+            }),
+        ),
+        (
+            "desktop-camel-case",
+            json!({
+                "toolName": "functions.read_file",
+                "toolInput": {"path": "hook_runtime.rs"}
+            }),
+        ),
+        (
+            "arguments-envelope-glob",
+            json!({
+                "toolName": "Read",
+                "arguments": {"path": "*.rs"}
+            }),
+        ),
+    ] {
+        let decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &registry,
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &payload,
+        });
+
+        assert_eq!(
+            decision.decision,
+            DecisionKind::Deny,
+            "{label}: {decision:?}"
+        );
+        assert_eq!(
+            decision.fields["configRuleId"], "materialize-registered-source-read-action",
+            "{label}"
+        );
+        assert_eq!(decision.fields["agentAction"]["action"], "read", "{label}");
+        assert_eq!(decision.fields["agentAction"]["effect"], "read", "{label}");
+        assert_eq!(
+            decision.fields["normalizedActions"][0]["operationIntent"], "direct-read",
+            "{label}"
+        );
+        assert!(
+            decision.fields["normalizedActions"][0]["paths"]
+                .as_array()
+                .is_some_and(|paths| !paths.is_empty()),
+            "{label}: {decision:?}"
+        );
+    }
+}
+
+#[test]
+fn later_denied_action_wins_over_earlier_allowed_envelope() {
+    let root = temp_root("blocking-action-dominates-allow");
+    let config_path = root.join("config.toml");
+    fs::write(
+        &config_path,
+        with_required_resident_agents(
+            r#"
+schemaId = "agent.semantic-protocols.hook.client-config"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+
+[[rules]]
+id = "allow-parallel-envelope"
+priority = 50000
+decision = "allow"
+message = "The outer transport envelope is allowed."
+
+[rules.match]
+toolAny = ["multi_tool_use.parallel"]
+"#,
+        ),
+    )
+    .expect("write config");
+    let config = load_client_config(&config_path).expect("load client config");
+    let registry = crate::classifier::rust_registry();
+    let payload = json!({
+        "tool_name": "multi_tool_use.parallel",
+        "tool_input": {
+            "tool_uses": [
+                {
+                    "recipient_name": "functions.read_file",
+                    "parameters": {"path": "hook_runtime.rs"}
+                }
+            ]
+        }
+    });
+
+    let decision = classify_hook_with_config(HookClassificationRequest {
+        registry: &registry,
+        config: &config,
+        platform: "codex",
+        event: "pre-tool",
+        payload: &payload,
+    });
+
+    assert_eq!(decision.decision, DecisionKind::Deny, "{decision:?}");
+    assert_eq!(
+        decision.fields["configRuleId"],
+        "materialize-registered-source-read-action"
+    );
+    assert_eq!(
+        decision.subject.tool_name.as_deref(),
+        Some("functions.read_file")
+    );
+    assert_eq!(
+        decision.fields["normalizedActions"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]

@@ -49,21 +49,60 @@ pub fn classify_hook(
 
 /// Classify one hook payload using a named `HookClassificationRequest`.
 pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> HookDecision {
+    let actions = collect_payload_tool_actions(request.payload);
     let decision = if let Some(decision) = classify_non_tool_event(&request) {
         decision
+    } else if let Some(decision) = classify_tool_actions(&request, &actions) {
+        decision
     } else {
-        let actions = collect_payload_tool_actions(request.payload);
-        if let Some(decision) = classify_tool_actions(&request, &actions) {
-            decision
-        } else {
-            let subject = actions.first().map(subject_for_action).unwrap_or_default();
-            allow(request.platform, request.event, subject)
-        }
+        let subject = actions.first().map(subject_for_action).unwrap_or_default();
+        allow(request.platform, request.event, subject)
     };
     let decision = normalize_source_file_query_routes(decision);
     let decision = with_selector_only_subagent_message(decision);
     let decision = with_prompt_scope_fields(decision, request.payload);
-    with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root)
+    let decision =
+        with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root);
+    with_hook_match_receipt(decision, request.payload, &actions)
+}
+
+fn with_hook_match_receipt(
+    mut decision: HookDecision,
+    payload: &Value,
+    actions: &[ToolAction],
+) -> HookDecision {
+    let mut payload_keys = payload
+        .as_object()
+        .map(|object| object.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    payload_keys.sort();
+    decision.fields.insert(
+        "hookPayloadKeys".to_string(),
+        Value::Array(payload_keys.into_iter().map(Value::String).collect()),
+    );
+
+    let normalized_actions = actions
+        .iter()
+        .filter(|action| {
+            !action.tool_name.is_empty()
+                || action.command.is_some()
+                || !action.paths.is_empty()
+                || action.operation != OperationIntent::Unknown
+        })
+        .map(|action| {
+            serde_json::json!({
+                "toolName": action.tool_name,
+                "toolSurface": action.surface.as_str(),
+                "operationIntent": action.operation.as_str(),
+                "paths": action.paths,
+            })
+        })
+        .collect();
+    decision.fields.insert(
+        "normalizedActions".to_string(),
+        Value::Array(normalized_actions),
+    );
+    decision
 }
 
 fn with_selector_only_subagent_message(mut decision: HookDecision) -> HookDecision {
@@ -198,14 +237,19 @@ fn classify_tool_actions(
         event,
         payload: _,
     } = request;
-    if let Some(decision) = actions
-        .iter()
-        .find_map(|action| config.classify(registry, platform, event, action))
-    {
-        return Some(decision);
+    let mut first_allow = None;
+    for action in actions {
+        let Some(decision) = config.classify(registry, platform, event, action) else {
+            continue;
+        };
+        match decision.decision {
+            crate::DecisionKind::Allow => {
+                first_allow.get_or_insert(decision);
+            }
+            crate::DecisionKind::Block | crate::DecisionKind::Deny => return Some(decision),
+        }
     }
-
-    None
+    first_allow
 }
 
 fn classify_user_prompt(platform: &str, event: &str, payload: &Value) -> Option<HookDecision> {
@@ -260,7 +304,6 @@ pub(crate) fn materialize_source_access_decision(
     event: &str,
     action: &ToolAction,
     agent_action: Option<&crate::tool_action::AgentAction>,
-    _tokens: Option<&[String]>,
     semantic_ast_patch_enabled: bool,
     recovery_prompt: &crate::hook_recovery_prompt::CompiledRecoveryPromptConfig,
 ) -> Option<HookDecision> {
@@ -373,12 +416,14 @@ fn classify_apply_patch_paths(
     Some(deny_for_action(
         platform,
         event,
-        ReasonKind::SemanticAstPatchRequired,
-        action,
-        languages,
-        subject,
-        routes,
-        message,
+        super::decision::DenyForActionRequest {
+            reason_kind: ReasonKind::SemanticAstPatchRequired,
+            action,
+            language_ids: languages,
+            subject,
+            routes,
+            message,
+        },
     ))
 }
 
@@ -408,12 +453,14 @@ pub(crate) fn materialize_agent_search_json_decision(
     Some(deny_for_action(
         platform,
         event,
-        ReasonKind::AgentSearchJson,
-        action,
-        vec![provider.language_id.clone()],
-        subject_for_action(action),
-        routes,
-        message,
+        super::decision::DenyForActionRequest {
+            reason_kind: ReasonKind::AgentSearchJson,
+            action,
+            language_ids: vec![provider.language_id.clone()],
+            subject: subject_for_action(action),
+            routes,
+            message,
+        },
     ))
 }
 

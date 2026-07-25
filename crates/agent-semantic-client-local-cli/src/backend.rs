@@ -121,16 +121,24 @@ impl LocalNativeCliBackend {
         Ok(())
     }
 
-    fn home_local_provider_binary(provider: &ResolvedProvider) -> Result<String, String> {
-        let home = env::var_os("HOME")
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
+    fn state_home_provider_binary(provider: &ResolvedProvider) -> Result<String, String> {
+        let binary = Path::new(&provider.binary);
+        if binary.components().count() != 1
+            || binary.file_name().and_then(|name| name.to_str()) != Some(provider.binary.as_str())
+        {
+            return Err(format!(
+                "provider binary for language `{}` must be a logical basename resolved under State Home runtime/bin, got `{}`",
+                provider.language_id, provider.binary
+            ));
+        }
+        let state_home =
+            agent_semantic_runtime::state_core::resolve_state_home().map_err(|error| {
                 format!(
-                    "provider binary `{}` for language `{}` must be installed at $HOME/.local/bin/{}; HOME is not set",
-                    provider.binary, provider.language_id, provider.binary
+                    "failed to resolve ASP State Home for provider `{}` language `{}`: {error}",
+                    provider.binary, provider.language_id
                 )
             })?;
-        let path = Path::new(&home).join(".local/bin").join(&provider.binary);
+        let path = state_home.join("runtime").join("bin").join(binary);
         if !path.is_file() {
             return Err(format!(
                 "provider binary `{}` for language `{}` must be installed at {}; run `asp install language {}`",
@@ -144,7 +152,7 @@ impl LocalNativeCliBackend {
     }
 
     fn provider_command_prefix(provider: &ResolvedProvider) -> Result<Vec<String>, String> {
-        let prefix = vec![Self::home_local_provider_binary(provider)?];
+        let prefix = vec![Self::state_home_provider_binary(provider)?];
         Ok(Self::provider_command_prefix_with_facade_language(
             provider, prefix,
         ))

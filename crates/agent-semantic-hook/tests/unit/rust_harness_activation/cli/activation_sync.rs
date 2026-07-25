@@ -9,48 +9,14 @@ use agent_semantic_hook::{
 use serde_json::json;
 
 use crate::rust_harness_activation::support::{
-    asp_command, temp_project_root, write_fake_provider_binary,
+    asp_command, temp_project_root, write_state_home_provider_binary,
 };
 
 #[test]
-fn cli_hook_repairs_missing_activation_and_denies_source_read() {
+fn cli_hook_fails_closed_without_mutating_missing_activation() {
     let root = temp_project_root("hook-activation-missing-fail-closed");
     super::super::support::write_default_client_hook_config(&root);
-    let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
-    let _ = std::fs::remove_file(&activation_path);
-    std::fs::create_dir_all(root.join("src")).expect("create Rust source fixture directory");
-    std::fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"activation-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .expect("write Rust manifest fixture");
-    std::fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n")
-        .expect("write Rust source fixture");
-
-    let (decision, _stderr) = run_hook_with_activation(
-        &activation_path,
-        json!({"tool_name": "Read", "tool_input": {"file_path": "src/lib.rs"}}),
-    );
-
-    assert_eq!(decision["decision"], "deny");
-    assert_eq!(
-        decision["reasonKind"], "direct-source-read",
-        "decision={decision}\nstderr={_stderr}"
-    );
-    assert_eq!(decision["subject"]["toolName"], "Read");
-    assert_eq!(decision["subject"]["paths"], json!(["src/lib.rs"]));
-    assert_eq!(
-        decision["fields"]["activationRecoveryStatus"],
-        "reloaded-and-classified"
-    );
-    assert!(activation_path.is_file());
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
-}
-
-#[test]
-fn cli_hook_repairs_missing_activation_then_classifies_source_read() {
-    let root = temp_project_root("hook-activation-missing-non-source-allow");
-    let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
+    let activation_path = test_activation_path(&root);
     let _ = std::fs::remove_file(&activation_path);
     std::fs::create_dir_all(root.join("src")).expect("create Rust source fixture directory");
     std::fs::write(
@@ -66,11 +32,16 @@ fn cli_hook_repairs_missing_activation_then_classifies_source_read() {
         json!({"tool_name": "Read", "tool_input": {"file_path": "src/lib.rs"}}),
     );
 
-    assert_eq!(decision["decision"], "deny", "{decision}\n{stderr}");
-    assert_eq!(decision["reasonKind"], "direct-source-read");
+    assert_eq!(decision["decision"], "deny");
     assert_eq!(
-        decision["fields"]["activationRecoveryStatus"],
-        "reloaded-and-classified"
+        decision["reasonKind"], "direct-source-read",
+        "decision={decision}\nstderr={stderr}"
+    );
+    assert_eq!(decision["subject"]["toolName"], "Read");
+    assert_eq!(decision["subject"]["paths"], json!(["src/lib.rs"]));
+    assert!(
+        !activation_path.exists(),
+        "hook evaluation must not materialize State Home; explicit `asp sync` owns activation writes"
     );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
@@ -106,36 +77,24 @@ fn cli_hook_fails_closed_on_generated_activation_drift_for_source_read() {
 }
 
 #[test]
-fn cli_doctor_syncs_generated_activation_drift() {
-    let root = temp_project_root("doctor-activation-sync");
+fn cli_sync_replaces_generated_activation_drift() {
+    let root = temp_project_root("activation-sync");
     let state_home = root.join(".agent-semantic-protocols");
     super::super::support::write_default_client_hook_config(&root);
     let activation_path = write_invalid_generated_activation(&root);
-    let provider_path = write_fake_provider_binary(&root, "rs-harness");
+    write_state_home_provider_binary(&state_home, "rust", "rs-harness", "rs-harness");
 
     let output = asp_command()
         .env_remove("PRJ_CACHE_HOME")
         .env("ASP_STATE_HOME", &state_home)
-        .env("PATH", &provider_path)
-        .args([
-            "hook",
-            "doctor",
-            "--client",
-            "codex",
-            root.to_str().expect("utf8 temp root"),
-        ])
+        .args(["sync", root.to_str().expect("utf8 temp root")])
         .output()
-        .expect("run agent-semantic-protocol doctor");
+        .expect("run agent-semantic-protocol sync");
 
     assert!(
         output.status.success(),
-        "doctor stderr: {}",
+        "sync stderr: {}",
         String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("[agent-doctor] status=ok")
-            || stdout.contains("[agent-doctor] status=warning")
     );
     let synced = std::fs::read_to_string(&activation_path).expect("synced activation");
     let registry = parse_hook_activation(&synced).expect("canonical synced activation");
@@ -214,12 +173,8 @@ fn test_activation_path(root: &std::path::Path) -> std::path::PathBuf {
     )
     .expect("write workspace manifest");
     resolved
-        .state_home
-        .join("hooks")
-        .join("projects")
-        .join(resolved.repo.repo_id.as_str())
-        .join("workspaces")
-        .join(resolved.workspace.workspace_id.as_str())
+        .paths
+        .hooks_dir
         .join("state")
         .join("activation.json")
 }
@@ -228,21 +183,16 @@ fn run_hook_with_activation(
     activation_path: &Path,
     payload: serde_json::Value,
 ) -> (serde_json::Value, String) {
-    let project_root = activation_path
+    let state_home = activation_path
         .ancestors()
-        .nth(4)
-        .expect("legacy activation project root");
+        .nth(8)
+        .expect("State Home activation path");
+    let project_root = state_home.parent().expect("fixture project root");
     let home = project_root.join(".home");
     std::fs::create_dir_all(&home).expect("create isolated hook HOME");
     let mut child = asp_command()
         .env("HOME", home)
-        .env(
-            "ASP_STATE_HOME",
-            activation_path
-                .parent()
-                .and_then(Path::parent)
-                .expect("legacy activation state home"),
-        )
+        .env("ASP_STATE_HOME", state_home)
         .env("CODEX_HOME", project_root.join(".codex-home"))
         .current_dir(project_root)
         .args([

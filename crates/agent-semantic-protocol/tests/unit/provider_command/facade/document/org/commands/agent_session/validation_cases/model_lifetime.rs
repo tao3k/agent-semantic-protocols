@@ -1,8 +1,8 @@
 use crate::provider_command::facade::document::org::commands::agent_session::support::{
-    write_codex_asp_explorer_fixture_with_actual_profile,
+    install_rust_marker_provider, write_codex_asp_explorer_fixture_with_actual_profile,
     write_codex_asp_explorer_fixture_without_agent_path,
 };
-use crate::provider_command::support::{asp_command, temp_project_root};
+use crate::provider_command::support::{asp_command, state_home, temp_project_root};
 
 #[test]
 fn asp_agent_session_treats_configured_fallback_model_as_non_ready_drift() {
@@ -123,6 +123,7 @@ sessionLifetime = "resident"
 #[test]
 fn asp_agent_session_reads_dynamic_agent_table_session_lifetime() {
     let root = temp_project_root("agent-command-session-dynamic-agent-table-lifetime");
+    install_rust_marker_provider(&state_home(&root));
     let home = root.join("home");
     write_codex_asp_explorer_fixture_with_actual_profile(
         &home,
@@ -292,6 +293,7 @@ fn asp_agent_session_model_mismatch_is_warning_not_invalid() {
 #[test]
 fn asp_agent_session_reads_codex_agent_file_session_lifetime() {
     let root = temp_project_root("agent-command-session-codex-agent-file-lifetime");
+    install_rust_marker_provider(&state_home(&root));
     let home = root.join("home");
     write_codex_asp_explorer_fixture_with_actual_profile(
         &home,

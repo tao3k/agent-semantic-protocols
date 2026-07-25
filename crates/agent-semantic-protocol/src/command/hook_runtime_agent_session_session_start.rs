@@ -261,15 +261,17 @@ pub(super) fn classify_session_start_bootstrap(
         && !codex_native_managed_subagent_start
     {
         return Ok(Some(unmanaged_codex_subagent_start_decision(
-            platform,
-            event,
-            payload,
-            native,
-            asp_session_policy,
-            expected_model_for_native_start.as_deref(),
-            expected_reasoning_for_native_start.as_deref(),
-            observed_reasoning_for_native_start.as_deref(),
-            false,
+            UnmanagedCodexSubagentStart {
+                platform,
+                event,
+                payload,
+                native,
+                asp_session_policy,
+                expected_model: expected_model_for_native_start.as_deref(),
+                expected_reasoning_effort: expected_reasoning_for_native_start.as_deref(),
+                observed_reasoning_effort: observed_reasoning_for_native_start.as_deref(),
+                repair_candidate: false,
+            },
         )));
     }
     let native_managed_subagent_start = event == "subagent-start"
@@ -735,17 +737,30 @@ pub(super) fn classify_session_start_bootstrap(
     )))
 }
 
-fn unmanaged_codex_subagent_start_decision(
-    platform: &str,
-    event: &str,
-    payload: &serde_json::Value,
-    native: &crate::codex::native_agent_transport::CodexNativeSubagentEvent,
-    asp_session_policy: &AspSessionPolicy,
-    expected_model: Option<&str>,
-    expected_reasoning_effort: Option<&str>,
-    observed_reasoning_effort: Option<&str>,
+struct UnmanagedCodexSubagentStart<'a> {
+    platform: &'a str,
+    event: &'a str,
+    payload: &'a serde_json::Value,
+    native: &'a crate::codex::native_agent_transport::CodexNativeSubagentEvent,
+    asp_session_policy: &'a AspSessionPolicy,
+    expected_model: Option<&'a str>,
+    expected_reasoning_effort: Option<&'a str>,
+    observed_reasoning_effort: Option<&'a str>,
     repair_candidate: bool,
-) -> HookDecision {
+}
+
+fn unmanaged_codex_subagent_start_decision(start: UnmanagedCodexSubagentStart<'_>) -> HookDecision {
+    let UnmanagedCodexSubagentStart {
+        platform,
+        event,
+        payload,
+        native,
+        asp_session_policy,
+        expected_model,
+        expected_reasoning_effort,
+        observed_reasoning_effort,
+        repair_candidate,
+    } = start;
     let resident_child_name = asp_session_policy.resident_child_name();
     let expected_agent_type = asp_session_policy.resident_agent_role();
     let action = if repair_candidate {

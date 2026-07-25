@@ -488,7 +488,7 @@ pub(super) fn asp_search_query_budget_cold_functional_path_stays_inside_scenario
     };
     let request = agent_semantic_search::SearchQueryBudgetRequest {
         language_id: "rust",
-        query: "source access",
+        query: "search provider",
         scopes: &[],
         explicit_filters: false,
         query_pack_descriptor: descriptor,
@@ -501,7 +501,7 @@ pub(super) fn asp_search_query_budget_cold_functional_path_stays_inside_scenario
     let elapsed_ms = elapsed.as_millis();
 
     assert_eq!(block.reason, "query-too-broad");
-    assert_eq!(block.generic_terms, vec!["source", "access"]);
+    assert_eq!(block.generic_terms, vec!["search", "provider"]);
     assert_eq!(block.term_count, 2);
     assert!(
         elapsed_ms <= max_total_ms,

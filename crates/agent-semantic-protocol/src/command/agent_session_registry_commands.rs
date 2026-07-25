@@ -284,8 +284,13 @@ fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
     let codex_home = home.join(".codex");
     let state_home = temp_root.join("asp-state");
     let workspace = temp_root.join("workspace");
-    std::fs::create_dir_all(&workspace)
-        .map_err(|error| format!("create smoke workspace: {error}"))?;
+    std::fs::create_dir_all(workspace.join(".git"))
+        .map_err(|error| format!("create smoke Git workspace: {error}"))?;
+    std::fs::write(
+        workspace.join("Cargo.toml"),
+        "[package]\nname = \"asp-agent-session-smoke\"\nversion = \"0.0.0\"\n",
+    )
+    .map_err(|error| format!("write smoke Cargo project anchor: {error}"))?;
     let owner_fixture = workspace.join(
         "crates/agent-semantic-protocol/src/command/agent_session_registry_message_target.rs",
     );
@@ -299,6 +304,7 @@ fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
     let child_session_id = "asp-smoke-invalid-child";
     write_smoke_codex_agent_fixture(&codex_home)?;
     write_smoke_codex_rollout_fixture(&codex_home, &workspace, root_session_id, child_session_id)?;
+    materialize_smoke_rust_provider(&workspace, &state_home)?;
     let asp_bin = std::env::current_exe()
         .map_err(|error| format!("resolve current asp executable for smoke: {error}"))?;
     let register = std::process::Command::new(&asp_bin)
@@ -378,6 +384,71 @@ fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
     });
     let _ = std::fs::remove_dir_all(&temp_root);
     Ok(report)
+}
+
+fn materialize_smoke_rust_provider(
+    workspace: &std::path::Path,
+    smoke_state_home: &std::path::Path,
+) -> Result<(), String> {
+    let selection = agent_semantic_hook::provider_command_selections(workspace)?
+        .into_iter()
+        .find(|selection| selection.language_id().as_str() == "rust")
+        .ok_or_else(|| {
+            "agent session smoke requires a receipt-validated Rust provider in the caller State Home"
+                .to_string()
+        })?;
+    let [source] = selection.provider_command_prefix() else {
+        return Err(
+            "agent session smoke requires a direct receipt-validated Rust provider command"
+                .to_string(),
+        );
+    };
+    let source = std::path::Path::new(source);
+    let installed = smoke_state_home
+        .join("runtime/bin")
+        .join(selection.binary());
+    std::fs::create_dir_all(
+        installed
+            .parent()
+            .ok_or_else(|| "smoke provider install path has no parent".to_string())?,
+    )
+    .map_err(|error| format!("create smoke provider runtime bin: {error}"))?;
+    std::fs::copy(source, &installed).map_err(|error| {
+        format!(
+            "copy receipt-validated smoke provider {} to {}: {error}",
+            source.display(),
+            installed.display()
+        )
+    })?;
+    let permissions = std::fs::metadata(source)
+        .map_err(|error| format!("read smoke provider permissions: {error}"))?
+        .permissions();
+    std::fs::set_permissions(&installed, permissions)
+        .map_err(|error| format!("preserve smoke provider permissions: {error}"))?;
+
+    let content_digest = agent_semantic_content_identity::file_content_digest_v1(&installed)
+        .map_err(|error| format!("digest smoke provider content: {error}"))?;
+    let metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed)
+            .map_err(|error| format!("digest smoke provider metadata: {error}"))?;
+    let manifest = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id().as_str() == "rust")
+        .ok_or_else(|| "registered Rust provider manifest is missing".to_string())?;
+    let lock_dir = smoke_state_home.join("runtime/provider-locks");
+    std::fs::create_dir_all(&lock_dir)
+        .map_err(|error| format!("create smoke provider lock registry: {error}"))?;
+    std::fs::write(
+        lock_dir.join("rust.lock.toml"),
+        format!(
+            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\n",
+            manifest.provider_id(),
+            installed.display(),
+            content_digest,
+            metadata_digest,
+        ),
+    )
+    .map_err(|error| format!("write smoke provider install receipt: {error}"))
 }
 
 fn write_smoke_codex_agent_fixture(codex_home: &std::path::Path) -> Result<(), String> {

@@ -4,6 +4,7 @@
 
 mod activation_cache;
 mod cache_cli;
+pub use cache_cli::project_registry_gc_clap_command;
 mod cache_replay;
 pub mod cli;
 mod cli_args;

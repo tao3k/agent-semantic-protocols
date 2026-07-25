@@ -60,6 +60,8 @@ fn db_engine_artifact_events_use_active_turso_path_without_retired_db_control() 
 #[test]
 fn db_engine_artifact_event_writes_survive_concurrent_agent_stress() {
     let client_dir = Arc::new(temp_root("db-engine-artifact-events-concurrent-client"));
+    ClientDbEngine::open_write_session_client_dir(client_dir.as_ref())
+        .expect("stage canonical Turso database before concurrent artifact writes");
     let writer_count = 12usize;
     let start = Arc::new(Barrier::new(writer_count));
     let mut writers = Vec::new();

@@ -190,7 +190,12 @@ For a non-empty owner-items query, the emitted frontier is the minimal matching 
 
 An explicit owner path is sufficient authority for this projection. Source-index, FTS, and cross-owner candidate routes may provide cache health or broader discovery elsewhere, but they must not inject competing owner-item candidates into =search owner <path> items=. The selected language harness parse is the sole fact source for that command.
 
-For a Rust owner whose path is explicit, this parser-owned projection runs before generic search preflight, activation runtime, provider, cache, or database setup. The command still honors the lightweight language-enabled configuration check. Only a missing owner, an empty local AST projection, or a language without a native projection may continue into the normal activated provider route.
+For every registered source language, including Rust, this parser-owned
+projection runs through the activated =languages/*-harness= owner-items
+interface.  An explicit path bypasses generic discovery and durable index
+lookup, but it does not bypass provider activation or create an ASP-owned
+parser exception.  A missing owner, failed harness, or empty owner-items packet
+fails closed; ASP does not continue into a source-text parser fallback.
 
 =search owner <path> items --workspace . --view seeds= is valid without =--query=. Empty query means "enumerate bounded owner-local structural anchors" for the selected owner. This surface is dynamic dirty-code search, not a durable DB indexing request. The command facade should use a =languages/*-harness= owner-items interface, then let Rust orchestrate caching, overlay merge, ranking, timeout control, and compact rendering around that interface.
 

@@ -1,14 +1,14 @@
 id = "asp-gerbil-scheme-projection-owner-items-lifecycle"
-title = "ASP gerbil-scheme owner-items uses projection import then Turso graph reads"
+title = "ASP gerbil-scheme projection import and owner-items retain distinct provider packets"
 policy_ids = ["GERBIL-SCHEME-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-SEARCH-OWNER-COLD-001"]
-agent_goal = "Prove cold owner-items returns an explicit projection action without provider startup, projection import invokes the harness once, and warm owner-items reads exact graph selectors without a second provider process."
+agent_goal = "Prove projection import invokes the Gerbil harness for a query-free projection packet, cold owner-items invokes the harness for a distinct owner-items packet, and warm owner-items replays that packet without a third provider process."
 reference_repositories = ["tao3k/agent-semantic-protocols"]
 reference_patterns = [
   "asp gerbil-scheme projection import --owner src/model.ss --workspace .",
-  "state=projection-cold-required providerProcessCount=0",
-  "alg=graph-turbo-owner-items",
+  "parserProcessCount=1",
+  "alg=gerbil-harness-owner-items",
   "item:symbol(dynamic-owner-item-index)",
 ]
 inputs = "inputs"
 expected = "expected"
-command = "asp gerbil-scheme search owner src/model.ss items --query dynamic-owner-item-index --workspace . --view seeds; asp gerbil-scheme projection import --owner src/model.ss --workspace .; asp gerbil-scheme search owner src/model.ss items --query dynamic-owner-item-index --workspace . --view seeds"
+command = "asp gerbil-scheme projection import --owner src/model.ss --workspace .; asp gerbil-scheme search owner src/model.ss items --query dynamic-owner-item-index --workspace . --view seeds; asp gerbil-scheme search owner src/model.ss items --query dynamic-owner-item-index --workspace . --view seeds"

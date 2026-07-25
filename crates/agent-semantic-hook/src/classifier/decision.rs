@@ -26,17 +26,28 @@ pub(super) fn allow(platform: &str, event: &str, subject: DecisionSubject) -> Ho
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct DenyForActionRequest<'a> {
+    pub(super) reason_kind: ReasonKind,
+    pub(super) action: &'a ToolAction,
+    pub(super) language_ids: Vec<agent_semantic_config::LanguageId>,
+    pub(super) subject: DecisionSubject,
+    pub(super) routes: Vec<DecisionRoute>,
+    pub(super) message: String,
+}
+
 pub(super) fn deny_for_action(
     platform: &str,
     event: &str,
-    reason_kind: ReasonKind,
-    action: &ToolAction,
-    language_ids: Vec<agent_semantic_config::LanguageId>,
-    subject: DecisionSubject,
-    routes: Vec<DecisionRoute>,
-    message: String,
+    request: DenyForActionRequest<'_>,
 ) -> HookDecision {
+    let DenyForActionRequest {
+        reason_kind,
+        action,
+        language_ids,
+        subject,
+        routes,
+        message,
+    } = request;
     let mut decision = deny(
         platform,
         event,

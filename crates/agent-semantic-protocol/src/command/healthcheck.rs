@@ -40,28 +40,20 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     collect_binary_issue(&mut issues, &binary);
 
     let status = overall_status(&issues);
+    let report = HealthcheckReport {
+        status,
+        layout: &layout,
+        activation_path: &activation_path,
+        activation: &activation,
+        activation_runtime: &activation_runtime,
+        binary: &binary,
+        skill: &skill,
+        issues: &issues,
+    };
     if options.json {
-        print_json(
-            status,
-            &layout,
-            &activation_path,
-            &activation,
-            &activation_runtime,
-            &binary,
-            &skill,
-            &issues,
-        )?;
+        print_json(&report)?;
     } else {
-        print_compact(
-            status,
-            &layout,
-            &activation_path,
-            &activation,
-            &activation_runtime,
-            &binary,
-            &skill,
-            &issues,
-        );
+        print_compact(&report);
     }
 
     Ok(())
@@ -416,16 +408,28 @@ fn fs_status(path: Option<&Path>, kind: FsKind) -> &'static str {
     }
 }
 
-fn print_compact(
-    status: &str,
-    layout: &ProjectRuntimeLayout,
-    activation_path: &Path,
-    activation: &ActivationCheck,
-    activation_runtime: &ActivationRuntimeCheck,
-    binary: &BinaryCheck,
-    skill: &SkillHealthReceipt,
-    issues: &[HealthIssue],
-) {
+struct HealthcheckReport<'a> {
+    status: &'a str,
+    layout: &'a ProjectRuntimeLayout,
+    activation_path: &'a Path,
+    activation: &'a ActivationCheck,
+    activation_runtime: &'a ActivationRuntimeCheck,
+    binary: &'a BinaryCheck,
+    skill: &'a SkillHealthReceipt,
+    issues: &'a [HealthIssue],
+}
+
+fn print_compact(report: &HealthcheckReport<'_>) {
+    let HealthcheckReport {
+        status,
+        layout,
+        activation_path,
+        activation,
+        activation_runtime,
+        binary,
+        skill,
+        issues,
+    } = report;
     println!(
         "[asp-healthcheck] status={} gitToplevel={} cacheHome={} cacheSource={}",
         status,
@@ -487,7 +491,7 @@ fn print_compact(
             );
         }
     }
-    for issue in issues {
+    for issue in *issues {
         println!(
             "|{} code={} message={}",
             issue.severity,
@@ -497,16 +501,17 @@ fn print_compact(
     }
 }
 
-fn print_json(
-    status: &str,
-    layout: &ProjectRuntimeLayout,
-    activation_path: &Path,
-    activation: &ActivationCheck,
-    activation_runtime: &ActivationRuntimeCheck,
-    binary: &BinaryCheck,
-    skill: &SkillHealthReceipt,
-    issues: &[HealthIssue],
-) -> Result<(), String> {
+fn print_json(report: &HealthcheckReport<'_>) -> Result<(), String> {
+    let HealthcheckReport {
+        status,
+        layout,
+        activation_path,
+        activation,
+        activation_runtime,
+        binary,
+        skill,
+        issues,
+    } = report;
     let providers = activation_runtime
         .profiles
         .as_ref()

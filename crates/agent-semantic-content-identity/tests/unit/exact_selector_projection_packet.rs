@@ -23,17 +23,19 @@ fn builder_binds_source_parser_facts_and_projection_bytes() {
         structural_selector,
     );
     let packet = build_exact_selector_projection_packet_v1(
-        &language_id,
-        &provider_id,
-        canonical_item_selector.clone(),
-        &parser_digest,
-        &query_pack_digest,
-        &owner_path,
-        &typed_structural_selector,
-        ExactProjectionModeV1::Code,
-        b"fn example() {}\n",
-        br#"{"kind":"fn","name":"example"}"#,
-        b"fn example() {}\n",
+        crate::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
+            language_id: &language_id,
+            provider_id: &provider_id,
+            canonical_item_selector: canonical_item_selector.clone(),
+            parser_identity_digest: &parser_digest,
+            query_pack_digest: &query_pack_digest,
+            owner_path: &owner_path,
+            structural_selector: &typed_structural_selector,
+            projection_mode: ExactProjectionModeV1::Code,
+            source: b"fn example() {}\n",
+            normalized_parser_facts: br#"{"kind":"fn","name":"example"}"#,
+            projection: b"fn example() {}\n",
+        },
     );
     assert_eq!(packet.schema_version, "1");
     assert_eq!(
@@ -42,17 +44,19 @@ fn builder_binds_source_parser_facts_and_projection_bytes() {
     );
 
     let changed = build_exact_selector_projection_packet_v1(
-        &language_id,
-        &provider_id,
-        canonical_item_selector,
-        &parser_digest,
-        &query_pack_digest,
-        &owner_path,
-        &typed_structural_selector,
-        ExactProjectionModeV1::Code,
-        b"fn example() { todo!() }\n",
-        br#"{"kind":"fn","name":"example"}"#,
-        b"fn example() { todo!() }\n",
+        crate::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
+            language_id: &language_id,
+            provider_id: &provider_id,
+            canonical_item_selector,
+            parser_identity_digest: &parser_digest,
+            query_pack_digest: &query_pack_digest,
+            owner_path: &owner_path,
+            structural_selector: &typed_structural_selector,
+            projection_mode: ExactProjectionModeV1::Code,
+            source: b"fn example() { todo!() }\n",
+            normalized_parser_facts: br#"{"kind":"fn","name":"example"}"#,
+            projection: b"fn example() { todo!() }\n",
+        },
     );
     assert_ne!(packet.source_blob_digest, changed.source_blob_digest);
     assert_ne!(packet.parser_fact_digest, changed.parser_fact_digest);

@@ -78,7 +78,7 @@ pub fn search_pipe_query_clauses<'a>(
     let language_id = request.language_id;
     let query = request.query.as_str();
     let query_pack_descriptor = request.query_pack_descriptor;
-    let explicit = query
+    query
         .split('|')
         .map(str::trim)
         .filter(|clause| !clause.is_empty())
@@ -86,8 +86,7 @@ pub fn search_pipe_query_clauses<'a>(
             terms: search_pipe_query_terms(language_id.as_str(), raw_clause, query_pack_descriptor),
         })
         .filter(|clause| !clause.terms.is_empty())
-        .collect::<Vec<_>>();
-    explicit
+        .collect::<Vec<_>>()
 }
 
 pub struct SearchPipeQueryClausesRequest<'a, QueryPackDescriptor> {

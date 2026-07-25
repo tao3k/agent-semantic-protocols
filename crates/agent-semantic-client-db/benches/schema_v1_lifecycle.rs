@@ -17,7 +17,7 @@ fn temp_project(name: &str, sequence: u64) -> PathBuf {
     ))
 }
 
-fn prepare_project(root: &PathBuf) {
+fn prepare_project(root: &std::path::Path) {
     std::fs::create_dir_all(root.join(".git")).expect("create benchmark project root");
 }
 

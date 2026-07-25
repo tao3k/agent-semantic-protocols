@@ -18,7 +18,8 @@ pub(crate) fn run_project_registry_gc(
         apply: args.apply,
         grace_period_ms: args.grace_days.saturating_mul(24 * 60 * 60 * 1_000),
     };
-    let state = ResolvedState::resolve(project_root)?;
+    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
+    let state = ResolvedState::resolve_with_state_home(project_root, state_home)?;
     let report = state.gc_project_registry(options)?;
     print_report(&report);
     if receipt_json {

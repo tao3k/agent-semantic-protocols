@@ -42,6 +42,9 @@ pub use provider_registry::{materialize_provider_routes, semantic_registry_diges
 mod runtime_profile;
 pub mod source_access;
 mod source_selector;
+#[cfg(test)]
+#[path = "../tests/unit/test_process_env.rs"]
+mod test_process_env;
 mod tool_action;
 
 pub use crate::activation_store::{
@@ -51,7 +54,8 @@ pub use crate::activation_store::{
 };
 pub use crate::active_artifact_receipt::{
     ActiveAspArtifactInput, ActiveAspArtifactMaterialization, active_asp_artifact_receipt_path,
-    active_provider_artifact_input, materialize_active_asp_artifact_receipt,
+    active_provider_artifact_input, active_provider_artifact_input_with_state_home,
+    materialize_active_asp_artifact_receipt,
     materialize_active_asp_artifact_receipt_for_current_process,
     verify_active_asp_artifact_receipt,
 };
@@ -125,8 +129,9 @@ mod read_only_subagent;
 pub use read_only_subagent::{
     CodexHookAgentId, CodexHookAgentType, ConfiguredCodexAgentName, ConfiguredResidentRole,
     HookSubagentPermissionContext, ManagedChildName, ResidentChildIdentityProof,
-    ResidentChildSessionId, ResidentEnabled, ResidentIdentityStatus, ResidentRootSessionId,
-    ResidentSandboxMode, classify_read_only_subagent_receipt, classify_read_only_subagent_write,
+    ResidentChildSessionId, ResidentConfiguration, ResidentEnabled, ResidentIdentityStatus,
+    ResidentLiveIdentity, ResidentRootSessionId, ResidentSandboxMode,
+    classify_read_only_subagent_receipt, classify_read_only_subagent_write,
 };
 #[cfg(test)]
 extern crate self as agent_semantic_hook;

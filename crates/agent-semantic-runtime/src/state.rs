@@ -9,11 +9,16 @@ use agent_semantic_config::{ProjectRuntimeLayout, project_cache_root, project_ru
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectStatePaths {
     pub layout: ProjectRuntimeLayout,
+    pub repo_id: crate::state_core::RepoId,
+    pub workspace_id: crate::state_core::WorkspaceId,
+    pub identity_basis: String,
+    pub persistence: crate::state_core::RepoPersistence,
     pub protocol_home: PathBuf,
     pub hook_cache_dir: PathBuf,
     pub hook_state_dir: PathBuf,
     pub activation_path: PathBuf,
     pub client_cache_dir: PathBuf,
+    pub client_cache_manifest_path: PathBuf,
     pub project_client_db_dir: PathBuf,
     pub project_client_db_path: PathBuf,
     pub artifacts_dir: PathBuf,
@@ -43,6 +48,29 @@ pub struct ProjectRuntimeState {
 pub fn project_state_paths(project_root: impl AsRef<Path>) -> Result<ProjectStatePaths, String> {
     let layout = project_runtime_layout(project_root);
     let resolved = crate::state_core::ResolvedState::resolve(&layout.requested_root)?;
+    Ok(project_state_paths_from_resolved(layout, resolved))
+}
+
+/// Resolve ASP runtime paths against an explicit State Home without creating files.
+///
+/// This boundary is intended for callers that already own State Home resolution
+/// and for tests that must not mutate the process environment.
+pub fn project_state_paths_with_state_home(
+    project_root: impl AsRef<Path>,
+    state_home: impl AsRef<Path>,
+) -> Result<ProjectStatePaths, String> {
+    let layout = project_runtime_layout(project_root);
+    let resolved = crate::state_core::ResolvedState::resolve_with_state_home(
+        &layout.requested_root,
+        state_home,
+    )?;
+    Ok(project_state_paths_from_resolved(layout, resolved))
+}
+
+fn project_state_paths_from_resolved(
+    layout: ProjectRuntimeLayout,
+    resolved: crate::state_core::ResolvedState,
+) -> ProjectStatePaths {
     let protocol_home = resolved.state_home.clone();
     let hook_dir = resolved.paths.hooks_dir.clone();
     let hook_cache_dir = hook_dir.join("cache");
@@ -56,13 +84,18 @@ pub fn project_state_paths(project_root: impl AsRef<Path>) -> Result<ProjectStat
     let runtime_bin_dir = runtime_home.join("bin");
     let provider_lock_dir = runtime_home.join("provider-locks");
 
-    Ok(ProjectStatePaths {
+    ProjectStatePaths {
         layout,
+        repo_id: resolved.repo.repo_id.clone(),
+        workspace_id: resolved.workspace.workspace_id.clone(),
+        identity_basis: resolved.repo.identity_basis.clone(),
+        persistence: resolved.repo.persistence,
         protocol_home,
         hook_cache_dir,
         hook_state_dir,
         activation_path,
         client_cache_dir,
+        client_cache_manifest_path: resolved.paths.client_cache_manifest_path.clone(),
         project_client_db_dir,
         project_client_db_path,
         artifacts_dir,
@@ -70,16 +103,38 @@ pub fn project_state_paths(project_root: impl AsRef<Path>) -> Result<ProjectStat
         runtime_bin_dir: runtime_bin_dir.clone(),
         provider_bin_dir: runtime_bin_dir,
         provider_lock_dir,
-    })
+    }
 }
 
 /// Resolve and create the ASP runtime state directories for a project.
 pub fn project_runtime_state(
     project_root: impl AsRef<Path>,
 ) -> Result<ProjectRuntimeState, String> {
-    let paths = project_state_paths(project_root)?;
-    crate::state_core::ResolvedState::resolve(&paths.layout.requested_root)?
-        .ensure_minimal_layout()?;
+    let layout = project_runtime_layout(project_root);
+    let resolved = crate::state_core::ResolvedState::resolve(&layout.requested_root)?;
+    resolved.ensure_minimal_layout()?;
+    let paths = project_state_paths_from_resolved(layout, resolved);
+    materialize_project_runtime_state(paths)
+}
+
+/// Resolve and create project runtime state beneath an explicit State Home.
+pub fn project_runtime_state_with_state_home(
+    project_root: impl AsRef<Path>,
+    state_home: impl AsRef<Path>,
+) -> Result<ProjectRuntimeState, String> {
+    let layout = project_runtime_layout(project_root);
+    let resolved = crate::state_core::ResolvedState::resolve_with_state_home(
+        &layout.requested_root,
+        state_home,
+    )?;
+    resolved.ensure_minimal_layout()?;
+    let paths = project_state_paths_from_resolved(layout, resolved);
+    materialize_project_runtime_state(paths)
+}
+
+fn materialize_project_runtime_state(
+    paths: ProjectStatePaths,
+) -> Result<ProjectRuntimeState, String> {
     let protocol_home = ensure_dir(paths.protocol_home)?;
     let hook_cache_dir = ensure_dir(paths.hook_cache_dir)?;
     let hook_state_dir = ensure_dir(paths.hook_state_dir)?;
@@ -121,7 +176,7 @@ pub fn discover_project_activation_path(project_root: impl AsRef<Path>) -> Optio
         .filter(|path| path.exists())
 }
 
-/// Compatibility predicate for callers that still receive activation paths.
+/// Return whether a path names an activation artifact.
 pub fn is_project_activation_path(path: impl AsRef<Path>) -> bool {
     path.as_ref().file_name().and_then(|name| name.to_str()) == Some("activation.json")
 }
@@ -133,10 +188,7 @@ pub fn project_root_for_activation_path(path: impl AsRef<Path>) -> Option<PathBu
     if !is_project_activation_path(path) {
         return None;
     }
-    if let Some(root) = project_root_for_state_activation_path(path) {
-        return Some(root);
-    }
-    project_root_for_legacy_activation_path(path)
+    project_root_for_state_activation_path(path)
 }
 
 fn project_root_for_state_activation_path(path: &Path) -> Option<PathBuf> {
@@ -148,11 +200,7 @@ fn project_root_for_state_activation_path(path: &Path) -> Option<PathBuf> {
     if hooks_dir.file_name().and_then(|name| name.to_str()) != Some("hooks") {
         return None;
     }
-    let live_dir = hooks_dir.parent()?;
-    if live_dir.file_name().and_then(|name| name.to_str()) != Some("live") {
-        return None;
-    }
-    let workspace_dir = live_dir.parent()?;
+    let workspace_dir = hooks_dir.parent()?;
     let workspace_manifest = workspace_dir.join("workspace.json");
     let manifest = std::fs::read_to_string(workspace_manifest).ok()?;
     let manifest = serde_json::from_str::<serde_json::Value>(&manifest).ok()?;
@@ -161,22 +209,6 @@ fn project_root_for_state_activation_path(path: &Path) -> Option<PathBuf> {
         return None;
     }
     Some(PathBuf::from(root))
-}
-
-fn project_root_for_legacy_activation_path(path: &Path) -> Option<PathBuf> {
-    let hooks_dir = path.parent()?;
-    if hooks_dir.file_name().and_then(|name| name.to_str()) != Some("hooks") {
-        return None;
-    }
-    let protocol_dir = hooks_dir.parent()?;
-    if protocol_dir.file_name().and_then(|name| name.to_str()) != Some("agent-semantic-protocol") {
-        return None;
-    }
-    let cache_dir = protocol_dir.parent()?;
-    match cache_dir.file_name().and_then(|name| name.to_str()) {
-        Some(".cache") | Some(".agent-semantic-protocols") => cache_dir.parent().map(PathBuf::from),
-        _ => None,
-    }
 }
 
 /// Return the runtime bin directory below an already-resolved cache home.

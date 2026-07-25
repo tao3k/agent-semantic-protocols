@@ -120,19 +120,49 @@ pub struct ExactSelectorProjectionPacketV1 {
     pub projection_payload_base64: ProjectionPacketPayloadBase64V1,
 }
 
+/// Typed inputs for constructing one exact-selector projection packet.
+pub struct ExactSelectorProjectionPacketV1Input<'a> {
+    /// Language that owns the projection.
+    pub language_id: &'a ProjectionPacketLanguageIdV1,
+    /// Provider that produced the projection.
+    pub provider_id: &'a ProjectionPacketProviderIdV1,
+    /// Canonical item selected from the owner.
+    pub canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
+    /// Digest identifying the parser implementation.
+    pub parser_identity_digest: &'a ContentDigestV1,
+    /// Digest identifying the parser query pack.
+    pub query_pack_digest: &'a ContentDigestV1,
+    /// Workspace-relative owner path.
+    pub owner_path: &'a ProjectionPacketOwnerPathV1,
+    /// Provider-owned structural selector.
+    pub structural_selector: &'a ProjectionPacketStructuralSelectorV1,
+    /// Requested projection mode.
+    pub projection_mode: ExactProjectionModeV1,
+    /// Live source bytes bound into the packet.
+    pub source: &'a [u8],
+    /// Canonical parser facts used to derive the projection.
+    pub normalized_parser_facts: &'a [u8],
+    /// Projection bytes returned to the caller.
+    pub projection: &'a [u8],
+}
+
+/// Build a version-1 exact-selector projection packet from typed inputs.
 pub fn build_exact_selector_projection_packet_v1(
-    language_id: &ProjectionPacketLanguageIdV1,
-    provider_id: &ProjectionPacketProviderIdV1,
-    canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
-    parser_identity_digest: &ContentDigestV1,
-    query_pack_digest: &ContentDigestV1,
-    owner_path: &ProjectionPacketOwnerPathV1,
-    structural_selector: &ProjectionPacketStructuralSelectorV1,
-    projection_mode: ExactProjectionModeV1,
-    source: &[u8],
-    normalized_parser_facts: &[u8],
-    projection: &[u8],
+    input: ExactSelectorProjectionPacketV1Input<'_>,
 ) -> ExactSelectorProjectionPacketV1 {
+    let ExactSelectorProjectionPacketV1Input {
+        language_id,
+        provider_id,
+        canonical_item_selector,
+        parser_identity_digest,
+        query_pack_digest,
+        owner_path,
+        structural_selector,
+        projection_mode,
+        source,
+        normalized_parser_facts,
+        projection,
+    } = input;
     let source_blob_digest = crate::exact_selector_merkle::blake3_content_digest_v1(source);
     let parser_fact_digest = crate::exact_selector_merkle::canonical_content_digest_v1(
         b"asp.parser-fact.v1",
@@ -302,7 +332,7 @@ fn is_canonical_base64(value: &str) -> bool {
 }
 
 fn decode_canonical_base64(value: &str) -> Option<Vec<u8>> {
-    if value.len() % 4 != 0 {
+    if !value.len().is_multiple_of(4) {
         return None;
     }
     let chunk_count = value.len() / 4;

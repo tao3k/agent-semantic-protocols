@@ -1,9 +1,8 @@
 use serde_json::Value;
-use std::env;
-use std::process::Command;
 
 use crate::provider_command::support::{
-    provider, temp_project_root, write_activation, write_echo_provider,
+    asp_command, provider, state_runtime_bin, temp_project_root, write_activation,
+    write_echo_provider,
 };
 
 #[test]
@@ -13,11 +12,7 @@ fn client_search_receipt_records_local_native_provider_command() {
     write_echo_provider(&bin_dir, "rs-harness", "rs");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env_remove("CODEX_THREAD_ID")
+    let output = asp_command(&root)
         .args([
             "rust",
             "search",
@@ -46,7 +41,7 @@ fn client_search_receipt_records_local_native_provider_command() {
     assert_eq!(receipt["providerCommandCount"], 1);
     assert_eq!(receipt["providerProcessesSpawned"], 1);
     assert_eq!(receipt["nativeProvenance"][0]["providerId"], "rs-harness");
-    let resolved_provider = std::fs::canonicalize(bin_dir.join("rs-harness"))
+    let resolved_provider = std::fs::canonicalize(state_runtime_bin(&root).join("rs-harness"))
         .expect("canonical provider binary")
         .display()
         .to_string();

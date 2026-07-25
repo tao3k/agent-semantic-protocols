@@ -1,6 +1,6 @@
 //! Runtime provider command profiles derived from activation.
 
-use crate::executable::{ExecutableStatus, is_executable_file, resolve_executable_with_status};
+use crate::executable::{ExecutableStatus, is_executable_file};
 use crate::protocol_activation::protocol_activation_manifest::{
     ActivatedProvider, HookActivation, HookRuntime,
 };
@@ -191,33 +191,74 @@ fn runtime_provider_profile_for_provider(
     project_root: &Path,
     provider: &ActivatedProvider,
 ) -> RuntimeProviderProfile {
-    let project_bin = project_root.join(".bin").join(&provider.binary);
-    let state_bin = agent_semantic_runtime::project_state_paths(project_root)
-        .ok()
-        .map(|paths| paths.runtime_bin_dir.join(&provider.binary));
-    let binary_resolution =
-        if let Some(state_binary) = state_bin.filter(|path| is_executable_file(path)) {
-            crate::executable::ExecutableResolution {
-                path: Some(std::fs::canonicalize(&state_binary).unwrap_or(state_binary)),
-                status: ExecutableStatus::Available,
-                reason: None,
+    let binary_resolution = match agent_semantic_runtime::state_core::resolve_state_home() {
+        Ok(state_home) => {
+            let state_binary = state_home
+                .join("runtime")
+                .join("bin")
+                .join(&provider.binary);
+            if !state_binary.is_file() {
+                crate::executable::ExecutableResolution {
+                    path: None,
+                    status: ExecutableStatus::Missing,
+                    reason: Some(format!(
+                        "provider runtime binary is not installed: {}",
+                        state_binary.display()
+                    )),
+                }
+            } else if is_executable_file(&state_binary) {
+                let canonical_binary =
+                    std::fs::canonicalize(&state_binary).unwrap_or_else(|_| state_binary.clone());
+                match crate::active_artifact_receipt::active_provider_artifact_input_with_state_home(
+                    project_root,
+                    &state_home,
+                    &provider.language_id,
+                    &provider.provider_id,
+                    canonical_binary.clone(),
+                )
+                .and_then(|artifact| {
+                    let command_prefix = vec![canonical_binary.display().to_string()];
+                    let digest = crate::protocol_activation::digest::provider_execution_command_digest(
+                        &command_prefix,
+                        &artifact.artifact_digest,
+                    )?;
+                    if digest != provider.execution_command_digest {
+                        return Err(format!(
+                            "provider execution digest mismatch: expected={} actual={digest}",
+                            provider.execution_command_digest
+                        ));
+                    }
+                    Ok(())
+                }) {
+                    Ok(()) => crate::executable::ExecutableResolution {
+                        path: Some(canonical_binary),
+                        status: ExecutableStatus::Available,
+                        reason: None,
+                    },
+                    Err(reason) => crate::executable::ExecutableResolution {
+                        path: None,
+                        status: ExecutableStatus::Unexecutable,
+                        reason: Some(reason),
+                    },
+                }
+            } else {
+                crate::executable::ExecutableResolution {
+                    path: None,
+                    status: ExecutableStatus::Unexecutable,
+                    reason: Some(format!(
+                        "provider runtime binary is not executable: {}",
+                        state_binary.display()
+                    )),
+                }
             }
-        } else if let Some(home_binary) = preferred_home_local_provider_binary(provider) {
-            crate::executable::ExecutableResolution {
-                path: Some(home_binary),
-                status: ExecutableStatus::Available,
-                reason: None,
-            }
-        } else if is_executable_file(&project_bin) {
-            crate::executable::ExecutableResolution {
-                path: Some(std::fs::canonicalize(&project_bin).unwrap_or(project_bin)),
-                status: ExecutableStatus::Available,
-                reason: None,
-            }
-        } else {
-            resolve_executable_with_status(&provider.binary)
-        };
-    let command = runtime_provider_command(provider, binary_resolution.path.as_ref());
+        }
+        Err(error) => crate::executable::ExecutableResolution {
+            path: None,
+            status: ExecutableStatus::Missing,
+            reason: Some(format!("failed to resolve ASP State Home: {error}")),
+        },
+    };
+    let command = runtime_provider_command(binary_resolution.path.as_ref());
     let resolved_binary = command.argv.first().cloned().or_else(|| {
         binary_resolution
             .path
@@ -225,9 +266,7 @@ fn runtime_provider_profile_for_provider(
             .map(|path| path.display().to_string())
     });
     let health = RuntimeProviderHealth {
-        status: command
-            .status
-            .unwrap_or_else(|| binary_resolution.status.into()),
+        status: binary_resolution.status.into(),
         checked_at: None,
         reason: command.reason.or(binary_resolution.reason),
     };
@@ -238,7 +277,7 @@ fn runtime_provider_profile_for_provider(
         provider_id: provider.provider_id.clone(),
         binary: provider.binary.clone(),
         execution: provider.execution,
-        provider_command_prefix: provider.provider_command_prefix.clone(),
+        provider_command_prefix: Vec::new(),
         resolved_binary,
         argv: command.argv,
         health,
@@ -247,72 +286,20 @@ fn runtime_provider_profile_for_provider(
 
 struct RuntimeProviderCommand {
     argv: Vec<String>,
-    status: Option<RuntimeProviderHealthStatus>,
     reason: Option<String>,
 }
 
-fn runtime_provider_command(
-    provider: &ActivatedProvider,
-    resolved_binary: Option<&PathBuf>,
-) -> RuntimeProviderCommand {
+fn runtime_provider_command(resolved_binary: Option<&PathBuf>) -> RuntimeProviderCommand {
     if let Some(binary) = resolved_binary {
         return RuntimeProviderCommand {
             argv: vec![binary.display().to_string()],
-            status: Some(RuntimeProviderHealthStatus::Available),
             reason: None,
         };
     }
-    if provider.provider_command_prefix.is_empty() {
-        return RuntimeProviderCommand {
-            argv: Vec::new(),
-            status: None,
-            reason: None,
-        };
-    }
-
-    let Some((program, forwarded)) = provider.provider_command_prefix.split_first() else {
-        return RuntimeProviderCommand {
-            argv: Vec::new(),
-            status: Some(RuntimeProviderHealthStatus::Missing),
-            reason: Some("provider command prefix is empty".to_string()),
-        };
-    };
-    let program_resolution = resolve_executable_with_status(program);
-    let Some(program_path) = program_resolution.path else {
-        return RuntimeProviderCommand {
-            argv: Vec::new(),
-            status: Some(program_resolution.status.into()),
-            reason: program_resolution.reason,
-        };
-    };
-
-    let argv = std::iter::once(program_path.display().to_string())
-        .chain(forwarded.iter().cloned())
-        .collect();
     RuntimeProviderCommand {
-        argv,
-        status: Some(RuntimeProviderHealthStatus::Available),
+        argv: Vec::new(),
         reason: None,
     }
-}
-
-fn preferred_home_local_provider_binary(provider: &ActivatedProvider) -> Option<PathBuf> {
-    if !provider_is_gerbil_scheme(provider) {
-        return None;
-    }
-    let candidate = env::var_os("HOME")
-        .filter(|home| !home.is_empty())
-        .map(PathBuf::from)?
-        .join(".local/bin/gslph");
-    is_executable_file(&candidate).then(|| std::fs::canonicalize(&candidate).unwrap_or(candidate))
-}
-
-fn provider_is_gerbil_scheme(provider: &ActivatedProvider) -> bool {
-    provider.language_id == "gerbil-scheme"
-        || provider
-            .provider_command_prefix
-            .iter()
-            .any(|arg| arg == "gerbil-scheme")
 }
 
 fn runtime_provider_profile<'a>(

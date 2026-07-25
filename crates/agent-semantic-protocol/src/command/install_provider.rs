@@ -15,7 +15,7 @@ use super::install_provider_archive::{
 };
 use super::install_provider_release::ProviderReleaseSpec;
 use super::install_provider_target::{
-    ProviderBinaryInstallTarget, home_dir, resolve_provider_binary_install_target,
+    ProviderBinaryInstallTarget, resolve_provider_binary_install_target,
 };
 use super::org_capture;
 
@@ -177,11 +177,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             language_id,
         )?;
         let provider_binary = binary_file_name(&descriptor.binary, &target);
-        let install_target = resolve_provider_binary_install_target(
-            language_id,
-            &provider_binary,
-            home_dir().as_deref(),
-        )?;
+        let install_target = resolve_provider_binary_install_target(language_id, &provider_binary)?;
         return install_workspace_provider_binary(
             &descriptor,
             language_id,
@@ -194,11 +190,8 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     let rev = spec.release_version.as_str();
     validate_target(&spec, &target)?;
     let provider_binary = binary_file_name(&spec.binary, &target);
-    let install_target = resolve_provider_binary_install_target(
-        &spec.language_id,
-        &provider_binary,
-        home_dir().as_deref(),
-    )?;
+    let install_target =
+        resolve_provider_binary_install_target(&spec.language_id, &provider_binary)?;
     let provider_lock_dir = ensure_project_provider_lock_dir(&install_args.project_root)?;
     let provider_package_dir = provider_lock_dir
         .join(&spec.language_id)
@@ -738,12 +731,6 @@ fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
     })
 }
 
-pub(super) fn has_pinned_language_release(language_id: &str) -> Result<bool, String> {
-    Ok(pinned_language_release_manifest()?
-        .languages
-        .contains_key(language_id))
-}
-
 fn pinned_language_release_manifest() -> Result<PinnedLanguageReleaseManifest, String> {
     toml::from_str(PINNED_LANGUAGE_RELEASES_TOML)
         .map_err(|error| format!("failed to parse pinned language releases: {error}"))
@@ -890,7 +877,7 @@ fn toml_escape(value: &str) -> String {
 }
 
 fn usage() -> String {
-    "usage: asp install binary --target <path>\n       asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n       develop mode: use the repository Justfile recipes; they invoke the internal workspace mechanism (installMode=develop-workspace)".to_string()
+    "usage: asp install binary --target <path>\n       asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] <--global|--project> [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n       develop mode: use the repository Justfile recipes; they invoke the internal workspace mechanism (installMode=develop-workspace)".to_string()
 }
 
 fn install_hook_usage() -> String {

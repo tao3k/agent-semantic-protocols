@@ -41,6 +41,10 @@ fn paths_reports_project_root_and_org_state_paths() {
         "stdout: {stdout}"
     );
     assert!(
+        stdout.contains("persistence=ephemeral-path"),
+        "stdout: {stdout}"
+    );
+    assert!(
         stdout.contains(&format!("stateRoot={}", state_home.display())),
         "stdout: {stdout}"
     );
@@ -79,6 +83,7 @@ fn paths_reports_project_root_and_org_state_paths() {
     assert!(stdout.contains("/projects/by-id/"), "stdout: {stdout}");
     assert!(stdout.contains("/live/client/"), "stdout: {stdout}");
     assert!(!root.join(".cache").exists());
+    assert!(!state_home.join("projects/by-id").exists());
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(state_home);
 }
@@ -112,6 +117,7 @@ fn paths_get_returns_single_absolute_field() {
             .to_string()
     );
     assert!(!root.join(".cache").exists());
+    assert!(!state_home.join("projects/by-id").exists());
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(state_home);
 }
@@ -150,6 +156,12 @@ fn paths_json_is_machine_readable() {
     );
     let value: Value = serde_json::from_slice(&output.stdout).expect("json paths");
     assert_eq!(value["projectRoot"], root.display().to_string());
+    assert_eq!(value["persistence"], "ephemeral-path");
+    assert!(
+        value["identityBasis"]
+            .as_str()
+            .is_some_and(|basis| basis.starts_with("ephemeral-path:"))
+    );
     assert_eq!(value["stateRoot"], state_home.display().to_string());
     assert_eq!(
         value["orgArtifacts"],
@@ -183,6 +195,7 @@ fn paths_json_is_machine_readable() {
             .contains("/live/client/cache-manifest.json")
     );
     assert!(!root.join(".cache").exists());
+    assert!(!state_home.join("projects/by-id").exists());
     let _ = std::fs::remove_dir_all(root);
     let _ = std::fs::remove_dir_all(state_home);
 }

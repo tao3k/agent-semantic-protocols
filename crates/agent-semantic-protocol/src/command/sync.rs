@@ -60,9 +60,9 @@ pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
 fn sync_agent_configuration_for_project(
     project_root: &std::path::Path,
 ) -> Result<AgentConfigurationSync, String> {
-    let activation_path = agent_semantic_hook::default_activation_path(&project_root);
+    let activation_path = agent_semantic_hook::default_activation_path(project_root);
     let activation_status =
-        agent_semantic_hook::load_or_refresh_default_activation(&activation_path, &project_root)?
+        agent_semantic_hook::load_or_refresh_default_activation(&activation_path, project_root)?
             .status;
     let mut sync = sync_global_agent_configs()?;
     sync.activation_status = activation_status;

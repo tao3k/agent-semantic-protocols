@@ -164,26 +164,36 @@ pub struct ProviderExecutionStorageEvent {
     pub(crate) root_session_id: String,
 }
 
+pub struct ProviderExecutionStorageEventInput<'a, Phase, Method, Language, RootSession> {
+    pub phase: Phase,
+    pub provider_method: Method,
+    pub language_id: Language,
+    pub status_code: i32,
+    pub stdout: &'a [u8],
+    pub stderr: &'a [u8],
+    pub receipt_present: bool,
+    pub root_session_id: RootSession,
+}
+
 impl ProviderExecutionStorageEvent {
-    pub fn from_output(
-        phase: impl Into<String>,
-        provider_method: impl Into<String>,
-        language_id: impl Into<String>,
-        status_code: i32,
-        stdout: &[u8],
-        stderr: &[u8],
-        receipt_present: bool,
-        root_session_id: impl Into<String>,
-    ) -> Self {
+    pub fn from_output<Phase, Method, Language, RootSession>(
+        input: ProviderExecutionStorageEventInput<'_, Phase, Method, Language, RootSession>,
+    ) -> Self
+    where
+        Phase: Into<String>,
+        Method: Into<String>,
+        Language: Into<String>,
+        RootSession: Into<String>,
+    {
         Self {
-            phase: phase.into(),
-            provider_method: provider_method.into(),
-            language_id: language_id.into(),
-            status_code,
-            stdout_digest: digest_bytes(stdout),
-            stderr_digest: digest_bytes(stderr),
-            receipt_present,
-            root_session_id: root_session_id.into(),
+            phase: input.phase.into(),
+            provider_method: input.provider_method.into(),
+            language_id: input.language_id.into(),
+            status_code: input.status_code,
+            stdout_digest: digest_bytes(input.stdout),
+            stderr_digest: digest_bytes(input.stderr),
+            receipt_present: input.receipt_present,
+            root_session_id: input.root_session_id.into(),
         }
     }
 }
@@ -310,16 +320,17 @@ impl ProviderRuntimeStorageBinding {
         let provider_method = provider_method.into();
         let language_id = language_id.into();
         let created_at_ms = current_time_millis();
-        let event = ProviderExecutionStorageEvent::from_output(
-            "invocation-start",
-            provider_method.as_str(),
-            language_id.as_str(),
-            0,
-            &[],
-            &[],
-            false,
-            self.context.root_session_id.clone(),
-        );
+        let event =
+            ProviderExecutionStorageEvent::from_output(ProviderExecutionStorageEventInput {
+                phase: "invocation-start",
+                provider_method: provider_method.as_str(),
+                language_id: language_id.as_str(),
+                status_code: 0,
+                stdout: &[],
+                stderr: &[],
+                receipt_present: false,
+                root_session_id: self.context.root_session_id.clone(),
+            });
         self.adapter
             .append_provider_execution(&self.context, &event, created_at_ms)
     }

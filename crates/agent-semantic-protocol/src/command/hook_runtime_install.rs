@@ -68,10 +68,10 @@ fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstall
             .expect("clap supplies default project root"),
     )
     .map_err(|error| format!("failed to resolve plugin project root: {error}"))?;
-    let codex_plugin_scope = if matches.get_flag("global") {
-        CodexPluginScope::Global
-    } else {
+    let codex_plugin_scope = if matches.get_flag("project") {
         CodexPluginScope::Project
+    } else {
+        CodexPluginScope::Global
     };
     let subagent_model = subagent_model_arg(
         "codex",

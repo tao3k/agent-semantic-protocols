@@ -4,6 +4,7 @@ use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 #[test]
 fn client_config_rule_can_deny_tool_use() {
@@ -48,7 +49,12 @@ stdinMode = "pipe-candidates"
 
     assert_eq!(decision["decision"], "deny");
     assert_eq!(decision["reasonKind"], "raw-broad-search");
-    assert_eq!(decision["message"], "custom config deny");
+    assert!(
+        decision["message"].as_str().is_some_and(
+            |message| message.contains("`asp rust search ingest items tests --view seeds .`")
+        ),
+        "{decision}"
+    );
     assert_eq!(decision["languageIds"], json!([]));
     assert_eq!(decision["routes"][0]["providerId"], "rs-harness");
     assert_eq!(decision["routes"][0]["binary"], "asp");
@@ -98,7 +104,7 @@ argvSourceExcludeFlagAny = ["--output", "--output-file", "--out", "-o"]
     );
 
     assert_eq!(decision["decision"], "deny");
-    assert_eq!(decision["reasonKind"], "bulk-source-dump");
+    assert_eq!(decision["reasonKind"], "raw-broad-search");
     assert_eq!(
         decision["subject"]["paths"],
         json!(["self-apply-findings.ss"])
@@ -412,7 +418,36 @@ fn write_config(root: &std::path::Path, content: &str) {
     let config_path = root.join(".agent-semantic-protocols/hooks/config.toml");
     std::fs::create_dir_all(config_path.parent().expect("config parent"))
         .expect("create config dir");
-    std::fs::write(config_path, content).expect("write config");
+    let fixture = toml::from_str::<toml::Value>(content)
+        .ok()
+        .and_then(|mut requested| {
+            let defaults = toml::from_str::<toml::Value>(
+                &agent_semantic_config::default_hook_client_config_template(),
+            )
+            .ok()?;
+            let requested_table = requested.as_table_mut()?;
+            for (key, value) in defaults.as_table()? {
+                requested_table
+                    .entry(key.clone())
+                    .or_insert_with(|| value.clone());
+            }
+            toml::to_string(&requested).ok()
+        })
+        .unwrap_or_else(|| content.to_string());
+    std::fs::write(&config_path, &fixture).expect("write config");
+    let sidecar = config_path.with_file_name(format!(
+        "{}.managed.sha256",
+        config_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("config file name")
+    ));
+    let digest = Sha256::digest(fixture.as_bytes());
+    let hex = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    std::fs::write(sidecar, hex).expect("write managed config ownership sidecar");
 }
 
 fn assert_hook_config_auto_repaired(decision: &Value, expected_reason: &str) {
@@ -454,9 +489,10 @@ fn root_owned_rust_activation_json(root: &std::path::Path) -> String {
         "[package]\nname = \"hook-config-fixture\"\nversion = \"0.1.0\"\n",
     )
     .expect("write Rust project anchor");
-    let provider = root.join(".bin/rs-harness");
+    let state_home = root.join(".agent-semantic-protocols");
+    let provider = state_home.join("runtime/bin/rs-harness");
     std::fs::create_dir_all(provider.parent().expect("provider parent"))
-        .expect("create provider bin dir");
+        .expect("create State Home provider bin dir");
     std::fs::write(&provider, "#!/bin/sh\nexit 0\n").expect("write fixture provider");
     #[cfg(unix)]
     {
@@ -468,8 +504,55 @@ fn root_owned_rust_activation_json(root: &std::path::Path) -> String {
         std::fs::set_permissions(&provider, permissions).expect("provider executable");
     }
 
-    let activation =
-        agent_semantic_hook::build_default_activation(root).expect("build typed activation");
+    let manifest = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id().as_str() == "rust")
+        .expect("registered Rust provider manifest");
+    let content_digest = agent_semantic_content_identity::file_content_digest_v1(&provider)
+        .expect("installed provider content digest");
+    let metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&provider)
+            .expect("installed provider metadata digest");
+    let lock_dir = state_home.join("runtime/provider-locks");
+    std::fs::create_dir_all(&lock_dir).expect("create State Home provider lock registry");
+    std::fs::write(
+        lock_dir.join("rust.lock.toml"),
+        format!(
+            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\n",
+            manifest.provider_id(),
+            provider.display(),
+            content_digest,
+            metadata_digest,
+        ),
+    )
+    .expect("write State Home provider install receipt");
+
+    static ASP_STATE_HOME_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _env_lock = ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let previous_state_home = std::env::var_os("ASP_STATE_HOME");
+    // SAFETY: this integration-test module serializes its only process-level
+    // ASP_STATE_HOME mutation and restores the previous value before release.
+    unsafe {
+        std::env::set_var("ASP_STATE_HOME", &state_home);
+    }
+    let activation = agent_semantic_hook::build_default_activation(root);
+    match previous_state_home {
+        Some(previous) => {
+            // SAFETY: protected by ASP_STATE_HOME_ENV_LOCK.
+            unsafe {
+                std::env::set_var("ASP_STATE_HOME", previous);
+            }
+        }
+        None => {
+            // SAFETY: protected by ASP_STATE_HOME_ENV_LOCK.
+            unsafe {
+                std::env::remove_var("ASP_STATE_HOME");
+            }
+        }
+    }
+    let activation = activation.expect("build typed activation from State Home provider");
     assert!(
         activation
             .providers

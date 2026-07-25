@@ -478,7 +478,7 @@ impl From<DecisionRoute> for SourceAccessRoute {
     fn from(route: DecisionRoute) -> Self {
         Self {
             language_id: route.language_id,
-            provider_id: route.provider_id.into(),
+            provider_id: route.provider_id,
             binary: route.binary,
             kind: match route.kind {
                 crate::protocol::DecisionRouteKind::Prime => SourceAccessRouteKind::Prime,

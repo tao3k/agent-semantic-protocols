@@ -161,7 +161,7 @@ where
             proposal_id: request.proposal.proposal_id,
             proposal_digest: request.proposal.proposal_digest,
             intent_digest: request.proposal.intent_digest,
-            program: request.program.clone(),
+            program: Box::new(request.program.clone()),
             program_id: request.program.program_id,
             program_digest: request.program.program_digest,
             graph_digest: request.program.graph_digest,

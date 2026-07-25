@@ -31,31 +31,31 @@ fn write_activation_specs(root: &Path, specs: &[(&str, &[&str])]) -> PathBuf {
         .map(|(language_id, package_roots)| {
             let manifest = manifests
                 .iter()
-                .find(|manifest| manifest.language_id == *language_id)
+                .find(|manifest| manifest.language_id().as_str() == *language_id)
                 .unwrap_or_else(|| panic!("manifest for {language_id}"));
             let manifest_digest = provider_manifest_digest(manifest).expect("manifest digest");
             let routes = agent_semantic_hook::materialize_provider_routes(manifest)
                 .expect("provider routes");
             json!({
-                "manifestId": manifest.manifest_id,
+                "manifestId": manifest.manifest_id(),
                 "manifestDigest": manifest_digest,
-                "languageId": manifest.language_id,
-                "providerId": manifest.provider_id,
-                "binary": manifest.binary,
-                "execution": manifest.execution,
+                "languageId": manifest.language_id(),
+                "providerId": manifest.provider_id(),
+                "binary": manifest.binary(),
+                "execution": manifest.execution(),
                 "providerCommandPrefix": [],
                 "executionCommandDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-                "searchCapabilities": manifest.search_capabilities,
-                "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
-                "queryPackDescriptor": manifest.query_pack_descriptor,
+                "searchCapabilities": manifest.search_capabilities(),
+                "semanticFactsDescriptor": manifest.semantic_facts_descriptor(),
+                "queryPackDescriptor": manifest.query_pack_descriptor(),
                 "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
                 "routes": routes,
                 "coverage": {
                     "packageRoots": package_roots,
-                    "sourceRoots": manifest.source.default_source_roots,
-                    "configFiles": manifest.source.default_config_files,
-                    "sourceExtensions": manifest.source.default_extensions,
-                    "ignoredPathPrefixes": manifest.source.default_ignored_path_prefixes
+                    "sourceRoots": manifest.source().default_source_roots,
+                    "configFiles": manifest.source().default_config_files,
+                    "sourceExtensions": manifest.source().default_extensions,
+                    "ignoredPathPrefixes": manifest.source().default_ignored_path_prefixes
                 }
             })
         })

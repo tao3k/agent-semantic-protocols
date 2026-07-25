@@ -1,7 +1,6 @@
 //! Provider packet export for write-back side artifacts.
 
 use std::collections::BTreeMap;
-use std::path::Path;
 use std::time::Instant;
 
 use agent_semantic_client_core::{
@@ -27,7 +26,7 @@ pub(super) fn export_provider_packet(
     provider: &ResolvedProvider,
     request: &ClientRequest,
 ) -> Option<ProviderPacketExport> {
-    let mut invocation = provider_command_prefix(provider, &request.project_root)?;
+    let mut invocation = provider_command_prefix(provider)?;
     let provider_method = match request.method {
         ClientMethod::Search => "search",
         ClientMethod::Query => "query",
@@ -88,16 +87,7 @@ pub(super) fn export_provider_packet(
     })
 }
 
-fn provider_command_prefix(
-    provider: &ResolvedProvider,
-    project_root: &Path,
-) -> Option<Vec<String>> {
-    if let Some(binary) = provider_binary_on_path(&provider.binary, project_root) {
-        return Some(vec![binary]);
-    }
-    if let Some(binary) = home_local_provider_binary(provider) {
-        return Some(vec![binary]);
-    }
+fn provider_command_prefix(provider: &ResolvedProvider) -> Option<Vec<String>> {
     if let Some(argv) = provider.runtime_command_argv.as_ref()
         && !argv.is_empty()
     {
@@ -106,44 +96,9 @@ fn provider_command_prefix(
     if !provider.provider_command_prefix.is_empty() {
         return Some(provider.provider_command_prefix.clone());
     }
-    home_local_provider_binary(provider).map(|binary| vec![binary])
+    None
 }
 
-fn provider_binary_on_path(binary: &str, project_root: &Path) -> Option<String> {
-    let path = Path::new(binary);
-    let project_root = project_root
-        .canonicalize()
-        .unwrap_or_else(|_| project_root.to_path_buf());
-    if path.components().count() > 1 {
-        let candidate = if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            project_root.join(path)
-        };
-        return candidate.is_file().then(|| {
-            candidate
-                .canonicalize()
-                .unwrap_or(candidate)
-                .to_string_lossy()
-                .to_string()
-        });
-    }
-    std::env::var_os("PATH").and_then(|path| {
-        std::env::split_paths(&path).find_map(|entry| {
-            let candidate = entry.join(binary);
-            let resolved = candidate.canonicalize().unwrap_or(candidate);
-            if !resolved.starts_with(&project_root) {
-                return None;
-            }
-            resolved
-                .is_file()
-                .then(|| resolved.to_string_lossy().to_string())
-        })
-    })
-}
-
-fn home_local_provider_binary(provider: &ResolvedProvider) -> Option<String> {
-    let home = std::env::var_os("HOME").filter(|value| !value.is_empty())?;
-    let path = Path::new(&home).join(".local/bin").join(&provider.binary);
-    path.is_file().then(|| path.to_string_lossy().to_string())
-}
+#[cfg(test)]
+#[path = "../../tests/unit/cache_cli/writeback_provider_export.rs"]
+mod tests;

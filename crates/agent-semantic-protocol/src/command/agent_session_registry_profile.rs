@@ -96,13 +96,15 @@ pub(super) fn adopt_reusable_rollout_session_before_create(
         Some(record) => Some(record),
         None => adopt_unique_root_attributed_rollout_session(
             registry,
-            project_id,
-            root_session_id,
-            name,
-            &profile.role,
-            args.expires_at,
-            excluded_session_id,
-            now,
+            RootAttributedRolloutAdoption {
+                project_id,
+                root_session_id,
+                name,
+                role: &profile.role,
+                expires_at: args.expires_at,
+                excluded_session_id,
+                now,
+            },
         )?,
     };
     Ok(if let Some(record) = record {
@@ -120,16 +122,29 @@ pub(super) fn adopt_reusable_rollout_session_before_create(
     })
 }
 
+struct RootAttributedRolloutAdoption<'a> {
+    project_id: &'a str,
+    root_session_id: &'a str,
+    name: &'a str,
+    role: &'a str,
+    expires_at: Option<i64>,
+    excluded_session_id: Option<&'a str>,
+    now: i64,
+}
+
 fn adopt_unique_root_attributed_rollout_session(
     registry: &AgentSessionRegistry,
-    project_id: &str,
-    root_session_id: &str,
-    name: &str,
-    role: &str,
-    expires_at: Option<i64>,
-    excluded_session_id: Option<&str>,
-    now: i64,
+    adoption: RootAttributedRolloutAdoption<'_>,
 ) -> Result<Option<AgentSessionRecord>, String> {
+    let RootAttributedRolloutAdoption {
+        project_id,
+        root_session_id,
+        name,
+        role,
+        expires_at,
+        excluded_session_id,
+        now,
+    } = adoption;
     let host_records =
         agent_semantic_runtime::codex_app_server_child_session_metadata(&root_session_id.into())?;
     let host_candidates = host_records

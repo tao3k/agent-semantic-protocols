@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::MutexGuard;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,8 +13,6 @@ use agent_semantic_hook::{
     ReasonKind, StdinMode, append_hook_event_state, has_recorded_subagent_context,
 };
 use serde_json::Value;
-
-static ASP_STATE_HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn concurrent_hook_event_appends_write_valid_json_lines() {
@@ -169,7 +167,7 @@ pub(super) struct AspStateHomeGuard {
 
 impl AspStateHomeGuard {
     pub(super) fn activate_isolated() -> Self {
-        let guard = ASP_STATE_HOME_ENV_LOCK
+        let guard = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
             .lock()
             .expect("lock ASP_STATE_HOME test environment");
         let previous = std::env::var_os("ASP_STATE_HOME");
@@ -191,7 +189,7 @@ impl AspStateHomeGuard {
     }
 
     pub(super) fn activate(path: PathBuf) -> Self {
-        let guard = ASP_STATE_HOME_ENV_LOCK
+        let guard = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let previous = std::env::var_os("ASP_STATE_HOME");
@@ -227,15 +225,15 @@ fn decision(run_id: &str, index: usize) -> HookDecision {
         event: "pre-tool".to_string(),
         decision: DecisionKind::Deny,
         reason_kind: ReasonKind::DirectSourceRead,
-        language_ids: vec!["rust".to_string()],
+        language_ids: vec!["rust".into()],
         subject: DecisionSubject {
             tool_name: Some("Read".to_string()),
             command: None,
             paths: vec![format!("{run_id}_event_state_{index}.rs")],
         },
         routes: vec![DecisionRoute {
-            language_id: "rust".to_string(),
-            provider_id: "rs-harness".to_string(),
+            language_id: "rust".into(),
+            provider_id: "rs-harness".into(),
             binary: "asp".to_string(),
             kind: DecisionRouteKind::Query,
             argv: vec!["asp".to_string(), "rust".to_string()],

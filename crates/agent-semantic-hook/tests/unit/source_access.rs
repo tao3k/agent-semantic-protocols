@@ -11,7 +11,7 @@ use crate::classifier::registry;
 #[test]
 fn explicit_fs_read_allows_source_bytes() {
     let decision = SourceAccessDecision::explicit_read_allow(SourceAccessExplicitReadInput {
-        language_id: "rust".to_string(),
+        language_id: "rust".into(),
         provider_id: "rs-harness".into(),
         rpc_method: "fs/readFile".to_string(),
         path: "src/lib.rs".to_string(),
@@ -37,8 +37,8 @@ fn shell_egress_suppression_records_hidden_subprocess_output() {
     let decision =
         SourceAccessDecision::shell_egress_suppressed(SourceAccessShellEgressSuppressedInput {
             route: agent_semantic_hook::DecisionRoute {
-                language_id: "rust".to_string(),
-                provider_id: "rs-harness".to_string(),
+                language_id: "rust".into(),
+                provider_id: "rs-harness".into(),
                 binary: "asp".to_string(),
                 kind: agent_semantic_hook::DecisionRouteKind::Owner,
                 argv: vec![
@@ -84,7 +84,7 @@ fn shell_egress_suppression_records_hidden_subprocess_output() {
 fn provider_capability_allow_keeps_authorization_explicit() {
     let decision =
         SourceAccessDecision::provider_capability_allow(SourceAccessProviderCapabilityAllowInput {
-            language_id: "rust".to_string(),
+            language_id: "rust".into(),
             provider_id: "rs-harness".into(),
             command: "asp rust query --selector src/lib.rs --workspace . --code".to_string(),
             path: "src/lib.rs".to_string(),

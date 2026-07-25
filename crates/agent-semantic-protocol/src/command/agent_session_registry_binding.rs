@@ -30,16 +30,29 @@ pub(in crate::command) fn invalidate_unroutable_canonical_target(
     Ok(true)
 }
 
+struct VerifiedCanonicalTargetBinding<'a> {
+    project_id: &'a str,
+    root_session_id: &'a str,
+    existing: &'a AgentSessionRecord,
+    name: &'a str,
+    message_target_id: &'a str,
+    binding_source: &'a str,
+    now: i64,
+}
+
 fn bind_verified_canonical_target(
     registry: &AgentSessionRegistry,
-    project_id: &str,
-    root_session_id: &str,
-    existing: &AgentSessionRecord,
-    name: &str,
-    message_target_id: &str,
-    binding_source: &str,
-    now: i64,
+    binding: VerifiedCanonicalTargetBinding<'_>,
 ) -> Result<AgentSessionRecord, Box<dyn std::error::Error>> {
+    let VerifiedCanonicalTargetBinding {
+        project_id,
+        root_session_id,
+        existing,
+        name,
+        message_target_id,
+        binding_source,
+        now,
+    } = binding;
     let mut metadata = serde_json::from_str::<serde_json::Value>(&existing.metadata_json)
         .unwrap_or_else(|_| serde_json::json!({}));
     if !metadata.is_object() {
@@ -217,13 +230,15 @@ pub(in crate::command) fn maybe_bind_verified_canonical_target(
     };
     bind_verified_canonical_target(
         registry,
-        &existing.project_id,
-        root_session_id,
-        existing,
-        &existing.name,
-        canonical_target,
-        binding_source,
-        now,
+        VerifiedCanonicalTargetBinding {
+            project_id: &existing.project_id,
+            root_session_id,
+            existing,
+            name: &existing.name,
+            message_target_id: canonical_target,
+            binding_source,
+            now,
+        },
     )
     .map(Some)
     .map_err(|error| error.to_string())

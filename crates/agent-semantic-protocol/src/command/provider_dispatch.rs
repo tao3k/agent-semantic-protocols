@@ -249,8 +249,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             &runtime_profiles,
             provider,
             &request.provider_args(&project_root),
-            &project_root,
-            &config,
         )?;
         let output = super::provider_process::run_provider_command_with_stdin(
             language_id,
@@ -272,7 +270,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 &provider_args,
                 &project_root,
                 &cache_home,
-                &config,
                 None,
             );
         }
@@ -287,7 +284,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             &provider_args,
             &project_root,
             &cache_home,
-            &config,
             Some(&provider_context),
         );
     }
@@ -357,13 +353,8 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     if is_guide(&command_args) {
         let guide_args = provider_guide_args(language_id, &provider_args);
-        let invocation = provider_invocation_with_profile(
-            &runtime_profiles,
-            provider,
-            &guide_args,
-            &project_root,
-            &config,
-        )?;
+        let invocation =
+            provider_invocation_with_profile(&runtime_profiles, provider, &guide_args)?;
         return run_guide_command(
             language_id,
             provider,
@@ -492,13 +483,8 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             "--source-snapshot-envelope".to_string(),
             envelope.display().to_string(),
         ]);
-        let invocations = provider_invocations(
-            provider,
-            &provider_argv,
-            &project_root,
-            &runtime_profiles,
-            &config,
-        )?;
+        let invocations =
+            provider_invocations(provider, &provider_argv, &project_root, &runtime_profiles)?;
         let [invocation] = invocations.as_slice() else {
             return Err(format!(
                 "exact-selector typed projection requires one provider invocation; invocations={}",
@@ -590,13 +576,9 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             .map_err(|error| format!("failed to write exact-selector cold projection: {error}"))?;
         return Ok(());
     }
-    for invocation in provider_invocations(
-        provider,
-        &provider_argv,
-        &project_root,
-        &runtime_profiles,
-        &config,
-    )? {
+    for invocation in
+        provider_invocations(provider, &provider_argv, &project_root, &runtime_profiles)?
+    {
         run_provider_command(
             language_id,
             provider,

@@ -36,6 +36,8 @@ impl Default for ProjectRegistryGcOptions {
 pub enum ProjectRegistryGcReason {
     CurrentRepository,
     RecordedCheckoutExists,
+    NonCanonicalIdentityWithinGracePeriod,
+    NonCanonicalRepositoryIdentity,
     MetadataMissingOrPartial,
     MissingCheckoutsWithinGracePeriod,
     AllRecordedCheckoutsMissing,
@@ -48,6 +50,10 @@ impl ProjectRegistryGcReason {
         match self {
             Self::CurrentRepository => "current-repository",
             Self::RecordedCheckoutExists => "recorded-checkout-exists",
+            Self::NonCanonicalIdentityWithinGracePeriod => {
+                "non-canonical-identity-within-grace-period"
+            }
+            Self::NonCanonicalRepositoryIdentity => "non-canonical-repository-identity",
             Self::MetadataMissingOrPartial => "metadata-missing-or-partial",
             Self::MissingCheckoutsWithinGracePeriod => "missing-checkouts-within-grace-period",
             Self::AllRecordedCheckoutsMissing => "all-recorded-checkouts-missing",
@@ -169,6 +175,25 @@ pub struct ProjectRegistryGcReport {
     pub candidates: Vec<ProjectRegistryGcCandidate>,
 }
 
+fn recorded_identity_is_noncanonical(
+    state_home: &std::path::Path,
+    roots: &[std::path::PathBuf],
+    recorded_repo_id: &super::identity::RepoId,
+) -> bool {
+    let mut identities = roots
+        .iter()
+        .filter(|root| root.exists())
+        .filter_map(|root| {
+            ResolvedState::resolve_with_state_home(root, state_home)
+                .ok()
+                .map(|state| (state.repo.persistence.is_durable(), state.repo.repo_id))
+        });
+    let Some(first) = identities.next() else {
+        return false;
+    };
+    identities.all(|identity| identity == first) && (!first.0 || &first.1 != recorded_repo_id)
+}
+
 impl ResolvedState {
     /// Record bounded project/workspace activity without rewriting identity metadata.
     pub(super) fn touch_registry_activity(&self) -> Result<(), String> {
@@ -235,12 +260,19 @@ impl ResolvedState {
             let roots = recorded_checkout_roots(&project_dir);
             let protected = repo_id == self.repo.repo_id;
             let all_roots_missing = roots.iter().all(|root| !root.exists());
+            let non_canonical_identity =
+                recorded_identity_is_noncanonical(&self.state_home, &roots, &repo_id);
             let last_seen_ms = last_seen_ms(&project_dir);
             let age_ms = last_seen_ms.map(|last_seen| now_ms.saturating_sub(last_seen));
             let old_enough = age_ms.is_some_and(|age| age >= options.grace_period_ms);
-            let eligible = !protected && all_roots_missing && old_enough;
+            let eligible =
+                !protected && old_enough && (all_roots_missing || non_canonical_identity);
             let reason = if protected {
                 ProjectRegistryGcReason::CurrentRepository
+            } else if non_canonical_identity && !old_enough {
+                ProjectRegistryGcReason::NonCanonicalIdentityWithinGracePeriod
+            } else if non_canonical_identity {
+                ProjectRegistryGcReason::NonCanonicalRepositoryIdentity
             } else if roots.iter().any(|root| root.exists()) {
                 ProjectRegistryGcReason::RecordedCheckoutExists
             } else if roots.is_empty() {
@@ -258,7 +290,7 @@ impl ResolvedState {
                 ProjectRegistryGcEligibility::Ineligible
             };
 
-            if all_roots_missing {
+            if all_roots_missing || non_canonical_identity {
                 candidates.push(ProjectRegistryGcCandidate {
                     repo_id,
                     project_dir,
@@ -278,8 +310,15 @@ impl ResolvedState {
                     continue;
                 }
                 let roots = recorded_checkout_roots(&candidate.project_dir);
-                if roots.iter().any(|root| root.exists()) || candidate.repo_id == self.repo.repo_id
-                {
+                let non_canonical_identity =
+                    recorded_identity_is_noncanonical(&self.state_home, &roots, &candidate.repo_id);
+                let identity_is_still_removable = match candidate.reason {
+                    ProjectRegistryGcReason::NonCanonicalRepositoryIdentity => {
+                        non_canonical_identity
+                    }
+                    _ => roots.iter().all(|root| !root.exists()),
+                };
+                if !identity_is_still_removable || candidate.repo_id == self.repo.repo_id {
                     candidate.eligibility = ProjectRegistryGcEligibility::Ineligible;
                     candidate.reason = ProjectRegistryGcReason::RevalidationProtected;
                     continue;

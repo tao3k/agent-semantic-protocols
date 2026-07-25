@@ -4,7 +4,7 @@ use crate::codex_trust::{
     TRUST_BLOCK_END, codex_project_trusted, codex_trust_block_begin,
     merge_codex_project_trust_config, merge_codex_trust_config, toml_basic_string,
 };
-use agent_semantic_runtime::project_activation_path;
+use agent_semantic_runtime::{project_activation_path, state_core::resolve_state_home};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::env;
@@ -286,11 +286,16 @@ fn codex_hook_event_block(
 fn codex_hook_command(hook_event: &str, project_root: &Path, asp_binary: Option<&Path>) -> String {
     let activation_path = project_activation_path(project_root)
         .expect("State Core activation path should resolve for Codex hook config");
+    let asp_binary = asp_binary.map(Path::to_path_buf).unwrap_or_else(|| {
+        resolve_state_home()
+            .expect("State Home should resolve for Codex hook config")
+            .join("runtime")
+            .join("bin")
+            .join("asp")
+    });
     let project_root = shell_single_quoted(&project_root.display().to_string());
     let activation_path = shell_single_quoted(&activation_path.display().to_string());
-    let asp_binary = asp_binary
-        .map(|path| shell_single_quoted(&path.display().to_string()))
-        .unwrap_or_else(|| "\"$repo_root/.bin/asp\"".to_string());
+    let asp_binary = shell_single_quoted(&asp_binary.display().to_string());
     format!(
         "repo_root={project_root}\ncd \"$repo_root\"\nactivation={activation_path}\nexec direnv exec \"$repo_root\" {asp_binary} hook {hook_event} --client codex --activation \"$activation\"\n"
     )

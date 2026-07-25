@@ -351,14 +351,14 @@ pub enum ProviderProcessError {
         /// Configured timeout.
         timeout: Duration,
         /// Partial receipt built from retained output.
-        receipt: ProviderProcessReceipt,
+        receipt: Box<ProviderProcessReceipt>,
     },
     /// The provider exceeded its configured memory ceiling and was killed.
     MemoryLimit {
         /// Configured byte ceiling.
         limit_bytes: u64,
         /// Partial receipt built from retained output.
-        receipt: ProviderProcessReceipt,
+        receipt: Box<ProviderProcessReceipt>,
     },
 }
 

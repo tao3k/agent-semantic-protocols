@@ -266,7 +266,7 @@ fn authoritative_record(execution: ExecutionAuthority) -> AuthoritativeStateReco
         intent_digest: Digest::from_bytes(b"intent"),
         program_id: program.program_id.clone(),
         program_digest: program.program_digest.clone(),
-        program: program.clone(),
+        program: Box::new(program.clone()),
         graph_digest: program.graph_digest.clone(),
         admitted_at_revision: 1,
         context_binding_digest: state.context.binding_digest.clone(),

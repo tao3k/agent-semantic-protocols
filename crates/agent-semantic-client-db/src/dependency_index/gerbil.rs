@@ -585,13 +585,11 @@ fn filter_exports_for_query(exports: Vec<String>, terms: &[String]) -> Vec<Strin
 
 fn symbol_precisely_matches_query(name: &str, terms: &[String]) -> bool {
     let normalized = normalize_symbol_family(name);
-    terms.iter().any(|term| normalized == *term)
+    terms.contains(&normalized)
 }
 
 fn normalize_symbol_family(name: &str) -> String {
-    let mut normalized = name
-        .trim_end_matches(|ch| matches!(ch, '?' | '!'))
-        .to_ascii_lowercase();
+    let mut normalized = name.trim_end_matches(['?', '!']).to_ascii_lowercase();
     if let Some(base) = normalized.strip_suffix("-ci") {
         normalized = base.to_string();
     }

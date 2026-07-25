@@ -61,7 +61,7 @@ fn install_plugin_path_selects_plugin_command() {
 }
 
 #[test]
-fn codex_plugin_help_states_the_default_and_explicit_scopes() {
+fn codex_plugin_help_states_global_default_and_explicit_project_scope() {
     let mut command = help_model::selected_command(&owned_args(&["install", "plugin", "--help"]));
     let help = command.render_help().to_string();
 
@@ -70,7 +70,9 @@ fn codex_plugin_help_states_the_default_and_explicit_scopes() {
         "help={help}",
     );
     assert!(help.contains("--global"), "help={help}");
+    assert!(help.contains("--global-plugin"), "help={help}");
     assert!(help.contains("--project"), "help={help}");
+    assert!(help.contains("--project-plugin"), "help={help}");
     assert!(help.contains("[default: .]"), "help={help}");
 }
 

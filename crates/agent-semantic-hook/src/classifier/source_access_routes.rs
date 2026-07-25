@@ -158,12 +158,14 @@ pub(super) fn classify_direct_read_action(
         return Some(deny_for_action(
             platform,
             event,
-            ReasonKind::SourceDirectoryEnumeration,
-            action,
-            language_ids(&providers),
-            subject_for_action(action),
-            routes,
-            message,
+            super::decision::DenyForActionRequest {
+                reason_kind: ReasonKind::SourceDirectoryEnumeration,
+                action,
+                language_ids: language_ids(&providers),
+                subject: subject_for_action(action),
+                routes,
+                message,
+            },
         ));
     }
 
@@ -225,12 +227,14 @@ fn direct_source_read_decision(
     deny_for_action(
         platform,
         event,
-        ReasonKind::DirectSourceRead,
-        action,
-        direct_read_language_ids(&matches),
-        subject_for_action(action),
-        routes,
-        message,
+        super::decision::DenyForActionRequest {
+            reason_kind: ReasonKind::DirectSourceRead,
+            action,
+            language_ids: direct_read_language_ids(&matches),
+            subject: subject_for_action(action),
+            routes,
+            message,
+        },
     )
 }
 
@@ -255,12 +259,14 @@ fn derive_execute_read_decision(
     deny_for_action(
         platform,
         event,
-        ReasonKind::BulkSourceDump,
-        action,
-        direct_read_language_ids(&matches),
-        subject_for_action(action),
-        routes,
-        message,
+        super::decision::DenyForActionRequest {
+            reason_kind: ReasonKind::BulkSourceDump,
+            action,
+            language_ids: direct_read_language_ids(&matches),
+            subject: subject_for_action(action),
+            routes,
+            message,
+        },
     )
 }
 

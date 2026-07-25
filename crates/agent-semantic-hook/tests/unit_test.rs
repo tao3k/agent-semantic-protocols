@@ -35,3 +35,5 @@ mod rust_harness_activation;
 mod rust_project_harness_gate;
 #[path = "unit/source_access.rs"]
 mod source_access;
+#[path = "unit/test_process_env.rs"]
+mod test_process_env;

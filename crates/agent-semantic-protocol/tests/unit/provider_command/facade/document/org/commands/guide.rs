@@ -1,8 +1,13 @@
-use crate::provider_command::support::{asp_command, temp_project_root};
+use crate::provider_command::support::{
+    asp_command, provider, state_runtime_bin, temp_project_root, write_activation,
+    write_echo_provider, write_marker_provider,
+};
 
 #[test]
-fn asp_org_guide_exposes_generic_ast_recipes_only() {
-    let root = temp_project_root("org-document-command-guide-generic");
+fn asp_org_guide_routes_to_state_home_orgize_provider() {
+    let root = temp_project_root("org-document-guide-state-home");
+    write_echo_provider(&state_runtime_bin(&root), "orgize", "state-home-org-guide");
+    write_activation(&root, &[provider("org", Vec::new())]);
 
     let output = asp_command(&root)
         .args(["org", "guide"])
@@ -14,64 +19,35 @@ fn asp_org_guide_exposes_generic_ast_recipes_only() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("state-home-org-guide"), "{stdout}");
+    assert!(stdout.contains("args=[guide]"), "{stdout}");
     assert!(
-        stdout.contains("|recipe todo-tasks=asp org query --kind task --field todo=TODO"),
+        !stdout.contains("asp org capture")
+            && !stdout.contains("asp org recall")
+            && !stdout.contains("asp org archive"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("|recipe checked-checklist-items=asp org query --kind checklistItem"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("|recipe property-value=asp org query --kind property --field key=<KEY>"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("|recipe capture-task=asp org capture --contract agent.task.v1 --title"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "|recipe sdd-kind-properties=asp org query --kind property --field key=SDD_KIND"
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("|recipe org-id-properties=asp org query --kind property --field key=ID"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "|recipe tagged-tasks=asp org query --kind task --term <TEXT> --field tag=<TAG>"
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("|recipe done-tasks=asp org query --kind task --field todo=DONE"),
-        "{stdout}"
-    );
-
-    for domain_recipe in [
-        "sdd-property",
-        "wendao-task",
-        "wendao-orgid",
-        "agent-plan",
-        "plan-record",
-    ] {
-        assert!(
-            !stdout.contains(domain_recipe),
-            "retired recipe `{domain_recipe}` leaked into asp org guide:\n{stdout}"
-        );
-    }
 
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn asp_org_rejects_domain_specific_embedded_commands() {
-    let root = temp_project_root("org-document-command-domain-specific-rejections");
+fn asp_org_rejects_removed_document_commands_without_provider_spawn() {
+    let root = temp_project_root("org-document-removed-command-rejections");
+    let called = root.join("orgize-called");
+    write_marker_provider(&state_runtime_bin(&root), "orgize", &called);
+    write_activation(&root, &[provider("org", Vec::new())]);
 
-    for command in ["sdd", "agent-planning", "sparse-tree", "task-list"] {
+    for command in [
+        "capture",
+        "recall",
+        "archive",
+        "lint",
+        "sdd",
+        "agent-planning",
+        "sparse-tree",
+        "task-list",
+    ] {
         let output = asp_command(&root)
             .args(["org", command])
             .output()
@@ -83,17 +59,14 @@ fn asp_org_rejects_domain_specific_embedded_commands() {
         );
         let stderr = String::from_utf8(output.stderr).expect("stderr");
         assert!(
-            stderr.contains(&format!("unsupported document command `{command}`")),
+            stderr.contains("usage: asp <")
+                && stderr.contains("<guide|search|query|check|cache|info|bench|projection"),
             "command={command} stderr={stderr}"
         );
-        let supported = stderr
-            .split("supported commands are ")
-            .nth(1)
-            .unwrap_or_default();
-        assert!(!supported.contains("sdd"), "{stderr}");
-        assert!(!supported.contains("agent-planning"), "{stderr}");
-        assert!(!supported.contains("task-list"), "{stderr}");
-        assert!(!supported.contains("sparse-tree"), "{stderr}");
+        assert!(
+            !called.exists(),
+            "removed command spawned provider: {command}"
+        );
     }
 
     let _ = std::fs::remove_dir_all(root);

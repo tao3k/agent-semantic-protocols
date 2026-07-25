@@ -11,16 +11,30 @@ fn unix_time_ms() -> i64 {
         .min(i64::MAX as u128) as i64
 }
 
+pub(super) struct PublishTursoSourceIndexScopeRequest<'a> {
+    pub connection: &'a turso::Connection,
+    pub project_root: &'a str,
+    pub schema_id: &'a str,
+    pub schema_version: &'a str,
+    pub generation_id: &'a str,
+    pub file_hashes_json: &'a str,
+    pub source_snapshot_json: &'a str,
+    pub selector_fingerprint: &'a str,
+}
+
 pub(super) async fn publish_turso_source_index_scope(
-    connection: &turso::Connection,
-    project_root: &str,
-    schema_id: &str,
-    schema_version: &str,
-    generation_id: &str,
-    file_hashes_json: &str,
-    source_snapshot_json: &str,
-    selector_fingerprint: &str,
+    request: PublishTursoSourceIndexScopeRequest<'_>,
 ) -> Result<(u32, u32), String> {
+    let PublishTursoSourceIndexScopeRequest {
+        connection,
+        project_root,
+        schema_id,
+        schema_version,
+        generation_id,
+        file_hashes_json,
+        source_snapshot_json,
+        selector_fingerprint,
+    } = request;
     let (effective_owner_count, effective_selector_count) = turso_source_index_scope_row_counts(
         connection,
         project_root,

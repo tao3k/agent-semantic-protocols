@@ -28,14 +28,12 @@ fn missing_provider_binary_is_reported_before_provider_spawn() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("failed to sync generated activation")
-            || stderr
-                .contains("provider binary `rs-harness` for language `rust` must be installed at"),
+            || stderr.contains("expected State Home runtime bin"),
         "{stderr}"
     );
     assert!(
-        stderr
-            .contains("expected PATH to contain at least one executable semantic provider binary")
-            || stderr.contains("run `asp install language rust`"),
+        stderr.contains("expected State Home runtime bin")
+            || stderr.contains("run `asp install plugin --codex"),
         "{stderr}"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -47,7 +45,7 @@ fn diagnostic_commands_do_not_require_activation() {
     for args in [
         vec!["guide"],
         vec!["doctor"],
-        vec!["providers"],
+        vec!["providers", "list"],
         vec!["cache", "status"],
     ] {
         let output = asp_command(&root)
@@ -75,14 +73,20 @@ fn diagnostic_commands_do_not_require_activation() {
                     assert!(stdout.contains("server=not-required"), "{stdout}");
                 }
             }
-            ["providers"] => {
-                assert!(stdout.contains("[asp-providers]"), "{stdout}");
-                if stdout.contains("activation=missing") {
-                    assert!(stdout.contains("providers=0"), "{stdout}");
-                } else {
-                    assert!(stdout.contains("activation="), "{stdout}");
-                    assert!(stdout.contains("providers="), "{stdout}");
-                }
+            ["providers", "list"] => {
+                let packet: serde_json::Value =
+                    serde_json::from_str(&stdout).expect("provider registry JSON");
+                let providers = packet["providers"]
+                    .as_array()
+                    .expect("provider registry entries");
+                assert!(!providers.is_empty(), "{stdout}");
+                assert!(
+                    providers.iter().all(|entry| {
+                        entry["activation"]["status"] == "unavailable"
+                            && entry["activation"]["reasonKind"] == "provider-registry-unavailable"
+                    }),
+                    "{stdout}"
+                );
             }
             ["cache", "status"] => {
                 assert!(stdout.contains("[asp-cache] status=missing"), "{stdout}");
@@ -119,7 +123,7 @@ fn non_agent_command_surface_is_rejected_without_provider_spawn() {
     std::fs::remove_dir_all(root).ok();
 }
 #[test]
-fn provider_language_facades_forward_language_like_provider_args() {
+fn provider_language_facades_route_language_like_queries_through_search_router() {
     let root = temp_project_root("provider-dash-language-query");
     let bin_dir = root.join(".bin");
     super::support::write_echo_provider(&bin_dir, "rs-harness", "rs");
@@ -152,10 +156,9 @@ fn provider_language_facades_forward_language_like_provider_args() {
         String::from_utf8_lossy(&output.stdout)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("[graph-frontier]"), "{stdout}");
+    assert!(stdout.contains("[search-frontier]"), "{stdout}");
     assert!(stdout.contains("profile=owner-query"), "{stdout}");
-    assert!(stdout.contains("alg=typed-ppr-diverse"), "{stdout}");
-    assert!(stdout.contains("has_provider_root"), "{stdout}");
+    assert!(stdout.contains("algorithm=typed-ppr-diverse"), "{stdout}");
     let output = asp_command(&root)
         .args(["check", "--language", "rust", "."])
         .output()
@@ -192,8 +195,8 @@ fn provider_language_facades_forward_language_like_provider_args() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("[graph-frontier]"), "{stdout}");
+    assert!(stdout.contains("[search-frontier]"), "{stdout}");
     assert!(stdout.contains("profile=owner-query"), "{stdout}");
-    assert!(stdout.contains("alg=typed-ppr-diverse"), "{stdout}");
+    assert!(stdout.contains("algorithm=typed-ppr-diverse"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }

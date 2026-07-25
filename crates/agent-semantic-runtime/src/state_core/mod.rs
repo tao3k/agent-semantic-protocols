@@ -11,7 +11,9 @@ mod resolution;
 mod registry_gc_tests;
 
 pub use crate::git::RemoteUrl;
-pub use identity::{RepoId, RepoIdentity, ScopeId, WorkspaceId, WorkspaceIdentity};
+pub use identity::{
+    RepoId, RepoIdentity, RepoPersistence, ScopeId, WorkspaceId, WorkspaceIdentity,
+};
 pub use layout::{
     ASP_STATE_HOME_ENV, CLIENT_DB_FILE, DEFAULT_SCOPE_ID, DEFAULT_STATE_HOME_DIR,
     STATE_LAYOUT_VERSION, STATE_MANIFEST_FILE, StatePaths, TURSO_BACKEND, resolve_state_home,

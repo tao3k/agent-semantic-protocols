@@ -1,5 +1,6 @@
 #[cfg(unix)]
 mod unix {
+    use super::materialize_plugin_install_state;
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -11,7 +12,9 @@ mod unix {
     fn install_plugin_codex_runs_project_installer() {
         let root = temp_project_root("codex-plugin-unified-install");
         let codex_home = root.join(".codex-home");
+        let state_home = root.join(".state");
         std::fs::create_dir_all(&codex_home).expect("create codex home");
+        materialize_plugin_install_state(&root, &state_home);
         std::fs::create_dir_all(root.join(".codex")).expect("create project codex dir");
         std::fs::write(
             root.join(".codex").join("config.toml"),
@@ -39,7 +42,7 @@ mod unix {
             .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir())
             .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir())
             .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir())
-            .env("ASP_STATE_HOME", root.join(".state"))
+            .env("ASP_STATE_HOME", &state_home)
             .env("PRJ_CACHE_HOME", root.join(".cache"))
             .args(["install", "plugin", "--codex", "--project", "."])
             .output()
@@ -203,6 +206,7 @@ mod unix {
         let codex_home = root.join(".codex-home");
         let state_home = root.join(".state");
         std::fs::create_dir_all(&codex_home).expect("create codex home");
+        materialize_plugin_install_state(&root, &state_home);
         std::fs::create_dir_all(root.join(".codex")).expect("create project codex dir");
         std::fs::create_dir_all(state_home.join("agents")).expect("create ASP agents dir");
         std::fs::write(
@@ -251,7 +255,9 @@ fallback = ["gpt-5.4-mini"]
     fn install_plugin_codex_preserves_tracked_source_bundle() {
         let root = temp_project_root("codex-plugin-tracked-source-bundle");
         let codex_home = root.join(".codex-home");
+        let state_home = root.join(".state");
         std::fs::create_dir_all(&codex_home).expect("create codex home");
+        materialize_plugin_install_state(&root, &state_home);
         write_tracked_plugin_source_bundle(&root);
 
         let fake_bin = write_fake_codex_cli(&root);
@@ -259,7 +265,7 @@ fallback = ["gpt-5.4-mini"]
             .current_dir(&root)
             .env("CODEX_HOME", &codex_home)
             .env("PATH", prepend_path(&fake_bin))
-            .env("ASP_STATE_HOME", root.join(".state"))
+            .env("ASP_STATE_HOME", &state_home)
             .env("PRJ_CACHE_HOME", root.join(".cache"))
             .args(["install", "plugin", "--codex", "--project", "."])
             .output()
@@ -341,26 +347,30 @@ fallback = ["gpt-5.4-mini"]
             stdout.contains("Install globally (default when no scope flag is given)"),
             "stdout={stdout}"
         );
+        assert!(stdout.contains("--global-plugin"), "stdout={stdout}");
         assert!(stdout.contains("--project"), "stdout={stdout}");
+        assert!(stdout.contains("--project-plugin"), "stdout={stdout}");
         assert!(stdout.contains("[default: .]"), "stdout={stdout}");
     }
 
     #[test]
-    fn install_plugin_codex_global_skips_project_plugin_cache() {
-        let root = temp_project_root("codex-plugin-global-scope");
+    fn install_plugin_codex_defaults_to_global_and_skips_project_plugin_cache() {
+        let root = temp_project_root("codex-plugin-default-global-scope");
         let codex_home = root.join(".codex-home");
+        let state_home = root.join(".state");
         std::fs::create_dir_all(&codex_home).expect("create codex home");
+        materialize_plugin_install_state(&root, &state_home);
 
         let fake_bin = write_fake_codex_cli(&root);
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .current_dir(&root)
             .env("CODEX_HOME", &codex_home)
             .env("PATH", prepend_path(&fake_bin))
-            .env("ASP_STATE_HOME", root.join(".state"))
+            .env("ASP_STATE_HOME", &state_home)
             .env("PRJ_CACHE_HOME", root.join(".cache"))
-            .args(["install", "plugin", "--codex", "--global", "."])
+            .args(["install", "plugin", "--codex", "."])
             .output()
-            .expect("run asp install plugin --codex --global");
+            .expect("run asp install plugin --codex with default scope");
         assert!(
             output.status.success(),
             "stdout={} stderr={}",
@@ -710,6 +720,8 @@ fn claude_install_migrates_stale_managed_config_when_sidecar_proves_ownership() 
 }
 
 fn run_claude_hook_install(root: &std::path::Path) -> std::process::Output {
+    let state_home = root.join(".state");
+    materialize_plugin_install_state(root, &state_home);
     let asp_bin_dir = std::path::Path::new(env!("CARGO_BIN_EXE_asp"))
         .parent()
         .expect("CARGO_BIN_EXE_asp has parent")
@@ -722,11 +734,17 @@ fn run_claude_hook_install(root: &std::path::Path) -> std::process::Output {
         .current_dir(root)
         .env("PATH", path)
         .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
-        .env("ASP_STATE_HOME", root.join(".state"))
+        .env("ASP_STATE_HOME", state_home)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args(["install", "hook", "--client", "claude", "."])
         .output()
         .expect("run claude hook install")
+}
+
+fn materialize_plugin_install_state(root: &std::path::Path, state_home: &std::path::Path) {
+    crate::state_home_fixture::materialize_org_state_checkout(state_home);
+    crate::state_home_fixture::install_provider_script(state_home, "rust", "#!/bin/sh\nexit 0\n");
+    crate::state_home_fixture::write_activation(root, state_home, &["rust"]);
 }
 
 fn managed_config_sidecar(config: &std::path::Path) -> std::path::PathBuf {

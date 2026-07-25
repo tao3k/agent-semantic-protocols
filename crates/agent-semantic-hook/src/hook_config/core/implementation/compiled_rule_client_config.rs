@@ -154,7 +154,6 @@ impl ClientHookConfig {
                             event,
                             action,
                             agent_action.as_ref(),
-                            command_token_slice,
                             self.semantic_ast_patch_enabled(),
                             self.recovery_prompt(),
                         )

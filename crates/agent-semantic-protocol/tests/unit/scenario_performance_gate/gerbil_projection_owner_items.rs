@@ -4,7 +4,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use crate::provider_command::support::{
-    asp_command, prepend_path, provider, temp_project_root, write_activation,
+    asp_command, install_state_home_provider, prepend_path, provider, temp_project_root,
+    write_activation,
 };
 
 use super::shared::SharedBenchmarkToml;
@@ -17,12 +18,12 @@ const QUERY: &str = "dynamic-owner-item-index";
 fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate() {
     let benchmark: SharedBenchmarkToml = parse_benchmark(SCENARIO_DIR);
     assert_eq!(benchmark.harness, "libtest");
-    assert_eq!(benchmark.phase.as_deref(), Some("lifecycle"));
+    assert_eq!(benchmark.phase.as_deref(), Some("cold-functional"));
     assert_eq!(
         benchmark.route_source.as_deref(),
-        Some("turso-evidence-graph")
+        Some("provider-owned-owner-items-cache")
     );
-    assert_eq!(benchmark.max_provider_process_count, Some(0));
+    assert_eq!(benchmark.max_provider_process_count, Some(2));
 
     let root = temp_project_root(SCENARIO_DIR);
     let bin_dir = root.join(".bin");
@@ -36,10 +37,7 @@ fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate
     .expect("write package anchor");
     fs::write(&owner, "(def (dynamic-owner-item-index) #t)\n").expect("write source");
     write_counting_projection_provider(&bin_dir, &provider_count);
-    let installed_bin_dir = root.join("home").join(".local").join("bin");
-    fs::create_dir_all(&installed_bin_dir).expect("create installed provider bin dir");
-    fs::copy(bin_dir.join("gslph"), installed_bin_dir.join("gslph"))
-        .expect("install counting projection provider");
+    install_state_home_provider(&root, "gerbil-scheme", &bin_dir.join("gslph"));
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let process_warmup = asp_command(&root)
@@ -47,28 +45,6 @@ fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate
         .output()
         .expect("warm ASP process image before projection-cold timing");
     assert!(process_warmup.status.success());
-    let cold_started = Instant::now();
-    let cold = run_owner_search(&root, &bin_dir);
-    let cold_elapsed = cold_started.elapsed();
-    assert!(
-        cold.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&cold.stderr)
-    );
-    let cold_stdout = String::from_utf8(cold.stdout).expect("cold stdout");
-    assert!(
-        cold_stdout.contains("state=projection-cold-required"),
-        "{cold_stdout}"
-    );
-    assert!(
-        cold_stdout.contains("providerProcessCount=0"),
-        "{cold_stdout}"
-    );
-    assert!(
-        !provider_count.exists(),
-        "cold graph read must not invoke the projection provider"
-    );
-
     let imported = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .args([
@@ -97,6 +73,29 @@ fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate
         "1"
     );
 
+    let cold_started = Instant::now();
+    let cold = run_owner_search(&root, &bin_dir);
+    let cold_elapsed = cold_started.elapsed();
+    assert!(
+        cold.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&cold.stderr)
+    );
+    let cold_stdout = String::from_utf8(cold.stdout).expect("cold stdout");
+    assert!(
+        cold_stdout.contains("alg=gerbil-harness-owner-items"),
+        "{cold_stdout}"
+    );
+    assert!(
+        cold_stdout.contains("dynamic-owner-item-index"),
+        "{cold_stdout}"
+    );
+    assert_eq!(
+        fs::read_to_string(&provider_count).expect("cold owner-items provider count"),
+        "2",
+        "projection import and cold owner-items must be distinct provider-owned packets"
+    );
+
     let warm_started = Instant::now();
     let warm = run_owner_search(&root, &bin_dir);
     let warm_elapsed = warm_started.elapsed();
@@ -107,7 +106,7 @@ fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate
     );
     let warm_stdout = String::from_utf8(warm.stdout).expect("warm stdout");
     assert!(
-        warm_stdout.contains("alg=graph-turbo-owner-items"),
+        warm_stdout.contains("alg=gerbil-harness-owner-items"),
         "{warm_stdout}"
     );
     assert!(
@@ -116,8 +115,8 @@ fn asp_gerbil_scheme_projection_owner_items_lifecycle_stays_inside_scenario_gate
     );
     assert_eq!(
         fs::read_to_string(&provider_count).expect("warm projection provider count"),
-        "1",
-        "warm graph read must not invoke the projection provider"
+        "2",
+        "warm owner-items cache hit must not invoke the Gerbil provider"
     );
 
     let max_total = parse_milliseconds(&benchmark.max_total);
@@ -162,9 +161,10 @@ fn write_counting_projection_provider(bin_dir: &Path, provider_count: &Path) {
     fs::write(
         &provider_path,
         format!(
-            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\ncat <<'ASP_PROJECTION'\n{projection}\nASP_PROJECTION\n",
+            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nif [ \"$1\" = projection ]; then\ncat <<'ASP_PROJECTION'\n{projection}\nASP_PROJECTION\nelse\nprintf '[search-owner] lang=gerbil-scheme q={owner} pkg=. selector=items alg=gerbil-harness-owner-items\\n'\nprintf 'O=owner:path({owner})!owner;I=item:symbol(dynamic-owner-item-index)@gerbil-scheme://{owner}#item/function/dynamic-owner-item-index!syntax\\n'\nfi\n",
             count = provider_count.display(),
             projection = projection_json(),
+            owner = OWNER_PATH,
         ),
     )
     .expect("write projection provider");

@@ -123,17 +123,18 @@ fn synthesized_attestation_does_not_invent_reasoning_evidence() {
     let child = "child".to_string();
     let model = "gpt-5.4-mini".to_string();
     let reasoning = "low".to_string();
-    let observation = profile_attested_runtime_observation(
-        Some("root"),
-        Some(&child.as_str().to_string()),
-        "asp_explorer",
-        Some(&model.as_str().to_string()),
-        Some(&model.as_str().to_string()),
-        Some(&reasoning.as_str().to_string()),
-        true,
-        Some("subagent-start-profile-attestation"),
-    )
-    .expect("valid typed profile attestation");
+    let observation =
+        profile_attested_runtime_observation(super::ProfileAttestedRuntimeObservationRequest {
+            root_session_id: Some("root"),
+            child_id: Some(&child.as_str().to_string()),
+            expected_agent_type: "asp_explorer",
+            observed_model: Some(model.as_str()),
+            expected_model: Some(&model.as_str().to_string()),
+            expected_reasoning: Some(&reasoning.as_str().to_string()),
+            target_present: true,
+            observation_source: Some("subagent-start-profile-attestation"),
+        })
+        .expect("valid typed profile attestation");
     assert_eq!(observation.observed_reasoning_effort, None);
     assert_eq!(
         observation.expected_reasoning_effort.as_deref(),
@@ -269,17 +270,18 @@ fn profile_attestation_uses_configured_resident_type() {
         None,
     ));
 
-    let synthesized = profile_attested_runtime_observation(
-        Some("root"),
-        Some(&child.as_str().to_string()),
-        "asp_testing",
-        Some(&model.as_str().to_string()),
-        Some(&model.as_str().to_string()),
-        Some(&reasoning.as_str().to_string()),
-        true,
-        Some("subagent-start-profile-attestation"),
-    )
-    .expect("configured testing profile attestation");
+    let synthesized =
+        profile_attested_runtime_observation(super::ProfileAttestedRuntimeObservationRequest {
+            root_session_id: Some("root"),
+            child_id: Some(&child.as_str().to_string()),
+            expected_agent_type: "asp_testing",
+            observed_model: Some(model.as_str()),
+            expected_model: Some(&model.as_str().to_string()),
+            expected_reasoning: Some(&reasoning.as_str().to_string()),
+            target_present: true,
+            observation_source: Some("subagent-start-profile-attestation"),
+        })
+        .expect("configured testing profile attestation");
     assert_eq!(synthesized.observed_agent_type, "asp_testing");
     assert_eq!(synthesized.expected_agent_type, "asp_testing");
 }
@@ -359,17 +361,18 @@ fn reasoning_unobservable_attestation_reaches_ready() {
         None,
     );
     assert!(attested);
-    let attested_observation = profile_attested_runtime_observation(
-        Some("root"),
-        Some(&child.as_str().to_string()),
-        "asp_explorer",
-        Some(&model.as_str().to_string()),
-        Some(&model.as_str().to_string()),
-        Some(&reasoning.as_str().to_string()),
-        true,
-        Some("subagent-start-profile-attestation"),
-    )
-    .expect("typed profile attestation observation");
+    let attested_observation =
+        profile_attested_runtime_observation(super::ProfileAttestedRuntimeObservationRequest {
+            root_session_id: Some("root"),
+            child_id: Some(&child.as_str().to_string()),
+            expected_agent_type: "asp_explorer",
+            observed_model: Some(model.as_str()),
+            expected_model: Some(&model.as_str().to_string()),
+            expected_reasoning: Some(&reasoning.as_str().to_string()),
+            target_present: true,
+            observation_source: Some("subagent-start-profile-attestation"),
+        })
+        .expect("typed profile attestation observation");
     assert_eq!(attested_observation.observed_reasoning_effort, None);
     assert_eq!(
         attested_observation.expected_reasoning_effort.as_deref(),

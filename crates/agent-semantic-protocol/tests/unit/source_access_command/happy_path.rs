@@ -34,6 +34,7 @@ fn source_access_help_exits_success() {
         .expect("run source-access help");
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("help stdout");
-    assert!(stdout.contains("source-access shell-egress"));
+    assert!(stdout.contains("Usage: asp source-access"));
+    assert!(stdout.contains("shell-egress"));
     assert!(!stdout.contains("read-file"));
 }

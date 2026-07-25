@@ -184,14 +184,20 @@ impl AgentSessionRegistry {
     }
 }
 
+static AGENT_SESSION_REGISTRY_RUNTIME: std::sync::LazyLock<
+    Result<tokio::runtime::Runtime, String>,
+> = std::sync::LazyLock::new(|| {
+    tokio::runtime::Runtime::new()
+        .map_err(|error| format!("failed to build shared agent session Turso runtime: {error}"))
+});
+
 pub(in crate::agent_session_registry) fn block_on_agent_session_registry_async<T>(
     future: impl std::future::Future<Output = Result<T, String>>,
 ) -> Result<T, String> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|error| format!("failed to build agent session Turso runtime: {error}"))?;
-    runtime.block_on(future)
+    match &*AGENT_SESSION_REGISTRY_RUNTIME {
+        Ok(runtime) => runtime.block_on(future),
+        Err(error) => Err(error.clone()),
+    }
 }
 
 pub(in crate::agent_session_registry) async fn connect_turso_agent_session_registry(

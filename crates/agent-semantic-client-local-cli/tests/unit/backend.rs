@@ -13,7 +13,7 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn prepares_registry_owned_provider_command() {
-    let home = install_home_provider("registry", "rs-harness", "");
+    let state_home = install_state_home_provider("registry", "rs-harness", "");
     let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
     let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("/repo"))
         .with_language("rust")
@@ -25,7 +25,7 @@ fn prepares_registry_owned_provider_command() {
 
     let command = backend.prepare(&request).expect("prepare command");
 
-    assert_eq!(command.program, home.provider_path.to_string_lossy());
+    assert_eq!(command.program, state_home.provider_path.to_string_lossy());
     assert_eq!(command.args, vec!["search", "owner", "src/lib.rs", "."]);
     assert_eq!(command.provider.language_id, "rust");
 }
@@ -45,7 +45,7 @@ fn requires_language_for_multi_provider_route() {
 
 #[test]
 fn prepares_query_with_asp_compiled_syntax_plan() {
-    let _home = install_home_provider("syntax-plan", "rs-harness", "");
+    let _state_home = install_state_home_provider("syntax-plan", "rs-harness", "");
     let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
     let request = ClientRequest::new(ClientMethod::Query, PathBuf::from("/repo"))
         .with_language("rust")
@@ -76,7 +76,7 @@ fn prepares_query_with_asp_compiled_syntax_plan() {
 
 #[test]
 fn prepares_catalog_query_with_asp_compiled_syntax_plan() {
-    let _home = install_home_provider("catalog-plan", "rs-harness", "");
+    let _state_home = install_state_home_provider("catalog-plan", "rs-harness", "");
     let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
     let request = ClientRequest::new(ClientMethod::Query, PathBuf::from("/repo"))
         .with_language("rust")
@@ -103,8 +103,8 @@ fn prepares_catalog_query_with_asp_compiled_syntax_plan() {
 }
 
 #[test]
-fn missing_home_local_binary_reports_install_language_without_runtime_profile_fallback() {
-    let _home = isolated_home("missing-provider");
+fn missing_state_home_binary_reports_install_language_without_fallback() {
+    let _state_home = isolated_state_home("missing-provider");
     let mut provider = provider("rust", "rs-harness");
     provider.provider_command_prefix.clear();
     provider.runtime_profile_status = Some(RuntimeProfileStatus::Missing);
@@ -115,17 +115,15 @@ fn missing_home_local_binary_reports_install_language_without_runtime_profile_fa
 
     let error = backend
         .prepare(&request)
-        .expect_err("missing home-local provider");
+        .expect_err("missing State Home provider");
 
     assert!(error.contains("provider binary `rs-harness` for language `rust`"));
-    assert!(
-        error.contains("$HOME/.local/bin/rs-harness") || error.contains(".local/bin/rs-harness")
-    );
+    assert!(error.contains("runtime/bin/rs-harness"));
     assert!(error.contains("asp install language rust"));
 }
 
 #[test]
-fn home_local_binary_is_canonical_for_every_external_provider() {
+fn state_home_binary_is_canonical_for_every_external_provider() {
     for (language_id, binary) in [
         ("rust", "rs-harness"),
         ("typescript", "ts-harness"),
@@ -133,7 +131,7 @@ fn home_local_binary_is_canonical_for_every_external_provider() {
         ("julia", "asp-julia-harness"),
         ("gerbil-scheme", "gslph"),
     ] {
-        let home = install_home_provider(language_id, binary, "");
+        let state_home = install_state_home_provider(language_id, binary, "");
         let mut provider = provider(language_id, binary);
         provider.runtime_command_argv = Some(vec![format!("/opt/homebrew/bin/{binary}")]);
         provider.runtime_profile_status = Some(RuntimeProfileStatus::Available);
@@ -148,14 +146,14 @@ fn home_local_binary_is_canonical_for_every_external_provider() {
 
         let command = backend.prepare(&request).expect("prepare command");
 
-        assert_eq!(command.program, home.provider_path.to_string_lossy());
+        assert_eq!(command.program, state_home.provider_path.to_string_lossy());
         assert_eq!(command.args, vec!["search", "workspace", "--view", "seeds"]);
     }
 }
 
 #[test]
 fn relative_project_root_is_canonicalized_for_provider_cwd() {
-    let _home = install_home_provider("relative-root", "rs-harness", "");
+    let _state_home = install_state_home_provider("relative-root", "rs-harness", "");
     let backend = LocalNativeCliBackend::new(snapshot(vec![provider("rust", "rs-harness")]));
     let current_dir = std::env::current_dir().expect("current dir");
     let request = ClientRequest::new(ClientMethod::Search, PathBuf::from("."))
@@ -170,7 +168,7 @@ fn relative_project_root_is_canonicalized_for_provider_cwd() {
 
 #[test]
 fn execute_records_transport_receipt_fields() {
-    let _home = install_home_provider(
+    let _state_home = install_state_home_provider(
         "receipt",
         "fake-rust-provider",
         "printf 'provider-out'; printf 'provider-err' >&2\n",
@@ -230,7 +228,7 @@ fn execute_records_transport_receipt_fields() {
 fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
     let manifest = agent_semantic_hook::builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == language_id)
+        .find(|manifest| manifest.language_id().as_str() == language_id)
         .expect("provider manifest");
     ResolvedProvider {
         manifest_id: format!("{binary}-test-manifest"),
@@ -254,9 +252,9 @@ fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
         config_files: Vec::new(),
         source_extensions: Vec::new(),
         ignored_path_prefixes: Vec::new(),
-        search_capabilities: manifest.search_capabilities,
-        query_pack_descriptor: manifest.query_pack_descriptor,
-        semantic_facts_descriptor: manifest.semantic_facts_descriptor,
+        search_capabilities: manifest.search_capabilities().clone(),
+        query_pack_descriptor: manifest.query_pack_descriptor().clone(),
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
     }
 }
 
@@ -279,39 +277,46 @@ fn temp_project_root(name: &str) -> PathBuf {
     root
 }
 
-struct HomeFixture {
+struct StateHomeFixture {
     root: PathBuf,
-    _home_env: EnvVarGuard,
+    _state_home_env: EnvVarGuard,
     _env_lock: MutexGuard<'static, ()>,
 }
 
-struct HomeProviderFixture {
-    _home: HomeFixture,
+struct StateHomeProviderFixture {
+    _state_home: StateHomeFixture,
     provider_path: PathBuf,
 }
 
-fn isolated_home(name: &str) -> HomeFixture {
-    let env_lock = ENV_LOCK.lock().expect("env lock");
+fn isolated_state_home(name: &str) -> StateHomeFixture {
+    let env_lock = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let root = temp_project_root(name);
-    let home = root.join("home");
-    std::fs::create_dir_all(&home).expect("create isolated home");
-    let guard = EnvVarGuard::set("HOME", home.as_os_str());
-    HomeFixture {
+    let state_home = root.join("state-home");
+    std::fs::create_dir_all(&state_home).expect("create isolated State Home");
+    let guard = EnvVarGuard::set(
+        agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
+        state_home.as_os_str(),
+    );
+    StateHomeFixture {
         root,
-        _home_env: guard,
+        _state_home_env: guard,
         _env_lock: env_lock,
     }
 }
 
-fn install_home_provider(name: &str, binary: &str, body: &str) -> HomeProviderFixture {
-    let home = isolated_home(name);
-    let provider_path = home.root.join("home").join(".local/bin").join(binary);
+fn install_state_home_provider(name: &str, binary: &str, body: &str) -> StateHomeProviderFixture {
+    let state_home = isolated_state_home(name);
+    let provider_path = state_home.root.join("state-home/runtime/bin").join(binary);
     std::fs::create_dir_all(provider_path.parent().expect("provider parent"))
-        .expect("create home local bin");
+        .expect("create State Home runtime bin");
     std::fs::write(&provider_path, format!("#!/bin/sh\n{body}")).expect("write provider");
     make_executable(&provider_path);
-    HomeProviderFixture {
-        _home: home,
+    let provider_path =
+        std::fs::canonicalize(&provider_path).expect("canonical State Home provider");
+    StateHomeProviderFixture {
+        _state_home: state_home,
         provider_path,
     }
 }

@@ -1,5 +1,6 @@
 use crate::provider_command::support::{
-    asp_command, make_executable, provider, temp_project_root, write_activation,
+    asp_command, install_state_home_provider, make_executable, provider, temp_project_root,
+    write_activation,
 };
 
 #[test]
@@ -14,16 +15,9 @@ fn julia_language_facade_rewrites_compiled_provider_guide_commands() {
     )
     .expect("write julia guide provider");
     make_executable(&provider_path);
-    std::fs::write(
-        root.join("asp.toml"),
-        format!("[languages.julia]\nbin = \"{}\"\n", provider_path.display()),
-    )
-    .expect("write asp.toml provider override");
+    install_state_home_provider(&root, "julia", &provider_path);
 
-    write_activation(
-        &root,
-        &[provider("julia", vec![provider_path.display().to_string()])],
-    );
+    write_activation(&root, &[provider("julia", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))

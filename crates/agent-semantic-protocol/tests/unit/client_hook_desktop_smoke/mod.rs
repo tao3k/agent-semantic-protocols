@@ -8,10 +8,6 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use agent_semantic_hook::{
-    HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
-    HOOK_PROTOCOL_VERSION, builtin_provider_manifests, provider_manifest_digest,
-};
 use serde_json::{Value, json};
 
 mod performance;
@@ -128,13 +124,9 @@ fn write_hook_fixture(root: &Path) {
     fs::create_dir_all(root.join("src")).expect("create src");
     fs::write(root.join("src/lib.rs"), "pub fn probe() {}\n").expect("write source");
 
-    fs::create_dir_all(root.join(".cache/agent-semantic-protocol/hooks"))
-        .expect("create activation dir");
-    fs::write(
-        root.join(".cache/agent-semantic-protocol/hooks/activation.json"),
-        root_owned_rust_activation_json(),
-    )
-    .expect("write activation");
+    let state_home = crate::state_home_fixture::default_state_home(root);
+    crate::state_home_fixture::install_provider_script(&state_home, "rust", "#!/bin/sh\nexit 0\n");
+    crate::state_home_fixture::write_activation(root, &state_home, &["rust"]);
 
     fs::create_dir_all(root.join(".agent-semantic-protocols/hooks")).expect("create config dir");
     fs::write(
@@ -200,7 +192,10 @@ fn spawn_hook_event(root: &Path, event: &str) -> std::process::Child {
         .arg("--client")
         .arg("codex")
         .arg("--activation")
-        .arg(root.join(".cache/agent-semantic-protocol/hooks/activation.json"))
+        .arg(crate::state_home_fixture::canonical_activation_path(
+            root,
+            &crate::state_home_fixture::default_state_home(root),
+        ))
         .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
         .env_remove("PRJ_CACHE_HOME")
         .stdin(Stdio::piped())
@@ -361,48 +356,6 @@ fn assert_route_uses_owner_items_recovery(decision: &Value) {
         !args.contains(&"--code"),
         "owner recovery route must not request --code: {args:?}"
     );
-}
-
-fn root_owned_rust_activation_json() -> String {
-    let manifest = builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id == "rust")
-        .expect("rust manifest");
-    let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
-    let routes =
-        agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
-    serde_json::to_string_pretty(&json!({
-        "schemaId": HOOK_ACTIVATION_SCHEMA_ID,
-        "schemaVersion": HOOK_ACTIVATION_SCHEMA_VERSION,
-        "schemaAuthority": "https://tao3k.github.io/agent-semantic-protocols/schemas/",
-        "protocolId": HOOK_PROTOCOL_ID,
-        "protocolVersion": HOOK_PROTOCOL_VERSION,
-        "projectRoot": ".",
-        "generatedBy": {"runtime": "asp", "version": "test"},
-        "providers": [{
-            "manifestId": manifest.manifest_id,
-            "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "execution": manifest.execution,
-            "providerCommandPrefix": [],
-            "executionCommandDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-            "searchCapabilities": manifest.search_capabilities,
-            "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
-            "queryPackDescriptor": manifest.query_pack_descriptor,
-            "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
-            "routes": routes,
-            "coverage": {
-                "packageRoots": ["."],
-                "sourceRoots": ["src", "tests", "crates", "examples", "benches"],
-                "configFiles": ["Cargo.toml", "Cargo.lock"],
-                "sourceExtensions": [".rs"],
-                "ignoredPathPrefixes": [".cache", ".direnv", ".git", ".idea", ".jj", ".run", ".vscode", "node_modules", "target", ".codex/harness-state", ".codex/rs-harness"]
-            }
-        }]
-    }))
-    .expect("serialize root-owned rust activation")
 }
 
 const CLIENT_CONFIG: &str = r#"

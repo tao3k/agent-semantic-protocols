@@ -74,16 +74,18 @@ impl ClientDbEngine {
         let language_id = language_id.cloned();
         let expected_snapshot_root = expected_snapshot_root.to_string();
         let expected_index_artifact_digest = expected_index_artifact_digest.to_string();
-        if let Some(result) = lookup_live_source_index_read_model(
-            db_path.as_path(),
-            Some(&lookup_scope),
-            live_facts,
-            query.as_str(),
-            language_id.as_ref(),
-            limit,
-            expected_snapshot_root.as_str(),
-            expected_index_artifact_digest.as_str(),
-        )? {
+        if let Some(result) =
+            lookup_live_source_index_read_model(LiveSourceIndexReadModelRequest {
+                db_path: db_path.as_path(),
+                requested_scope: Some(&lookup_scope),
+                live_facts,
+                query: query.as_str(),
+                language_id: language_id.as_ref(),
+                limit,
+                expected_snapshot_root: expected_snapshot_root.as_str(),
+                expected_index_artifact_digest: expected_index_artifact_digest.as_str(),
+            })?
+        {
             return Ok(result);
         }
         block_on_db_engine_async(async move {
@@ -218,16 +220,30 @@ fn is_turso_source_index_schema_missing_error(error: &str) -> bool {
     normalized.contains("no such table") || normalized.contains("no such column")
 }
 
-fn lookup_live_source_index_read_model(
-    db_path: &std::path::Path,
-    requested_scope: Option<&TursoSourceIndexLookupRequestScope>,
-    live_facts: Option<crate::source_index::ClientDbLiveSourceIndexFacts<'_>>,
-    query: &str,
-    language_id: Option<&LanguageId>,
+struct LiveSourceIndexReadModelRequest<'a> {
+    db_path: &'a std::path::Path,
+    requested_scope: Option<&'a TursoSourceIndexLookupRequestScope>,
+    live_facts: Option<crate::source_index::ClientDbLiveSourceIndexFacts<'a>>,
+    query: &'a str,
+    language_id: Option<&'a LanguageId>,
     limit: u32,
-    expected_snapshot_root: &str,
-    expected_index_artifact_digest: &str,
+    expected_snapshot_root: &'a str,
+    expected_index_artifact_digest: &'a str,
+}
+
+fn lookup_live_source_index_read_model(
+    request: LiveSourceIndexReadModelRequest<'_>,
 ) -> Result<Option<ClientDbSourceIndexLookupResult>, String> {
+    let LiveSourceIndexReadModelRequest {
+        db_path,
+        requested_scope,
+        live_facts,
+        query,
+        language_id,
+        limit,
+        expected_snapshot_root,
+        expected_index_artifact_digest,
+    } = request;
     let Some(live_facts) = live_facts else {
         return Ok(None);
     };

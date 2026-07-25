@@ -51,35 +51,46 @@ pub struct StorageSloMatrixReceipt {
     passive_checkpoint: bool,
 }
 
+pub struct StorageLongIngestionReceipt {
+    pub rows: usize,
+    pub batch_rows: usize,
+    pub latency_micros: StorageLatencyDistributionMicros,
+    pub recovered_rows: usize,
+}
+
+pub struct StorageMixedPressureReceipt {
+    pub iterations: usize,
+    pub latency_micros: StorageLatencyDistributionMicros,
+}
+
+pub struct StorageFootprintReceipt {
+    pub resident_set_kib: u64,
+    pub database_bytes: u64,
+    pub wal_bytes: u64,
+    pub shm_bytes: u64,
+    pub passive_checkpoint: bool,
+}
+
 impl StorageSloMatrixReceipt {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         schema_id: StorageSloMatrixReceiptSchemaId,
-        long_ingestion_rows: usize,
-        long_ingestion_batch_rows: usize,
-        long_ingestion_latency_micros: StorageLatencyDistributionMicros,
-        recovered_rows: usize,
-        mixed_pressure_iterations: usize,
-        mixed_pressure_latency_micros: StorageLatencyDistributionMicros,
-        resident_set_kib: u64,
-        database_bytes: u64,
-        wal_bytes: u64,
-        shm_bytes: u64,
-        passive_checkpoint: bool,
+        long_ingestion: StorageLongIngestionReceipt,
+        mixed_pressure: StorageMixedPressureReceipt,
+        footprint: StorageFootprintReceipt,
     ) -> Self {
         Self {
             schema_id,
-            long_ingestion_rows,
-            long_ingestion_batch_rows,
-            long_ingestion_latency_micros,
-            recovered_rows,
-            mixed_pressure_iterations,
-            mixed_pressure_latency_micros,
-            resident_set_kib,
-            database_bytes,
-            wal_bytes,
-            shm_bytes,
-            passive_checkpoint,
+            long_ingestion_rows: long_ingestion.rows,
+            long_ingestion_batch_rows: long_ingestion.batch_rows,
+            long_ingestion_latency_micros: long_ingestion.latency_micros,
+            recovered_rows: long_ingestion.recovered_rows,
+            mixed_pressure_iterations: mixed_pressure.iterations,
+            mixed_pressure_latency_micros: mixed_pressure.latency_micros,
+            resident_set_kib: footprint.resident_set_kib,
+            database_bytes: footprint.database_bytes,
+            wal_bytes: footprint.wal_bytes,
+            shm_bytes: footprint.shm_bytes,
+            passive_checkpoint: footprint.passive_checkpoint,
         }
     }
 }

@@ -2,10 +2,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agent_semantic_hook::{
-    builtin_provider_manifests, codex_hook_block, merge_codex_config, provider_manifest_digest,
-};
-use serde_json::json;
+use agent_semantic_hook::{codex_hook_block, merge_codex_config};
 
 const PROBE_SENTINEL: &str = "ASP_CODEX_HOOK_ENFORCEMENT_PROBE_SENTINEL_DO_NOT_LEAK";
 
@@ -117,9 +114,9 @@ fn toml_basic_string(value: &str) -> String {
 }
 
 fn write_activation(root: &std::path::Path) -> PathBuf {
-    let activation_path = root.join("activation.json");
-    std::fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
-    activation_path
+    let state_home = asp_state_home(root);
+    crate::state_home_fixture::install_provider_script(&state_home, "rust", "#!/bin/sh\nexit 0\n");
+    crate::state_home_fixture::write_activation(root, &state_home, &["rust"])
 }
 
 fn run_doctor(root: &std::path::Path, activation_path: &std::path::Path) -> std::process::Output {
@@ -231,58 +228,4 @@ fn prepend_path(first: &std::path::Path) -> std::ffi::OsString {
         paths.extend(std::env::split_paths(&existing));
     }
     std::env::join_paths(paths).expect("join PATH")
-}
-
-fn root_owned_rust_activation_json() -> String {
-    let manifest = builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id == "rust")
-        .expect("rust manifest");
-    let manifest_digest = provider_manifest_digest(&manifest).expect("digest manifest");
-    let routes =
-        agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
-    serde_json::to_string_pretty(&json!({
-        "schemaId": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID,
-        "schemaVersion": agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION,
-        "schemaAuthority": "https://tao3k.github.io/agent-semantic-protocols/schemas/",
-        "protocolId": agent_semantic_hook::HOOK_PROTOCOL_ID,
-        "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
-        "projectRoot": ".",
-        "generatedBy": {"runtime": "agent-semantic-hook", "version": "test"},
-        "providers": [{
-            "manifestId": manifest.manifest_id,
-            "manifestDigest": manifest_digest,
-            "languageId": manifest.language_id,
-            "providerId": manifest.provider_id,
-            "binary": manifest.binary,
-            "execution": manifest.execution,
-            "providerCommandPrefix": [],
-            "executionCommandDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-            "searchCapabilities": manifest.search_capabilities,
-            "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
-            "queryPackDescriptor": manifest.query_pack_descriptor,
-            "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
-            "routes": routes,
-            "coverage": {
-                "packageRoots": ["."],
-                "sourceRoots": ["src", "tests", "crates", "examples", "benches"],
-                "configFiles": ["Cargo.toml", "Cargo.lock"],
-                "sourceExtensions": [".rs"],
-                "ignoredPathPrefixes": [
-                    ".cache",
-                    ".direnv",
-                    ".git",
-                    ".idea",
-                    ".jj",
-                    ".run",
-                    ".vscode",
-                    "node_modules",
-                    "target",
-                    ".codex/harness-state",
-                    ".codex/rs-harness"
-                ]
-            }
-        }]
-    }))
-    .expect("serialize root-owned rust activation")
 }

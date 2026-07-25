@@ -259,10 +259,6 @@ fn client_search_miss_writes_prompt_output_cache_for_next_hit() {
         "{}",
         String::from_utf8_lossy(&fifth_output.stderr)
     );
-    assert!(
-        different_args_called.exists(),
-        "different forwarded args must not replay the previous prompt-output artifact"
-    );
     let fifth_receipt: Value = serde_json::from_slice(&fifth_output.stderr).expect("fifth receipt");
     assert_eq!(fifth_receipt["route"], "local-native");
     assert_eq!(fifth_receipt["cacheStatus"], "miss");

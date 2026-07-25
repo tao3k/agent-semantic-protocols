@@ -1,14 +1,10 @@
-use std::time::{Duration, Instant};
-
 use crate::provider_command::support::{
     asp_command, cache_root, make_executable, prepend_path, provider, temp_project_root,
-    write_activation, write_provider_bin_config,
+    write_activation,
 };
 
-const DIRECT_DEPENDENCY_SEED_GATE: Duration = Duration::from_millis(500);
-
 #[test]
-fn direct_dependency_seed_falls_back_to_asp_manifest_without_topology_capability() {
+fn direct_dependency_seed_rejects_provider_without_topology_capability() {
     let cases = [
         DependencySeedCase {
             language: "typescript",
@@ -16,7 +12,6 @@ fn direct_dependency_seed_falls_back_to_asp_manifest_without_topology_capability
             query: "react",
             manifest_path: "package.json",
             manifest_text: r#"{"dependencies":{"react":"18.2.0"}}"#,
-            expected_requirement: "18.2.0",
         },
         DependencySeedCase {
             language: "python",
@@ -24,7 +19,6 @@ fn direct_dependency_seed_falls_back_to_asp_manifest_without_topology_capability
             query: "requests",
             manifest_path: "pyproject.toml",
             manifest_text: "[project]\nname = \"dep-seed-python\"\nversion = \"0.1.0\"\ndependencies = [\"requests>=2.31\"]\n",
-            expected_requirement: ">=2.31",
         },
         DependencySeedCase {
             language: "julia",
@@ -32,7 +26,6 @@ fn direct_dependency_seed_falls_back_to_asp_manifest_without_topology_capability
             query: "DataFrames",
             manifest_path: "Project.toml",
             manifest_text: "[deps]\nDataFrames = \"a93c6f00-e57d-5684-b7b6-d8193f3e46c0\"\n[compat]\nDataFrames = \"1.6\"\n",
-            expected_requirement: "1.6",
         },
         DependencySeedCase {
             language: "gerbil-scheme",
@@ -40,19 +33,18 @@ fn direct_dependency_seed_falls_back_to_asp_manifest_without_topology_capability
             query: "git.cons.io/mighty-gerbils/gerbil-poo",
             manifest_path: "gerbil.pkg",
             manifest_text: "(package: dep-seed-gerbil depend: \"git.cons.io/mighty-gerbils/gerbil-poo\")\n",
-            expected_requirement: "-",
         },
     ];
 
     for case in cases {
-        case.assert_fast_dependency_seed();
+        case.assert_rejected_dependency_seed();
     }
 }
 
 #[test]
 fn direct_dependency_seed_uses_provider_dependency_topology_when_available() {
     let root = temp_project_root("direct-dependency-seed-provider-topology");
-    let bin_dir = crate::provider_command::support::home_local_bin(&root);
+    let bin_dir = crate::provider_command::support::state_runtime_bin(&root);
     let marker = root.join("provider-called");
     std::fs::write(
         root.join("Cargo.toml"),
@@ -170,16 +162,11 @@ fn direct_dependency_seed_uses_provider_dependency_topology_when_available() {
 }
 
 #[test]
-fn direct_dependency_seed_resolves_provider_bin_from_activation_root_for_external_workspace() {
-    let activation_root = temp_project_root("direct-dependency-seed-provider-bin-activation-root");
+fn direct_dependency_seed_uses_state_home_provider_for_external_workspace() {
+    let activation_root = temp_project_root("direct-dependency-seed-state-home-external");
     let external_root = temp_project_root("direct-dependency-seed-provider-bin-external-root");
     let bin_dir = activation_root.join(".bin");
     let marker = activation_root.join("provider-called");
-    std::fs::write(
-        activation_root.join("asp.toml"),
-        "[languages.rust]\nbin = \".bin/rs-harness\"\n",
-    )
-    .expect("write asp.toml");
     std::fs::write(
         external_root.join("Cargo.toml"),
         "[package]\nname = \"dep-seed-rust-external\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\ntokio = \"1\"\n",
@@ -200,7 +187,7 @@ fn direct_dependency_seed_resolves_provider_bin_from_activation_root_for_externa
 
     assert!(
         !external_root.join(".bin").exists(),
-        "external workspace must not provide the configured provider bin"
+        "external workspace must not provide the State Home provider"
     );
     let output = asp_command(&activation_root)
         .args([
@@ -242,6 +229,7 @@ fn direct_dependency_seed_no_hit_does_not_dump_full_manifest() {
         "[package]\nname = \"dep-seed-no-hit\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nserde = \"1\"\n",
     )
     .expect("write Cargo.toml");
+    write_rust_dependency_topology_provider(&root, &[("serde", "1")]);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
@@ -279,6 +267,7 @@ fn direct_dependency_seed_accepts_positional_api_token() {
         "[package]\nname = \"dep-seed-extra-positional\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\ntokio = \"1\"\n",
     )
     .expect("write Cargo.toml");
+    write_rust_dependency_topology_provider(&root, &[("tokio", "1")]);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
@@ -321,6 +310,7 @@ fn direct_dependency_seed_api_selector_emits_local_usage_frontier() {
         "[package]\nname = \"dep-seed-api-selector\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\ntokio = \"1\"\n",
     )
     .expect("write Cargo.toml");
+    write_rust_dependency_topology_provider(&root, &[("tokio", "1")]);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let stdout = run_dependency_seed_stdout(&root, "tokio@1::spawn");
@@ -336,7 +326,7 @@ fn direct_dependency_seed_api_selector_emits_local_usage_frontier() {
 }
 
 #[test]
-fn direct_dependency_seed_api_selector_expands_rust_path_dependency_public_api() {
+fn direct_dependency_seed_api_selector_emits_public_external_types_next_action() {
     let root = temp_project_root("direct-dependency-seed-api-selector-public-api");
     let dependency_root = root.join("rust-lang-project-harness");
     std::fs::create_dir_all(root.join("src")).expect("create root src");
@@ -357,6 +347,7 @@ fn direct_dependency_seed_api_selector_expands_rust_path_dependency_public_api()
         "pub struct Scenario;\nstruct InternalScenario;\npub fn performance_gate() {}\n",
     )
     .expect("write dependency lib");
+    write_rust_dependency_topology_provider(&root, &[("rust-lang-project-harness", "0.1.2")]);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
@@ -379,24 +370,19 @@ fn direct_dependency_seed_api_selector_expands_rust_path_dependency_public_api()
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
+    assert!(stdout.contains("topology=provider-owned"), "{stdout}");
+    assert!(stdout.contains("apiQuery=Scenario"), "{stdout}");
     assert!(
-        stdout.contains("|external dependency=rust-lang-project-harness"),
+        stdout.contains("dependency=rust-lang-project-harness"),
         "{stdout}"
     );
-    assert!(stdout.contains("source=cargo-metadata"), "{stdout}");
     assert!(
-        stdout.contains("|external-api name=Scenario kind=struct"),
+        stdout.contains("public-external-types:rust-lang-project-harness::Scenario"),
         "{stdout}"
-    );
-    assert!(stdout.contains("match=exact"), "{stdout}");
-    assert!(stdout.contains("src/lib.rs:1-1"), "{stdout}");
-    assert!(
-        stdout.contains("asp rust query --selector"),
-        "agent should receive a concrete selector command; stdout={stdout}"
     );
     assert!(
         !stdout.contains("InternalScenario"),
-        "private dependency item must not be exposed; stdout={stdout}"
+        "dependency seed must not inline dependency source; stdout={stdout}"
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -410,16 +396,15 @@ fn direct_dependency_seed_reuses_cached_manifest_topology_until_manifest_changes
         "[package]\nname = \"dep-seed-cache\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nserde = \"1\"\n",
     )
     .expect("write Cargo.toml");
+    write_rust_dependency_topology_provider(&root, &[("serde", "1")]);
     write_activation(&root, &[provider("rust", Vec::new())]);
-    write_provider_bin_config(&root, "rust", &root.join(".missing/rs-harness"));
-
     let first = run_dependency_seed_stdout(&root, "serde");
-    assert!(first.contains("topology=asp-owned"), "{first}");
+    assert!(first.contains("topology=provider-owned"), "{first}");
     assert!(first.contains("seedCache=miss"), "{first}");
     assert!(first.contains("requirement=\"1\""), "{first}");
 
     let second = run_dependency_seed_stdout(&root, "serde");
-    assert!(second.contains("topology=asp-owned"), "{second}");
+    assert!(second.contains("topology=provider-owned"), "{second}");
     assert!(second.contains("seedCache=hit"), "{second}");
     assert!(second.contains("requirement=\"1\""), "{second}");
 
@@ -428,15 +413,16 @@ fn direct_dependency_seed_reuses_cached_manifest_topology_until_manifest_changes
         "[package]\nname = \"dep-seed-cache\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nserde = \"1\"\ntokio = \"1\"\n",
     )
     .expect("update Cargo.toml");
+    write_rust_dependency_topology_provider(&root, &[("serde", "1"), ("tokio", "1")]);
 
     let third = run_dependency_seed_stdout(&root, "tokio");
-    assert!(third.contains("topology=asp-owned"), "{third}");
+    assert!(third.contains("topology=provider-owned"), "{third}");
     assert!(third.contains("seedCache=miss"), "{third}");
     assert!(third.contains("|dependency D:tokio"), "{third}");
     assert!(third.contains("requirement=\"1\""), "{third}");
 
     let fourth = run_dependency_seed_stdout(&root, "tokio");
-    assert!(fourth.contains("topology=asp-owned"), "{fourth}");
+    assert!(fourth.contains("topology=provider-owned"), "{fourth}");
     assert!(fourth.contains("seedCache=hit"), "{fourth}");
     assert!(fourth.contains("|dependency D:tokio"), "{fourth}");
 
@@ -465,17 +451,83 @@ fn run_dependency_seed_stdout(root: &std::path::Path, query: &str) -> String {
     String::from_utf8(output.stdout).expect("stdout")
 }
 
+fn write_rust_dependency_topology_provider(root: &std::path::Path, dependencies: &[(&str, &str)]) {
+    let manifest_bytes = std::fs::read(root.join("Cargo.toml")).expect("read Cargo.toml");
+    let manifest_digest = <sha2::Sha256 as sha2::Digest>::digest(&manifest_bytes);
+    let manifest_hash = format!("sha256:{manifest_digest:x}");
+    let mut nodes = Vec::with_capacity(dependencies.len() * 2);
+    let mut edges = Vec::with_capacity(dependencies.len());
+    for (name, version) in dependencies {
+        nodes.push(serde_json::json!({
+            "id": format!("dependency:{name}"),
+            "kind": "dependency",
+            "value": name,
+            "path": "Cargo.toml",
+            "fields": {
+                "dependencyName": name,
+                "manifestPath": "Cargo.toml"
+            }
+        }));
+        nodes.push(serde_json::json!({
+            "id": format!("dependency-version:{name}"),
+            "kind": "dependency-version",
+            "value": version,
+            "fields": { "version": version }
+        }));
+        edges.push(serde_json::json!({
+            "source": format!("dependency:{name}"),
+            "target": format!("dependency-version:{name}"),
+            "relation": "version_locked"
+        }));
+    }
+    let cache_key = serde_json::json!({
+        "languageId": "rust",
+        "packageManager": "cargo",
+        "manifestHash": manifest_hash,
+        "lockfileHash": format!("sha256:{}", "0".repeat(64)),
+        "projectPackageName": "dependency-seed-fixture"
+    });
+    let metadata = serde_json::json!({
+        "packetKind": "dependency-topology-metadata",
+        "fingerprint": format!("sha256:{}", "1".repeat(64)),
+        "cacheKey": cache_key.clone()
+    });
+    let topology = serde_json::json!({
+        "packetKind": "dependency-topology",
+        "fingerprint": format!("sha256:{}", "2".repeat(64)),
+        "cacheKey": cache_key,
+        "sources": {
+            "manifests": [{ "path": "Cargo.toml", "sha256": manifest_hash }],
+            "lockfiles": [],
+            "usageSites": []
+        },
+        "graph": { "nodes": nodes, "edges": edges }
+    });
+    let runtime_bin = crate::provider_command::support::state_runtime_bin(root);
+    let provider_path = runtime_bin.join("rs-harness");
+    std::fs::create_dir_all(&runtime_bin).expect("create State Home runtime bin");
+    std::fs::write(
+        &provider_path,
+        format!(
+            "#!/bin/sh\ncase \"$*\" in\n  *dependency-topology-metadata*) printf '%s\\n' '{}';;\n  *) printf '%s\\n' '{}';;\nesac\n",
+            serde_json::to_string(&metadata).expect("metadata JSON"),
+            serde_json::to_string(&topology).expect("topology JSON")
+        ),
+    )
+    .expect("write typed dependency topology provider");
+    make_executable(&provider_path);
+}
+
 struct DependencySeedCase {
     language: &'static str,
     binary: &'static str,
     query: &'static str,
     manifest_path: &'static str,
     manifest_text: &'static str,
-    expected_requirement: &'static str,
 }
 
 impl DependencySeedCase {
-    fn assert_fast_dependency_seed(&self) {
+    fn assert_rejected_dependency_seed(&self) {
         let root = temp_project_root(&format!("direct-dependency-seed-{}", self.language));
         let bin_dir = root.join(".bin");
         let marker = root.join("provider-called");
@@ -490,7 +542,7 @@ impl DependencySeedCase {
         make_executable(&provider_path);
         write_activation(&root, &[provider(self.language, Vec::new())]);
 
-        let warmup = asp_command(&root)
+        let output = asp_command(&root)
             .env("PATH", prepend_path(&bin_dir))
             .args([
                 self.language,
@@ -503,76 +555,24 @@ impl DependencySeedCase {
                 "hits",
             ])
             .output()
-            .expect("warm direct dependency seed");
+            .expect("run rejected direct dependency seed");
         assert!(
-            warmup.status.success(),
+            !output.status.success(),
             "language={} stderr={}",
             self.language,
-            String::from_utf8_lossy(&warmup.stderr)
+            String::from_utf8_lossy(&output.stderr)
         );
+        let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            !marker.exists(),
-            "language={} dependency seed should not spawn provider",
-            self.language
-        );
-
-        let mut fastest_elapsed = DIRECT_DEPENDENCY_SEED_GATE * 10;
-        let mut fastest_stdout = String::new();
-        for sample_index in 0..3 {
-            let started_at = Instant::now();
-            let output = asp_command(&root)
-                .env("PATH", prepend_path(&bin_dir))
-                .args([
-                    self.language,
-                    "search",
-                    "deps",
-                    self.query,
-                    "--workspace",
-                    ".",
-                    "--view",
-                    "hits",
-                ])
-                .output()
-                .unwrap_or_else(|error| {
-                    panic!(
-                        "run direct dependency seed language={} sample {sample_index}: {error}",
-                        self.language
-                    )
-                });
-            let elapsed = started_at.elapsed();
-            assert!(
-                output.status.success(),
-                "language={} sample={} stderr={}",
-                self.language,
-                sample_index,
-                String::from_utf8_lossy(&output.stderr)
-            );
-            if elapsed < fastest_elapsed {
-                fastest_elapsed = elapsed;
-                fastest_stdout = String::from_utf8(output.stdout).expect("stdout");
-            }
-        }
-        assert!(
-            fastest_elapsed < DIRECT_DEPENDENCY_SEED_GATE,
-            "language={} dependency seed exceeded {:?}; elapsed={fastest_elapsed:?}",
+            stderr.contains("parser-owned manifest facts"),
+            "language={} stderr={stderr}",
             self.language,
-            DIRECT_DEPENDENCY_SEED_GATE
         );
         assert!(
             !marker.exists(),
-            "language={} dependency seed should not spawn provider",
+            "language={} capability rejection should not spawn provider",
             self.language
         );
-        let stdout = fastest_stdout;
-        assert!(stdout.contains("[search-deps]"), "{stdout}");
-        assert!(stdout.contains("usage=0"), "{stdout}");
-        assert!(stdout.contains("topology=asp-owned"), "{stdout}");
-        assert!(stdout.contains("source=manifest"), "{stdout}");
-        assert!(
-            stdout.contains(&format!("requirement=\"{}\"", self.expected_requirement)),
-            "{stdout}"
-        );
-        assert!(stdout.contains("topology=asp-owned"), "{stdout}");
 
         let _ = std::fs::remove_dir_all(root);
     }

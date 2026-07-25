@@ -15,8 +15,8 @@ fn git_source_read_rule_dispatches_to_testing_resident() {
         .as_ref()
         .expect("git source read rule should declare a resident dispatch");
 
-    assert_eq!(dispatch.resident_name, "asp-testing");
-    assert_eq!(dispatch.receipt_kind, "asp-testing-execution-v1");
+    assert_eq!(dispatch.resident_name.as_str(), "asp-testing");
+    assert_eq!(dispatch.receipt_kind.as_str(), "asp-testing-execution-v1");
     assert!(
         rule.message
             .as_deref()

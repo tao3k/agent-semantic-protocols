@@ -14,7 +14,7 @@ const ASP_CODEX_PLUGIN_MANIFEST_JSON: &str =
 const ASP_CODEX_PLUGIN_HOOKS_JSON: &str =
     include_str!("../../../../asp-codex-plugin/hooks/hooks.json");
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CodexPluginScope {
     Project,
     Global,

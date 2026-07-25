@@ -50,7 +50,7 @@ fn cache_status_reports_missing_manifest_with_receipt() {
         receipt["clientDbPath"]
             .as_str()
             .expect("clientDbPath")
-            .ends_with("/live/client/client.turso")
+            .ends_with("/live/client/facts.turso")
     );
     assert_eq!(receipt["clientDbStatus"], "missing");
     assert_eq!(receipt["clientDbGenerationCount"], 0);
@@ -107,7 +107,7 @@ fn cache_status_reads_manifest_without_spawning_provider() {
 }
 
 #[test]
-fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provider() {
+fn cache_import_writes_manifest_generations_to_state_core_facts_store_without_spawning_provider() {
     let root = temp_project_root("cache-import-present-manifest");
     let bin_dir = root.join(".bin");
     let called = root.join("provider-called");
@@ -137,9 +137,8 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     assert!(stdout.contains("|db "), "{stdout}");
     assert!(stdout.contains("status=present"), "{stdout}");
     assert!(stdout.contains("generations=1"), "{stdout}");
-    assert!(stdout.contains("journalMode=wal"), "{stdout}");
-    assert!(stdout.contains("busyTimeoutMs=5000"), "{stdout}");
-    assert!(stdout.contains("foreignKeys=true"), "{stdout}");
+    assert!(stdout.contains("phase=db-engine-turso"), "{stdout}");
+    assert!(stdout.contains("action=import"), "{stdout}");
 
     let receipt: Value =
         serde_json::from_slice(&output.stderr).expect("stderr should be receipt JSON");
@@ -154,10 +153,6 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     assert_eq!(receipt["clientDbSyntaxRowMatchCount"], 0);
     assert_eq!(receipt["clientDbSyntaxRowCaptureCount"], 0);
     assert_eq!(receipt["clientDbRawSourceStored"], false);
-    assert_eq!(receipt["clientDbJournalMode"], "wal");
-    assert_eq!(receipt["clientDbSynchronous"], 1);
-    assert_eq!(receipt["clientDbBusyTimeoutMs"], 5000);
-    assert_eq!(receipt["clientDbForeignKeys"], true);
     assert_eq!(receipt["providerCommandCount"], 0);
     assert_eq!(receipt["providerProcessesSpawned"], 0);
 
@@ -178,21 +173,10 @@ fn cache_import_writes_manifest_generations_to_client_db_without_spawning_provid
     );
     assert!(status_stdout.contains("status=present"), "{status_stdout}");
     assert!(status_stdout.contains("generations=1"), "{status_stdout}");
-    assert!(status_stdout.contains("journalMode=wal"), "{status_stdout}");
-    assert!(
-        status_stdout.contains("busyTimeoutMs=5000"),
-        "{status_stdout}"
-    );
-    assert!(
-        status_stdout.contains("foreignKeys=true"),
-        "{status_stdout}"
-    );
     let status_receipt: Value =
         serde_json::from_slice(&status_output.stderr).expect("status stderr receipt JSON");
-    assert_eq!(status_receipt["clientDbJournalMode"], "wal");
-    assert_eq!(status_receipt["clientDbSynchronous"], 1);
-    assert_eq!(status_receipt["clientDbBusyTimeoutMs"], 5000);
-    assert_eq!(status_receipt["clientDbForeignKeys"], true);
+    assert_eq!(status_receipt["clientDbStatus"], "present");
+    assert_eq!(status_receipt["clientDbGenerationCount"], 1);
 
     let invalidate_output = asp_command(&root)
         .env("PATH", &bin_dir)

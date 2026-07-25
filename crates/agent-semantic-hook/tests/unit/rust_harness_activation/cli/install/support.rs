@@ -27,11 +27,12 @@ fn isolated_asp_state_home() -> PathBuf {
     std::env::temp_dir().join(format!("asp-test-state-{}-{nonce}", std::process::id()))
 }
 
-pub(super) fn codex_plugin_install_args(root: &Path) -> [String; 4] {
+pub(super) fn codex_plugin_install_args(root: &Path) -> [String; 5] {
     [
         "install".to_string(),
         "plugin".to_string(),
         "--codex".to_string(),
+        "--global".to_string(),
         root.to_str().expect("utf8 temp root").to_string(),
     ]
 }
@@ -39,15 +40,35 @@ pub(super) fn codex_plugin_install_args(root: &Path) -> [String; 4] {
 pub(super) fn codex_plugin_install_args_with_subagent_model(
     root: &Path,
     model: &str,
-) -> [String; 6] {
+) -> [String; 7] {
     [
         "install".to_string(),
         "plugin".to_string(),
         "--codex".to_string(),
+        "--global".to_string(),
         "--subagent-model".to_string(),
         model.to_string(),
         root.to_str().expect("utf8 temp root").to_string(),
     ]
+}
+
+pub(super) fn sync_test_state(root: &Path, state_home: &Path) {
+    let output = protocol_command()
+        .env("ASP_STATE_HOME", state_home)
+        .env("CODEX_HOME", root.join(".codex-home"))
+        .args(["sync", root.to_str().expect("utf8 temp root")])
+        .output()
+        .expect("run explicit ASP state sync");
+    assert!(
+        output.status.success(),
+        "state sync stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+pub(super) fn test_host_path(root: &Path, protocol_bin_dir: &Path) -> std::ffi::OsString {
+    std::env::join_paths([root.join(".bin"), protocol_bin_dir.to_path_buf()])
+        .expect("join fake host CLI and protocol bin PATH")
 }
 
 fn write_test_codex_plugin(root: &Path) {

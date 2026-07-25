@@ -157,7 +157,10 @@ pub(super) fn julia_dataframes_sandtable_batch_execution_stays_inside_hard_gates
             return;
         }
     };
-    let binary = repo_root.join(".bin/asp-julia-harness");
+    let binary = agent_semantic_runtime::project_state_paths(&repo_root)
+        .expect("resolve State Home provider paths")
+        .runtime_bin_dir
+        .join("asp-julia-harness");
     if !binary.is_file() {
         eprintln!(
             "skip julia DataFrames execution gate: missing {}",

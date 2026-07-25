@@ -83,10 +83,14 @@ impl LanguageProjectionImportRequest {
             ));
         }
         let report = import_language_projection(project_root, projection)?;
-        let status = if report.reused { "reused" } else { "imported" };
+        let status = if report.reused() {
+            "reused"
+        } else {
+            "imported"
+        };
         println!(
             "[projection-import] language={language_id} owner={owner} status={status} parserProcessCount=1 nodeLocatorCount={}",
-            report.node_locator_count
+            report.node_locator_count()
         );
         Ok(())
     }

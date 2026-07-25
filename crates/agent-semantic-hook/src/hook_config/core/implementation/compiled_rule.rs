@@ -157,6 +157,18 @@ impl CompiledHookRule {
         action: &ToolAction,
         paths: &[String],
     ) -> HookDecision {
+        let matched_subject_paths = self.match_config.agent_action.needs_subjects().then(|| {
+            self.match_config
+                .agent_action
+                .matching_subject_paths(runtime, action, paths)
+        });
+        let shell_subject_paths = (matched_subject_paths.is_none()
+            && action.surface == crate::tool_action::ToolSurface::CodexShell)
+            .then(|| crate::source_selector::project_shell_subject_paths(runtime, paths));
+        let paths = matched_subject_paths
+            .as_deref()
+            .or(shell_subject_paths.as_deref())
+            .unwrap_or(paths);
         let decision = match self.decision {
             HookClientConfigDecision::Allow => DecisionKind::Allow,
             HookClientConfigDecision::Block => DecisionKind::Block,
@@ -668,24 +680,26 @@ impl CompiledHookRule {
 impl TryFrom<HookClientRuleMatchConfig> for RuleMatch {
     type Error = String;
 
-    fn try_from(config: HookClientRuleMatchConfig) -> Result<Self, Self::Error> {
-        let mut tool_any = config.tool_any;
-        if let Some(tool) = config.tool {
+    fn try_from(mut config: HookClientRuleMatchConfig) -> Result<Self, Self::Error> {
+        let mut tool_any = std::mem::take(&mut config.tool_any);
+        if let Some(tool) = config.tool.take() {
             tool_any.push(tool);
         }
         Ok(Self {
             agent_action: action_match::AgentActionMatch::new(
-                config.command_wrappers,
-                config.invocation_shape_any,
-                config.wrapper_match_any,
-                config.flag_presence_any,
-                config.action_any,
-                config.effect_any,
-                config.subject_kind_any,
-                config.authority_any,
-                config.authority_exclude_any,
-                config.authority_rules,
-                config.effect_rules,
+                action_match::AgentActionMatchConfig {
+                    command_wrappers: std::mem::take(&mut config.command_wrappers),
+                    invocation_shape_any: std::mem::take(&mut config.invocation_shape_any),
+                    wrapper_match_any: std::mem::take(&mut config.wrapper_match_any),
+                    flag_presence_any: std::mem::take(&mut config.flag_presence_any),
+                    action_any: std::mem::take(&mut config.action_any),
+                    effect_any: std::mem::take(&mut config.effect_any),
+                    subject_kind_any: std::mem::take(&mut config.subject_kind_any),
+                    authority_any: std::mem::take(&mut config.authority_any),
+                    authority_exclude_any: std::mem::take(&mut config.authority_exclude_any),
+                    authority_rules: std::mem::take(&mut config.authority_rules),
+                    effect_rules: std::mem::take(&mut config.effect_rules),
+                },
             ),
             tool_any,
             command_any: config.command_any,

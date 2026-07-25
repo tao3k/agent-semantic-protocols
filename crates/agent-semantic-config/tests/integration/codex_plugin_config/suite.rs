@@ -11,11 +11,14 @@ fn codex_plugin_enabled_is_owned_by_config_parser() {
     .expect("write config");
 
     assert!(
-        codex_config_plugin_enabled(&config, "asp-codex-plugin@asp-project").expect("parse config")
+        codex_config_plugin_enabled(&config, "asp-codex-plugin@asp-project".into())
+            .expect("parse config")
     );
-    assert!(!codex_config_plugin_enabled(&config, "different@plugin").expect("parse config"));
     assert!(
-        !codex_config_plugin_enabled(&root.path().join("missing.toml"), "anything")
+        !codex_config_plugin_enabled(&config, "different@plugin".into()).expect("parse config")
+    );
+    assert!(
+        !codex_config_plugin_enabled(&root.path().join("missing.toml"), "anything".into())
             .expect("missing config is disabled")
     );
 }

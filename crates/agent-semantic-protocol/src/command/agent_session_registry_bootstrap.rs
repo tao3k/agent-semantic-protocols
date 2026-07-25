@@ -297,17 +297,19 @@ pub(super) fn bootstrap_session(
         })
         .or_else(|| {
             reasoning::profile_attested_runtime_observation(
-                root_session_id.as_deref(),
-                attested_child_id.as_ref(),
-                &expected_agent_type,
-                record
-                    .as_ref()
-                    .and_then(|record| record.model.as_ref())
-                    .map(|model| model.as_str()),
-                expected_model.as_ref(),
-                expected_reasoning_effort.as_ref(),
-                profile_attestation_target_verified,
-                attestation_source,
+                reasoning::ProfileAttestedRuntimeObservationRequest {
+                    root_session_id: root_session_id.as_deref(),
+                    child_id: attested_child_id.as_ref(),
+                    expected_agent_type: &expected_agent_type,
+                    observed_model: record
+                        .as_ref()
+                        .and_then(|record| record.model.as_ref())
+                        .map(|model| model.as_str()),
+                    expected_model: expected_model.as_ref(),
+                    expected_reasoning: expected_reasoning_effort.as_ref(),
+                    target_present: profile_attestation_target_verified,
+                    observation_source: attestation_source,
+                },
             )
         });
     let runtime_reasoning_from_host = runtime_verification_observation
@@ -843,13 +845,15 @@ pub(super) fn bootstrap_session(
         {
             reasoning::insert_runtime_evidence_incomplete_receipt(
                 &mut rendered,
-                observation,
-                &canonical_resident_target(&menu.host_requirement),
-                menu.host_requirement.managed_agent_kind.as_ref(),
-                expected_model.as_deref(),
-                expected_reasoning_effort.as_deref(),
-                runtime_reasoning_from_host,
-                registry_routable,
+                reasoning::RuntimeEvidenceIncompleteReceipt {
+                    observation,
+                    target: &canonical_resident_target(&menu.host_requirement),
+                    managed_agent_kind: menu.host_requirement.managed_agent_kind.as_ref(),
+                    expected_model: expected_model.as_deref(),
+                    expected_reasoning: expected_reasoning_effort.as_deref(),
+                    runtime_reasoning_from_host,
+                    registry_routable,
+                },
             );
         }
         if profile_attestation_target_verified

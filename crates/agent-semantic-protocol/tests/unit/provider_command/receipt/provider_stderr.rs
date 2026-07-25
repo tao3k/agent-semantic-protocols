@@ -1,9 +1,7 @@
 use serde_json::Value;
-use std::env;
-use std::process::Command;
 
 use crate::provider_command::support::{
-    provider, temp_project_root, write_activation, write_stdout_stderr_exit_provider,
+    asp_command, provider, temp_project_root, write_activation, write_stdout_stderr_exit_provider,
     write_stdout_stderr_provider,
 };
 
@@ -16,11 +14,7 @@ fn receipt_json_suppresses_provider_stderr_from_receipt_stream() {
     write_stdout_stderr_provider(&bin_dir, "rs-harness", stdout_text, stderr_text);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env_remove("CODEX_THREAD_ID")
+    let output = asp_command(&root)
         .args([
             "rust",
             "search",
@@ -67,11 +61,7 @@ fn receipt_json_is_emitted_for_nonzero_provider_exit() {
     write_stdout_stderr_exit_provider(&bin_dir, "rs-harness", stdout_text, stderr_text, 7);
     write_activation(&root, &[provider("rust", Vec::new())]);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-        .current_dir(&root)
-        .env("PATH", &bin_dir)
-        .env("PRJ_CACHE_HOME", root.join(".cache"))
-        .env_remove("CODEX_THREAD_ID")
+    let output = asp_command(&root)
         .args([
             "rust",
             "search",

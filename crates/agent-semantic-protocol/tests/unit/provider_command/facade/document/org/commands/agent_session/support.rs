@@ -1,4 +1,86 @@
+use crate::provider_command::support::{make_executable, write_marker_provider};
+use agent_semantic_hook::builtin_provider_manifests;
 use std::path::Path;
+
+#[derive(Clone, Copy)]
+pub(super) struct CodexAspExplorerFixtureProfile<'a> {
+    expected_model: &'a str,
+    actual_model: &'a str,
+    expected_sandbox: &'a str,
+    actual_sandbox: &'a str,
+}
+
+impl<'a> CodexAspExplorerFixtureProfile<'a> {
+    pub(super) fn new(
+        expected_model: &'a str,
+        actual_model: &'a str,
+        expected_sandbox: &'a str,
+        actual_sandbox: &'a str,
+    ) -> Self {
+        Self {
+            expected_model,
+            actual_model,
+            expected_sandbox,
+            actual_sandbox,
+        }
+    }
+}
+
+struct CodexAspExplorerFixtureAgent<'a> {
+    actual_agent_path: Option<&'a Path>,
+    include_agent_path: bool,
+    actual_agent_role: &'a str,
+}
+
+pub(super) fn install_rust_marker_provider(state_home: &Path) {
+    install_rust_provider(state_home, None);
+}
+
+pub(super) fn install_rust_owner_frontier_provider(state_home: &Path) {
+    install_rust_provider(
+        state_home,
+        Some(
+            "#!/bin/sh\nprintf '[search-owner] q=message_target_snapshot pkg=. selector=items alg=item-frontier\\n'\nprintf 'O=owner:path(crates/agent-semantic-protocol/src/command/agent_session_registry_message_target.rs)!owner;I=item:symbol(message_target_snapshot)!syntax\\n'\nprintf 'O>{I:contains}\\n'\nprintf 'rank=I,O frontier=I.syntax\\n'\n",
+        ),
+    );
+}
+
+fn install_rust_provider(state_home: &Path, delegate: Option<&str>) {
+    let manifest = builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id().as_str() == "rust")
+        .expect("builtin Rust provider manifest");
+    let runtime_bin = state_home.join("runtime/bin");
+    write_marker_provider(
+        &runtime_bin,
+        manifest.binary(),
+        &runtime_bin.join(".rs-harness-marker"),
+    );
+    if let Some(delegate) = delegate {
+        let delegate_path = runtime_bin.join(".rs-harness-delegate");
+        std::fs::write(&delegate_path, delegate).expect("write Rust provider delegate");
+        make_executable(&delegate_path);
+    }
+    let installed = runtime_bin.join(manifest.binary());
+    let content_digest = agent_semantic_content_identity::file_content_digest_v1(&installed)
+        .expect("installed provider content digest");
+    let metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed)
+            .expect("installed provider metadata digest");
+    let lock_dir = state_home.join("runtime/provider-locks");
+    std::fs::create_dir_all(&lock_dir).expect("create provider lock registry");
+    std::fs::write(
+        lock_dir.join("rust.lock.toml"),
+        format!(
+            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\n",
+            manifest.provider_id(),
+            installed.display(),
+            content_digest,
+            metadata_digest,
+        ),
+    )
+    .expect("write Rust provider install receipt");
+}
 
 pub(super) fn write_codex_asp_explorer_fixture(
     home: &Path,
@@ -49,33 +131,28 @@ pub(super) fn write_codex_asp_explorer_fixture_with_actual_profile(
         home,
         root_session_id,
         child_session_id,
-        expected_model,
-        actual_model,
-        expected_sandbox,
-        actual_sandbox,
+        CodexAspExplorerFixtureProfile::new(
+            expected_model,
+            actual_model,
+            expected_sandbox,
+            actual_sandbox,
+        ),
         None,
     );
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn write_codex_asp_explorer_fixture_with_actual_agent_path(
     home: &Path,
     root_session_id: &str,
     child_session_id: &str,
-    expected_model: &str,
-    actual_model: &str,
-    expected_sandbox: &str,
-    actual_sandbox: &str,
+    profile: CodexAspExplorerFixtureProfile<'_>,
     actual_agent_path: Option<&Path>,
 ) {
     write_codex_asp_explorer_fixture_with_agent_path_presence(
         home,
         root_session_id,
         child_session_id,
-        expected_model,
-        actual_model,
-        expected_sandbox,
-        actual_sandbox,
+        profile,
         actual_agent_path,
         true,
     );
@@ -94,24 +171,22 @@ pub(super) fn write_codex_asp_explorer_fixture_without_agent_path(
         home,
         root_session_id,
         child_session_id,
-        expected_model,
-        actual_model,
-        expected_sandbox,
-        actual_sandbox,
+        CodexAspExplorerFixtureProfile::new(
+            expected_model,
+            actual_model,
+            expected_sandbox,
+            actual_sandbox,
+        ),
         None,
         false,
     );
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn write_codex_asp_explorer_fixture_with_agent_path_presence(
     home: &Path,
     root_session_id: &str,
     child_session_id: &str,
-    expected_model: &str,
-    actual_model: &str,
-    expected_sandbox: &str,
-    actual_sandbox: &str,
+    profile: CodexAspExplorerFixtureProfile<'_>,
     actual_agent_path: Option<&Path>,
     include_agent_path: bool,
 ) {
@@ -119,13 +194,12 @@ pub(super) fn write_codex_asp_explorer_fixture_with_agent_path_presence(
         home,
         root_session_id,
         child_session_id,
-        expected_model,
-        actual_model,
-        expected_sandbox,
-        actual_sandbox,
-        actual_agent_path,
-        include_agent_path,
-        "asp_explorer",
+        profile,
+        CodexAspExplorerFixtureAgent {
+            actual_agent_path,
+            include_agent_path,
+            actual_agent_role: "asp_explorer",
+        },
     );
 }
 
@@ -142,29 +216,38 @@ pub(super) fn write_codex_asp_explorer_fixture_with_default_agent_role(
         home,
         root_session_id,
         child_session_id,
-        expected_model,
-        actual_model,
-        expected_sandbox,
-        actual_sandbox,
-        None,
-        false,
-        "default",
+        CodexAspExplorerFixtureProfile::new(
+            expected_model,
+            actual_model,
+            expected_sandbox,
+            actual_sandbox,
+        ),
+        CodexAspExplorerFixtureAgent {
+            actual_agent_path: None,
+            include_agent_path: false,
+            actual_agent_role: "default",
+        },
     );
 }
 
-#[allow(clippy::too_many_arguments)]
 fn write_codex_asp_explorer_fixture_with_agent_role(
     home: &Path,
     root_session_id: &str,
     child_session_id: &str,
-    expected_model: &str,
-    actual_model: &str,
-    expected_sandbox: &str,
-    actual_sandbox: &str,
-    actual_agent_path: Option<&Path>,
-    include_agent_path: bool,
-    actual_agent_role: &str,
+    profile: CodexAspExplorerFixtureProfile<'_>,
+    agent: CodexAspExplorerFixtureAgent<'_>,
 ) {
+    let CodexAspExplorerFixtureProfile {
+        expected_model,
+        actual_model,
+        expected_sandbox,
+        actual_sandbox,
+    } = profile;
+    let CodexAspExplorerFixtureAgent {
+        actual_agent_path,
+        include_agent_path,
+        actual_agent_role,
+    } = agent;
     let agents_dir = home.join(".codex").join("agents");
     std::fs::create_dir_all(&agents_dir).expect("create codex agents dir");
     let expected_agent_path = agents_dir.join("asp-explorer.toml");

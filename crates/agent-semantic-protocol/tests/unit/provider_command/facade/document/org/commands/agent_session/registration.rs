@@ -530,25 +530,27 @@ fn asp_agent_session_bootstrap_followup_ack_reports_same_child_identity() {
 
     assert_eq!(json["state"].as_str(), Some("Ready"), "{stdout}");
     assert_eq!(
-        json["hostControlDirective"]["intent"].as_str(),
-        Some("same-child-followup-ack-rebind"),
+        json["hostResidentTargetObservation"]["canonicalTarget"].as_str(),
+        Some("/root/asp_explorer"),
         "{stdout}"
     );
     assert_eq!(
-        json["hostControlDirective"]["createPolicy"].as_str(),
-        Some("not-created"),
+        json["hostResidentTargetObservation"]["identityStatus"].as_str(),
+        Some("verified"),
         "{stdout}"
     );
     assert_eq!(
-        json["hostLifecycleObservation"]["sameChildIdentity"].as_bool(),
-        Some(true),
+        json["hostResidentTargetObservation"]["source"].as_str(),
+        Some("native-collaboration-followup-ack"),
         "{stdout}"
     );
     assert_eq!(
-        json["hostLifecycleObservation"]["typedReplacementVerified"].as_bool(),
-        Some(false),
+        json["session"]["childSessionId"].as_str(),
+        Some(child_session_id),
         "{stdout}"
     );
+    assert!(json.get("hostControlDirective").is_none(), "{stdout}");
+    assert!(json.get("hostLifecycleObservation").is_none(), "{stdout}");
 
     let _ = std::fs::remove_dir_all(root);
 }

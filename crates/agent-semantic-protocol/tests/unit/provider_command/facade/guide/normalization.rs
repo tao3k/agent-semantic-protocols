@@ -1,5 +1,6 @@
 use crate::provider_command::support::{
-    asp_command, make_executable, provider, temp_project_root, write_activation,
+    asp_command, install_state_home_provider, make_executable, provider, temp_project_root,
+    write_activation,
 };
 
 #[test]
@@ -14,15 +15,9 @@ fn language_facade_guide_normalizes_provider_specific_header() {
     )
     .expect("write provider");
     make_executable(&provider_path);
-    write_provider_bin_override(&root, "typescript", &provider_path);
+    install_state_home_provider(&root, "typescript", &provider_path);
 
-    write_activation(
-        &root,
-        &[provider(
-            "typescript",
-            vec![provider_path.display().to_string()],
-        )],
-    );
+    write_activation(&root, &[provider("typescript", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
@@ -62,12 +57,9 @@ fn language_facade_guide_normalizes_provider_agent_guide_header() {
     )
     .expect("write provider");
     make_executable(&provider_path);
-    write_provider_bin_override(&root, "rust", &provider_path);
+    install_state_home_provider(&root, "rust", &provider_path);
 
-    write_activation(
-        &root,
-        &[provider("rust", vec![provider_path.display().to_string()])],
-    );
+    write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
@@ -88,19 +80,4 @@ fn language_facade_guide_normalizes_provider_agent_guide_header() {
     assert!(!stdout.contains("[agent-guide]"), "{stdout}");
     assert!(!stdout.contains("protocol=agent-guide.v1"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
-}
-
-fn write_provider_bin_override(
-    root: &std::path::Path,
-    language_id: &str,
-    provider_bin: &std::path::Path,
-) {
-    std::fs::write(
-        root.join("asp.toml"),
-        format!(
-            "[languages.{language_id}]\nbin = \"{}\"\n",
-            provider_bin.display()
-        ),
-    )
-    .expect("write asp.toml provider override");
 }

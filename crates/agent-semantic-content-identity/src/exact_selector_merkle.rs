@@ -49,8 +49,7 @@ pub struct ExactSelectorMerkleProofV1 {
     pub(crate) parser_identity_digest: ContentDigestV1,
     pub(crate) query_pack_digest: ContentDigestV1,
     pub(crate) parser_fact_digest: ContentDigestV1,
-    pub(crate) canonical_item_selector:
-        crate::canonical_item_identity::CanonicalItemSelectorV1,
+    pub(crate) canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
     pub(crate) structural_selector: String,
     pub(crate) projection_mode: ExactProjectionModeV1,
     pub(crate) projection_digest: ContentDigestV1,

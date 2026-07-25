@@ -370,55 +370,22 @@ fn asp_memory_engine_command(project_root: &Path) -> Result<Command, String> {
     if let Ok(binary) = env::var("ASP_MEMORY_ENGINE") {
         return Ok(Command::new(binary));
     }
-    if let Some(command) = source_memory_engine_command(project_root) {
-        return Ok(command);
-    }
-    if let Some(binary) = project_memory_engine_binary(project_root) {
+    if let Some(binary) = state_home_memory_engine_binary(project_root) {
         return Ok(Command::new(binary));
     }
-    if command_exists("asp-memory-engine") {
-        return Ok(Command::new("asp-memory-engine"));
-    }
-    if let Some(command) = source_memory_engine_command(Path::new(env!("CARGO_MANIFEST_DIR"))) {
-        return Ok(command);
-    }
     Err(
-        "asp org recall plans requires ASP_MEMORY_ENGINE, a local packages/python workspace, a project packaged asp-memory-engine, or `asp-memory-engine` on PATH"
+        "asp org recall plans requires ASP_MEMORY_ENGINE or State Home runtime/bin/asp-memory-engine"
             .to_string(),
     )
 }
 
-fn source_memory_engine_command(project_root: &Path) -> Option<Command> {
-    let root_packages_python = absolute_path(project_root, project_root).join("packages/python");
-    let source_packages_python =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/python");
-    let packages_python = if root_packages_python.join("pyproject.toml").is_file() {
-        root_packages_python
-    } else {
-        source_packages_python
-    };
-    if packages_python.join("pyproject.toml").is_file() {
-        let mut command = Command::new("uv");
-        command
-            .args(["run", "--project"])
-            .arg(packages_python)
-            .arg("--frozen")
-            .arg("asp-memory-engine");
-        return Some(command);
-    }
-    None
-}
-
-fn project_memory_engine_binary(project_root: &Path) -> Option<PathBuf> {
+fn state_home_memory_engine_binary(project_root: &Path) -> Option<PathBuf> {
     let project_root = absolute_path(project_root, project_root);
-    let mut candidates = Vec::new();
-    if let Ok(paths) = project_state_paths(&project_root) {
-        let artifacts_bin = paths.artifacts_dir.join("bin");
-        candidates.push(artifacts_bin.join("asp-memory-engine-current"));
-        candidates.push(artifacts_bin.join("asp-memory-engine"));
-    }
-    candidates.push(project_root.join(".bin/asp-memory-engine"));
-    candidates.into_iter().find(|candidate| candidate.is_file())
+    let binary = project_state_paths(&project_root)
+        .ok()?
+        .runtime_bin_dir
+        .join("asp-memory-engine");
+    binary.is_file().then_some(binary)
 }
 
 pub(super) fn memory_engine_auto_socket_enabled() -> bool {
@@ -489,10 +456,6 @@ pub(super) fn absolute_path(value: &Path, root: &Path) -> PathBuf {
     }
 }
 
-fn command_exists(command: &str) -> bool {
-    Command::new("sh")
-        .arg("-c")
-        .arg(format!("command -v {command} >/dev/null 2>&1"))
-        .status()
-        .is_ok_and(|status| status.success())
-}
+#[cfg(test)]
+#[path = "../../../tests/unit/command/org_recall/memory.rs"]
+mod tests;

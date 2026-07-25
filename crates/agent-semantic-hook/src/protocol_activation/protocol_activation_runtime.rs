@@ -7,7 +7,7 @@ use crate::protocol::{
 
 use super::digest::provider_manifest_digest;
 use super::protocol_activation_manifest::{
-    ActivatedProvider, HookActivation, HookRuntime, ProviderManifest,
+    ActivatedProvider, ActivatedProviderConfig, HookActivation, HookRuntime, ProviderManifest,
 };
 use super::provider_query_pack::{
     validate_query_pack_descriptor, validate_semantic_facts_descriptor,
@@ -108,9 +108,9 @@ fn resolve_activation(
                 activated.manifest_id
             )));
         }
+        validate_selected_provider_binary(activated)?;
         if activated.language_id != manifest.language_id
             || activated.provider_id != manifest.provider_id
-            || activated.binary != manifest.binary
             || activated.execution != manifest.execution
             || activated.search_capabilities != manifest.search_capabilities
             || activated.semantic_facts_descriptor != manifest.semantic_facts_descriptor
@@ -148,6 +148,27 @@ fn resolve_activation(
         project_root: activation.project_root.clone(),
         providers,
     })
+}
+
+fn validate_selected_provider_binary(
+    activated: &ActivatedProviderConfig,
+) -> Result<(), AgentHookError> {
+    let selected = std::path::Path::new(&activated.binary);
+    let is_logical_basename = selected.components().count() == 1
+        && selected.file_name().and_then(|name| name.to_str()) == Some(activated.binary.as_str());
+    if !is_logical_basename {
+        return Err(AgentHookError::InvalidActivationConfig(format!(
+            "provider activation binary must be a logical basename: manifestId={} binary={}",
+            activated.manifest_id, activated.binary
+        )));
+    }
+    if !activated.provider_command_prefix.is_empty() {
+        return Err(AgentHookError::InvalidActivationConfig(format!(
+            "State Home v1 provider activation command prefix must be empty: manifestId={} binary={}",
+            activated.manifest_id, activated.binary
+        )));
+    }
+    Ok(())
 }
 
 impl HookActivation {

@@ -229,6 +229,15 @@ fn configured_git_diff_routes_to_testing_resident() {
     );
     let decision_json = serde_json::to_value(&decision).expect("serialize hook decision");
     assert_eq!(decision_json["interactiveCommand"]["schemaVersion"], "1");
+    assert_eq!(
+        decision_json["fields"]["normalizedActions"],
+        json!([{
+            "toolName": "functions.exec_command",
+            "toolSurface": "shell-command",
+            "operationIntent": "shell-command",
+            "paths": ["diff", "--check"]
+        }])
+    );
     let receipt_kind = decision_json["fields"]["receiptKind"]
         .as_str()
         .expect("configured resident dispatch receipt kind");
@@ -270,6 +279,13 @@ fn configured_git_diff_routes_to_testing_resident() {
     validator
         .validate(&decision_json)
         .expect("configured resident decision should satisfy the v1 schema");
+    let mut stringified_actions = decision_json.clone();
+    stringified_actions["fields"]["normalizedActions"] =
+        serde_json::Value::String("[]".to_string());
+    assert!(
+        validator.validate(&stringified_actions).is_err(),
+        "v1 normalizedActions must remain a typed object array"
+    );
     let rendered = agent_semantic_hook::render_platform_response(&decision)
         .expect("render configured resident deny");
     assert_eq!(

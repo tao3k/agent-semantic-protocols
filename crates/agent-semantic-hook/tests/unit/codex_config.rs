@@ -1,15 +1,26 @@
 use agent_semantic_hook::{
     ROOT_BLOCK_BEGIN, claude_hook_block, codex_hook_block, merge_claude_settings,
 };
+use agent_semantic_runtime::state_core::resolve_state_home;
 use std::path::Path;
 
 const PROJECT_ROOT: &str = "/workspace/agent-semantic-protocols";
 
 #[test]
 fn codex_hook_matcher_omits_apply_patch_surfaces_by_default() {
+    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let block = codex_hook_block(Path::new(PROJECT_ROOT));
+    let state_home_asp = resolve_state_home()
+        .expect("State Home")
+        .join("runtime")
+        .join("bin")
+        .join("asp");
 
     assert!(block.contains(PROJECT_ROOT));
+    assert!(block.contains(&state_home_asp.display().to_string()));
+    assert!(!block.contains("$repo_root/.bin/asp"));
     assert!(block.contains("readFile"));
     assert!(block.contains("FsReadFile"));
     assert!(block.contains("fs/readFile"));
@@ -25,6 +36,9 @@ fn codex_hook_matcher_omits_apply_patch_surfaces_by_default() {
 
 #[test]
 fn codex_hook_merge_replaces_legacy_bare_asp_explorer_role() {
+    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let existing = r#"[features]
 hooks = true
 plugins = true

@@ -365,15 +365,17 @@ fn turso_builder(turso_path: &Path) -> turso::Builder {
         .experimental_index_method(TURSO_CLIENT_DB_INDEX_METHOD)
 }
 
+type TursoSchemaState = std::sync::Arc<
+    tokio::sync::Mutex<
+        std::collections::HashMap<&'static str, std::sync::Arc<tokio::sync::OnceCell<()>>>,
+    >,
+>;
+
 /// A connection paired with the shared database authority that created it.
 pub(super) struct TursoConnectionLease {
     _database: std::sync::Arc<turso::Database>,
     connection: tokio::sync::OwnedMutexGuard<turso::Connection>,
-    schema_state: std::sync::Arc<
-        tokio::sync::Mutex<
-            std::collections::HashMap<&'static str, std::sync::Arc<tokio::sync::OnceCell<()>>>,
-        >,
-    >,
+    schema_state: TursoSchemaState,
 }
 
 impl TursoConnectionLease {
@@ -408,11 +410,7 @@ struct TursoDatabasePoolEntry {
     database: std::sync::Arc<turso::Database>,
     write_lanes: Vec<std::sync::Arc<tokio::sync::Mutex<turso::Connection>>>,
     next_write_lane: usize,
-    schema_state: std::sync::Arc<
-        tokio::sync::Mutex<
-            std::collections::HashMap<&'static str, std::sync::Arc<tokio::sync::OnceCell<()>>>,
-        >,
-    >,
+    schema_state: TursoSchemaState,
 }
 
 type TursoDatabasePool = std::collections::BTreeMap<std::path::PathBuf, TursoDatabasePoolEntry>;

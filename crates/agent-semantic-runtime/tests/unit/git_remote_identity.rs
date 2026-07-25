@@ -167,5 +167,34 @@ fn linked_worktrees_share_gix_repository_identity() {
         linked_state.workspace.workspace_id
     );
 
+    for _ in 0..16 {
+        main_state
+            .ensure_minimal_layout()
+            .expect("materialize main worktree state");
+        linked_state
+            .ensure_minimal_layout()
+            .expect("materialize linked worktree state");
+    }
+
+    let repository_dirs = std::fs::read_dir(state_home.join("projects/by-id"))
+        .expect("read repository directories")
+        .map(|entry| entry.expect("read repository directory").path())
+        .filter(|path| path.is_dir())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        repository_dirs.len(),
+        1,
+        "linked worktrees must share one repository directory"
+    );
+    let workspace_count = std::fs::read_dir(repository_dirs[0].join("workspaces"))
+        .expect("read workspace directories")
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_dir())
+        .count();
+    assert_eq!(
+        workspace_count, 2,
+        "linked worktrees must materialize two workspace directories"
+    );
+
     std::fs::remove_dir_all(&fixture).expect("remove worktree fixture");
 }

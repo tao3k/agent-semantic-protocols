@@ -59,20 +59,13 @@ pub(in super::super) fn claude_fixture() -> PathBuf {
     )
     .expect("write asp shim");
     make_executable(&asp_path);
-    let provider_path = bin_dir.join("rs-harness");
-    std::fs::write(
-        &provider_path,
+    let state_home = crate::state_home_fixture::default_state_home(&root);
+    crate::state_home_fixture::install_provider_script(
+        &state_home,
+        "rust",
         "#!/bin/sh\nif [ \"$1\" = \"agent\" ] && [ \"$2\" = \"guide\" ]; then\n  printf '[agent-guide] language=rust provider=rs-harness\\n'\nfi\nexit 0\n",
-    )
-    .expect("write fake provider");
-    make_executable(&provider_path);
-    crate::provider_command::support::write_activation(
-        &root,
-        &[crate::provider_command::support::provider(
-            "rust",
-            Vec::new(),
-        )],
     );
+    crate::state_home_fixture::write_activation(&root, &state_home, &["rust"]);
     write_test_codex_plugin(&root);
     write_fake_codex_cli(&bin_dir);
     root

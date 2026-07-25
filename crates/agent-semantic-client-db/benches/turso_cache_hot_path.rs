@@ -49,25 +49,27 @@ fn turso_cache_hot_path(c: &mut Criterion) {
         selector,
     );
     let packet = build_exact_selector_projection_packet_v1(
-        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketLanguageIdV1::from(
-            "rust",
-        ),
-        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketProviderIdV1::from(
-            "rs-harness",
-        ),
-        canonical_item_selector,
-        &parser_identity_digest,
-        &query_pack_digest,
-        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketOwnerPathV1::from(
-            owner_path,
-        ),
-        &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketStructuralSelectorV1::from(
-            selector,
-        ),
-        projection_mode,
-        source,
-        br#"{"kind":"fn","name":"warm_symbol"}"#,
-        source,
+        agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
+            language_id: &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketLanguageIdV1::from(
+                "rust",
+            ),
+            provider_id: &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketProviderIdV1::from(
+                "rs-harness",
+            ),
+            canonical_item_selector,
+            parser_identity_digest: &parser_identity_digest,
+            query_pack_digest: &query_pack_digest,
+            owner_path: &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketOwnerPathV1::from(
+                owner_path,
+            ),
+            structural_selector: &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketStructuralSelectorV1::from(
+                selector,
+            ),
+            projection_mode,
+            source,
+            normalized_parser_facts: br#"{"kind":"fn","name":"warm_symbol"}"#,
+            projection: source,
+        },
     );
     let record = packet
         .enrich_projection_record(&tree)

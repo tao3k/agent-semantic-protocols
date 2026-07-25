@@ -12,8 +12,6 @@ mod command_build_profile;
 
 #[path = "unit/ast_patch.rs"]
 mod ast_patch;
-#[path = "unit/cli_help.rs"]
-mod cli_help;
 #[path = "unit/cli_help_model.rs"]
 mod cli_help_model;
 #[path = "unit/client_hook_claude_smoke.rs"]
@@ -80,6 +78,8 @@ mod sandtable_fixtures;
 mod scenario_performance_gate;
 #[path = "unit/source_access_command/mod.rs"]
 mod source_access_command;
+#[path = "unit/state_home_fixture.rs"]
+mod state_home_fixture;
 #[path = "unit/sync_command.rs"]
 mod sync_command;
 #[path = "unit/tree_sitter_query_diagnostics.rs"]

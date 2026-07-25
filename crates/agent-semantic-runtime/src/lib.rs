@@ -72,8 +72,8 @@ pub use state::{
     ensure_project_client_cache_dir, ensure_project_hook_cache_dir, ensure_project_hook_state_dir,
     ensure_project_provider_bin_dir, ensure_project_provider_lock_dir, ensure_project_runtime_home,
     project_activation_path, project_cache_home, project_cache_home_for_roots,
-    project_protocol_home_path, project_runtime_state, project_state_paths,
-    runtime_bin_dir_for_cache_home,
+    project_protocol_home_path, project_runtime_state, project_runtime_state_with_state_home,
+    project_state_paths, project_state_paths_with_state_home, runtime_bin_dir_for_cache_home,
 };
 pub use timeout_policy::{
     RuntimeOperationTimeoutPolicy, RuntimeOperationTimeoutReceipt,

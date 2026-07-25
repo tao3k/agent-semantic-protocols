@@ -81,6 +81,10 @@ scenario does not pass =--expected-hot-block= explicitly.  =message=,
 =summary=, and =repair= must stay single-line and compact: they carry rule
 semantics, not source snippets.
 
+Generated =next= actions must preserve executable query grammar. The =--code= option is a boolean projection flag; the project root belongs to =--workspace .=. A failure frontier must therefore emit =asp <language> query --from-hook direct-source-read --code --workspace . --selector '<selector>'= and must never attach the root as =--code .=. Sandtable coverage must parser-validate or execute the rendered action, preserve the selector byte-for-byte, and reject the invalid =--code .= form.
+
+The same recovery contract preserves the search/query responsibility boundary. A workspace Tree-sitter pattern without an exact structural selector is discovery and must materialize as =asp <language> search --treesitter-query '<query>' --workspace .=. Only a parser-owned exact selector may materialize a deterministic =query= projection. Generated recovery actions must not turn workspace discovery into =query --treesitter-query=.
+
 The canonical replay evidence is:
 
 #+begin_example

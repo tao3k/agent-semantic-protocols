@@ -87,42 +87,45 @@ impl ProjectPaths {
                 requested_root.display()
             )
         })?;
-        let context = agent_semantic_client_core::ProjectContext::resolve(&project_root)?;
         let project_state_paths = agent_semantic_runtime::project_state_paths(&project_root)?;
-        let state_layout = context.state_layout();
-        let state_root = state_layout.state_root();
-        let protocol_home = state_root;
+        let repo_id = project_state_paths.repo_id.to_string();
+        let workspace_id = project_state_paths.workspace_id.to_string();
+        let identity_basis = project_state_paths.identity_basis.clone();
+        let persistence = project_state_paths.persistence.as_str();
+        let cache_manifest = project_state_paths.client_cache_manifest_path;
+        let state_root = project_state_paths.protocol_home.clone();
+        let protocol_home = &state_root;
         let hook_cache_dir = project_state_paths.hook_cache_dir;
         let hook_state_dir = project_state_paths.hook_state_dir;
         let activation_path = project_state_paths.activation_path;
+        let client_cache_dir = project_state_paths.client_cache_dir;
         let project_client_db_dir = project_state_paths.project_client_db_dir;
         let project_client_db_path = project_state_paths.project_client_db_path;
+        let artifacts_dir = project_state_paths.artifacts_dir;
         let runtime_home = state_root.join("runtime");
         let runtime_bin_dir = runtime_home.join("bin");
         let provider_lock_dir = runtime_home.join("provider-locks");
         let org_state_root = protocol_home.join("org");
         let org_state_skill = org_state_root.join("templates").join("ASP_ORG_SKILL.org");
-        let org_artifacts = state_layout.artifacts_dir().join("org");
+        let org_artifacts = artifacts_dir.join("org");
         let org_flow = org_artifacts.join("flow");
 
         let mut fields = BTreeMap::new();
-        fields.insert("projectRoot", path_string(context.cwd()));
-        fields.insert("stateRoot", path_string(state_root));
+        fields.insert("projectRoot", path_string(&project_root));
+        fields.insert("repoId", repo_id);
+        fields.insert("workspaceId", workspace_id);
+        fields.insert("identityBasis", identity_basis);
+        fields.insert("persistence", persistence.to_string());
+        fields.insert("stateRoot", path_string(&state_root));
         fields.insert("protocolHome", path_string(protocol_home));
-        fields.insert(
-            "cacheManifest",
-            path_string(state_layout.cache_manifest_path()),
-        );
+        fields.insert("cacheManifest", path_string(&cache_manifest));
         fields.insert("hookCacheDir", path_string(&hook_cache_dir));
         fields.insert("hookStateDir", path_string(&hook_state_dir));
         fields.insert("activation", path_string(&activation_path));
-        fields.insert(
-            "clientCacheDir",
-            path_string(state_layout.client_cache_dir()),
-        );
+        fields.insert("clientCacheDir", path_string(&client_cache_dir));
         fields.insert("projectClientDbDir", path_string(&project_client_db_dir));
         fields.insert("projectClientDbPath", path_string(&project_client_db_path));
-        fields.insert("artifactsDir", path_string(state_layout.artifacts_dir()));
+        fields.insert("artifactsDir", path_string(&artifacts_dir));
         fields.insert("runtimeHome", path_string(&runtime_home));
         fields.insert("runtimeBinDir", path_string(&runtime_bin_dir));
         fields.insert("providerBinDir", path_string(&runtime_bin_dir));

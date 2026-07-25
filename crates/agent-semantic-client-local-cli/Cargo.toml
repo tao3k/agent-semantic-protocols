@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
+agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 bytes = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

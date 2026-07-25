@@ -210,6 +210,58 @@
             ],
             "stdinMode": "pipe-candidates"
           }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/dependency-topology",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-dependency-topology"
+          ],
+          "packetSchemas": [
+            "semantic-dependency-topology.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": false,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "dependency-topology",
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "search",
+              "dependency-topology",
+              "--json",
+              "--workspace",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/dependency-topology-metadata",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-dependency-topology"
+          ],
+          "packetSchemas": [
+            "semantic-dependency-topology.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": false,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "dependency-topology-metadata",
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "search",
+              "dependency-topology-metadata",
+              "--json",
+              "--workspace",
+              "{workspace}"
+            ]
+          }
         }
       ],
       "methods": [
@@ -218,6 +270,8 @@
         "search/lexical",
         "search/ingest",
         "search/semantic-facts",
+        "search/dependency-topology",
+        "search/dependency-topology-metadata",
         "query/exact-selector",
         "check/changed",
         "guide"
@@ -346,6 +400,11 @@
         {
           "path": "schemas/semantic-fact-ontology.v1.schema.json",
           "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
+          "schemaVersion": "1"
+        },
+        {
+          "path": "schemas/semantic-dependency-topology.v1.schema.json",
+          "schemaId": "agent.semantic-protocols.semantic-dependency-topology",
           "schemaVersion": "1"
         }
       ]

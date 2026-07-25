@@ -169,6 +169,19 @@ decisionMaterializer = "apply-patch"
 message = "Apply-patch policy is derived by the configured hook materializer."
 
 [[rules]]
+id = "materialize-registered-source-read-action"
+priority = 950
+decision = "deny"
+decisionMaterializer = "source-access"
+message = "Registered source read actions are derived from action and provider-owned source patterns."
+
+[rules.match]
+actionAny = ["read"]
+effectAny = ["read"]
+subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
+authorityAny = ["raw-host-action", "unknown"]
+
+[[rules]]
 id = "materialize-source-access-policy"
 priority = 900
 decision = "deny"

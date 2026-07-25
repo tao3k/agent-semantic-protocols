@@ -19,8 +19,8 @@ pub(super) fn rollout_proves_canonical_typed_binding(
                     && metadata
                         .parent_thread_id()
                         .is_some_and(|session_id| session_id.as_str() == root_session_id)
-                    && metadata.agent_role().as_deref() == Some(expected_agent_type)
-                    && metadata.agent_path().as_deref() == Some(canonical_target)
+                    && metadata.agent_role() == Some(expected_agent_type)
+                    && metadata.agent_path() == Some(canonical_target)
             })
         },
     )
@@ -168,16 +168,30 @@ pub(super) fn profile_attestation_receipt(
     })
 }
 
+pub(super) struct ProfileAttestedRuntimeObservationRequest<'a> {
+    pub(super) root_session_id: Option<&'a str>,
+    pub(super) child_id: Option<&'a String>,
+    pub(super) expected_agent_type: &'a str,
+    pub(super) observed_model: Option<&'a str>,
+    pub(super) expected_model: Option<&'a String>,
+    pub(super) expected_reasoning: Option<&'a String>,
+    pub(super) target_present: bool,
+    pub(super) observation_source: Option<&'static str>,
+}
+
 pub(super) fn profile_attested_runtime_observation(
-    root_session_id: Option<&str>,
-    child_id: Option<&String>,
-    expected_agent_type: &str,
-    observed_model: Option<&str>,
-    expected_model: Option<&String>,
-    expected_reasoning: Option<&String>,
-    target_present: bool,
-    observation_source: Option<&'static str>,
+    request: ProfileAttestedRuntimeObservationRequest<'_>,
 ) -> Option<SubagentRuntimeRebindVerifiedObservation> {
+    let ProfileAttestedRuntimeObservationRequest {
+        root_session_id,
+        child_id,
+        expected_agent_type,
+        observed_model,
+        expected_model,
+        expected_reasoning,
+        target_present,
+        observation_source,
+    } = request;
     let root_session_id = root_session_id?;
     let child_id = child_id?;
     let observed_model = observed_model?;
@@ -313,16 +327,29 @@ fn profile_attestation_reasoning_assessment(
     ))
 }
 
+pub(super) struct RuntimeEvidenceIncompleteReceipt<'a> {
+    pub(super) observation: &'a SubagentRuntimeRebindVerifiedObservation,
+    pub(super) target: &'a str,
+    pub(super) managed_agent_kind: &'a str,
+    pub(super) expected_model: Option<&'a str>,
+    pub(super) expected_reasoning: Option<&'a str>,
+    pub(super) runtime_reasoning_from_host: bool,
+    pub(super) registry_routable: bool,
+}
+
 pub(super) fn insert_runtime_evidence_incomplete_receipt(
     rendered: &mut serde_json::Value,
-    observation: &SubagentRuntimeRebindVerifiedObservation,
-    target: &str,
-    managed_agent_kind: &str,
-    expected_model: Option<&str>,
-    expected_reasoning: Option<&str>,
-    runtime_reasoning_from_host: bool,
-    registry_routable: bool,
+    receipt: RuntimeEvidenceIncompleteReceipt<'_>,
 ) {
+    let RuntimeEvidenceIncompleteReceipt {
+        observation,
+        target,
+        managed_agent_kind,
+        expected_model,
+        expected_reasoning,
+        runtime_reasoning_from_host,
+        registry_routable,
+    } = receipt;
     let Some(object) = rendered.as_object_mut() else {
         return;
     };

@@ -332,7 +332,7 @@ impl SemanticWorkspaceScopeSet {
                     .map(|admission| (scope_admission_specificity(scope, &admission), admission))
             })
             .collect::<Vec<_>>();
-        admitted.sort_by(|left, right| right.0.cmp(&left.0));
+        admitted.sort_by_key(|item| std::cmp::Reverse(item.0));
         let Some((specificity, admission)) = admitted.first() else {
             let canonical_path = normalize_absolute(if candidate.is_absolute() {
                 candidate.to_path_buf()

@@ -41,42 +41,24 @@ fn check_changed_view_seeds_renders_failure_frontier_after_provider_failure() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
         stdout.starts_with(
-            "[search-failure] kind=test-failure profile=failure-frontier alg=typed-ppr-diverse"
+            "[search-frontier] projection=ranked-frontier density=terse profile=failure-frontier algorithm=typed-ppr-diverse"
         ),
         "{stdout}"
     );
     assert!(
-        stdout.contains("F=failure:test-failure(")
-            && stdout.contains("write_prompt_output_artifact"),
+        stdout.contains("kind=failure")
+            && stdout.contains("value=cache_cli::write_prompt_output_artifact"),
         "{stdout}"
     );
     assert!(
-        stdout.contains("frontierActions=")
-            && stdout.contains(
-                "C1.query-code(selector=rust://src/cache_cli/writeback.rs#item/fn/write_prompt_output_artifact"
-            ),
+        stdout.contains("kind=hot")
+            && stdout.contains("value=write_prompt_output_artifact")
+            && stdout.contains("kind=owner")
+            && stdout.contains("value=src/cache_cli/writeback.rs"),
         "{stdout}"
     );
     assert!(
         !stdout.contains("C1.query-code(selector=src/cache_cli/writeback.rs:1:5"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("queryProfiles=failure-frontier(F=>failure-facts+owners+hot-blocks)"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains(
-            "entries=failure-frontier(F=>failure-facts+candidate-owners+hot-blocks+query-profiles)"
-        ),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("omit=full-source,unrelated-functions,wide-windows"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("avoid=manual-window-scan,duplicate-read,raw-read,broad-lexical"),
         "{stdout}"
     );
     for debug_prefix in [
@@ -105,7 +87,6 @@ fn gerbil_check_changed_without_gerbil_changes_returns_without_provider_spawn() 
     let root = temp_project_root("gerbil-check-changed-empty-fast-path");
     let bin_dir = root.join(".bin");
     let cache_home = root.join(".cache");
-    std::fs::write(root.join("README.md"), "non-gerbil change\n").expect("write non-gerbil file");
     let git_init = Command::new("git")
         .arg("init")
         .current_dir(&root)
@@ -116,6 +97,37 @@ fn gerbil_check_changed_without_gerbil_changes_returns_without_provider_spawn() 
         "git init stderr={}",
         String::from_utf8_lossy(&git_init.stderr)
     );
+    std::fs::write(root.join("gerbil.pkg"), "(package: fixture)\n")
+        .expect("write Gerbil project marker");
+    let git_add = Command::new("git")
+        .args(["add", "gerbil.pkg"])
+        .current_dir(&root)
+        .output()
+        .expect("git add Gerbil project marker");
+    assert!(
+        git_add.status.success(),
+        "git add stderr={}",
+        String::from_utf8_lossy(&git_add.stderr)
+    );
+    let git_commit = Command::new("git")
+        .args([
+            "-c",
+            "user.name=ASP Fixture",
+            "-c",
+            "user.email=asp-fixture@example.invalid",
+            "commit",
+            "-m",
+            "establish Gerbil fixture baseline",
+        ])
+        .current_dir(&root)
+        .output()
+        .expect("git commit Gerbil project marker");
+    assert!(
+        git_commit.status.success(),
+        "git commit stderr={}",
+        String::from_utf8_lossy(&git_commit.stderr)
+    );
+    std::fs::write(root.join("README.md"), "non-gerbil change\n").expect("write non-gerbil file");
     write_stdout_stderr_exit_provider(
         &bin_dir,
         "gslph",
@@ -123,13 +135,7 @@ fn gerbil_check_changed_without_gerbil_changes_returns_without_provider_spawn() 
         "provider should not run\n",
         66,
     );
-    write_activation(
-        &root,
-        &[provider(
-            "gerbil-scheme",
-            vec![bin_dir.join("gslph").display().to_string()],
-        )],
-    );
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
@@ -168,13 +174,7 @@ fn gerbil_check_full_replays_valid_output_cache_without_provider_spawn() {
         "provider should not run\n",
         66,
     );
-    write_activation(
-        &root,
-        &[provider(
-            "gerbil-scheme",
-            vec![bin_dir.join("gslph").display().to_string()],
-        )],
-    );
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
     write_gerbil_check_text_cache(
         &root,
         &[source_path.display().to_string()],
@@ -226,13 +226,7 @@ fn gerbil_check_full_replays_workspace_output_cache_without_provider_spawn() {
         "provider should not run\n",
         66,
     );
-    write_activation(
-        &root,
-        &[provider(
-            "gerbil-scheme",
-            vec![bin_dir.join("gslph").display().to_string()],
-        )],
-    );
+    write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
     write_gerbil_check_text_cache(
         &workspace,
         &[source_path.display().to_string()],

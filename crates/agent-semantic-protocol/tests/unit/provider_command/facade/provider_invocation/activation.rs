@@ -1,18 +1,13 @@
 use crate::provider_command::support::{
-    asp_command, home_local_bin, provider, temp_project_root, write_activation,
+    asp_command, provider, state_runtime_bin, temp_project_root, write_activation,
     write_cache_source_fixture, write_echo_provider,
 };
 
 #[test]
-fn asp_toml_provider_bin_name_uses_home_local_binary() {
-    let root = temp_project_root("provider-bin-name-home-local-facade");
-    let home_bin = home_local_bin(&root);
-    write_echo_provider(&home_bin, "rs-harness", "home");
-    std::fs::write(
-        root.join("asp.toml"),
-        "[languages.rust]\nbin = \"rs-harness\"\n",
-    )
-    .expect("write asp.toml");
+fn language_facade_uses_state_home_runtime_binary() {
+    let root = temp_project_root("provider-state-home-facade");
+    let runtime_bin = state_runtime_bin(&root);
+    write_echo_provider(&runtime_bin, "rs-harness", "state-home");
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
@@ -29,26 +24,17 @@ fn asp_toml_provider_bin_name_uses_home_local_binary() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "home args=[evidence][.]\n"
+        "state-home args=[evidence]\n"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn language_facade_prefers_home_local_provider_before_activation_prefix() {
-    let root = temp_project_root("provider-home-wrapper-facade");
-    let home_bin = home_local_bin(&root);
-    let profile_bin_dir = root.join(".profile-bin");
-    write_echo_provider(&home_bin, "rs-harness", "home");
-    write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
-
-    write_activation(
-        &root,
-        &[provider(
-            "rust",
-            vec![profile_bin_dir.join("rs-harness").display().to_string()],
-        )],
-    );
+fn language_facade_uses_state_home_runtime_without_activation_prefix() {
+    let root = temp_project_root("provider-state-home-wrapper-facade");
+    let runtime_bin = state_runtime_bin(&root);
+    write_echo_provider(&runtime_bin, "rs-harness", "state-home");
+    write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
@@ -64,27 +50,18 @@ fn language_facade_prefers_home_local_provider_before_activation_prefix() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "home args=[evidence][.]\n"
+        "state-home args=[evidence]\n"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn language_facade_query_uses_home_local_binary_before_activation_prefix() {
-    let root = temp_project_root("provider-query-home-only-facade");
+fn language_facade_query_uses_state_home_runtime_binary() {
+    let root = temp_project_root("provider-query-state-home-facade");
     write_cache_source_fixture(&root);
-    let home_bin = home_local_bin(&root);
-    let profile_bin_dir = root.join(".profile-bin");
-    write_echo_provider(&home_bin, "rs-harness", "home");
-    write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
-
-    write_activation(
-        &root,
-        &[provider(
-            "rust",
-            vec![profile_bin_dir.join("rs-harness").display().to_string()],
-        )],
-    );
+    let runtime_bin = state_runtime_bin(&root);
+    write_echo_provider(&runtime_bin, "rs-harness", "state-home");
+    write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
         .env("PRJ_CACHE_HOME", root.join(".cache"))
@@ -100,26 +77,17 @@ fn language_facade_query_uses_home_local_binary_before_activation_prefix() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).expect("stdout"),
-        "home args=[query][src/lib.rs]\n"
+        "state-home args=[query][src/lib.rs]\n"
     );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn language_facade_guide_uses_home_local_binary_before_activation_prefix() {
-    let root = temp_project_root("provider-guide-home-only-facade");
-    let home_bin = home_local_bin(&root);
-    let profile_bin_dir = root.join(".profile-bin");
-    write_echo_provider(&home_bin, "rs-harness", "home");
-    write_echo_provider(&profile_bin_dir, "rs-harness", "profile");
-
-    write_activation(
-        &root,
-        &[provider(
-            "rust",
-            vec![profile_bin_dir.join("rs-harness").display().to_string()],
-        )],
-    );
+fn language_facade_guide_uses_state_home_runtime_binary() {
+    let root = temp_project_root("provider-guide-state-home-facade");
+    let runtime_bin = state_runtime_bin(&root);
+    write_echo_provider(&runtime_bin, "rs-harness", "state-home");
+    write_activation(&root, &[provider("rust", Vec::new())]);
 
     for args in [
         ["rust", "query", "guide", "."],
@@ -138,7 +106,32 @@ fn language_facade_guide_uses_home_local_binary_before_activation_prefix() {
             String::from_utf8_lossy(&output.stderr)
         );
         let stdout = String::from_utf8(output.stdout).expect("stdout");
-        assert!(stdout.starts_with("home args="), "{stdout}");
+        assert!(stdout.starts_with("state-home args="), "{stdout}");
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn repeated_language_facade_invocations_reuse_state_home_runtime_binary() {
+    let root = temp_project_root("provider-state-home-repeated-facade");
+    write_echo_provider(&state_runtime_bin(&root), "rs-harness", "state-home-repeat");
+    write_activation(&root, &[provider("rust", Vec::new())]);
+
+    for _ in 0..2 {
+        let output = asp_command(&root)
+            .args(["rust", "guide", "."])
+            .output()
+            .expect("run repeated asp rust guide");
+        assert!(
+            output.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).expect("stdout");
+        assert!(
+            stdout.starts_with("state-home-repeat args=[guide]"),
+            "{stdout}"
+        );
     }
     let _ = std::fs::remove_dir_all(root);
 }

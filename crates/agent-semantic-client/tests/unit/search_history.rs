@@ -41,15 +41,18 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
     {
       "startedAtMs": 222222,
       "argv": ["rs-harness", "query", "--selector", "src/lib.rs:1-10", "--code"],
-      "languageId": "rust"
+      "languageId": "rust",
+      "projectRoot": "__PROJECT_ROOT__"
     },
     {
       "eventTimestampMs": 333333,
       "argv": ["rs-harness", "query", "--selector", "src/main.rs:20-24", "--workspace", ".", "--code"],
-      "languageId": "rust"
+      "languageId": "rust",
+      "projectRoot": "__PROJECT_ROOT__"
     }
   ]
-}"#,
+}"#
+        .replace("__PROJECT_ROOT__", &root.display().to_string()),
     )
     .expect("write direct-read command artifact");
     std::fs::create_dir_all(artifact_dir.join("semantic-tree-sitter-query"))
@@ -61,12 +64,14 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
   "schemaVersion": "1",
   "eventTimestampMs": 555555,
   "languageId": "rust",
+  "projectRoot": "__PROJECT_ROOT__",
   "method": "query",
   "query": {
     "input": "(function_item) @item",
     "inputForm": "s-expression"
   }
-}"#,
+}"#
+        .replace("__PROJECT_ROOT__", &root.display().to_string()),
     )
     .expect("write tree-sitter query artifact");
     let bin_dir = root.join(".bin");
@@ -153,6 +158,7 @@ fn temp_root(name: &str) -> std::path::PathBuf {
         .as_nanos();
     let root = std::env::temp_dir().join(format!("agent-semantic-client-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp root");
+    std::fs::create_dir(root.join(".git")).expect("create git marker");
     root
 }
 

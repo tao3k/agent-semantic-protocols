@@ -201,9 +201,7 @@ impl TursoMvccOptimizationReceipt {
     #[must_use]
     pub const fn schema_id(&self) -> &'static str {
         match self.schema_id {
-            TursoMvccOptimizationReceiptSchemaId::V1 => {
-                "asp.turso-mvcc-optimization-receipt.v1"
-            }
+            TursoMvccOptimizationReceiptSchemaId::V1 => "asp.turso-mvcc-optimization-receipt.v1",
         }
     }
 
@@ -234,9 +232,7 @@ impl TursoMvccOptimizationReceipt {
     #[must_use]
     pub const fn statement_cache(&self) -> &'static str {
         match self.statement_cache {
-            TursoMvccStatementCacheMode::PreparedPerConnection => {
-                "prepared-cached-per-connection"
-            }
+            TursoMvccStatementCacheMode::PreparedPerConnection => "prepared-cached-per-connection",
         }
     }
 

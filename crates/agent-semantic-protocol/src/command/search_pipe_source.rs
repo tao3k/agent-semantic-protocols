@@ -58,21 +58,38 @@ pub(super) fn parse_source_spec(value: &str) -> Result<SourceSpec, String> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct CollectSearchPipeCandidatesRequest<'a> {
+    pub(super) language_id: &'a str,
+    pub(super) project_root: &'a Path,
+    pub(super) current_snapshot:
+        &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+    pub(super) locator_root: &'a Path,
+    pub(super) intent: &'a str,
+    pub(super) scopes: &'a [PathBuf],
+    pub(super) source: SourceSpec,
+    pub(super) config: &'a AspConfig,
+    pub(super) provider_context:
+        Option<&'a super::search_pipe_provider_facts::ProviderGraphFactsContext<'a>>,
+    pub(super) require_multi_clause: bool,
+}
+
 pub(super) fn collect_search_pipe_candidates(
-    language_id: &str,
-    project_root: &Path,
-    current_snapshot: &agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
-    locator_root: &Path,
-    intent: &str,
-    scopes: &[PathBuf],
-    source: SourceSpec,
-    config: &AspConfig,
-    provider_context: Option<&super::search_pipe_provider_facts::ProviderGraphFactsContext<'_>>,
-    require_multi_clause: bool,
+    request: CollectSearchPipeCandidatesRequest<'_>,
 ) -> Result<CandidateAcquisition, String> {
+    let CollectSearchPipeCandidatesRequest {
+        language_id,
+        project_root,
+        current_snapshot,
+        locator_root,
+        intent,
+        scopes,
+        source,
+        config,
+        provider_context,
+        require_multi_clause,
+    } = request;
     if let Some(language) = document_language(language_id) {
-        return collect_document_search_pipe_candidates(
+        return collect_document_search_pipe_candidates(DocumentSearchPipeCandidateRequest {
             language,
             project_root,
             locator_root,
@@ -81,7 +98,7 @@ pub(super) fn collect_search_pipe_candidates(
             source,
             config,
             current_snapshot,
-        );
+        });
     }
     let query_clauses = super::search_pipe_provider_facts::with_query_pack_descriptor(
         provider_context,
@@ -97,7 +114,7 @@ pub(super) fn collect_search_pipe_candidates(
     )?;
     let query_terms = agent_semantic_search::search_pipe_unique_query_terms(&query_clauses);
     match source {
-        SourceSpec::Auto => auto_candidates(
+        SourceSpec::Auto => auto_candidates(AutoCandidateRequest {
             language_id,
             project_root,
             locator_root,
@@ -105,11 +122,11 @@ pub(super) fn collect_search_pipe_candidates(
             scopes,
             config,
             require_multi_clause,
-            query_clauses.len(),
-            &query_terms,
+            query_clause_count: query_clauses.len(),
+            query_terms: &query_terms,
             current_snapshot,
-        ),
-        SourceSpec::SearchOverlay => search_overlay_candidates(
+        }),
+        SourceSpec::SearchOverlay => search_overlay_candidates(SearchOverlayCandidateRequest {
             language_id,
             project_root,
             locator_root,
@@ -118,22 +135,36 @@ pub(super) fn collect_search_pipe_candidates(
             config,
             require_multi_clause,
             current_snapshot,
-        ),
+        }),
         SourceSpec::Provider => provider_candidates(),
         SourceSpec::Ingest => ingest_candidates(project_root, locator_root),
     }
 }
 
-fn collect_document_search_pipe_candidates(
+struct DocumentSearchPipeCandidateRequest<'a> {
     language: DocumentLanguage,
-    project_root: &Path,
-    locator_root: &Path,
-    intent: &str,
-    scopes: &[PathBuf],
+    project_root: &'a Path,
+    locator_root: &'a Path,
+    intent: &'a str,
+    scopes: &'a [PathBuf],
     source: SourceSpec,
-    config: &AspConfig,
-    current_snapshot: &agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+    config: &'a AspConfig,
+    current_snapshot: &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+}
+
+fn collect_document_search_pipe_candidates(
+    request: DocumentSearchPipeCandidateRequest<'_>,
 ) -> Result<CandidateAcquisition, String> {
+    let DocumentSearchPipeCandidateRequest {
+        language,
+        project_root,
+        locator_root,
+        intent,
+        scopes,
+        source,
+        config,
+        current_snapshot,
+    } = request;
     match source {
         SourceSpec::Auto | SourceSpec::Provider | SourceSpec::SearchOverlay => {
             let acquisition =
@@ -173,18 +204,32 @@ fn document_language(language_id: &str) -> Option<DocumentLanguage> {
     }
 }
 
-fn auto_candidates(
-    language_id: &str,
-    project_root: &Path,
-    locator_root: &Path,
-    intent: &str,
-    scopes: &[PathBuf],
-    config: &AspConfig,
+struct AutoCandidateRequest<'a> {
+    language_id: &'a str,
+    project_root: &'a Path,
+    locator_root: &'a Path,
+    intent: &'a str,
+    scopes: &'a [PathBuf],
+    config: &'a AspConfig,
     require_multi_clause: bool,
     query_clause_count: usize,
-    query_terms: &[agent_semantic_search::SearchPipeQueryTerm],
-    current_snapshot: &agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
-) -> Result<CandidateAcquisition, String> {
+    query_terms: &'a [agent_semantic_search::SearchPipeQueryTerm],
+    current_snapshot: &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+}
+
+fn auto_candidates(request: AutoCandidateRequest<'_>) -> Result<CandidateAcquisition, String> {
+    let AutoCandidateRequest {
+        language_id,
+        project_root,
+        locator_root,
+        intent,
+        scopes,
+        config,
+        require_multi_clause,
+        query_clause_count,
+        query_terms,
+        current_snapshot,
+    } = request;
     let language = agent_semantic_client::LanguageId::from(language_id);
     let source_index_query = source_index_lookup_query(intent, query_clause_count, query_terms);
     let source_index_query_gated = scopes.is_empty()
@@ -343,16 +388,30 @@ fn search_source_trace(trace: SearchPipeSourceAcquisitionTrace) -> SearchPipeSou
     source_trace
 }
 
-fn search_overlay_candidates(
-    language_id: &str,
-    project_root: &Path,
-    locator_root: &Path,
-    intent: &str,
-    scopes: &[PathBuf],
-    config: &AspConfig,
+struct SearchOverlayCandidateRequest<'a> {
+    language_id: &'a str,
+    project_root: &'a Path,
+    locator_root: &'a Path,
+    intent: &'a str,
+    scopes: &'a [PathBuf],
+    config: &'a AspConfig,
     require_multi_clause: bool,
-    current_snapshot: &agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+    current_snapshot: &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+}
+
+fn search_overlay_candidates(
+    request: SearchOverlayCandidateRequest<'_>,
 ) -> Result<CandidateAcquisition, String> {
+    let SearchOverlayCandidateRequest {
+        language_id,
+        project_root,
+        locator_root,
+        intent,
+        scopes,
+        config,
+        require_multi_clause,
+        current_snapshot,
+    } = request;
     let acquisition = collect_search_pipe_search_overlay_acquisition(
         SearchPipeSearchOverlayAcquisitionRequest {
             language_id,

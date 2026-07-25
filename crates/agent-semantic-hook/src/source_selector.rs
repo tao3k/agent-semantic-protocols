@@ -29,6 +29,43 @@ pub(crate) fn derive_agent_action_subjects(
     semantic_subjects
 }
 
+pub(crate) fn project_shell_subject_paths(registry: &HookRuntime, paths: &[String]) -> Vec<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut projected = Vec::new();
+    for path in paths {
+        if path.starts_with('-') || !is_path_operand(registry, path) {
+            continue;
+        }
+        if seen.insert(path.clone()) {
+            projected.push(path.clone());
+        }
+    }
+    projected
+}
+
+fn is_path_operand(registry: &HookRuntime, value: &str) -> bool {
+    if !matches!(
+        infer_agent_action_subject_kind(registry, value),
+        crate::tool_action::AgentActionSubjectKind::Other
+    ) {
+        return true;
+    }
+
+    if value.contains(['/', '\\']) {
+        return true;
+    }
+
+    let leaf = value.rsplit(['/', '\\']).next().unwrap_or(value);
+    let Some((stem, suffix)) = leaf.rsplit_once('.') else {
+        return false;
+    };
+    !stem.is_empty()
+        && !suffix.is_empty()
+        && suffix
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '*' | '?' | '[' | ']' | '-'))
+}
+
 fn infer_agent_action_subject_kind(
     registry: &HookRuntime,
     value: &str,
@@ -168,3 +205,7 @@ fn is_line_locator_suffix(value: &str) -> bool {
 fn is_decimal_locator(value: &str) -> bool {
     !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/source_selector.rs"]
+mod tests;

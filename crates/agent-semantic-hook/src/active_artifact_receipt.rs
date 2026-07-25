@@ -58,6 +58,25 @@ pub fn active_provider_artifact_input(
     )
 }
 
+/// Validate one installed provider artifact against the typed lock receipt
+/// owned by an explicitly resolved State Home.
+pub fn active_provider_artifact_input_with_state_home(
+    project_root: &Path,
+    state_home: &Path,
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+    materialized_path: PathBuf,
+) -> Result<ActiveAspArtifactInput, String> {
+    let paths =
+        agent_semantic_runtime::project_state_paths_with_state_home(project_root, state_home)?;
+    active_provider_artifact_input_from_lock_dir(
+        &paths.provider_lock_dir,
+        language_id,
+        provider_id,
+        materialized_path,
+    )
+}
+
 pub(crate) fn installed_provider_artifact_digest(
     provider_lock_dir: &Path,
     language_id: &LanguageId,

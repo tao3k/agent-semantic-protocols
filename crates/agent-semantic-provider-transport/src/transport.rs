@@ -330,7 +330,9 @@ async fn collect_provider_output(
                     join_readers_after_timeout(stdout_task, stderr_task).await;
                 return Err(ProviderProcessError::Timeout {
                     timeout,
-                    receipt: provider_process_receipt(start, None, stdout, stderr, true, false, limits),
+                    receipt: Box::new(provider_process_receipt(
+                        start, None, stdout, stderr, true, false, limits,
+                    )),
                 });
                 }
             }
@@ -342,7 +344,9 @@ async fn collect_provider_output(
                 let (stdout, stderr) = join_readers_after_timeout(stdout_task, stderr_task).await;
                 return Err(ProviderProcessError::MemoryLimit {
                     limit_bytes,
-                    receipt: provider_process_receipt(start, None, stdout, stderr, false, true, limits),
+                    receipt: Box::new(provider_process_receipt(
+                        start, None, stdout, stderr, false, true, limits,
+                    )),
                 });
             }
         }
@@ -359,7 +363,9 @@ async fn collect_provider_output(
                 let (stdout, stderr) = join_readers_after_timeout(stdout_task, stderr_task).await;
                 return Err(ProviderProcessError::MemoryLimit {
                     limit_bytes,
-                    receipt: provider_process_receipt(start, None, stdout, stderr, false, true, limits),
+                    receipt: Box::new(provider_process_receipt(
+                        start, None, stdout, stderr, false, true, limits,
+                    )),
                 });
             }
         }

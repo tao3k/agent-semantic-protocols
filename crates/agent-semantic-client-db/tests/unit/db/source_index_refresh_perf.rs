@@ -19,18 +19,16 @@ const SOURCE_INDEX_1193_OWNER_ONE_PERCENT_REFRESH_GATE: Duration = Duration::fro
 #[cfg(not(debug_assertions))]
 const SOURCE_INDEX_1193_OWNER_HIGH_FANOUT_COLD_LOOKUP_GATE: Duration = Duration::from_millis(400);
 
-static SOURCE_INDEX_REFRESH_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+static SOURCE_INDEX_REFRESH_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-fn source_index_refresh_test_guard() -> std::sync::MutexGuard<'static, ()> {
-    SOURCE_INDEX_REFRESH_TEST_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+async fn source_index_refresh_test_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    SOURCE_INDEX_REFRESH_TEST_LOCK.lock().await
 }
 
 #[cfg(not(debug_assertions))]
 #[tokio::test(flavor = "current_thread")]
 async fn source_index_1193_owner_cold_write_stays_inside_v1_gate() {
-    let _test_guard = source_index_refresh_test_guard();
+    let _test_guard = source_index_refresh_test_guard().await;
     let root = temp_project_root("source-index-1193-owner-cold-write");
     let client_dir = root.join("client");
     let project_root = root.join("project");
@@ -65,7 +63,7 @@ async fn source_index_1193_owner_cold_write_stays_inside_v1_gate() {
 #[cfg(not(debug_assertions))]
 #[tokio::test(flavor = "current_thread")]
 async fn source_index_1278_owner_posting_frontier_cold_write_stays_inside_v1_gate() {
-    let _test_guard = source_index_refresh_test_guard();
+    let _test_guard = source_index_refresh_test_guard().await;
     let root = temp_project_root("source-index-1278-owner-posting-frontier-cold-write");
     let client_dir = root.join("client");
     let project_root = root.join("project");
@@ -95,7 +93,7 @@ async fn source_index_1278_owner_posting_frontier_cold_write_stays_inside_v1_gat
 #[cfg(not(debug_assertions))]
 #[tokio::test(flavor = "current_thread")]
 async fn source_index_1193_owner_one_percent_refresh_stays_inside_v1_gate() {
-    let _test_guard = source_index_refresh_test_guard();
+    let _test_guard = source_index_refresh_test_guard().await;
     let root = temp_project_root("source-index-1193-owner-one-percent-refresh");
     let client_dir = root.join("client");
     let project_root = root.join("project");
@@ -684,7 +682,7 @@ fn large_refresh_request(
         let selector_id = format!("source-index-large-owner-{index}");
         let symbol = format!("source_index_large_owner_{index}");
         file_hashes.push(ClientCacheFileHash {
-            path: owner_path.clone().into(),
+            path: owner_path.clone(),
             sha256: format!("{index:064x}"),
             byte_len: 64,
             mtime_ms: u64::from(index) + 1,
