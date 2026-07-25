@@ -24,8 +24,8 @@ fn line_framing_normalizes_line_payloads() {
     assert!(output.status.success());
     assert_eq!(output.stdout.as_ref(), b"first\nsecond\n");
     assert_eq!(output.stderr.as_ref(), b"warn\n");
-    assert_eq!(output.receipt.stdout_bytes, "first\nsecond\n".len());
-    assert_eq!(output.receipt.stderr_bytes, "warn\n".len());
+    assert_eq!(output.receipt.stdout_bytes(), "first\nsecond\n".len());
+    assert_eq!(output.receipt.stderr_bytes(), "warn\n".len());
     let _ = fs::remove_dir_all(root);
 }
 
@@ -48,6 +48,6 @@ fn length_delimited_framing_captures_payload_bytes() {
 
     assert!(output.status.success());
     assert_eq!(output.stdout.as_ref(), b"helloworld");
-    assert_eq!(output.receipt.stdout_bytes, 10);
+    assert_eq!(output.receipt.stdout_bytes(), 10);
     let _ = fs::remove_dir_all(root);
 }

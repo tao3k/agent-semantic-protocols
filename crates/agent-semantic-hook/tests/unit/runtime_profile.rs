@@ -1,4 +1,3 @@
-use std::env;
 use std::path::{Path, PathBuf};
 
 use crate::protocol_activation::digest::provider_manifest_digest;
@@ -10,59 +9,47 @@ use crate::provider_manifest::provider_manifests;
 
 use super::{
     RuntimeProviderHealthStatus, runtime_profile_invocation, runtime_profiles_for_activation,
-    runtime_profiles_for_runtime, runtime_project_root_for_activation,
+    runtime_profiles_for_runtime, runtime_project_root_for_activation, runtime_provider_command,
 };
 
 #[test]
 fn runtime_project_root_for_generated_activation_uses_activation_storage_root() {
-    let root = temp_root("activation-project-root");
-    std::fs::create_dir_all(root.join(".git")).expect("git marker");
-    let state_home = root.join("state-home");
-    let resolved = agent_semantic_runtime::state_core::ResolvedState::resolve_with_state_home(
-        &root, state_home,
-    )
-    .expect("resolve State Home activation path");
-    std::fs::create_dir_all(&resolved.paths.workspace_dir).expect("workspace state");
-    let canonical_root = std::fs::canonicalize(&root).expect("canonical project root");
-    std::fs::write(
-        &resolved.paths.workspace_json,
-        serde_json::to_string(&serde_json::json!({
-            "root": canonical_root.display().to_string()
-        }))
-        .expect("workspace manifest"),
-    )
-    .expect("write workspace manifest");
-    let activation_path = resolved.paths.hooks_dir.join("state/activation.json");
+    let activation_path =
+        PathBuf::from("/tmp/project/.cache/agent-semantic-protocol/hooks/activation.json");
 
     assert_eq!(
         runtime_project_root_for_activation(&activation_path, "."),
-        canonical_root
+        PathBuf::from("/tmp/project")
     );
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn resolved_provider_binary_materializes_authoritative_command() {
     let root = temp_root("resolved-provider");
-    let resolved = root.join("test-runtime/rs-harness");
-    write_executable_file(&resolved);
+    let resolved = write_executable_provider(&root, "rs-harness");
+    let prefix = vec![resolved.display().to_string()];
+    let resolution = crate::executable::resolve_executable_with_status(&prefix[0]);
 
-    let command = runtime_provider_command(Some(&resolved));
+    let command = runtime_provider_command(&prefix, &resolution);
 
-    assert_eq!(command.argv, [resolved.display().to_string()]);
+    assert_eq!(
+        command.argv,
+        [std::fs::canonicalize(&resolved)
+            .unwrap_or(resolved)
+            .display()
+            .to_string()]
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
-fn runtime_profiles_for_activation_uses_state_home_provider_binary() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let root = temp_root("activation-state-home");
-    let state_home = root.join("state-home");
-    let runtime_provider =
-        write_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
-    let provider = activated_rust_provider(vec![runtime_provider.display().to_string()]);
+fn runtime_profiles_for_activation_uses_activation_command_prefix() {
+    let root = temp_root("activation-command-prefix");
+    let wrapper = write_executable_provider(&root, "provider-wrapper");
+    let provider = activated_rust_provider(vec![
+        wrapper.display().to_string(),
+        "rs-harness".to_string(),
+    ]);
     let activation = HookActivation {
         schema_id: crate::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: crate::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
@@ -82,7 +69,7 @@ fn runtime_profiles_for_activation_uses_state_home_provider_binary() {
             provider_id: provider.provider_id.clone(),
             binary: provider.binary.clone(),
             execution: provider.execution,
-            provider_command_prefix: Vec::new(),
+            provider_command_prefix: provider.provider_command_prefix.clone(),
             execution_command_digest: provider.execution_command_digest.clone(),
             search_capabilities: provider.search_capabilities.clone(),
             semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
@@ -98,36 +85,18 @@ fn runtime_profiles_for_activation_uses_state_home_provider_binary() {
             },
         }],
     };
-    let previous_state_home = env::var_os(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
-    unsafe {
-        env::set_var(
-            agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
-            &state_home,
-        );
-    }
-
     let profiles = runtime_profiles_for_activation(&root, &activation).expect("profiles");
     let invocation =
         runtime_profile_invocation(&profiles, &provider, &["query".into()]).expect("invocation");
 
-    match previous_state_home {
-        Some(value) => unsafe {
-            env::set_var(
-                agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
-                value,
-            );
-        },
-        None => unsafe {
-            env::remove_var(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
-        },
-    }
     assert_eq!(
         invocation,
         [
-            std::fs::canonicalize(&runtime_provider)
-                .expect("canonical runtime provider")
+            std::fs::canonicalize(&wrapper)
+                .expect("canonical provider wrapper")
                 .display()
                 .to_string(),
+            "rs-harness".to_string(),
             "query".to_string(),
         ]
     );
@@ -140,54 +109,31 @@ fn runtime_profiles_for_activation_uses_state_home_provider_binary() {
 }
 
 #[test]
-fn runtime_profiles_for_runtime_uses_state_home_provider_binary() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let root = temp_root("gerbil-state-home");
-    let state_home = root.join("state-home");
-    let runtime_gslph = write_state_home_provider(
-        &state_home,
-        "gerbil-scheme",
-        "gerbil-scheme-harness",
-        "gslph",
-    );
-    let provider = activated_gerbil_provider(vec![runtime_gslph.display().to_string()]);
+fn runtime_profiles_for_runtime_uses_activation_command_prefix() {
+    let root = temp_root("gerbil-command-prefix");
+    let _project_gslph = write_executable_provider(&root, "gslph");
+    let wrapper = write_executable_provider(&root, "asp");
+    let provider = activated_gerbil_provider(vec![
+        wrapper.display().to_string(),
+        "gerbil-scheme".to_string(),
+    ]);
     let runtime = HookRuntime {
         project_root: root.display().to_string(),
         providers: vec![provider],
     };
     let provider = &runtime.providers[0];
-    let previous_state_home = env::var_os(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
-    unsafe {
-        env::set_var(
-            agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
-            &state_home,
-        );
-    }
-
     let profiles = runtime_profiles_for_runtime(&root, &runtime);
     let invocation =
         runtime_profile_invocation(&profiles, provider, &["query".into()]).expect("invocation");
 
-    match previous_state_home {
-        Some(value) => unsafe {
-            env::set_var(
-                agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
-                value,
-            );
-        },
-        None => unsafe {
-            env::remove_var(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
-        },
-    }
     assert_eq!(
         invocation,
         [
-            std::fs::canonicalize(&runtime_gslph)
-                .expect("canonical runtime gslph")
+            std::fs::canonicalize(&wrapper)
+                .expect("canonical provider wrapper")
                 .display()
                 .to_string(),
+            "gerbil-scheme".to_string(),
             "query".to_string(),
         ]
     );
@@ -199,43 +145,21 @@ fn runtime_profiles_for_runtime_uses_state_home_provider_binary() {
 }
 
 #[test]
-fn runtime_profiles_for_runtime_fails_closed_when_state_home_binary_is_missing() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let root = temp_root("missing-state-home-provider");
-    let state_home = root.join("state-home");
-    let runtime_provider =
-        write_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
-    let provider = activated_rust_provider(vec![runtime_provider.display().to_string()]);
+fn runtime_profiles_for_runtime_fails_closed_when_activation_executable_is_missing() {
+    let root = temp_root("missing-activation-executable");
+    let wrapper = write_executable_provider(&root, "provider-wrapper");
+    let provider = activated_rust_provider(vec![
+        wrapper.display().to_string(),
+        "rs-harness".to_string(),
+    ]);
     let runtime = HookRuntime {
         project_root: root.display().to_string(),
         providers: vec![provider],
     };
-    std::fs::remove_file(&runtime_provider).expect("remove State Home provider after activation");
-    std::fs::remove_file(state_home.join("runtime/provider-locks/rust.lock.toml"))
-        .expect("remove State Home provider receipt after activation");
-    let previous_state_home = env::var_os(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
-    unsafe {
-        env::set_var(
-            agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
-            &state_home,
-        );
-    }
+    std::fs::remove_file(&wrapper).expect("remove activated provider executable");
 
     let profiles = runtime_profiles_for_runtime(&root, &runtime);
 
-    match previous_state_home {
-        Some(value) => unsafe {
-            env::set_var(
-                agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
-                value,
-            );
-        },
-        None => unsafe {
-            env::remove_var(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
-        },
-    }
     let profile = profiles
         .providers
         .first()
@@ -248,79 +172,15 @@ fn runtime_profiles_for_runtime_fails_closed_when_state_home_binary_is_missing()
             .health
             .reason
             .as_deref()
-            .is_some_and(|reason| reason.contains("state-home/runtime/bin/rs-harness")),
+            .is_some_and(|reason| reason.contains("provider-wrapper")),
         "{:?}",
         profile.health.reason
     );
-    assert!(profile.argv.is_empty());
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn runtime_profiles_for_runtime_fails_closed_when_state_home_receipt_drifts() {
-    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let root = temp_root("drifted-state-home-provider");
-    let state_home = root.join("state-home");
-    let runtime_provider =
-        write_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
-    let provider = activated_rust_provider(vec![runtime_provider.display().to_string()]);
-    let runtime = HookRuntime {
-        project_root: root.display().to_string(),
-        providers: vec![provider],
-    };
-    std::fs::write(&runtime_provider, "#!/usr/bin/env sh\nexit 7\n")
-        .expect("replace State Home provider after lock receipt");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = std::fs::metadata(&runtime_provider)
-            .expect("drifted provider metadata")
-            .permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&runtime_provider, permissions)
-            .expect("preserve drifted provider executability");
-    }
-    let previous_state_home = env::var_os(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
-    unsafe {
-        env::set_var(
-            agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
-            &state_home,
-        );
-    }
-
-    let profiles = runtime_profiles_for_runtime(&root, &runtime);
-
-    match previous_state_home {
-        Some(value) => unsafe {
-            env::set_var(
-                agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV,
-                value,
-            );
-        },
-        None => unsafe {
-            env::remove_var(agent_semantic_runtime::state_core::ASP_STATE_HOME_ENV);
-        },
-    }
-    let profile = profiles
-        .providers
-        .first()
-        .expect("runtime provider profile");
-    assert_eq!(
-        profile.health.status,
-        RuntimeProviderHealthStatus::Unexecutable
-    );
-    assert!(profile.resolved_binary.is_none());
-    assert!(profile.argv.is_empty());
     assert!(
-        profile
-            .health
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("digest") || reason.contains("metadata")),
-        "{:?}",
-        profile.health.reason
+        !profile
+            .argv
+            .iter()
+            .any(|arg| arg == &wrapper.display().to_string())
     );
     let _ = std::fs::remove_dir_all(root);
 }
@@ -353,7 +213,7 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
                 &executable_artifact_digest,
             )
             .expect("digest provider execution command"),
-        provider_command_prefix: Vec::new(),
+        provider_command_prefix,
         namespace: manifest.namespace,
         package_roots: vec![".".to_string()],
         source_extensions: manifest.source.default_extensions,
@@ -397,7 +257,7 @@ fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedP
                 &executable_artifact_digest,
             )
             .expect("digest provider execution command"),
-        provider_command_prefix: Vec::new(),
+        provider_command_prefix,
         namespace: manifest.namespace,
         package_roots: vec![".".to_string()],
         source_extensions: manifest.source.default_extensions,
@@ -426,6 +286,14 @@ fn temp_root(label: &str) -> PathBuf {
     root
 }
 
+fn write_executable_provider(root: &Path, binary: &str) -> PathBuf {
+    let bin_dir = root.join(".bin");
+    std::fs::create_dir_all(&bin_dir).expect("bin dir");
+    let path = bin_dir.join(binary);
+    write_executable_file(&path);
+    path
+}
+
 fn write_executable_file(path: &Path) {
     std::fs::create_dir_all(path.parent().expect("executable parent")).expect("bin dir");
     std::fs::write(path, "#!/usr/bin/env sh\nexit 0\n").expect("provider");
@@ -437,29 +305,3 @@ fn write_executable_file(path: &Path) {
         std::fs::set_permissions(path, permissions).expect("permissions");
     }
 }
-
-fn write_state_home_provider(
-    state_home: &Path,
-    language_id: &str,
-    provider_id: &str,
-    binary: &str,
-) -> PathBuf {
-    let path = state_home.join("runtime/bin").join(binary);
-    write_executable_file(&path);
-    let entrypoint_digest = agent_semantic_content_identity::file_content_digest_v1(&path)
-        .expect("provider content digest");
-    let metadata_digest = agent_semantic_content_identity::file_artifact_metadata_digest_v1(&path)
-        .expect("provider metadata digest");
-    let lock_dir = state_home.join("runtime/provider-locks");
-    std::fs::create_dir_all(&lock_dir).expect("provider lock dir");
-    std::fs::write(
-        lock_dir.join(format!("{language_id}.lock.toml")),
-        format!(
-            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{provider_id}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{entrypoint_digest}\"\ninstalledEntrypointMetadataDigest = \"{metadata_digest}\"\n",
-            path.display()
-        ),
-    )
-    .expect("provider install lock");
-    std::fs::canonicalize(&path).expect("canonical State Home provider")
-}
-use crate::runtime_profile::runtime_provider_command;

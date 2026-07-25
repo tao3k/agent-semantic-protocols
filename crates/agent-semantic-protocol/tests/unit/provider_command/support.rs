@@ -9,6 +9,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod paths;
+mod source_scope;
+#[cfg(test)]
+mod tests;
+
+pub(super) use paths::org_artifact_target;
+use source_scope::ensure_provider_source_scope_fixture;
+
 pub(super) const CACHE_SOURCE_PATH: &str = "src/lib.rs";
 pub(super) const CACHE_SOURCE_TEXT: &str = "struct CacheReplay;\n";
 pub(super) const CACHE_SOURCE_SHA256: &str =
@@ -50,7 +58,6 @@ pub(crate) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
 pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers: &[ProviderSpec]) {
     let activation_dir = activation_path.parent().expect("activation parent");
     std::fs::create_dir_all(activation_dir).expect("create activation dir");
-    let package_root = root.display().to_string();
     let providers: Vec<_> = providers
         .iter()
         .map(|spec| {
@@ -93,7 +100,7 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
                 "routes": routes,
                 "coverage": {
-                    "packageRoots": [package_root.clone()],
+                    "packageRoots": ["."],
                     "sourceRoots": manifest.source().default_source_roots,
                     "configFiles": manifest.source().default_config_files,
                     "sourceExtensions": manifest.source().default_extensions,
@@ -270,11 +277,26 @@ pub(crate) fn temp_project_root(name: &str) -> PathBuf {
         .as_nanos();
     let root = env::temp_dir().join(format!("agent-semantic-protocol-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
-    std::fs::create_dir_all(root.join(".git")).expect("create temp git marker");
+    let git_status = Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&root)
+        .status()
+        .expect("initialize temp git project");
+    assert!(git_status.success(), "initialize temp git project");
+    std::fs::create_dir_all(root.join("src")).expect("create temp source root");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"{}\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+            name.replace('_', "-")
+        ),
+    )
+    .expect("write temp Cargo manifest");
+    std::fs::write(root.join("src/lib.rs"), "").expect("write temp Rust source");
     root
 }
 
-pub(super) fn write_echo_provider(bin_dir: &Path, binary: &str, label: &str) {
+pub(crate) fn write_echo_provider(bin_dir: &Path, binary: &str, label: &str) {
     write_provider_script(
         bin_dir,
         binary,

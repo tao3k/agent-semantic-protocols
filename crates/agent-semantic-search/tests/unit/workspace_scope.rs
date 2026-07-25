@@ -17,24 +17,28 @@ fn gerbil_scope_identity_requires_exact_gerbil_scheme_language_id() {
     }
 
     let scope = crate::SemanticWorkspaceScope::from_packet(&packet).expect("gerbil scope");
+    let gslph = crate::workspace_scope::WorkspaceScopeProviderId::from("gslph");
+    let scheme = crate::workspace_scope::WorkspaceScopeProviderId::from("scheme");
+    let gerbil_scheme = crate::WorkspaceScopeLanguageId::from("gerbil-scheme");
+    let plain_scheme = crate::WorkspaceScopeLanguageId::from("scheme");
     assert!(scope.matches_provider_identity(
-        "gslph",
-        "gerbil-scheme",
+        &gslph,
+        &gerbil_scheme,
         std::path::Path::new("/work/root")
     ));
     assert!(!scope.matches_provider_identity(
-        "gslph",
-        "scheme",
+        &gslph,
+        &plain_scheme,
         std::path::Path::new("/work/root")
     ));
     assert!(!scope.matches_provider_identity(
-        "scheme",
-        "gerbil-scheme",
+        &scheme,
+        &gerbil_scheme,
         std::path::Path::new("/work/root")
     ));
     assert!(!scope.matches_provider_identity(
-        "gslph",
-        "gerbil-scheme",
+        &gslph,
+        &gerbil_scheme,
         std::path::Path::new("/work/other")
     ));
 }
@@ -176,7 +180,7 @@ fn accepts_provider_owned_package_manager_and_anchor_kinds() {
     }
 
     let scope = SemanticWorkspaceScope::from_packet(&value).expect("provider-owned kinds");
-    assert_eq!(scope.language_id, "future-lang");
+    assert_eq!(scope.language_id.as_str(), "future-lang");
     assert_eq!(scope.package_manager, "future-pm");
     assert_eq!(scope.anchors[0].kind, "future-workspace-anchor");
 }

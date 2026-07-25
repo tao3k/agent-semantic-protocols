@@ -319,12 +319,7 @@ fn cache_import_replays_structural_index_artifact_into_db() {
     let root = temp_root("structural-index-import");
     let _state_home =
         crate::test_support::EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
-    let provider_binary = agent_semantic_runtime::project_state_paths(&root)
-        .expect("project State Home paths")
-        .runtime_bin_dir
-        .join("rs-harness");
-    std::fs::create_dir_all(provider_binary.parent().expect("provider runtime bin"))
-        .expect("create provider runtime bin");
+    let provider_binary = root.join(".asp-state/runtime/bin/rs-harness");
     crate::test_support::write_hermetic_provider_executable(&provider_binary);
     crate::test_support::write_hermetic_provider_registry_config(&root, "rust", "rs-harness");
     crate::test_support::write_hermetic_provider_install_receipt(&root, "rust", &provider_binary);

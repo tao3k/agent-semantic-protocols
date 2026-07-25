@@ -1,6 +1,6 @@
 use agent_semantic_search::{
     SearchPipeQueryPackClause, SearchPipeQueryPackDescriptor, SearchPipeQueryPackRecipe,
-    SearchPipeQueryPackTermRoleOverride,
+    SearchPipeQueryPackTermRoleOverride, SearchPipeTermRole,
 };
 
 pub(crate) fn with_typescript_query_pack<R>(
@@ -9,7 +9,7 @@ pub(crate) fn with_typescript_query_pack<R>(
 ) -> R {
     let role_overrides = [SearchPipeQueryPackTermRoleOverride {
         term: "Effect",
-        role: "context",
+        role: SearchPipeTermRole::Context,
         case_sensitive: true,
     }];
     let trigger_terms = vec!["Queue".to_string(), "Stream".to_string()];

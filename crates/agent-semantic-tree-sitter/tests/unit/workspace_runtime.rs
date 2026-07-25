@@ -4,7 +4,8 @@ use crate::{
 };
 
 fn execute_rust_query(query_source: &str, source: &str) -> NativeQueryExecution {
-    let language = registered_language_grammar("rust").expect("Rust grammar is registered by ASP");
+    let language =
+        registered_language_grammar("rust".into()).expect("Rust grammar is registered by ASP");
     let query = compile_native_query_source(&language, query_source)
         .expect("tree-sitter query compiles through the canonical runtime");
 
@@ -70,7 +71,7 @@ type Alias = usize;
 
 #[test]
 fn unregistered_languages_fail_closed() {
-    let error = registered_language_grammar("not-registered")
+    let error = registered_language_grammar("not-registered".into())
         .expect_err("unknown languages must not fall back to a guessed grammar");
 
     assert!(error.contains("not-registered"));

@@ -1,10 +1,26 @@
 use super::install_command;
 
 #[test]
-fn install_language_from_workspace_is_clap_owned() {
+fn install_language_record_installed_receipt_is_clap_owned_but_hidden() {
     install_command()
-        .try_get_matches_from(["install", "language", "rust", ".", "--from-workspace"])
-        .expect("clap must own the workspace provider install surface");
+        .try_get_matches_from([
+            "install",
+            "language",
+            "rust",
+            "--record-installed-receipt",
+            "/tmp/rs-harness",
+        ])
+        .expect("clap must own the root-Justfile receipt bridge");
+
+    let mut help = Vec::new();
+    install_command()
+        .write_long_help(&mut help)
+        .expect("render install help");
+    let help = String::from_utf8(help).expect("utf-8 install help");
+    assert!(
+        !help.contains("--record-installed-receipt"),
+        "root-Justfile receipt bridge must stay off the downstream install surface: {help}"
+    );
 }
 
 #[test]

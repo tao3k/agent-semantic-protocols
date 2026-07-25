@@ -157,7 +157,7 @@ fn search_pipe_query_pack_keeps_explicit_clauses_and_roles() {
     let role_overrides = [
         crate::search_pipe_query_pack::SearchPipeQueryPackTermRoleOverride {
             term: "Effect",
-            role: "context",
+            role: crate::search_pipe_query_pack::SearchPipeTermRole::Context,
             case_sensitive: true,
         },
     ];

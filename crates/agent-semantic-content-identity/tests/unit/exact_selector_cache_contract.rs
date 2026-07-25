@@ -4,7 +4,7 @@ use agent_semantic_content_identity::exact_selector_cache::{
 };
 use agent_semantic_content_identity::exact_selector_merkle::{
     ContentDigestV1, EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM, EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID,
-    EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION, ExactProjectionModeV1, ExactSelectorMerkleProofV1,
+    EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION, ExactProjectionModeV1,
     derive_parser_fact_digest_v1, derive_projection_digest_v1,
 };
 use agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1;

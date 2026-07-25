@@ -2,7 +2,7 @@ use crate::rust_harness_activation::support::write_state_home_provider_binary;
 
 use super::support::{
     codex_plugin_install_args, codex_plugin_install_args_with_subagent_model, git_project_root,
-    protocol_command, sync_test_state, test_host_path,
+    prepare_project_state, protocol_command,
 };
 
 #[test]
@@ -11,13 +11,11 @@ fn cli_install_removes_legacy_project_marketplace_source() {
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
-    sync_test_state(&root, &asp_state_home);
     let protocol_bin_dir = root.join(".agent-bin");
-    let host_path = test_host_path(&root, &protocol_bin_dir);
     write_legacy_project_codex_marketplace_source_dot(&root);
 
     let output = protocol_command()
-        .env("PATH", &host_path)
+        .env("PATH", &protocol_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
         .env("ASP_STATE_HOME", &asp_state_home)
@@ -45,7 +43,7 @@ fn cli_install_removes_legacy_project_marketplace_source() {
     assert!(!config.contains("last_updated ="));
     assert!(!config.contains("[agents.asp_explorer]"));
     assert_codex_user_does_not_embed_asp_explorer_role_config(&codex_home);
-    assert!(!config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
+    assert!(config.contains("[plugins.\"asp-codex-plugin@asp-project\"]"));
     assert_codex_asp_explorer(&codex_home, "gpt-5.4-mini");
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -71,12 +69,10 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
-    sync_test_state(&root, &asp_state_home);
     let protocol_bin_dir = root.join(".agent-bin");
-    let host_path = test_host_path(&root, &protocol_bin_dir);
 
     let output = protocol_command()
-        .env("PATH", &host_path)
+        .env("PATH", &protocol_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
         .env("ASP_STATE_HOME", &asp_state_home)
@@ -93,7 +89,7 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("install stdout");
-    assert!(stdout.contains("pluginScope=global"), "{stdout}");
+    assert!(stdout.contains("pluginScope=project"), "{stdout}");
     assert!(stdout.contains("codexAgentConfig=.codex-home/config.toml"));
     assert!(stdout.contains("subagent="));
     assert!(stdout.contains("agents/asp-explorer_codex.toml"));
@@ -111,7 +107,7 @@ fn cli_install_rejects_empty_subagent_model_override() {
             "install",
             "plugin",
             "--codex",
-            "--global",
+            "--project",
             "--subagent-model=",
             root.to_str().expect("utf8 temp root"),
         ])
@@ -148,12 +144,11 @@ fn cli_install_writes_claude_custom_subagent_by_default() {
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
-    sync_test_state(&root, &asp_state_home);
+    prepare_project_state(&root);
     let protocol_bin_dir = root.join(".agent-bin");
-    let host_path = test_host_path(&root, &protocol_bin_dir);
 
     let output = protocol_command()
-        .env("PATH", &host_path)
+        .env("PATH", &protocol_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
         .env("ASP_STATE_HOME", &asp_state_home)

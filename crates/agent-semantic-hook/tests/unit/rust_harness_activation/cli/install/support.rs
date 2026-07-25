@@ -12,11 +12,32 @@ pub(super) fn git_project_root(name: &str) -> PathBuf {
 }
 
 pub(super) fn protocol_command() -> Command {
+    let org_repo = local_test_org_repo();
+    let state_home = isolated_asp_state_home();
     let mut command = asp_command();
-    command.env("ASP_ORG_REPO_URL", local_test_org_repo());
-    command.env("ASP_STATE_HOME", isolated_asp_state_home());
+    command.env("ASP_ORG_REPO_URL", org_repo);
+    command.env("ASP_STATE_HOME", state_home);
     command.env_remove("PRJ_CACHE_HOME");
     command
+}
+
+pub(super) fn prepare_project_state(project_root: &Path) {
+    let state_home = project_root.join(".asp-state-home");
+    let org_repo = local_test_org_repo();
+    let output = asp_command()
+        .env("ASP_ORG_REPO_URL", &org_repo)
+        .env("ASP_STATE_HOME", &state_home)
+        .env_remove("PRJ_CACHE_HOME")
+        .arg("sync")
+        .arg(project_root)
+        .output()
+        .expect("sync test Org state");
+    assert!(
+        output.status.success(),
+        "sync test Org state failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn isolated_asp_state_home() -> PathBuf {
@@ -28,11 +49,12 @@ fn isolated_asp_state_home() -> PathBuf {
 }
 
 pub(super) fn codex_plugin_install_args(root: &Path) -> [String; 5] {
+    prepare_project_state(root);
     [
         "install".to_string(),
         "plugin".to_string(),
         "--codex".to_string(),
-        "--global".to_string(),
+        "--project".to_string(),
         root.to_str().expect("utf8 temp root").to_string(),
     ]
 }
@@ -41,34 +63,16 @@ pub(super) fn codex_plugin_install_args_with_subagent_model(
     root: &Path,
     model: &str,
 ) -> [String; 7] {
+    prepare_project_state(root);
     [
         "install".to_string(),
         "plugin".to_string(),
         "--codex".to_string(),
-        "--global".to_string(),
+        "--project".to_string(),
         "--subagent-model".to_string(),
         model.to_string(),
         root.to_str().expect("utf8 temp root").to_string(),
     ]
-}
-
-pub(super) fn sync_test_state(root: &Path, state_home: &Path) {
-    let output = protocol_command()
-        .env("ASP_STATE_HOME", state_home)
-        .env("CODEX_HOME", root.join(".codex-home"))
-        .args(["sync", root.to_str().expect("utf8 temp root")])
-        .output()
-        .expect("run explicit ASP state sync");
-    assert!(
-        output.status.success(),
-        "state sync stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-}
-
-pub(super) fn test_host_path(root: &Path, protocol_bin_dir: &Path) -> std::ffi::OsString {
-    std::env::join_paths([root.join(".bin"), protocol_bin_dir.to_path_buf()])
-        .expect("join fake host CLI and protocol bin PATH")
 }
 
 fn write_test_codex_plugin(root: &Path) {
@@ -99,7 +103,7 @@ fn write_test_codex_plugin(root: &Path) {
 fn local_test_org_repo() -> PathBuf {
     let root = temp_project_root("org-state-source");
     run_git(&root, &["init", "-q"]);
-    let skill_path = root.join("skills").join("ASP_ORG.org");
+    let skill_path = root.join("templates").join("ASP_ORG_SKILL.org");
     std::fs::create_dir_all(skill_path.parent().expect("skill parent"))
         .expect("create org skill dir");
     std::fs::write(&skill_path, "* ASP Org Test Skill\n").expect("write org skill fixture");
@@ -136,7 +140,7 @@ fn run_git(root: &Path, args: &[&str]) {
 }
 
 fn write_fake_codex_cli(root: &Path) {
-    let bin_dir = root.join(".bin");
+    let bin_dir = root.join(".agent-bin");
     std::fs::create_dir_all(&bin_dir).expect("create fake Codex bin dir");
     let path = bin_dir.join("codex");
     std::fs::write(

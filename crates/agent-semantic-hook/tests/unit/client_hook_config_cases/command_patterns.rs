@@ -264,12 +264,21 @@ fn configured_git_diff_routes_to_testing_resident() {
         "../../../../../schemas/agent-action.v1.schema.json"
     ))
     .expect("parse agent action schema");
+    let command_invocation_schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../schemas/semantic-command-invocation.v1.schema.json"
+    ))
+    .expect("parse command invocation schema");
     let schema_registry = jsonschema::Registry::new()
         .add(
             "https://agent-semantic-protocols.local/schemas/agent-action.v1.schema.json",
             agent_action_schema,
         )
         .expect("register agent action schema")
+        .add(
+            "https://agent-semantic-protocols.dev/schemas/semantic-command-invocation.v1.schema.json",
+            command_invocation_schema,
+        )
+        .expect("register command invocation schema")
         .prepare()
         .expect("prepare hook decision schema registry");
     let validator = jsonschema::options()
@@ -360,9 +369,17 @@ fn configurable_hook_default_rule_classification_stays_fast() {
     );
 
     assert_eq!(best_denied, iterations * 3 / 4);
+    // Debug builds exercise the functional path but include instrumentation and
+    // allocator noise that are not representative of the shipped hook binary.
+    // Keep the production performance gate strict in release builds.
+    let threshold_ns = if cfg!(debug_assertions) {
+        1_000_000
+    } else {
+        250_000
+    };
     assert!(
-        per_decision < 250_000,
-        "configurable hook classification regressed: {per_decision}ns per decision"
+        per_decision < threshold_ns,
+        "configurable hook classification regressed: {per_decision}ns per decision (threshold={threshold_ns}ns)"
     );
 
     let _ = fs::remove_dir_all(root);

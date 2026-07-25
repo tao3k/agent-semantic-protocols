@@ -543,7 +543,13 @@ fn agent_session_registry_project_open_uses_asp_home_db() {
     let root = temp_root("agent-session-registry-state-home");
     let state_home = root.join("state");
     let project_root = root.join("project");
-    std::fs::create_dir_all(project_root.join(".git")).expect("create Git project root");
+    std::fs::create_dir_all(&project_root).expect("create project root");
+    let git_status = Command::new("git")
+        .arg("init")
+        .current_dir(&project_root)
+        .status()
+        .expect("initialize project repository");
+    assert!(git_status.success(), "git init project repository");
 
     let state =
         ResolvedState::resolve_with_state_home(&project_root, &state_home).expect("resolve state");

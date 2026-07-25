@@ -40,7 +40,7 @@ fn codex_subagent_start_requires_canonical_probe_before_replacement() {
     );
 
     let blocked = native_resident_start(&root, root_session_id, blocked_child_id);
-    assert_eq!(blocked["decision"].as_str(), Some("allow"), "{blocked}");
+    assert_eq!(blocked["decision"].as_str(), Some("deny"), "{blocked}");
     assert_eq!(
         blocked["fields"]["agentSessionAction"].as_str(),
         Some("reuse-resident-child"),
