@@ -68,9 +68,12 @@ responsibilities.  The provider CLI does not expose =check changed=; it parses
 only the explicit workspace, owner, selector, or candidate set supplied by
 ASP.
 
-Search JSON conforms to =semantic-search-packet.v1=.  Query JSON conforms to
-=semantic-query-packet.v1=.  Compact output is a renderer over the same
-compiler-native facts; it is not a separate truth source.
+Provider stdout is JSON only.  Search packets conform to
+=semantic-search-packet.v1=, query packets conform to
+=semantic-query-packet.v1=, and exact-source results use the shared exact-source
+packet contract.  =ccls-asp= does not render compact line protocol, human guide
+text, graph frontiers, or replay output.  Root ASP validates the packet schema
+and owns every agent-facing renderer over the compiler-native facts.
 
 The protocol repository remains the authority for shared schemas.  Its
 =c-family= schema profile downsyncs the exact transitive schema set required by
@@ -116,3 +119,26 @@ The vertical slice is accepted only when all of the following are recorded:
 8. root ASP dispatch invokes =ccls-asp= with the selected language identity.
 
 LSP feature parity is explicitly not an acceptance criterion.
+
+The minimal single-file AST visitor is also not an acceptance criterion. The
+C-family parser/index core is accepted only when:
+
+1. a real =compile_commands.json= preserves the selected compiler driver,
+   working directory, language mode, defines, include paths, resource
+   directory, sysroot, and framework paths;
+2. standard-library and SDK headers parse without missing-header or unresolved
+   builtin typedef diagnostics;
+3. owner and query packets are schema-valid for C, C++, and Objective-C;
+4. a multi-translation-unit fixture proves stable declaration/definition
+   identity and cross-file references;
+5. semantic facts cover calls, types, members, inheritance/override, templates,
+   macros, and Objective-C protocols/categories/selectors where Clang exposes
+   them;
+6. the structural-index feed carries stable symbol identity, project-relative
+   owners, source fingerprints, and parser provenance without storing prior ASP
+   generations;
+7. ASP can request facts for an explicit changed-owner set and merge them into
+   an ASP-owned incremental generation;
+8. exact-source results validate against the shared exact-source schema and
+   never bypass JSON packet transport; and
+9. root ASP validates provider JSON before rendering agent-facing output.
