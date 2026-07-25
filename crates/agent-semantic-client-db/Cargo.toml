@@ -10,6 +10,7 @@ default = []
 turso-sync-server-e2e = []
 
 [dependencies]
+agent-semantic-context-product = { path = "../agent-semantic-context-product" }
 agent-semantic-content-identity.workspace = true
 agent-semantic-artifacts.workspace = true
 agent-semantic-client-core = { path = "../agent-semantic-client-core" }
@@ -21,6 +22,7 @@ tokio = { workspace = true, features = ["rt"] }
 turso.workspace = true
 turso_sdk_kit.workspace = true
 agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }
+blake3.workspace = true
 which = { workspace = true }
 
 [[bench]]

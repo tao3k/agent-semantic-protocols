@@ -51,7 +51,7 @@ pub use crate::activation_store::{
 };
 pub use crate::active_artifact_receipt::{
     ActiveAspArtifactInput, ActiveAspArtifactMaterialization, active_asp_artifact_receipt_path,
-    materialize_active_asp_artifact_receipt,
+    active_provider_artifact_input, materialize_active_asp_artifact_receipt,
     materialize_active_asp_artifact_receipt_for_current_process,
     verify_active_asp_artifact_receipt,
 };
@@ -100,13 +100,14 @@ pub(crate) use protocol_activation::protocol_activation_manifest::SourceSelector
 pub use protocol_activation::protocol_activation_manifest::{
     ActivatedProvider, ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy,
     HookActivation, HookRuntime, ManifestSourceDefaults, ProviderExecution, ProviderManifest,
-    ProviderQueryPackDescriptor, ProviderSearchCapabilities, ProviderSemanticFactsDescriptor,
-    ProviderSemanticFactsIntentAxis,
+    ProviderQueryPackDescriptor, ProviderQueryPackTermRole, ProviderSearchCapabilities,
+    ProviderSemanticFactsDescriptor, ProviderSemanticFactsIntentAxis,
 };
 pub use protocol_activation::protocol_activation_runtime::parse_activation;
 pub use provider_manifest::{
-    ProviderCommandSelection, build_default_activation, builtin_provider_manifests,
-    project_agent_config_path, provider_command_selections, validate_provider_manifest_contract,
+    ProviderCommandSelection, build_default_activation, build_default_activation_from_selections,
+    builtin_provider_manifests, project_agent_config_path, provider_command_selections,
+    validate_provider_manifest_contract,
 };
 pub use runtime_profile::{
     RUNTIME_PROFILES_PROTOCOL_ID, RUNTIME_PROFILES_PROTOCOL_VERSION, RUNTIME_PROFILES_SCHEMA_ID,
@@ -122,8 +123,10 @@ pub(crate) use tool_action::{
 mod dev_context;
 mod read_only_subagent;
 pub use read_only_subagent::{
-    HookSubagentPermissionContext, classify_read_only_subagent_receipt,
-    classify_read_only_subagent_write,
+    CodexHookAgentId, CodexHookAgentType, ConfiguredCodexAgentName, ConfiguredResidentRole,
+    HookSubagentPermissionContext, ManagedChildName, ResidentChildIdentityProof,
+    ResidentChildSessionId, ResidentEnabled, ResidentIdentityStatus, ResidentRootSessionId,
+    ResidentSandboxMode, classify_read_only_subagent_receipt, classify_read_only_subagent_write,
 };
 #[cfg(test)]
 extern crate self as agent_semantic_hook;

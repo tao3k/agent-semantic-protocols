@@ -4,6 +4,7 @@
 
 mod agent_session_identity;
 mod agent_session_status;
+pub use agent_session_status::RuntimeSessionId;
 mod agent_session_status_snapshot;
 mod agent_session_validation_report;
 mod async_bridge;

@@ -3,9 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::parse::parse_rollout_file_at_path;
-use super::paths::{
-    codex_rollout_paths_for_session_id, codex_sessions_dir, rg_rollout_paths_for_session_id,
-};
+use super::paths::{codex_rollout_paths_for_session_id, codex_sessions_dir};
 use super::topology::{
     rollout_topology_lines, spawned_agent_ids_for_rollout, spawned_agent_paths_for_rollout,
     thread_spawn_child_session_ids_for_rollout,
@@ -48,8 +46,10 @@ where
             }
             Err(error) => return Err(error),
         };
-    let root_attributed_rollout_paths =
-        rg_rollout_paths_for_session_id(&sessions_dir, root_session_id_text)?;
+    let root_attributed_rollout_paths = super::paths::root_attributed_rollout_paths_for_session_id(
+        &sessions_dir,
+        root_session_id_text,
+    )?;
     rollout_paths.extend(root_attributed_rollout_paths.iter().cloned());
     let trace_rollout_index = std::env::var_os("ASP_CODEX_ROLLOUT_INDEX_TRACE").is_some();
     if trace_rollout_index {
@@ -137,44 +137,29 @@ where
             skipped_rollout_count += 1;
             continue;
         };
-        if let Some(agent_path) = host_agent_path_by_session.get(metadata.session_id.as_str()) {
-            metadata
-                .agent_path
-                .get_or_insert_with(|| agent_path.clone());
-            metadata
-                .parent_thread_id
-                .get_or_insert_with(|| root_session_id.as_str().to_string());
-            metadata
-                .root_session_id
-                .get_or_insert_with(|| root_session_id.as_str().to_string());
-            if metadata.parent_thread_id.as_deref() == Some(root_session_id.as_str()) {
-                metadata
-                    .thread_source
-                    .get_or_insert_with(|| "subagent".to_string());
-                metadata.spawn_depth.get_or_insert(1);
-            }
+        if let Some(agent_path) = host_agent_path_by_session.get(metadata.session_id().as_str()) {
+            metadata.fill_discovered_child_attribution(root_session_id, agent_path);
         }
-        let root_attribution_matches = metadata.root_session_id.as_deref()
-            == Some(root_session_id.as_str())
-            || metadata.session_id.as_str() == root_session_id.as_str()
-            || metadata.parent_thread_id.as_deref() == Some(root_session_id.as_str());
+        let root_attribution_matches = metadata.root_session_id() == Some(root_session_id)
+            || metadata.session_id() == root_session_id
+            || metadata.parent_thread_id() == Some(root_session_id);
         if trace_rollout_index {
             eprintln!(
                 "{}",
                 serde_json::json!({
                     "trace": "codex-rollout-index-candidate",
                     "rootSessionId": root_session_id.as_str(),
-                    "sessionId": metadata.session_id,
-                    "actualRootSessionId": metadata.root_session_id,
-                    "parentThreadId": metadata.parent_thread_id,
-                    "threadSource": metadata.thread_source,
-                    "agentRole": metadata.agent_role,
-                    "agentPath": metadata.agent_path,
-                    "spawnDepth": metadata.spawn_depth,
-                    "model": metadata.model,
-                    "reasoningEffort": metadata.reasoning_effort,
+                    "sessionId": metadata.session_id(),
+                    "actualRootSessionId": metadata.root_session_id(),
+                    "parentThreadId": metadata.parent_thread_id(),
+                    "threadSource": metadata.thread_source(),
+                    "agentRole": metadata.agent_role(),
+                    "agentPath": metadata.agent_path(),
+                    "spawnDepth": metadata.spawn_depth(),
+                    "model": metadata.model(),
+                    "reasoningEffort": metadata.reasoning_effort(),
                     "rootAttributionMatches": root_attribution_matches,
-                    "rolloutPath": metadata.rollout_path,
+                    "rolloutPath": metadata.rollout_path(),
                 })
             );
         }
@@ -183,8 +168,8 @@ where
             continue;
         }
         scanned_rollout_count += 1;
-        activity_by_session.insert(metadata.session_id.as_str().to_string().into(), activity);
-        if metadata.session_id.as_str() == root_session_id.as_str() {
+        activity_by_session.insert(metadata.session_id().as_str().to_string().into(), activity);
+        if metadata.session_id() == root_session_id {
             continue;
         }
         records.push(metadata);

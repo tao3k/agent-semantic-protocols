@@ -113,33 +113,33 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
     assert!(
         events
             .iter()
-            .any(|event| event.artifact_path == "prompt-output/rust-search-prime-abc123.txt"),
+            .any(|event| event.artifact_path() == "prompt-output/rust-search-prime-abc123.txt"),
         "{events:?}"
     );
     assert!(
         events.iter().any(|event| {
-            event.artifact_path == "prompt-output/rust-query-code-abc123.command.json"
-                && event.method == "query/code"
-                && event.target == "src/lib.rs:1-10"
-                && event.timestamp_ms == 222222
+            event.artifact_path() == "prompt-output/rust-query-code-abc123.command.json"
+                && event.method() == "query/code"
+                && event.target() == "src/lib.rs:1-10"
+                && event.timestamp_ms() == 222222
         }),
         "{events:?}"
     );
     assert!(
         events.iter().any(|event| {
-            event.artifact_path == "prompt-output/rust-query-code-abc123.command.json"
-                && event.method == "query/code"
-                && event.target == "src/main.rs:20-24"
-                && event.timestamp_ms == 333333
+            event.artifact_path() == "prompt-output/rust-query-code-abc123.command.json"
+                && event.method() == "query/code"
+                && event.target() == "src/main.rs:20-24"
+                && event.timestamp_ms() == 333333
         }),
         "{events:?}"
     );
     assert!(
         events.iter().any(|event| {
-            event.artifact_path == "semantic-tree-sitter-query/rust-query-tree-sitter-abc123.json"
-                && event.method == "query/tree-sitter"
-                && event.query == "(function_item) @item"
-                && event.timestamp_ms == 555555
+            event.artifact_path() == "semantic-tree-sitter-query/rust-query-tree-sitter-abc123.json"
+                && event.method() == "query/tree-sitter"
+                && event.query() == "(function_item) @item"
+                && event.timestamp_ms() == 555555
         }),
         "{events:?}"
     );

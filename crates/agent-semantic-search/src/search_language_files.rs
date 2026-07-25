@@ -86,20 +86,20 @@ pub fn language_file_spec(language_id: impl AsRef<str>) -> LanguageFileSpec {
     LanguageFileSpec::from_provider_defaults(
         manifests
             .iter()
-            .filter(|manifest| manifest.language_id == language_id)
-            .flat_map(|manifest| manifest.source.default_extensions.iter()),
+            .filter(|manifest| manifest.language_id().as_str() == language_id)
+            .flat_map(|manifest| manifest.source().default_extensions.iter()),
         manifests
             .iter()
-            .filter(|manifest| manifest.language_id == language_id)
-            .flat_map(|manifest| manifest.source.default_config_files.iter()),
+            .filter(|manifest| manifest.language_id().as_str() == language_id)
+            .flat_map(|manifest| manifest.source().default_config_files.iter()),
         manifests
             .iter()
-            .filter(|manifest| manifest.language_id == language_id)
-            .flat_map(|manifest| manifest.source.default_project_markers.iter()),
+            .filter(|manifest| manifest.language_id().as_str() == language_id)
+            .flat_map(|manifest| manifest.source().default_project_markers.iter()),
         manifests
             .iter()
-            .filter(|manifest| manifest.language_id == language_id)
-            .flat_map(|manifest| manifest.source.default_dependency_markers.iter()),
+            .filter(|manifest| manifest.language_id().as_str() == language_id)
+            .flat_map(|manifest| manifest.source().default_dependency_markers.iter()),
     )
 }
 
@@ -110,16 +110,16 @@ pub fn language_neutral_search_file_spec() -> LanguageFileSpec {
     LanguageFileSpec::from_provider_defaults(
         manifests
             .iter()
-            .flat_map(|manifest| manifest.source.default_extensions.iter()),
+            .flat_map(|manifest| manifest.source().default_extensions.iter()),
         manifests
             .iter()
-            .flat_map(|manifest| manifest.source.default_config_files.iter()),
+            .flat_map(|manifest| manifest.source().default_config_files.iter()),
         manifests
             .iter()
-            .flat_map(|manifest| manifest.source.default_project_markers.iter()),
+            .flat_map(|manifest| manifest.source().default_project_markers.iter()),
         manifests
             .iter()
-            .flat_map(|manifest| manifest.source.default_dependency_markers.iter()),
+            .flat_map(|manifest| manifest.source().default_dependency_markers.iter()),
     )
 }
 

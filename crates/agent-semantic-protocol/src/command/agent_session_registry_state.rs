@@ -84,10 +84,10 @@ pub(crate) fn current_resident_child_identity_proof(
     else {
         return Ok(None);
     };
-    let Some(root_session_id) = metadata.root_session_id.as_deref() else {
+    let Some(root_session_id) = metadata.root_session_id() else {
         return Ok(None);
     };
-    if root_session_id == session_id
+    if root_session_id.as_str() == session_id
         || !super::agent_session_registry_validation::rollout_metadata_matches_managed_agent_profile(
             resident_child_name,
             resident_agent_role,
@@ -98,7 +98,7 @@ pub(crate) fn current_resident_child_identity_proof(
     }
     if let (Some(registry), Some(project_id)) = (registry.as_ref(), project_id.as_deref())
         && registry
-            .session_by_name(project_id, root_session_id, resident_child_name)?
+            .session_by_name(project_id, root_session_id.as_str(), resident_child_name)?
             .is_some()
     {
         return Ok(None);
@@ -380,9 +380,9 @@ pub(super) fn session_record_validation_allows_routing(
         &record.role,
         now,
     )?;
-    if validation.status == "failed".into() {
+    if validation.status().as_str() == "failed" {
         if validation
-            .reason
+            .reason()
             .starts_with("Codex rollout metadata not found")
             && stored_session_validation_allows_routing(record)
         {
@@ -396,7 +396,7 @@ pub(super) fn session_record_validation_allows_routing(
         );
     }
     Ok(matches!(
-        validation.status.as_str(),
+        validation.status().as_str(),
         "passed" | "warning" | "skipped"
     ))
 }

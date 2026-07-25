@@ -7,8 +7,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use agent_semantic_config::project_runtime_layout;
-
 use crate::executable::{is_executable_file, resolve_executable_with_status};
 use crate::protocol::{
     HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
@@ -35,35 +33,66 @@ pub(crate) fn provider_manifests() -> Vec<ProviderManifest> {
 
 /// Build the default project activation from configured project providers.
 pub fn build_default_activation(project_root: &Path) -> Result<HookActivation, String> {
-    let project_config = ProjectProviderConfigSet::load(project_root)?;
-    let mut selected_providers = Vec::new();
-    for manifest in provider_manifests() {
-        let Some(provider_config) = project_config.provider_config(&manifest.language_id) else {
-            continue;
-        };
-        let Some(command_prefix) =
-            provider_command_prefix(project_root, &manifest, provider_config)?
-        else {
-            continue;
-        };
-        selected_providers.push((manifest, command_prefix));
-    }
-    if selected_providers.is_empty() {
+    let selections = provider_command_selections(project_root)?;
+    build_default_activation_from_selections(project_root, &selections)
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/provider_manifest_selection_identity.rs"]
+mod provider_manifest_selection_identity_tests;
+
+/// Build an activation from the provider selections already resolved for this project.
+pub fn build_default_activation_from_selections(
+    project_root: &Path,
+    selections: &[ProviderCommandSelection],
+) -> Result<HookActivation, String> {
+    if selections.is_empty() {
         return Err(
             "expected PATH to contain at least one executable semantic provider binary".to_string(),
         );
     }
+    let manifests = provider_manifests();
+    let selected_providers = selections
+        .iter()
+        .map(|selection| {
+            let manifest = manifests
+                .iter()
+                .find(|manifest| manifest.manifest_id == selection.manifest_id)
+                .ok_or_else(|| {
+                    format!(
+                        "provider selection has no registered manifest: manifestId={} language={} provider={}",
+                        selection.manifest_id, selection.language_id, selection.provider_id
+                    )
+                })?;
+            Ok((manifest, selection))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     let package_roots = discover_package_roots_for_manifests(
         project_root,
-        selected_providers.iter().map(|(manifest, _)| manifest),
+        selected_providers.iter().map(|(manifest, _)| *manifest),
     );
+    let registry_started = std::time::Instant::now();
+    let semantic_registry_digest = crate::provider_registry::semantic_registry_digest();
+    if std::env::var_os("ASP_HOOK_INSTALL_TIMINGS").is_some() {
+        eprintln!(
+            "[activation-timing] step=semantic-registry-digest stepMs={:.3}",
+            registry_started.elapsed().as_secs_f64() * 1_000.0
+        );
+    }
     let mut providers = Vec::new();
-    for (manifest, command_prefix) in selected_providers {
+    for (manifest, selection) in selected_providers {
         let roots = package_roots
             .get(&manifest.manifest_id)
             .cloned()
             .unwrap_or_else(|| vec![".".to_string()]);
-        providers.push(activate_provider(&manifest, command_prefix, roots)?);
+        providers.push(activate_provider(
+            manifest,
+            selection.manifest_digest.clone(),
+            selection.execution_command_digest.clone(),
+            selection.provider_command_prefix.clone(),
+            roots,
+            &semantic_registry_digest,
+        )?);
     }
     Ok(HookActivation {
         schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
@@ -85,8 +114,9 @@ pub fn build_default_activation(project_root: &Path) -> Result<HookActivation, S
 pub struct ProviderCommandSelection {
     pub(crate) manifest_id: String,
     pub(crate) manifest_digest: String,
-    pub(crate) language_id: String,
-    pub(crate) provider_id: String,
+    pub(crate) execution_command_digest: String,
+    pub(crate) language_id: agent_semantic_config::LanguageId,
+    pub(crate) provider_id: agent_semantic_config::ProviderId,
     pub(crate) binary: String,
     pub(crate) execution: ProviderExecution,
     pub(crate) provider_command_prefix: Vec<String>,
@@ -104,12 +134,12 @@ impl ProviderCommandSelection {
     }
 
     #[must_use]
-    pub fn language_id(&self) -> &str {
+    pub fn language_id(&self) -> &agent_semantic_config::LanguageId {
         &self.language_id
     }
 
     #[must_use]
-    pub fn provider_id(&self) -> &str {
+    pub fn provider_id(&self) -> &agent_semantic_config::ProviderId {
         &self.provider_id
     }
 
@@ -133,20 +163,47 @@ pub fn provider_command_selections(
     project_root: &Path,
 ) -> Result<Vec<ProviderCommandSelection>, String> {
     let project_config = ProjectProviderConfigSet::load(project_root)?;
+    let state_paths = agent_semantic_runtime::project_state_paths(project_root)
+        .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
     let mut providers = Vec::new();
     for manifest in provider_manifests() {
-        let Some(provider_config) = project_config.provider_config(&manifest.language_id) else {
-            continue;
-        };
-        let Some(command_prefix) =
-            provider_command_prefix(project_root, &manifest, provider_config)?
+        let Some(provider_config) = project_config.provider_config(manifest.language_id.as_str())
         else {
             continue;
         };
+        let Some(command_prefix) = provider_command_prefix(
+            project_root,
+            &manifest,
+            provider_config,
+            Some(&state_paths.runtime_bin_dir),
+        )?
+        else {
+            continue;
+        };
+        let executable = command_prefix
+            .first()
+            .ok_or_else(|| {
+                format!(
+                    "provider `{}` language `{}` resolved an empty command prefix",
+                    manifest.provider_id, manifest.language_id
+                )
+            })
+            .map(PathBuf::from)?;
+        let artifact_digest = crate::active_artifact_receipt::installed_provider_artifact_digest(
+            &state_paths.provider_lock_dir,
+            &manifest.language_id,
+            &manifest.provider_id,
+            executable,
+        )?;
         providers.push(ProviderCommandSelection {
             manifest_id: manifest.manifest_id.clone(),
             manifest_digest: provider_manifest_digest(&manifest)
                 .map_err(|error| format!("failed to digest provider manifest: {error:?}"))?,
+            execution_command_digest:
+                crate::protocol_activation::digest::provider_execution_command_digest(
+                    &command_prefix,
+                    &artifact_digest,
+                )?,
             language_id: manifest.language_id.clone(),
             provider_id: manifest.provider_id.clone(),
             binary: manifest.binary.clone(),
@@ -168,6 +225,12 @@ pub fn project_agent_config_path(project_root: &Path) -> PathBuf {
 
 pub fn validate_provider_manifest_contract(manifest: &ProviderManifest) -> Vec<String> {
     let mut errors = Vec::new();
+    if manifest.language_id.is_empty() {
+        errors.push("provider manifest languageId must be non-empty".to_string());
+    }
+    if manifest.provider_id.is_empty() {
+        errors.push("provider manifest providerId must be non-empty".to_string());
+    }
 
     if let Err(error) =
         crate::protocol_activation::provider_query_pack::validate_query_pack_descriptor(manifest)
@@ -181,9 +244,10 @@ pub fn validate_provider_manifest_contract(manifest: &ProviderManifest) -> Vec<S
     {
         errors.push(error.to_string());
     }
-    if let Err(error) =
-        validate_source_snapshot_capability(&manifest.language_id, &manifest.search_capabilities)
-    {
+    if let Err(error) = validate_source_snapshot_capability(
+        manifest.language_id.as_str(),
+        &manifest.search_capabilities,
+    ) {
         errors.push(error);
     }
 
@@ -202,55 +266,55 @@ fn validate_source_snapshot_capability(
                 "provider `{language_id}` is missing required searchCapabilities.sourceSnapshot descriptor"
             )
         })?;
-    let descriptor_id = (!descriptor.descriptor_id.is_empty())
-        .then_some(descriptor.descriptor_id.as_str())
+    let descriptor_id = (!descriptor.descriptor_id().is_empty())
+        .then_some(descriptor.descriptor_id())
         .ok_or_else(|| format!("provider `{language_id}` source snapshot descriptorId is empty"))?;
     for (field, actual, expected) in [
         (
             "descriptorVersion",
-            descriptor.descriptor_version.as_str(),
+            descriptor.descriptor_version(),
             "1",
         ),
-        ("languageId", descriptor.language_id.as_str(), language_id),
+        ("languageId", descriptor.language_id(), language_id),
         (
             "packetSchemaId",
-            descriptor.packet_schema_id.as_str(),
+            descriptor.packet_schema_id(),
             "asp.source-snapshot.v1",
         ),
         (
             "exactSourcePacketSchemaId",
-            descriptor.exact_source_packet_schema_id.as_str(),
+            descriptor.exact_source_packet_schema_id(),
             "asp.exact-source-query-result.v1",
         ),
         (
             "canonicalItemSelectorSchemaId",
-            descriptor.canonical_item_selector_schema_id.as_str(),
+            descriptor.canonical_item_selector_schema_id(),
             agent_semantic_content_identity::canonical_item_identity::CANONICAL_ITEM_SELECTOR_SCHEMA_ID,
         ),
         (
             "sourceSnapshotEnvelopeSchemaId",
-            descriptor.source_snapshot_envelope_schema_id.as_str(),
+            descriptor.source_snapshot_envelope_schema_id(),
             "asp.exact-source-snapshot-envelope.v1",
         ),
         (
             "derivedArtifactEvidenceSchemaId",
-            descriptor.derived_artifact_evidence_schema_id.as_str(),
+            descriptor.derived_artifact_evidence_schema_id(),
             "asp.derived-source-artifact-evidence.v1",
         ),
         (
             "algorithm",
-            descriptor.algorithm.as_str(),
+            descriptor.algorithm(),
             "blake3-merkle-v1",
         ),
-        ("authority", descriptor.authority.as_str(), "live-parser"),
+        ("authority", descriptor.authority(), "live-parser"),
         (
             "exactSelectorResolution",
-            descriptor.exact_selector_resolution.as_str(),
+            descriptor.exact_selector_resolution(),
             "pinned-live-module-graph",
         ),
         (
             "overlayMode",
-            descriptor.overlay_mode.as_str(),
+            descriptor.overlay_mode(),
             "merkle-delta",
         ),
     ] {
@@ -265,30 +329,38 @@ fn validate_source_snapshot_capability(
 
 fn activate_provider(
     manifest: &ProviderManifest,
+    manifest_digest: String,
+    execution_command_digest: String,
     provider_command_prefix: Vec<String>,
     package_roots: Vec<String>,
+    semantic_registry_digest: &str,
 ) -> Result<ActivatedProviderConfig, String> {
-    validate_source_snapshot_capability(&manifest.language_id, &manifest.search_capabilities)?;
+    validate_source_snapshot_capability(
+        manifest.language_id.as_str(),
+        &manifest.search_capabilities,
+    )?;
+    let routes_started = std::time::Instant::now();
     let routes = crate::provider_registry::materialize_provider_routes(manifest)?;
-    let semantic_registry_digest = crate::provider_registry::semantic_registry_digest();
+    if std::env::var_os("ASP_HOOK_INSTALL_TIMINGS").is_some() {
+        eprintln!(
+            "[activation-timing] step=provider-routes language={} stepMs={:.3}",
+            manifest.language_id,
+            routes_started.elapsed().as_secs_f64() * 1_000.0
+        );
+    }
     Ok(ActivatedProviderConfig {
         search_capabilities: manifest.search_capabilities.clone(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor.clone(),
         query_pack_descriptor: manifest.query_pack_descriptor.clone(),
         manifest_id: manifest.manifest_id.clone(),
-        manifest_digest: provider_manifest_digest(manifest)
-            .map_err(|error| format!("failed to digest provider manifest: {error:?}"))?,
+        manifest_digest,
         language_id: manifest.language_id.clone(),
         provider_id: manifest.provider_id.clone(),
         binary: manifest.binary.clone(),
         execution: manifest.execution,
-        execution_command_digest:
-            crate::protocol_activation::digest::provider_execution_command_digest(
-                &provider_command_prefix,
-            )
-            .map_err(|error| format!("failed to digest provider execution command: {error}"))?,
+        execution_command_digest,
         provider_command_prefix,
-        semantic_registry_digest,
+        semantic_registry_digest: semantic_registry_digest.to_string(),
         routes,
         coverage: ActivationCoverage {
             package_roots,
@@ -357,13 +429,14 @@ fn provider_command_prefix(
     project_root: &Path,
     manifest: &ProviderManifest,
     config: &ProjectProviderConfig,
+    managed_bin_dir: Option<&Path>,
 ) -> Result<Option<Vec<String>>, String> {
     let has_binary_override = config.binary.is_some();
     let configured_binary = config.binary.as_deref().unwrap_or(&manifest.binary);
     let provider_binary = if has_binary_override {
         project_root_relative_binary(project_root, configured_binary)
     } else {
-        default_provider_binary(project_root, manifest)
+        default_provider_binary(project_root, manifest, managed_bin_dir)
     };
     let resolution = resolve_executable_with_status(&provider_binary);
     let Some(path) = resolution.path else {
@@ -382,7 +455,11 @@ fn provider_command_prefix(
     Ok(Some(vec![path.display().to_string()]))
 }
 
-fn default_provider_binary(project_root: &Path, manifest: &ProviderManifest) -> String {
+fn default_provider_binary(
+    project_root: &Path,
+    manifest: &ProviderManifest,
+    managed_bin_dir: Option<&Path>,
+) -> String {
     if provider_prefers_home_local_binary(manifest)
         && let Some(user_bin) = home_local_provider_binary(&manifest.binary)
     {
@@ -396,8 +473,8 @@ fn default_provider_binary(project_root: &Path, manifest: &ProviderManifest) -> 
     {
         return workspace_bin.display().to_string();
     }
-    if let Some(runtime_home) = project_runtime_layout(project_root).runtime_home {
-        let managed_bin = runtime_home.join("bin").join(&manifest.binary);
+    if let Some(managed_bin_dir) = managed_bin_dir {
+        let managed_bin = managed_bin_dir.join(&manifest.binary);
         if is_executable_file(&managed_bin) {
             return managed_bin.display().to_string();
         }

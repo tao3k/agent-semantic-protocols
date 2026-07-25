@@ -62,47 +62,74 @@ impl ActiveArtifactKindV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActiveArtifactLeafV1 {
-    logical_path: String,
-    materialized_path: String,
+    logical_path: ActiveArtifactLogicalPathV1,
+    materialized_path: ActiveArtifactMaterializedPathV1,
     artifact_kind: ActiveArtifactKindV1,
     artifact_digest: ContentDigestV1,
-    size_bytes: u64,
+    size_bytes: ActiveArtifactByteCountV1,
     #[serde(default)]
-    modified_unix_nanos: u64,
+    modified_unix_nanos: ActiveArtifactModifiedUnixNanosV1,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    change_time_unix_nanos: Option<i64>,
+    change_time_unix_nanos: Option<ActiveArtifactChangeTimeUnixNanosV1>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ActiveArtifactLeafInputV1 {
-    pub logical_path: String,
-    pub materialized_path: String,
-    pub artifact_kind: ActiveArtifactKindV1,
-    pub artifact_digest: ContentDigestV1,
-    pub size_bytes: u64,
-    pub modified_unix_nanos: u64,
-    pub change_time_unix_nanos: Option<i64>,
-}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+struct ActiveArtifactLogicalPathV1(String);
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+struct ActiveArtifactMaterializedPathV1(String);
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+struct ActiveArtifactByteCountV1(u64);
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+struct ActiveArtifactModifiedUnixNanosV1(u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+struct ActiveArtifactChangeTimeUnixNanosV1(i64);
 
 impl ActiveArtifactLeafV1 {
-    pub fn from_input(input: ActiveArtifactLeafInputV1) -> Self {
-        Self {
-            logical_path: input.logical_path,
-            materialized_path: input.materialized_path,
-            artifact_kind: input.artifact_kind,
-            artifact_digest: input.artifact_digest,
-            size_bytes: input.size_bytes,
-            modified_unix_nanos: input.modified_unix_nanos,
-            change_time_unix_nanos: input.change_time_unix_nanos,
+    pub fn new(
+        logical_path: impl Into<String>,
+        materialized_path: impl Into<String>,
+        artifact_kind: ActiveArtifactKindV1,
+        artifact_digest: ContentDigestV1,
+        size_bytes: u64,
+        modified_unix_nanos: u64,
+        change_time_unix_nanos: Option<i64>,
+    ) -> Result<Self, String> {
+        let logical_path = logical_path.into();
+        let materialized_path = materialized_path.into();
+        if logical_path.is_empty() || materialized_path.is_empty() {
+            return Err(
+                "active artifact logical and materialized paths must be non-empty".to_string(),
+            );
         }
+        if change_time_unix_nanos.is_some_and(|value| value < 0) {
+            return Err("active artifact change time must be non-negative".to_string());
+        }
+        Ok(Self {
+            logical_path: ActiveArtifactLogicalPathV1(logical_path),
+            materialized_path: ActiveArtifactMaterializedPathV1(materialized_path),
+            artifact_kind,
+            artifact_digest,
+            size_bytes: ActiveArtifactByteCountV1(size_bytes),
+            modified_unix_nanos: ActiveArtifactModifiedUnixNanosV1(modified_unix_nanos),
+            change_time_unix_nanos: change_time_unix_nanos.map(ActiveArtifactChangeTimeUnixNanosV1),
+        })
     }
 
     pub fn logical_path(&self) -> &str {
-        &self.logical_path
+        &self.logical_path.0
     }
 
     pub fn materialized_path(&self) -> &str {
-        &self.materialized_path
+        &self.materialized_path.0
     }
 
     pub fn artifact_kind(&self) -> ActiveArtifactKindV1 {
@@ -114,15 +141,15 @@ impl ActiveArtifactLeafV1 {
     }
 
     pub fn size_bytes(&self) -> u64 {
-        self.size_bytes
+        self.size_bytes.0
     }
 
     pub fn modified_unix_nanos(&self) -> u64 {
-        self.modified_unix_nanos
+        self.modified_unix_nanos.0
     }
 
     pub fn change_time_unix_nanos(&self) -> Option<i64> {
-        self.change_time_unix_nanos
+        self.change_time_unix_nanos.map(|value| value.0)
     }
 }
 
@@ -170,7 +197,7 @@ impl ActiveAspArtifactReceiptV1 {
         mut leaves: Vec<ActiveArtifactLeafV1>,
     ) -> Result<Self, ActiveAspArtifactReceiptV1Error> {
         let artifact_set_id = ActiveArtifactSetIdV1::from(artifact_set_id.into());
-        leaves.sort_by(|left, right| left.logical_path.cmp(&right.logical_path));
+        leaves.sort_by(|left, right| left.logical_path().cmp(right.logical_path()));
         let artifact_root_digest = active_artifact_root_digest_v1(&artifact_set_id, &leaves)?;
         let materialization_root_digest =
             active_artifact_materialization_root_digest_v1(&artifact_set_id, &leaves)?;
@@ -201,14 +228,14 @@ impl ActiveAspArtifactReceiptV1 {
         let mut asp_binary_count = 0;
         let mut activation_count = 0;
         for leaf in &self.leaves {
-            validate_logical_path(&leaf.logical_path)?;
+            validate_logical_path(leaf.logical_path())?;
             parse_content_digest_v1(leaf.artifact_digest.as_str()).map_err(|_| {
-                ActiveAspArtifactReceiptV1Error::NonCanonicalDigest(leaf.logical_path.clone())
+                ActiveAspArtifactReceiptV1Error::NonCanonicalDigest(leaf.logical_path().to_string())
             })?;
-            if previous_path.is_some_and(|previous| previous >= leaf.logical_path.as_str()) {
+            if previous_path.is_some_and(|previous| previous >= leaf.logical_path()) {
                 return Err(ActiveAspArtifactReceiptV1Error::UnsortedOrDuplicateLeaves);
             }
-            previous_path = Some(&leaf.logical_path);
+            previous_path = Some(leaf.logical_path());
             asp_binary_count += usize::from(leaf.artifact_kind == ActiveArtifactKindV1::AspBinary);
             activation_count += usize::from(leaf.artifact_kind == ActiveArtifactKindV1::Activation);
         }
@@ -259,25 +286,25 @@ pub fn active_artifact_root_digest_v1(
     }
     let mut previous_path: Option<&str> = None;
     for leaf in leaves {
-        validate_logical_path(&leaf.logical_path)?;
+        validate_logical_path(leaf.logical_path())?;
         parse_content_digest_v1(leaf.artifact_digest.as_str()).map_err(|_| {
-            ActiveAspArtifactReceiptV1Error::NonCanonicalDigest(leaf.logical_path.clone())
+            ActiveAspArtifactReceiptV1Error::NonCanonicalDigest(leaf.logical_path().to_string())
         })?;
-        if previous_path.is_some_and(|previous| previous >= leaf.logical_path.as_str()) {
+        if previous_path.is_some_and(|previous| previous >= leaf.logical_path()) {
             return Err(ActiveAspArtifactReceiptV1Error::UnsortedOrDuplicateLeaves);
         }
-        previous_path = Some(&leaf.logical_path);
+        previous_path = Some(leaf.logical_path());
     }
     let mut level = Vec::with_capacity(leaves.len());
     for leaf in leaves {
-        validate_logical_path(&leaf.logical_path)?;
+        validate_logical_path(leaf.logical_path())?;
         level.push(canonical_content_digest_v1(
             b"asp.active-artifact-leaf.v1",
             &[
-                leaf.logical_path.as_bytes(),
+                leaf.logical_path().as_bytes(),
                 leaf.artifact_kind.canonical_name().as_bytes(),
                 leaf.artifact_digest.as_str().as_bytes(),
-                &leaf.size_bytes.to_be_bytes(),
+                &leaf.size_bytes().to_be_bytes(),
             ],
         ));
     }
@@ -316,23 +343,23 @@ pub fn active_artifact_materialization_root_digest_v1(
     let mut previous_path: Option<&str> = None;
     let mut level = Vec::with_capacity(leaves.len());
     for leaf in leaves {
-        validate_logical_path(&leaf.logical_path)?;
-        validate_materialized_path(&leaf.materialized_path)?;
-        if previous_path.is_some_and(|previous| previous >= leaf.logical_path.as_str()) {
+        validate_logical_path(leaf.logical_path())?;
+        validate_materialized_path(leaf.materialized_path())?;
+        if previous_path.is_some_and(|previous| previous >= leaf.logical_path()) {
             return Err(ActiveAspArtifactReceiptV1Error::UnsortedOrDuplicateLeaves);
         }
-        previous_path = Some(&leaf.logical_path);
+        previous_path = Some(leaf.logical_path());
         level.push(canonical_content_digest_v1(
             b"asp.active-artifact-materialization-leaf.v1",
             &[
-                leaf.logical_path.as_bytes(),
-                leaf.materialized_path.as_bytes(),
+                leaf.logical_path().as_bytes(),
+                leaf.materialized_path().as_bytes(),
                 leaf.artifact_kind.canonical_name().as_bytes(),
                 leaf.artifact_digest.as_str().as_bytes(),
-                &leaf.size_bytes.to_be_bytes(),
-                &leaf.modified_unix_nanos.to_be_bytes(),
+                &leaf.size_bytes().to_be_bytes(),
+                &leaf.modified_unix_nanos().to_be_bytes(),
                 &leaf
-                    .change_time_unix_nanos
+                    .change_time_unix_nanos()
                     .unwrap_or_default()
                     .to_be_bytes(),
             ],

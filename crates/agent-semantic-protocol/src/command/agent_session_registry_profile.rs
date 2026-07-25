@@ -134,7 +134,7 @@ fn adopt_unique_root_attributed_rollout_session(
         agent_semantic_runtime::codex_app_server_child_session_metadata(&root_session_id.into())?;
     let host_candidates = host_records
         .iter()
-        .filter(|metadata| excluded_session_id != Some(metadata.session_id.as_str()))
+        .filter(|metadata| excluded_session_id != Some(metadata.session_id().as_str()))
         .filter(|metadata| {
             super::agent_session_registry_validation::rollout_metadata_matches_managed_agent_profile(
                 name, role, metadata,
@@ -145,14 +145,16 @@ fn adopt_unique_root_attributed_rollout_session(
         [candidate] => {
             return register_recovered_rollout_session(
                 registry,
-                project_id,
-                root_session_id,
-                name,
-                role,
-                expires_at,
-                candidate,
-                "codex-app-server-native-host-tree",
-                now,
+                RecoveredRolloutRegistration {
+                    project_id,
+                    root_session_id,
+                    name,
+                    role,
+                    expires_at,
+                    candidate,
+                    recovery_source: "codex-app-server-native-host-tree",
+                    now,
+                },
             );
         }
         [] => {}
@@ -165,7 +167,7 @@ fn adopt_unique_root_attributed_rollout_session(
     let candidates = index
         .records
         .iter()
-        .filter(|metadata| excluded_session_id != Some(metadata.session_id.as_str()))
+        .filter(|metadata| excluded_session_id != Some(metadata.session_id().as_str()))
         .filter(|metadata| {
             super::agent_session_registry_validation::rollout_metadata_matches_managed_agent_profile(
                 name, role, metadata,
@@ -177,73 +179,79 @@ fn adopt_unique_root_attributed_rollout_session(
     };
     register_recovered_rollout_session(
         registry,
-        project_id,
-        root_session_id,
-        name,
-        role,
-        expires_at,
-        candidate,
-        "unique-root-attributed-managed-rollout",
-        now,
+        RecoveredRolloutRegistration {
+            project_id,
+            root_session_id,
+            name,
+            role,
+            expires_at,
+            candidate,
+            recovery_source: "unique-root-attributed-managed-rollout",
+            now,
+        },
     )
 }
 
-#[allow(clippy::too_many_arguments)]
+struct RecoveredRolloutRegistration<'a> {
+    project_id: &'a str,
+    root_session_id: &'a str,
+    name: &'a str,
+    role: &'a str,
+    expires_at: Option<i64>,
+    candidate: &'a agent_semantic_runtime::CodexRolloutSessionMetadata,
+    recovery_source: &'a str,
+    now: i64,
+}
+
 fn register_recovered_rollout_session(
     registry: &AgentSessionRegistry,
-    project_id: &str,
-    root_session_id: &str,
-    name: &str,
-    role: &str,
-    expires_at: Option<i64>,
-    candidate: &agent_semantic_runtime::CodexRolloutSessionMetadata,
-    recovery_source: &str,
-    now: i64,
+    request: RecoveredRolloutRegistration<'_>,
 ) -> Result<Option<AgentSessionRecord>, String> {
-    let observed_model = candidate
-        .model
-        .as_deref()
-        .or(candidate.collaboration_model.as_deref());
+    let observed_model = request
+        .candidate
+        .model()
+        .or(request.candidate.collaboration_model());
     let metadata_json = serde_json::json!({
         "native": true,
-        "rootSessionId": root_session_id,
-        "childSessionId": candidate.session_id,
-        "agentRole": candidate.agent_role,
-        "agentPath": candidate.agent_path,
+        "rootSessionId": request.root_session_id,
+        "childSessionId": request.candidate.session_id(),
+        "agentRole": request.candidate.agent_role(),
+        "agentPath": request.candidate.agent_path(),
         "model": observed_model,
-        "reasoningEffort": candidate.reasoning_effort,
-        "registryRecovery": recovery_source,
-        "existingChildDiscovery": recovery_source,
+        "reasoningEffort": request.candidate.reasoning_effort(),
+        "registryRecovery": request.recovery_source,
+        "existingChildDiscovery": request.recovery_source,
         "messageTargetStatus": "unbound",
     })
     .to_string();
     registry.register_session(AgentSessionRegisterRequest {
-        project_id: project_id.into(),
-        root_session_id: root_session_id.into(),
-        session_id: candidate.session_id.as_str().into(),
+        project_id: request.project_id.into(),
+        root_session_id: request.root_session_id.into(),
+        session_id: request.candidate.session_id().as_str().into(),
         message_target_id: None,
-        parent_session_id: candidate
-            .parent_thread_id
-            .as_deref()
-            .or(Some(root_session_id))
+        parent_session_id: request
+            .candidate
+            .parent_thread_id()
+            .map(|session_id| session_id.as_str())
+            .or(Some(request.root_session_id))
             .map(Into::into),
-        name: name.into(),
-        role: role.into(),
+        name: request.name.into(),
+        role: request.role.into(),
         model_observation: observed_model.map(|model| AgentSessionModelObservationRef {
             model,
             source: AgentSessionModelObservationSource::CodexRollout,
-            observed_at: now,
+            observed_at: request.now,
             evidence_ref: None,
         }),
         status: "existing-child-discovered".into(),
-        expires_at,
+        expires_at: request.expires_at,
         metadata_json: (&metadata_json).into(),
-        now,
+        now: request.now,
     })?;
     registry.lookup_session(AgentSessionLookupRequest {
-        project_id: project_id.into(),
-        session_id: Some(candidate.session_id.as_str().into()),
-        root_session_id: Some(root_session_id.into()),
-        name: Some(name.into()),
+        project_id: request.project_id.into(),
+        session_id: Some(request.candidate.session_id().as_str().into()),
+        root_session_id: Some(request.root_session_id.into()),
+        name: Some(request.name.into()),
     })
 }

@@ -17,30 +17,30 @@ fn proof() -> ExactSelectorMerkleProofV1 {
         ("crates/other/src/lib.rs".to_owned(), digest('2')),
     ])
     .expect("valid Merkle tree");
-    ExactSelectorMerkleProofV1 {
-        canonical_item_selector: agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
+    serde_json::from_value(serde_json::json!({
+        "canonicalItemSelector": agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
             agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new("rust", "function", "run"),
             "rust://crates/example/src/lib.rs#item/function/run",
         ),
-        schema_id: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID.to_owned(),
-        schema_version: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION.to_owned(),
-        digest_algorithm: EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM.to_owned(),
-        language_id: "rust".to_owned(),
-        workspace_root_digest: tree.root_digest().clone(),
-        owner_path: owner_path.clone(),
-        owner_subtree_digest: tree
+        "schemaId": EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID,
+        "schemaVersion": EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION,
+        "digestAlgorithm": EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM,
+        "languageId": "rust",
+        "workspaceRootDigest": tree.root_digest(),
+        "ownerPath": owner_path,
+        "ownerSubtreeDigest": tree
             .owner_subtree_digest(&owner_path)
-            .expect("owner leaf")
-            .clone(),
-        owner_inclusion_proof: tree.inclusion_proof(&owner_path).expect("owner proof"),
-        source_blob_digest,
-        parser_identity_digest: digest('e'),
-        query_pack_digest: digest('f'),
-        parser_fact_digest: digest('0'),
-        structural_selector: "rust://crates/example/src/lib.rs#item/function/run".to_owned(),
-        projection_mode: ExactProjectionModeV1::Code,
-        projection_digest: digest('1'),
-    }
+            .expect("owner leaf"),
+        "ownerInclusionProof": tree.inclusion_proof(&owner_path).expect("owner proof"),
+        "sourceBlobDigest": source_blob_digest,
+        "parserIdentityDigest": digest('e'),
+        "queryPackDigest": digest('f'),
+        "parserFactDigest": digest('0'),
+        "structuralSelector": "rust://crates/example/src/lib.rs#item/function/run",
+        "projectionMode": ExactProjectionModeV1::Code,
+        "projectionDigest": digest('1'),
+    }))
+    .expect("valid exact-selector Merkle proof packet")
 }
 
 #[test]
@@ -71,7 +71,9 @@ fn digest_parser_rejects_non_canonical_values() {
 #[test]
 fn proof_rejects_parent_directory_owner_path() {
     let mut proof = proof();
-    proof.owner_path = "../outside.rs".to_owned();
+    let mut encoded = serde_json::to_value(&proof).expect("serializable proof");
+    encoded["ownerPath"] = serde_json::json!("../outside.rs");
+    proof = serde_json::from_value(encoded).expect("deserializable proof");
     assert_eq!(
         proof.validate_shape(),
         Err(ExactSelectorMerkleProofError::OwnerPath)
@@ -80,8 +82,10 @@ fn proof_rejects_parent_directory_owner_path() {
 
 #[test]
 fn parser_fact_and_projection_digests_are_domain_separated_and_recomputable() {
+    let language_id =
+        agent_semantic_content_identity::exact_selector_merkle::ParserLanguageIdV1::from("rust");
     let parser_fact = derive_parser_fact_digest_v1(
-        "rust",
+        &language_id,
         &digest('e'),
         &digest('f'),
         &digest('d'),
@@ -102,8 +106,10 @@ fn parser_fact_and_projection_digests_are_domain_separated_and_recomputable() {
     assert_ne!(parser_fact, projection);
 
     let mut proof = proof();
-    proof.parser_fact_digest = parser_fact;
-    proof.projection_digest = projection;
+    let mut encoded = serde_json::to_value(&proof).expect("serializable proof");
+    encoded["parserFactDigest"] = serde_json::json!(parser_fact);
+    encoded["projectionDigest"] = serde_json::json!(projection);
+    proof = serde_json::from_value(encoded).expect("deserializable proof");
     assert_eq!(
         verify_projection_digest_v1(&proof, b"fn run() {}"),
         Ok(true)

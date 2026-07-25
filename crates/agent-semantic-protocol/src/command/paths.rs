@@ -95,6 +95,8 @@ impl ProjectPaths {
         let hook_cache_dir = project_state_paths.hook_cache_dir;
         let hook_state_dir = project_state_paths.hook_state_dir;
         let activation_path = project_state_paths.activation_path;
+        let project_client_db_dir = project_state_paths.project_client_db_dir;
+        let project_client_db_path = project_state_paths.project_client_db_path;
         let runtime_home = state_root.join("runtime");
         let runtime_bin_dir = runtime_home.join("bin");
         let provider_lock_dir = runtime_home.join("provider-locks");
@@ -118,6 +120,8 @@ impl ProjectPaths {
             "clientCacheDir",
             path_string(state_layout.client_cache_dir()),
         );
+        fields.insert("projectClientDbDir", path_string(&project_client_db_dir));
+        fields.insert("projectClientDbPath", path_string(&project_client_db_path));
         fields.insert("artifactsDir", path_string(state_layout.artifacts_dir()));
         fields.insert("runtimeHome", path_string(&runtime_home));
         fields.insert("runtimeBinDir", path_string(&runtime_bin_dir));

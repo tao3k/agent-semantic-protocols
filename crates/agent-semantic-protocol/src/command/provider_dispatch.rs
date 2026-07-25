@@ -401,12 +401,14 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             "provider-owned structural query is missing an exact selector".to_string()
         })?;
         let snapshot = agent_semantic_client::source_index::current_source_index_snapshot_for_owner_from_activation(
-            &project_root,
-            &activation_path,
-            &runtime,
-            owner_path,
-            language_id,
-            &*provider.provider_id,
+            (
+                project_root.as_path(),
+                activation_path.as_path(),
+                &runtime,
+                owner_path.into(),
+                language_id.into(),
+                provider.provider_id.clone(),
+            ),
         )?;
         let source = snapshot
             .source_blobs
@@ -475,14 +477,14 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         let envelope =
             agent_semantic_client::source_index::publish_provider_source_snapshot_envelope(
                 &snapshot,
-                &*provider.provider_id,
+                provider.provider_id.as_str(),
                 &provider.source_extensions,
                 &cache_home,
             )?;
         provider_argv.extend([
             "--json".to_string(),
             "--asp-provider-id".to_string(),
-            provider.provider_id.clone(),
+            provider.provider_id.to_string(),
             "--asp-parser-identity-digest".to_string(),
             parser_identity_digest.as_str().to_string(),
             "--asp-query-pack-digest".to_string(),

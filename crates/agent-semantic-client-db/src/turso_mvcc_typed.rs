@@ -110,7 +110,7 @@ impl TursoMvccStore {
         &self,
         events: &[TursoMvccEvent],
     ) -> Result<(), TursoMvccWriteError> {
-        let lane_index = event_shard(&events[0].partition_key) % self.inner.lanes.len();
+        let lane_index = event_shard(events[0].partition_key()) % self.inner.lanes.len();
         let lane = self.inner.lanes[lane_index].lock().await;
         lane.execute("BEGIN CONCURRENT", ())
             .await
@@ -120,7 +120,7 @@ impl TursoMvccStore {
             for shard in 0..INSERT_EVENT_SQL.len() {
                 let shard_events = events
                     .iter()
-                    .filter(|event| event_shard(&event.partition_key) == shard)
+                    .filter(|event| event_shard(event.partition_key()) == shard)
                     .collect::<Vec<_>>();
                 if shard_events.is_empty() {
                     continue;
@@ -132,10 +132,10 @@ impl TursoMvccStore {
                 for event in shard_events {
                     statement
                         .execute((
-                            event.partition_key.as_str(),
-                            event.event_id.as_str(),
-                            event.payload.as_slice(),
-                            event.created_at_ms,
+                            event.partition_key(),
+                            event.event_id(),
+                            event.payload(),
+                            event.created_at_ms(),
                         ))
                         .await
                         .map_err(classify_turso_write_error)?;
@@ -172,20 +172,21 @@ fn validate_events(
     }
     let mut identities = HashSet::with_capacity(events.len());
     for event in events {
-        if event.partition_key.is_empty() || event.event_id.is_empty() {
+        if event.partition_key().is_empty() || event.event_id().is_empty() {
             return Err(TursoMvccWriteError {
                 code: TursoMvccWriteErrorCode::InvalidRequest,
                 retryable: false,
                 message: "MVCC event partition_key and event_id must be non-empty".to_owned(),
             });
         }
-        if !identities.insert((&event.partition_key, &event.event_id)) {
+        if !identities.insert((event.partition_key(), event.event_id())) {
             return Err(TursoMvccWriteError {
                 code: TursoMvccWriteErrorCode::DuplicateIdentity,
                 retryable: false,
                 message: format!(
                     "duplicate MVCC event identity in batch: {}/{}",
-                    event.partition_key, event.event_id
+                    event.partition_key(),
+                    event.event_id()
                 ),
             });
         }

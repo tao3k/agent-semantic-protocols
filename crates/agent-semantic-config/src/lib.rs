@@ -13,6 +13,10 @@ pub use hook_client_config::hook_client_contract_fingerprint;
 mod layout;
 
 pub use hook_client_config::HookClientStructuredFormat;
+mod semantic_identity;
+
+pub use semantic_identity::{LanguageId, ProviderId};
+
 pub use hook_client_config::{
     AgentActionAuthorityRule, AgentActionEffectRule, AspProjectConfigFile, AspProjectHookConfig,
     CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HookClientActionAuthority,

@@ -123,94 +123,96 @@ pub(crate) fn parse_rollout_file(
                             .ok()
                             .map(|duration| duration.as_secs() as i64)
                     });
-                metadata = Some(crate::CodexRolloutSessionMetadata {
-                    session_id: session_id.into(),
-                    rollout_path: rollout_path.to_path_buf(),
-                    rollout_created_at_unix,
-                    root_session_id: first_json_string(
-                        payload,
-                        &[
-                            "/rootSessionId",
-                            "/root_session_id",
-                            "/session_id",
-                            "/sourceSessionId",
-                            "/source_session_id",
-                            "/source/rootSessionId",
-                            "/source/root_session_id",
-                            "/source/session_id",
-                            "/source/sourceSessionId",
-                            "/source/source_session_id",
-                            "/source/subagent/threadSpawn/rootSessionId",
-                            "/source/subagent/thread_spawn/root_session_id",
-                        ],
-                    ),
-                    parent_thread_id: first_json_string(
-                        payload,
-                        &[
-                            "/parentThreadId",
-                            "/parent_thread_id",
-                            "/threadSpawnParentId",
-                            "/thread_spawn_parent_id",
-                            "/source/threadSpawnParentId",
-                            "/source/thread_spawn_parent_id",
-                            "/source/threadSpawn/parentThreadId",
-                            "/source/thread_spawn/parent_thread_id",
-                            "/source/subagent/threadSpawnParentId",
-                            "/source/subagent/thread_spawn_parent_id",
-                            "/source/subagent/threadSpawn/parentThreadId",
-                            "/source/subagent/thread_spawn/parent_thread_id",
-                        ],
-                    ),
-                    thread_source: payload
-                        .pointer("/thread_source")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    agent_role: payload
-                        .pointer("/agent_role")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                        .or_else(|| {
-                            payload
-                                .pointer("/source/subagent/thread_spawn/agent_role")
-                                .and_then(Value::as_str)
-                                .map(str::to_string)
-                        }),
-                    agent_nickname: payload
-                        .pointer("/agent_nickname")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                        .or_else(|| {
-                            payload
-                                .pointer("/source/subagent/thread_spawn/agent_nickname")
-                                .and_then(Value::as_str)
-                                .map(str::to_string)
-                        }),
-                    agent_path: payload
-                        .pointer("/source/subagent/thread_spawn/agent_path")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    spawn_depth: payload
-                        .pointer("/source/subagent/thread_spawn/depth")
-                        .and_then(Value::as_i64),
-                    model_provider: payload
-                        .pointer("/model_provider")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    cli_version: payload
-                        .pointer("/cli_version")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    cwd: payload
-                        .pointer("/cwd")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    model: None,
-                    collaboration_model: None,
-                    reasoning_effort: None,
-                    sandbox_policy: None,
-                    approval_policy: None,
-                    permission_profile: None,
-                });
+                metadata = Some(
+                    crate::agent_session_status::RawCodexRolloutSessionMetadata {
+                        session_id: session_id.into(),
+                        rollout_path: rollout_path.to_path_buf(),
+                        rollout_created_at_unix,
+                        root_session_id: first_json_string(
+                            payload,
+                            &[
+                                "/rootSessionId",
+                                "/root_session_id",
+                                "/session_id",
+                                "/sourceSessionId",
+                                "/source_session_id",
+                                "/source/rootSessionId",
+                                "/source/root_session_id",
+                                "/source/session_id",
+                                "/source/sourceSessionId",
+                                "/source/source_session_id",
+                                "/source/subagent/threadSpawn/rootSessionId",
+                                "/source/subagent/thread_spawn/root_session_id",
+                            ],
+                        ),
+                        parent_thread_id: first_json_string(
+                            payload,
+                            &[
+                                "/parentThreadId",
+                                "/parent_thread_id",
+                                "/threadSpawnParentId",
+                                "/thread_spawn_parent_id",
+                                "/source/threadSpawnParentId",
+                                "/source/thread_spawn_parent_id",
+                                "/source/threadSpawn/parentThreadId",
+                                "/source/thread_spawn/parent_thread_id",
+                                "/source/subagent/threadSpawnParentId",
+                                "/source/subagent/thread_spawn_parent_id",
+                                "/source/subagent/threadSpawn/parentThreadId",
+                                "/source/subagent/thread_spawn/parent_thread_id",
+                            ],
+                        ),
+                        thread_source: payload
+                            .pointer("/thread_source")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                        agent_role: payload
+                            .pointer("/agent_role")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                            .or_else(|| {
+                                payload
+                                    .pointer("/source/subagent/thread_spawn/agent_role")
+                                    .and_then(Value::as_str)
+                                    .map(str::to_string)
+                            }),
+                        agent_nickname: payload
+                            .pointer("/agent_nickname")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                            .or_else(|| {
+                                payload
+                                    .pointer("/source/subagent/thread_spawn/agent_nickname")
+                                    .and_then(Value::as_str)
+                                    .map(str::to_string)
+                            }),
+                        agent_path: payload
+                            .pointer("/source/subagent/thread_spawn/agent_path")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                        spawn_depth: payload
+                            .pointer("/source/subagent/thread_spawn/depth")
+                            .and_then(Value::as_i64),
+                        model_provider: payload
+                            .pointer("/model_provider")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                        cli_version: payload
+                            .pointer("/cli_version")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                        cwd: payload
+                            .pointer("/cwd")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                        model: None,
+                        collaboration_model: None,
+                        reasoning_effort: None,
+                        sandbox_policy: None,
+                        approval_policy: None,
+                        permission_profile: None,
+                    },
+                );
             }
             Some("turn_context") => {
                 if let Some(existing) = metadata.as_mut() {
@@ -282,9 +284,10 @@ pub(crate) fn parse_rollout_file(
             _ => {}
         }
     }
-    let Some(metadata) = metadata else {
+    let Some(raw_metadata) = metadata else {
         return Ok(None);
     };
+    let metadata = crate::CodexRolloutSessionMetadata::try_from(raw_metadata)?;
     let activity = activity.unwrap_or_else(|| CodexRolloutActivityReport {
         status: "active".to_string().into(),
         rollout_path: rollout_path.to_path_buf(),

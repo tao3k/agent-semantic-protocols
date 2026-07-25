@@ -31,8 +31,8 @@ pub struct SemanticWorkspacePackage {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticWorkspaceScope {
     pub workspace_id: String,
-    pub language_id: String,
-    pub provider_id: String,
+    pub language_id: WorkspaceScopeLanguageId,
+    pub provider_id: WorkspaceScopeProviderId,
     pub package_manager: String,
     pub source_extensions: Vec<String>,
     pub discovery_root: PathBuf,
@@ -64,12 +64,12 @@ pub struct WorkspaceCandidateRejection {
 impl SemanticWorkspaceScope {
     pub fn matches_provider_identity(
         &self,
-        provider_id: &str,
-        language_id: &str,
+        provider_id: &WorkspaceScopeProviderId,
+        language_id: &WorkspaceScopeLanguageId,
         discovery_root: &Path,
     ) -> bool {
-        self.provider_id == provider_id
-            && self.language_id == language_id
+        &self.provider_id == provider_id
+            && &self.language_id == language_id
             && self.discovery_root == discovery_root
     }
 
@@ -202,8 +202,8 @@ impl SemanticWorkspaceScope {
         });
         Ok(Self {
             workspace_id,
-            language_id,
-            provider_id,
+            language_id: language_id.into(),
+            provider_id: provider_id.into(),
             package_manager,
             source_extensions,
             discovery_root,
@@ -227,13 +227,13 @@ impl SemanticWorkspaceScope {
         candidate: &Path,
         language_id: &WorkspaceScopeLanguageId,
     ) -> Result<WorkspaceCandidateAdmission, WorkspaceCandidateRejection> {
-        if language_id.as_str() != self.language_id {
+        if language_id != &self.language_id {
             return Err(WorkspaceCandidateRejection {
                 reason_kind: "candidate-language-mismatch",
                 detail: format!(
                     "candidate language {} does not match workspace language {}",
                     language_id.as_str(),
-                    self.language_id
+                    self.language_id.as_str()
                 ),
             });
         }
@@ -255,8 +255,8 @@ impl SemanticWorkspaceScope {
                 return Ok(WorkspaceCandidateAdmission {
                     workspace_id: (self.workspace_id.clone()).into(),
                     package_id: (self.workspace_id.clone()).into(),
-                    language_id: (self.language_id.clone()).into(),
-                    provider_id: (self.provider_id.clone()).into(),
+                    language_id: self.language_id.clone(),
+                    provider_id: self.provider_id.clone(),
                     canonical_path,
                 });
             }
@@ -291,8 +291,8 @@ impl SemanticWorkspaceScope {
         Ok(WorkspaceCandidateAdmission {
             workspace_id: (self.workspace_id.clone()).into(),
             package_id: package.package_id.clone(),
-            language_id: (self.language_id.clone()).into(),
-            provider_id: (self.provider_id.clone()).into(),
+            language_id: self.language_id.clone(),
+            provider_id: self.provider_id.clone(),
             canonical_path,
         })
     }
@@ -327,11 +327,7 @@ impl SemanticWorkspaceScopeSet {
             .iter()
             .filter_map(|scope| {
                 scope
-                    .admit_candidate_from(
-                        candidate_base,
-                        candidate,
-                        &WorkspaceScopeLanguageId::from(&scope.language_id),
-                    )
+                    .admit_candidate_from(candidate_base, candidate, &scope.language_id)
                     .ok()
                     .map(|admission| (scope_admission_specificity(scope, &admission), admission))
             })

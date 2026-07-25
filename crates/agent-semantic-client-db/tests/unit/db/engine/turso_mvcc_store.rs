@@ -3,12 +3,12 @@ use agent_semantic_client_db::turso_mvcc_store::{
 };
 
 fn turso_mvcc_event(partition: &str, id: usize) -> TursoMvccEvent {
-    TursoMvccEvent {
-        partition_key: partition.to_string(),
-        event_id: format!("{id:08}"),
-        payload: format!("payload-{partition}-{id}").into_bytes(),
-        created_at_ms: id as i64,
-    }
+    TursoMvccEvent::new(
+        partition.into(),
+        format!("{id:08}").into(),
+        format!("payload-{partition}-{id}").into_bytes(),
+        id as i64,
+    )
 }
 
 fn turso_mvcc_batch(partition: &str, count: usize) -> Vec<TursoMvccEvent> {
@@ -27,26 +27,26 @@ async fn turso_mvcc_store_reports_and_executes_the_four_lane_contract() {
 
     let receipt = store.optimization_receipt();
     assert_eq!(
-        receipt.schema_id,
+        receipt.schema_id(),
         "asp.turso-mvcc-optimization-receipt.v1"
     );
-    assert_eq!(receipt.profile, "async-io-mvcc");
-    assert_eq!(receipt.connection_lanes, 4);
-    assert_eq!(receipt.partition_shards, 4);
-    assert_eq!(receipt.insert_rows_per_statement, 32);
-    assert_eq!(receipt.statement_cache, "prepared-cached-per-connection");
-    assert_eq!(receipt.transaction_mode, "begin-concurrent");
-    assert!(receipt.mvcc);
-    assert!(!receipt.passive_checkpoint);
-    assert!(!receipt.multiprocess_wal);
-    assert!(!receipt.fts);
+    assert_eq!(receipt.profile(), "async-io-mvcc");
+    assert_eq!(receipt.connection_lanes(), 4);
+    assert_eq!(receipt.partition_shards(), 4);
+    assert_eq!(receipt.insert_rows_per_statement(), 32);
+    assert_eq!(receipt.statement_cache(), "prepared-cached-per-connection");
+    assert_eq!(receipt.transaction_mode(), "begin-concurrent");
+    assert!(receipt.mvcc());
+    assert!(!receipt.passive_checkpoint());
+    assert!(!receipt.multiprocess_wal());
+    assert!(!receipt.fts());
     let optimization_schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../../../schemas/turso-mvcc-optimization-receipt.v1.schema.json"
     ))
     .expect("parse Turso MVCC optimization receipt schema");
     assert_eq!(
         optimization_schema["properties"]["schemaId"]["const"],
-        receipt.schema_id
+        receipt.schema_id()
     );
     let batch_schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../../../schemas/turso-mvcc-batch-write-receipt.v1.schema.json"
@@ -69,10 +69,7 @@ async fn turso_mvcc_store_reports_and_executes_the_four_lane_contract() {
     );
     for write in [a_receipt, b_receipt, c_receipt, d_receipt] {
         let write = write.expect("commit concurrent Turso MVCC batch");
-        assert_eq!(
-            write.schema_id,
-            "asp.turso-mvcc-batch-write-receipt.v1"
-        );
+        assert_eq!(write.schema_id, "asp.turso-mvcc-batch-write-receipt.v1");
         assert_eq!(write.attempted_rows, 64);
         assert_eq!(write.committed_rows, 64);
         assert_eq!(write.optimization, receipt);
@@ -102,11 +99,11 @@ async fn turso_mvcc_store_exposes_the_passive_checkpoint_profile() {
         .await
         .expect("open passive-checkpoint Turso MVCC store");
     let receipt = store.optimization_receipt();
-    assert_eq!(receipt.profile, "async-io-mvcc-passive-checkpoint");
-    assert!(receipt.mvcc);
-    assert!(receipt.passive_checkpoint);
-    assert!(!receipt.multiprocess_wal);
-    assert!(!receipt.fts);
+    assert_eq!(receipt.profile(), "async-io-mvcc-passive-checkpoint");
+    assert!(receipt.mvcc());
+    assert!(receipt.passive_checkpoint());
+    assert!(!receipt.multiprocess_wal());
+    assert!(!receipt.fts());
     drop(store);
     let _ = std::fs::remove_dir_all(temp);
 }

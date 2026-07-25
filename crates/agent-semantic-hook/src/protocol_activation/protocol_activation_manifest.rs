@@ -32,13 +32,13 @@ pub struct ActivationGeneratedBy {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Repository-local provider activation without provider routes or policies.
 ///
-/// Raw DTO boundary: serialized hook activation keeps primitive transport
-/// fields that `resolve_activation` validates against provider manifests.
+/// Serialized hook activation DTO. Semantic identities remain typed while
+/// transparent serialization preserves the v1 wire representation.
 pub struct ActivatedProviderConfig {
     pub manifest_id: String,
     pub manifest_digest: String,
-    pub language_id: String,
-    pub provider_id: String,
+    pub language_id: agent_semantic_config::LanguageId,
+    pub provider_id: agent_semantic_config::ProviderId,
     pub binary: String,
     #[serde(default)]
     pub execution: ProviderExecution,
@@ -91,28 +91,98 @@ pub struct ActivationCoverage {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Static provider-owned hook manifest.
 ///
-/// Raw DTO boundary: provider manifest JSON keeps primitive transport fields
-/// that `parse_activation` validates before runtime routing.
+/// Provider manifest JSON DTO. Semantic identities remain typed while
+/// transparent serialization preserves the v1 wire representation.
 pub struct ProviderManifest {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub protocol_id: String,
-    pub protocol_version: String,
-    pub manifest_id: String,
-    pub manifest_version: String,
-    pub language_id: String,
-    pub provider_id: String,
-    pub namespace: String,
-    pub binary: String,
+    pub(crate) schema_id: String,
+    pub(crate) schema_version: String,
+    pub(crate) protocol_id: String,
+    pub(crate) protocol_version: String,
+    pub(crate) manifest_id: String,
+    pub(crate) manifest_version: String,
+    pub(crate) language_id: agent_semantic_config::LanguageId,
+    pub(crate) provider_id: agent_semantic_config::ProviderId,
+    pub(crate) namespace: String,
+    pub(crate) binary: String,
     #[serde(default)]
-    pub execution: ProviderExecution,
-    pub source: ManifestSourceDefaults,
-    pub search_capabilities: ProviderSearchCapabilities,
+    pub(crate) execution: ProviderExecution,
+    pub(crate) source: ManifestSourceDefaults,
+    pub(crate) search_capabilities: ProviderSearchCapabilities,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
-    pub query_pack_descriptor: ProviderQueryPackDescriptor,
-    pub policy: HookPolicy,
-    pub route_bindings: crate::protocol::HookRouteBindings,
+    pub(crate) semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
+    pub(crate) query_pack_descriptor: ProviderQueryPackDescriptor,
+    pub(crate) policy: HookPolicy,
+    pub(crate) route_bindings: crate::protocol::HookRouteBindings,
+}
+
+impl ProviderManifest {
+    pub fn schema_id(&self) -> &str {
+        &self.schema_id
+    }
+
+    pub fn schema_version(&self) -> &str {
+        &self.schema_version
+    }
+
+    pub fn protocol_id(&self) -> &str {
+        &self.protocol_id
+    }
+
+    pub fn protocol_version(&self) -> &str {
+        &self.protocol_version
+    }
+
+    pub fn manifest_id(&self) -> &str {
+        &self.manifest_id
+    }
+
+    pub fn manifest_version(&self) -> &str {
+        &self.manifest_version
+    }
+
+    pub fn language_id(&self) -> &agent_semantic_config::LanguageId {
+        &self.language_id
+    }
+
+    pub fn provider_id(&self) -> &agent_semantic_config::ProviderId {
+        &self.provider_id
+    }
+
+    pub fn namespace(&self) -> &str {
+        &self.namespace
+    }
+
+    pub fn binary(&self) -> &str {
+        &self.binary
+    }
+
+    pub const fn execution(&self) -> ProviderExecution {
+        self.execution
+    }
+
+    pub fn source(&self) -> &ManifestSourceDefaults {
+        &self.source
+    }
+
+    pub fn search_capabilities(&self) -> &ProviderSearchCapabilities {
+        &self.search_capabilities
+    }
+
+    pub fn semantic_facts_descriptor(&self) -> Option<&ProviderSemanticFactsDescriptor> {
+        self.semantic_facts_descriptor.as_ref()
+    }
+
+    pub fn query_pack_descriptor(&self) -> &ProviderQueryPackDescriptor {
+        &self.query_pack_descriptor
+    }
+
+    pub fn policy(&self) -> &HookPolicy {
+        &self.policy
+    }
+
+    pub fn route_bindings(&self) -> &crate::protocol::HookRouteBindings {
+        &self.route_bindings
+    }
 }
 
 /// Provider-owned search surfaces that ASP may delegate instead of approximating.
@@ -129,20 +199,98 @@ pub struct ProviderSearchCapabilities {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderSourceDescriptorId(String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderSourceDescriptorVersion(String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderSourceSchemaId(String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderSourceSnapshotAlgorithm(String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderSourceSnapshotAuthority(String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderExactSelectorResolution(String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderSourceOverlayMode(String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderSourceSnapshotDescriptor {
-    pub descriptor_id: String,
-    pub descriptor_version: String,
-    pub language_id: String,
-    pub packet_schema_id: String,
-    pub exact_source_packet_schema_id: String,
-    pub canonical_item_selector_schema_id: String,
-    pub source_snapshot_envelope_schema_id: String,
-    pub derived_artifact_evidence_schema_id: String,
-    pub algorithm: String,
-    pub authority: String,
-    pub exact_selector_resolution: String,
-    pub overlay_mode: String,
+    descriptor_id: ProviderSourceDescriptorId,
+    descriptor_version: ProviderSourceDescriptorVersion,
+    language_id: agent_semantic_config::LanguageId,
+    packet_schema_id: ProviderSourceSchemaId,
+    exact_source_packet_schema_id: ProviderSourceSchemaId,
+    canonical_item_selector_schema_id: ProviderSourceSchemaId,
+    source_snapshot_envelope_schema_id: ProviderSourceSchemaId,
+    derived_artifact_evidence_schema_id: ProviderSourceSchemaId,
+    algorithm: ProviderSourceSnapshotAlgorithm,
+    authority: ProviderSourceSnapshotAuthority,
+    exact_selector_resolution: ProviderExactSelectorResolution,
+    overlay_mode: ProviderSourceOverlayMode,
+}
+
+impl ProviderSourceSnapshotDescriptor {
+    pub fn descriptor_id(&self) -> &str {
+        &self.descriptor_id.0
+    }
+
+    pub fn descriptor_version(&self) -> &str {
+        &self.descriptor_version.0
+    }
+
+    pub fn language_id(&self) -> &str {
+        self.language_id.as_str()
+    }
+
+    pub fn packet_schema_id(&self) -> &str {
+        &self.packet_schema_id.0
+    }
+
+    pub fn exact_source_packet_schema_id(&self) -> &str {
+        &self.exact_source_packet_schema_id.0
+    }
+
+    pub fn canonical_item_selector_schema_id(&self) -> &str {
+        &self.canonical_item_selector_schema_id.0
+    }
+
+    pub fn source_snapshot_envelope_schema_id(&self) -> &str {
+        &self.source_snapshot_envelope_schema_id.0
+    }
+
+    pub fn derived_artifact_evidence_schema_id(&self) -> &str {
+        &self.derived_artifact_evidence_schema_id.0
+    }
+
+    pub fn algorithm(&self) -> &str {
+        &self.algorithm.0
+    }
+
+    pub fn authority(&self) -> &str {
+        &self.authority.0
+    }
+
+    pub fn exact_selector_resolution(&self) -> &str {
+        &self.exact_selector_resolution.0
+    }
+
+    pub fn overlay_mode(&self) -> &str {
+        &self.overlay_mode.0
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -156,32 +304,117 @@ pub struct ProviderSemanticFactsDescriptor {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderSemanticFactAxis(String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderSemanticFactTerm(String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderSemanticFactsIntentAxis {
-    pub axis: String,
-    pub terms: Vec<String>,
+    axis: ProviderSemanticFactAxis,
+    terms: Vec<ProviderSemanticFactTerm>,
     #[serde(default)]
-    pub roles: Vec<String>,
+    roles: Vec<ProviderQueryPackTermRole>,
 }
+
+impl ProviderSemanticFactsIntentAxis {
+    pub fn axis(&self) -> &str {
+        &self.axis.0
+    }
+
+    pub fn terms(&self) -> impl Iterator<Item = &str> {
+        self.terms.iter().map(|term| term.0.as_str())
+    }
+
+    pub fn roles(&self) -> &[ProviderQueryPackTermRole] {
+        &self.roles
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderQueryPackDescriptorId(String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderQueryPackDescriptorVersion(String);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ProviderSemanticFactsDescriptorId(String);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderQueryPackDescriptor {
-    pub descriptor_id: String,
-    pub descriptor_version: String,
-    pub language_id: String,
+    descriptor_id: ProviderQueryPackDescriptorId,
+    descriptor_version: ProviderQueryPackDescriptorVersion,
+    language_id: agent_semantic_config::LanguageId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub semantic_facts_descriptor_id: Option<String>,
+    semantic_facts_descriptor_id: Option<ProviderSemanticFactsDescriptorId>,
     #[serde(default)]
-    pub term_role_overrides: Vec<ProviderQueryPackTermRoleOverride>,
-    pub recipes: Vec<ProviderQueryPackRecipe>,
+    term_role_overrides: Vec<ProviderQueryPackTermRoleOverride>,
+    recipes: Vec<ProviderQueryPackRecipe>,
+}
+
+impl ProviderQueryPackDescriptor {
+    pub fn descriptor_id(&self) -> &str {
+        &self.descriptor_id.0
+    }
+
+    pub fn descriptor_version(&self) -> &str {
+        &self.descriptor_version.0
+    }
+
+    pub fn language_id(&self) -> &str {
+        self.language_id.as_str()
+    }
+
+    pub fn semantic_facts_descriptor_id(&self) -> Option<&str> {
+        self.semantic_facts_descriptor_id
+            .as_ref()
+            .map(|value| value.0.as_str())
+    }
+
+    pub fn term_role_overrides(&self) -> &[ProviderQueryPackTermRoleOverride] {
+        &self.term_role_overrides
+    }
+
+    pub fn recipes(&self) -> &[ProviderQueryPackRecipe] {
+        &self.recipes
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProviderQueryPackTermRole {
+    Context,
+    Concept,
+    Symbol,
+    Literal,
+    DiagnosticCode,
+}
+
+impl ProviderQueryPackTermRole {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Context => "context",
+            Self::Concept => "concept",
+            Self::Symbol => "symbol",
+            Self::Literal => "literal",
+            Self::DiagnosticCode => "diagnostic-code",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderQueryPackTermRoleOverride {
     pub term: String,
-    pub role: String,
+    pub role: ProviderQueryPackTermRole,
     #[serde(default)]
     pub case_sensitive: bool,
 }
@@ -206,7 +439,7 @@ pub struct ProviderQueryPackTrigger {
 pub struct ProviderQueryPackClause {
     pub terms: Vec<String>,
     #[serde(default)]
-    pub roles: Vec<String>,
+    pub roles: Vec<ProviderQueryPackTermRole>,
     #[serde(default)]
     pub intent_axes: Vec<String>,
 }
@@ -232,16 +465,13 @@ pub struct HookRuntime {
     pub providers: Vec<ActivatedProvider>,
 }
 
-/// Raw DTO boundary for an activated provider selected from a manifest.
-///
-/// The string fields preserve manifest and namespace identities exactly as they
-/// are serialized for hook runtime activation.
+/// In-memory activated provider selected from a validated manifest.
 #[derive(Debug)]
 pub struct ActivatedProvider {
     pub manifest_id: String,
     pub manifest_digest: String,
-    pub language_id: String,
-    pub provider_id: String,
+    pub language_id: agent_semantic_config::LanguageId,
+    pub provider_id: agent_semantic_config::ProviderId,
     pub binary: String,
     pub execution: ProviderExecution,
     pub provider_command_prefix: Vec<String>,

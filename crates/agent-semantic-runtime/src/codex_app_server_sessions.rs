@@ -44,7 +44,7 @@ pub fn codex_app_server_child_session_evidence(
                 .records
                 .into_iter()
                 .map(|metadata| CodexChildSessionEvidence {
-                    rollout_reasoning_effort: metadata.reasoning_effort.clone(),
+                    rollout_reasoning_effort: metadata.reasoning_effort().map(str::to_owned),
                     metadata,
                     runtime_reasoning_effort: None,
                     runtime_reasoning_visibility: CodexReasoningVisibility::TransportFailed,
@@ -67,11 +67,11 @@ pub fn codex_app_server_child_session_evidence(
     let mut records = Vec::new();
     for thread in &threads {
         if let Some(mut record) = child_rollout_metadata(thread, root_session_id.as_str())? {
-            let rollout_reasoning_effort = record.reasoning_effort.clone();
-            let runtime = read_thread_runtime_observation(record.session_id.as_str());
+            let rollout_reasoning_effort = record.reasoning_effort().map(str::to_owned);
+            let runtime = read_thread_runtime_observation(record.session_id().as_str());
             let (runtime_reasoning_effort, runtime_reasoning_visibility) = match runtime {
                 Some(runtime) => {
-                    record.model = runtime.model.or(record.model);
+                    record.override_model_if_observed(runtime.model);
                     let visibility = if runtime.reasoning_effort.is_some() {
                         CodexReasoningVisibility::Observed
                     } else {
@@ -392,18 +392,19 @@ fn child_rollout_metadata(
     let Some(mut metadata) = rollout_metadata else {
         return Ok(None);
     };
-    metadata.session_id = child_session_id_typed;
-    metadata.root_session_id = Some(root_session_id.to_string());
-    metadata.parent_thread_id = Some(root_session_id.to_string());
-    metadata.thread_source = Some("subagent".to_string());
-    metadata.agent_path = agent_path;
-    metadata.agent_role = json_string(thread, &["/agentRole", "/agent_role"]);
-    metadata.spawn_depth = thread
+    let spawn_depth = thread
         .pointer("/source/subAgent/thread_spawn/depth")
         .or_else(|| thread.pointer("/source/subAgent/threadSpawn/depth"))
         .and_then(Value::as_u64)
         .and_then(|depth| i64::try_from(depth).ok())
         .or(Some(1));
+    metadata.apply_host_child_attribution(
+        child_session_id_typed,
+        crate::agent_session_status::RuntimeSessionId::from(root_session_id),
+        agent_path,
+        json_string(thread, &["/agentRole", "/agent_role"]),
+        spawn_depth,
+    )?;
     Ok(Some(metadata))
 }
 

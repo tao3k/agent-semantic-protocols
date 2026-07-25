@@ -64,6 +64,36 @@ pub struct CodexRolloutActivityReport {
     pub(crate) scanned_line_count: usize,
 }
 
+impl CodexRolloutActivityReport {
+    pub fn status(&self) -> &str {
+        self.status.as_str()
+    }
+
+    pub fn current_turn_id(&self) -> Option<&str> {
+        self.current_turn_id.as_ref().map(|value| value.as_str())
+    }
+
+    pub fn last_running_session_id(&self) -> Option<&str> {
+        self.last_running_session_id
+            .as_ref()
+            .map(|value| value.as_str())
+    }
+
+    pub const fn running_session_closed(&self) -> bool {
+        self.running_session_closed
+    }
+
+    pub fn last_terminal_event(&self) -> Option<&str> {
+        self.last_terminal_event
+            .as_ref()
+            .map(|value| value.as_str())
+    }
+
+    pub const fn scanned_line_count(&self) -> usize {
+        self.scanned_line_count
+    }
+}
+
 /// Root-scoped index derived from Codex local rollout JSONL files.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,4 +105,32 @@ pub struct CodexRolloutSessionIndex {
     pub records: Vec<CodexRolloutSessionMetadata>,
     pub activity_by_session: BTreeMap<CodexRolloutSessionId, CodexRolloutActivityReport>,
     pub missing_rollout_by_session: BTreeMap<CodexRolloutSessionId, String>,
+}
+
+impl CodexRolloutSessionIndex {
+    pub fn root_session_id(&self) -> &str {
+        self.root_session_id.as_str()
+    }
+
+    pub const fn scanned_rollout_count(&self) -> usize {
+        self.scanned_rollout_count
+    }
+
+    pub fn records(&self) -> &[CodexRolloutSessionMetadata] {
+        &self.records
+    }
+
+    pub fn activity_count(&self) -> usize {
+        self.activity_by_session.len()
+    }
+
+    pub fn activity_for_session(
+        &self,
+        session_id: &crate::RuntimeSessionId,
+    ) -> Option<&CodexRolloutActivityReport> {
+        self.activity_by_session
+            .iter()
+            .find(|(candidate, _)| candidate.as_str() == session_id.as_str())
+            .map(|(_, report)| report)
+    }
 }

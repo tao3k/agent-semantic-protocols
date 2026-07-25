@@ -7,13 +7,20 @@
 pub mod canonical_item_identity;
 mod derived_artifact_evidence;
 mod domain;
+mod file_artifact;
 mod hashing;
 mod model;
 mod source_snapshot;
 pub mod structural_selector;
 mod value;
 
-pub use canonical_item_identity::*;
+pub use active_artifact_merkle_v1::ActiveArtifactSetIdV1;
+pub use canonical_item_identity::{
+    CANONICAL_ITEM_SELECTOR_SCHEMA_ID, CANONICAL_ITEM_SELECTOR_SCHEMA_VERSION,
+    CanonicalItemIdentityV1, CanonicalItemKindV1, CanonicalItemLanguageIdV1,
+    CanonicalItemScopeKindV1, CanonicalItemScopeRelationV1, CanonicalItemScopeSymbolV1,
+    CanonicalItemScopeV1, CanonicalItemSelectorV1, CanonicalItemSymbolV1,
+};
 
 pub use derived_artifact_evidence::{
     DERIVED_SOURCE_ARTIFACT_CACHE_DISPOSITION, DERIVED_SOURCE_ARTIFACT_EVIDENCE_SCHEMA_ID,
@@ -22,6 +29,10 @@ pub use derived_artifact_evidence::{
 pub use domain::{
     ARTIFACT_IDENTITY_SCHEMA_ID, ARTIFACT_IDENTITY_SCHEMA_VERSION, EDGE_DOMAIN_V1,
     HASH_ALGORITHM_BLAKE3, JSON_DOMAIN_V1, LEAF_DOMAIN_V1, NODE_DOMAIN_V1, ROOT_DOMAIN_V1,
+};
+pub use file_artifact::{
+    FileArtifactMetadataV1, file_artifact_metadata_digest_v1, file_artifact_metadata_v1,
+    file_content_digest_v1,
 };
 pub use hashing::{
     DerivedArtifactKeyInput, hash_blob, hash_derived_artifact_key, hash_leaf, hash_node,

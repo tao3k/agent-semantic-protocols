@@ -42,6 +42,8 @@ mod command_gerbil_check_cache;
 mod command_search_pipe_evidence_projection;
 #[path = "unit/command/search_pipe_projection.rs"]
 mod command_search_pipe_projection;
+#[path = "unit/context_product_state.rs"]
+mod context_product_state;
 #[path = "unit/document_owner_items_hot_path.rs"]
 mod document_owner_items_hot_path;
 #[path = "unit/document_provider.rs"]

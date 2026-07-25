@@ -14,7 +14,6 @@ const DEFAULT_RETRY_ATTEMPTS: usize = 16;
 const DEFAULT_MAX_BATCH_ROWS: usize = 1_024;
 const EVENT_SHARDS: usize = 4;
 const MAX_CONNECTION_LANES: usize = EVENT_SHARDS;
-const OPTIMIZATION_RECEIPT_SCHEMA_ID: &str = "asp.turso-mvcc-optimization-receipt.v1";
 pub(crate) const BATCH_WRITE_RECEIPT_SCHEMA_ID: &str = "asp.turso-mvcc-batch-write-receipt.v1";
 
 const CREATE_EVENT_TABLES_SQL: &str = "
@@ -101,26 +100,182 @@ impl TursoMvccStoreConfig {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccEvent {
-    pub partition_key: String,
-    pub event_id: String,
-    pub payload: Vec<u8>,
-    pub created_at_ms: i64,
+    partition_key: String,
+    event_id: String,
+    payload: Vec<u8>,
+    created_at_ms: i64,
 }
+
+impl TursoMvccEvent {
+    pub fn new(
+        partition_key: crate::turso_mvcc_keyset::TursoMvccPartitionKey,
+        event_id: crate::turso_mvcc_keyset::TursoMvccEventId,
+        payload: Vec<u8>,
+        created_at_ms: i64,
+    ) -> Self {
+        Self {
+            partition_key: partition_key.as_str().to_owned(),
+            event_id: event_id.as_str().to_owned(),
+            payload,
+            created_at_ms,
+        }
+    }
+
+    pub fn partition_key(&self) -> &str {
+        self.partition_key.as_str()
+    }
+
+    pub fn event_id(&self) -> &str {
+        self.event_id.as_str()
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        self.payload.as_slice()
+    }
+
+    pub fn created_at_ms(&self) -> i64 {
+        self.created_at_ms
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+enum TursoMvccOptimizationReceiptSchemaId {
+    #[serde(rename = "asp.turso-mvcc-optimization-receipt.v1")]
+    V1,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+enum TursoMvccOptimizationProfile {
+    #[serde(rename = "async-io-mvcc")]
+    Concurrent,
+    #[serde(rename = "async-io-mvcc-passive-checkpoint")]
+    ConcurrentPassiveCheckpoint,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+enum TursoMvccStatementCacheMode {
+    #[serde(rename = "prepared-cached-per-connection")]
+    PreparedPerConnection,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+enum TursoMvccTransactionMode {
+    #[serde(rename = "begin-concurrent")]
+    Concurrent,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+struct TursoMvccConnectionLaneCount(usize);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+struct TursoMvccPartitionShardCount(usize);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+struct TursoMvccInsertRowsPerStatement(usize);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+struct TursoMvccFeatureState(bool);
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccOptimizationReceipt {
-    pub schema_id: String,
-    pub profile: String,
-    pub connection_lanes: usize,
-    pub partition_shards: usize,
-    pub statement_cache: String,
-    pub insert_rows_per_statement: usize,
-    pub transaction_mode: String,
-    pub mvcc: bool,
-    pub passive_checkpoint: bool,
-    pub multiprocess_wal: bool,
-    pub fts: bool,
+    schema_id: TursoMvccOptimizationReceiptSchemaId,
+    profile: TursoMvccOptimizationProfile,
+    connection_lanes: TursoMvccConnectionLaneCount,
+    partition_shards: TursoMvccPartitionShardCount,
+    statement_cache: TursoMvccStatementCacheMode,
+    insert_rows_per_statement: TursoMvccInsertRowsPerStatement,
+    transaction_mode: TursoMvccTransactionMode,
+    mvcc: TursoMvccFeatureState,
+    passive_checkpoint: TursoMvccFeatureState,
+    multiprocess_wal: TursoMvccFeatureState,
+    fts: TursoMvccFeatureState,
+}
+
+impl TursoMvccOptimizationReceipt {
+    /// Stable schema identity of this optimization receipt.
+    #[must_use]
+    pub const fn schema_id(&self) -> &'static str {
+        match self.schema_id {
+            TursoMvccOptimizationReceiptSchemaId::V1 => {
+                "asp.turso-mvcc-optimization-receipt.v1"
+            }
+        }
+    }
+
+    /// Effective connection and checkpoint optimization profile.
+    #[must_use]
+    pub const fn profile(&self) -> &'static str {
+        match self.profile {
+            TursoMvccOptimizationProfile::Concurrent => "async-io-mvcc",
+            TursoMvccOptimizationProfile::ConcurrentPassiveCheckpoint => {
+                "async-io-mvcc-passive-checkpoint"
+            }
+        }
+    }
+
+    /// Number of independent connection lanes.
+    #[must_use]
+    pub const fn connection_lanes(&self) -> usize {
+        self.connection_lanes.0
+    }
+
+    /// Number of deterministic partition shards.
+    #[must_use]
+    pub const fn partition_shards(&self) -> usize {
+        self.partition_shards.0
+    }
+
+    /// Prepared statement cache strategy.
+    #[must_use]
+    pub const fn statement_cache(&self) -> &'static str {
+        match self.statement_cache {
+            TursoMvccStatementCacheMode::PreparedPerConnection => {
+                "prepared-cached-per-connection"
+            }
+        }
+    }
+
+    /// Maximum rows emitted by one insert statement.
+    #[must_use]
+    pub const fn insert_rows_per_statement(&self) -> usize {
+        self.insert_rows_per_statement.0
+    }
+
+    /// Transaction mode used by write sessions.
+    #[must_use]
+    pub const fn transaction_mode(&self) -> &'static str {
+        match self.transaction_mode {
+            TursoMvccTransactionMode::Concurrent => "begin-concurrent",
+        }
+    }
+
+    /// Whether MVCC is active.
+    #[must_use]
+    pub const fn mvcc(&self) -> bool {
+        self.mvcc.0
+    }
+
+    #[must_use]
+    pub const fn passive_checkpoint(&self) -> bool {
+        self.passive_checkpoint.0
+    }
+
+    /// Whether multi-process WAL ownership is active.
+    #[must_use]
+    pub const fn multiprocess_wal(&self) -> bool {
+        self.multiprocess_wal.0
+    }
+
+    /// Whether FTS support is active.
+    #[must_use]
+    pub const fn fts(&self) -> bool {
+        self.fts.0
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -183,6 +338,12 @@ impl TursoMvccStore {
                     .execute_batch(CREATE_EVENT_TABLES_SQL)
                     .await
                     .map_err(|error| format!("failed to bootstrap Turso MVCC schema: {error}"))?;
+                connection
+                    .execute_batch(crate::turso_mvcc_partition_sql::CREATE_PARTITION_TABLES_SQL)
+                    .await
+                    .map_err(|error| {
+                        format!("failed to bootstrap Turso MVCC partition schema: {error}")
+                    })?;
             }
             lanes.push(Arc::new(tokio::sync::Mutex::new(connection)));
         }
@@ -201,22 +362,21 @@ impl TursoMvccStore {
 
     pub fn optimization_receipt(&self) -> TursoMvccOptimizationReceipt {
         TursoMvccOptimizationReceipt {
-            insert_rows_per_statement: INSERT_ROWS_PER_STATEMENT,
-            schema_id: OPTIMIZATION_RECEIPT_SCHEMA_ID.to_string(),
+            insert_rows_per_statement: TursoMvccInsertRowsPerStatement(INSERT_ROWS_PER_STATEMENT),
+            schema_id: TursoMvccOptimizationReceiptSchemaId::V1,
             profile: if self.inner.passive_checkpoint {
-                "async-io-mvcc-passive-checkpoint"
+                TursoMvccOptimizationProfile::ConcurrentPassiveCheckpoint
             } else {
-                "async-io-mvcc"
-            }
-            .to_string(),
-            connection_lanes: self.inner.lanes.len(),
-            partition_shards: EVENT_SHARDS,
-            statement_cache: "prepared-cached-per-connection".to_string(),
-            transaction_mode: "begin-concurrent".to_string(),
-            mvcc: true,
-            passive_checkpoint: self.inner.passive_checkpoint,
-            multiprocess_wal: false,
-            fts: false,
+                TursoMvccOptimizationProfile::Concurrent
+            },
+            connection_lanes: TursoMvccConnectionLaneCount(self.inner.lanes.len()),
+            partition_shards: TursoMvccPartitionShardCount(EVENT_SHARDS),
+            statement_cache: TursoMvccStatementCacheMode::PreparedPerConnection,
+            transaction_mode: TursoMvccTransactionMode::Concurrent,
+            mvcc: TursoMvccFeatureState(true),
+            passive_checkpoint: TursoMvccFeatureState(self.inner.passive_checkpoint),
+            multiprocess_wal: TursoMvccFeatureState(false),
+            fts: TursoMvccFeatureState(false),
         }
     }
 

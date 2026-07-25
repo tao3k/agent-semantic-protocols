@@ -145,8 +145,8 @@ fn runtime_matches_cached_provider_commands(
             cached.iter().any(|selection| {
                 selection.manifest_id() == provider.manifest_id
                     && selection.manifest_digest() == provider.manifest_digest
-                    && selection.language_id() == provider.language_id
-                    && selection.provider_id() == provider.provider_id
+                    && selection.language_id() == &provider.language_id
+                    && selection.provider_id() == &provider.provider_id
                     && selection.binary() == provider.binary
                     && selection.execution() == provider.execution.as_str()
                     && selection
@@ -167,8 +167,8 @@ fn runtime_matches_provider_commands(
             current.iter().any(|selection| {
                 selection.manifest_id() == provider.manifest_id
                     && selection.manifest_digest() == provider.manifest_digest
-                    && selection.language_id() == provider.language_id
-                    && selection.provider_id() == provider.provider_id
+                    && selection.language_id() == &provider.language_id
+                    && selection.provider_id() == &provider.provider_id
                     && selection.binary() == provider.binary
                     && *selection.execution() == provider.execution
                     && selection
@@ -188,23 +188,25 @@ fn provider_command_selection_row(
         .first()
         .and_then(|path| executable_metadata(path));
     ClientDbProviderCommandSelection::new(
-        selection.manifest_id().to_string().into(),
-        selection.manifest_digest().to_string().into(),
-        selection.language_id().to_string().into(),
-        selection.provider_id().to_string().into(),
-        selection.binary().to_string().into(),
-        selection.execution().as_str().to_string().into(),
-        selection
-            .provider_command_prefix()
-            .iter()
-            .cloned()
-            .map(Into::into)
-            .collect(),
-        executable
-            .as_ref()
-            .map(|metadata| metadata.path.clone().into()),
-        executable.as_ref().map(|metadata| metadata.len),
-        executable.as_ref().and_then(|metadata| metadata.mtime_ms),
+        agent_semantic_client_db::ClientDbProviderCommandSelectionInput {
+            manifest_id: selection.manifest_id().to_string().into(),
+            manifest_digest: selection.manifest_digest().to_string().into(),
+            language_id: selection.language_id().clone(),
+            provider_id: selection.provider_id().clone(),
+            binary: selection.binary().to_string().into(),
+            execution: selection.execution().as_str().to_string().into(),
+            provider_command_prefix: selection
+                .provider_command_prefix()
+                .iter()
+                .cloned()
+                .map(Into::into)
+                .collect(),
+            executable_path: executable
+                .as_ref()
+                .map(|metadata| metadata.path.clone().into()),
+            executable_len: executable.as_ref().map(|metadata| metadata.len),
+            executable_mtime_ms: executable.as_ref().and_then(|metadata| metadata.mtime_ms),
+        },
     )
 }
 

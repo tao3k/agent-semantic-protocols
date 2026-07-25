@@ -33,13 +33,13 @@ pub(super) struct ArtifactEventWriteback<'a> {
 
 pub(super) fn artifact_events_for_writeback(
     input: ArtifactEventWriteback<'_>,
-) -> Vec<ClientDbArtifactEvent> {
+) -> Result<Vec<ClientDbArtifactEvent>, String> {
     let timestamp_ms = current_timestamp_ms();
-    let mut events = vec![packet_or_prompt_artifact_event(&input, timestamp_ms)];
+    let mut events = vec![packet_or_prompt_artifact_event(&input, timestamp_ms)?];
     for artifact_id in input.artifact_ids {
         let artifact_id = artifact_id.as_str();
         if artifact_id != input.artifact_id && Some(artifact_id) != input.command_artifact_id {
-            events.push(text_artifact_event(&input, artifact_id, timestamp_ms));
+            events.push(text_artifact_event(&input, artifact_id, timestamp_ms)?);
         }
     }
     if let Some(command_artifact_id) = input.command_artifact_id {
@@ -51,65 +51,69 @@ pub(super) fn artifact_events_for_writeback(
                 input.project_root,
                 command,
                 timestamp_ms,
-            ));
+            )?);
         }
     }
-    events
+    Ok(events)
 }
 
 fn text_artifact_event(
     input: &ArtifactEventWriteback<'_>,
     artifact_id: &str,
     timestamp_ms: i64,
-) -> ClientDbArtifactEvent {
-    ClientDbArtifactEvent {
-        artifact_path: artifact_id.to_string(),
-        event_ordinal: 0,
-        timestamp_ms,
-        kind: text_artifact_event_kind(artifact_id).to_string(),
-        language: input.provider.language_id.as_str().to_string(),
-        method: input.export_method.as_str().to_string(),
-        target: String::new(),
-        query: String::new(),
-        project_root: normalized_path(input.project_root),
-        project_root_arg: ".".to_string(),
-        bytes: 0,
-    }
+) -> Result<ClientDbArtifactEvent, String> {
+    ClientDbArtifactEvent::builder()
+        .artifact_path(artifact_id)
+        .event_ordinal(0)
+        .timestamp_ms(timestamp_ms)
+        .kind(text_artifact_event_kind(artifact_id))
+        .language(input.provider.language_id.clone())
+        .method(input.export_method.as_str())
+        .target("")
+        .query("")
+        .project_root(normalized_path(input.project_root))
+        .project_root_arg(".")
+        .bytes(0)
+        .build()
 }
 
 fn packet_or_prompt_artifact_event(
     input: &ArtifactEventWriteback<'_>,
     timestamp_ms: i64,
-) -> ClientDbArtifactEvent {
+) -> Result<ClientDbArtifactEvent, String> {
     let packet = serde_json::from_slice::<serde_json::Value>(input.artifact_bytes_slice).ok();
-    ClientDbArtifactEvent {
-        artifact_path: input.artifact_id.to_string(),
-        event_ordinal: 0,
-        timestamp_ms,
-        kind: artifact_event_kind(input.artifact_kind).to_string(),
-        language: packet
-            .as_ref()
-            .and_then(|value| value.get("languageId"))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or(input.provider.language_id.as_str())
-            .to_string(),
-        method: packet
-            .as_ref()
-            .and_then(|value| value.get("method"))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or(input.export_method.as_str())
-            .to_string(),
-        target: packet.as_ref().map_or_else(String::new, packet_target),
-        query: packet
-            .as_ref()
-            .and_then(|value| value.get("query"))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("")
-            .to_string(),
-        project_root: normalized_path(input.project_root),
-        project_root_arg: ".".to_string(),
-        bytes: input.artifact_bytes,
-    }
+    let language = packet
+        .as_ref()
+        .and_then(|value| value.get("languageId"))
+        .and_then(serde_json::Value::as_str)
+        .map(agent_semantic_client_core::LanguageId::try_new)
+        .transpose()?
+        .unwrap_or_else(|| input.provider.language_id.clone());
+    ClientDbArtifactEvent::builder()
+        .artifact_path(input.artifact_id)
+        .event_ordinal(0)
+        .timestamp_ms(timestamp_ms)
+        .kind(artifact_event_kind(input.artifact_kind))
+        .language(language)
+        .method(
+            packet
+                .as_ref()
+                .and_then(|value| value.get("method"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(input.export_method.as_str()),
+        )
+        .target(packet.as_ref().map_or_else(String::new, packet_target))
+        .query(
+            packet
+                .as_ref()
+                .and_then(|value| value.get("query"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+        )
+        .project_root(normalized_path(input.project_root))
+        .project_root_arg(".")
+        .bytes(input.artifact_bytes)
+        .build()
 }
 
 fn text_artifact_event_kind(artifact_id: &str) -> &'static str {
@@ -129,20 +133,20 @@ fn command_artifact_event(
     project_root: &Path,
     command: &ProviderCommandReceipt,
     timestamp_ms: i64,
-) -> ClientDbArtifactEvent {
-    ClientDbArtifactEvent {
-        artifact_path: artifact_id.to_string(),
-        event_ordinal,
-        timestamp_ms,
-        kind: "command".to_string(),
-        language: command.language_id.as_str().to_string(),
-        method: command_method(&command.argv),
-        target: command_target(&command.argv),
-        query: command_query(&command.argv),
-        project_root: normalized_path(project_root),
-        project_root_arg: ".".to_string(),
-        bytes: artifact_bytes,
-    }
+) -> Result<ClientDbArtifactEvent, String> {
+    ClientDbArtifactEvent::builder()
+        .artifact_path(artifact_id)
+        .event_ordinal(event_ordinal)
+        .timestamp_ms(timestamp_ms)
+        .kind("command")
+        .language(command.language_id.clone())
+        .method(command_method(&command.argv))
+        .target(command_target(&command.argv))
+        .query(command_query(&command.argv))
+        .project_root(normalized_path(project_root))
+        .project_root_arg(".")
+        .bytes(artifact_bytes)
+        .build()
 }
 
 fn artifact_event_kind(kind: ArtifactKind) -> &'static str {

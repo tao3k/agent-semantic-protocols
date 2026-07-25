@@ -17,14 +17,14 @@ pub(crate) fn validate_query_pack_descriptor(
         ))
     };
     let descriptor = &manifest.query_pack_descriptor;
-    if descriptor.descriptor_id.trim().is_empty()
-        || descriptor.descriptor_version != "1"
-        || descriptor.language_id != manifest.language_id
-        || descriptor.recipes.is_empty()
+    if descriptor.descriptor_id().trim().is_empty()
+        || descriptor.descriptor_version() != "1"
+        || descriptor.language_id() != manifest.language_id
+        || descriptor.recipes().is_empty()
     {
         return Err(invalid("identity, version, language, or recipes"));
     }
-    if let Some(semantic_descriptor_id) = descriptor.semantic_facts_descriptor_id.as_deref()
+    if let Some(semantic_descriptor_id) = descriptor.semantic_facts_descriptor_id()
         && (semantic_descriptor_id.trim().is_empty()
             || manifest
                 .semantic_facts_descriptor
@@ -35,11 +35,8 @@ pub(crate) fn validate_query_pack_descriptor(
             "semanticFactsDescriptorId does not match the provider",
         ));
     }
-    let allowed_roles = ["context", "concept", "symbol"];
-    for role_override in &descriptor.term_role_overrides {
-        if role_override.term.trim().is_empty()
-            || !allowed_roles.contains(&role_override.role.as_str())
-        {
+    for role_override in descriptor.term_role_overrides() {
+        if role_override.term.trim().is_empty() {
             return Err(invalid("term role override"));
         }
     }
@@ -52,7 +49,7 @@ pub(crate) fn validate_query_pack_descriptor(
         "stream",
     ];
     let mut recipe_ids = BTreeSet::new();
-    for recipe in &descriptor.recipes {
+    for recipe in descriptor.recipes() {
         if recipe.recipe_id.trim().is_empty()
             || !recipe_ids.insert(recipe.recipe_id.as_str())
             || recipe.trigger.terms.is_empty()
@@ -69,10 +66,6 @@ pub(crate) fn validate_query_pack_descriptor(
         for clause in &recipe.clauses {
             if clause.terms.is_empty()
                 || clause.terms.iter().any(|term| term.trim().is_empty())
-                || clause
-                    .roles
-                    .iter()
-                    .any(|role| !allowed_roles.contains(&role.as_str()))
                 || clause
                     .intent_axes
                     .iter()
@@ -117,25 +110,18 @@ pub(crate) fn validate_semantic_facts_descriptor(
         )));
     }
     for (axis_index, intent_axis) in descriptor.intent_axes.iter().enumerate() {
-        if intent_axis.axis.trim().is_empty()
-            || intent_axis.terms.is_empty()
-            || intent_axis.terms.iter().any(|term| term.trim().is_empty())
+        let terms = intent_axis.terms().collect::<Vec<_>>();
+        if intent_axis.axis().trim().is_empty()
+            || terms.is_empty()
+            || terms.iter().any(|term| term.trim().is_empty())
             || descriptor.intent_axes[..axis_index]
                 .iter()
-                .any(|previous| previous.axis == intent_axis.axis)
-            || intent_axis
-                .terms
-                .iter()
-                .enumerate()
-                .any(|(term_index, term)| {
-                    intent_axis.terms[..term_index]
-                        .iter()
-                        .any(|previous| previous.eq_ignore_ascii_case(term))
-                })
-            || intent_axis
-                .roles
-                .iter()
-                .any(|role| !matches!(role.as_str(), "context" | "concept" | "symbol"))
+                .any(|previous| previous.axis() == intent_axis.axis())
+            || terms.iter().enumerate().any(|(term_index, term)| {
+                terms[..term_index]
+                    .iter()
+                    .any(|previous| previous.eq_ignore_ascii_case(term))
+            })
         {
             return Err(AgentHookError::InvalidActivationConfig(format!(
                 "provider manifest {} has an invalid semanticFactsDescriptor intent axis",

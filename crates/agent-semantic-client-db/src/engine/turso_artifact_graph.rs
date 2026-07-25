@@ -12,7 +12,7 @@ use super::turso_statement::{
     execute_turso_operation, execute_turso_statement, run_turso_operation,
 };
 
-async fn bootstrap_turso_artifact_graph_schema(
+pub(super) async fn bootstrap_turso_artifact_graph_schema(
     connection: &turso::Connection,
 ) -> Result<(), String> {
     for statement in [

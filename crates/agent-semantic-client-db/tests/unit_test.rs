@@ -4,6 +4,8 @@
 mod agent_session_interactive_loop;
 #[path = "unit/agent_session_lifecycle_p0.rs"]
 mod agent_session_lifecycle_p0;
+#[path = "unit/context_run_mvcc.rs"]
+mod context_run_mvcc;
 #[path = "unit/db.rs"]
 mod db;
 #[path = "unit/db/engine/mod.rs"]
@@ -18,7 +20,13 @@ mod db_gerbil_dependency_index;
 mod env;
 #[path = "unit/db/live_source_index_memory.rs"]
 mod live_source_index_memory;
+#[path = "unit/db/project_scoped_turso_performance.rs"]
+mod project_scoped_turso_performance;
 #[path = "unit/db/snapshot_fixture.rs"]
 mod snapshot_fixture;
 #[path = "unit/db/source_index_refresh_perf.rs"]
 mod source_index_refresh_perf;
+#[path = "unit/turso_mvcc_benchmark.rs"]
+mod turso_mvcc_benchmark;
+#[path = "unit/turso_mvcc_partition.rs"]
+mod turso_mvcc_partition;

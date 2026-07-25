@@ -56,13 +56,13 @@ pub(crate) fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
     let language_manifests = language_provider_manifests();
     schema_registry()
         .languages
-        .into_iter()
+        .iter()
         .map(|language| {
             let manifest = language_manifests
                 .iter()
                 .find(|manifest| {
-                    manifest.language_id == language.language_id
-                        && manifest.provider_id == language.provider_id
+                    manifest.language_id.as_str() == language.language_id
+                        && manifest.provider_id.as_str() == language.provider_id
                 })
                 .cloned()
                 .unwrap_or_else(|| {
@@ -112,8 +112,8 @@ pub fn materialize_provider_routes(
         .languages
         .iter()
         .find(|language| {
-            language.language_id == manifest.language_id
-                && language.provider_id == manifest.provider_id
+            language.language_id == manifest.language_id.as_str()
+                && language.provider_id == manifest.provider_id.as_str()
         })
         .ok_or_else(|| {
             format!(
@@ -150,6 +150,10 @@ pub fn materialize_provider_routes(
     })
 }
 
+#[cfg(test)]
+#[path = "../tests/unit/provider_registry.rs"]
+mod provider_registry_tests;
+
 fn language_provider_manifests() -> Vec<ProviderManifest> {
     LANGUAGE_PROVIDER_MANIFEST_JSON
         .iter()
@@ -163,8 +167,9 @@ fn language_provider_manifests() -> Vec<ProviderManifest> {
 }
 
 /// Return registered ASP language ids from the embedded provider manifests.
-pub fn registered_language_ids() -> Vec<String> {
-    static REGISTERED_LANGUAGE_IDS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+pub fn registered_language_ids() -> Vec<agent_semantic_config::LanguageId> {
+    static REGISTERED_LANGUAGE_IDS: std::sync::OnceLock<Vec<agent_semantic_config::LanguageId>> =
+        std::sync::OnceLock::new();
     REGISTERED_LANGUAGE_IDS
         .get_or_init(|| {
             let mut language_ids = language_provider_manifests()
@@ -201,9 +206,12 @@ fn normalize_source_defaults(source: &mut ManifestSourceDefaults) {
     }
 }
 
-fn schema_registry() -> SemanticLanguageRegistry {
-    serde_json::from_str(SCHEMA_REGISTRY_JSON)
-        .expect("embedded semantic language registry must be valid JSON")
+fn schema_registry() -> &'static SemanticLanguageRegistry {
+    static REGISTRY: std::sync::OnceLock<SemanticLanguageRegistry> = std::sync::OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        serde_json::from_str(SCHEMA_REGISTRY_JSON)
+            .expect("embedded semantic language registry must be valid JSON")
+    })
 }
 
 #[derive(Deserialize)]

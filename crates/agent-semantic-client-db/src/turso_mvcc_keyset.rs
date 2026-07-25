@@ -148,12 +148,16 @@ impl TursoMvccStore {
 
         let mut events = Vec::with_capacity(fetch_limit);
         while let Some(row) = rows.next().await.map_err(|error| error.to_string())? {
-            events.push(TursoMvccEvent {
-                partition_key: row.get(0).map_err(|error| error.to_string())?,
-                event_id: row.get(1).map_err(|error| error.to_string())?,
-                payload: row.get(2).map_err(|error| error.to_string())?,
-                created_at_ms: row.get(3).map_err(|error| error.to_string())?,
-            });
+            events.push(TursoMvccEvent::new(
+                row.get::<String>(0)
+                    .map_err(|error| error.to_string())?
+                    .into(),
+                row.get::<String>(1)
+                    .map_err(|error| error.to_string())?
+                    .into(),
+                row.get::<Vec<u8>>(2).map_err(|error| error.to_string())?,
+                row.get::<i64>(3).map_err(|error| error.to_string())?,
+            ));
         }
         Ok(events)
     }

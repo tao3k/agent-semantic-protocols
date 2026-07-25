@@ -9,15 +9,16 @@ fn leaf(
     artifact_kind: ActiveArtifactKindV1,
     bytes: &[u8],
 ) -> ActiveArtifactLeafV1 {
-    ActiveArtifactLeafV1 {
-        logical_path: logical_path.to_string(),
-        materialized_path: format!("/active/{logical_path}"),
+    ActiveArtifactLeafV1::new(
+        logical_path,
+        format!("/active/{logical_path}"),
         artifact_kind,
-        artifact_digest: blake3_content_digest_v1(bytes),
-        size_bytes: bytes.len() as u64,
-        modified_unix_nanos: 0,
-        change_time_unix_nanos: None,
-    }
+        blake3_content_digest_v1(bytes),
+        bytes.len() as u64,
+        0,
+        None,
+    )
+    .expect("valid active artifact leaf")
 }
 
 #[test]
@@ -39,11 +40,21 @@ fn receipt_is_sorted_and_binds_every_leaf() {
     )
     .expect("active artifact receipt");
     assert_eq!(receipt.schema_version, "1");
-    assert_eq!(receipt.asp_binary_leaf().size_bytes, 3);
-    assert_eq!(receipt.activation_leaf().size_bytes, 10);
+    assert_eq!(receipt.asp_binary_leaf().size_bytes(), 3);
+    assert_eq!(receipt.activation_leaf().size_bytes(), 10);
 
     let mut changed = receipt.clone();
-    changed.leaves[0].size_bytes += 1;
+    let original = &changed.leaves[0];
+    changed.leaves[0] = ActiveArtifactLeafV1::new(
+        original.logical_path(),
+        original.materialized_path(),
+        original.artifact_kind(),
+        original.artifact_digest().clone(),
+        original.size_bytes() + 1,
+        original.modified_unix_nanos(),
+        original.change_time_unix_nanos(),
+    )
+    .expect("changed active artifact leaf");
     assert_eq!(
         changed.validate(),
         Err(ActiveAspArtifactReceiptV1Error::RootDigestMismatch)
@@ -66,8 +77,16 @@ fn content_root_is_stable_across_materialization_roots() {
         ActiveAspArtifactReceiptV1::build("asp-runtime", vec![activation.clone(), binary.clone()])
             .expect("canonical receipt");
 
-    let mut alias = binary;
-    alias.materialized_path = "/workspace/.bin/.asp-artifacts/blake3-256/abc/asp".to_string();
+    let alias = ActiveArtifactLeafV1::new(
+        binary.logical_path(),
+        "/workspace/.bin/.asp-artifacts/blake3-256/abc/asp",
+        binary.artifact_kind(),
+        binary.artifact_digest().clone(),
+        binary.size_bytes(),
+        binary.modified_unix_nanos(),
+        binary.change_time_unix_nanos(),
+    )
+    .expect("aliased active artifact leaf");
     let aliased = ActiveAspArtifactReceiptV1::build("asp-runtime", vec![activation, alias])
         .expect("aliased receipt");
 

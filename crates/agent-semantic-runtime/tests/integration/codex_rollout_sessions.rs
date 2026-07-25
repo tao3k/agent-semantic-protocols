@@ -36,17 +36,25 @@ fn codex_rollout_session_metadata_uses_targeted_session_lookup() {
         env::set_var("CODEX_HOME", &root);
     }
     let timer = Timer::start();
-    let metadata = codex_rollout_session_metadata(session_id)
-        .expect("lookup metadata")
-        .expect("metadata hit");
+    let metadata = codex_rollout_session_metadata(
+        &agent_semantic_runtime::RuntimeSessionId::try_new(session_id).expect("valid session id"),
+    )
+    .expect("lookup metadata")
+    .expect("metadata hit");
     let elapsed = timer.elapsed();
     restore_codex_home(previous_codex_home);
     fs::remove_dir_all(&root).ok();
 
-    assert_eq!(metadata.session_id, session_id);
-    assert_eq!(metadata.root_session_id.as_deref(), Some(root_session_id));
-    assert_eq!(metadata.parent_thread_id.as_deref(), Some(root_session_id));
-    assert_eq!(metadata.agent_role.as_deref(), Some("asp_explorer"));
+    assert_eq!(metadata.session_id().as_str(), session_id);
+    assert_eq!(
+        metadata.root_session_id().map(|value| value.as_str()),
+        Some(root_session_id)
+    );
+    assert_eq!(
+        metadata.parent_thread_id().map(|value| value.as_str()),
+        Some(root_session_id)
+    );
+    assert_eq!(metadata.agent_role(), Some("asp_explorer"));
     assert!(
         elapsed <= Duration::from_millis(5),
         "targeted rollout lookup exceeded the 5ms gate: {elapsed:?}"
@@ -82,16 +90,21 @@ fn codex_rollout_session_metadata_stays_header_bounded_for_resident_history() {
         env::set_var("CODEX_HOME", &root);
     }
     let timer = Timer::start();
-    let metadata = codex_rollout_session_metadata(session_id)
-        .expect("lookup metadata")
-        .expect("metadata hit");
+    let metadata = codex_rollout_session_metadata(
+        &agent_semantic_runtime::RuntimeSessionId::try_new(session_id).expect("valid session id"),
+    )
+    .expect("lookup metadata")
+    .expect("metadata hit");
     let elapsed = timer.elapsed();
     restore_codex_home(previous_codex_home);
     fs::remove_dir_all(&root).ok();
 
-    assert_eq!(metadata.session_id, session_id);
-    assert_eq!(metadata.root_session_id.as_deref(), Some(root_session_id));
-    assert_eq!(metadata.model.as_deref(), Some("gpt-5.4-mini"));
+    assert_eq!(metadata.session_id().as_str(), session_id);
+    assert_eq!(
+        metadata.root_session_id().map(|value| value.as_str()),
+        Some(root_session_id)
+    );
+    assert_eq!(metadata.model(), Some("gpt-5.4-mini"));
     assert!(
         elapsed <= Duration::from_millis(5),
         "resident rollout metadata lookup must stay header-bounded; elapsed={elapsed:?}"
@@ -149,14 +162,21 @@ fn codex_rollout_session_index_uses_direct_pure_rust_session_lookup() {
         env::set_var("CODEX_HOME", &root);
         env::set_var("PATH", &empty_path);
     }
-    let child_metadata = codex_rollout_session_metadata(child_session_id)
-        .expect("lookup child metadata")
-        .expect("child metadata hit");
-    assert_eq!(child_metadata.session_id, child_session_id);
+    let child_metadata = codex_rollout_session_metadata(
+        &agent_semantic_runtime::RuntimeSessionId::try_new(child_session_id)
+            .expect("valid child session id"),
+    )
+    .expect("lookup child metadata")
+    .expect("child metadata hit");
+    assert_eq!(child_metadata.session_id().as_str(), child_session_id);
     let timer = Timer::start();
-    let index = codex_rollout_session_index_for_sessions(root_session_id, [child_session_id])
-        .expect("index rollout sessions")
-        .expect("index hit");
+    let index = codex_rollout_session_index_for_sessions(
+        &agent_semantic_runtime::RuntimeSessionId::try_new(root_session_id)
+            .expect("valid root session id"),
+        [child_session_id],
+    )
+    .expect("index rollout sessions")
+    .expect("index hit");
     let elapsed = timer.elapsed();
     restore_codex_home(previous_codex_home);
     restore_path(previous_path);
@@ -165,8 +185,22 @@ fn codex_rollout_session_index_uses_direct_pure_rust_session_lookup() {
     assert_eq!(index.scanned_rollout_count, 2, "{index:#?}");
     assert_eq!(index.skipped_rollout_count, 0, "{index:#?}");
     assert_eq!(index.activity_by_session.len(), 2, "{index:#?}");
-    assert!(index.activity_by_session.contains_key(root_session_id));
-    assert!(index.activity_by_session.contains_key(child_session_id));
+    assert!(
+        index
+            .activity_for_session(
+                &agent_semantic_runtime::RuntimeSessionId::try_new(root_session_id)
+                    .expect("valid root session id"),
+            )
+            .is_some()
+    );
+    assert!(
+        index
+            .activity_for_session(
+                &agent_semantic_runtime::RuntimeSessionId::try_new(child_session_id)
+                    .expect("valid child session id"),
+            )
+            .is_some()
+    );
     assert!(
         elapsed <= Duration::from_millis(10),
         "direct rollout session index exceeded the 10ms algorithm gate: {elapsed:?}"
@@ -228,8 +262,11 @@ esac
         env::set_var("CODEX_HOME", &root);
         env::set_var("ASP_CODEX_BIN", &fake_codex);
     }
-    let records = agent_semantic_runtime::codex_app_server_child_session_evidence(root_session_id)
-        .expect("read app-server child evidence");
+    let records = agent_semantic_runtime::codex_app_server_child_session_evidence(
+        &agent_semantic_runtime::RuntimeSessionId::try_new(root_session_id)
+            .expect("valid root session id"),
+    )
+    .expect("read app-server child evidence");
     restore_codex_home(previous_codex_home);
     unsafe {
         match previous_codex_bin {
@@ -240,15 +277,15 @@ esac
     fs::remove_dir_all(&root).ok();
 
     assert_eq!(records.len(), 1);
-    assert_eq!(records[0].metadata.session_id, session_id);
-    assert_eq!(records[0].metadata.model.as_deref(), Some("gpt-5.4-mini"));
+    assert_eq!(records[0].metadata.session_id().as_str(), session_id);
+    assert_eq!(records[0].metadata.model(), Some("gpt-5.4-mini"));
     assert_eq!(records[0].runtime_reasoning_effort.as_deref(), Some("low"));
     assert_eq!(
         records[0].runtime_reasoning_visibility,
         agent_semantic_runtime::CodexReasoningVisibility::Observed
     );
     assert_eq!(records[0].rollout_reasoning_effort, None);
-    assert_eq!(records[0].metadata.reasoning_effort, None);
+    assert_eq!(records[0].metadata.reasoning_effort(), None);
 }
 
 #[test]
@@ -316,12 +353,17 @@ esac
         env::set_var("CODEX_HOME", &root);
         env::set_var("ASP_CODEX_BIN", &fake_codex);
     }
-    let records = agent_semantic_runtime::codex_app_server_child_session_evidence(root_session_id)
-        .expect("read app-server child evidence");
+    let records = agent_semantic_runtime::codex_app_server_child_session_evidence(
+        &agent_semantic_runtime::RuntimeSessionId::try_new(root_session_id)
+            .expect("valid root session id"),
+    )
+    .expect("read app-server child evidence");
     fs::write(&fake_codex, "#!/bin/sh\nexit 1\n").expect("replace fake codex with failure");
-    let transport_failed_records =
-        agent_semantic_runtime::codex_app_server_child_session_evidence(root_session_id)
-            .expect("retain rollout evidence when app-server transport fails");
+    let transport_failed_records = agent_semantic_runtime::codex_app_server_child_session_evidence(
+        &agent_semantic_runtime::RuntimeSessionId::try_new(root_session_id)
+            .expect("valid root session id"),
+    )
+    .expect("retain rollout evidence when app-server transport fails");
     restore_codex_home(previous_codex_home);
     unsafe {
         match previous_codex_bin {
@@ -338,7 +380,7 @@ esac
         agent_semantic_runtime::CodexReasoningVisibility::FieldOmitted
     );
     assert_eq!(records[0].rollout_reasoning_effort.as_deref(), Some("low"));
-    assert_eq!(records[0].metadata.reasoning_effort.as_deref(), Some("low"));
+    assert_eq!(records[0].metadata.reasoning_effort(), Some("low"));
     assert_eq!(transport_failed_records.len(), 1);
     assert_eq!(transport_failed_records[0].runtime_reasoning_effort, None);
     assert_eq!(

@@ -30,11 +30,6 @@ macro_rules! canonical_item_text_v1 {
 }
 
 canonical_item_text_v1!(
-    /// Stable identity for one complete active ASP artifact set.
-    ActiveArtifactSetIdV1
-);
-
-canonical_item_text_v1!(
     /// Canonical relation between a scope frame and the selected item.
     CanonicalItemScopeRelationV1
 );

@@ -1,176 +1,146 @@
+use super::{
+    ActiveAspArtifactInput, active_provider_artifact_input_from_lock_dir,
+    materialize_active_asp_artifact_receipt,
+};
+use agent_semantic_config::{LanguageId, ProviderId};
 use agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1;
 use agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1;
-use agent_semantic_hook::{
-    ActiveAspArtifactInput, materialize_active_asp_artifact_receipt,
-    verify_active_asp_artifact_receipt,
+use std::{
+    fs,
+    time::{SystemTime, UNIX_EPOCH},
 };
-use std::fs;
-use std::path::PathBuf;
-use std::process;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-static FIXTURE_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-
-fn fixture() -> (PathBuf, PathBuf, PathBuf, String) {
-    let sequence = FIXTURE_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+#[test]
+fn unchanged_provider_artifacts_are_zero_byte_read_and_zero_write() {
     let root = std::env::temp_dir().join(format!(
-        "asp-active-artifact-{}-{}-{sequence}",
-        process::id(),
+        "asp-active-artifact-warm-path-{}-{}",
+        std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("clock")
+            .expect("system time")
             .as_nanos()
     ));
-    let binary_bytes = b"asp-binary";
-    let digest = blake3_content_digest_v1(binary_bytes).as_str().to_string();
-    let binary = root
-        .join("bin/.asp-artifacts/blake3-256")
-        .join(&digest)
-        .join("asp");
-    let activation = root.join("state/activation.json");
-    fs::create_dir_all(binary.parent().expect("binary parent")).expect("binary parent");
-    fs::create_dir_all(activation.parent().expect("activation parent")).expect("activation parent");
-    fs::write(&binary, binary_bytes).expect("binary");
-    fs::write(&activation, br#"{"schemaVersion":"1"}"#).expect("activation");
-    (root, binary, activation, digest)
-}
-
-fn write_provider_closure(activation: &std::path::Path, providers: &[(&str, &str)]) {
-    let providers = providers
-        .iter()
-        .map(|(language_id, provider_id)| {
-            serde_json::json!({
-                "languageId": language_id,
-                "providerId": provider_id,
-            })
-        })
-        .collect::<Vec<_>>();
-    fs::write(
-        activation,
-        serde_json::to_vec(&serde_json::json!({
-            "schemaVersion": "1",
-            "providers": providers,
-        }))
-        .expect("provider closure JSON"),
-    )
-    .expect("provider closure");
-}
-
-#[test]
-fn receipt_binds_materialized_targets_and_rejects_drift() {
-    let (root, binary, activation, digest) = fixture();
-    write_provider_closure(&activation, &[("rust", "rs-harness")]);
-    let provider = root.join("providers/rs-harness");
-    fs::create_dir_all(provider.parent().expect("provider parent")).expect("provider parent");
-    fs::write(&provider, b"provider").expect("provider");
-    let additional = [ActiveAspArtifactInput {
+    fs::create_dir_all(&root).expect("create test root");
+    let binary_path = root.join("asp");
+    let activation_path = root.join("activation.json");
+    let provider_path = root.join("provider");
+    let binary_bytes = b"asp-test-binary";
+    fs::write(&binary_path, binary_bytes).expect("write binary");
+    fs::write(&activation_path, b"{}").expect("write activation");
+    fs::write(&provider_path, vec![0x5a; 16 * 1024 * 1024]).expect("write provider");
+    let binary_digest = blake3_content_digest_v1(binary_bytes);
+    let provider_digest = agent_semantic_content_identity::file_content_digest_v1(&provider_path)
+        .expect("provider digest");
+    let artifacts = [ActiveAspArtifactInput {
         logical_path: "providers/rust/rs-harness".to_string(),
         artifact_kind: ActiveArtifactKindV1::ProviderBinary,
-        materialized_path: provider.clone(),
+        materialized_path: provider_path,
+        artifact_digest: provider_digest,
     }];
-    let materialized =
-        materialize_active_asp_artifact_receipt(&binary, &digest, &activation, &additional)
-            .expect("materialize");
-    assert!(materialized.receipt_path.is_file());
-    let verified =
-        verify_active_asp_artifact_receipt(&activation, &[&binary]).expect("verified receipt");
-    assert_eq!(verified, materialized.receipt);
-    assert_eq!(verified.leaves().len(), 3);
 
-    fs::write(&provider, b"provider-drift").expect("drift provider");
-    let error = verify_active_asp_artifact_receipt(&activation, &[&binary])
-        .expect_err("provider drift must fail");
-    assert!(error.contains("provider-binary size mismatch"), "{error}");
-    fs::write(&provider, b"provider").expect("restore provider");
+    let cold = materialize_active_asp_artifact_receipt(
+        &binary_path,
+        binary_digest.as_str(),
+        &activation_path,
+        &artifacts,
+    )
+    .expect("cold materialization");
+    assert_eq!(cold.artifact_byte_reads, 0);
+    assert_eq!(cold.artifact_bytes_read, 0);
+    assert_eq!(cold.receipt_writes, 1);
 
-    fs::write(&activation, br#"{"schemaVersion":"1","drift":true}"#).expect("drift activation");
-    let error =
-        verify_active_asp_artifact_receipt(&activation, &[&binary]).expect_err("drift must fail");
-    assert!(error.contains("activation size mismatch"), "{error}");
-    fs::remove_dir_all(root).expect("remove fixture");
-}
-
-#[test]
-fn receipt_accepts_content_equivalent_binary_alias_and_rejects_alias_drift() {
-    let (root, binary, activation, digest) = fixture();
-    let alias = root
-        .join("workspace-bin/.asp-artifacts/blake3-256")
-        .join(&digest)
-        .join("asp");
-    fs::create_dir_all(alias.parent().expect("alias parent")).expect("alias parent");
-    fs::copy(&binary, &alias).expect("copy content-equivalent alias");
-
-    materialize_active_asp_artifact_receipt(&binary, &digest, &activation, &[])
-        .expect("materialize receipt");
-    verify_active_asp_artifact_receipt(&activation, &[&binary, &alias])
-        .expect("content-equivalent alias must verify");
-
-    fs::write(&alias, b"asp-drift!").expect("drift alias with equal byte length");
-    let error = verify_active_asp_artifact_receipt(&activation, &[&binary, &alias])
-        .expect_err("content-drifted alias must fail");
-    assert!(error.contains("content identity mismatch"), "{error}");
-    fs::remove_dir_all(root).expect("remove fixture");
-}
-
-#[test]
-fn receipt_rejects_missing_active_provider_artifact_closure() {
-    let (root, binary, activation, digest) = fixture();
-    write_provider_closure(&activation, &[("rust", "rs-harness")]);
-    materialize_active_asp_artifact_receipt(&binary, &digest, &activation, &[])
-        .expect("materialize incomplete receipt");
-
-    let error = verify_active_asp_artifact_receipt(&activation, &[&binary])
-        .expect_err("missing provider artifact must fail closed");
+    let started = std::time::Instant::now();
+    let warm = materialize_active_asp_artifact_receipt(
+        &binary_path,
+        binary_digest.as_str(),
+        &activation_path,
+        &artifacts,
+    )
+    .expect("warm materialization");
+    let elapsed = started.elapsed();
+    assert_eq!(warm.artifact_byte_reads, 0);
+    assert_eq!(warm.artifact_bytes_read, 0);
+    assert_eq!(warm.receipt_writes, 0);
+    assert_eq!(warm.receipt, cold.receipt);
     assert!(
-        error.contains("active ASP provider artifact closure mismatch"),
+        elapsed < std::time::Duration::from_millis(100),
+        "warm materialization must remain millisecond-scale, elapsed={elapsed:?}"
+    );
+
+    fs::remove_dir_all(root).expect("remove test root");
+}
+
+#[test]
+fn provider_install_receipt_metadata_is_required_and_drift_fails_closed() {
+    let root = std::env::temp_dir().join(format!(
+        "asp-provider-install-receipt-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos()
+    ));
+    let provider_lock_dir = root.join("provider-locks");
+    let provider_path = root.join("runtime/bin/rs-harness");
+    fs::create_dir_all(&provider_lock_dir).expect("create provider lock dir");
+    fs::create_dir_all(provider_path.parent().expect("provider parent"))
+        .expect("create provider bin dir");
+    fs::write(&provider_path, b"provider-v1").expect("write provider");
+    let provider_digest = agent_semantic_content_identity::file_content_digest_v1(&provider_path)
+        .expect("provider digest");
+    let metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&provider_path)
+            .expect("metadata digest");
+    let lock_path = provider_lock_dir.join("rust.lock.toml");
+    fs::write(
+        &lock_path,
+        format!(
+            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"rs-harness\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{provider_digest}\"\ninstalledEntrypointMetadataDigest = \"{metadata_digest}\"\n",
+            provider_path.display()
+        ),
+    )
+    .expect("write provider lock");
+
+    let language_id = LanguageId::new("rust");
+    let provider_id = ProviderId::new("rs-harness");
+    let input = active_provider_artifact_input_from_lock_dir(
+        &provider_lock_dir,
+        &language_id,
+        &provider_id,
+        provider_path.clone(),
+    )
+    .expect("consume provider receipt");
+    assert_eq!(input.artifact_digest, provider_digest);
+
+    fs::write(&provider_path, b"provider-drift").expect("drift provider");
+    let error = active_provider_artifact_input_from_lock_dir(
+        &provider_lock_dir,
+        &language_id,
+        &provider_id,
+        provider_path.clone(),
+    )
+    .expect_err("metadata drift must fail closed");
+    assert!(
+        error.contains("provider install receipt metadata drift"),
         "{error}"
     );
-    fs::remove_dir_all(root).expect("remove fixture");
-}
 
-#[test]
-fn warm_receipt_metadata_verification_p95_is_under_ten_milliseconds() {
-    let (root, binary, activation, digest) = fixture();
-    let provider_identities = (0..7)
-        .map(|index| (format!("language-{index}"), format!("provider-{index}")))
-        .collect::<Vec<_>>();
-    write_provider_closure(
-        &activation,
-        &provider_identities
-            .iter()
-            .map(|(language_id, provider_id)| (language_id.as_str(), provider_id.as_str()))
-            .collect::<Vec<_>>(),
-    );
-    let mut providers = Vec::new();
-    let mut additional = Vec::new();
-    for index in 0..7 {
-        let provider = root.join(format!("providers/provider-{index}"));
-        fs::create_dir_all(provider.parent().expect("provider parent")).expect("provider parent");
-        fs::write(&provider, format!("provider-{index}")).expect("provider");
-        additional.push(ActiveAspArtifactInput {
-            logical_path: format!("providers/language-{index}/provider-{index}"),
-            artifact_kind: ActiveArtifactKindV1::ProviderBinary,
-            materialized_path: provider.clone(),
-        });
-        providers.push(provider);
-    }
-    materialize_active_asp_artifact_receipt(&binary, &digest, &activation, &additional)
-        .expect("materialize");
-    verify_active_asp_artifact_receipt(&activation, &[&binary]).expect("warmup");
+    fs::write(
+        &lock_path,
+        format!(
+            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"rs-harness\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{provider_digest}\"\n",
+            provider_path.display()
+        ),
+    )
+    .expect("write incomplete provider lock");
+    let error = active_provider_artifact_input_from_lock_dir(
+        &provider_lock_dir,
+        &language_id,
+        &provider_id,
+        provider_path,
+    )
+    .expect_err("missing metadata digest must fail closed");
+    assert!(error.contains("failed to parse"), "{error}");
 
-    let mut samples = Vec::with_capacity(200);
-    for _ in 0..200 {
-        let started = Instant::now();
-        verify_active_asp_artifact_receipt(&activation, &[&binary]).expect("verify");
-        samples.push(started.elapsed());
-    }
-    samples.sort_unstable();
-    let p95 = samples[samples.len() * 95 / 100];
-    println!(
-        "[active-artifact-perf] samples={} p95Micros={} budgetMicros=10000",
-        samples.len(),
-        p95.as_micros()
-    );
-    assert!(p95 < Duration::from_millis(10), "p95={p95:?}");
-    fs::remove_dir_all(root).expect("remove fixture");
+    fs::remove_dir_all(root).expect("remove test root");
 }

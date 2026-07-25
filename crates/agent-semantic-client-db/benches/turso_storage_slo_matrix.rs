@@ -87,12 +87,12 @@ fn main() {
             let events: Vec<_> = (0..LONG_INGESTION_BATCH_ROWS)
                 .map(|offset| {
                     let sequence = batch * LONG_INGESTION_BATCH_ROWS + offset;
-                    TursoMvccEvent {
-                        partition_key: format!("partition-{}", sequence % 4),
-                        event_id: format!("long-{sequence:08}"),
-                        payload: payload.clone(),
-                        created_at_ms: sequence as i64,
-                    }
+                    TursoMvccEvent::new(
+                        format!("partition-{}", sequence % 4).into(),
+                        format!("long-{sequence:08}").into(),
+                        payload.clone(),
+                        sequence as i64,
+                    )
                 })
                 .collect();
             let started = Instant::now();
@@ -127,11 +127,13 @@ fn main() {
     runtime.block_on(async {
         for iteration in 0..MIXED_PRESSURE_ITERATIONS {
             let events: Vec<_> = (0..32)
-                .map(|offset| TursoMvccEvent {
-                    partition_key: format!("mixed-partition-{}", offset % 4),
-                    event_id: format!("mixed-{iteration:04}-{offset:02}"),
-                    payload: payload.clone(),
-                    created_at_ms: (LONG_INGESTION_ROWS + iteration * 32 + offset) as i64,
+                .map(|offset| {
+                    TursoMvccEvent::new(
+                        format!("mixed-partition-{}", offset % 4).into(),
+                        format!("mixed-{iteration:04}-{offset:02}").into(),
+                        payload.clone(),
+                        (LONG_INGESTION_ROWS + iteration * 32 + offset) as i64,
+                    )
                 })
                 .collect();
             let new_root = hash_blob(format!("mixed-root-{iteration}").as_bytes()).to_string();
@@ -199,29 +201,25 @@ fn main() {
     });
     assert_eq!(recovered_rows, LONG_INGESTION_ROWS);
 
-    let receipt = StorageSloMatrixReceipt {
-        schema_id: STORAGE_SLO_MATRIX_RECEIPT_SCHEMA_ID.into(),
-        long_ingestion_rows: LONG_INGESTION_ROWS,
-        long_ingestion_batch_rows: LONG_INGESTION_BATCH_ROWS,
-        long_ingestion_latency_micros: StorageLatencyDistributionMicros::from_samples(
-            &long_latencies,
-        )
-        .expect("long-ingestion latency samples"),
+    let receipt = StorageSloMatrixReceipt::new(
+        STORAGE_SLO_MATRIX_RECEIPT_SCHEMA_ID.into(),
+        LONG_INGESTION_ROWS,
+        LONG_INGESTION_BATCH_ROWS,
+        StorageLatencyDistributionMicros::from_samples(&long_latencies)
+            .expect("long-ingestion latency samples"),
         recovered_rows,
-        mixed_pressure_iterations: MIXED_PRESSURE_ITERATIONS,
-        mixed_pressure_latency_micros: StorageLatencyDistributionMicros::from_samples(
-            &mixed_latencies,
-        )
-        .expect("mixed-pressure latency samples"),
-        resident_set_kib: resident_set_kib(),
-        database_bytes: maintenance.database_bytes(),
-        wal_bytes: maintenance.wal_bytes(),
-        shm_bytes: file_len(&PathBuf::from(format!(
+        MIXED_PRESSURE_ITERATIONS,
+        StorageLatencyDistributionMicros::from_samples(&mixed_latencies)
+            .expect("mixed-pressure latency samples"),
+        resident_set_kib(),
+        maintenance.database_bytes(),
+        maintenance.wal_bytes(),
+        file_len(&PathBuf::from(format!(
             "{}-shm",
             mvcc_path.to_string_lossy()
         ))),
-        passive_checkpoint: maintenance.passive_checkpoint(),
-    };
+        maintenance.passive_checkpoint(),
+    );
     println!(
         "{}",
         serde_json::to_string_pretty(&receipt).expect("serialize SLO matrix receipt")

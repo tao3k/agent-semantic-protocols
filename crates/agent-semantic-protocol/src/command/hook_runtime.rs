@@ -446,24 +446,34 @@ fn resident_permission_context<'a>(
         Some(crate::command::ResidentChildIdentityProof::CodexHookPayloadLiveTarget)
     );
 
-    Some(agent_semantic_hook::HookSubagentPermissionContext {
-        resident_enabled: asp_session_policy.enabled(),
-        managed_child_name: asp_session_policy.resident_child_name(),
-        configured_codex_agent_name: asp_session_policy.resident_codex_agent_name(),
-        configured_role: asp_session_policy.resident_agent_role(),
-        codex_hook_agent_id,
-        codex_hook_agent_type,
-        resident_child_identity_proof: live_target_proof
-            .then_some("codex-hook-payload-live-target"),
-        resident_child_session_id: live_target_proof.then_some(session_id),
-        identity_status: if live_target_proof {
-            "live-target-verified"
+    let managed_child_name =
+        agent_semantic_hook::ManagedChildName::new(asp_session_policy.resident_child_name())?;
+    let configured_codex_agent_name = agent_semantic_hook::ConfiguredCodexAgentName::new(
+        asp_session_policy.resident_codex_agent_name(),
+    )?;
+    let configured_role =
+        agent_semantic_hook::ConfiguredResidentRole::new(asp_session_policy.resident_agent_role())?;
+    let session_id = agent_semantic_hook::ResidentRootSessionId::new(session_id)?;
+    Some(agent_semantic_hook::HookSubagentPermissionContext::new(
+        agent_semantic_hook::ResidentEnabled::new(asp_session_policy.enabled()),
+        managed_child_name,
+        configured_codex_agent_name,
+        configured_role,
+        codex_hook_agent_id.and_then(agent_semantic_hook::CodexHookAgentId::new),
+        codex_hook_agent_type.and_then(agent_semantic_hook::CodexHookAgentType::new),
+        live_target_proof
+            .then_some(agent_semantic_hook::ResidentChildIdentityProof::CodexHookPayloadLiveTarget),
+        live_target_proof.then_some(agent_semantic_hook::ResidentChildSessionId::new(
+            session_id.as_str(),
+        )?),
+        if live_target_proof {
+            agent_semantic_hook::ResidentIdentityStatus::LiveTargetVerified
         } else {
-            "unverified"
+            agent_semantic_hook::ResidentIdentityStatus::Unverified
         },
-        sandbox_mode,
+        sandbox_mode.and_then(agent_semantic_hook::ResidentSandboxMode::new),
         session_id,
-    })
+    ))
 }
 
 fn archive_stopped_managed_child(

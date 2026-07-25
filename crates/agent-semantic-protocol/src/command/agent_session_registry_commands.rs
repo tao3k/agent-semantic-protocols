@@ -21,7 +21,6 @@ use super::agent_session_registry_validation::{
     validate_recent_session_profile, validate_session_profile,
 };
 use super::normalized_metadata_with_roles;
-use std::path::Path;
 
 pub(super) fn register_session(
     registry: &AgentSessionRegistry,
@@ -50,7 +49,7 @@ pub(super) fn register_session(
     } else {
         validate_recent_session_profile(&session_id, &root_session_id, &name, &role, now)?
     };
-    let model_observation = validation.actual_model.as_deref().map(|model| {
+    let model_observation = validation.actual_model().map(|model| {
         agent_semantic_client_db::AgentSessionModelObservationRef {
             model,
             source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexRollout,
@@ -64,7 +63,7 @@ pub(super) fn register_session(
         &roles,
         &permissions,
     )?;
-    if validation.status == "failed".into() {
+    if validation.status().as_str() == "failed" {
         let _ = registry.mark_session_invalid(&project_id, &session_id, now);
         let _ = registry.register_session(AgentSessionRegisterRequest {
             project_id: (&project_id).into(),
@@ -82,7 +81,7 @@ pub(super) fn register_session(
         });
         return Err(format!(
             "agent session validation failed: {}.\nblockedState=validation-failed-or-non-routable-child\nloopCommand=asp agent session bootstrap --name {name}\nagentInstruction=Enter the resident-child choice pane and choose one number. The pane owns status inspection, model alignment, message target recovery, cleanup, creation, and registration; do not run low-level session commands as independent fallback workflows.",
-            validation.reason
+            validation.reason()
         ));
     }
     if !args.replace
@@ -177,13 +176,16 @@ pub(in crate::command::agent_session_registry) fn stale_invalid_session_should_b
         &record.role,
         now,
     )?;
-    if !matches!(validation.status.as_str(), "passed" | "warning" | "skipped") {
+    if !matches!(
+        validation.status().as_str(),
+        "passed" | "warning" | "skipped"
+    ) {
         return Ok(false);
     }
-    let Some(rollout_path) = validation.rollout_path.as_deref() else {
+    let Some(rollout_path) = validation.rollout_path() else {
         return Ok(false);
     };
-    let activity = rollout_activity_report(Path::new(rollout_path), now);
+    let activity = rollout_activity_report(rollout_path, now);
     if activity.running_session_closed {
         return Ok(false);
     }

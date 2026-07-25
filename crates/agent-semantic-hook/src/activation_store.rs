@@ -67,23 +67,42 @@ pub fn load_or_refresh_default_activation(
     activation_path: &Path,
     project_root: &Path,
 ) -> Result<DefaultActivationSync, String> {
+    let started = std::time::Instant::now();
     let current_selections = provider_command_selections(project_root)?;
+    emit_activation_timing("provider-selections", started);
+    let reusable_started = std::time::Instant::now();
     if let Some(activation) =
         reusable_activation(activation_path, project_root, &current_selections)?
     {
+        emit_activation_timing("reusable-activation", reusable_started);
         return Ok(DefaultActivationSync {
             activation,
             status: "reused",
         });
     }
+    emit_activation_timing("reusable-activation", reusable_started);
 
     let existed = activation_path.is_file();
-    let activation = build_default_activation(project_root)?;
+    let build_started = std::time::Instant::now();
+    let activation =
+        crate::build_default_activation_from_selections(project_root, &current_selections)?;
+    emit_activation_timing("build-activation", build_started);
+    let write_started = std::time::Instant::now();
     write_activation(activation_path, &activation)?;
+    emit_activation_timing("write-activation", write_started);
     Ok(DefaultActivationSync {
         activation,
         status: if existed { "refreshed" } else { "created" },
     })
+}
+
+fn emit_activation_timing(step: &str, started: std::time::Instant) {
+    if std::env::var_os("ASP_HOOK_INSTALL_TIMINGS").is_some() {
+        eprintln!(
+            "[activation-timing] step={step} stepMs={:.3}",
+            started.elapsed().as_secs_f64() * 1_000.0
+        );
+    }
 }
 
 fn reusable_activation(

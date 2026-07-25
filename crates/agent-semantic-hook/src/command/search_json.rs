@@ -49,7 +49,7 @@ fn provider_command_index(
         if command_name(token) == "asp"
             && tokens
                 .get(index + 1)
-                .is_some_and(|language| language == &provider.language_id)
+                .is_some_and(|language| language == provider.language_id.as_str())
         {
             return Some((index, 2));
         }

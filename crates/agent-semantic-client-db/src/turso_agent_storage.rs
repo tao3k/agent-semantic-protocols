@@ -26,7 +26,7 @@ impl TursoMvccAgentStorage {
     }
 
     fn validate_profile(&self, batch: &SessionEventBatch) -> Result<(), StorageError> {
-        let passive_checkpoint = self.store.optimization_receipt().passive_checkpoint;
+        let passive_checkpoint = self.store.optimization_receipt().passive_checkpoint();
         match (
             batch.optimization_profile,
             batch.transaction_mode,
@@ -49,16 +49,16 @@ impl TursoMvccAgentStorage {
     }
 
     fn decode_event(row: TursoMvccEvent) -> Result<SessionEvent, StorageError> {
-        let event: SessionEvent = serde_json::from_slice(&row.payload).map_err(|error| {
+        let event: SessionEvent = serde_json::from_slice(row.payload()).map_err(|error| {
             StorageError::backend(format!(
                 "decode Turso MVCC session event {}: {error}",
-                row.event_id
+                row.event_id()
             ))
         })?;
-        if event.event_id.as_str() != row.event_id || event.created_at_ms != row.created_at_ms {
+        if event.event_id.as_str() != row.event_id() || event.created_at_ms != row.created_at_ms() {
             return Err(StorageError::backend(format!(
                 "Turso MVCC session event envelope mismatch: {}",
-                row.event_id
+                row.event_id()
             )));
         }
         Ok(event)
@@ -76,17 +76,17 @@ impl AgentStorage for TursoMvccAgentStorage {
             let partition_key = batch.partition.canonical_key();
             let mut rows = Vec::with_capacity(batch.events.len());
             for event in &batch.events {
-                rows.push(TursoMvccEvent {
-                    partition_key: partition_key.clone(),
-                    event_id: event.event_id.as_str().to_owned(),
-                    payload: serde_json::to_vec(event).map_err(|error| {
+                rows.push(TursoMvccEvent::new(
+                    partition_key.clone().into(),
+                    event.event_id.as_str().into(),
+                    serde_json::to_vec(event).map_err(|error| {
                         StorageError::backend(format!(
                             "encode Turso MVCC session event {}: {error}",
                             event.event_id
                         ))
                     })?,
-                    created_at_ms: event.created_at_ms,
-                });
+                    event.created_at_ms,
+                ));
             }
             let write = self
                 .store

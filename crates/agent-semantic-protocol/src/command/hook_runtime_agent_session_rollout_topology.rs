@@ -60,12 +60,12 @@ pub(super) fn current_rollout_topology() -> Result<Option<CurrentRolloutTopology
         return Ok(None);
     };
     Ok(Some(CurrentRolloutTopology {
-        session_id: metadata.session_id.to_string(),
-        root_session_id: metadata.root_session_id,
-        parent_thread_id: metadata.parent_thread_id,
-        thread_source: metadata.thread_source,
-        agent_role: metadata.agent_role,
-        spawn_depth: metadata.spawn_depth,
+        session_id: metadata.session_id().to_string(),
+        root_session_id: metadata.root_session_id().map(ToString::to_string),
+        parent_thread_id: metadata.parent_thread_id().map(ToString::to_string),
+        thread_source: metadata.thread_source().map(str::to_owned),
+        agent_role: metadata.agent_role().map(str::to_owned),
+        spawn_depth: metadata.spawn_depth().map(i64::from),
     }))
 }
 

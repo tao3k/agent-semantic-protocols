@@ -45,7 +45,7 @@ pub(in crate::hook_config) struct CompiledHookRule {
     decision_materializer: Option<agent_semantic_config::HookClientDecisionMaterializer>,
     reason_kind: ReasonKind,
     message: Option<String>,
-    language_ids: Vec<String>,
+    language_ids: Vec<agent_semantic_config::LanguageId>,
     event: Option<String>,
     platform: Option<String>,
     match_config: RuleMatch,
@@ -82,8 +82,8 @@ pub(super) struct RuleMatch {
 
 #[derive(Debug)]
 struct RuleRoute {
-    provider_id: String,
-    language_id: Option<String>,
+    provider_id: agent_semantic_config::ProviderId,
+    language_id: agent_semantic_config::LanguageId,
     binary: Option<String>,
     kind: DecisionRouteKind,
     argv: Vec<String>,
@@ -144,7 +144,7 @@ impl CompiledHookRule {
         !collect_source_selector_matches(runtime, paths.iter().map(String::as_str), |provider| {
             self.language_ids
                 .iter()
-                .any(|language_id| language_id.eq_ignore_ascii_case(&provider.language_id))
+                .any(|language_id| language_id == &provider.language_id)
         })
         .is_empty()
     }
@@ -509,11 +509,7 @@ impl RuleRoute {
             .iter()
             .find(|provider| provider.provider_id == self.provider_id);
         DecisionRoute {
-            language_id: self
-                .language_id
-                .clone()
-                .or_else(|| provider.map(|provider| provider.language_id.clone()))
-                .unwrap_or_default(),
+            language_id: self.language_id.clone(),
             provider_id: self.provider_id.clone(),
             binary: self
                 .binary
@@ -652,7 +648,11 @@ impl CompiledHookRule {
             decision_materializer: config.decision_materializer,
             reason_kind,
             message: config.message,
-            language_ids: config.language_ids,
+            language_ids: config
+                .language_ids
+                .into_iter()
+                .map(agent_semantic_config::LanguageId::try_new)
+                .collect::<Result<Vec<_>, _>>()?,
             event: config.event,
             platform: config.platform,
             match_config: RuleMatch::try_from(config.match_config)?,
@@ -708,9 +708,27 @@ impl TryFrom<HookClientRuleRouteConfig> for RuleRoute {
     type Error = String;
 
     fn try_from(config: HookClientRuleRouteConfig) -> Result<Self, Self::Error> {
+        let provider_id = agent_semantic_config::ProviderId::try_new(config.provider_id)?;
+        let manifest = crate::provider_manifest::provider_manifests()
+            .into_iter()
+            .find(|manifest| manifest.provider_id == provider_id)
+            .ok_or_else(|| {
+                format!("hook route references unregistered provider `{provider_id}`")
+            })?;
+        let language_id = config
+            .language_id
+            .map(agent_semantic_config::LanguageId::try_new)
+            .transpose()?
+            .unwrap_or_else(|| manifest.language_id.clone());
+        if language_id != manifest.language_id {
+            return Err(format!(
+                "hook route provider `{provider_id}` belongs to language `{}`, not `{language_id}`",
+                manifest.language_id
+            ));
+        }
         Ok(Self {
-            provider_id: config.provider_id,
-            language_id: config.language_id,
+            provider_id,
+            language_id,
             binary: config.binary,
             kind: DecisionRouteKind::from(config.kind),
             argv: config.argv,

@@ -1,0 +1,587 @@
+#+title: Context product state v1
+#+startup: overview
+
+* Status
+
+This document defines the first shared, language-neutral product state for
+ASP-owned search reconciliation.  It is normative for the v1 schema and Rust
+reducer.  It does not define a compatibility projection and it does not admit
+legacy state variants.
+
+The architecture separates five authorities:
+
+- a client or reasoning model may emit a =RouteProposal=;
+- GraphRouter alone may admit a =RouteProgram=;
+- GraphRouter alone may emit =ActionAdmitted=;
+- an execution authority may issue a single-use =ExecutionGrantIssued= only
+  for the admitted action;
+- GraphRouter alone may emit =ClosureFinalized= and its
+  =SearchClosureReceipt=.
+
+SearchRouter executes admitted stages.  SearchReasoningRouter compares bounded
+semantic alternatives.  Neither router may mutate graph state, admit an
+action, issue a grant, or finalize closure.
+
+* Closure digest ordering
+
+=ClosureFinalized= is an event in the authoritative log.  Its receipt digest
+MUST be computed before both the post-event log digest and the post-transition
+state digest.  Consequently the closure receipt MUST NOT contain
+=eventLogDigest= or =finalStateDigest=.  The authoritative state contains
+=closure.receiptDigest=, and the event log chains that same receipt digest, so
+putting either post-transition digest back into the event would create an
+unsatisfiable cycle:
+
+#+begin_example
+receiptDigest = H(... finalStateDigest ...)
+finalStateDigest = H(... closure.receiptDigest ...)
+
+receiptDigest = H(... eventLogDigest ...)
+eventLogDigest = H(previousEventLogDigest, receiptDigest)
+#+end_example
+
+The acyclic v1 ordering is:
+
+1. require =DecisionRequirement::Search= to name exactly the currently
+   unresolved required obligations (or =None= only when none remain), then
+   validate every closure proof against the current state and live evidence;
+2. construct =ClosureFinalized= from the pre-state and closed obligations;
+3. compute the closure =receiptDigest=;
+4. reduce the event into a finalized state containing that receipt identity
+   and atomically consume the search decision to =None=;
+5. chain the receipt digest into the post-event =eventLogDigest= and compute the
+   post-state =stateDigest=;
+6. publish both post-transition digests through =StateAuthorityReceipt= /
+   =RunCommitReceipt=, not inside the event being reduced.
+
+This is the only v1 ordering.  A provider or store MUST NOT use a placeholder,
+fixed-point search, or a second closure event to emulate either prohibited
+post-transition digest.
+
+* Shared schema
+
+The canonical schema is:
+
+#+begin_src text
+schemas/context-product-state.v1.schema.json
+#+end_src
+
+Every object is closed.  Every field documented as required is required.
+Unknown variants, =legacyState=, =compatMode=, client-private lifecycle state,
+and provider-private closure flags are invalid.
+
+The top-level wire value is =UncheckedContextProductStateV1=:
+
+#+begin_src text
+schemaId = asp.context-product-state
+schemaVersion = 1
+runId
+revision
+previousStateDigest          # forbidden at revision 0; required at revision >= 1
+lastEventSequence
+eventLogDigest
+activeProgram
+spentActionLedgerDigest
+authorityReceiptRef
+canonicalizationProfile = jcs-rfc8785+blake3-256
+context
+obligations[]
+proofReuse
+frontier
+decision
+execution
+closure
+stateDigest
+#+end_src
+
+=stateDigest= is the BLAKE3 digest of the canonical JSON encoding of all other
+top-level fields.  The Rust reducer recomputes it.  A client-supplied digest is
+never trusted.
+
+* Context binding
+
+=ContextBinding= atomically binds:
+
+- workspace identity and canonical workspace root digest;
+- base source and dirty-overlay digests;
+- the composed source-snapshot digest;
+- provider and parser identities;
+- query-pack, fact-schema, and projection-schema identities;
+- policy identity;
+- graph revision;
+- context epoch.
+
+=bindingDigest= covers the complete binding.  Reuse is invalid when any bound
+identity changes unless a claim-specific rebase certificate proves a safe
+transport into the new binding.
+
+Path equality is not freshness.  An unchanged owner path cannot preserve a
+proof when source content, dirty overlay, provider, parser, query pack, schema,
+policy, or graph revision changed.
+
+* Obligations
+
+Every requested semantic claim is represented by an =Obligation= with:
+
+- a stable =obligationId=;
+- =claimClass=;
+- canonical =claimDigest=;
+- whether it is required;
+- dependency obligation identifiers;
+- one =ObligationDisposition=.
+
+The v1 claim classes are:
+
+#+begin_src text
+identity
+enumeration
+absence
+causal-flow
+handoff
+quality
+#+end_src
+
+The v1 dispositions are:
+
+#+begin_src text
+open
+resolved
+refresh-required
+blocked
+#+end_src
+
+=resolved= carries a supported or refuted verdict and non-empty proof
+references.  =blocked= is never closed.  =refresh-required= names every
+invalidated proof reference.  Identity evidence cannot satisfy enumeration or
+absence.
+
+The Rust reducer verifies dependency references, acyclicity, claim scope,
+proof freshness, and coverage.
+
+* Proof reuse
+
+=ProofReuse= is one of:
+
+- =none=;
+- =partial= with non-empty retained and invalidated sets;
+- =complete= with a non-empty retained set and no invalidated proof.
+
+Each retained proof is either =direct= or =rebased=.  Direct reuse must bind
+the current =ContextBinding=.  Rebased reuse requires a certificate that
+preserves every evidence anchor, claim, support owner, scope, and provenance
+edge.
+
+=complete= means that every required obligation is covered.  It is not a cache
+hit label and cannot be inferred from unchanged file names.
+
+* Frontier
+
+=FrontierAntichain= is an optional planner projection over the complete
+residual obligation DAG.  It contains stable node, program, stage, predecessor,
+open-obligation, and proof references.
+
+The Rust reducer verifies:
+
+- all referenced graph nodes exist;
+- every frontier node has valid prerequisites;
+- no frontier node is reachable from another frontier node;
+- the frontier is maximal for the selected residual graph;
+- the frontier and graph digests are correct.
+
+The frontier is not proof identity, graph state, or closure authority.
+
+* Decision requirement
+
+The decision is one of:
+
+#+begin_src text
+none
+deterministic
+search
+reason
+clarify
+blocked
+#+end_src
+
+=search= contains a bounded evidence plan, open obligations, and an explicit
+budget.  The plan must be capable of increasing obligation coverage.
+=reason= contains a checkpoint and bounded choices; it cannot replace missing
+facts.  =none= is valid only when no further decision is required.
+
+Before ASP emits a =recommendedNext= command, the command must be:
+
+- parser-valid for the selected language facade;
+- executable in the current provider and workspace binding;
+- non-duplicate under its canonical action identity;
+- bounded by the admitted budget;
+- capable of increasing coverage or producing an evidence-bearing blocker.
+
+An invalid command is a typed router defect.  It is never presented as an
+agent instruction.
+
+* Execution authority
+
+=ExecutionAuthority= is one of:
+
+#+begin_src text
+none
+admitted
+granted
+consumed
+revoked
+#+end_src
+
+The action key is stable across admission, grant, and consumption.  State
+transitions are monotonic.  A grant is single-use and is checked immediately
+before provider invocation.
+
+V1 supports:
+
+- read-only effects;
+- idempotent keyed effects with a provider idempotency key.
+
+V1 requires durable exactly-once admission and attempt identity. Providers that
+cannot honor the grant fence and idempotency contract are not executable.
+
+* Route proposal and admitted program
+
+=RouteProposal= is advisory.  It contains bounded provider-search,
+provider-query, and reasoning-checkpoint nodes, their dependencies, evidence
+predicates, covered obligations, and a proposed budget.
+
+A proposal cannot contain admission, grant, execution, graph mutation, or
+closure fields.
+
+=RouteProgram= is a GraphRouter-admitted DAG.  Each stage still requires an
+independent =ActionAdmitted= event.  V1 joins use only:
+
+#+begin_src text
+policy = all
+#+end_src
+
+Every mandatory branch enters its declared join.  A missing, stale, late,
+duplicate, mixed-epoch, or truncated branch cannot satisfy the join.
+
+Parallel subagents and sequential execution must produce equivalent canonical
+events and terminal state.  Multi-agent execution is an accelerator, not a
+protocol dependency.
+
+* Closure
+
+=ClosureDisposition= is one of:
+
+#+begin_src text
+open
+partial
+finalized
+#+end_src
+
+=finalized= refers to a =SearchClosureReceipt=.  The receipt contains exactly
+one closure proof for every required obligation and binds the current context,
+intent, route program, event log, and final state.
+
+Enumeration and absence closure additionally require:
+
+#+begin_src text
+complete = true
+truncated = false
+snapshotContinuous = true
+providerAdmitted = true
+#+end_src
+
+=ClosureFinalized= is the only terminal closure event.
+
+* Schema and reducer boundary
+
+JSON Schema owns:
+
+- required and closed objects;
+- scalar formats and closed enums;
+- local variant conditions;
+- non-empty and unique arrays;
+- absence and enumeration scope flags;
+- =singleUse = true=.
+
+The Rust canonical reducer owns:
+
+- canonical JSON and digest recomputation;
+- cross-object references and identifier uniqueness;
+- graph acyclicity, reachability, branch completeness, and joins;
+- antichain and maximal-frontier verification;
+- claim implication and support closure;
+- safe proof rebase and freshness;
+- epoch atomicity;
+- policy, dependency, budget, lease, and event ordering;
+- admission, grant, exactly-once consumption, and closure authority.
+
+No client, provider, wrapper, or language harness may reimplement a weaker
+closure rule.
+
+* Conformance model
+
+The shared conformance suite contains at least these cases:
+
+1. Accept an open state with a bounded search decision and no execution.
+2. Reject every unknown field or variant, including legacy or compatibility
+   fields.
+3. Reject a resolved obligation without proof references.
+4. Reject partial proof reuse without both retained and invalidated sets.
+5. Reject a frontier containing an ancestor and its descendant.
+6. Reject a cyclic route program or a join referencing a missing stage.
+7. Reject a route proposal carrying admission, grant, or closure fields.
+8. Reject action admission bound to a stale context.
+9. Reject a second consumption of the same grant or an old lease fence.
+10. Reject enumeration or absence closure using identity-only, incomplete, or
+    truncated evidence.
+
+Every registered language provider consumes the same fixtures for shared
+fields.  Provider-owned fields may add facts but cannot weaken the shared
+invariants.
+
+* Authority boundary and crate ownership
+
+The JSON value defined by this RFC is a *wire packet*.  Structural validity,
+digest equality, and authority are three different claims and MUST NOT be
+collapsed into one boolean.
+
+#+begin_src text
+agent-semantic-context-product
+  owns: closed wire DTOs, enums, identifiers, canonicalization profile
+  does not own: authoritative state mutation or durable exactly-once state
+
+agent-semantic-loop
+  owns: pure transition reducer and transition precondition evaluation
+  does not own: durable compare-and-swap or proof storage
+
+agent-semantic-client-db
+  owns: authoritative run head, event log, action/grant ledger, atomic CAS
+  does not own: language proof semantics
+
+provider proof resolver
+  owns: proofRef resolution, freshness, scope and support-closure verification
+
+GraphRouter service
+  composes: reducer + CAS store + proof resolver + trusted clock
+#+end_src
+
+=UncheckedContextProductStateV1= is the public deserializable wire form.
+=ValidatedContextProductStateV1= is an opaque value created only after:
+
+1. the wire schema and all reducer invariants pass;
+2. =authorityReceiptRef= resolves in the configured authoritative store;
+3. the receipt binds =runId=, =revision=, =stateDigest= and =eventLogDigest=;
+4. the loaded row is still the current run head.
+
+Content digests detect identity and accidental mutation.  They are not
+signatures and do not authorize state.  Public digest recomputation MUST NOT
+turn an unchecked packet into a validated state.
+
+* Authoritative state chain
+
+The product state additionally carries:
+
+#+begin_src text
+previousStateDigest
+lastEventSequence
+eventLogDigest
+activeProgram
+spentActionLedgerDigest
+authorityReceiptRef
+#+end_src
+
+=previousStateDigest= is absent only for the store-created initial state.
+=lastEventSequence= advances by exactly one for every accepted transition.
+=eventLogDigest= is the canonical event-chain digest through that sequence.
+=activeProgram= records the admitted proposal, program and their digests;
+passing another caller-supplied program to an action transition is invalid.
+=spentActionLedgerDigest= binds the durable run-scoped set of admitted,
+in-flight, consumed and revoked action identities.  Resetting the current
+execution slot never makes a spent action identity reusable.
+
+Every mutating reducer request binds:
+
+#+begin_src text
+runId
+expectedRevision
+expectedStateDigest
+expectedContextBindingDigest
+nextEventSequence
+eventId
+#+end_src
+
+The store applies the resulting transition only with an atomic
+=compare-and-swap(runId, expectedRevision, expectedStateDigest)=.  A stale,
+duplicate or concurrently replayed request therefore returns a typed conflict
+and emits no event.
+
+Revision, sequence, lease fence, timestamp and budget integers MUST be within
+the cross-language JSON safe-integer interval =0..9007199254740991=.  Increment
+uses checked arithmetic; exhaustion is terminal and never wraps.
+
+* Program and execution lifecycle
+
+=RouteProgramAdmitted= is a durable event, not a validation-only return value.
+It stores the admitted program in =activeProgram=.  The reducer proves:
+
+- =dependsOnNodeIds= and proposal edges describe the same dependency relation;
+- every proposal node lowers to exactly one program stage;
+- the lowered edges preserve the proposal graph;
+- every mandatory branch is named by one =RouteJoin=;
+- every join has =requiredStageIds=, =continuationStageId= and =policy=all=;
+- no continuation becomes runnable before all required stages satisfy their
+  evidence predicates.
+
+=ActionAdmitted= is derived from the stored active program.  Its canonical
+=actionKey= is BLAKE3 over the canonical tuple:
+
+#+begin_src text
+runId
+activeProgram.programDigest
+stageId
+contextBindingDigest
+resolvedInputDigest
+policyDigest
+dependencyDigest
+budgetReservationId
+budgetChargeKey
+#+end_src
+
+The caller supplies a request, not a completed event.  GraphRouter derives the
+action identity, event digest and next sequence.  =resolvedInputDigest= is not
+equal by definition to =inputTemplateDigest=; the reducer verifies the
+provider-owned resolution receipt that binds both.
+
+The execution lifecycle is:
+
+#+begin_src text
+none
+  -> admitted
+  -> granted
+  -> in-flight
+  -> consumed | revoked
+#+end_src
+
+=granted= and =in-flight= retain the admitted program, stage, provider,
+operation, input, policy, dependency, budget, fence, expiry and grant digests.
+The trusted clock is checked immediately before the provider side effect.
+=in-flight= is written by CAS before the side effect.  Provider attempts use a
+durable idempotency key derived from the grant and attempt.  Crash recovery may
+resume or revoke that exact attempt; it may not issue a second grant from the
+same stale admission.
+
+* Proof and closure authority
+
+A non-empty =proofRefs= array is not proof.  Every referenced proof resolves to
+a provider-issued evidence receipt containing:
+
+#+begin_src text
+proofRef
+claimClass
+claimDigest
+verdict
+contextBindingDigest
+sourceSnapshotDigest
+providerDigest
+parserDigest
+queryPackDigest
+scopeDigest
+supportClosureDigest
+freshnessReceiptRef
+packetDigest
+#+end_src
+
+The proof resolver validates the receipt, its support paths, owner closure,
+freshness and claim-class policy.  Rebased proof additionally resolves and
+validates its rebase certificate.  Boolean scope flags are projections of that
+verification; callers cannot self-attest them.
+
+=SearchClosureReceipt= additionally binds =stateRevision=,
+=preStateDigest=, =eventLogDigest= and the admitted =programDigest=.  Finalize
+closure first verifies every required obligation through the proof resolver,
+then requires =decision=none= and =execution=none=, writes the terminal event
+by CAS, and stores both =receiptId= and =receiptDigest= in the finalized state.
+
+* Canonicalization and digest profile
+
+All shared digests use BLAKE3-256 over UTF-8 JSON Canonicalization Scheme
+(JCS, RFC 8785) bytes.  Producers MUST reject values outside the I-JSON and
+safe-integer profile before canonicalization.
+
+Objects use JCS member ordering.  Arrays that model sets are sorted before
+canonicalization using the following stable keys:
+
+- identifiers and proof references: ascending UTF-8 identifier bytes;
+- edges: =(from, to)=;
+- stages and nodes: their canonical identifier;
+- joins: =joinId=, with =requiredStageIds= sorted;
+- support paths: normalized repository-relative path bytes;
+- closure proofs: =obligationId=.
+
+Arrays that model execution order retain order and are explicitly named as
+ordered sequences.  =graphDigest= is computed from the normalized stages,
+edges and joins projection defined above.  =programDigest= covers the complete
+normalized program including =graphDigest=.  Proposal, action, grant, event-log,
+state and closure-receipt digests use the same profile.  No provider may invent
+a private serialization or sorting rule.
+
+* Conformance fixtures
+
+This is the only V1 conformance corpus.  A fixture has one stable identifier
+and records independent expectations for schema shape, reducer semantics and
+authority resolution.  A value may therefore be schema-valid while remaining
+reducer-invalid or authority-invalid.  Local look-alike fixture lists and a
+second versioned corpus are not conforming evidence.
+
+The shared conformance corpus MUST include, at minimum:
+
+1. reject a self-consistent wire state whose authority receipt is unresolved;
+2. reject stale revision and stale pre-state digest CAS;
+3. reject duplicate event sequence or event identity;
+4. reject a program that was valid structurally but never admitted;
+5. reject dependency edges changed during proposal lowering;
+6. reject a mandatory branch that bypasses its =policy=all= join;
+7. reject action-key, policy, dependency or budget substitution;
+8. reject provider or operation substitution in a grant;
+9. reject a second grant from the same stale admitted state;
+10. recover one in-flight attempt after crash without a second side effect;
+11. reject grant consumption after expiry or with a stale lease fence;
+12. reject direct construction of finalized validated state;
+13. reject fake proof IDs, stale proof context and incomplete support closure;
+14. reject a forged boolean completeness scope;
+15. reject closure with a stale event log or pre-state digest;
+16. reject an indirect ancestor and descendant in the same frontier;
+17. reject =decision=none= while required obligations remain open;
+18. prove sequential and parallel stage execution converge to the same
+    normalized event trace and terminal state.
+
+These fixtures are shared data.  Rust, TypeScript, Python, Julia and future
+providers consume the same corpus; language-local look-alike fixtures do not
+count as conformance.
+
+* Implementation and release gate
+
+The implementation sequence is:
+
+#+begin_src text
+shared JSON schema
+  -> shared fixtures
+  -> Rust typed values
+  -> canonical reducer
+  -> producer/router/consumer tests
+  -> resident crash and rebind tests
+  -> cross-language conformance
+  -> fixed-project benchmark receipts
+#+end_src
+
+Production release is blocked until:
+
+- every shared type has declaration, producer, router, consumer, and test
+  evidence;
+- child and root clients can complete the same resident search loop without
+  manual authority transfer;
+- direct and interactive modes produce equivalent canonical event traces;
+- invalid =recommendedNext= commands cannot leave the router;
+- cold/warm, serial/fan-out, packet-size, command-count, latency, and recovery
+  benchmarks bind the installed binary, provider, and source snapshot;
+- crash, lock contention, rebind, late result, and duplicate dispatch fixtures
+  preserve authority and closure invariants.

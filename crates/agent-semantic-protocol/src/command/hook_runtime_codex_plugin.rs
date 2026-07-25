@@ -14,7 +14,7 @@ const ASP_CODEX_PLUGIN_MANIFEST_JSON: &str =
 const ASP_CODEX_PLUGIN_HOOKS_JSON: &str =
     include_str!("../../../../asp-codex-plugin/hooks/hooks.json");
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(super) enum CodexPluginScope {
     Project,
     Global,
@@ -27,28 +27,6 @@ impl CodexPluginScope {
             Self::Global => "global",
         }
     }
-}
-
-pub(super) fn codex_plugin_scope_arg(
-    args: &[String],
-    client: &str,
-) -> Result<CodexPluginScope, String> {
-    let global_plugin = args
-        .iter()
-        .any(|arg| matches!(arg.as_str(), "--global" | "--global-plugin"));
-    let project_plugin = args
-        .iter()
-        .any(|arg| matches!(arg.as_str(), "--project" | "--project-plugin"));
-    if global_plugin && !project_plugin && client != "codex" {
-        return Err("--global is only supported for Codex plugin installations".to_string());
-    }
-    Ok(if project_plugin {
-        CodexPluginScope::Project
-    } else if global_plugin {
-        CodexPluginScope::Global
-    } else {
-        CodexPluginScope::Global
-    })
 }
 
 pub(super) fn install_codex_plugin_hooks(

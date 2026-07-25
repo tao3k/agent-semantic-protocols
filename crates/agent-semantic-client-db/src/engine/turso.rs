@@ -12,6 +12,10 @@ use super::turso_statement::{execute_turso_statement, run_turso_operation};
 const TURSO_CLIENT_DB_FILE: &str = "facts.turso";
 const TURSO_SEARCH_PROJECTION_DB_FILE: &str = "search-projection.turso";
 const TURSO_CLIENT_DB_SCHEMA_VERSION: i64 = 1;
+const TURSO_CLIENT_DB_PHYSICAL_FORMAT_ID: &str = "turso-0.7-native";
+const TURSO_CLIENT_DB_FORMAT_RECEIPT_FILE: &str = "facts.turso.format.v1.json";
+const TURSO_SEARCH_PROJECTION_DB_FORMAT_RECEIPT_FILE: &str =
+    "search-projection.turso.format.v1.json";
 const TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_PENDING: &str = "pending-cutover";
 const TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_READY: &str = "ready";
 const TURSO_CLIENT_DB_INDEX_METHOD: bool = true;
@@ -96,12 +100,96 @@ impl ClientDbEngineBackend for TursoClientDbEngineBackend {
     }
 }
 
+async fn turso_physical_format_is_current(connection: &turso::Connection) -> Result<bool, String> {
+    let mut rows = connection
+        .query(
+            "SELECT 1
+             FROM asp_db_engine_format
+             WHERE format_id = ?1
+               AND turso_version = ?2
+               AND logical_schema_version = ?3
+             LIMIT 1",
+            (
+                TURSO_CLIENT_DB_PHYSICAL_FORMAT_ID,
+                "0.7",
+                TURSO_CLIENT_DB_SCHEMA_VERSION,
+            ),
+        )
+        .await
+        .map_err(|error| format!("failed to inspect Turso physical-format authority: {error}"))?;
+    rows.next()
+        .await
+        .map(|row| row.is_some())
+        .map_err(|error| format!("failed to read Turso physical-format authority: {error}"))
+}
+
 pub(super) fn prepare_turso_client_db_path(db_path: &Path) -> Result<PathBuf, String> {
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create Turso client DB dir: {error}"))?;
     }
-    Ok(db_path.with_file_name(TURSO_CLIENT_DB_FILE))
+    let turso_path = db_path.with_file_name(TURSO_CLIENT_DB_FILE);
+    ensure_turso_0_7_format_receipt(&turso_path)?;
+    Ok(turso_path)
+}
+
+pub(super) fn turso_0_7_format_receipt_path(turso_path: &Path) -> PathBuf {
+    let receipt_file = if turso_path.file_name().and_then(|name| name.to_str())
+        == Some(TURSO_SEARCH_PROJECTION_DB_FILE)
+    {
+        TURSO_SEARCH_PROJECTION_DB_FORMAT_RECEIPT_FILE
+    } else {
+        TURSO_CLIENT_DB_FORMAT_RECEIPT_FILE
+    };
+    turso_path.with_file_name(receipt_file)
+}
+
+fn ensure_turso_0_7_format_receipt(turso_path: &Path) -> Result<(), String> {
+    if !turso_path.exists() {
+        return Ok(());
+    }
+    let receipt_path = turso_0_7_format_receipt_path(turso_path);
+    if !receipt_path.is_file() {
+        return Err(format!(
+            "existing client DB `{}` has no Turso 0.7 format receipt `{}`; full staging migration is required and in-place compatibility bootstrap is forbidden",
+            turso_path.display(),
+            receipt_path.display()
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn write_turso_0_7_format_receipt(turso_path: &Path) -> Result<(), String> {
+    let receipt_path = turso_0_7_format_receipt_path(turso_path);
+    let temporary_path = receipt_path.with_extension(format!(
+        "json.tmp-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("failed to timestamp Turso 0.7 format receipt: {error}"))?
+            .as_nanos()
+    ));
+    let receipt = serde_json::to_vec_pretty(&serde_json::json!({
+        "schemaId": "agent.semantic-protocols.turso-client-db-format-receipt",
+        "schemaVersion": "1",
+        "physicalFormat": TURSO_CLIENT_DB_PHYSICAL_FORMAT_ID,
+        "tursoVersion": "0.7",
+        "logicalSchemaVersion": TURSO_CLIENT_DB_SCHEMA_VERSION,
+        "migrationId": "client-db-v1-project-partition-cutover",
+    }))
+    .map_err(|error| format!("failed to encode Turso 0.7 format receipt: {error}"))?;
+    std::fs::write(&temporary_path, receipt).map_err(|error| {
+        format!(
+            "failed to write Turso 0.7 format receipt `{}`: {error}",
+            temporary_path.display()
+        )
+    })?;
+    std::fs::rename(&temporary_path, &receipt_path).map_err(|error| {
+        format!(
+            "failed to promote Turso 0.7 format receipt `{}`: {error}",
+            receipt_path.display()
+        )
+    })
 }
 
 pub(super) async fn bootstrap_turso_schema_version(
@@ -141,6 +229,7 @@ pub(super) async fn bootstrap_turso_schema_version(
             let mut complete = true;
             for table in [
                 "asp_db_engine_migration",
+                "asp_db_engine_format",
                 "asp_artifact_pointer",
                 "asp_failed_artifact_attempt",
             ] {
@@ -148,7 +237,7 @@ pub(super) async fn bootstrap_turso_schema_version(
                     complete = false;
                 }
             }
-            if complete {
+            if complete && turso_physical_format_is_current(connection).await? {
                 return Ok(());
             }
         }
@@ -176,6 +265,37 @@ pub(super) async fn bootstrap_turso_schema_version(
             )
             .await
             .map_err(|error| format!("failed to create Turso schema history: {error}"))?;
+        transaction
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS asp_db_engine_format (\
+                    format_id TEXT PRIMARY KEY,\
+                    turso_version TEXT NOT NULL,\
+                    logical_schema_version INTEGER NOT NULL,\
+                    migration_id TEXT NOT NULL,\
+                    promoted_at_ms INTEGER NOT NULL\
+                 )",
+            )
+            .await
+            .map_err(|error| {
+                format!("failed to create Turso physical-format authority: {error}")
+            })?;
+        transaction
+            .execute(
+                "INSERT OR REPLACE INTO asp_db_engine_format (\
+                    format_id, turso_version, logical_schema_version, migration_id, promoted_at_ms\
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                (
+                    TURSO_CLIENT_DB_PHYSICAL_FORMAT_ID,
+                    "0.7",
+                    TURSO_CLIENT_DB_SCHEMA_VERSION,
+                    "client-db-v1-project-partition-cutover",
+                    0_i64,
+                ),
+            )
+            .await
+            .map_err(|error| {
+                format!("failed to record Turso 0.7 physical-format authority: {error}")
+            })?;
         transaction
             .execute_batch(crate::artifact_pointer_store::CREATE_SCHEMA_SQL)
             .await
@@ -233,7 +353,10 @@ pub(super) fn turso_bootstrap_report(db_path: &Path) -> TursoClientDbEngineRepor
     report
 }
 
-async fn open_turso_client_db_read_only(turso_path: PathBuf) -> Result<turso::Connection, String> {
+pub(super) async fn open_turso_client_db_read_only(
+    turso_path: PathBuf,
+) -> Result<turso::Connection, String> {
+    ensure_turso_0_7_format_receipt(&turso_path)?;
     shared_turso_read_only_connection(&turso_path).await
 }
 
@@ -246,34 +369,24 @@ fn turso_builder(turso_path: &Path) -> turso::Builder {
 pub(super) struct TursoConnectionLease {
     _database: std::sync::Arc<turso::Database>,
     connection: tokio::sync::OwnedMutexGuard<turso::Connection>,
-    schema_state: std::sync::Arc<tokio::sync::Mutex<std::collections::HashSet<&'static str>>>,
-}
-
-/// Exclusive first-use bootstrap authority for one logical schema in one database.
-pub(super) struct TursoSchemaBootstrapGuard {
-    schema_state: tokio::sync::OwnedMutexGuard<std::collections::HashSet<&'static str>>,
-    schema_id: &'static str,
-}
-
-impl TursoSchemaBootstrapGuard {
-    pub(super) fn mark_ready(mut self) {
-        self.schema_state.insert(self.schema_id);
-    }
+    schema_state: std::sync::Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<&'static str, std::sync::Arc<tokio::sync::OnceCell<()>>>,
+        >,
+    >,
 }
 
 impl TursoConnectionLease {
-    pub(super) async fn begin_schema_bootstrap(
+    pub(super) async fn schema_bootstrap_state(
         &self,
         schema_id: &'static str,
-    ) -> Option<TursoSchemaBootstrapGuard> {
-        let schema_state = std::sync::Arc::clone(&self.schema_state).lock_owned().await;
-        if schema_state.contains(schema_id) {
-            return None;
-        }
-        Some(TursoSchemaBootstrapGuard {
-            schema_state,
-            schema_id,
-        })
+    ) -> std::sync::Arc<tokio::sync::OnceCell<()>> {
+        let mut states = self.schema_state.lock().await;
+        std::sync::Arc::clone(
+            states
+                .entry(schema_id)
+                .or_insert_with(|| std::sync::Arc::new(tokio::sync::OnceCell::new())),
+        )
     }
 }
 
@@ -295,7 +408,11 @@ struct TursoDatabasePoolEntry {
     database: std::sync::Arc<turso::Database>,
     write_lanes: Vec<std::sync::Arc<tokio::sync::Mutex<turso::Connection>>>,
     next_write_lane: usize,
-    schema_state: std::sync::Arc<tokio::sync::Mutex<std::collections::HashSet<&'static str>>>,
+    schema_state: std::sync::Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<&'static str, std::sync::Arc<tokio::sync::OnceCell<()>>>,
+        >,
+    >,
 }
 
 type TursoDatabasePool = std::collections::BTreeMap<std::path::PathBuf, TursoDatabasePoolEntry>;
@@ -321,11 +438,17 @@ async fn shared_turso_database(
             write_lanes: Vec::new(),
             next_write_lane: 0,
             schema_state: std::sync::Arc::new(tokio::sync::Mutex::new(
-                std::collections::HashSet::new(),
+                std::collections::HashMap::new(),
             )),
         },
     );
     Ok(database)
+}
+
+pub(super) async fn evict_turso_client_dir(client_dir: &Path) {
+    let mut pool = turso_database_pool().lock().await;
+    pool.remove(&client_dir.join(TURSO_CLIENT_DB_FILE));
+    pool.remove(&client_dir.join(TURSO_SEARCH_PROJECTION_DB_FILE));
 }
 
 async fn configure_turso_write_connection(
@@ -368,7 +491,7 @@ async fn shared_turso_write_connection(turso_path: &Path) -> Result<TursoConnect
                     write_lanes: Vec::new(),
                     next_write_lane: 0,
                     schema_state: std::sync::Arc::new(tokio::sync::Mutex::new(
-                        std::collections::HashSet::new(),
+                        std::collections::HashMap::new(),
                     )),
                 },
             );
@@ -447,6 +570,23 @@ async fn build_turso_database(turso_path: &Path) -> Result<turso::Database, Stri
         "failed to open Turso client DB after bounded lock retries: {}",
         last_lock_error.unwrap_or_else(|| "unknown Turso lock error".to_string())
     ))
+}
+
+/// Open an unreceipted legacy file only for bounded, read-only Turso 0.7 migration.
+pub(super) async fn open_turso_0_7_migration_source(
+    turso_path: &Path,
+) -> Result<(turso::Database, turso::Connection), String> {
+    let database = build_turso_database(turso_path).await?;
+    let connection = database
+        .connect()
+        .map_err(|error| format!("failed to connect Turso 0.7 migration source: {error}"))?;
+    connection
+        .execute("PRAGMA query_only = 1", ())
+        .await
+        .map_err(|error| {
+            format!("failed to enforce read-only Turso 0.7 migration source: {error}")
+        })?;
+    Ok((database, connection))
 }
 
 pub(super) fn turso_client_db_exists(db_path: &Path) -> bool {

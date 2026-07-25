@@ -120,36 +120,37 @@ fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
     };
     let manifests = agent_semantic_hook::builtin_provider_manifests();
     let activation = ProviderRegistrySnapshot::load(&parsed.activation_root);
-    let activation_evidence = |language_id: &str, provider_id: &str| match &activation {
-        Ok(snapshot) => {
-            let provider = snapshot.providers.iter().find(|provider| {
-                provider.language_id.to_string() == language_id
-                    && provider.provider_id.to_string() == provider_id
-            });
-            serde_json::json!({
-                "status": if provider.is_some() { "activated" } else { "not-activated" },
-                "activationPath": snapshot.activation_path,
-                "provider": provider.map(|provider| serde_json::json!({
-                    "manifestId": provider.manifest_id,
-                    "manifestDigest": provider.manifest_digest,
-                    "binary": provider.binary,
-                    "execution": provider.execution.as_str(),
-                })),
-            })
-        }
-        Err(error) => serde_json::json!({
-            "status": "unavailable",
-            "reasonKind": "provider-registry-unavailable",
-            "message": error,
-        }),
-    };
+    let activation_evidence =
+        |language_id: &agent_semantic_client_core::LanguageId,
+         provider_id: &agent_semantic_client_core::ProviderId| match &activation {
+            Ok(snapshot) => {
+                let provider = snapshot.providers.iter().find(|provider| {
+                    &provider.language_id == language_id && &provider.provider_id == provider_id
+                });
+                serde_json::json!({
+                    "status": if provider.is_some() { "activated" } else { "not-activated" },
+                    "activationPath": snapshot.activation_path,
+                    "provider": provider.map(|provider| serde_json::json!({
+                        "manifestId": provider.manifest_id,
+                        "manifestDigest": provider.manifest_digest,
+                        "binary": provider.binary,
+                        "execution": provider.execution.as_str(),
+                    })),
+                })
+            }
+            Err(error) => serde_json::json!({
+                "status": "unavailable",
+                "reasonKind": "provider-registry-unavailable",
+                "message": error,
+            }),
+        };
 
     if let Some(language_id) = requested_language {
         let manifest = manifests
             .iter()
-            .find(|manifest| manifest.language_id == language_id)
+            .find(|manifest| manifest.language_id().as_str() == language_id)
             .ok_or_else(|| format!("no builtin provider manifest for language `{language_id}`"))?;
-        let query_pack_descriptor = &manifest.query_pack_descriptor;
+        let query_pack_descriptor = manifest.query_pack_descriptor();
         let (contract_status, contract_errors) = provider_contract_status(manifest);
         let manifest_digest = agent_semantic_hook::provider_manifest_digest(manifest)
             .map_err(|error| format!("digest builtin provider manifest: {error}"))?;
@@ -159,11 +160,11 @@ fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
                 "manifest": manifest,
                 "manifestDigest": manifest_digest,
                 "queryPackDescriptor": query_pack_descriptor,
-                "searchCapabilities": manifest.search_capabilities,
-                "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
+                    "searchCapabilities": manifest.search_capabilities(),
+                    "semanticFactsDescriptor": manifest.semantic_facts_descriptor(),
                 "contractStatus": contract_status,
                 "contractErrors": contract_errors,
-                "activation": activation_evidence(&manifest.language_id, &manifest.provider_id),
+                "activation": activation_evidence(manifest.language_id(), manifest.provider_id()),
             }))
             .map_err(|error| format!("serialize provider manifest evidence: {error}"))?
         );
@@ -171,7 +172,7 @@ fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
         let providers = manifests
             .iter()
             .map(|manifest| {
-                let query_pack_descriptor = &manifest.query_pack_descriptor;
+                let query_pack_descriptor = manifest.query_pack_descriptor();
                 let (contract_status, contract_errors) = provider_contract_status(manifest);
                 let manifest_digest = agent_semantic_hook::provider_manifest_digest(manifest)
                     .map_err(|error| format!("digest builtin provider manifest: {error}"))?;
@@ -179,11 +180,14 @@ fn run_providers(parsed: ParsedArgs) -> Result<(), String> {
                     "manifest": manifest,
                     "manifestDigest": manifest_digest,
                     "queryPackDescriptor": query_pack_descriptor,
-                    "searchCapabilities": manifest.search_capabilities,
-                    "semanticFactsDescriptor": manifest.semantic_facts_descriptor,
+                    "searchCapabilities": manifest.search_capabilities(),
+                    "semanticFactsDescriptor": manifest.semantic_facts_descriptor(),
                     "contractStatus": contract_status,
                     "contractErrors": contract_errors,
-                    "activation": activation_evidence(&manifest.language_id, &manifest.provider_id),
+                    "activation": activation_evidence(
+                        manifest.language_id(),
+                        manifest.provider_id(),
+                    ),
                 }))
             })
             .collect::<Result<Vec<_>, String>>()?;

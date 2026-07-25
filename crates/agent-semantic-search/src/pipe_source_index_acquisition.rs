@@ -183,8 +183,12 @@ pub fn search_pipe_source_index_query_gate(
 ) -> Option<SearchPipeSourceIndexGate> {
     if terms.len() < 2
         || terms.iter().any(|term| {
-            term.role == crate::SearchPipeTermRole::Symbol
-                || crate::search_pipe_is_path_like_token(&term.raw)
+            matches!(
+                term.role,
+                crate::SearchPipeTermRole::Symbol
+                    | crate::SearchPipeTermRole::Literal
+                    | crate::SearchPipeTermRole::DiagnosticCode
+            ) || crate::search_pipe_is_path_like_token(&term.raw)
         })
     {
         return None;

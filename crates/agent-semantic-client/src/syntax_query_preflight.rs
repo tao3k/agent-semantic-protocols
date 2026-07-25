@@ -111,10 +111,10 @@ fn registered_source_selector_language<'a>(
         .and_then(|extension| extension.to_str())?;
     agent_semantic_hook::builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == language_id)
+        .find(|manifest| manifest.language_id().as_str() == language_id)
         .and_then(|manifest| {
             manifest
-                .source
+                .source()
                 .default_extensions
                 .iter()
                 .any(|source| {

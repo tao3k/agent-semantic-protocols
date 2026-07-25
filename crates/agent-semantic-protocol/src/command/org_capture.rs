@@ -87,6 +87,29 @@ pub(crate) fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, St
     Ok(sync)
 }
 
+/// Resolve already-materialized Org state for latency-sensitive install paths.
+///
+/// Network synchronization and source-index refresh are explicit mutation
+/// owners. Plugin/hook activation consumes their receipt and must never turn an
+/// idempotent install into an implicit `git pull`.
+pub(crate) fn require_materialized_org_state(project_root: &Path) -> Result<OrgStateSync, String> {
+    let paths = project_state_paths(project_root)?;
+    let state_root = paths.protocol_home.join("org");
+    if !state_root.join(".git").is_dir() {
+        return Err(format!(
+            "ASP Org state is not materialized at {}; run the explicit Org sync workflow before plugin installation",
+            state_root.display()
+        ));
+    }
+    ensure_flow_dirs(&paths.artifacts_dir.join("org"))?;
+    Ok(OrgStateSync {
+        source: default_org_repo_url(),
+        status: "reused",
+        source_index_status: "not-requested".to_string(),
+        source_index_generation: None,
+    })
+}
+
 pub(crate) fn org_artifacts_root_for_project(project_root: &Path) -> Result<PathBuf, String> {
     Ok(project_state_paths(project_root)?.artifacts_dir.join("org"))
 }

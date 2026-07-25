@@ -25,15 +25,18 @@ use agent_semantic_client_db::turso_mvcc_store::TursoMvccStoreConfig;
 const PROVIDER_RUNTIME_EVENT_DB_FILE: &str = "agent-provider-runtime-events.turso";
 static INVOCATION_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+/// Stable identity of the client that emitted a provider-runtime event.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderRuntimeClientId(String);
 
 impl ProviderRuntimeClientId {
+    /// Borrow the client identity as text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Consume the identity and return its owned text.
     #[must_use]
     pub fn into_string(self) -> String {
         self.0
@@ -52,15 +55,18 @@ impl From<&str> for ProviderRuntimeClientId {
     }
 }
 
+/// Provider session that emitted one provider-runtime event.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderRuntimeSessionId(String);
 
 impl ProviderRuntimeSessionId {
+    /// Borrow the provider-session identity as text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Consume the provider-session identity and return its owned text.
     #[must_use]
     pub fn into_string(self) -> String {
         self.0
@@ -79,15 +85,18 @@ impl From<&str> for ProviderRuntimeSessionId {
     }
 }
 
+/// Root Codex session that owns one provider-runtime event.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderRuntimeRootSessionId(String);
 
 impl ProviderRuntimeRootSessionId {
+    /// Borrow the root-session identity as text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Consume the root-session identity and return its owned text.
     #[must_use]
     pub fn into_string(self) -> String {
         self.0
@@ -106,10 +115,12 @@ impl From<&str> for ProviderRuntimeRootSessionId {
     }
 }
 
+/// Provider method invoked by one provider-runtime event.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderRuntimeMethod(String);
 
 impl ProviderRuntimeMethod {
+    /// Borrow the provider method as text.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0

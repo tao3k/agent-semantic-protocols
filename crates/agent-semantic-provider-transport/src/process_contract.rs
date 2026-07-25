@@ -80,22 +80,31 @@ pub struct ProviderProcessFraming {
     pub stderr: OutputFraming,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct ProviderStdoutByteLimit(usize);
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct ProviderStderrByteLimit(usize);
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+struct ProviderMemoryByteLimit(u64);
+
 /// Optional limits applied while running a provider process.
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 pub struct ProviderProcessLimits {
     /// Maximum wall-clock runtime before timeout.
-    pub timeout: Option<Duration>,
+    timeout: Option<Duration>,
     /// Maximum stdout bytes retained in memory.
-    pub max_stdout_bytes: Option<usize>,
+    max_stdout_bytes: Option<ProviderStdoutByteLimit>,
     /// Maximum stderr bytes retained in memory.
-    pub max_stderr_bytes: Option<usize>,
+    max_stderr_bytes: Option<ProviderStderrByteLimit>,
     /// Maximum provider address-space bytes on supported platforms.
-    pub memory_limit_bytes: Option<u64>,
+    memory_limit_bytes: Option<ProviderMemoryByteLimit>,
 }
 
 impl ProviderProcessLimits {
     #[must_use]
-    pub const fn new(
+    pub fn new(
         timeout: Option<Duration>,
         max_stdout_bytes: Option<usize>,
         max_stderr_bytes: Option<usize>,
@@ -103,9 +112,9 @@ impl ProviderProcessLimits {
     ) -> Self {
         Self {
             timeout,
-            max_stdout_bytes,
-            max_stderr_bytes,
-            memory_limit_bytes,
+            max_stdout_bytes: max_stdout_bytes.map(ProviderStdoutByteLimit),
+            max_stderr_bytes: max_stderr_bytes.map(ProviderStderrByteLimit),
+            memory_limit_bytes: memory_limit_bytes.map(ProviderMemoryByteLimit),
         }
     }
 
@@ -116,17 +125,26 @@ impl ProviderProcessLimits {
 
     #[must_use]
     pub const fn max_stdout_bytes(&self) -> Option<usize> {
-        self.max_stdout_bytes
+        match self.max_stdout_bytes {
+            Some(value) => Some(value.0),
+            None => None,
+        }
     }
 
     #[must_use]
     pub const fn max_stderr_bytes(&self) -> Option<usize> {
-        self.max_stderr_bytes
+        match self.max_stderr_bytes {
+            Some(value) => Some(value.0),
+            None => None,
+        }
     }
 
     #[must_use]
     pub const fn memory_limit_bytes(&self) -> Option<u64> {
-        self.memory_limit_bytes
+        match self.memory_limit_bytes {
+            Some(value) => Some(value.0),
+            None => None,
+        }
     }
 }
 

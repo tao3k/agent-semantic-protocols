@@ -1,8 +1,8 @@
 use agent_semantic_artifacts::{
     ArtifactGeneration, ArtifactHash, ArtifactJson, ArtifactKind, ArtifactRepoId,
     ArtifactRootInput, ArtifactRootRef, ArtifactScopeId, ArtifactWorkspaceId,
-    RepairChainFrameInput, RepairChainFrameKind, RepairChainParentRef, build_repair_chain_frame,
-    hash_normalized_json,
+    RepairChainFrameIdentity, RepairChainFrameInput, RepairChainFrameKind, RepairChainParentRef,
+    build_repair_chain_frame, hash_normalized_json,
 };
 use serde_json::json;
 
@@ -30,11 +30,13 @@ fn frame_input<T: serde::Serialize>(
     parents: Vec<RepairChainParentRef>,
 ) -> RepairChainFrameInput {
     RepairChainFrameInput::new(
-        frame_kind,
-        ArtifactRepoId::new("repo"),
-        ArtifactWorkspaceId::new("workspace"),
-        ArtifactScopeId::new("default"),
-        ArtifactGeneration::new(generation),
+        RepairChainFrameIdentity {
+            frame_kind,
+            repo_id: ArtifactRepoId::new("repo"),
+            workspace_id: ArtifactWorkspaceId::new("workspace"),
+            scope_id: ArtifactScopeId::new("default"),
+            generation: ArtifactGeneration::new(generation),
+        },
         ArtifactJson::from_serializable(&content).expect("repair frame content must serialize"),
         parents,
     )

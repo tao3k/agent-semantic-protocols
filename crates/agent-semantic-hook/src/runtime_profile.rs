@@ -46,15 +46,15 @@ pub struct RuntimeProfilesGeneratedBy {
 
 /// Executable argv and health for one activated language provider.
 ///
-/// Raw DTO boundary: runtime profile JSON keeps primitive transport fields
-/// that `runtime_profile_command_argv` validates before provider execution.
+/// Runtime profile JSON preserves typed semantic identities while transparent
+/// serialization keeps the v1 wire representation unchanged.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeProviderProfile {
     pub manifest_id: String,
     pub manifest_digest: String,
-    pub language_id: String,
-    pub provider_id: String,
+    pub language_id: agent_semantic_config::LanguageId,
+    pub provider_id: agent_semantic_config::ProviderId,
     pub binary: String,
     #[serde(default)]
     pub execution: crate::protocol_activation::protocol_activation_manifest::ProviderExecution,
@@ -192,8 +192,17 @@ fn runtime_provider_profile_for_provider(
     provider: &ActivatedProvider,
 ) -> RuntimeProviderProfile {
     let project_bin = project_root.join(".bin").join(&provider.binary);
+    let state_bin = agent_semantic_runtime::project_state_paths(project_root)
+        .ok()
+        .map(|paths| paths.runtime_bin_dir.join(&provider.binary));
     let binary_resolution =
-        if let Some(home_binary) = preferred_home_local_provider_binary(provider) {
+        if let Some(state_binary) = state_bin.filter(|path| is_executable_file(path)) {
+            crate::executable::ExecutableResolution {
+                path: Some(std::fs::canonicalize(&state_binary).unwrap_or(state_binary)),
+                status: ExecutableStatus::Available,
+                reason: None,
+            }
+        } else if let Some(home_binary) = preferred_home_local_provider_binary(provider) {
             crate::executable::ExecutableResolution {
                 path: Some(home_binary),
                 status: ExecutableStatus::Available,
@@ -246,20 +255,18 @@ fn runtime_provider_command(
     provider: &ActivatedProvider,
     resolved_binary: Option<&PathBuf>,
 ) -> RuntimeProviderCommand {
-    if provider.provider_command_prefix.is_empty()
-        || provider_prefers_resolved_binary_over_prefix(provider)
-    {
-        return match resolved_binary {
-            Some(binary) => RuntimeProviderCommand {
-                argv: vec![binary.display().to_string()],
-                status: Some(RuntimeProviderHealthStatus::Available),
-                reason: None,
-            },
-            None => RuntimeProviderCommand {
-                argv: Vec::new(),
-                status: None,
-                reason: None,
-            },
+    if let Some(binary) = resolved_binary {
+        return RuntimeProviderCommand {
+            argv: vec![binary.display().to_string()],
+            status: Some(RuntimeProviderHealthStatus::Available),
+            reason: None,
+        };
+    }
+    if provider.provider_command_prefix.is_empty() {
+        return RuntimeProviderCommand {
+            argv: Vec::new(),
+            status: None,
+            reason: None,
         };
     }
 
@@ -287,10 +294,6 @@ fn runtime_provider_command(
         status: Some(RuntimeProviderHealthStatus::Available),
         reason: None,
     }
-}
-
-fn provider_prefers_resolved_binary_over_prefix(provider: &ActivatedProvider) -> bool {
-    provider_is_gerbil_scheme(provider)
 }
 
 fn preferred_home_local_provider_binary(provider: &ActivatedProvider) -> Option<PathBuf> {

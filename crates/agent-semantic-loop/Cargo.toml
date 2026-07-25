@@ -6,4 +6,6 @@ license = "MIT"
 description = "Reusable interactive loop and choice-pane primitives for ASP agents."
 
 [dependencies]
+agent-semantic-context-product = { path = "../agent-semantic-context-product" }
+serde_json.workspace = true
 serde.workspace = true

@@ -1,0 +1,11 @@
+[package]
+name = "agent-semantic-context-product"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Language-neutral ASP context product wire contract and structural validation."
+
+[dependencies]
+agent-semantic-content-identity = { path = "../agent-semantic-content-identity" }
+serde.workspace = true
+serde_json.workspace = true

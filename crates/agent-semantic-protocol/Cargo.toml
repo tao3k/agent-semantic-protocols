@@ -7,6 +7,7 @@ edition.workspace = true
 doctest = false
 
 [dependencies]
+agent-semantic-context-product = { path = "../agent-semantic-context-product" }
 clap = "4.6.1"
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
 agent-semantic-content-identity.workspace = true

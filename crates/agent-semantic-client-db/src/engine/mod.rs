@@ -13,9 +13,13 @@ mod source_index_query_scoring;
 mod turso;
 mod turso_artifact;
 mod turso_artifact_graph;
+mod turso_batch;
 mod turso_bootstrap;
 mod turso_cache;
+mod turso_cache_key;
+mod turso_legacy_migration;
 pub(crate) mod turso_lock_policy;
+mod turso_migration;
 mod turso_provider_command;
 #[cfg(test)]
 #[path = "../../tests/unit/db/engine/turso_schema_lifecycle_private.rs"]
@@ -34,6 +38,10 @@ pub use facade::{
 };
 pub use turso::TURSO_BOOTSTRAP_TABLE;
 pub use turso::TursoClientDbEngineReport;
+pub use turso_migration::{
+    ClientDbTurso07MigrationReport, ClientDbTurso07ReplayCoverage,
+    ClientDbTurso07ReplayFamilyReceipt,
+};
 pub use turso_search::{
     TursoClientDbSearchDocument, TursoClientDbSearchHit, TursoClientDbSearchResult,
     TursoClientDbSearchState,

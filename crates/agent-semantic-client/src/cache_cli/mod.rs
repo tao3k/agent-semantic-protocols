@@ -3,6 +3,8 @@
 mod command;
 mod locator_artifact;
 mod probe;
+mod project_registry_gc_args;
+mod project_registry_gc_command;
 mod request;
 pub(crate) use request::search_cache_forwarded_args;
 mod structural_index_import;
@@ -18,6 +20,9 @@ mod writeback_request;
 #[cfg(test)]
 #[path = "../../tests/unit/cache_cli/locator_artifact.rs"]
 mod locator_artifact_tests;
+#[cfg(test)]
+#[path = "../../tests/unit/cache_cli/project_registry_gc_args.rs"]
+mod project_registry_gc_args_tests;
 
 pub(crate) use command::run_cache;
 #[cfg(test)]

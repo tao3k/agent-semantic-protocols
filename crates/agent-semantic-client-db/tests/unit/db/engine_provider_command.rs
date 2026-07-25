@@ -62,16 +62,19 @@ fn provider_command_selection_fixture(
     manifest_digest: &str,
 ) -> ClientDbProviderCommandSelection {
     ClientDbProviderCommandSelection::new(
-        format!("agent.semantic-protocols.languages.{language_id}.{provider_id}").into(),
-        manifest_digest.to_string().into(),
-        language_id.to_string().into(),
-        provider_id.to_string().into(),
-        provider_id.to_string().into(),
-        "external-process".to_string().into(),
-        vec![format!("/tmp/{provider_id}").into()],
-        Some(format!("/tmp/{provider_id}").into()),
-        Some(42),
-        Some(1234),
+        agent_semantic_client_db::ClientDbProviderCommandSelectionInput {
+            manifest_id: format!("agent.semantic-protocols.languages.{language_id}.{provider_id}")
+                .into(),
+            manifest_digest: manifest_digest.to_string().into(),
+            language_id: language_id.to_string().into(),
+            provider_id: provider_id.to_string().into(),
+            binary: provider_id.to_string().into(),
+            execution: "external-process".to_string().into(),
+            provider_command_prefix: vec![format!("/tmp/{provider_id}").into()],
+            executable_path: Some(format!("/tmp/{provider_id}").into()),
+            executable_len: Some(42),
+            executable_mtime_ms: Some(1234),
+        },
     )
 }
 

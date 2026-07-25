@@ -13,11 +13,14 @@ impl ClientHookConfig {
             dispatch
                 .resident_codex_agent_name
                 .eq_ignore_ascii_case(codex_agent_name)
-                .then_some(ConfiguredResidentTarget {
-                    resident_name: &dispatch.resident_name,
-                    codex_agent_name: &dispatch.resident_codex_agent_name,
-                    role: &dispatch.resident_role,
+                .then(|| {
+                    Some(ConfiguredResidentTarget::new(
+                        crate::ManagedChildName::new(&dispatch.resident_name)?,
+                        crate::ConfiguredCodexAgentName::new(&dispatch.resident_codex_agent_name)?,
+                        crate::ConfiguredResidentRole::new(&dispatch.resident_role)?,
+                    ))
                 })
+                .flatten()
         })
     }
 }

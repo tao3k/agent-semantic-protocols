@@ -150,7 +150,7 @@ impl ActivatedProvider {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let mut argv = vec!["asp".to_string(), self.language_id.clone()];
+        let mut argv = vec!["asp".to_string(), self.language_id.as_str().to_owned()];
         argv.extend(args.into_iter().map(Into::into));
         argv
     }

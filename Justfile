@@ -143,7 +143,8 @@ agent-tools-install-protocol bin_dir="":
 # Install the debug protocol binary into a local bin dir and prewarm it.
 agent-tools-install-protocol-debug bin_dir=".bin":
     @bin_dir="{{bin_dir}}"; \
-      mkdir -p "${bin_dir}"; \
+    mkdir -p "${bin_dir}"; \
+    bin_dir="$(cd "${bin_dir}" && pwd)"; \
       cargo build --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp; \
       target/debug/asp install binary --target "${bin_dir}/asp"; \
       rm -f "${bin_dir}/semantic-agent-protocol"; \

@@ -1,8 +1,8 @@
 //! Installation owner for hook runtime and Codex plugin surfaces.
 
 use super::hook_runtime_codex_plugin::{
-    CodexPluginScope, codex_plugin_scope_arg, codex_project_plugin_cache_skill_path,
-    install_codex_plugin_hooks, sync_codex_project_plugin_cache,
+    CodexPluginScope, codex_project_plugin_cache_skill_path, install_codex_plugin_hooks,
+    sync_codex_project_plugin_cache,
 };
 use super::hook_runtime_skill::{
     PluginSkillScope, install_agent_semantic_protocols_agent_config,
@@ -12,9 +12,7 @@ use super::hook_runtime_subagent::{install_claude_resident_agents, subagent_mode
 use super::{
     display_path, ensure_supported_client, flag_value, optional_flag_value, project_root_arg,
 };
-use crate::command::{
-    ProtocolBinaryInstallPlan, ensure_protocol_binary_installed, run_org_state_sync,
-};
+use crate::command::{ProtocolBinaryInstallPlan, ensure_protocol_binary_installed};
 use agent_semantic_hook::{
     claude_hook_block, default_claude_settings_path, load_or_refresh_default_activation,
     merge_claude_settings, remove_incompatible_hook_event_state, runtime_profiles_for_activation,
@@ -34,35 +32,86 @@ pub(super) fn run_install(args: &[String]) -> Result<(), String> {
                 .to_string(),
         );
     }
-    run_install_for_client(client, args, "agent-install")
+    let project_root = project_root_arg(args)?;
+    let subagent_model =
+        subagent_model_arg(client, optional_flag_value(args, "--subagent-model")?)?;
+    run_install_for_client(
+        client,
+        project_root,
+        CodexPluginScope::Global,
+        subagent_model,
+        "agent-install",
+    )
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/hook_runtime_install.rs"]
+mod hook_runtime_install_tests;
+
+#[derive(Debug)]
+struct CodexPluginInstallRequest {
+    project_root: PathBuf,
+    scope: CodexPluginScope,
+    subagent_model: String,
+}
+
+fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstallRequest, String> {
+    let matches = crate::command::cli_help::install_plugin_command()
+        .disable_help_subcommand(true)
+        .try_get_matches_from(
+            std::iter::once("asp install plugin".to_string()).chain(args.iter().cloned()),
+        )
+        .map_err(|error| error.to_string())?;
+    let project_root = fs::canonicalize(
+        matches
+            .get_one::<String>("project-root")
+            .expect("clap supplies default project root"),
+    )
+    .map_err(|error| format!("failed to resolve plugin project root: {error}"))?;
+    let codex_plugin_scope = if matches.get_flag("global") {
+        CodexPluginScope::Global
+    } else {
+        CodexPluginScope::Project
+    };
+    let subagent_model = subagent_model_arg(
+        "codex",
+        matches
+            .get_one::<String>("subagent-model")
+            .map(String::as_str),
+    )?;
+    Ok(CodexPluginInstallRequest {
+        project_root,
+        scope: codex_plugin_scope,
+        subagent_model,
+    })
 }
 
 pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
-    if optional_flag_value(args, "--client")?.is_some() {
-        return Err(
-            "asp install plugin --codex does not accept --client; use `asp install plugin --codex`"
-                .to_string(),
-        );
-    }
-    run_install_for_client("codex", args, "plugin-install")
+    let request = parse_codex_plugin_install_args(args)?;
+    run_install_for_client(
+        "codex",
+        request.project_root,
+        request.scope,
+        request.subagent_model,
+        "plugin-install",
+    )
 }
 
 fn run_install_for_client(
     client: &str,
-    args: &[String],
+    project_root: PathBuf,
+    codex_plugin_scope: CodexPluginScope,
+    subagent_model: String,
     receipt_label: &str,
 ) -> Result<(), String> {
     let mut timings = InstallTimings::new();
     ensure_supported_client(client)?;
-    let codex_plugin_scope = codex_plugin_scope_arg(args, client)?;
-    let subagent_model =
-        subagent_model_arg(client, optional_flag_value(args, "--subagent-model")?)?;
-    let project_root = project_root_arg(args)?;
     timings.mark("args");
     let binary_install_plan = ProtocolBinaryInstallPlan::capture()?;
     let runtime_state = project_runtime_state(&project_root)?;
     timings.mark("runtime-state");
-    let org_state_sync = run_org_state_sync(&project_root)?;
+    let org_state_sync =
+        crate::command::org_capture::require_materialized_org_state(&project_root)?;
     timings.mark("org-state");
     let binary_install = ensure_protocol_binary_installed(&binary_install_plan)?;
     timings.mark("binary");
@@ -82,23 +131,28 @@ fn run_install_for_client(
     let mut provider_artifacts = runtime_profiles
         .providers
         .iter()
-        .filter_map(|provider| {
-            provider.resolved_binary.as_ref().map(|binary| {
-                agent_semantic_hook::ActiveAspArtifactInput {
-                    logical_path: format!(
-                        "providers/{}/{}",
-                        provider.language_id, provider.provider_id
-                    ),
-                    artifact_kind: agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::ProviderBinary,
-                    materialized_path: PathBuf::from(binary),
-                }
-            })
+        .map(|provider| {
+            let binary = provider.resolved_binary.as_ref().ok_or_else(|| {
+                format!(
+                    "active provider has no resolved binary: language={} provider={}",
+                    provider.language_id, provider.provider_id
+                )
+            })?;
+            agent_semantic_hook::active_provider_artifact_input(
+                &project_root,
+                &provider.language_id,
+                &provider.provider_id,
+                PathBuf::from(binary),
+            )
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, String>>()?;
+    let client_config_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&client_config_path)?;
     provider_artifacts.push(agent_semantic_hook::ActiveAspArtifactInput {
         logical_path: "runtime/hooks/config.toml".to_string(),
         artifact_kind: agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1::RuntimeConfig,
         materialized_path: client_config_path.clone(),
+        artifact_digest: client_config_digest,
     });
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
@@ -178,12 +232,15 @@ fn run_install_for_client(
         user_config_status.as_str()
     );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
         display_path(&project_root, &active_artifact.receipt_path),
         active_artifact.receipt.artifact_root_digest().as_str(),
+        active_artifact.artifact_byte_reads,
+        active_artifact.artifact_bytes_read,
+        active_artifact.receipt_writes,
         display_path(&project_root, &agent_config_path),
         display_path(&project_root, &runtime_state.protocol_home.join("org")),
         org_state_sync.status,

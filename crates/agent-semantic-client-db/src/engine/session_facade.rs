@@ -24,9 +24,8 @@ use super::source_index_facade::persist_structural_index_read_model_at_path;
 use super::turso_artifact::{lookup_turso_artifact_events, upsert_turso_artifact_events};
 use super::turso_bootstrap::bootstrap_turso_client_db;
 use super::turso_cache::{
-    clear_turso_cache_generations, invalidate_turso_cache_generations_for_project,
-    lookup_recent_turso_cache_generations, prune_turso_cache_generations_to_manifest,
-    upsert_turso_cache_generations,
+    clear_turso_cache_generations, lookup_recent_turso_cache_generations,
+    prune_turso_cache_generations_to_manifest,
 };
 use super::turso_provider_command::{
     lookup_turso_provider_command_selections, replace_turso_provider_command_selections,
@@ -58,14 +57,14 @@ impl ClientDbEngineReadSession {
         export_method: &CacheExportMethod,
         request_fingerprint: Option<String>,
     ) -> Result<Option<ClientDbGenerationHit>, String> {
-        let turso_db_path = self.turso_db_path.clone();
+        let turso_connection = self.turso_connection.clone();
         let language_id = language_id.clone();
         let provider_id = provider_id.clone();
         let project_root = project_root.to_path_buf();
         let export_method = export_method.clone();
         let turso_hits = block_on_db_engine_async(async move {
-            lookup_recent_turso_cache_generations(
-                &turso_db_path,
+            super::turso_cache::lookup_recent_turso_cache_generations_with_connection(
+                turso_connection.as_ref(),
                 &language_id,
                 &provider_id,
                 &project_root,
@@ -173,9 +172,13 @@ impl ClientDbEngineWriteSession {
         let turso_db_path = self.turso_db_path.clone();
         let manifest = manifest.clone();
         block_on_db_engine_async(async move {
-            upsert_turso_cache_generations(&turso_db_path, &manifest)
-                .await
-                .map(|_| ())
+            let turso_connection = super::turso::connect_turso_client_db(&turso_db_path).await?;
+            super::turso_cache::upsert_turso_cache_generations_with_connection(
+                &turso_connection,
+                &manifest,
+            )
+            .await
+            .map(|_| ())
         })
     }
 
@@ -388,8 +391,12 @@ impl ClientDbEngineWriteSession {
         let project_root = project_root.as_ref().to_path_buf();
         let turso_db_path = self.turso_db_path.clone();
         block_on_db_engine_async(async move {
-            bootstrap_turso_client_db(&turso_db_path).await?;
-            invalidate_turso_cache_generations_for_project(&turso_db_path, &project_root).await
+            let turso_connection = super::turso::connect_turso_client_db(&turso_db_path).await?;
+            super::turso_cache::invalidate_turso_cache_generations_for_project_with_connection(
+                &turso_connection,
+                &project_root,
+            )
+            .await
         })
     }
 }

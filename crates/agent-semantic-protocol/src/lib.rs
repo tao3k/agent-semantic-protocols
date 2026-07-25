@@ -4,6 +4,7 @@
 
 mod cli;
 mod command;
+pub use agent_semantic_context_product as context_product_state;
 
 pub mod graph;
 mod state_cli;

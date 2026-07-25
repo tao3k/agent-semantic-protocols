@@ -6,7 +6,7 @@ use crate::runtime_profile::{RuntimeProviderHealthStatus, runtime_profiles_for_r
 use crate::tool_action::ToolAction;
 
 pub(super) struct RegisteredAspMatch<'a> {
-    pub(super) language_id: String,
+    pub(super) language_id: agent_semantic_config::LanguageId,
     pub(super) provider: Option<&'a ActivatedProvider>,
 }
 
@@ -37,11 +37,12 @@ pub(super) fn match_registered_asp_command<'a>(
                     .enumerate()
                     .all(|(index, (actual, expected))| {
                         if expected == "<registered-language>" {
-                            if registered_languages
-                                .iter()
-                                .any(|language_id| language_id.eq_ignore_ascii_case(actual))
+                            if let Some(language_id) =
+                                registered_languages.iter().find(|language_id| {
+                                    language_id.as_str().eq_ignore_ascii_case(actual)
+                                })
                             {
-                                registered_language = Some(actual.clone());
+                                registered_language = Some(language_id.clone());
                                 return true;
                             }
                             return false;
@@ -60,7 +61,7 @@ pub(super) fn match_registered_asp_command<'a>(
             let provider = runtime
                 .providers
                 .iter()
-                .find(|provider| provider.language_id.eq_ignore_ascii_case(&language_id));
+                .find(|provider| provider.language_id == language_id);
             return Some(RegisteredAspMatch {
                 language_id,
                 provider,
@@ -78,7 +79,7 @@ pub(super) fn append_materialization_fields(
 ) {
     fields.insert(
         "registeredLanguageId".to_string(),
-        serde_json::Value::String(matched.language_id.clone()),
+        serde_json::Value::String(matched.language_id.as_str().to_owned()),
     );
     let Some(provider) = matched.provider else {
         fields.insert(
@@ -102,18 +103,17 @@ pub(super) fn append_materialization_fields(
     };
     fields.insert(
         "providerId".to_string(),
-        serde_json::Value::String(provider.provider_id.clone()),
+        serde_json::Value::String(provider.provider_id.as_str().to_owned()),
     );
     fields.insert(
         "providerBinary".to_string(),
         serde_json::Value::String(provider.binary.clone()),
     );
     let profiles = runtime_profiles_for_runtime(Path::new(&runtime.project_root), runtime);
-    let profile = profiles.providers.iter().find(|profile| {
-        profile
-            .language_id
-            .eq_ignore_ascii_case(&matched.language_id)
-    });
+    let profile = profiles
+        .providers
+        .iter()
+        .find(|profile| profile.language_id == matched.language_id);
     if profile.map(|profile| profile.health.status) == Some(RuntimeProviderHealthStatus::Available)
     {
         fields.insert(

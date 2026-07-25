@@ -37,22 +37,23 @@ impl From<String> for ParserLanguageIdV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExactSelectorMerkleProofV1 {
-    schema_id: String,
-    schema_version: String,
-    digest_algorithm: String,
-    pub language_id: String,
-    workspace_root_digest: ContentDigestV1,
-    owner_path: String,
-    owner_subtree_digest: ContentDigestV1,
-    owner_inclusion_proof: Vec<MerkleInclusionStepV1>,
-    source_blob_digest: ContentDigestV1,
-    parser_identity_digest: ContentDigestV1,
-    query_pack_digest: ContentDigestV1,
-    parser_fact_digest: ContentDigestV1,
-    pub canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
-    pub structural_selector: String,
-    pub projection_mode: ExactProjectionModeV1,
-    pub projection_digest: ContentDigestV1,
+    pub(crate) schema_id: String,
+    pub(crate) schema_version: String,
+    pub(crate) digest_algorithm: String,
+    pub(crate) language_id: ParserLanguageIdV1,
+    pub(crate) workspace_root_digest: ContentDigestV1,
+    pub(crate) owner_path: String,
+    pub(crate) owner_subtree_digest: ContentDigestV1,
+    pub(crate) owner_inclusion_proof: Vec<MerkleInclusionStepV1>,
+    pub(crate) source_blob_digest: ContentDigestV1,
+    pub(crate) parser_identity_digest: ContentDigestV1,
+    pub(crate) query_pack_digest: ContentDigestV1,
+    pub(crate) parser_fact_digest: ContentDigestV1,
+    pub(crate) canonical_item_selector:
+        crate::canonical_item_identity::CanonicalItemSelectorV1,
+    pub(crate) structural_selector: String,
+    pub(crate) projection_mode: ExactProjectionModeV1,
+    pub(crate) projection_digest: ContentDigestV1,
 }
 
 pub(crate) struct ExactSelectorMerkleProofInputV1 {
@@ -77,7 +78,7 @@ impl ExactSelectorMerkleProofV1 {
             schema_id: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID.to_owned(),
             schema_version: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION.to_owned(),
             digest_algorithm: EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM.to_owned(),
-            language_id: input.language_id.as_str().to_owned(),
+            language_id: input.language_id,
             workspace_root_digest: input.workspace_root_digest,
             owner_path: input.owner_path,
             owner_subtree_digest: input.owner_subtree_digest,
@@ -134,6 +135,10 @@ impl ExactSelectorMerkleProofV1 {
         self.language_id.as_str()
     }
 
+    pub fn parser_language_id(&self) -> &ParserLanguageIdV1 {
+        &self.language_id
+    }
+
     pub fn workspace_root_digest(&self) -> &ContentDigestV1 {
         &self.workspace_root_digest
     }
@@ -144,6 +149,10 @@ impl ExactSelectorMerkleProofV1 {
 
     pub fn owner_subtree_digest(&self) -> &ContentDigestV1 {
         &self.owner_subtree_digest
+    }
+
+    pub fn owner_inclusion_proof(&self) -> &[MerkleInclusionStepV1] {
+        &self.owner_inclusion_proof
     }
 
     pub fn source_blob_digest(&self) -> &ContentDigestV1 {
@@ -158,12 +167,26 @@ impl ExactSelectorMerkleProofV1 {
         &self.query_pack_digest
     }
 
+    pub fn parser_fact_digest(&self) -> &ContentDigestV1 {
+        &self.parser_fact_digest
+    }
+
+    pub fn canonical_item_selector(
+        &self,
+    ) -> &crate::canonical_item_identity::CanonicalItemSelectorV1 {
+        &self.canonical_item_selector
+    }
+
     pub fn structural_selector(&self) -> &str {
         &self.structural_selector
     }
 
     pub fn projection_mode(&self) -> &ExactProjectionModeV1 {
         &self.projection_mode
+    }
+
+    pub fn projection_digest(&self) -> &ContentDigestV1 {
+        &self.projection_digest
     }
 }
 

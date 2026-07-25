@@ -247,6 +247,55 @@ pub(super) fn rg_rollout_paths_for_session_id(
         })
         .collect())
 }
+
+pub(super) fn root_attributed_rollout_paths_for_session_id(
+    sessions_dir: &Path,
+    root_session_id: &str,
+) -> Result<Vec<PathBuf>, String> {
+    let output = match Command::new("rg")
+        .arg("--files-with-matches")
+        .arg("--fixed-strings")
+        .arg(root_session_id)
+        .arg("--glob")
+        .arg("**/rollout-*.jsonl")
+        .arg(sessions_dir)
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(format!(
+                "failed to scan root-attributed Codex rollouts below {}: {error}",
+                sessions_dir.display()
+            ));
+        }
+    };
+    if !output.status.success() && output.status.code() != Some(1) {
+        return Err(format!(
+            "rg failed while locating root-attributed Codex rollouts for session \
+             {root_session_id} below {}: {}",
+            sessions_dir.display(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let mut paths = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let path = PathBuf::from(line);
+            if path.is_absolute() {
+                path
+            } else {
+                sessions_dir.join(path)
+            }
+        })
+        .collect::<Vec<_>>();
+    paths.retain(|path| path.is_file());
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
 pub(super) fn codex_sessions_dir() -> Result<PathBuf, String> {
     if let Some(codex_home) = std::env::var_os("CODEX_HOME") {
         return Ok(PathBuf::from(codex_home).join("sessions"));

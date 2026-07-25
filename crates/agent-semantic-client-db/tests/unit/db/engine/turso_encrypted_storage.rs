@@ -8,8 +8,7 @@ mod turso_encrypted_storage_tests {
     };
 
     const KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    const WRONG_KEY: &str =
-        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+    const WRONG_KEY: &str = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 
     fn temp_db(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
@@ -36,8 +35,8 @@ mod turso_encrypted_storage_tests {
         let error = TursoEncryptionKey::from_hex(TursoEncryptionCipher::Aegis256, "secret")
             .expect_err("short non-hex key must fail closed");
         assert!(error.contains("64 hexadecimal"));
-        let key = TursoEncryptionKey::from_hex(TursoEncryptionCipher::Aegis256, KEY)
-            .expect("valid key");
+        let key =
+            TursoEncryptionKey::from_hex(TursoEncryptionCipher::Aegis256, KEY).expect("valid key");
         let debug = format!("{key:?}");
         assert!(debug.contains("REDACTED"));
         assert!(!debug.contains(KEY));
@@ -69,9 +68,9 @@ mod turso_encrypted_storage_tests {
             .flush_and_measure(marker.as_bytes())
             .await
             .expect("measure encrypted artifacts");
-        assert_eq!(receipt.schema_id, TURSO_ENCRYPTION_FILE_RECEIPT_SCHEMA_ID);
-        assert!(receipt.database_bytes + receipt.wal_bytes > 0);
-        assert!(!receipt.plaintext_probe_present);
+        assert_eq!(receipt.schema_id(), TURSO_ENCRYPTION_FILE_RECEIPT_SCHEMA_ID);
+        assert!(receipt.database_bytes() + receipt.wal_bytes() > 0);
+        assert!(!receipt.plaintext_probe_present());
         drop(connection);
         drop(storage);
 

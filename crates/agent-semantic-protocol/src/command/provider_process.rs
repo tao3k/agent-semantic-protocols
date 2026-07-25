@@ -364,16 +364,20 @@ fn provider_command_prefix(
     config: &AspConfig,
 ) -> Result<Vec<String>, String> {
     let home = home_dir();
-    if let Some(binary) = config.provider_bin(&provider.language_id) {
+    if let Some(binary) = config.provider_bin(provider.language_id.as_str()) {
         return Ok(vec![resolve_configured_provider_binary(
-            &provider.language_id,
+            provider.language_id.as_str(),
             binary,
             project_root,
             home.as_deref(),
         )?]);
     }
-    resolve_provider_binary_invocation(&provider.language_id, &provider.binary, home.as_deref())
-        .map(|invocation| vec![invocation.command])
+    resolve_provider_binary_invocation(
+        provider.language_id.as_str(),
+        &provider.binary,
+        home.as_deref(),
+    )
+    .map(|invocation| vec![invocation.command])
 }
 
 fn resolve_configured_provider_binary(

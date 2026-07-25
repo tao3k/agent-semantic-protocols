@@ -67,6 +67,7 @@ struct InstallArgs {
     project_root: PathBuf,
     target: Option<String>,
     from_workspace: bool,
+    reconcile_receipt: bool,
 }
 
 pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
@@ -140,14 +141,7 @@ fn run_install_plugin(args: &[String]) -> Result<(), String> {
     if args.is_empty() || has_help_flag(args) {
         return super::cli_help::print_install_plugin_help();
     }
-
-    match args.first().map(String::as_str) {
-        Some("--codex") => run_codex_plugin_install_args(&args[1..]),
-        Some(target) => Err(format!(
-            "unsupported plugin target: {target}; expected --codex"
-        )),
-        None => unreachable!("empty plugin installation args handled before dispatch"),
-    }
+    run_codex_plugin_install_args(args)
 }
 
 fn has_help_flag(args: &[String]) -> bool {
@@ -172,6 +166,12 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
     let project_root = absolute_project_root(&invocation_root, &install_args.project_root);
+    if install_args.reconcile_receipt {
+        return super::install_provider_reconcile::reconcile_provider_install_receipt(
+            language_id,
+            &project_root,
+        );
+    }
     if install_args.from_workspace {
         let descriptor = super::install_provider_workspace_descriptor::workspace_install_descriptor_for_language(
             language_id,
@@ -228,6 +228,10 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         install_executable_entrypoint(&installed_entrypoint, &runtime_artifact)?;
     }
     let installed = runtime_artifact;
+    let installed_entrypoint_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&installed)?;
+    let installed_entrypoint_metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed)?;
     let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
     write_provider_lock(
         &lock_path,
@@ -253,7 +257,8 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             artifact_leaf_count: None,
             artifact_entrypoint: None,
             artifact_entrypoint_sha256: None,
-            installed_entrypoint_digest: None,
+            installed_entrypoint_digest: Some(&installed_entrypoint_digest),
+            installed_entrypoint_metadata_digest: &installed_entrypoint_metadata_digest,
             launcher_digest: None,
         },
     )?;
@@ -301,8 +306,11 @@ fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
                 index += 1;
                 parsed.target = Some(required_value(args, index, "--target")?.to_string());
             }
-            "--from-workspace" | "--local-dev" => {
+            "--from-workspace" => {
                 parsed.from_workspace = true;
+            }
+            "--reconcile-receipt" => {
+                parsed.reconcile_receipt = true;
             }
             "--project" | "--workspace" => {
                 index += 1;
@@ -627,6 +635,8 @@ fn install_workspace_provider_binary(
     let cleanup = remove_workspace_snapshot_tree(&workspace_artifact.build_root);
     let installed = installed?;
     cleanup?;
+    let installed_entrypoint_metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&runtime_artifact)?;
     let provider_lock_dir = ensure_project_provider_lock_dir(project_root)?;
     let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
     write_provider_lock(
@@ -657,6 +667,7 @@ fn install_workspace_provider_binary(
             artifact_entrypoint: Some(&workspace_artifact.entrypoint_relative),
             artifact_entrypoint_sha256: Some(&build_receipt.entrypoint_sha256),
             installed_entrypoint_digest: Some(&installed.installed_digest),
+            installed_entrypoint_metadata_digest: &installed_entrypoint_metadata_digest,
             launcher_digest: installed.launcher_digest.as_deref(),
         },
     )?;
@@ -788,6 +799,7 @@ struct ProviderInstallLock<'a> {
     artifact_entrypoint: Option<&'a Path>,
     artifact_entrypoint_sha256: Option<&'a str>,
     installed_entrypoint_digest: Option<&'a str>,
+    installed_entrypoint_metadata_digest: &'a str,
     launcher_digest: Option<&'a str>,
 }
 
@@ -859,6 +871,10 @@ fn write_provider_lock(path: &Path, lock: &ProviderInstallLock<'_>) -> Result<()
             toml_escape(value)
         ));
     }
+    contents.push_str(&format!(
+        "installedEntrypointMetadataDigest = \"{}\"\n",
+        toml_escape(lock.installed_entrypoint_metadata_digest)
+    ));
     if let Some(value) = lock.launcher_digest {
         contents.push_str(&format!("launcherDigest = \"{}\"\n", toml_escape(value)));
     }
@@ -866,8 +882,7 @@ fn write_provider_lock(path: &Path, lock: &ProviderInstallLock<'_>) -> Result<()
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
-    fs::write(path, contents.as_bytes())
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))
+    super::install_provider_reconcile::atomic_write_provider_lock(path, contents.as_bytes())
 }
 
 fn toml_escape(value: &str) -> String {

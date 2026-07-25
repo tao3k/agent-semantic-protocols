@@ -11,35 +11,79 @@ use serde::{Deserialize, Serialize};
 /// Current Turso DB Engine schema version for the local agent semantic client DB.
 pub const AGENT_SEMANTIC_CLIENT_DB_SCHEMA_VERSION: i64 = 1;
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ClientDbJournalMode(String);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ClientDbSynchronousLevel(i64);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ClientDbBusyTimeoutMillis(i64);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+struct ClientDbForeignKeyState(bool);
+
 /// Read-only diagnostic summary for the active DB Engine path.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientDbRuntimePragmas {
-    pub journal_mode: String,
-    pub synchronous: i64,
-    pub busy_timeout_ms: i64,
-    pub foreign_keys: bool,
+    journal_mode: ClientDbJournalMode,
+    synchronous: ClientDbSynchronousLevel,
+    busy_timeout_ms: ClientDbBusyTimeoutMillis,
+    foreign_keys: ClientDbForeignKeyState,
 }
 
 impl ClientDbRuntimePragmas {
+    pub fn new(
+        journal_mode: impl Into<String>,
+        synchronous: i64,
+        busy_timeout_ms: i64,
+        foreign_keys: bool,
+    ) -> Result<Self, String> {
+        let journal_mode = journal_mode.into();
+        if journal_mode.is_empty() {
+            return Err("client DB journal mode must be non-empty".to_string());
+        }
+        if !(0..=3).contains(&synchronous) {
+            return Err(format!(
+                "client DB synchronous level must be between 0 and 3, got {synchronous}"
+            ));
+        }
+        if busy_timeout_ms < 0 {
+            return Err(format!(
+                "client DB busy timeout must be non-negative, got {busy_timeout_ms}"
+            ));
+        }
+        Ok(Self {
+            journal_mode: ClientDbJournalMode(journal_mode),
+            synchronous: ClientDbSynchronousLevel(synchronous),
+            busy_timeout_ms: ClientDbBusyTimeoutMillis(busy_timeout_ms),
+            foreign_keys: ClientDbForeignKeyState(foreign_keys),
+        })
+    }
+
     #[must_use]
     pub fn journal_mode(&self) -> &str {
-        &self.journal_mode
+        &self.journal_mode.0
     }
 
     #[must_use]
     pub fn synchronous(&self) -> i64 {
-        self.synchronous
+        self.synchronous.0
     }
 
     #[must_use]
     pub fn busy_timeout_ms(&self) -> i64 {
-        self.busy_timeout_ms
+        self.busy_timeout_ms.0
     }
 
     #[must_use]
     pub fn foreign_keys(&self) -> bool {
-        self.foreign_keys
+        self.foreign_keys.0
     }
 }
 
@@ -165,6 +209,21 @@ client_db_provider_command_text!(
     ClientDbProviderExecutablePath
 );
 
+/// Unvalidated provider-command values accepted at the DB Engine boundary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ClientDbProviderCommandSelectionInput {
+    pub manifest_id: ClientDbProviderManifestId,
+    pub manifest_digest: ClientDbProviderManifestDigest,
+    pub language_id: LanguageId,
+    pub provider_id: ProviderId,
+    pub binary: ClientDbProviderBinary,
+    pub execution: ClientDbProviderExecution,
+    pub provider_command_prefix: Vec<ClientDbProviderCommandArg>,
+    pub executable_path: Option<ClientDbProviderExecutablePath>,
+    pub executable_len: Option<i64>,
+    pub executable_mtime_ms: Option<i64>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbProviderCommandSelection {
     pub manifest_id: ClientDbProviderManifestId,
@@ -181,30 +240,18 @@ pub struct ClientDbProviderCommandSelection {
 
 impl ClientDbProviderCommandSelection {
     #[must_use]
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        manifest_id: ClientDbProviderManifestId,
-        manifest_digest: ClientDbProviderManifestDigest,
-        language_id: LanguageId,
-        provider_id: ProviderId,
-        binary: ClientDbProviderBinary,
-        execution: ClientDbProviderExecution,
-        provider_command_prefix: Vec<ClientDbProviderCommandArg>,
-        executable_path: Option<ClientDbProviderExecutablePath>,
-        executable_len: Option<i64>,
-        executable_mtime_ms: Option<i64>,
-    ) -> Self {
+    pub fn new(input: ClientDbProviderCommandSelectionInput) -> Self {
         Self {
-            manifest_id,
-            manifest_digest,
-            language_id,
-            provider_id,
-            binary,
-            execution,
-            provider_command_prefix,
-            executable_path,
-            executable_len,
-            executable_mtime_ms,
+            manifest_id: input.manifest_id,
+            manifest_digest: input.manifest_digest,
+            language_id: input.language_id,
+            provider_id: input.provider_id,
+            binary: input.binary,
+            execution: input.execution,
+            provider_command_prefix: input.provider_command_prefix,
+            executable_path: input.executable_path,
+            executable_len: input.executable_len,
+            executable_mtime_ms: input.executable_mtime_ms,
         }
     }
 
@@ -219,13 +266,13 @@ impl ClientDbProviderCommandSelection {
     }
 
     #[must_use]
-    pub fn language_id(&self) -> &str {
-        self.language_id.as_str()
+    pub fn language_id(&self) -> &LanguageId {
+        &self.language_id
     }
 
     #[must_use]
-    pub fn provider_id(&self) -> &str {
-        self.provider_id.as_str()
+    pub fn provider_id(&self) -> &ProviderId {
+        &self.provider_id
     }
 
     #[must_use]
@@ -262,76 +309,167 @@ impl ClientDbProviderCommandSelection {
 }
 
 impl ClientDbArtifactEvent {
+    pub(crate) fn from_storage_columns(
+        columns: ClientDbArtifactEventStorageColumns,
+    ) -> Result<Self, String> {
+        let event_ordinal = u32::try_from(columns.event_ordinal).map_err(|_| {
+            format!(
+                "artifact event ordinal is outside the u32 domain: {}",
+                columns.event_ordinal
+            )
+        })?;
+        let bytes = u64::try_from(columns.bytes).map_err(|_| {
+            format!(
+                "artifact event byte count must be non-negative: {}",
+                columns.bytes
+            )
+        })?;
+        if columns.timestamp_ms < 0 {
+            return Err(format!(
+                "artifact event timestamp must be non-negative: {}",
+                columns.timestamp_ms
+            ));
+        }
+        if columns.artifact_path.is_empty()
+            || columns.kind.is_empty()
+            || columns.language.is_empty()
+            || columns.method.is_empty()
+            || columns.project_root.is_empty()
+        {
+            return Err(
+                "artifact event identity, kind, language, method, and project root must be non-empty"
+                    .to_string(),
+            );
+        }
+        Ok(Self {
+            artifact_path: ClientDbArtifactPath(columns.artifact_path),
+            event_ordinal: ClientDbEventOrdinal(event_ordinal),
+            timestamp_ms: ClientDbEventTimestampMillis(columns.timestamp_ms),
+            kind: ClientDbArtifactEventKind(columns.kind),
+            language: LanguageId::new(columns.language),
+            method: ClientDbArtifactEventMethod(columns.method),
+            target: ClientDbArtifactEventTarget(columns.target),
+            query: ClientDbArtifactEventQuery(columns.query),
+            project_root: ClientDbArtifactEventProjectRoot(columns.project_root),
+            project_root_arg: ClientDbArtifactEventProjectRootArg(columns.project_root_arg),
+            bytes: ClientDbArtifactEventByteCount(bytes),
+        })
+    }
+
     #[must_use]
     pub fn artifact_path(&self) -> &str {
-        &self.artifact_path
+        &self.artifact_path.0
     }
 
     #[must_use]
     pub fn event_ordinal(&self) -> u32 {
-        self.event_ordinal
+        self.event_ordinal.0
     }
 
     #[must_use]
     pub fn timestamp_ms(&self) -> i64 {
-        self.timestamp_ms
+        self.timestamp_ms.0
     }
 
     #[must_use]
     pub fn kind(&self) -> &str {
-        &self.kind
+        &self.kind.0
     }
 
     #[must_use]
     pub fn language(&self) -> &str {
-        &self.language
+        self.language.as_str()
     }
 
     #[must_use]
     pub fn method(&self) -> &str {
-        &self.method
+        &self.method.0
     }
 
     #[must_use]
     pub fn target(&self) -> &str {
-        &self.target
+        &self.target.0
     }
 
     #[must_use]
     pub fn query(&self) -> &str {
-        &self.query
+        &self.query.0
     }
 
     #[must_use]
     pub fn project_root(&self) -> &str {
-        &self.project_root
+        &self.project_root.0
     }
 
     #[must_use]
     pub fn project_root_arg(&self) -> &str {
-        &self.project_root_arg
+        &self.project_root_arg.0
     }
 
     #[must_use]
     pub fn bytes(&self) -> u64 {
-        self.bytes
+        self.bytes.0
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactPath(String);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ClientDbEventOrdinal(u32);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ClientDbEventTimestampMillis(i64);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventKind(String);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventMethod(String);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventTarget(String);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventQuery(String);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventProjectRoot(String);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventProjectRootArg(String);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ClientDbArtifactEventByteCount(u64);
+
+pub(crate) struct ClientDbArtifactEventStorageColumns {
+    pub(crate) artifact_path: String,
+    pub(crate) event_ordinal: i64,
+    pub(crate) timestamp_ms: i64,
+    pub(crate) kind: String,
+    pub(crate) language: String,
+    pub(crate) method: String,
+    pub(crate) target: String,
+    pub(crate) query: String,
+    pub(crate) project_root: String,
+    pub(crate) project_root_arg: String,
+    pub(crate) bytes: i64,
 }
 
 /// Graph-turbo artifact event row stored in the active DB Engine.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbArtifactEvent {
-    pub artifact_path: String,
-    pub event_ordinal: u32,
-    pub timestamp_ms: i64,
-    pub kind: String,
-    pub language: String,
-    pub method: String,
-    pub target: String,
-    pub query: String,
-    pub project_root: String,
-    pub project_root_arg: String,
-    pub bytes: u64,
+    artifact_path: ClientDbArtifactPath,
+    event_ordinal: ClientDbEventOrdinal,
+    timestamp_ms: ClientDbEventTimestampMillis,
+    kind: ClientDbArtifactEventKind,
+    language: LanguageId,
+    method: ClientDbArtifactEventMethod,
+    target: ClientDbArtifactEventTarget,
+    query: ClientDbArtifactEventQuery,
+    project_root: ClientDbArtifactEventProjectRoot,
+    project_root_arg: ClientDbArtifactEventProjectRootArg,
+    bytes: ClientDbArtifactEventByteCount,
 }
 
 /// Merkle hash value used by artifact graph roots, edges, and proof receipts.

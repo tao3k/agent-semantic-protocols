@@ -16,13 +16,20 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
     let provider_command_prefix = noop_provider_command_prefix();
     let manifest = builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == "rust")
+        .find(|manifest| manifest.language_id().as_str() == "rust")
         .expect("rust manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let semantic_registry_digest = agent_semantic_hook::semantic_registry_digest();
-    let execution_command_digest =
-        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
-            .expect("provider execution command digest");
+    let verified_executable_artifact_digest =
+        agent_semantic_content_identity::file_content_digest_v1(Path::new(
+            &provider_command_prefix[0],
+        ))
+        .expect("provider executable artifact digest");
+    let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
+        &provider_command_prefix,
+        &verified_executable_artifact_digest,
+    )
+    .expect("provider execution command digest");
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
     let activation_project_root =
@@ -43,17 +50,17 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
         },
         generated_at: None,
         providers: vec![agent_semantic_hook::ActivatedProviderConfig {
-            manifest_id: manifest.manifest_id,
+            manifest_id: manifest.manifest_id().to_owned(),
             manifest_digest,
-            language_id: manifest.language_id,
-            provider_id: manifest.provider_id,
-            binary: manifest.binary,
-            execution: manifest.execution,
+            language_id: manifest.language_id().clone(),
+            provider_id: manifest.provider_id().clone(),
+            binary: manifest.binary().to_owned(),
+            execution: manifest.execution(),
             provider_command_prefix,
             execution_command_digest,
-            search_capabilities: manifest.search_capabilities,
-            semantic_facts_descriptor: manifest.semantic_facts_descriptor,
-            query_pack_descriptor: manifest.query_pack_descriptor,
+            search_capabilities: manifest.search_capabilities().clone(),
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+            query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest,
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
@@ -92,13 +99,20 @@ pub(super) fn write_gerbil_activation_with_command_prefix(
 ) -> std::path::PathBuf {
     let manifest = builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == "gerbil-scheme")
+        .find(|manifest| manifest.language_id().as_str() == "gerbil-scheme")
         .expect("gerbil manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let semantic_registry_digest = agent_semantic_hook::semantic_registry_digest();
-    let execution_command_digest =
-        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
-            .expect("provider execution command digest");
+    let verified_executable_artifact_digest =
+        agent_semantic_content_identity::file_content_digest_v1(Path::new(
+            &provider_command_prefix[0],
+        ))
+        .expect("provider executable artifact digest");
+    let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
+        &provider_command_prefix,
+        &verified_executable_artifact_digest,
+    )
+    .expect("provider execution command digest");
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
     let activation_project_root =
@@ -119,17 +133,17 @@ pub(super) fn write_gerbil_activation_with_command_prefix(
         },
         generated_at: None,
         providers: vec![agent_semantic_hook::ActivatedProviderConfig {
-            manifest_id: manifest.manifest_id,
+            manifest_id: manifest.manifest_id().to_owned(),
             manifest_digest,
-            language_id: manifest.language_id,
-            provider_id: manifest.provider_id,
-            binary: manifest.binary,
-            execution: manifest.execution,
+            language_id: manifest.language_id().clone(),
+            provider_id: manifest.provider_id().clone(),
+            binary: manifest.binary().to_owned(),
+            execution: manifest.execution(),
             provider_command_prefix,
             execution_command_digest,
-            search_capabilities: manifest.search_capabilities,
-            semantic_facts_descriptor: manifest.semantic_facts_descriptor,
-            query_pack_descriptor: manifest.query_pack_descriptor,
+            search_capabilities: manifest.search_capabilities().clone(),
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+            query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest,
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {

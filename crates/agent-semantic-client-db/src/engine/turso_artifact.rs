@@ -7,17 +7,16 @@ use crate::types::ClientDbArtifactEvent;
 use super::turso::connect_turso_client_db;
 use super::turso_statement::{execute_turso_statement, run_turso_operation};
 
-async fn bootstrap_turso_artifact_events_schema(
+pub(super) async fn bootstrap_turso_artifact_events_schema(
     connection: &super::turso::TursoConnectionLease,
 ) -> Result<(), String> {
-    let Some(schema_bootstrap) = connection
-        .begin_schema_bootstrap("asp.artifact-events.schema.v1")
-        .await
-    else {
-        return Ok(());
-    };
-    for statement in [
-        "CREATE TABLE IF NOT EXISTS asp_artifact_event (
+    let schema_state = connection
+        .schema_bootstrap_state("asp.artifact-events.schema.v1")
+        .await;
+    schema_state
+        .get_or_try_init(|| async {
+            for statement in [
+                "CREATE TABLE IF NOT EXISTS asp_artifact_event (
             artifact_path TEXT NOT NULL,
             event_ordinal INTEGER NOT NULL,
             timestamp_ms INTEGER NOT NULL,
@@ -31,17 +30,19 @@ async fn bootstrap_turso_artifact_events_schema(
             bytes INTEGER NOT NULL,
             PRIMARY KEY (artifact_path, event_ordinal)
         )",
-        "CREATE INDEX IF NOT EXISTS asp_artifact_event_timeline_idx
+                "CREATE INDEX IF NOT EXISTS asp_artifact_event_timeline_idx
             ON asp_artifact_event(timestamp_ms, artifact_path, event_ordinal)",
-    ] {
-        execute_turso_statement(
-            connection,
-            statement,
-            "failed to bootstrap Turso artifact-event schema",
-        )
+            ] {
+                execute_turso_statement(
+                    connection,
+                    statement,
+                    "failed to bootstrap Turso artifact-event schema",
+                )
+                .await?;
+            }
+            Ok::<(), String>(())
+        })
         .await?;
-    }
-    schema_bootstrap.mark_ready();
     Ok(())
 }
 
@@ -63,6 +64,17 @@ async fn upsert_turso_artifact_events_with_connection(
     events: &[ClientDbArtifactEvent],
 ) -> Result<(), String> {
     const MVCC_TRANSACTION_ATTEMPTS: usize = 16;
+    let event_bytes = events
+        .iter()
+        .map(|event| {
+            i64::try_from(event.bytes()).map_err(|_| {
+                format!(
+                    "artifact event byte count exceeds Turso INTEGER range: {}",
+                    event.bytes()
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     for attempt in 0..MVCC_TRANSACTION_ATTEMPTS {
         let transaction = match connection.unchecked_transaction().await {
@@ -84,8 +96,7 @@ async fn upsert_turso_artifact_events_with_connection(
         };
 
         let mut write_error = None;
-        for event in events {
-            let bytes = i64::try_from(event.bytes).unwrap_or(i64::MAX);
+        for (event, bytes) in events.iter().zip(&event_bytes) {
             if let Err(error) = transaction
                 .execute(
                     "INSERT INTO asp_artifact_event (
@@ -112,17 +123,17 @@ async fn upsert_turso_artifact_events_with_connection(
                     project_root_arg = excluded.project_root_arg,
                     bytes = excluded.bytes",
                     (
-                        event.artifact_path.as_str(),
-                        i64::from(event.event_ordinal),
-                        event.timestamp_ms,
-                        event.kind.as_str(),
-                        event.language.as_str(),
-                        event.method.as_str(),
-                        event.target.as_str(),
-                        event.query.as_str(),
-                        event.project_root.as_str(),
-                        event.project_root_arg.as_str(),
-                        bytes,
+                        event.artifact_path(),
+                        i64::from(event.event_ordinal()),
+                        event.timestamp_ms(),
+                        event.kind(),
+                        event.language(),
+                        event.method(),
+                        event.target(),
+                        event.query(),
+                        event.project_root(),
+                        event.project_root_arg(),
+                        *bytes,
                     ),
                 )
                 .await
@@ -226,14 +237,11 @@ pub async fn lookup_turso_artifact_events(
 fn turso_artifact_event_from_row(row: &turso::Row) -> Result<ClientDbArtifactEvent, String> {
     let event_ordinal = row
         .get::<i64>(1)
-        .map_err(|error| format!("failed to read Turso artifact event ordinal: {error}"))?
-        .max(0)
-        .min(i64::from(u32::MAX)) as u32;
+        .map_err(|error| format!("failed to read Turso artifact event ordinal: {error}"))?;
     let bytes = row
         .get::<i64>(10)
-        .map_err(|error| format!("failed to read Turso artifact event bytes: {error}"))?
-        .max(0) as u64;
-    Ok(ClientDbArtifactEvent {
+        .map_err(|error| format!("failed to read Turso artifact event bytes: {error}"))?;
+    ClientDbArtifactEvent::from_storage_columns(crate::types::ClientDbArtifactEventStorageColumns {
         artifact_path: row
             .get::<String>(0)
             .map_err(|error| format!("failed to read Turso artifact path: {error}"))?,

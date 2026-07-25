@@ -35,23 +35,23 @@ pub(super) fn enforce_configured_resident_spawn_contract(
     let fork_turns = tool_input
         .get("fork_turns")
         .and_then(serde_json::Value::as_str);
-    if task_name == Some(target.codex_agent_name) && fork_turns == Some("none") {
+    if task_name == Some(target.codex_agent_name()) && fork_turns == Some("none") {
         return;
     }
     decision.decision = agent_semantic_hook::DecisionKind::Deny;
     decision.reason_kind = agent_semantic_hook::ReasonKind::None;
     decision.message = format!(
         "Configured resident `{}` must be spawned through its isolated canonical context.",
-        target.resident_name
+        target.resident_name()
     );
     for (key, value) in [
         (
             "requiredAction",
             "spawn-configured-resident-with-isolated-context",
         ),
-        ("residentChildName", target.resident_name),
-        ("targetAgentName", target.codex_agent_name),
-        ("targetAgentRole", target.role),
+        ("residentChildName", target.resident_name()),
+        ("targetAgentName", target.codex_agent_name()),
+        ("targetAgentRole", target.role()),
         ("requiredForkTurns", "none"),
     ] {
         decision.fields.insert(
@@ -61,7 +61,7 @@ pub(super) fn enforce_configured_resident_spawn_contract(
     }
     decision.fields.insert(
         "canonicalTarget".to_string(),
-        serde_json::Value::String(format!("/root/{}", target.codex_agent_name)),
+        serde_json::Value::String(format!("/root/{}", target.codex_agent_name())),
     );
 }
 

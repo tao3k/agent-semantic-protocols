@@ -14,7 +14,34 @@ impl RemoteUrl {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Normalize a network Git remote into a scheme-independent repository identity.
+    #[must_use]
+    pub fn canonical_identity(&self) -> Option<String> {
+        let remote = self.0.trim().trim_end_matches('/');
+        if remote.is_empty() {
+            return None;
+        }
+        let parsed = gix::Url::try_from(remote).ok()?;
+        let host = parsed.host()?.trim().to_ascii_lowercase();
+        let host = parsed
+            .port
+            .map_or(host.clone(), |port| format!("{host}:{port}"));
+        let path = String::from_utf8_lossy(parsed.path.as_ref());
+        let path = path
+            .trim_matches('/')
+            .strip_suffix(".git")
+            .unwrap_or(path.trim_matches('/'));
+        if host.is_empty() || path.is_empty() {
+            return None;
+        }
+        Some(format!("{host}/{path}"))
+    }
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/git_remote_identity.rs"]
+mod remote_identity_tests;
 
 impl fmt::Display for RemoteUrl {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -32,6 +59,9 @@ pub(crate) struct GitIdentity {
 
 impl GitIdentity {
     pub(crate) fn discover(cwd: &Path) -> Self {
+        if let Some(identity) = Self::discover_with_gix(cwd) {
+            return identity;
+        }
         if let Some(identity) = Self::discover_from_filesystem(cwd) {
             return identity;
         }
@@ -41,7 +71,7 @@ impl GitIdentity {
         let toplevel = git_path(cwd, &["rev-parse", "--show-toplevel"]);
         let git_dir = git_path(cwd, &["rev-parse", "--absolute-git-dir"]);
         let common_git_dir = git_path(cwd, &["rev-parse", "--git-common-dir"]);
-        let remote_url = git_stdout(cwd, &["config", "--get", "remote.origin.url"]).map(RemoteUrl);
+        let remote_url = canonical_remote_url_from_git(cwd).map(RemoteUrl);
 
         Self {
             toplevel,
@@ -60,13 +90,30 @@ impl GitIdentity {
         }
     }
 
+    fn discover_with_gix(cwd: &Path) -> Option<Self> {
+        let repository = gix::discover(cwd).ok()?;
+        let git_dir = canonicalize_if_possible(repository.git_dir());
+        let common_git_dir = canonicalize_if_possible(repository.common_dir());
+        let toplevel = repository.workdir().map(canonicalize_if_possible);
+        let remote_url = canonical_remote_url_from_repository(&repository)
+            .or_else(|| canonical_remote_url_from_git_dir(&git_dir))
+            .or_else(|| canonical_remote_url_from_git_dir(&common_git_dir))
+            .map(RemoteUrl);
+
+        Some(Self {
+            toplevel,
+            git_dir: Some(git_dir),
+            common_git_dir: Some(common_git_dir),
+            remote_url,
+        })
+    }
+
     fn discover_from_filesystem(cwd: &Path) -> Option<Self> {
         let toplevel = find_git_toplevel(cwd)?;
         let git_dir = git_dir_from_marker(&toplevel)?;
         let common_git_dir =
             common_git_dir_from_git_dir(&git_dir).unwrap_or_else(|| git_dir.clone());
-        let remote_url =
-            remote_origin_url_from_config(&common_git_dir.join("config")).map(RemoteUrl);
+        let remote_url = canonical_remote_url_from_git_dir(&common_git_dir).map(RemoteUrl);
 
         Some(Self {
             toplevel: Some(toplevel),
@@ -131,28 +178,106 @@ fn common_git_dir_from_git_dir(git_dir: &Path) -> Option<PathBuf> {
     })
 }
 
-fn remote_origin_url_from_config(config_path: &Path) -> Option<String> {
-    let content = fs::read_to_string(config_path).ok()?;
-    let mut in_origin = false;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            in_origin = trimmed == r#"[remote "origin"]"#;
-            continue;
-        }
-        if in_origin {
-            let Some((key, value)) = trimmed.split_once('=') else {
-                continue;
-            };
-            if key.trim() == "url" {
-                let value = value.trim();
-                if !value.is_empty() {
-                    return Some(value.to_string());
-                }
-            }
+fn canonical_remote_url_from_repository(repository: &gix::Repository) -> Option<String> {
+    let config = repository.config_snapshot();
+    let configured_remote = config
+        .string("agent-semantic.canonicalRemote")
+        .map(|value| String::from_utf8_lossy(value.as_ref()).into_owned());
+    let push_default = config
+        .string("remote.pushDefault")
+        .map(|value| String::from_utf8_lossy(value.as_ref()).into_owned());
+    let remotes = repository
+        .remote_names()
+        .into_iter()
+        .filter_map(|name| {
+            let remote = repository.try_find_remote(name.as_ref())?.ok()?;
+            let url = remote.url(gix::remote::Direction::Fetch)?;
+            Some((
+                String::from_utf8_lossy(name.as_ref()).into_owned(),
+                String::from_utf8_lossy(url.to_bstring().as_ref()).into_owned(),
+            ))
+        })
+        .collect::<Vec<_>>();
+    select_canonical_remote(
+        configured_remote.as_deref(),
+        push_default.as_deref(),
+        &remotes,
+    )
+}
+
+fn canonical_remote_url_from_git_dir(git_dir: &Path) -> Option<String> {
+    if let Ok(config) = gix_config::File::from_git_dir(git_dir.to_path_buf())
+        && let Some(remote) = canonical_remote_url_from_config(&config)
+    {
+        return Some(remote);
+    }
+    let config =
+        gix_config::File::from_path_no_includes(git_dir.join("config"), gix_config::Source::Local)
+            .ok()?;
+    canonical_remote_url_from_config(&config)
+}
+
+fn canonical_remote_url_from_config(config: &gix_config::File<'_>) -> Option<String> {
+    let configured_remote = config
+        .string("agent-semantic.canonicalRemote")
+        .map(|value| String::from_utf8_lossy(value.as_ref()).into_owned());
+    let push_default = config
+        .string("remote.pushDefault")
+        .map(|value| String::from_utf8_lossy(value.as_ref()).into_owned());
+    let remotes = config
+        .sections_by_name("remote")
+        .into_iter()
+        .flatten()
+        .filter_map(|section| {
+            let name = section.header().subsection_name()?;
+            let url = section.value("url")?;
+            Some((
+                String::from_utf8_lossy(name.as_ref()).into_owned(),
+                String::from_utf8_lossy(url.as_ref()).into_owned(),
+            ))
+        })
+        .collect::<Vec<_>>();
+    select_canonical_remote(
+        configured_remote.as_deref(),
+        push_default.as_deref(),
+        &remotes,
+    )
+}
+
+fn select_canonical_remote(
+    configured_remote: Option<&str>,
+    push_default: Option<&str>,
+    remotes: &[(String, String)],
+) -> Option<String> {
+    for selected_name in [configured_remote, push_default, Some("origin")]
+        .into_iter()
+        .flatten()
+    {
+        if let Some((_, url)) = remotes.iter().find(|(name, _)| name == selected_name) {
+            return Some(url.clone());
         }
     }
-    None
+    (remotes.len() == 1).then(|| remotes[0].1.clone())
+}
+
+fn canonical_remote_url_from_git(cwd: &Path) -> Option<String> {
+    let configured_remote = git_stdout(cwd, &["config", "--get", "agent-semantic.canonicalRemote"]);
+    let push_default = git_stdout(cwd, &["config", "--get", "remote.pushDefault"]);
+    let remote_lines = git_stdout(cwd, &["config", "--get-regexp", r"^remote\..*\.url$"])?;
+    let remotes = remote_lines
+        .lines()
+        .filter_map(|line| {
+            let split_at = line.find(char::is_whitespace)?;
+            let (key, url) = line.split_at(split_at);
+            let name = key.strip_prefix("remote.")?.strip_suffix(".url")?;
+            Some((name.to_string(), url.trim().to_string()))
+        })
+        .collect::<Vec<_>>();
+    select_canonical_remote(
+        configured_remote.as_deref(),
+        push_default.as_deref(),
+        &remotes,
+    )
 }
 
 fn git_path(cwd: &Path, args: &[&str]) -> Option<PathBuf> {

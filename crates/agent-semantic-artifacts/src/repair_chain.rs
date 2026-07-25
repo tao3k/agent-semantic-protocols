@@ -90,6 +90,21 @@ impl RepairChainParentRef {
     }
 }
 
+/// Stable identity and generation coordinates for one repair-chain frame.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RepairChainFrameIdentity {
+    /// Frame kind and artifact root kind.
+    pub frame_kind: RepairChainFrameKind,
+    /// Stable State Core repository identity.
+    pub repo_id: ArtifactRepoId,
+    /// Stable State Core workspace identity.
+    pub workspace_id: ArtifactWorkspaceId,
+    /// Stable scope identity.
+    pub scope_id: ArtifactScopeId,
+    /// Artifact generation identity.
+    pub generation: ArtifactGeneration,
+}
+
 /// Input for building one repair-chain Merkle frame.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -117,20 +132,16 @@ pub struct RepairChainFrameInput {
 impl RepairChainFrameInput {
     /// Build repair-chain frame input without optional producer/schema hashes.
     pub fn new(
-        frame_kind: RepairChainFrameKind,
-        repo_id: ArtifactRepoId,
-        workspace_id: ArtifactWorkspaceId,
-        scope_id: ArtifactScopeId,
-        generation: ArtifactGeneration,
+        identity: RepairChainFrameIdentity,
         content: ArtifactJson,
         parents: Vec<RepairChainParentRef>,
     ) -> Self {
         Self {
-            frame_kind,
-            repo_id,
-            workspace_id,
-            scope_id,
-            generation,
+            frame_kind: identity.frame_kind,
+            repo_id: identity.repo_id,
+            workspace_id: identity.workspace_id,
+            scope_id: identity.scope_id,
+            generation: identity.generation,
             producer_hash: None,
             schema_hash: None,
             content,

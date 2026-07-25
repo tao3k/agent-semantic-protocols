@@ -563,7 +563,20 @@ Deleted anchors, unmapped renames, ambiguous case-folding, changed symlink
 targets, parser/query-pack drift, or incomplete scope mapping reopen affected
 obligations.
 
-**** Maximal valid frontier and residual obligation DAG
+**** Planner frontier projection and canonical residual obligation DAG
+
+The complete residual obligation DAG is the canonical reconciliation state.
+It MUST preserve every open, refuted, blocked, inconsistent, and
+refresh-required obligation together with dependency edges, join requirements,
+and invalidation causes.  A frontier, boundary, or antichain is a derived
+planner projection and MUST NOT replace the residual DAG, determine closure, or
+enter proof identity.
+
+The antichain rules below apply only when a planner requests a compact ready
+boundary.  Any =MUST= in those rules constrains that optional projection, not
+the canonical reconciliation result.  Cost, rank, PPR, Dijkstra, Yen, AO*,
+set-cover, or beam-search changes MAY change the projection without changing
+evidence truth or the residual-DAG digest.
 
 The frontier is not one scalar "deepest node".  In a DAG, two equally deep
 valid nodes may be incomparable and jointly required.  Reconciliation MUST
@@ -730,7 +743,20 @@ No case is scored unless =B0= and =B1= agree.
 The current runtime fails or does not yet prove =G1= through =G4=.  Performance
 claims are therefore =NO-GO= until these gates pass.
 
-***** Deterministic cohorts
+***** Coverage obligations and derived suite manifest
+
+This RFC freezes coverage obligations, invariants, and required receipts.  It
+does not freeze a universal case count.  Every executable suite MUST publish a
+=BenchmarkSuiteManifestV1= binding the factor model, safety-critical
+partitions, constraints, covering-array strength, model-based transition
+generator, property generator, seed set, fixture digests, and the derived case
+counts.
+
+The numerical products below are the current candidate manifest, retained to
+make the proposed experiment reproducible.  They are not protocol semantics,
+proof of sufficient coverage, or permanent SLO denominators.  Safety-critical
+partitions MUST remain exhaustive; pairwise or randomized cases may supplement
+but never replace their minimal counterexamples.
 
 The first benchmark version includes:
 

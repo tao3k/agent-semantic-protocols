@@ -148,7 +148,7 @@ pub struct HookDecision {
     pub event: String,
     pub decision: DecisionKind,
     pub reason_kind: ReasonKind,
-    pub language_ids: Vec<String>,
+    pub language_ids: Vec<agent_semantic_config::LanguageId>,
     pub subject: DecisionSubject,
     pub routes: Vec<DecisionRoute>,
     pub message: String,
@@ -171,7 +171,7 @@ impl serde::Serialize for HookDecision {
             event: &'a str,
             decision: &'a DecisionKind,
             reason_kind: &'a ReasonKind,
-            language_ids: &'a [String],
+            language_ids: &'a [agent_semantic_config::LanguageId],
             subject: &'a DecisionSubject,
             routes: &'a [DecisionRoute],
             message: &'a str,
@@ -337,8 +337,8 @@ pub struct DecisionSubject {
 #[serde(rename_all = "camelCase")]
 /// Provider command route that the agent should run instead of denied tool use.
 pub struct DecisionRoute {
-    pub language_id: String,
-    pub provider_id: String,
+    pub language_id: agent_semantic_config::LanguageId,
+    pub provider_id: agent_semantic_config::ProviderId,
     pub binary: String,
     pub kind: DecisionRouteKind,
     pub argv: Vec<String>,

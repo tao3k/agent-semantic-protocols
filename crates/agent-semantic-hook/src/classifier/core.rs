@@ -354,7 +354,7 @@ fn classify_apply_patch_paths(
 
     let language = languages
         .first()
-        .map(String::as_str)
+        .map(agent_semantic_config::LanguageId::as_str)
         .unwrap_or("<language>");
     let project_root = routes
         .first()

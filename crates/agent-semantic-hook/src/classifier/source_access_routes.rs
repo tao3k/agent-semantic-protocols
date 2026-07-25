@@ -284,7 +284,9 @@ pub(super) fn direct_read_routes(matches: &[DirectReadMatch<'_>]) -> Vec<Decisio
         .collect()
 }
 
-pub(super) fn direct_read_language_ids(matches: &[DirectReadMatch<'_>]) -> Vec<String> {
+pub(super) fn direct_read_language_ids(
+    matches: &[DirectReadMatch<'_>],
+) -> Vec<agent_semantic_config::LanguageId> {
     matches
         .iter()
         .map(|matched| matched.provider.language_id.clone())
@@ -325,7 +327,7 @@ fn source_access_ingest_route(provider: &ActivatedProvider) -> DecisionRoute {
     )
 }
 
-fn language_ids(providers: &[&ActivatedProvider]) -> Vec<String> {
+fn language_ids(providers: &[&ActivatedProvider]) -> Vec<agent_semantic_config::LanguageId> {
     providers
         .iter()
         .map(|provider| provider.language_id.clone())

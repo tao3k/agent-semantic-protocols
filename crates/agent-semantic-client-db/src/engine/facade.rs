@@ -186,6 +186,7 @@ impl ClientDbEngineReport {
 /// DB Engine read session over the active Turso adapter.
 pub struct ClientDbEngineReadSession {
     pub(super) turso_db_path: PathBuf,
+    pub(super) turso_connection: std::sync::Arc<turso::Connection>,
 }
 
 /// DB Engine write session over the active Turso adapter.
@@ -294,9 +295,17 @@ impl ClientDbEngine {
     ) -> Result<Option<ClientDbEngineReadSession>, String> {
         let client_dir = client_dir.as_ref().to_path_buf();
         let turso_db_path = Self::turso_path_for_client_dir(&client_dir);
-        Ok(turso_db_path
-            .exists()
-            .then_some(ClientDbEngineReadSession { turso_db_path }))
+        if !turso_db_path.exists() {
+            return Ok(None);
+        }
+        let read_path = turso_db_path.clone();
+        let turso_connection = block_on_db_engine_async(async move {
+            super::turso::open_turso_client_db_read_only(read_path).await
+        })?;
+        Ok(Some(ClientDbEngineReadSession {
+            turso_db_path,
+            turso_connection: std::sync::Arc::new(turso_connection),
+        }))
     }
 
     /// Open a DB Engine write session without exposing the concrete control adapter.
@@ -311,12 +320,10 @@ impl ClientDbEngine {
             )
         })?;
         let turso_db_path = Self::turso_path_for_client_dir(&client_dir);
-        if !turso_db_path.exists() {
-            let bootstrap_path = turso_db_path.clone();
-            block_on_db_engine_async(async move {
-                bootstrap_turso_client_db(&bootstrap_path).await.map(|_| ())
-            })?;
-        }
+        let bootstrap_path = turso_db_path.clone();
+        block_on_db_engine_async(async move {
+            bootstrap_turso_client_db(&bootstrap_path).await.map(|_| ())
+        })?;
         Ok(ClientDbEngineWriteSession { turso_db_path })
     }
 

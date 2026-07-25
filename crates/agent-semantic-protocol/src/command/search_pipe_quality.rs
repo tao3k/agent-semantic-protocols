@@ -398,6 +398,8 @@ fn search_role_from_protocol(role: TermRole) -> agent_semantic_search::SearchPip
         TermRole::Context => agent_semantic_search::SearchPipeTermRole::Context,
         TermRole::Concept => agent_semantic_search::SearchPipeTermRole::Concept,
         TermRole::Symbol => agent_semantic_search::SearchPipeTermRole::Symbol,
+        TermRole::Literal => agent_semantic_search::SearchPipeTermRole::Literal,
+        TermRole::DiagnosticCode => agent_semantic_search::SearchPipeTermRole::DiagnosticCode,
     }
 }
 

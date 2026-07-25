@@ -27,12 +27,12 @@ impl Drop for TestDbDir {
 }
 
 fn event(event_id: &str, created_at_ms: i64) -> TursoMvccEvent {
-    TursoMvccEvent {
-        partition_key: "keyset-partition".to_owned(),
-        event_id: event_id.to_owned(),
-        payload: event_id.as_bytes().to_vec(),
+    TursoMvccEvent::new(
+        "keyset-partition".into(),
+        event_id.into(),
+        event_id.as_bytes().to_vec(),
         created_at_ms,
-    }
+    )
 }
 
 async fn open_store(label: &str, passive_checkpoint: bool) -> (TestDbDir, TursoMvccStore) {
@@ -71,27 +71,27 @@ async fn turso_mvcc_database_keyset_uses_limit_plus_one_and_stable_tie_break() {
     assert_eq!(receipt.retry_delay_ms, 0);
 
     let first = store
-    .read_partition_page("keyset-partition".into(), None, 2.into())
+        .read_partition_page("keyset-partition".into(), None, 2.into())
         .await
         .expect("read first database keyset page");
     assert_eq!(first.len(), 3, "backend must fetch limit + 1");
-    assert_eq!(first[0].event_id, "event-a");
-    assert_eq!(first[1].event_id, "event-b");
-    assert_eq!(first[2].event_id, "event-c");
+    assert_eq!(first[0].event_id(), "event-a");
+    assert_eq!(first[1].event_id(), "event-b");
+    assert_eq!(first[2].event_id(), "event-c");
 
     let second = store
-    .read_partition_page(
-        "keyset-partition".into(),
-        Some(agent_semantic_client_db::TursoMvccPageCursor {
-            created_at_ms: 10,
-            event_id: "event-b".into(),
-        }),
-        2.into(),
-    )
+        .read_partition_page(
+            "keyset-partition".into(),
+            Some(agent_semantic_client_db::TursoMvccPageCursor {
+                created_at_ms: 10,
+                event_id: "event-b".into(),
+            }),
+            2.into(),
+        )
         .await
         .expect("read second database keyset page");
     assert_eq!(second.len(), 1);
-    assert_eq!(second[0].event_id, "event-c");
+    assert_eq!(second[0].event_id(), "event-c");
 }
 
 #[tokio::test]
@@ -117,19 +117,19 @@ async fn turso_mvcc_typed_duplicate_aborts_without_retrying() {
         .await
         .expect("read committed events");
     assert_eq!(committed.len(), 1);
-    assert_eq!(committed[0].event_id, "duplicate");
+    assert_eq!(committed[0].event_id(), "duplicate");
 }
 
 #[tokio::test]
 async fn turso_mvcc_passive_checkpoint_flushes_and_recovers_one_mebibyte_payload() {
     let (temp, store) = open_store("recovery", true).await;
     let database_path = temp.0.join("events.db");
-    let large_event = TursoMvccEvent {
-        partition_key: "recovery-partition".to_owned(),
-        event_id: "one-mebibyte".to_owned(),
-        payload: vec![0x5a; 1024 * 1024],
-        created_at_ms: 1,
-    };
+    let large_event = TursoMvccEvent::new(
+        "recovery-partition".into(),
+        "one-mebibyte".into(),
+        vec![0x5a; 1024 * 1024],
+        1,
+    );
     store
         .append_batch_typed(&[large_event], &StorageRetryPolicy::default())
         .await
@@ -159,6 +159,6 @@ async fn turso_mvcc_passive_checkpoint_flushes_and_recovers_one_mebibyte_payload
         .await
         .expect("read recovered large payload");
     assert_eq!(recovered.len(), 1);
-    assert_eq!(recovered[0].payload.len(), 1024 * 1024);
-    assert!(recovered[0].payload.iter().all(|byte| *byte == 0x5a));
+    assert_eq!(recovered[0].payload().len(), 1024 * 1024);
+    assert!(recovered[0].payload().iter().all(|byte| *byte == 0x5a));
 }

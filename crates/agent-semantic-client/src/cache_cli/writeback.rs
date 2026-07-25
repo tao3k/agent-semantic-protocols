@@ -280,7 +280,8 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             export_method: &export_method,
             artifact_bytes_slice: &artifact_bytes,
             provider_commands,
-        });
+        })
+        .ok()?;
         if !artifact_events.is_empty() {
             ClientDbEngine::upsert_artifact_events_from_client_dir(cache_root, &artifact_events)
                 .ok()?;
@@ -369,7 +370,8 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
         export_method: &export_method,
         artifact_bytes_slice: packet_bytes,
         provider_commands: &[],
-    });
+    })
+    .ok()?;
     let mut db_write_count = 1;
     if !artifact_events.is_empty() {
         ClientDbEngine::upsert_artifact_events_from_client_dir(cache_root, &artifact_events)
@@ -426,7 +428,8 @@ pub(crate) fn write_query_packet_cache_after_provider_success(
         export_method: &export_method,
         artifact_bytes_slice: packet_bytes,
         provider_commands: &[],
-    });
+    })
+    .ok()?;
     let mut db_write_count = 1;
     if !artifact_events.is_empty() {
         ClientDbEngine::upsert_artifact_events_from_client_dir(cache_root, &artifact_events)

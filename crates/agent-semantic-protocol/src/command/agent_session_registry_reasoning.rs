@@ -12,11 +12,15 @@ pub(super) fn rollout_proves_canonical_typed_binding(
     agent_semantic_runtime::codex_rollout_session_metadata(&child_session_id.into()).is_ok_and(
         |metadata| {
             metadata.is_some_and(|metadata| {
-                metadata.session_id == child_session_id.into()
-                    && metadata.root_session_id.as_deref() == Some(root_session_id)
-                    && metadata.parent_thread_id.as_deref() == Some(root_session_id)
-                    && metadata.agent_role.as_deref() == Some(expected_agent_type)
-                    && metadata.agent_path.as_deref() == Some(canonical_target)
+                metadata.session_id().as_str() == child_session_id
+                    && metadata
+                        .root_session_id()
+                        .is_some_and(|session_id| session_id.as_str() == root_session_id)
+                    && metadata
+                        .parent_thread_id()
+                        .is_some_and(|session_id| session_id.as_str() == root_session_id)
+                    && metadata.agent_role().as_deref() == Some(expected_agent_type)
+                    && metadata.agent_path().as_deref() == Some(canonical_target)
             })
         },
     )

@@ -68,6 +68,13 @@ pub struct LanguageOwnerItemsRuntimeReceipt {
     elapsed_ms: u128,
 }
 
+impl LanguageOwnerItemsRuntimeReceipt {
+    #[must_use]
+    pub const fn elapsed_ms(&self) -> u128 {
+        self.elapsed_ms
+    }
+}
+
 /// Run owner-items dispatch through the shared provider-owned policy.
 ///
 /// The command layer supplies the provider adapter, but the runtime owns the

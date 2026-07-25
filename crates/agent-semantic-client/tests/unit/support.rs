@@ -69,42 +69,44 @@ pub(crate) fn artifacts_root_from_cache_root(cache_root: &Path) -> PathBuf {
 pub(super) fn resolved_provider(language_id: &str) -> agent_semantic_client_core::ResolvedProvider {
     let manifest = agent_semantic_hook::builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == language_id)
+        .find(|manifest| manifest.language_id().as_str() == language_id)
         .unwrap_or_else(|| panic!("builtin provider manifest for {language_id}"));
     let manifest_digest = agent_semantic_hook::provider_manifest_digest(&manifest)
         .unwrap_or_else(|error| panic!("{language_id} manifest digest: {error}"));
     let semantic_registry_digest = agent_semantic_hook::semantic_registry_digest();
     let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
         .unwrap_or_else(|error| panic!("{language_id} provider routes: {error}"));
-    let provider_command_prefix = vec![
-        std::env::current_exe()
-            .unwrap_or_else(|error| panic!("current test executable: {error}"))
-            .to_string_lossy()
-            .into_owned(),
-    ];
-    let execution_command_digest =
-        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
-            .unwrap_or_else(|error| panic!("{language_id} execution command digest: {error}"));
+    let current_exe =
+        std::env::current_exe().unwrap_or_else(|error| panic!("current test executable: {error}"));
+    let verified_executable_artifact_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&current_exe)
+            .unwrap_or_else(|error| panic!("{language_id} executable digest: {error}"));
+    let provider_command_prefix = vec![current_exe.to_string_lossy().into_owned()];
+    let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
+        &provider_command_prefix,
+        &verified_executable_artifact_digest,
+    )
+    .unwrap_or_else(|error| panic!("{language_id} execution command digest: {error}"));
     let provider = agent_semantic_hook::ActivatedProvider {
-        manifest_id: manifest.manifest_id,
+        manifest_id: manifest.manifest_id().to_owned(),
         manifest_digest,
-        language_id: manifest.language_id,
-        provider_id: manifest.provider_id,
-        binary: manifest.binary,
-        execution: manifest.execution,
+        language_id: manifest.language_id().clone(),
+        provider_id: manifest.provider_id().clone(),
+        binary: manifest.binary().to_owned(),
+        execution: manifest.execution(),
         provider_command_prefix,
         execution_command_digest,
-        namespace: manifest.namespace,
+        namespace: manifest.namespace().to_owned(),
         package_roots: vec![".".to_string()],
-        source_extensions: manifest.source.default_extensions,
-        config_files: manifest.source.default_config_files,
-        source_roots: manifest.source.default_source_roots,
-        ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
-        search_capabilities: manifest.search_capabilities,
-        semantic_facts_descriptor: manifest.semantic_facts_descriptor,
-        query_pack_descriptor: manifest.query_pack_descriptor,
+        source_extensions: manifest.source().default_extensions.clone(),
+        config_files: manifest.source().default_config_files.clone(),
+        source_roots: manifest.source().default_source_roots.clone(),
+        ignored_path_prefixes: manifest.source().default_ignored_path_prefixes.clone(),
+        search_capabilities: manifest.search_capabilities().clone(),
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+        query_pack_descriptor: manifest.query_pack_descriptor().clone(),
         semantic_registry_digest,
-        policy: manifest.policy,
+        policy: manifest.policy().clone(),
         routes,
     };
 

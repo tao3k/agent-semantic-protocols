@@ -138,6 +138,13 @@ pub(crate) fn run_cache(
             }
             Ok(())
         }
+        [subcommand, rest @ ..] if subcommand == "projects" => {
+            super::project_registry_gc_command::run_project_registry_gc(
+                project_root,
+                rest,
+                receipt_json,
+            )
+        }
         [subcommand] if subcommand == "status" => {
             let snapshot = ProviderRegistrySnapshot::load(project_root);
             let provenance = snapshot
@@ -593,7 +600,7 @@ pub(crate) fn run_cache(
             Ok(())
         }
         _ => Err(
-            "usage: asp cache <status|import|source-index refresh [--workspace <path>]|source-index rebuild [--workspace <path>]|source-index lookup --query <term> [--index-root <path>] [--index-owner <provider>] [--limit <n>]|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--workspace <path>]; use asp <language> cache source-index lookup ... for language-scoped lookup"
+            "usage: asp cache <status|projects gc [--grace-days <n>] [--apply]|import|source-index refresh [--workspace <path>]|source-index rebuild [--workspace <path>]|source-index lookup --query <term> [--index-root <path>] [--index-owner <provider>] [--limit <n>]|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--workspace <path>]; use asp <language> cache source-index lookup ... for language-scoped lookup"
                 .to_string(),
         ),
     }

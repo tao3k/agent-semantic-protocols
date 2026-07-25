@@ -84,50 +84,21 @@ fn validate_session_profile_with_rollout_lookup(
     rollout_lookup: RolloutMetadataLookup,
 ) -> Result<SessionValidationReport, String> {
     let Some(agent_kind) = validated_agent_kind(name, role) else {
-        return Ok(SessionValidationReport {
-            status: "skipped".to_string().into(),
-            reason: "session role does not require Codex rollout profile validation".to_string(),
-            config_path: None,
-            rollout_path: None,
-            expected_root_session_id: None,
-            actual_root_session_id: None,
-            expected_parent_thread_id: None,
-            actual_parent_thread_id: None,
-            expected_agent_path: None,
-            actual_agent_path: None,
-            expected_role: None,
-            actual_role: None,
-            expected_model: None,
-            actual_model: None,
-            expected_reasoning_effort: None,
-            actual_reasoning_effort: None,
-            expected_sandbox: None,
-            actual_sandbox: None,
-        });
+        return Ok(SessionValidationReport::new(
+            "skipped".to_string().into(),
+            "session role does not require Codex rollout profile validation",
+        ));
     };
     let expected = match load_expected_agent_profile(agent_kind) {
         Ok(expected) => expected,
         Err(error) => {
-            return Ok(SessionValidationReport {
-                status: "failed".to_string().into(),
-                reason: error,
-                config_path: None,
-                rollout_path: None,
-                expected_root_session_id: Some(root_session_id.to_string()),
-                actual_root_session_id: None,
-                expected_parent_thread_id: Some(root_session_id.to_string()),
-                actual_parent_thread_id: None,
-                expected_agent_path: None,
-                actual_agent_path: None,
-                expected_role: Some(agent_kind.default_role().to_string()),
-                actual_role: None,
-                expected_model: None,
-                actual_model: None,
-                expected_reasoning_effort: None,
-                actual_reasoning_effort: None,
-                expected_sandbox: None,
-                actual_sandbox: None,
-            });
+            let root_id = agent_semantic_runtime::RuntimeSessionId::from(root_session_id);
+            return Ok(
+                SessionValidationReport::new("failed".to_string().into(), error)
+                    .with_root_sessions(Some(root_id.clone()), None)
+                    .with_parent_threads(Some(root_id), None)
+                    .with_roles(Some(agent_kind.default_role().to_string()), None),
+            );
         }
     };
     let metadata = match rollout_lookup {
@@ -136,63 +107,61 @@ fn validate_session_profile_with_rollout_lookup(
         }
     };
     let Some(metadata) = metadata else {
-        return Ok(SessionValidationReport {
-            status: "failed".to_string().into(),
-            reason: rollout_lookup.missing_reason(session_id),
-            config_path: Some(expected.config_path.display().to_string()),
-            rollout_path: None,
-            expected_root_session_id: Some(root_session_id.to_string()),
-            actual_root_session_id: None,
-            expected_parent_thread_id: Some(root_session_id.to_string()),
-            actual_parent_thread_id: None,
-            expected_agent_path: Some(normalized_path_string(&expected.config_path)),
-            actual_agent_path: None,
-            expected_role: Some(expected.role),
-            actual_role: None,
-            expected_model: Some(expected.model),
-            actual_model: None,
-            expected_reasoning_effort: expected.reasoning_effort,
-            actual_reasoning_effort: None,
-            expected_sandbox: Some(expected.sandbox),
-            actual_sandbox: None,
-        });
+        let root_id = agent_semantic_runtime::RuntimeSessionId::from(root_session_id);
+        return Ok(SessionValidationReport::new(
+            "failed".to_string().into(),
+            rollout_lookup.missing_reason(session_id),
+        )
+        .with_config_path(expected.config_path.clone())
+        .with_root_sessions(Some(root_id.clone()), None)
+        .with_parent_threads(Some(root_id), None)
+        .with_agent_paths(Some(normalized_path_string(&expected.config_path)), None)
+        .with_roles(Some(expected.role), None)
+        .with_models(Some(expected.model), None)
+        .with_reasoning_efforts(expected.reasoning_effort, None)
+        .with_sandboxes(Some(expected.sandbox), None));
     };
     let actual_model = metadata
-        .model
-        .clone()
-        .or(metadata.collaboration_model.clone());
-    let actual_reasoning_effort = metadata.reasoning_effort.clone();
+        .model()
+        .or_else(|| metadata.collaboration_model())
+        .map(str::to_owned);
+    let actual_reasoning_effort = metadata.reasoning_effort().map(str::to_owned);
     let expected_agent_path = normalized_path_string(&expected.config_path);
     let actual_agent_path = metadata
-        .agent_path
-        .as_deref()
+        .agent_path()
         .map(|path| normalized_path_string(Path::new(path)));
     let mut failures = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
     let mut pass_reason = None;
-    if metadata.thread_source.as_deref() != Some("subagent") {
+    if metadata.thread_source() != Some("subagent") {
         failures.push(format!(
             "threadSource expected subagent got {}",
-            metadata.thread_source.as_deref().unwrap_or("<missing>")
+            metadata.thread_source().unwrap_or("<missing>")
         ));
     }
-    if metadata.root_session_id.as_deref() != Some(root_session_id) {
+    if metadata.root_session_id().map(|id| id.as_str()) != Some(root_session_id) {
         failures.push(format!(
             "rootSessionId expected {root_session_id} got {}",
-            metadata.root_session_id.as_deref().unwrap_or("<missing>")
+            metadata
+                .root_session_id()
+                .map(|id| id.as_str())
+                .unwrap_or("<missing>")
         ));
     }
-    if metadata.parent_thread_id.as_deref() != Some(root_session_id) {
+    if metadata.parent_thread_id().map(|id| id.as_str()) != Some(root_session_id) {
         failures.push(format!(
             "parentThreadId expected {root_session_id} got {}",
-            metadata.parent_thread_id.as_deref().unwrap_or("<missing>")
+            metadata
+                .parent_thread_id()
+                .map(|id| id.as_str())
+                .unwrap_or("<missing>")
         ));
     }
-    if metadata.spawn_depth != Some(1) {
+    if metadata.spawn_depth() != Some(1) {
         failures.push(format!(
             "spawnDepth expected 1 for resident child got {}",
             metadata
-                .spawn_depth
+                .spawn_depth()
                 .map(|depth| depth.to_string())
                 .unwrap_or_else(|| "<missing>".to_string())
         ));
@@ -200,10 +169,10 @@ fn validate_session_profile_with_rollout_lookup(
     let canonical_agent_path_matches = actual_agent_path
         .as_deref()
         .is_some_and(|path| canonical_host_agent_identity_path_matches(path, &expected.role));
-    let exact_role_matches = metadata.agent_role.as_deref().is_some_and(|role| {
+    let exact_role_matches = metadata.agent_role().is_some_and(|role| {
         normalize_agent_identity(role) == normalize_agent_identity(&expected.role)
     });
-    match metadata.agent_role.as_deref() {
+    match metadata.agent_role() {
         Some(_) if exact_role_matches => {}
         Some("default") if canonical_agent_path_matches => {
             let role_fallback_reason = format!(
@@ -304,49 +273,48 @@ fn validate_session_profile_with_rollout_lookup(
         }
     }
     if let Some(reason) =
-        sandbox_policy_mismatch_reason(&expected.sandbox, metadata.sandbox_policy.as_deref())
+        sandbox_policy_mismatch_reason(&expected.sandbox, metadata.sandbox_policy())
     {
         warnings.push(format!(
             "{reason}; sandboxVerificationStatus=host-inherited-drift-warning; sandboxPolicy=warning-only-host-inherited; sandboxAffectsReady=false"
         ));
     }
-    Ok(SessionValidationReport {
-        status: if !failures.is_empty() {
-            "failed".to_string().into()
-        } else if !warnings.is_empty() {
-            "warning".to_string().into()
-        } else {
-            "passed".to_string().into()
-        },
-        reason: if !failures.is_empty() {
-            failures.join("; ")
-        } else if !warnings.is_empty() {
-            warnings.join("; ")
-        } else if let Some(pass_reason) = pass_reason {
-            pass_reason
-        } else {
-            format!(
-                "Codex rollout metadata matches {} profile",
-                agent_kind.default_role()
-            )
-        },
-        config_path: Some(expected.config_path.display().to_string()),
-        rollout_path: Some(metadata.rollout_path.display().to_string()),
-        expected_root_session_id: Some(root_session_id.to_string()),
-        actual_root_session_id: metadata.root_session_id,
-        expected_parent_thread_id: Some(root_session_id.to_string()),
-        actual_parent_thread_id: metadata.parent_thread_id,
-        expected_agent_path: Some(expected_agent_path),
-        actual_agent_path,
-        expected_role: Some(expected.role),
-        actual_role: metadata.agent_role,
-        expected_model: Some(expected.model),
-        actual_model,
-        expected_reasoning_effort: expected.reasoning_effort,
-        actual_reasoning_effort,
-        expected_sandbox: Some(expected.sandbox),
-        actual_sandbox: metadata.sandbox_policy,
-    })
+    let status = if !failures.is_empty() {
+        "failed".to_string().into()
+    } else if !warnings.is_empty() {
+        "warning".to_string().into()
+    } else {
+        "passed".to_string().into()
+    };
+    let reason = if !failures.is_empty() {
+        failures.join("; ")
+    } else if !warnings.is_empty() {
+        warnings.join("; ")
+    } else if let Some(pass_reason) = pass_reason {
+        pass_reason
+    } else {
+        format!(
+            "Codex rollout metadata matches {} profile",
+            agent_kind.default_role()
+        )
+    };
+    let root_id = agent_semantic_runtime::RuntimeSessionId::from(root_session_id);
+    Ok(SessionValidationReport::new(status, reason)
+        .with_config_path(expected.config_path)
+        .with_rollout_path(metadata.rollout_path())
+        .with_root_sessions(Some(root_id.clone()), metadata.root_session_id().cloned())
+        .with_parent_threads(Some(root_id), metadata.parent_thread_id().cloned())
+        .with_agent_paths(Some(expected_agent_path), actual_agent_path)
+        .with_roles(
+            Some(expected.role),
+            metadata.agent_role().map(str::to_owned),
+        )
+        .with_models(Some(expected.model), actual_model)
+        .with_reasoning_efforts(expected.reasoning_effort, actual_reasoning_effort)
+        .with_sandboxes(
+            Some(expected.sandbox),
+            metadata.sandbox_policy().map(str::to_owned),
+        ))
 }
 
 #[derive(Clone, Copy)]
@@ -409,19 +377,18 @@ pub(crate) fn rollout_metadata_matches_managed_agent_profile(
         .map(|profile| profile.role.as_str())
         .unwrap_or_else(|| kind.default_role());
     let expected_identity = normalize_agent_identity(expected_role);
-    let configured_role_matches = metadata.agent_role.as_deref().is_some_and(|agent_role| {
+    let configured_role_matches = metadata.agent_role().is_some_and(|agent_role| {
         let actual_identity = normalize_agent_identity(agent_role);
         actual_identity == expected_identity
             || actual_identity == normalize_agent_identity(kind.default_role())
     });
     let canonical_agent_path_matches = metadata
-        .agent_path
-        .as_deref()
+        .agent_path()
         .is_some_and(|path| canonical_host_agent_identity_path_matches(path, expected_role));
-    let direct_child = metadata.thread_source.as_deref() == Some("subagent")
-        && metadata.spawn_depth == Some(1)
-        && metadata.root_session_id.is_some()
-        && metadata.root_session_id == metadata.parent_thread_id;
+    let direct_child = metadata.thread_source() == Some("subagent")
+        && metadata.spawn_depth() == Some(1)
+        && metadata.root_session_id().is_some()
+        && metadata.root_session_id() == metadata.parent_thread_id();
     direct_child && (configured_role_matches || canonical_agent_path_matches)
 }
 

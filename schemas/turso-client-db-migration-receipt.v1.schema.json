@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/turso-client-db-migration-receipt.v1.schema.json",
+  "title": "Turso Client DB Migration Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "migrationId",
+    "logicalSchemaVersion",
+    "physicalFormat",
+    "tursoVersion",
+    "sourcePreserved",
+    "atomicPromotion",
+    "families"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.turso-client-db-migration-receipt"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "migrationId": {
+      "const": "client-db-v1-project-partition-cutover"
+    },
+    "logicalSchemaVersion": {
+      "const": 1
+    },
+    "physicalFormat": {
+      "const": "turso-0.7-native"
+    },
+    "tursoVersion": {
+      "const": "0.7"
+    },
+    "sourcePreserved": {
+      "const": true
+    },
+    "atomicPromotion": {
+      "const": true
+    },
+    "families": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cacheManifest",
+        "syntaxQuery",
+        "sourceIndex",
+        "structuralIndex",
+        "providerCommand",
+        "artifactEvent",
+        "artifactPointer"
+      ],
+      "properties": {
+        "cacheManifest": {
+          "$ref": "#/$defs/familyReceipt"
+        },
+        "syntaxQuery": {
+          "$ref": "#/$defs/familyReceipt"
+        },
+        "sourceIndex": {
+          "$ref": "#/$defs/familyReceipt"
+        },
+        "structuralIndex": {
+          "$ref": "#/$defs/familyReceipt"
+        },
+        "providerCommand": {
+          "$ref": "#/$defs/familyReceipt"
+        },
+        "artifactEvent": {
+          "$ref": "#/$defs/familyReceipt"
+        },
+        "artifactPointer": {
+          "$ref": "#/$defs/familyReceipt"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "familyReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "sourceRecordCount",
+        "targetRecordCount",
+        "sourceDigest",
+        "targetDigest"
+      ],
+      "properties": {
+        "status": {
+          "const": "verified"
+        },
+        "sourceRecordCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetRecordCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetDigest": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

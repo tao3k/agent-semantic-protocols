@@ -1,4 +1,33 @@
 #[tokio::test(flavor = "current_thread")]
+async fn turso_0_7_bootstrap_rejects_existing_db_without_format_receipt() {
+    let project_root = temp_root("turso-legacy-sqlite-project");
+    let state_home = temp_root("turso-legacy-sqlite-state-home");
+    let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
+        .expect("resolve state with explicit state home");
+    let engine = ClientDbEngine::from_resolved_state(&state);
+    let turso_path = engine.db_path().to_path_buf();
+    std::fs::create_dir_all(turso_path.parent().expect("Turso parent"))
+        .expect("create Turso parent");
+    std::fs::write(&turso_path, b"SQLite format 3\0legacy-client-db")
+        .expect("write legacy SQLite header");
+
+    let error = engine
+        .bootstrap_active_turso()
+        .await
+        .expect_err("unreceipted DB must require full Turso 0.7 staging migration");
+    assert!(error.contains("has no Turso 0.7 format receipt"));
+    assert!(error.contains("full staging migration is required"));
+    assert!(error.contains("in-place compatibility bootstrap is forbidden"));
+    assert_eq!(
+        std::fs::read(&turso_path).expect("legacy file remains rollback input"),
+        b"SQLite format 3\0legacy-client-db"
+    );
+
+    let _ = std::fs::remove_dir_all(project_root);
+    let _ = std::fs::remove_dir_all(state_home);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn turso_backend_bootstrap_smoke_creates_local_file() {
     let project_root = temp_root("turso-bootstrap-project");
     let state_home = temp_root("turso-bootstrap-state-home");

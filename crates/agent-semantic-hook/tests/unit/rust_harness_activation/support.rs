@@ -132,9 +132,18 @@ pub(super) fn root_owned_rust_activation_json() -> String {
             .display()
             .to_string(),
     ];
-    let execution_command_digest =
-        agent_semantic_hook::provider_execution_command_digest(&provider_command_prefix)
-            .expect("digest provider execution command");
+    let executable_artifact_digest =
+        agent_semantic_content_identity::file_content_digest_v1(std::path::Path::new(
+            provider_command_prefix
+                .first()
+                .expect("provider command prefix"),
+        ))
+        .expect("digest provider test executable");
+    let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
+        &provider_command_prefix,
+        &executable_artifact_digest,
+    )
+    .expect("digest provider execution command");
     let activation = agent_semantic_hook::HookActivation {
         schema_id: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),

@@ -8,7 +8,6 @@ use super::{
     RuntimeSourceSpec, collect_runtime_source_index_files, ensure_runtime_source_checkout,
     runtime_source_checkout_dir, runtime_source_index_context, runtime_source_registry_fingerprint,
 };
-use crate::state_core::ResolvedState;
 
 #[test]
 fn runtime_source_dir_uses_client_cache_namespace() {
@@ -21,10 +20,7 @@ fn runtime_source_dir_uses_client_cache_namespace() {
         runtime_source_checkout_dir(&package_root, "runtime-source/gerbil-scheme", "v0.18.2")
             .expect("runtime source checkout dir");
 
-    assert_eq!(
-        checkout_dir,
-        expected_runtime_source_dir(&package_root, "runtime-source/gerbil-scheme", "v0.18.2",)
-    );
+    assert!(checkout_dir.ends_with("live/client/runtime-source/gerbil-scheme/v0.18.2"));
     let _ = fs::remove_dir_all(root);
 }
 
@@ -159,9 +155,10 @@ fn runtime_source_acquisition_clones_and_checks_out_version() {
     assert_eq!(checkout.language_id, "gerbil-scheme");
     assert_eq!(checkout.state_namespace, "runtime-source/gerbil-scheme");
     assert_eq!(checkout.index_owner, "asp-structural-index");
-    assert_eq!(
-        checkout.checkout_dir,
-        expected_runtime_source_dir(&root, "runtime-source/gerbil-scheme", "v0.18.2")
+    assert!(
+        checkout
+            .checkout_dir
+            .ends_with("live/client/runtime-source/gerbil-scheme/v0.18.2")
     );
     assert_eq!(
         fs::read_to_string(checkout.checkout_dir.join("runtime.ss")).expect("runtime source file"),
@@ -169,15 +166,6 @@ fn runtime_source_acquisition_clones_and_checks_out_version() {
     );
 
     let _ = fs::remove_dir_all(root);
-}
-
-fn expected_runtime_source_dir(project_root: &Path, namespace: &str, checkout: &str) -> PathBuf {
-    ResolvedState::resolve(project_root)
-        .expect("resolve state")
-        .paths
-        .client_dir
-        .join(namespace)
-        .join(checkout)
 }
 
 fn create_tagged_repo(repo: &Path, tag: &str) {

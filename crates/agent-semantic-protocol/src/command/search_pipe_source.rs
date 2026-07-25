@@ -191,11 +191,15 @@ fn auto_candidates(
         && agent_semantic_search::search_pipe_source_index_query_gate(query_terms).is_some();
     let source_index_lookup = if scopes.is_empty() && !source_index_query_gated {
         Some(lookup_search_pipe_source_index_for_language(
-            project_root,
-            &current_snapshot.source_snapshot,
-            Some(&language),
-            &source_index_query,
-            PIPE_CANDIDATE_LINE_LIMIT as u32,
+            agent_semantic_client::SourceIndexLookupRequest {
+                cache_project_root: project_root,
+                indexed_project_root: project_root,
+                language_id: Some(&language),
+                query: &source_index_query,
+                limit: PIPE_CANDIDATE_LINE_LIMIT as u32,
+                source_snapshot: &current_snapshot.source_snapshot,
+                live_import: None,
+            },
         )?)
     } else {
         None

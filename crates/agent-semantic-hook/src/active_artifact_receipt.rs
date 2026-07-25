@@ -11,6 +11,8 @@ use std::process;
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use agent_semantic_config::{LanguageId, ProviderId};
+
 const ACTIVE_ASP_ARTIFACT_RECEIPT_FILE: &str = "active-asp-artifact-receipt.v1.json";
 const ACTIVE_ASP_ARTIFACT_SET_ID: &str = "asp-runtime";
 
@@ -18,6 +20,9 @@ const ACTIVE_ASP_ARTIFACT_SET_ID: &str = "asp-runtime";
 pub struct ActiveAspArtifactMaterialization {
     pub receipt_path: PathBuf,
     pub receipt: ActiveAspArtifactReceiptV1,
+    pub artifact_byte_reads: usize,
+    pub artifact_bytes_read: u64,
+    pub receipt_writes: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +30,134 @@ pub struct ActiveAspArtifactInput {
     pub logical_path: String,
     pub artifact_kind: ActiveArtifactKindV1,
     pub materialized_path: PathBuf,
+    pub artifact_digest: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderInstallArtifactIdentityV1 {
+    schema_id: String,
+    provider: String,
+    installed_path: PathBuf,
+    installed_entrypoint_digest: Option<String>,
+    installed_entrypoint_metadata_digest: String,
+}
+
+pub fn active_provider_artifact_input(
+    project_root: &Path,
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+    materialized_path: PathBuf,
+) -> Result<ActiveAspArtifactInput, String> {
+    let paths = agent_semantic_runtime::project_state_paths(project_root)?;
+    active_provider_artifact_input_from_lock_dir(
+        &paths.provider_lock_dir,
+        language_id,
+        provider_id,
+        materialized_path,
+    )
+}
+
+pub(crate) fn installed_provider_artifact_digest(
+    provider_lock_dir: &Path,
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+    materialized_path: PathBuf,
+) -> Result<String, String> {
+    active_provider_artifact_input_from_lock_dir(
+        provider_lock_dir,
+        language_id,
+        provider_id,
+        materialized_path,
+    )
+    .map(|input| input.artifact_digest)
+}
+
+fn active_provider_artifact_input_from_lock_dir(
+    provider_lock_dir: &Path,
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+    materialized_path: PathBuf,
+) -> Result<ActiveAspArtifactInput, String> {
+    let canonical_materialized =
+        canonical_regular_file(&materialized_path, "active provider binary")?;
+    let direct_lock = provider_lock_dir.join(format!("{language_id}.lock.toml"));
+    let mut lock_paths = Vec::new();
+    if direct_lock.is_file() {
+        lock_paths.push(direct_lock);
+    }
+    if provider_lock_dir.is_dir() {
+        let entries = fs::read_dir(provider_lock_dir).map_err(|error| {
+            format!(
+                "failed to read provider lock registry {}: {error}",
+                provider_lock_dir.display()
+            )
+        })?;
+        for entry in entries {
+            let path = entry
+                .map_err(|error| format!("failed to read provider lock entry: {error}"))?
+                .path();
+            if path.extension().and_then(|value| value.to_str()) == Some("toml")
+                && path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|name| name.ends_with(".lock.toml"))
+                && !lock_paths.contains(&path)
+            {
+                lock_paths.push(path);
+            }
+        }
+    }
+    lock_paths.sort();
+    for lock_path in lock_paths {
+        let contents = fs::read_to_string(&lock_path)
+            .map_err(|error| format!("failed to read {}: {error}", lock_path.display()))?;
+        let identity: ProviderInstallArtifactIdentityV1 = toml::from_str(&contents)
+            .map_err(|error| format!("failed to parse {}: {error}", lock_path.display()))?;
+        if identity.schema_id != "asp.provider-install-lock.v1"
+            || identity.provider != provider_id.as_str()
+        {
+            continue;
+        }
+        let installed_path =
+            canonical_regular_file(&identity.installed_path, "installed provider binary")?;
+        if installed_path != canonical_materialized {
+            continue;
+        }
+        let digest = identity.installed_entrypoint_digest.ok_or_else(|| {
+            format!(
+                "provider install receipt lacks installedEntrypointDigest: language={language_id} provider={provider_id} lock={}",
+                lock_path.display()
+            )
+        })?;
+        parse_content_digest_v1(&digest).map_err(|_| {
+            format!(
+                "provider install receipt has invalid installedEntrypointDigest: language={language_id} provider={provider_id} lock={}",
+                lock_path.display()
+            )
+        })?;
+        let current_metadata_digest =
+            agent_semantic_content_identity::file_artifact_metadata_digest_v1(
+                &canonical_materialized,
+            )?;
+        if identity.installed_entrypoint_metadata_digest != current_metadata_digest {
+            return Err(format!(
+                "provider install receipt metadata drift: language={language_id} provider={provider_id} lock={} expected={} actual={current_metadata_digest}",
+                lock_path.display(),
+                identity.installed_entrypoint_metadata_digest,
+            ));
+        }
+        return Ok(ActiveAspArtifactInput {
+            logical_path: active_provider_logical_path(language_id, provider_id),
+            artifact_kind: ActiveArtifactKindV1::ProviderBinary,
+            materialized_path: canonical_materialized,
+            artifact_digest: digest,
+        });
+    }
+    Err(format!(
+        "provider install receipt is missing for active binary: language={language_id} provider={provider_id} path={}",
+        canonical_materialized.display()
+    ))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -69,43 +202,62 @@ pub fn materialize_active_asp_artifact_receipt(
 ) -> Result<ActiveAspArtifactMaterialization, String> {
     let binary_path = canonical_regular_file(binary_path, "ASP binary")?;
     let activation_path = canonical_regular_file(activation_path, "activation")?;
+    let receipt_path = active_asp_artifact_receipt_path(&activation_path)?;
+    let previous_receipt = if receipt_path.is_file() {
+        let bytes = fs::read(&receipt_path).map_err(|error| {
+            format!(
+                "failed to read active ASP artifact receipt {}: {error}",
+                receipt_path.display()
+            )
+        })?;
+        let receipt: ActiveAspArtifactReceiptV1 =
+            serde_json::from_slice(&bytes).map_err(|error| {
+                format!(
+                    "failed to decode active ASP artifact receipt {}: {error}",
+                    receipt_path.display()
+                )
+            })?;
+        receipt.validate().map_err(|error| {
+            format!(
+                "invalid active ASP artifact receipt {}: {error:?}",
+                receipt_path.display()
+            )
+        })?;
+        Some(receipt)
+    } else {
+        None
+    };
     let binary_metadata = fs::metadata(&binary_path)
         .map_err(|error| format!("failed to inspect {}: {error}", binary_path.display()))?;
     let activation_bytes = fs::read(&activation_path)
         .map_err(|error| format!("failed to read {}: {error}", activation_path.display()))?;
     let binary_digest = parse_content_digest_v1(binary_digest)
         .map_err(|_| format!("invalid BLAKE3 ASP binary digest: {binary_digest}"))?;
+    let artifact_byte_reads = 0;
+    let artifact_bytes_read = 0;
     let mut leaves = vec![
-        ActiveArtifactLeafV1::from_input(
-            agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactLeafInputV1 {
-                logical_path: "runtime/asp".to_string(),
-                materialized_path: utf8_path(&binary_path, "ASP binary")?,
-                artifact_kind: ActiveArtifactKindV1::AspBinary,
-                artifact_digest: binary_digest,
-                size_bytes: binary_metadata.len(),
-                modified_unix_nanos: modified_unix_nanos(&binary_metadata)?,
-                change_time_unix_nanos: change_time_unix_nanos(&binary_metadata),
-            },
-        ),
-        ActiveArtifactLeafV1::from_input(
-            agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactLeafInputV1 {
-                logical_path: "state/activation.json".to_string(),
-                materialized_path: utf8_path(&activation_path, "activation")?,
-                artifact_kind: ActiveArtifactKindV1::Activation,
-                artifact_digest: blake3_content_digest_v1(&activation_bytes),
-                size_bytes: activation_bytes.len() as u64,
-                modified_unix_nanos: modified_unix_nanos(
-                    &fs::metadata(&activation_path).map_err(|error| {
-                        format!("failed to inspect {}: {error}", activation_path.display())
-                    })?,
-                )?,
-                change_time_unix_nanos: change_time_unix_nanos(
-                    &fs::metadata(&activation_path).map_err(|error| {
-                        format!("failed to inspect {}: {error}", activation_path.display())
-                    })?,
-                ),
-            },
-        ),
+        ActiveArtifactLeafV1::new(
+            "runtime/asp",
+            utf8_path(&binary_path, "ASP binary")?,
+            ActiveArtifactKindV1::AspBinary,
+            binary_digest,
+            binary_metadata.len(),
+            modified_unix_nanos(&binary_metadata)?,
+            change_time_unix_nanos(&binary_metadata),
+        )?,
+        ActiveArtifactLeafV1::new(
+            "state/activation.json",
+            utf8_path(&activation_path, "activation")?,
+            ActiveArtifactKindV1::Activation,
+            blake3_content_digest_v1(&activation_bytes),
+            activation_bytes.len() as u64,
+            modified_unix_nanos(&fs::metadata(&activation_path).map_err(|error| {
+                format!("failed to inspect {}: {error}", activation_path.display())
+            })?)?,
+            change_time_unix_nanos(&fs::metadata(&activation_path).map_err(|error| {
+                format!("failed to inspect {}: {error}", activation_path.display())
+            })?),
+        )?,
     ];
     for artifact in additional_artifacts {
         if matches!(
@@ -119,39 +271,51 @@ pub fn materialize_active_asp_artifact_receipt(
         }
         let materialized_path =
             canonical_regular_file(&artifact.materialized_path, "active artifact")?;
-        let bytes = fs::read(&materialized_path).map_err(|error| {
-            format!(
-                "failed to read active artifact {}: {error}",
-                materialized_path.display()
-            )
-        })?;
         let metadata = fs::metadata(&materialized_path).map_err(|error| {
             format!(
                 "failed to inspect active artifact {}: {error}",
                 materialized_path.display()
             )
         })?;
-        leaves.push(ActiveArtifactLeafV1::from_input(
-            agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactLeafInputV1 {
-                logical_path: artifact.logical_path.clone(),
-                materialized_path: utf8_path(&materialized_path, "active artifact")?,
-                artifact_kind: artifact.artifact_kind,
-                artifact_digest: blake3_content_digest_v1(&bytes),
-                size_bytes: bytes.len() as u64,
-                modified_unix_nanos: modified_unix_nanos(&metadata)?,
-                change_time_unix_nanos: change_time_unix_nanos(&metadata),
-            },
-        ));
+        let materialized_path = utf8_path(&materialized_path, "active artifact")?;
+        let modified_unix_nanos = modified_unix_nanos(&metadata)?;
+        let change_time_unix_nanos = change_time_unix_nanos(&metadata);
+        let artifact_digest = parse_content_digest_v1(&artifact.artifact_digest).map_err(|_| {
+            format!(
+                "invalid BLAKE3 active artifact digest: logicalPath={} digest={}",
+                artifact.logical_path, artifact.artifact_digest
+            )
+        })?;
+        leaves.push(ActiveArtifactLeafV1::new(
+            artifact.logical_path.clone(),
+            materialized_path,
+            artifact.artifact_kind,
+            artifact_digest,
+            metadata.len(),
+            modified_unix_nanos,
+            change_time_unix_nanos,
+        )?);
     }
     let receipt = ActiveAspArtifactReceiptV1::build(ACTIVE_ASP_ARTIFACT_SET_ID, leaves)
         .map_err(|error| format!("failed to build active ASP artifact receipt: {error:?}"))?;
-    let receipt_path = active_asp_artifact_receipt_path(&activation_path)?;
+    if previous_receipt.as_ref() == Some(&receipt) {
+        return Ok(ActiveAspArtifactMaterialization {
+            receipt_path,
+            receipt,
+            artifact_byte_reads,
+            artifact_bytes_read,
+            receipt_writes: 0,
+        });
+    }
     let bytes = serde_json::to_vec_pretty(&receipt)
         .map_err(|error| format!("failed to encode active ASP artifact receipt: {error}"))?;
     atomic_write(&receipt_path, &bytes)?;
     Ok(ActiveAspArtifactMaterialization {
         receipt_path,
         receipt,
+        artifact_byte_reads,
+        artifact_bytes_read,
+        receipt_writes: 1,
     })
 }
 
@@ -165,26 +329,48 @@ pub fn materialize_active_asp_artifact_receipt_for_current_process(
     let Some(digest) = digest_addressed_binary_digest(&canonical) else {
         return Ok(false);
     };
+    let project_root = Path::new(&activation.project_root);
+    let runtime_profiles = crate::runtime_profiles_for_runtime(project_root, activation);
     let mut provider_artifacts = activation
         .providers
         .iter()
         .map(|provider| {
-            Ok(ActiveAspArtifactInput {
-                logical_path: active_provider_logical_path(
-                    &provider.language_id,
-                    &provider.provider_id,
-                ),
-                artifact_kind: ActiveArtifactKindV1::ProviderBinary,
-                materialized_path: resolve_active_provider_binary(activation, provider)?,
-            })
+            let profile = runtime_profiles
+                .providers
+                .iter()
+                .find(|profile| {
+                    profile.language_id == provider.language_id.as_str()
+                        && profile.provider_id == provider.provider_id.as_str()
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "active provider runtime profile is missing: language={} provider={}",
+                        provider.language_id, provider.provider_id
+                    )
+                })?;
+            let binary = profile.resolved_binary.as_ref().ok_or_else(|| {
+                format!(
+                    "active provider runtime profile has no resolved binary: language={} provider={}",
+                    provider.language_id, provider.provider_id
+                )
+            })?;
+            active_provider_artifact_input(
+                project_root,
+                &provider.language_id,
+                &provider.provider_id,
+                PathBuf::from(binary),
+            )
         })
         .collect::<Result<Vec<_>, String>>()?;
     let runtime_config = crate::default_client_config_path(&activation.project_root);
     if runtime_config.is_file() {
+        let artifact_digest =
+            agent_semantic_content_identity::file_content_digest_v1(&runtime_config)?;
         provider_artifacts.push(ActiveAspArtifactInput {
             logical_path: "runtime/hooks/config.toml".to_string(),
             artifact_kind: ActiveArtifactKindV1::RuntimeConfig,
             materialized_path: runtime_config,
+            artifact_digest,
         });
     }
     materialize_active_asp_artifact_receipt(
@@ -196,7 +382,7 @@ pub fn materialize_active_asp_artifact_receipt_for_current_process(
     Ok(true)
 }
 
-fn active_provider_logical_path(language_id: &str, provider_id: &str) -> String {
+fn active_provider_logical_path(language_id: &LanguageId, provider_id: &ProviderId) -> String {
     format!("providers/{language_id}/{provider_id}")
 }
 
@@ -209,8 +395,8 @@ struct ActiveProviderClosureActivation {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ActiveProviderClosureIdentity {
-    language_id: String,
-    provider_id: String,
+    language_id: LanguageId,
+    provider_id: ProviderId,
 }
 
 fn verify_active_provider_artifact_closure(
@@ -249,39 +435,6 @@ fn verify_active_provider_artifact_closure(
         ));
     }
     Ok(())
-}
-
-fn resolve_active_provider_binary(
-    activation: &crate::HookRuntime,
-    provider: &crate::ActivatedProvider,
-) -> Result<PathBuf, String> {
-    let candidates = std::iter::once(provider.binary.as_str())
-        .chain(provider.provider_command_prefix.iter().map(String::as_str));
-    for candidate in candidates {
-        let path = Path::new(candidate);
-        if path.is_absolute() && path.is_file() {
-            return canonical_regular_file(path, "provider binary");
-        }
-        if path.components().count() > 1 {
-            let project_path = Path::new(&activation.project_root).join(path);
-            if project_path.is_file() {
-                return canonical_regular_file(&project_path, "provider binary");
-            }
-            continue;
-        }
-        if let Some(path) = std::env::var_os("PATH")
-            .into_iter()
-            .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
-            .map(|directory| directory.join(path))
-            .find(|path| path.is_file())
-        {
-            return canonical_regular_file(&path, "provider binary");
-        }
-    }
-    Err(format!(
-        "active provider binary is not resolvable: language={} provider={} binary={}",
-        provider.language_id, provider.provider_id, provider.binary,
-    ))
 }
 
 pub fn verify_active_asp_artifact_receipt(
@@ -576,3 +729,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     }
     result
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/active_artifact_receipt.rs"]
+mod active_artifact_receipt_tests;

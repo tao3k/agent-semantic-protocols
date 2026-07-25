@@ -36,6 +36,17 @@ captures.  Rust may map =literal= to string literal nodes and
 =diagnostic-code= to string, attribute, enum, or constant facts, but the
 shared search crate MUST NOT embed Rust node kinds.
 
+The shared query grammar exposes explicit, language-neutral anchors:
+
+#+begin_example
+literal:<exact-value>
+diagnostic:<exact-code-or-reason>
+#+end_example
+
+The prefix is transport syntax and is not part of the lookup value.  It avoids
+punctuation heuristics and lets every registered provider consume the same
+typed request.
+
 A single =literal= or =diagnostic-code= term is a complete typed anchor.  It
 MUST NOT be rejected by the broad-query budget and MUST NOT require a second
 clause.

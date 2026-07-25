@@ -1,4 +1,4 @@
-use agent_semantic_content_identity::CanonicalItemSelectorV1;
+use agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1;
 
 #[test]
 fn canonical_selector_parse_is_language_neutral() {

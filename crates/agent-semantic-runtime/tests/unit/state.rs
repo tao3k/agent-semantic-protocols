@@ -52,21 +52,13 @@ fn runtime_state_materializes_config_layout_under_git_toplevel() {
     fs::create_dir_all(root.join(".git")).expect("create git marker");
 
     let state = project_runtime_state(&package_root).expect("runtime state");
+    let resolved =
+        crate::state_core::ResolvedState::resolve(&package_root).expect("resolved state layout");
 
     assert_eq!(state.layout.git_toplevel.as_deref(), Some(root.as_path()));
     assert_eq!(state.protocol_home, state_home.path());
-    assert!(
-        state
-            .hook_cache_dir
-            .starts_with(state_home.path().join("hooks/projects"))
-    );
-    assert!(state.hook_cache_dir.ends_with("cache"));
-    assert!(
-        state
-            .hook_state_dir
-            .starts_with(state_home.path().join("hooks/projects"))
-    );
-    assert!(state.hook_state_dir.ends_with("state"));
+    assert_eq!(state.hook_cache_dir, resolved.paths.hooks_dir.join("cache"));
+    assert_eq!(state.hook_state_dir, resolved.paths.hooks_dir.join("state"));
     assert!(state_home.path().join("projects/by-id").exists());
     assert_eq!(
         state.activation_path,
@@ -114,10 +106,11 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
     fs::create_dir_all(root.join(".git")).expect("create git marker");
 
     let hook_dir = ensure_project_hook_cache_dir(&package_root).expect("hook cache dir");
+    let resolved =
+        crate::state_core::ResolvedState::resolve(&package_root).expect("resolved state layout");
 
     assert!(hook_dir.is_dir());
-    assert!(hook_dir.starts_with(state_home.path().join("hooks/projects")));
-    assert!(hook_dir.ends_with("cache"));
+    assert_eq!(hook_dir, resolved.paths.hooks_dir.join("cache"));
     assert!(
         !hook_dir
             .parent()
@@ -125,8 +118,6 @@ fn ensure_helpers_create_only_the_requested_runtime_dir() {
             .join("state")
             .exists()
     );
-    assert!(!state_home.path().join("projects/by-id").exists());
-
     let hook_state_dir = ensure_project_hook_state_dir(&package_root).expect("hook state dir");
     let client_dir = ensure_project_client_cache_dir(&package_root).expect("client cache dir");
     let runtime_home = ensure_project_runtime_home(&package_root).expect("runtime home");

@@ -5,6 +5,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::ResolvedProvider;
 
 #[must_use]
+/// Return whether a provider owns the source-file extension at `path`.
 pub fn provider_supports_source_file(provider: &ResolvedProvider, path: &Path) -> bool {
     let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
         return false;
@@ -16,6 +17,7 @@ pub fn provider_supports_source_file(provider: &ResolvedProvider, path: &Path) -
     })
 }
 
+/// Return whether a provider excludes a path from its declared source scope.
 #[must_use]
 pub fn provider_ignores_path(
     project_root: &Path,
@@ -30,6 +32,7 @@ pub fn provider_ignores_path(
 }
 
 #[must_use]
+/// Resolve a project-scoped child path, including the project root itself.
 pub fn project_child_path(project_root: &Path, path: &str) -> Option<PathBuf> {
     if path == "." || path.is_empty() {
         return Some(project_root.to_path_buf());
@@ -37,6 +40,7 @@ pub fn project_child_path(project_root: &Path, path: &str) -> Option<PathBuf> {
     scoped_child_path(project_root, path)
 }
 
+/// Resolve a relative child without permitting absolute or parent traversal.
 #[must_use]
 pub fn scoped_child_path(root: &Path, path: &str) -> Option<PathBuf> {
     let path = Path::new(path);
@@ -51,6 +55,7 @@ pub fn scoped_child_path(root: &Path, path: &str) -> Option<PathBuf> {
 }
 
 #[must_use]
+/// Render `path` relative to the project root using canonical separators.
 pub fn relative_project_path(project_root: &Path, path: &Path) -> String {
     path.strip_prefix(project_root)
         .unwrap_or(path)
@@ -60,6 +65,7 @@ pub fn relative_project_path(project_root: &Path, path: &Path) -> String {
         .to_string()
 }
 
+/// Normalize a project-relative path to slash-separated canonical text.
 #[must_use]
 pub fn normalize_project_path(path: &str) -> String {
     path.replace('\\', "/").trim_start_matches("./").to_string()

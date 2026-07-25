@@ -44,9 +44,11 @@
   "$defs": {
     "role": {
       "enum": [
-        "context",
-        "concept",
-        "symbol"
+          "context",
+          "concept",
+          "symbol",
+          "literal",
+          "diagnostic-code"
       ]
     },
     "intentAxis": {

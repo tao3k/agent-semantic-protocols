@@ -132,12 +132,12 @@ pub(super) fn resume_session(
         )?;
     let required_model = validation
         .as_ref()
-        .and_then(|validation| validation.expected_model.as_deref())
+        .and_then(|validation| validation.expected_model())
         .or(configured_required_model.as_deref())
         .unwrap_or("");
     let actual_model = validation
         .as_ref()
-        .and_then(|validation| validation.actual_model.as_deref())
+        .and_then(|validation| validation.actual_model())
         .unwrap_or(model);
     let model_alignment_action =
         if record.is_some() && !required_model.is_empty() && actual_model.is_empty() {

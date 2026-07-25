@@ -50,7 +50,12 @@ pub(crate) fn codex_rollout_root_session_id(
     codex_rollout_session_metadata(session_id)
         .ok()
         .flatten()
-        .and_then(|metadata| metadata.root_session_id.or(metadata.parent_thread_id))
+        .and_then(|metadata| {
+            metadata
+                .root_session_id()
+                .or_else(|| metadata.parent_thread_id())
+                .map(|session_id| session_id.as_str().to_owned())
+        })
 }
 
 /// Resolve register-time child/root identity from explicit args and host state.

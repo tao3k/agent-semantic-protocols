@@ -14,7 +14,10 @@ pub(super) fn rehydrate_trusted_resident_hook_session(
         return Ok(None);
     };
     if child_session_id == root_session_id
-        || rollout.root_session_id.as_deref() != Some(root_session_id)
+        || rollout
+            .root_session_id()
+            .map(|session_id| session_id.as_str())
+            != Some(root_session_id)
         || !crate::command::rollout_metadata_matches_managed_agent_profile(
             resident_child_name,
             resident_agent_role,
@@ -30,14 +33,14 @@ pub(super) fn rehydrate_trusted_resident_hook_session(
         resident_agent_role,
         agent_semantic_client_db::agent_session_unix_timestamp()?,
     )?;
-    if validation.status == "failed".into()
-        || validation.actual_model != validation.expected_model
-        || validation.actual_reasoning_effort.is_some()
-            && validation.actual_reasoning_effort != validation.expected_reasoning_effort
+    if validation.status().as_str() == "failed"
+        || validation.actual_model() != validation.expected_model()
+        || validation.actual_reasoning_effort().is_some()
+            && validation.actual_reasoning_effort() != validation.expected_reasoning_effort()
     {
         return Ok(None);
     }
-    let Some(model) = rollout.model.as_deref() else {
+    let Some(model) = rollout.model() else {
         return Ok(None);
     };
     let registry =

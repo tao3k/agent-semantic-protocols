@@ -268,21 +268,28 @@ fn artifact_event(
 ) -> Result<ClientDbArtifactEvent, String> {
     let metadata = fs::metadata(path)
         .map_err(|error| format!("failed to inspect artifact {}: {error}", path.display()))?;
-    Ok(ClientDbArtifactEvent {
-        artifact_path: artifact_relative_path(artifact_dir, path),
-        event_ordinal: fields.event_ordinal,
-        timestamp_ms: fields
-            .timestamp_ms
-            .unwrap_or_else(|| metadata_modified_ms(&metadata)),
-        kind: fields.kind.to_string(),
-        language: fields.language.to_string(),
-        method: fields.method.to_string(),
-        target: fields.target.to_string(),
-        query: fields.query.to_string(),
-        project_root: fields.project_root.to_string(),
-        project_root_arg: artifact_project_root_arg(fields.project_root, workspace_root),
-        bytes: metadata.len(),
-    })
+    ClientDbArtifactEvent::builder()
+        .artifact_path(artifact_relative_path(artifact_dir, path))
+        .event_ordinal(fields.event_ordinal)
+        .timestamp_ms(
+            fields
+                .timestamp_ms
+                .unwrap_or_else(|| metadata_modified_ms(&metadata)),
+        )
+        .kind(fields.kind)
+        .language(agent_semantic_client_core::LanguageId::try_new(
+            fields.language,
+        )?)
+        .method(fields.method)
+        .target(fields.target)
+        .query(fields.query)
+        .project_root(fields.project_root)
+        .project_root_arg(artifact_project_root_arg(
+            fields.project_root,
+            workspace_root,
+        ))
+        .bytes(metadata.len())
+        .build()
 }
 
 fn metadata_modified_ms(metadata: &fs::Metadata) -> i64 {

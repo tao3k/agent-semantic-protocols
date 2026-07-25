@@ -390,37 +390,35 @@ pub(crate) fn normalized_metadata(
     let object = value
         .as_object_mut()
         .ok_or_else(|| "session metadata must be a JSON object".to_string())?;
-    let sandbox_verification_status = sandbox_verification_status(
-        validation.expected_sandbox.as_deref(),
-        validation.actual_sandbox.as_deref(),
-    );
+    let sandbox_verification_status =
+        sandbox_verification_status(validation.expected_sandbox(), validation.actual_sandbox());
     object.insert(
         "validationStatus".to_string(),
-        serde_json::Value::String(validation.status.as_str().to_string()),
+        serde_json::Value::String(validation.status().as_str().to_string()),
     );
     object.insert(
         "validationReason".to_string(),
-        serde_json::Value::String(validation.reason.clone()),
+        serde_json::Value::String(validation.reason().to_string()),
     );
     object.insert(
         "validation".to_string(),
         serde_json::json!({
-            "status": validation.status,
-            "reason": validation.reason,
-            "configPath": validation.config_path,
-            "rolloutPath": validation.rollout_path,
-            "expectedRootSessionId": validation.expected_root_session_id,
-            "actualRootSessionId": validation.actual_root_session_id,
-            "expectedParentThreadId": validation.expected_parent_thread_id,
-            "actualParentThreadId": validation.actual_parent_thread_id,
-            "expectedAgentPath": validation.expected_agent_path,
-            "actualAgentPath": validation.actual_agent_path,
-            "expectedRole": validation.expected_role,
-            "actualRole": validation.actual_role,
-            "expectedModel": validation.expected_model,
-            "actualModel": validation.actual_model,
-            "expectedSandbox": validation.expected_sandbox,
-            "actualSandbox": validation.actual_sandbox,
+            "status": validation.status(),
+            "reason": validation.reason(),
+            "configPath": validation.config_path(),
+            "rolloutPath": validation.rollout_path(),
+            "expectedRootSessionId": validation.expected_root_session_id(),
+            "actualRootSessionId": validation.actual_root_session_id(),
+            "expectedParentThreadId": validation.expected_parent_thread_id(),
+            "actualParentThreadId": validation.actual_parent_thread_id(),
+            "expectedAgentPath": validation.expected_agent_path(),
+            "actualAgentPath": validation.actual_agent_path(),
+            "expectedRole": validation.expected_role(),
+            "actualRole": validation.actual_role(),
+            "expectedModel": validation.expected_model(),
+            "actualModel": validation.actual_model(),
+            "expectedSandbox": validation.expected_sandbox(),
+            "actualSandbox": validation.actual_sandbox(),
             "sandboxVerificationStatus": sandbox_verification_status,
             "sandboxPolicy": "warning-only-host-inherited",
             "sandboxAffectsReady": false,

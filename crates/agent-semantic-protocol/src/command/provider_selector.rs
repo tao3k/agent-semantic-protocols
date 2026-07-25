@@ -2,6 +2,9 @@ use agent_semantic_hook::HookRuntime;
 
 fn registered_language_facades() -> Vec<String> {
     agent_semantic_hook::registered_language_ids()
+        .into_iter()
+        .map(|language_id| language_id.to_string())
+        .collect()
 }
 
 pub(super) fn registered_language_facades_line() -> String {
@@ -250,9 +253,9 @@ pub(super) fn reject_manifest_source_selector_query_code(
     };
     let registered_source = agent_semantic_hook::builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == language_id)
+        .find(|manifest| manifest.language_id().as_str() == language_id)
         .is_some_and(|manifest| {
-            manifest.source.default_extensions.iter().any(|source| {
+            manifest.source().default_extensions.iter().any(|source| {
                 source
                     .trim_start_matches('.')
                     .eq_ignore_ascii_case(extension)

@@ -137,8 +137,50 @@ pub struct CurrentSourceIndexSnapshot {
     pub source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
 }
 
+/// Canonical workspace-relative owner path used by source-index acquisition.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceIndexOwnerPath(String);
+
+/// Inputs for capturing one exact owner from an already-loaded activation.
+pub struct CurrentSourceIndexOwnerFromActivationRequest<'a> {
+    project_root: &'a Path,
+    activation_path: &'a Path,
+    activation: &'a agent_semantic_hook::HookRuntime,
+    owner_path: SourceIndexOwnerPath,
+    language_id: LanguageId,
+    provider_id: ProviderId,
+}
+
+impl<'a>
+    From<(
+        &'a Path,
+        &'a Path,
+        &'a agent_semantic_hook::HookRuntime,
+        SourceIndexOwnerPath,
+        LanguageId,
+        ProviderId,
+    )> for CurrentSourceIndexOwnerFromActivationRequest<'a>
+{
+    fn from(
+        value: (
+            &'a Path,
+            &'a Path,
+            &'a agent_semantic_hook::HookRuntime,
+            SourceIndexOwnerPath,
+            LanguageId,
+            ProviderId,
+        ),
+    ) -> Self {
+        Self {
+            project_root: value.0,
+            activation_path: value.1,
+            activation: value.2,
+            owner_path: value.3,
+            language_id: value.4,
+            provider_id: value.5,
+        }
+    }
+}
 
 impl SourceIndexOwnerPath {
     #[must_use]
@@ -328,23 +370,17 @@ pub fn current_source_index_snapshot_for_owner(
 ///
 /// This keeps activation synchronization at the command boundary instead of
 /// re-entering the manifest/activation materializer from the source snapshot.
-pub fn current_source_index_snapshot_for_owner_from_activation(
-    project_root: &Path,
-    activation_path: &Path,
-    activation: &agent_semantic_hook::HookRuntime,
-    owner_path: impl Into<SourceIndexOwnerPath>,
-    language_id: impl Into<LanguageId>,
-    provider_id: impl Into<ProviderId>,
+pub fn current_source_index_snapshot_for_owner_from_activation<'a>(
+    request: impl Into<CurrentSourceIndexOwnerFromActivationRequest<'a>>,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
-    let owner_path = owner_path.into();
-    let language_id = language_id.into();
-    let provider_id = provider_id.into();
-    let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
+    let request = request.into();
+    let provider_registry =
+        ProviderRegistrySnapshot::from_activation(request.activation_path, request.activation)?;
     current_source_index_snapshot_for_owner_with_registry(
-        project_root,
-        owner_path.as_str(),
-        language_id.as_str(),
-        provider_id.as_str(),
+        request.project_root,
+        request.owner_path.as_str(),
+        request.language_id.as_str(),
+        request.provider_id.as_str(),
         &provider_registry,
     )
 }

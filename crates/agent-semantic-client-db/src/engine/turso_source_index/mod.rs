@@ -8,6 +8,7 @@ mod publish;
 mod readiness;
 mod trace;
 
+pub(in crate::engine) use core::bootstrap_turso_source_index_schema;
 pub(super) use core::turso_source_index_access_lock;
 pub use core::{
     latest_turso_source_index_file_hashes, latest_turso_source_index_scope_files,

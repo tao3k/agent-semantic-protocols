@@ -173,6 +173,41 @@ fn registry_v1_descriptors_match_builtin_provider_manifests() {
 }
 
 #[test]
+fn query_pack_v1_schema_and_typed_manifest_accept_literal_roles() {
+    fn contains_role_enum(value: &Value) -> bool {
+        match value {
+            Value::Array(values) => {
+                let strings = values.iter().filter_map(Value::as_str).collect::<Vec<_>>();
+                (strings.contains(&"context")
+                    && strings.contains(&"concept")
+                    && strings.contains(&"symbol")
+                    && strings.contains(&"literal")
+                    && strings.contains(&"diagnostic-code"))
+                    || values.iter().any(contains_role_enum)
+            }
+            Value::Object(values) => values.values().any(contains_role_enum),
+            _ => false,
+        }
+    }
+
+    let schema: Value = serde_json::from_str(include_str!(
+        "../../../../../schemas/provider-query-pack-descriptor.v1.schema.json"
+    ))
+    .expect("valid provider query pack descriptor schema");
+    assert!(
+        contains_role_enum(&schema),
+        "query-pack v1 schema must own the complete typed role vocabulary"
+    );
+
+    let literal: agent_semantic_hook::ProviderQueryPackTermRole =
+        serde_json::from_str("\"literal\"").expect("literal role");
+    let diagnostic: agent_semantic_hook::ProviderQueryPackTermRole =
+        serde_json::from_str("\"diagnostic-code\"").expect("diagnostic-code role");
+    assert_eq!(literal.as_str(), "literal");
+    assert_eq!(diagnostic.as_str(), "diagnostic-code");
+}
+
+#[test]
 fn activation_rejects_search_capabilities_drift() {
     let manifest = builtin_provider_manifests()
         .into_iter()

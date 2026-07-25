@@ -31,18 +31,26 @@ pub(super) fn adopt_reusable_rollout_session(
         .records
         .iter()
         .filter(|metadata| {
-            metadata.root_session_id.as_deref() == Some(request.root_session_id)
-                && request.excluded_session_id != Some(metadata.session_id.as_str())
-                && metadata.session_id != request.root_session_id.into()
+            metadata
+                .root_session_id()
+                .map(|session_id| session_id.as_str())
+                == Some(request.root_session_id)
+                && request.excluded_session_id != Some(metadata.session_id().as_str())
+                && metadata.session_id().as_str() != request.root_session_id
                 && rollout_metadata_matches_managed_agent_profile(
                     request.name,
                     request.role,
                     metadata,
                 )
-                && rollout_index_session_is_reusable(&index, metadata.session_id.as_str())
+                && rollout_index_session_is_reusable(&index, metadata.session_id().as_str())
         })
-        .max_by_key(|metadata| rollout_index_session_score(&index, metadata.session_id.as_str()))
-        .map(|metadata| (metadata.session_id.clone(), metadata.model.clone()))
+        .max_by_key(|metadata| rollout_index_session_score(&index, metadata.session_id().as_str()))
+        .map(|metadata| {
+            (
+                metadata.session_id().clone(),
+                metadata.model().map(str::to_owned),
+            )
+        })
     else {
         return Ok(None);
     };
@@ -53,7 +61,7 @@ pub(super) fn adopt_reusable_rollout_session(
         request.role,
         request.now,
     )?;
-    if validation.status == "failed".into() {
+    if validation.status().as_str() == "failed" {
         return Ok(None);
     }
     let metadata_json =

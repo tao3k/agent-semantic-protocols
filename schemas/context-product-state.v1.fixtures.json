@@ -1,0 +1,264 @@
+{
+  "schemaId": "asp.context-product-state.fixtures",
+  "schemaVersion": 1,
+  "schemaPath": "schemas/context-product-state.v1.schema.json",
+  "fixtures": [
+    {
+      "name": "valid-open-search-state",
+      "target": "#",
+      "valid": true,
+      "value": {
+        "schemaId": "asp.context-product-state",
+        "schemaVersion": 1,
+        "runId": "run-1",
+        "revision": 0,
+        "lastEventSequence": 0,
+        "eventLogDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+      "activeProgram": {
+        "kind": "none"
+      },
+      "spentActionKeys": [],
+      "spentActionLedgerDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "authorityReceiptRef": "authority-receipt-initial",
+        "canonicalizationProfile": "jcs-rfc8785-blake3-256-v1",
+        "context": {
+          "workspaceId": "workspace-1",
+          "workspaceRootDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "baseSourceDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "dirtyOverlayDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "sourceSnapshotDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "providerDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "parserDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "queryPackDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "factSchemaDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "projectionSchemaDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "policyDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "graphRevisionDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "contextEpoch": 0,
+          "bindingDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "obligations": [
+          {
+            "obligationId": "obligation-1",
+            "claimClass": "identity",
+            "claimDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+            "required": true,
+            "dependsOn": [],
+            "disposition": {
+              "kind": "open",
+              "reasonCode": "missing-evidence"
+            }
+          }
+        ],
+        "proofReuse": {
+          "kind": "none",
+          "retained": [],
+          "invalidatedProofRefs": []
+        },
+        "frontier": {
+          "frontierId": "frontier-1",
+          "graphDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "contextBindingDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "nodes": [],
+          "frontierDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "decision": {
+          "kind": "search",
+          "openObligationIds": [
+            "obligation-1"
+          ],
+          "evidencePlanRef": "plan-1",
+          "budget": {
+            "maxCommands": 4,
+            "maxElapsedMs": 10000,
+            "maxPacketBytes": 65536
+          }
+        },
+        "execution": {
+          "kind": "none"
+        },
+        "closure": {
+          "kind": "open",
+          "openObligationIds": [
+            "obligation-1"
+          ]
+        },
+        "stateDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "name": "reject-unknown-legacy-field",
+      "target": "#",
+      "valid": false,
+      "mutateFrom": "valid-open-search-state",
+      "mutation": {
+        "op": "add",
+        "path": "/legacyState",
+        "value": "enabled"
+      }
+    },
+    {
+      "name": "reject-resolved-without-proof-refs",
+      "target": "#/$defs/resolvedDisposition",
+      "valid": false,
+      "value": {
+        "kind": "resolved",
+        "verdict": "supported"
+      }
+    },
+    {
+      "name": "reject-partial-reuse-without-invalidated-proofs",
+      "target": "#/$defs/partialProofReuse",
+      "valid": false,
+      "value": {
+        "kind": "partial",
+        "retained": [
+          {
+            "proofRef": "proof-1",
+            "mode": "direct",
+            "contextBindingDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ],
+        "invalidatedProofRefs": []
+      }
+    },
+    {
+      "name": "reject-route-proposal-with-authority-field",
+      "target": "#/$defs/routeProposal",
+      "valid": false,
+      "value": {
+        "proposalId": "proposal-1",
+        "runId": "run-1",
+        "basedOnRevision": 0,
+        "contextBindingDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "intentDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "proposedBy": "agent-1",
+        "obligationIds": [
+          "obligation-1"
+        ],
+        "nodes": [],
+        "edges": [],
+        "budgetProposal": {
+          "maxCommands": 1,
+          "maxElapsedMs": 1000,
+          "maxPacketBytes": 1024
+        },
+        "proposalDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "grantId": "forged-grant"
+      }
+    },
+    {
+      "name": "reject-enumeration-closure-with-incomplete-scope",
+      "target": "#/$defs/closureProof",
+      "valid": false,
+      "value": {
+        "obligationId": "obligation-1",
+        "claimClass": "enumeration",
+        "verdict": "supported",
+        "proofRefs": [
+          "proof-1"
+        ],
+        "supportPaths": [
+          "src/lib.rs"
+        ],
+        "evidenceScope": {
+          "scopeDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          "complete": false,
+          "truncated": false,
+          "snapshotContinuous": true,
+          "providerAdmitted": true
+        }
+      }
+    },
+    {
+      "name": "valid-execution-started-event-v1",
+      "target": "#/$defs/contextProductEvent",
+      "valid": true,
+      "value": {
+        "eventType": "ExecutionStarted",
+        "eventId": "event-started-1",
+        "runId": "run-1",
+        "sequence": 1,
+        "stateRevision": 0,
+        "preStateDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+        "grantId": "grant-1",
+        "grantDigest": "blake3:1111111111111111111111111111111111111111111111111111111111111111",
+        "attemptId": "attempt-1",
+        "attemptDigest": "blake3:2222222222222222222222222222222222222222222222222222222222222222",
+        "providerId": "provider-1",
+        "operation": "search",
+        "leaseFence": 1,
+        "expiresAtMs": 1000,
+        "providerIdempotencyKey": "provider-key-1",
+        "eventDigest": "blake3:3333333333333333333333333333333333333333333333333333333333333333"
+      }
+    },
+    {
+      "name": "valid-execution-consumed-event-v1",
+      "target": "#/$defs/contextProductEvent",
+      "valid": true,
+      "value": {
+        "eventType": "ExecutionConsumed",
+        "eventId": "event-consumed-1",
+        "runId": "run-1",
+        "sequence": 2,
+        "stateRevision": 1,
+        "preStateDigest": "blake3:3333333333333333333333333333333333333333333333333333333333333333",
+        "grantId": "grant-1",
+        "grantDigest": "blake3:1111111111111111111111111111111111111111111111111111111111111111",
+        "attemptId": "attempt-1",
+        "resultReceiptRef": "result-1",
+        "resultDigest": "blake3:4444444444444444444444444444444444444444444444444444444444444444",
+        "leaseFence": 1,
+        "eventDigest": "blake3:5555555555555555555555555555555555555555555555555555555555555555"
+      }
+    },
+    {
+      "name": "valid-execution-revoked-event-v1",
+      "target": "#/$defs/contextProductEvent",
+      "valid": true,
+      "value": {
+        "eventType": "ExecutionRevoked",
+        "eventId": "event-revoked-1",
+        "runId": "run-1",
+        "sequence": 2,
+        "stateRevision": 1,
+        "preStateDigest": "blake3:3333333333333333333333333333333333333333333333333333333333333333",
+        "reasonCode": "lease-expired",
+        "admissionId": "admission-1",
+        "grantId": "grant-1",
+        "actionKey": "blake3:6666666666666666666666666666666666666666666666666666666666666666",
+        "eventDigest": "blake3:7777777777777777777777777777777777777777777777777777777777777777"
+      }
+    },
+    {
+      "name": "reject-unknown-context-product-event-v1",
+      "target": "#/$defs/contextProductEvent",
+      "valid": false,
+      "value": {
+        "eventType": "ExecutionRetried",
+        "eventId": "event-retried-1",
+        "runId": "run-1",
+        "sequence": 2,
+        "stateRevision": 1,
+        "preStateDigest": "blake3:3333333333333333333333333333333333333333333333333333333333333333",
+        "eventDigest": "blake3:7777777777777777777777777777777777777777777777777777777777777777"
+      }
+    },
+    {
+      "name": "valid-state-authority-receipt-v1",
+      "target": "#/$defs/stateAuthorityReceipt",
+      "valid": true,
+      "value": {
+        "receiptId": "authority-receipt-1",
+        "authorityId": "client-db-1",
+        "runId": "run-1",
+        "revision": 1,
+        "stateDigest": "blake3:8888888888888888888888888888888888888888888888888888888888888888",
+        "eventLogDigest": "blake3:9999999999999999999999999999999999999999999999999999999999999999",
+        "issuedAtMs": 1000,
+        "receiptDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  ]
+}

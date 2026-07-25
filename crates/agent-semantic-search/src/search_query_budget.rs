@@ -36,7 +36,14 @@ pub fn search_query_budget_block(
             request.query_pack_descriptor,
         )
         .iter()
-        .any(|term| matches!(term.role, crate::SearchPipeTermRole::Symbol));
+        .any(|term| {
+            matches!(
+                term.role,
+                crate::SearchPipeTermRole::Symbol
+                    | crate::SearchPipeTermRole::Literal
+                    | crate::SearchPipeTermRole::DiagnosticCode
+            )
+        });
     if has_typed_anchor {
         return None;
     }

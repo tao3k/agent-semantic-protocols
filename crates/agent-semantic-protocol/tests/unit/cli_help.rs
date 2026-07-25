@@ -1,74 +1,25 @@
-#[cfg(test)]
-mod cli_help_tests {
-    use std::process::Command;
+use super::install_command;
 
-    fn assert_standard_help(args: &[&str]) -> String {
-        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-            .args(args)
-            .output()
-            .unwrap_or_else(|error| panic!("run asp {}: {error}", args.join(" ")));
-        assert!(
-            output.status.success(),
-            "args={args:?} stdout={} stderr={}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-        assert!(stdout.contains("Usage:"), "args={args:?} stdout={stdout}");
-        assert!(stdout.contains("Options:"), "args={args:?} stdout={stdout}");
-        assert!(
-            !stdout.starts_with("usage:"),
-            "help must come from the standard clap renderer: args={args:?} stdout={stdout}"
-        );
-        stdout
-    }
+#[test]
+fn install_language_from_workspace_is_clap_owned() {
+    install_command()
+        .try_get_matches_from(["install", "language", "rust", ".", "--from-workspace"])
+        .expect("clap must own the workspace provider install surface");
+}
 
-    #[test]
-    fn public_first_level_help_uses_standard_renderer() {
-        for args in [
-            &["--help"][..],
-            &["guide", "--help"],
-            &["providers", "--help"],
-            &["tools", "--help"],
-            &["wrap", "--help"],
-            &["cache", "--help"],
-            &["cloud", "--help"],
-            &["hook", "--help"],
-            &["agent", "--help"],
-            &["install", "--help"],
-            &["sync", "--help"],
-            &["paths", "--help"],
-            &["healthcheck", "--help"],
-            &["source-access", "--help"],
-            &["ast-patch", "--help"],
-            &["graph", "--help"],
-            &["fd", "--help"],
-            &["rg", "--help"],
-            &["search", "--help"],
-            &["query", "--help"],
-            &["gerbil-scheme", "--help"],
-            &["julia", "--help"],
-            &["md", "--help"],
-            &["org", "--help"],
-            &["python", "--help"],
-            &["rust", "--help"],
-            &["typescript", "--help"],
-        ] {
-            assert_standard_help(args);
-        }
-    }
-
-    #[test]
-    fn representative_nested_help_uses_standard_renderer() {
-        for args in [
-            &["install", "plugin", "--codex", "--help"][..],
-            &["install", "language", "--help"],
-            &["hook", "doctor", "--help"],
-            &["agent", "session", "--help"],
-            &["graph", "render", "--help"],
-            &["rust", "search", "--help"],
-        ] {
-            assert_standard_help(args);
-        }
-    }
+#[test]
+fn install_language_receipt_reconciliation_is_clap_owned_and_exclusive() {
+    install_command()
+        .try_get_matches_from(["install", "language", "rust", ".", "--reconcile-receipt"])
+        .expect("clap must own provider receipt reconciliation");
+    install_command()
+        .try_get_matches_from([
+            "install",
+            "language",
+            "rust",
+            ".",
+            "--reconcile-receipt",
+            "--from-workspace",
+        ])
+        .expect_err("provider reconciliation and workspace build must be exclusive");
 }

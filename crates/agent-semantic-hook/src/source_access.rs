@@ -4,7 +4,6 @@ use crate::protocol::DecisionRoute;
 use crate::protocol_activation::protocol_activation_manifest::HookRuntime;
 use crate::source_selector::collect_source_selector_matches;
 use serde::Serialize;
-use std::fmt;
 
 /// Schema id for serialized source-access decision packets.
 pub const SOURCE_ACCESS_DECISION_SCHEMA_ID: SourceAccessSchemaId =
@@ -51,53 +50,6 @@ impl SourceAccessVersion {
     /// Creates a version token from a static protocol string.
     pub const fn new(value: &'static str) -> Self {
         Self(value)
-    }
-}
-
-/// Provider identity that owns the semantic route for a source-access decision.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(transparent)]
-pub struct SourceAccessProviderId(String);
-
-impl SourceAccessProviderId {
-    /// Creates a provider identity.
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
-
-    /// Returns the provider identity as a string slice.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<&str> for SourceAccessProviderId {
-    fn from(value: &str) -> Self {
-        Self::new(value)
-    }
-}
-
-impl From<String> for SourceAccessProviderId {
-    fn from(value: String) -> Self {
-        Self::new(value)
-    }
-}
-
-impl PartialEq<&str> for SourceAccessProviderId {
-    fn eq(&self, other: &&str) -> bool {
-        self.as_str() == *other
-    }
-}
-
-impl PartialEq<String> for SourceAccessProviderId {
-    fn eq(&self, other: &String) -> bool {
-        self.as_str() == other
-    }
-}
-
-impl fmt::Display for SourceAccessProviderId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.as_str().fmt(formatter)
     }
 }
 
@@ -241,9 +193,9 @@ pub struct SourceAccessSubject {
 #[serde(rename_all = "camelCase")]
 pub struct SourceAccessRoute {
     /// Language id for the provider route.
-    pub language_id: String,
+    pub language_id: agent_semantic_config::LanguageId,
     /// Provider id for the semantic route.
-    pub provider_id: SourceAccessProviderId,
+    pub provider_id: agent_semantic_config::ProviderId,
     /// Binary the agent should execute.
     pub binary: String,
     /// Provider route kind.
@@ -303,10 +255,10 @@ pub struct SourceAccessDecision {
     pub authorization: Option<SourceAccessAuthorization>,
     /// Language ids associated with the decision.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub language_ids: Vec<String>,
+    pub language_ids: Vec<agent_semantic_config::LanguageId>,
     /// Provider that authorized or should handle the source route.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider_id: Option<SourceAccessProviderId>,
+    pub provider_id: Option<agent_semantic_config::ProviderId>,
     /// Subject that attempted or returned source access.
     pub subject: SourceAccessSubject,
     /// Replacement semantic routes.
@@ -323,9 +275,9 @@ pub struct SourceAccessDecision {
 #[derive(Debug)]
 pub struct SourceAccessExplicitReadInput {
     /// Language id for the requested source path.
-    pub language_id: String,
+    pub language_id: agent_semantic_config::LanguageId,
     /// Provider that owns the source path.
-    pub provider_id: SourceAccessProviderId,
+    pub provider_id: agent_semantic_config::ProviderId,
     /// Filesystem RPC method that attempted the read.
     pub rpc_method: String,
     /// Source path requested by the developer.
@@ -349,9 +301,9 @@ pub struct SourceAccessShellEgressSuppressedInput {
 #[derive(Debug)]
 pub struct SourceAccessProviderCapabilityAllowInput {
     /// Language id for the provider route.
-    pub language_id: String,
+    pub language_id: agent_semantic_config::LanguageId,
     /// Provider that authorized compact source access.
-    pub provider_id: SourceAccessProviderId,
+    pub provider_id: agent_semantic_config::ProviderId,
     /// Provider command that returned compact source facts.
     pub command: String,
     /// Source path covered by the provider command.
@@ -478,7 +430,7 @@ pub fn codex_fs_read_file_decision(
     Some(SourceAccessDecision::explicit_read_allow(
         SourceAccessExplicitReadInput {
             language_id,
-            provider_id: SourceAccessProviderId(provider_id),
+            provider_id,
             rpc_method: rpc_method.into(),
             path: path.to_string(),
         },

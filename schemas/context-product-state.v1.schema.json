@@ -1,0 +1,2317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/context-product-state.v1.schema.json",
+  "title": "ASP context product state v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "runId",
+    "revision",
+    "lastEventSequence",
+    "eventLogDigest",
+    "activeProgram",
+    "spentActionKeys",
+    "spentActionLedgerDigest",
+    "authorityReceiptRef",
+    "canonicalizationProfile",
+    "context",
+    "obligations",
+    "proofReuse",
+    "frontier",
+    "decision",
+    "execution",
+    "closure",
+    "stateDigest"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.context-product-state"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "runId": {
+      "$ref": "#/$defs/id"
+    },
+    "revision": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "previousStateDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "lastEventSequence": {
+      "$ref": "#/$defs/nonNegativeInteger"
+    },
+    "eventLogDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "activeProgram": {
+      "$ref": "#/$defs/activeProgram"
+    },
+    "spentActionKeys": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/digest"
+      }
+    },
+    "spentActionLedgerDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "authorityReceiptRef": {
+      "$ref": "#/$defs/id"
+    },
+    "canonicalizationProfile": {
+      "const": "jcs-rfc8785-blake3-256-v1"
+    },
+    "context": {
+      "$ref": "#/$defs/contextBinding"
+    },
+    "obligations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/obligation"
+      }
+    },
+    "proofReuse": {
+      "$ref": "#/$defs/proofReuse"
+    },
+    "frontier": {
+      "$ref": "#/$defs/frontierAntichain"
+    },
+    "decision": {
+      "$ref": "#/$defs/decisionRequirement"
+    },
+    "execution": {
+      "$ref": "#/$defs/executionAuthority"
+    },
+    "closure": {
+      "$ref": "#/$defs/closureDisposition"
+    },
+    "stateDigest": {
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "revision": {
+            "minimum": 1
+          }
+        },
+        "required": [
+          "revision"
+        ]
+      },
+      "then": {
+        "required": [
+          "previousStateDigest"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "previousStateDigest"
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "idArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    },
+    "nonEmptyIdArray": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/id"
+      }
+    },
+    "claimClass": {
+      "enum": [
+        "identity",
+        "enumeration",
+        "absence",
+        "causal-flow",
+        "handoff",
+        "quality"
+      ]
+    },
+    "contextBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceId",
+        "workspaceRootDigest",
+        "baseSourceDigest",
+        "dirtyOverlayDigest",
+        "sourceSnapshotDigest",
+        "providerDigest",
+        "parserDigest",
+        "queryPackDigest",
+        "factSchemaDigest",
+        "projectionSchemaDigest",
+        "policyDigest",
+        "graphRevisionDigest",
+        "contextEpoch",
+        "bindingDigest"
+      ],
+      "properties": {
+        "workspaceId": {
+          "$ref": "#/$defs/id"
+        },
+        "workspaceRootDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "baseSourceDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "dirtyOverlayDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceSnapshotDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "parserDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "queryPackDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "factSchemaDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "projectionSchemaDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "graphRevisionDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "contextEpoch": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "bindingDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidenceId",
+        "schemaId",
+        "artifactDigest",
+        "contextBindingDigest",
+        "providerId",
+        "scopeDigest",
+        "truncated"
+      ],
+      "properties": {
+        "evidenceId": {
+          "$ref": "#/$defs/id"
+        },
+        "schemaId": {
+          "$ref": "#/$defs/id"
+        },
+        "artifactDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerId": {
+          "$ref": "#/$defs/id"
+        },
+        "scopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "proofRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proofId",
+        "proofDigest",
+        "contextBindingDigest",
+        "obligationIds",
+        "supportOwnerIds",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "proofId": {
+          "$ref": "#/$defs/id"
+        },
+        "proofDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "obligationIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "supportOwnerIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidenceRef"
+          }
+        }
+      }
+    },
+    "obligationDisposition": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/openDisposition"
+        },
+        {
+          "$ref": "#/$defs/resolvedDisposition"
+        },
+        {
+          "$ref": "#/$defs/refreshRequiredDisposition"
+        },
+        {
+          "$ref": "#/$defs/blockedDisposition"
+        }
+      ]
+    },
+    "openDisposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "reasonCode"
+      ],
+      "properties": {
+        "kind": {
+          "const": "open"
+        },
+        "reasonCode": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "resolvedDisposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "verdict",
+        "proofRefs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "resolved"
+        },
+        "verdict": {
+          "enum": [
+            "supported",
+            "refuted"
+          ]
+        },
+        "proofRefs": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        }
+      }
+    },
+    "refreshRequiredDisposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "reasonCode",
+        "invalidatedProofRefs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "refresh-required"
+        },
+        "reasonCode": {
+          "$ref": "#/$defs/id"
+        },
+        "invalidatedProofRefs": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        }
+      }
+    },
+    "blockedDisposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "blockerCode",
+        "retryable"
+      ],
+      "properties": {
+        "kind": {
+          "const": "blocked"
+        },
+        "blockerCode": {
+          "$ref": "#/$defs/id"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "obligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "obligationId",
+        "claimClass",
+        "claimDigest",
+        "required",
+        "dependsOn",
+        "disposition"
+      ],
+      "properties": {
+        "obligationId": {
+          "$ref": "#/$defs/id"
+        },
+        "claimClass": {
+          "$ref": "#/$defs/claimClass"
+        },
+        "claimDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "dependsOn": {
+          "$ref": "#/$defs/idArray"
+        },
+        "disposition": {
+          "$ref": "#/$defs/obligationDisposition"
+        }
+      }
+    },
+    "retainedProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proofRef",
+        "mode",
+        "contextBindingDigest"
+      ],
+      "properties": {
+        "proofRef": {
+          "$ref": "#/$defs/id"
+        },
+        "mode": {
+          "enum": [
+            "direct",
+            "rebased"
+          ]
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "rebaseCertificateRef": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "rebased"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "rebaseCertificateRef"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "rebaseCertificateRef"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "proofReuse": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/noProofReuse"
+        },
+        {
+          "$ref": "#/$defs/partialProofReuse"
+        },
+        {
+          "$ref": "#/$defs/completeProofReuse"
+        }
+      ]
+    },
+    "noProofReuse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "retained",
+        "invalidatedProofRefs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "none"
+        },
+        "retained": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "invalidatedProofRefs": {
+          "$ref": "#/$defs/idArray"
+        }
+      }
+    },
+    "partialProofReuse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "retained",
+        "invalidatedProofRefs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "partial"
+        },
+        "retained": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/retainedProof"
+          }
+        },
+        "invalidatedProofRefs": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        }
+      }
+    },
+    "completeProofReuse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "retained",
+        "invalidatedProofRefs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "complete"
+        },
+        "retained": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/retainedProof"
+          }
+        },
+        "invalidatedProofRefs": {
+          "type": "array",
+          "maxItems": 0
+        }
+      }
+    },
+    "frontierNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "programId",
+        "stageId",
+      "depth",
+      "predecessorIds",
+      "ancestorNodeIds",
+      "openObligationIds",
+        "proofRefs"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/id"
+        },
+        "programId": {
+          "$ref": "#/$defs/id"
+        },
+        "stageId": {
+          "$ref": "#/$defs/id"
+        },
+        "depth": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+      "predecessorIds": {
+        "$ref": "#/$defs/idArray"
+      },
+      "ancestorNodeIds": {
+        "$ref": "#/$defs/idArray"
+      },
+        "openObligationIds": {
+          "$ref": "#/$defs/idArray"
+        },
+        "proofRefs": {
+          "$ref": "#/$defs/idArray"
+        }
+      }
+    },
+    "frontierAntichain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frontierId",
+        "graphDigest",
+        "contextBindingDigest",
+        "nodes",
+        "frontierDigest"
+      ],
+      "properties": {
+        "frontierId": {
+          "$ref": "#/$defs/id"
+        },
+        "graphDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/frontierNode"
+          }
+        },
+        "frontierDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxCommands",
+        "maxElapsedMs",
+        "maxPacketBytes"
+      ],
+      "properties": {
+        "maxCommands": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "maxElapsedMs": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "maxPacketBytes": {
+          "$ref": "#/$defs/positiveInteger"
+        }
+      }
+    },
+    "decisionRequirement": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/noDecision"
+        },
+        {
+          "$ref": "#/$defs/deterministicDecision"
+        },
+        {
+          "$ref": "#/$defs/searchDecision"
+        },
+        {
+          "$ref": "#/$defs/reasonDecision"
+        },
+        {
+          "$ref": "#/$defs/clarifyDecision"
+        },
+        {
+          "$ref": "#/$defs/blockedDecision"
+        }
+      ]
+    },
+    "noDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "none"
+        }
+      }
+    },
+    "deterministicDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "nextStageId"
+      ],
+      "properties": {
+        "kind": {
+          "const": "deterministic"
+        },
+        "nextStageId": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "searchDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "openObligationIds",
+        "evidencePlanRef",
+        "budget"
+      ],
+      "properties": {
+        "kind": {
+          "const": "search"
+        },
+        "openObligationIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "evidencePlanRef": {
+          "$ref": "#/$defs/id"
+        },
+        "budget": {
+          "$ref": "#/$defs/budget"
+        }
+      }
+    },
+    "reasonDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "checkpointId",
+        "choiceIds"
+      ],
+      "properties": {
+        "kind": {
+          "const": "reason"
+        },
+        "checkpointId": {
+          "$ref": "#/$defs/id"
+        },
+        "choiceIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        }
+      }
+    },
+    "clarifyDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "questionId",
+        "inputSchemaRef"
+      ],
+      "properties": {
+        "kind": {
+          "const": "clarify"
+        },
+        "questionId": {
+          "$ref": "#/$defs/id"
+        },
+        "inputSchemaRef": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "blockedDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "blockerCode",
+        "retryable"
+      ],
+      "properties": {
+        "kind": {
+          "const": "blocked"
+        },
+        "blockerCode": {
+          "$ref": "#/$defs/id"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "activeProgram": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/noActiveProgram"
+        },
+        {
+          "$ref": "#/$defs/admittedProgram"
+        }
+      ]
+    },
+    "noActiveProgram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "none"
+        }
+      }
+    },
+    "admittedProgram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "proposalId",
+        "proposalDigest",
+        "intentDigest",
+        "programId",
+        "programDigest",
+        "program",
+        "graphDigest",
+        "admittedAtRevision",
+        "contextBindingDigest"
+      ],
+      "properties": {
+        "kind": {
+          "const": "admitted"
+        },
+        "proposalId": {
+          "$ref": "#/$defs/id"
+        },
+        "proposalDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "intentDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "programId": {
+          "$ref": "#/$defs/id"
+        },
+        "programDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "program": {
+          "$ref": "#/$defs/routeProgram"
+        },
+        "graphDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "admittedAtRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "executionAuthority": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/noExecution"
+        },
+        {
+          "$ref": "#/$defs/admittedExecution"
+        },
+      {
+        "$ref": "#/$defs/grantedExecution"
+      },
+      {
+        "$ref": "#/$defs/inFlightExecution"
+      },
+        {
+          "$ref": "#/$defs/consumedExecution"
+        },
+        {
+          "$ref": "#/$defs/revokedExecution"
+        }
+      ]
+    },
+    "noExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "none"
+        }
+      }
+    },
+    "admittedExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+      "kind",
+      "admissionId",
+      "admissionDigest",
+      "actionKey",
+      "programDigest",
+      "stageId",
+      "providerId",
+      "operation",
+      "resolvedInputDigest",
+      "policyDigest",
+      "dependencyDigest",
+      "budgetReservationId",
+      "budgetChargeKey"
+      ],
+      "properties": {
+        "kind": {
+          "const": "admitted"
+        },
+      "admissionId": {
+        "$ref": "#/$defs/id"
+      },
+      "admissionDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "actionKey": {
+        "$ref": "#/$defs/digest"
+      },
+      "programDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "stageId": {
+        "$ref": "#/$defs/id"
+      },
+      "providerId": {
+        "$ref": "#/$defs/id"
+      },
+      "operation": {
+        "$ref": "#/$defs/id"
+      },
+      "resolvedInputDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "policyDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "dependencyDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "budgetReservationId": {
+        "$ref": "#/$defs/id"
+      },
+      "budgetChargeKey": {
+        "$ref": "#/$defs/digest"
+      }
+      }
+    },
+    "grantedExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "admissionId",
+        "admissionDigest",
+        "grantId",
+      "grantDigest",
+      "actionKey",
+      "programDigest",
+      "stageId",
+      "providerId",
+      "operation",
+      "resolvedInputDigest",
+      "policyDigest",
+      "dependencyDigest",
+        "budgetReservationId",
+        "budgetChargeKey",
+        "effectClass",
+        "leaseFence",
+        "expiresAtMs",
+        "providerIdempotencyKey"
+      ],
+      "properties": {
+        "kind": {
+          "const": "granted"
+        },
+        "admissionId": {
+          "$ref": "#/$defs/id"
+        },
+        "admissionDigest": {
+          "$ref": "#/$defs/digest"
+        },
+      "grantId": {
+        "$ref": "#/$defs/id"
+      },
+      "grantDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "actionKey": {
+        "$ref": "#/$defs/digest"
+      },
+      "programDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "stageId": {
+        "$ref": "#/$defs/id"
+      },
+      "providerId": {
+        "$ref": "#/$defs/id"
+      },
+      "operation": {
+        "$ref": "#/$defs/id"
+      },
+      "resolvedInputDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "policyDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "dependencyDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "budgetReservationId": {
+        "$ref": "#/$defs/id"
+      },
+        "budgetChargeKey": {
+          "$ref": "#/$defs/digest"
+        },
+        "effectClass": {
+          "$ref": "#/$defs/effectClass"
+        },
+        "leaseFence": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "expiresAtMs": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "providerIdempotencyKey": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "inFlightExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "admissionId",
+        "admissionDigest",
+        "grantId",
+        "grantDigest",
+        "actionKey",
+        "attemptId",
+        "attemptDigest",
+        "programDigest",
+        "stageId",
+        "providerId",
+        "operation",
+        "resolvedInputDigest",
+        "policyDigest",
+        "dependencyDigest",
+        "budgetReservationId",
+        "budgetChargeKey",
+        "effectClass",
+        "leaseFence",
+        "expiresAtMs",
+        "providerIdempotencyKey"
+      ],
+      "properties": {
+        "kind": {
+          "const": "in-flight"
+        },
+        "admissionId": {
+          "$ref": "#/$defs/id"
+        },
+        "admissionDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "grantId": {
+          "$ref": "#/$defs/id"
+        },
+        "grantDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "actionKey": {
+          "$ref": "#/$defs/digest"
+        },
+        "attemptId": {
+          "$ref": "#/$defs/id"
+        },
+        "attemptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "programDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "stageId": {
+          "$ref": "#/$defs/id"
+        },
+        "providerId": {
+          "$ref": "#/$defs/id"
+        },
+        "operation": {
+          "$ref": "#/$defs/id"
+        },
+        "resolvedInputDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "policyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "dependencyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "budgetReservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "budgetChargeKey": {
+          "$ref": "#/$defs/digest"
+        },
+        "effectClass": {
+          "$ref": "#/$defs/effectClass"
+        },
+        "leaseFence": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "expiresAtMs": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "providerIdempotencyKey": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "consumedExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+      "admissionId",
+      "grantId",
+      "grantDigest",
+      "actionKey",
+      "attemptId",
+      "resultReceiptRef",
+      "resultDigest",
+      "leaseFence"
+      ],
+      "properties": {
+        "kind": {
+          "const": "consumed"
+        },
+        "admissionId": {
+          "$ref": "#/$defs/id"
+        },
+      "grantId": {
+        "$ref": "#/$defs/id"
+      },
+      "grantDigest": {
+        "$ref": "#/$defs/digest"
+      },
+        "actionKey": {
+          "$ref": "#/$defs/digest"
+        },
+        "attemptId": {
+          "$ref": "#/$defs/id"
+        },
+      "resultReceiptRef": {
+        "$ref": "#/$defs/id"
+      },
+      "resultDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "leaseFence": {
+        "$ref": "#/$defs/positiveInteger"
+      }
+      }
+    },
+    "revokedExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "reasonCode"
+      ],
+      "properties": {
+        "kind": {
+          "const": "revoked"
+        },
+        "reasonCode": {
+          "$ref": "#/$defs/id"
+        },
+        "admissionId": {
+          "$ref": "#/$defs/id"
+        },
+        "grantId": {
+          "$ref": "#/$defs/id"
+        },
+        "actionKey": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "closureDisposition": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/openClosure"
+        },
+        {
+          "$ref": "#/$defs/partialClosure"
+        },
+        {
+          "$ref": "#/$defs/finalizedClosure"
+        }
+      ]
+    },
+    "openClosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "openObligationIds"
+      ],
+      "properties": {
+        "kind": {
+          "const": "open"
+        },
+        "openObligationIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        }
+      }
+    },
+    "partialClosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "closedObligationIds",
+        "openObligationIds"
+      ],
+      "properties": {
+        "kind": {
+          "const": "partial"
+        },
+        "closedObligationIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "openObligationIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        }
+      }
+    },
+    "finalizedClosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+      "kind",
+      "receiptId",
+      "receiptDigest"
+      ],
+      "properties": {
+        "kind": {
+          "const": "finalized"
+        },
+      "receiptId": {
+        "$ref": "#/$defs/id"
+      },
+      "receiptDigest": {
+        "$ref": "#/$defs/digest"
+      }
+      }
+    },
+    "evidencePredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "predicateId",
+        "claimClass",
+        "scopeDigest",
+        "acceptedSchemaIds",
+        "requiredFields",
+        "completeness",
+        "requiresFreshBinding",
+        "requiresUntruncated",
+        "maxResults"
+      ],
+      "properties": {
+        "predicateId": {
+          "$ref": "#/$defs/id"
+        },
+        "claimClass": {
+          "$ref": "#/$defs/claimClass"
+        },
+        "scopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "acceptedSchemaIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "requiredFields": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "completeness": {
+          "enum": [
+            "identity-only",
+            "complete-scope"
+          ]
+        },
+        "requiresFreshBinding": {
+          "type": "boolean"
+        },
+        "requiresUntruncated": {
+          "type": "boolean"
+        },
+        "maxResults": {
+          "$ref": "#/$defs/positiveInteger"
+        }
+      }
+    },
+    "routeNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "actionClass",
+        "providerId",
+        "languageId",
+        "operation",
+        "inputTemplateDigest",
+        "coversObligationIds",
+        "dependsOnNodeIds",
+        "evidencePredicate"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/id"
+        },
+        "actionClass": {
+          "enum": [
+            "provider-search",
+            "provider-query",
+            "reasoning-checkpoint"
+          ]
+        },
+        "providerId": {
+          "$ref": "#/$defs/id"
+        },
+        "languageId": {
+          "$ref": "#/$defs/id"
+        },
+        "operation": {
+          "$ref": "#/$defs/id"
+        },
+        "inputTemplateDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "coversObligationIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "dependsOnNodeIds": {
+          "$ref": "#/$defs/idArray"
+        },
+        "evidencePredicate": {
+          "$ref": "#/$defs/evidencePredicate"
+        }
+      }
+    },
+    "routeEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/id"
+        },
+        "to": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "routeProposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proposalId",
+        "runId",
+        "basedOnRevision",
+        "contextBindingDigest",
+        "intentDigest",
+        "proposedBy",
+        "obligationIds",
+        "nodes",
+        "edges",
+        "budgetProposal",
+        "proposalDigest"
+      ],
+      "properties": {
+        "proposalId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "basedOnRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "intentDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "proposedBy": {
+          "$ref": "#/$defs/id"
+        },
+        "obligationIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/routeNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routeEdge"
+          }
+        },
+        "budgetProposal": {
+          "$ref": "#/$defs/budget"
+        },
+        "proposalDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "routeStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stageId",
+        "proposalNodeId",
+        "providerId",
+        "operation",
+        "inputTemplateDigest",
+        "coversObligationIds",
+        "evidencePredicate"
+      ],
+      "properties": {
+        "stageId": {
+          "$ref": "#/$defs/id"
+        },
+        "proposalNodeId": {
+          "$ref": "#/$defs/id"
+        },
+        "providerId": {
+          "$ref": "#/$defs/id"
+        },
+        "operation": {
+          "$ref": "#/$defs/id"
+        },
+        "inputTemplateDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "coversObligationIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "evidencePredicate": {
+          "$ref": "#/$defs/evidencePredicate"
+        }
+      }
+    },
+    "routeJoin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+      "joinId",
+      "requiredStageIds",
+      "continuationStageId",
+      "policy"
+      ],
+      "properties": {
+        "joinId": {
+          "$ref": "#/$defs/id"
+        },
+      "requiredStageIds": {
+        "$ref": "#/$defs/nonEmptyIdArray"
+      },
+      "continuationStageId": {
+        "$ref": "#/$defs/id"
+      },
+        "policy": {
+          "const": "all"
+        }
+      }
+    },
+    "routeProgram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "programId",
+        "proposalId",
+        "runId",
+        "admittedAtRevision",
+        "contextBindingDigest",
+        "graphDigest",
+        "stages",
+        "edges",
+        "joins",
+        "budgetLimit",
+        "programDigest"
+      ],
+      "properties": {
+        "programId": {
+          "$ref": "#/$defs/id"
+        },
+        "proposalId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "admittedAtRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "graphDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "stages": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/routeStage"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routeEdge"
+          }
+        },
+        "joins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routeJoin"
+          }
+        },
+        "budgetLimit": {
+          "$ref": "#/$defs/budget"
+        },
+        "programDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "routeProgramAdmitted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventType",
+        "eventId",
+        "runId",
+        "sequence",
+        "stateRevision",
+        "preStateDigest",
+        "proposalDigest",
+        "programDigest",
+        "contextBindingDigest",
+        "eventDigest"
+      ],
+      "properties": {
+        "eventType": {
+          "const": "RouteProgramAdmitted"
+        },
+        "eventId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "stateRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "preStateDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "proposalDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "programDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "eventDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "actionAdmitted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventType",
+        "eventId",
+      "runId",
+      "sequence",
+      "stateRevision",
+      "preStateDigest",
+      "admissionId",
+        "programId",
+        "stageId",
+        "contextBindingDigest",
+        "resolvedInputDigest",
+        "actionKey",
+        "policyDigest",
+        "dependencyDigest",
+        "budgetReservationId",
+        "budgetChargeKey",
+        "admissionDigest"
+      ],
+      "properties": {
+        "eventType": {
+          "const": "ActionAdmitted"
+        },
+        "eventId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+      "stateRevision": {
+        "$ref": "#/$defs/nonNegativeInteger"
+      },
+      "preStateDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "admissionId": {
+          "$ref": "#/$defs/id"
+        },
+        "programId": {
+          "$ref": "#/$defs/id"
+        },
+        "stageId": {
+          "$ref": "#/$defs/id"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "resolvedInputDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "actionKey": {
+          "$ref": "#/$defs/digest"
+        },
+        "policyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "dependencyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "budgetReservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "budgetChargeKey": {
+          "$ref": "#/$defs/digest"
+        },
+        "admissionDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "executionGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventType",
+        "eventId",
+      "runId",
+      "sequence",
+      "stateRevision",
+      "preStateDigest",
+      "grantId",
+      "admissionId",
+      "admissionDigest",
+      "programId",
+      "programDigest",
+        "stageId",
+        "actionKey",
+        "contextBindingDigest",
+        "resolvedInputDigest",
+        "providerId",
+        "operation",
+        "leaseFence",
+        "issuedAtMs",
+        "expiresAtMs",
+        "effectClass",
+        "singleUse",
+        "grantDigest"
+      ],
+      "properties": {
+        "eventType": {
+          "const": "ExecutionGrantIssued"
+        },
+        "eventId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+      "stateRevision": {
+        "$ref": "#/$defs/nonNegativeInteger"
+      },
+      "preStateDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "grantId": {
+          "$ref": "#/$defs/id"
+        },
+      "admissionId": {
+        "$ref": "#/$defs/id"
+      },
+      "admissionDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "programId": {
+        "$ref": "#/$defs/id"
+      },
+      "programDigest": {
+        "$ref": "#/$defs/digest"
+      },
+        "stageId": {
+          "$ref": "#/$defs/id"
+        },
+        "actionKey": {
+          "$ref": "#/$defs/digest"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "resolvedInputDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerId": {
+          "$ref": "#/$defs/id"
+        },
+        "operation": {
+          "$ref": "#/$defs/id"
+        },
+        "leaseFence": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "issuedAtMs": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "expiresAtMs": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "effectClass": {
+          "enum": [
+            "read-only",
+            "idempotent-keyed"
+          ]
+        },
+        "singleUse": {
+          "const": true
+        },
+        "providerIdempotencyKey": {
+          "$ref": "#/$defs/id"
+        },
+        "grantDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "effectClass": {
+                "const": "idempotent-keyed"
+              }
+            },
+            "required": [
+              "effectClass"
+            ]
+          },
+          "then": {
+            "required": [
+              "providerIdempotencyKey"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "providerIdempotencyKey"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "evidenceReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proofRef",
+        "claimClass",
+        "claimDigest",
+        "verdict",
+        "contextBindingDigest",
+        "sourceSnapshotDigest",
+        "providerDigest",
+        "parserDigest",
+        "queryPackDigest",
+        "scopeDigest",
+        "supportClosureDigest",
+        "freshnessReceiptRef",
+        "packetDigest"
+      ],
+      "properties": {
+        "proofRef": {
+          "$ref": "#/$defs/id"
+        },
+        "claimClass": {
+          "$ref": "#/$defs/claimClass"
+        },
+        "claimDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "verdict": {
+          "enum": [
+            "supported",
+            "refuted"
+          ]
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceSnapshotDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "parserDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "queryPackDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "scopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "supportClosureDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "freshnessReceiptRef": {
+          "$ref": "#/$defs/id"
+        },
+        "packetDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "evidenceScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scopeDigest",
+        "complete",
+        "truncated",
+        "snapshotContinuous",
+        "providerAdmitted"
+      ],
+      "properties": {
+        "scopeDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "snapshotContinuous": {
+          "type": "boolean"
+        },
+        "providerAdmitted": {
+          "type": "boolean"
+        }
+      }
+    },
+    "closureProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "obligationId",
+        "claimClass",
+        "verdict",
+        "proofRefs",
+        "supportPaths",
+        "evidenceScope"
+      ],
+      "properties": {
+        "obligationId": {
+          "$ref": "#/$defs/id"
+        },
+        "claimClass": {
+          "$ref": "#/$defs/claimClass"
+        },
+        "verdict": {
+          "enum": [
+            "supported",
+            "refuted"
+          ]
+        },
+        "proofRefs": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "supportPaths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "evidenceScope": {
+          "$ref": "#/$defs/evidenceScope"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "claimClass": {
+                "enum": [
+                  "enumeration",
+                  "absence"
+                ]
+              }
+            },
+            "required": [
+              "claimClass"
+            ]
+          },
+          "then": {
+            "properties": {
+              "evidenceScope": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/evidenceScope"
+                  },
+                  {
+                    "properties": {
+                      "complete": {
+                        "const": true
+                      },
+                      "truncated": {
+                        "const": false
+                      },
+                      "snapshotContinuous": {
+                        "const": true
+                      },
+                      "providerAdmitted": {
+                        "const": true
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "executionStarted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventType",
+        "eventId",
+        "runId",
+        "sequence",
+        "stateRevision",
+        "preStateDigest",
+        "grantId",
+        "grantDigest",
+        "attemptId",
+        "attemptDigest",
+        "providerId",
+        "operation",
+        "leaseFence",
+        "expiresAtMs",
+        "providerIdempotencyKey",
+        "eventDigest"
+      ],
+      "properties": {
+        "eventType": {
+          "const": "ExecutionStarted"
+        },
+        "eventId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "stateRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "preStateDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "grantId": {
+          "$ref": "#/$defs/id"
+        },
+        "grantDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "attemptId": {
+          "$ref": "#/$defs/id"
+        },
+        "attemptDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "providerId": {
+          "$ref": "#/$defs/id"
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "leaseFence": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "expiresAtMs": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "providerIdempotencyKey": {
+          "$ref": "#/$defs/id"
+        },
+        "eventDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "executionConsumed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventType",
+        "eventId",
+        "runId",
+        "sequence",
+        "stateRevision",
+        "preStateDigest",
+        "grantId",
+        "grantDigest",
+        "attemptId",
+        "resultReceiptRef",
+        "resultDigest",
+        "leaseFence",
+        "eventDigest"
+      ],
+      "properties": {
+        "eventType": {
+          "const": "ExecutionConsumed"
+        },
+        "eventId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "stateRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "preStateDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "grantId": {
+          "$ref": "#/$defs/id"
+        },
+        "grantDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "attemptId": {
+          "$ref": "#/$defs/id"
+        },
+        "resultReceiptRef": {
+          "$ref": "#/$defs/id"
+        },
+        "resultDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "leaseFence": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "eventDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "executionRevoked": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventType",
+        "eventId",
+        "runId",
+        "sequence",
+        "stateRevision",
+        "preStateDigest",
+        "reasonCode",
+        "eventDigest"
+      ],
+      "properties": {
+        "eventType": {
+          "const": "ExecutionRevoked"
+        },
+        "eventId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "stateRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "preStateDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "reasonCode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "admissionId": {
+          "$ref": "#/$defs/id"
+        },
+        "grantId": {
+          "$ref": "#/$defs/id"
+        },
+        "actionKey": {
+          "$ref": "#/$defs/digest"
+        },
+        "eventDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "searchClosureReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventType",
+        "receiptId",
+        "eventId",
+        "runId",
+        "sequence",
+        "stateRevision",
+        "preStateDigest",
+        "contextBindingDigest",
+        "intentDigest",
+        "routeProgramId",
+        "programDigest",
+        "closedObligations",
+        "finalizedAtMs",
+        "receiptDigest"
+      ],
+      "properties": {
+        "eventType": {
+          "const": "ClosureFinalized"
+        },
+        "receiptId": {
+          "$ref": "#/$defs/id"
+        },
+        "eventId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "stateRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "preStateDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "contextBindingDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "intentDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "routeProgramId": {
+          "$ref": "#/$defs/id"
+        },
+        "programDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "closedObligations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/closureProof"
+          }
+        },
+        "finalizedAtMs": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "receiptDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "contextProductEvent": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/routeProgramAdmitted"
+        },
+        {
+          "$ref": "#/$defs/actionAdmitted"
+        },
+        {
+          "$ref": "#/$defs/executionGrant"
+        },
+        {
+          "$ref": "#/$defs/executionStarted"
+        },
+        {
+          "$ref": "#/$defs/executionConsumed"
+        },
+        {
+          "$ref": "#/$defs/executionRevoked"
+        },
+        {
+          "$ref": "#/$defs/searchClosureReceipt"
+        }
+      ]
+    },
+    "stateAuthorityReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receiptId",
+        "authorityId",
+        "runId",
+        "revision",
+        "stateDigest",
+        "eventLogDigest",
+        "issuedAtMs",
+        "receiptDigest"
+      ],
+      "properties": {
+        "receiptId": {
+          "$ref": "#/$defs/id"
+        },
+        "authorityId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "revision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "stateDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "eventLogDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "issuedAtMs": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "receiptDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    }
+  }
+}

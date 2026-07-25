@@ -93,7 +93,7 @@ pub(in crate::command::agent_session_registry) fn status_session(
         })
         .transpose()?;
     if let (Some(session), Some(validation)) = (record.as_mut(), validation.as_ref())
-        && validation.status == "failed".into()
+        && validation.status().as_str() == "failed"
     {
         session.status = "invalid".to_string().into();
     }
@@ -110,18 +110,21 @@ pub(in crate::command::agent_session_registry) fn status_session(
         })
         .unwrap_or(false);
     let validation_allows_routing = validation.as_ref().is_none_or(|validation| {
-        matches!(validation.status.as_str(), "passed" | "warning" | "skipped")
+        matches!(
+            validation.status().as_str(),
+            "passed" | "warning" | "skipped"
+        )
     });
     let required_model = validation
         .as_ref()
-        .and_then(|validation| validation.expected_model.clone());
+        .and_then(|validation| validation.expected_model().map(str::to_owned));
     let actual_model = validation
         .as_ref()
-        .and_then(|validation| validation.actual_model.clone());
+        .and_then(|validation| validation.actual_model().map(str::to_owned));
     let rollout_activity = validation
         .as_ref()
-        .and_then(|validation| validation.rollout_path.as_deref())
-        .map(|rollout_path| rollout_activity_report(Path::new(rollout_path), now));
+        .and_then(|validation| validation.rollout_path())
+        .map(|rollout_path| rollout_activity_report(rollout_path, now));
     if args.activity {
         let next_action = rollout_activity
             .as_ref()
@@ -176,7 +179,7 @@ pub(in crate::command::agent_session_registry) fn status_session(
     let activity_snapshot_short = None;
     let (host_thread_existence, host_thread_existence_reason) = host_thread_existence_snapshot(
         runtime_status
-            .host_thread_id
+            .host_thread_id()
             .as_ref()
             .map(|value| value.as_str()),
     );
@@ -189,7 +192,7 @@ pub(in crate::command::agent_session_registry) fn status_session(
         project_root,
         name.as_deref(),
         runtime_status
-            .host_client
+            .host_client()
             .as_ref()
             .map(|value| value.as_str()),
     );
@@ -206,11 +209,11 @@ pub(in crate::command::agent_session_registry) fn status_session(
         session_lifetime_source: session_lifetime.source,
         validation_status: validation
             .as_ref()
-            .map(|validation| validation.status.as_str().to_string())
+            .map(|validation| validation.status().as_str().to_string())
             .unwrap_or_else(|| "missing-registry".to_string()),
         validation_reason: validation
             .as_ref()
-            .map(|validation| validation.reason.clone())
+            .map(|validation| validation.reason().to_string())
             .unwrap_or_else(|| "session registry entry not found".to_string()),
         validation,
         rollout_session_index,
@@ -218,14 +221,14 @@ pub(in crate::command::agent_session_registry) fn status_session(
         session_lifecycle_index,
         activity_snapshot_short,
         host_client: runtime_status
-            .host_client
+            .host_client()
             .map(|value| value.as_str().to_string()),
         host_thread_id: runtime_status
-            .host_thread_id
+            .host_thread_id()
             .map(|value| value.as_str().to_string()),
-        host_status_source: runtime_status.host_status_source.as_str().to_string(),
-        host_status: runtime_status.host_status.as_str().to_string(),
-        host_status_reason: runtime_status.host_status_reason.as_str().to_string(),
+        host_status_source: runtime_status.host_status_source().as_str().to_string(),
+        host_status: runtime_status.host_status().as_str().to_string(),
+        host_status_reason: runtime_status.host_status_reason().as_str().to_string(),
         host_thread_existence,
         host_thread_existence_reason,
         multi_agent_child_state,
@@ -233,17 +236,19 @@ pub(in crate::command::agent_session_registry) fn status_session(
         message_target_result_source: None,
         message_agent_target_id: None,
         message_agent_target_id_equals_child: None,
-        host_raw_status: runtime_status.host_raw_status,
-        health_status: runtime_status.health_status,
-        timeout_semantics: runtime_status.timeout_semantics,
-        duplicate_worker_allowed: runtime_status.duplicate_worker_allowed,
-        artifacts_dir: runtime_status.artifacts_dir,
-        artifact_status: runtime_status.artifact_status,
-        artifact_stale_after_seconds: runtime_status.artifact_stale_after_seconds,
-        last_artifact_updated_at: runtime_status.last_artifact_updated_at,
-        artifact_age_seconds: runtime_status.artifact_age_seconds,
-        last_artifact_path: runtime_status.last_artifact_path,
-        next_action: runtime_status.next_action,
+        host_raw_status: runtime_status.host_raw_status().map(str::to_owned),
+        health_status: runtime_status.health_status().as_str().to_string(),
+        timeout_semantics: runtime_status.timeout_semantics(),
+        duplicate_worker_allowed: runtime_status.duplicate_worker_allowed(),
+        artifacts_dir: runtime_status.artifacts_dir().display().to_string(),
+        artifact_status: runtime_status.artifact_status().as_str().to_string(),
+        artifact_stale_after_seconds: runtime_status.artifact_stale_after_seconds(),
+        last_artifact_updated_at: runtime_status.last_artifact_updated_at(),
+        artifact_age_seconds: runtime_status.artifact_age_seconds(),
+        last_artifact_path: runtime_status
+            .last_artifact_path()
+            .map(|path| path.display().to_string()),
+        next_action: runtime_status.next_action().as_str().to_string(),
         required_model,
         actual_model,
         model_alignment_action: None,
@@ -318,8 +323,7 @@ pub(in crate::command::agent_session_registry) fn registered_session_is_reusable
         now,
     )?;
     Ok(validation
-        .rollout_path
-        .as_deref()
+        .rollout_path()
         .map(|rollout_path| {
             let activity = rollout_activity_report(Path::new(rollout_path), now);
             activity

@@ -84,13 +84,77 @@ impl fmt::Debug for TursoEncryptedProfileConfig {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoEncryptionFileReceipt {
-    pub schema_id: String,
+    schema_id: TursoEncryptionFileReceiptSchemaId,
     cipher: TursoEncryptionCipher,
-    pub database_bytes: u64,
-    pub wal_bytes: u64,
+    database_bytes: u64,
+    wal_bytes: u64,
     shm_bytes: u64,
     plaintext_probe_len: usize,
-    pub plaintext_probe_present: bool,
+    plaintext_probe_present: bool,
+}
+
+impl TursoEncryptionFileReceipt {
+    pub fn new(
+        schema_id: TursoEncryptionFileReceiptSchemaId,
+        cipher: TursoEncryptionCipher,
+        database_bytes: u64,
+        wal_bytes: u64,
+        shm_bytes: u64,
+        plaintext_probe_len: usize,
+        plaintext_probe_present: bool,
+    ) -> Self {
+        Self {
+            schema_id,
+            cipher,
+            database_bytes,
+            wal_bytes,
+            shm_bytes,
+            plaintext_probe_len,
+            plaintext_probe_present,
+        }
+    }
+
+    /// Stable schema identity of this encryption receipt.
+    #[must_use]
+    pub fn schema_id(&self) -> &str {
+        self.schema_id.as_str()
+    }
+
+    /// Cipher used by the encrypted database.
+    #[must_use]
+    pub const fn cipher(&self) -> &TursoEncryptionCipher {
+        &self.cipher
+    }
+
+    /// Bytes occupied by the main database file.
+    #[must_use]
+    pub const fn database_bytes(&self) -> u64 {
+        self.database_bytes
+    }
+
+    /// Bytes occupied by the WAL file.
+    #[must_use]
+    pub const fn wal_bytes(&self) -> u64 {
+        self.wal_bytes
+    }
+
+    /// Bytes occupied by the shared-memory file.
+    #[must_use]
+    pub const fn shm_bytes(&self) -> u64 {
+        self.shm_bytes
+    }
+
+    /// Length of the plaintext probe used by the verification pass.
+    #[must_use]
+    pub const fn plaintext_probe_len(&self) -> usize {
+        self.plaintext_probe_len
+    }
+
+    /// Whether the plaintext probe was found in encrypted files.
+    #[must_use]
+    pub const fn plaintext_probe_present(&self) -> bool {
+        self.plaintext_probe_present
+    }
 }
 
 pub struct TursoEncryptedStorage {
@@ -143,15 +207,15 @@ impl TursoEncryptedStorage {
             && [database.as_slice(), wal.as_slice(), shm.as_slice()]
                 .into_iter()
                 .any(|bytes| contains_subslice(bytes, plaintext_probe));
-        Ok(TursoEncryptionFileReceipt {
-            schema_id: TURSO_ENCRYPTION_FILE_RECEIPT_SCHEMA_ID.to_owned(),
-            cipher: self.cipher,
-            database_bytes: database.len() as u64,
-            wal_bytes: wal.len() as u64,
-            shm_bytes: shm.len() as u64,
-            plaintext_probe_len: plaintext_probe.len(),
+        Ok(TursoEncryptionFileReceipt::new(
+            TURSO_ENCRYPTION_FILE_RECEIPT_SCHEMA_ID.into(),
+            self.cipher,
+            database.len() as u64,
+            wal.len() as u64,
+            shm.len() as u64,
+            plaintext_probe.len(),
             plaintext_probe_present,
-        })
+        ))
     }
 }
 
@@ -170,4 +234,19 @@ fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
         && haystack
             .windows(needle.len())
             .any(|window| window == needle)
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TursoEncryptionFileReceiptSchemaId(String);
+
+impl From<&str> for TursoEncryptionFileReceiptSchemaId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+impl TursoEncryptionFileReceiptSchemaId {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
 }

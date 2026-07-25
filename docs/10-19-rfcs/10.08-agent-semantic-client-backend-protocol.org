@@ -316,6 +316,132 @@ not force all behavior into one crate.  A thin CLI may route into smaller
 crates, but parser, cache, local CLI execution, Flight client, server, and hook
 logic must keep separate ownership boundaries.
 
+* ASP loop and =org-interactive= choice-panel projection
+
+** Decision and owner boundary
+
+The interactive loop is ASP-owned and already exists. ASP owns pane state,
+choice construction, transition selection, resident dispatch and wait, re-entry
+at the declared next state, replay and recovery, graph mutation, closure, and
+all authority-bearing receipts.
+
+The current ASP renderer makes that boundary explicit. It renders =pane= and
+=state=, then renders every choice as =ask=, =do=, =expect=, and =after=, and
+finally instructs the caller to perform exactly one selected action and
+re-enter the loop at =after=. That ASP state machine remains authoritative.
+
+=orgize= contributes two narrower capabilities:
+
+- =org-contract= owns parsing and validation of declarative Org contract blocks;
+- =org-interactive= owns the typed projection of an =agent-interactive= choice
+  panel from that contract syntax.
+
+=org-interactive= MUST NOT own the ASP loop reducer, state transition graph,
+event-log replay, backend compare-and-swap, resident lifecycle, search closure,
+action admission, execution grants, or terminal receipts. It is a choice-panel
+codec and view, not a second loop runtime.
+
+The local source-of-truth owners are:
+
+- =src/semantic_ast/org_interactive.rs= and
+  =src/semantic_ast/org_interactive_model.rs= in the local =orgize= repository;
+- =agent_session_registry_bootstrap_render.rs::print_bootstrap_menu= and the ASP
+  session/dispatch owners for loop presentation and advancement.
+
+** Canonical Org-Babel choice-panel syntax
+
+The canonical syntax is not an =org-interactive= Babel language and is not a
+heading or property-drawer state machine. It is an =org-contract= source block
+qualified by =:type agent-interactive=.
+
+#+begin_example
+#+BEGIN_SRC org-contract :type agent-interactive
+id: principle-pressure
+method: choice
+stage: presentation
+group: PRINCIPLE
+create: deferred
+target: tao3k.principles
+info: Choose the pressure that should be evaluated.
+categories: 1=EVIDENCE,2=AUTHORITY,?=detail
+details:
+|n|id|contract|full|use-if|
+|1|EVIDENCE|tao3k.evidence|Evidence before confidence|provenance is missing|
+|2|AUTHORITY|tao3k.human-agency|Human agency|consequential authority is missing|
+#+END_SRC
+#+end_example
+
+This form is backed by the local canonical test
+=projects_canonical_org_interactive_choice=. The parser projects the stable
+panel id, method, stage, optional group and target, category shortcuts, and
+detail-table entries. The block describes choices; it does not serialize the
+complete residual-obligation DAG or make any choice executable.
+
+** Projection flow
+
+The integration flow is one-way around the ASP authority boundary:
+
+1. ASP reduces its authoritative event and graph state and constructs the
+   current typed pane and admissible choices.
+2. The =org-interactive= adapter projects that pane as one canonical
+   =org-contract :type agent-interactive= block.
+3. A user or agent selects one advertised choice through the host interaction
+   transport.
+4. ASP revalidates the pane identity, current state, policy, graph revision,
+   provider bindings, budget, and resident liveness.
+5. ASP performs or rejects the transition, records the authoritative events
+   and receipts, and either closes or produces the next pane.
+
+The Org block MAY carry stable typed references and digests needed to bind a
+panel to an ASP pane, but editing those values cannot create authority. A
+model-authored block is an interaction proposal until ASP validates it against
+current state.
+
+** Direct and interactive modes
+
+The choice panel is not a mandatory prompt ritual. When the agent already knows
+the relevant command shape from remembered context, it MAY invoke the current
+ASP command directly. ASP still validates the live workspace, graph, provider,
+policy, lifecycle, and idempotency bindings before admitting the action.
+
+The =org-interactive= projection is useful when ASP exposes semantically
+distinct choices, needs clarification, reports a blocked route, or the user
+explicitly asks to inspect the pane. Re-entering a panel merely to rediscover a
+command already known to the agent adds no protocol value.
+
+Each agent turn still exposes at most one canonical outward command. That
+command MAY identify an ASP-owned fan-out/fan-in program over independent
+residual obligations. Parallel internal work therefore does not transfer loop
+ownership to =org-interactive= and does not require several outward command
+strings.
+
+** Authority, replay, and admission gates
+
+Backend events and their receipts remain authoritative. =org-contract= can
+prove only that a choice-panel block satisfies the declared syntax and shape.
+=org-interactive= can prove only that the block was parsed or rendered as the
+corresponding typed panel. Neither can mint =SearchClosureReceipt=,
+=ActionAdmitted=, =ExecutionGrantIssued=, =ClosureFinalized=, or a resident
+lease.
+
+Replay and crash recovery operate on the ASP event log, graph revision,
+dispatch identity, and backend receipts. Re-rendering the same ASP pane SHOULD
+produce stable Org bytes, but byte stability is a projection property, not
+event-log authority or backend compare-and-swap.
+
+Protocol admission requires all of the following:
+
+- canonical =org-contract :type agent-interactive= fixtures parse into the
+  expected typed choice-panel model;
+- malformed fields, duplicate choice identities, invalid category mappings,
+  and invalid detail-table rows fail closed with typed diagnostics;
+- panel parse/render tests cannot mutate ASP state;
+- direct-command and panel-selection paths reach equivalent ASP validation and
+  authority events for the same admitted action;
+- stale panels are rejected against current ASP pane and graph bindings;
+- no Org edit can create closure, admission, grant, dispatch, or receipt
+  authority.
+
 * Role split
 
 | Component | Owns |

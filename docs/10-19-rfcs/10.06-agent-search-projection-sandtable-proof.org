@@ -794,7 +794,27 @@ An intentional stale or mismatched binding is retained as a negative control.
 =B0= and =B1= agree on all positive and negative controls before the reconciler
 under test is enabled.
 
-** Deterministic cohorts
+** Coverage plan and =BenchmarkSuiteManifestV1=
+
+The concrete counts in this section are derived outputs of the current
+candidate suite manifest.  Before execution, the runner MUST materialize
+=BenchmarkSuiteManifestV1= with factor definitions, constraints, exhaustive
+safety partitions, covering-array strength, state-machine generator version,
+property generator version, seeds, fixture digests, and final per-cohort
+denominators.  Changing any of those inputs creates a new manifest and new
+counts; it does not silently mutate an old benchmark claim.
+
+The coverage layers are:
+
+- =T0=: hand-authored minimal counterexamples;
+- =T1=: exhaustive safety-critical partitions;
+- =T2=: risk-based t-way covering arrays;
+- =T3=: model-based lifecycle, cache, replay, admission, and grant traces;
+- =T4=: property and adversarial mutations;
+- =T5=: fixed real-project replay.
+
+The products below instantiate =T1= through =T4= for the current proposal.
+They do not prove universal completeness.
 
 *** C0 Routing controls
 
@@ -932,7 +952,10 @@ generator and seed space only; it does not prove universal zero false reuse.
 
 *** Branch and join correctness
 
-- Every reused frontier is a maximal valid antichain, not a scalar deepest node.
+- The complete residual obligation DAG is the correctness oracle and canonical
+  reconciliation state.
+- Any frontier or antichain is an optional deterministic planner projection
+  over that DAG; it is allowed to be lossy and MUST NOT authorize closure.
 - A reused branch carries valid dependency bindings through its join.
 - =JoinEvaluated= binds the input proof digests, join policy, obligation set,
   snapshot identity, and graph revision.
@@ -980,7 +1003,8 @@ Each scored cell emits:
 - manifest and source/overlay identity receipt;
 - owner or selector routing receipt;
 - per-obligation reuse, rebase, refresh, or open derivation;
-- invalidation propagation and frontier-antichain proof;
+- invalidation propagation and canonical residual-DAG digest;
+- optional planner-projection receipt when a frontier or antichain is emitted;
 - =QualityGateEvaluated= events;
 - =JoinEvaluated= events where branches converge;
 - =ActionAdmitted= and =ExecutionGrantIssued= only when their existing

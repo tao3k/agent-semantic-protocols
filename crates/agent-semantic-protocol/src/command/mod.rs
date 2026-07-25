@@ -10,7 +10,6 @@ pub(crate) use agent_session_registry::{
     registered_resident_session_for_root, rollout_metadata_matches_managed_agent_profile,
     validate_session_profile,
 };
-pub(crate) use org_capture::run_org_state_sync;
 mod ast_patch;
 mod cli_help;
 mod client_backend_worker;
@@ -29,6 +28,7 @@ mod hook_runtime_context;
 mod hook_runtime_source_access;
 mod install_provider;
 mod install_provider_archive;
+mod install_provider_reconcile;
 mod install_provider_release;
 mod install_provider_target;
 mod install_provider_workspace_artifact;

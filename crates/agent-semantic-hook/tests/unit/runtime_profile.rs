@@ -25,6 +25,22 @@ fn runtime_project_root_for_generated_activation_uses_activation_storage_root() 
 }
 
 #[test]
+fn resolved_provider_binary_is_authoritative_over_activation_prefix() {
+    let root = temp_root("resolved-provider");
+    let resolved = write_executable_provider(&root, "rs-harness");
+    let wrapper = write_executable_provider(&root, "provider-wrapper");
+    let provider = activated_rust_provider(vec![
+        wrapper.display().to_string(),
+        "rs-harness".to_string(),
+    ]);
+
+    let command = runtime_provider_command(&provider, Some(&resolved));
+
+    assert_eq!(command.argv, [resolved.display().to_string()]);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn runtime_profiles_for_activation_uses_provider_command_prefix() {
     let root = temp_root("activation-prefix");
     let wrapper = write_executable_provider(&root, "provider-wrapper");
@@ -150,6 +166,13 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let semantic_registry_digest = crate::semantic_registry_digest();
     let routes = crate::materialize_provider_routes(&manifest).expect("provider routes");
+    let executable_artifact_digest =
+        agent_semantic_content_identity::file_content_digest_v1(std::path::Path::new(
+            provider_command_prefix
+                .first()
+                .expect("provider command prefix"),
+        ))
+        .expect("digest provider test executable");
     ActivatedProvider {
         manifest_id: manifest.manifest_id,
         manifest_digest,
@@ -160,6 +183,7 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
         execution_command_digest:
             crate::protocol_activation::digest::provider_execution_command_digest(
                 &provider_command_prefix,
+                &executable_artifact_digest,
             )
             .expect("digest provider execution command"),
         provider_command_prefix,
@@ -186,6 +210,13 @@ fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedP
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let semantic_registry_digest = crate::semantic_registry_digest();
     let routes = crate::materialize_provider_routes(&manifest).expect("provider routes");
+    let executable_artifact_digest =
+        agent_semantic_content_identity::file_content_digest_v1(std::path::Path::new(
+            provider_command_prefix
+                .first()
+                .expect("provider command prefix"),
+        ))
+        .expect("digest provider test executable");
     ActivatedProvider {
         manifest_id: manifest.manifest_id,
         manifest_digest,
@@ -196,6 +227,7 @@ fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedP
         execution_command_digest:
             crate::protocol_activation::digest::provider_execution_command_digest(
                 &provider_command_prefix,
+                &executable_artifact_digest,
             )
             .expect("digest provider execution command"),
         provider_command_prefix,
@@ -246,3 +278,4 @@ fn write_executable_file(path: &Path) {
         std::fs::set_permissions(path, permissions).expect("permissions");
     }
 }
+use crate::runtime_profile::runtime_provider_command;

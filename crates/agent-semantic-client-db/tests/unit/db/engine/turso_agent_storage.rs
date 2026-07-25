@@ -33,17 +33,19 @@ fn turso_agent_storage_batch(profile: StorageOptimizationProfile) -> SessionEven
 #[tokio::test(flavor = "current_thread")]
 async fn turso_agent_storage_implements_atomic_batch_and_keyset_contract() {
     let temp = temp_root("turso-agent-storage-contract");
-    let storage = TursoMvccAgentStorage::open(TursoMvccStoreConfig::new(
-        temp.join("session-events.turso"),
-    ))
-    .await
-    .expect("open Turso AgentStorage adapter");
+    let storage =
+        TursoMvccAgentStorage::open(TursoMvccStoreConfig::new(temp.join("session-events.turso")))
+            .await
+            .expect("open Turso AgentStorage adapter");
     let batch = turso_agent_storage_batch(StorageOptimizationProfile::MvccConcurrent);
     let receipt = storage
         .append_session_events_atomically(&batch)
         .await
         .expect("append session event batch");
-    assert_eq!(receipt.transaction_state, StorageTransactionState::Committed);
+    assert_eq!(
+        receipt.transaction_state,
+        StorageTransactionState::Committed
+    );
     assert_eq!(receipt.backend_version, "0.7.0");
     assert_eq!(receipt.committed_rows, 4);
 
@@ -77,9 +79,8 @@ async fn turso_agent_storage_requires_the_opened_passive_checkpoint_profile() {
     let storage = TursoMvccAgentStorage::open(config)
         .await
         .expect("open passive-checkpoint adapter");
-    let batch = turso_agent_storage_batch(
-        StorageOptimizationProfile::MvccConcurrentPassiveCheckpoint,
-    );
+    let batch =
+        turso_agent_storage_batch(StorageOptimizationProfile::MvccConcurrentPassiveCheckpoint);
     let receipt = storage
         .append_session_events_atomically(&batch)
         .await
@@ -88,7 +89,7 @@ async fn turso_agent_storage_requires_the_opened_passive_checkpoint_profile() {
         receipt.optimization_profile,
         StorageOptimizationProfile::MvccConcurrentPassiveCheckpoint
     );
-    assert!(storage.store().optimization_receipt().passive_checkpoint);
+    assert!(storage.store().optimization_receipt().passive_checkpoint());
     drop(storage);
     let _ = std::fs::remove_dir_all(temp);
 }

@@ -14,6 +14,8 @@ pub struct ProjectStatePaths {
     pub hook_state_dir: PathBuf,
     pub activation_path: PathBuf,
     pub client_cache_dir: PathBuf,
+    pub project_client_db_dir: PathBuf,
+    pub project_client_db_path: PathBuf,
     pub artifacts_dir: PathBuf,
     pub runtime_home: PathBuf,
     pub runtime_bin_dir: PathBuf,
@@ -42,16 +44,13 @@ pub fn project_state_paths(project_root: impl AsRef<Path>) -> Result<ProjectStat
     let layout = project_runtime_layout(project_root);
     let resolved = crate::state_core::ResolvedState::resolve(&layout.requested_root)?;
     let protocol_home = resolved.state_home.clone();
-    let hook_dir = protocol_home
-        .join("hooks")
-        .join("projects")
-        .join(resolved.repo.repo_id.as_str())
-        .join("workspaces")
-        .join(resolved.workspace.workspace_id.as_str());
+    let hook_dir = resolved.paths.hooks_dir.clone();
     let hook_cache_dir = hook_dir.join("cache");
     let hook_state_dir = hook_dir.join("state");
     let activation_path = hook_state_dir.join("activation.json");
     let client_cache_dir = resolved.paths.client_dir.clone();
+    let project_client_db_dir = resolved.paths.project_client_dir.clone();
+    let project_client_db_path = resolved.paths.project_client_db_path.clone();
     let artifacts_dir = resolved.paths.artifacts_dir.clone();
     let runtime_home = protocol_home.join("runtime");
     let runtime_bin_dir = runtime_home.join("bin");
@@ -64,6 +63,8 @@ pub fn project_state_paths(project_root: impl AsRef<Path>) -> Result<ProjectStat
         hook_state_dir,
         activation_path,
         client_cache_dir,
+        project_client_db_dir,
+        project_client_db_path,
         artifacts_dir,
         runtime_home,
         runtime_bin_dir: runtime_bin_dir.clone(),

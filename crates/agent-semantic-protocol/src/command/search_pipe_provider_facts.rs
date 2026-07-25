@@ -81,14 +81,14 @@ pub(super) fn collect_provider_workspace_scope(
         project_root,
         config,
     )?;
-    let limits = ProviderProcessLimits {
-        timeout: Some(Duration::from_millis(
+    let limits = ProviderProcessLimits::new(
+        Some(Duration::from_millis(
             PROVIDER_WORKSPACE_SCOPE_COLD_TIMEOUT_MS,
         )),
-        max_stdout_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
-        max_stderr_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
-        memory_limit_bytes: Some(1024 * 1024 * 1024),
-    };
+        Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
+        Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
+        Some(1024 * 1024 * 1024),
+    );
     let output = run_provider_command_with_stdin_limits(
         language_id,
         context.provider,
@@ -132,8 +132,8 @@ fn provider_workspace_scope_matches_context(
     expected_root: &Path,
     context: &ProviderGraphFactsContext<'_>,
 ) -> bool {
-    scope.provider_id == context.provider.provider_id
-        && scope.language_id == context.provider.language_id
+    scope.provider_id.as_str() == context.provider.provider_id.as_str()
+        && scope.language_id.as_str() == context.provider.language_id.as_str()
         && scope.discovery_root == expected_root
 }
 
@@ -256,12 +256,12 @@ pub(super) fn collect_provider_graph_facts(
     let fact_candidates = provider_fact_candidates(candidates);
     let input_candidates = candidates.len();
     let truncated_candidates = input_candidates.saturating_sub(fact_candidates.len());
-    let semantic_fact_limits = ProviderProcessLimits {
-        timeout: Some(provider_graph_fact_timeout()),
-        max_stdout_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
-        max_stderr_bytes: Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
-        memory_limit_bytes: Some(1024 * 1024 * 1024),
-    };
+    let semantic_fact_limits = ProviderProcessLimits::new(
+        Some(provider_graph_fact_timeout()),
+        Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
+        Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
+        Some(1024 * 1024 * 1024),
+    );
     let args = vec![
         "search".to_string(),
         "semantic-facts".to_string(),
@@ -388,20 +388,39 @@ pub(super) fn query_requests_semantic_facts(
     let Some(descriptor) = provider.semantic_facts_descriptor.as_ref() else {
         return Ok(None);
     };
+    let intent_axis_roles = descriptor
+        .intent_axes
+        .iter()
+        .map(|intent_axis| {
+            intent_axis
+                .roles()
+                .iter()
+                .copied()
+                .map(provider_query_pack_role)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    let intent_axis_terms = descriptor
+        .intent_axes
+        .iter()
+        .map(|intent_axis| intent_axis.terms().map(str::to_owned).collect::<Vec<_>>())
+        .collect::<Vec<_>>();
     let intent_axes = descriptor
         .intent_axes
         .iter()
-        .map(
-            |intent_axis| agent_semantic_search::SearchPipeSemanticFactsIntentAxis {
-                axis: &intent_axis.axis,
-                terms: &intent_axis.terms,
-                roles: &intent_axis.roles,
-            },
-        )
+        .zip(&intent_axis_terms)
+        .zip(&intent_axis_roles)
+        .map(|((intent_axis, terms), roles)| {
+            agent_semantic_search::SearchPipeSemanticFactsIntentAxis {
+                axis: intent_axis.axis(),
+                terms,
+                roles,
+            }
+        })
         .collect::<Vec<_>>();
     with_activated_provider_query_pack_descriptor(provider, |query_pack_descriptor| {
         Some(agent_semantic_search::search_pipe_semantic_facts_intent(
-            agent_semantic_search::SearchPipeLanguageId::new(&provider.language_id),
+            agent_semantic_search::SearchPipeLanguageId::new(provider.language_id.as_str()),
             agent_semantic_search::SearchPipeQueryText::new(query),
             query_pack_descriptor,
             agent_semantic_search::SearchPipeSemanticFactsDescriptor {
@@ -423,39 +442,83 @@ pub(super) fn with_query_pack_descriptor<R>(
     with_activated_provider_query_pack_descriptor(provider, f)
 }
 
+fn provider_query_pack_role(
+    role: agent_semantic_hook::ProviderQueryPackTermRole,
+) -> agent_semantic_search::SearchPipeTermRole {
+    match role {
+        agent_semantic_hook::ProviderQueryPackTermRole::Context => {
+            agent_semantic_search::SearchPipeTermRole::Context
+        }
+        agent_semantic_hook::ProviderQueryPackTermRole::Concept => {
+            agent_semantic_search::SearchPipeTermRole::Concept
+        }
+        agent_semantic_hook::ProviderQueryPackTermRole::Symbol => {
+            agent_semantic_search::SearchPipeTermRole::Symbol
+        }
+        agent_semantic_hook::ProviderQueryPackTermRole::Literal => {
+            agent_semantic_search::SearchPipeTermRole::Literal
+        }
+        agent_semantic_hook::ProviderQueryPackTermRole::DiagnosticCode => {
+            agent_semantic_search::SearchPipeTermRole::DiagnosticCode
+        }
+    }
+}
+
 fn with_activated_provider_query_pack_descriptor<R>(
     provider: &agent_semantic_hook::ActivatedProvider,
     f: impl FnOnce(agent_semantic_search::SearchPipeQueryPackDescriptor<'_>) -> R,
 ) -> Result<R, String> {
     let descriptor = &provider.query_pack_descriptor;
     let term_role_overrides = descriptor
-        .term_role_overrides
+        .term_role_overrides()
         .iter()
         .map(
             |override_| agent_semantic_search::SearchPipeQueryPackTermRoleOverride {
                 term: &override_.term,
-                role: &override_.role,
+                role: provider_query_pack_role(override_.role),
                 case_sensitive: override_.case_sensitive,
             },
         )
         .collect::<Vec<_>>();
-    let clause_sets = descriptor
-        .recipes
+    let clause_role_sets = descriptor
+        .recipes()
         .iter()
         .map(|recipe| {
             recipe
                 .clauses
                 .iter()
-                .map(|clause| agent_semantic_search::SearchPipeQueryPackClause {
-                    terms: &clause.terms,
-                    roles: &clause.roles,
-                    intent_axes: &clause.intent_axes,
+                .map(|clause| {
+                    clause
+                        .roles
+                        .iter()
+                        .copied()
+                        .map(provider_query_pack_role)
+                        .collect::<Vec<_>>()
                 })
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
+    let clause_sets = descriptor
+        .recipes()
+        .iter()
+        .zip(&clause_role_sets)
+        .map(|(recipe, role_sets)| {
+            recipe
+                .clauses
+                .iter()
+                .zip(role_sets)
+                .map(
+                    |(clause, roles)| agent_semantic_search::SearchPipeQueryPackClause {
+                        terms: &clause.terms,
+                        roles,
+                        intent_axes: &clause.intent_axes,
+                    },
+                )
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
     let recipes = descriptor
-        .recipes
+        .recipes()
         .iter()
         .zip(&clause_sets)
         .map(
@@ -468,9 +531,9 @@ fn with_activated_provider_query_pack_descriptor<R>(
         )
         .collect::<Vec<_>>();
     Ok(f(agent_semantic_search::SearchPipeQueryPackDescriptor {
-        descriptor_id: &descriptor.descriptor_id,
-        descriptor_version: &descriptor.descriptor_version,
-        language_id: &descriptor.language_id,
+        descriptor_id: descriptor.descriptor_id(),
+        descriptor_version: descriptor.descriptor_version(),
+        language_id: descriptor.language_id(),
         term_role_overrides: &term_role_overrides,
         recipes: &recipes,
     }))

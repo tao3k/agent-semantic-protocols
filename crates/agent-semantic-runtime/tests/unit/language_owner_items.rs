@@ -315,7 +315,7 @@ fn owner_items_runtime_receipt_records_provider_count_and_output_size() {
     assert_eq!(receipt.stderr_bytes, b"provider note\n".len());
     assert!(!receipt.cache_hit);
     assert_eq!(receipt.fallback_reason, "none");
-    assert_eq!(receipt.elapsed_ms, 2);
+    assert_eq!(receipt.elapsed_ms(), 2);
 }
 
 #[test]
@@ -331,7 +331,7 @@ fn owner_items_runtime_receipt_records_fail_closed_without_fallback() {
     assert_eq!(receipt.provider_process_count, 1);
     assert_eq!(receipt.stdout_bytes, 0);
     assert_eq!(receipt.fallback_reason, "fail-closed-no-fallback");
-    assert_eq!(receipt.elapsed_ms, 3);
+    assert_eq!(receipt.elapsed_ms(), 3);
 }
 
 #[test]

@@ -332,20 +332,19 @@ fn install_command() -> Command {
                 .arg(project_root_arg()),
         )
         .subcommand(install_plugin_command())
-        .subcommand(
-            Command::new("language")
-                .about("Install a language provider")
-                .arg(Arg::new("language").value_name("LANGUAGE").required(true))
-                .arg(project_root_arg())
-                .arg(Arg::new("target").long("target").value_name("TARGET"))
-                .arg(Arg::new("project").long("project").value_name("ROOT")),
-        )
+        .subcommand(install_language_command())
 }
 
-fn install_plugin_command() -> Command {
+pub(crate) fn install_plugin_command() -> Command {
     Command::new("plugin")
         .bin_name("asp install plugin")
         .about("Install the ASP Codex plugin")
+        .group(
+            clap::ArgGroup::new("scope")
+                .args(["global", "project"])
+                .required(true)
+                .multiple(false),
+        )
         .arg(
             Arg::new("codex")
                 .long("codex")
@@ -362,18 +361,14 @@ fn install_plugin_command() -> Command {
         .arg(
             Arg::new("global")
                 .long("global")
-                .visible_alias("global-plugin")
                 .action(ArgAction::SetTrue)
-                .conflicts_with("project")
-                .help("Install globally (default when no scope flag is given)"),
+                .help("Use the global Codex plugin installation"),
         )
         .arg(
             Arg::new("project")
                 .long("project")
-                .visible_alias("project-plugin")
                 .action(ArgAction::SetTrue)
-                .conflicts_with("global")
-                .help("Also enable and cache the plugin in PROJECT_ROOT"),
+                .help("Enable and cache the plugin only in PROJECT_ROOT"),
         )
         .arg(
             Arg::new("subagent-model")
@@ -550,6 +545,10 @@ fn is_language_facade(value: &str) -> bool {
     )
 }
 
+#[cfg(test)]
+#[path = "../../tests/unit/cli_help.rs"]
+mod cli_help_tests;
+
 fn install_language_command() -> Command {
     Command::new("language")
         .bin_name("asp install language")
@@ -557,6 +556,17 @@ fn install_language_command() -> Command {
         .arg(Arg::new("language").value_name("LANGUAGE").required(true))
         .arg(project_root_arg())
         .arg(Arg::new("target").long("target").value_name("TARGET"))
+        .arg(
+            Arg::new("from-workspace")
+                .long("from-workspace")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("reconcile-receipt")
+                .long("reconcile-receipt")
+                .action(ArgAction::SetTrue)
+                .conflicts_with("from-workspace"),
+        )
         .arg(Arg::new("project").long("project").value_name("ROOT"))
 }
 

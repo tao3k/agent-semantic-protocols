@@ -76,14 +76,7 @@ macro_rules! semantic_string_type {
     };
 }
 
-semantic_string_type!(
-    /// Language provider id such as `rust`, `typescript`, or `python`.
-    LanguageId
-);
-semantic_string_type!(
-    /// Provider implementation id such as `rs-harness`.
-    ProviderId
-);
+pub use agent_semantic_config::{LanguageId, ProviderId};
 semantic_string_type!(
     /// JSON schema id carried by a client envelope.
     SemanticSchemaId

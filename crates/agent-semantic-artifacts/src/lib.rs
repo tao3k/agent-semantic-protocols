@@ -24,5 +24,6 @@ pub use identity::{
 };
 pub use repair_chain::{
     REPAIR_CHAIN_FRAME_SCHEMA_ID, REPAIR_CHAIN_FRAME_SCHEMA_VERSION, RepairChainFrame,
-    RepairChainFrameInput, RepairChainFrameKind, RepairChainParentRef, build_repair_chain_frame,
+    RepairChainFrameIdentity, RepairChainFrameInput, RepairChainFrameKind, RepairChainParentRef,
+    build_repair_chain_frame,
 };

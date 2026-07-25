@@ -5,6 +5,8 @@ pub(super) enum TermRole {
     Context,
     Concept,
     Symbol,
+    Literal,
+    DiagnosticCode,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -32,6 +34,8 @@ impl TermRole {
             Self::Context => "context",
             Self::Concept => "concept",
             Self::Symbol => "symbol",
+            Self::Literal => "literal",
+            Self::DiagnosticCode => "diagnostic-code",
         }
     }
 }

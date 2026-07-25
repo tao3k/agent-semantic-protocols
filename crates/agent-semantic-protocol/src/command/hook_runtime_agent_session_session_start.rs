@@ -229,16 +229,16 @@ pub(super) fn classify_session_start_bootstrap(
         .or_else(|| {
             codex_native_rollout_metadata
                 .as_ref()
-                .and_then(|metadata| metadata.reasoning_effort.clone())
+                .and_then(|metadata| metadata.reasoning_effort().map(str::to_owned))
         });
     let native_root_session_id = codex_native_event.as_ref().map(|native| {
         codex_native_rollout_metadata
             .as_ref()
             .and_then(|metadata| {
                 metadata
-                    .root_session_id
-                    .clone()
-                    .or_else(|| metadata.parent_thread_id.clone())
+                    .root_session_id()
+                    .or_else(|| metadata.parent_thread_id())
+                    .map(ToString::to_string)
             })
             .unwrap_or_else(|| native.root_session_id.clone())
     });

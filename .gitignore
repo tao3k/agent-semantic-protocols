@@ -14,3 +14,4 @@ __pycache__/
 .env
 .claude/settings.local.json
 .pre-commit-config.yaml
+/.asp-artifacts/

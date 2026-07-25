@@ -3,6 +3,8 @@ pub enum SearchPipeTermRole {
     Context,
     Concept,
     Symbol,
+    Literal,
+    DiagnosticCode,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,6 +37,7 @@ pub struct SearchPipeQueryPackCandidate {
 struct QueryTokenFragment {
     raw: String,
     force_symbol: bool,
+    explicit_role: Option<SearchPipeTermRole>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -62,6 +65,8 @@ impl SearchPipeTermRole {
             Self::Context => "context",
             Self::Concept => "concept",
             Self::Symbol => "symbol",
+            Self::Literal => "literal",
+            Self::DiagnosticCode => "diagnostic-code",
         }
     }
 }
@@ -97,7 +102,7 @@ pub struct SearchPipeQueryPackDescriptorMissing;
 pub struct SearchPipeSemanticFactsIntentAxis<'a> {
     pub axis: &'a str,
     pub terms: &'a [String],
-    pub roles: &'a [String],
+    pub roles: &'a [SearchPipeTermRole],
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -110,14 +115,14 @@ pub struct SearchPipeSemanticFactsDescriptor<'a> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SearchPipeQueryPackTermRoleOverride<'a> {
     pub term: &'a str,
-    pub role: &'a str,
+    pub role: SearchPipeTermRole,
     pub case_sensitive: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct SearchPipeQueryPackClause<'a> {
     pub terms: &'a [String],
-    pub roles: &'a [String],
+    pub roles: &'a [SearchPipeTermRole],
     pub intent_axes: &'a [String],
 }
 
@@ -369,11 +374,7 @@ fn term_role(
             })
         })
     {
-        return match role_override.role {
-            "context" => SearchPipeTermRole::Context,
-            "symbol" => SearchPipeTermRole::Symbol,
-            _ => SearchPipeTermRole::Concept,
-        };
+        return role_override.role;
     }
     if is_weak_natural_term(raw) {
         return SearchPipeTermRole::Context;
@@ -402,7 +403,9 @@ fn search_pipe_query_terms(
         .map(|fragment| SearchPipeQueryTerm {
             raw: fragment.raw.clone(),
             lower: fragment.raw.to_ascii_lowercase(),
-            role: if fragment.force_symbol {
+            role: if let Some(role) = fragment.explicit_role {
+                role
+            } else if fragment.force_symbol {
                 SearchPipeTermRole::Symbol
             } else {
                 term_role(language_id, &fragment.raw, query_pack_descriptor)
@@ -424,6 +427,24 @@ fn query_token_fragments(raw: &str) -> Vec<QueryTokenFragment> {
     if trimmed.is_empty() || !has_ascii_query_signal(trimmed) {
         return Vec::new();
     }
+    if let Some((prefix, value)) = trimmed.split_once(':') {
+        let explicit_role = match prefix {
+            "literal" => Some(SearchPipeTermRole::Literal),
+            "diagnostic" | "diagnostic-code" => Some(SearchPipeTermRole::DiagnosticCode),
+            _ => None,
+        };
+        if let Some(explicit_role) = explicit_role {
+            let value = trim_query_token(value);
+            if value.is_empty() || !has_ascii_query_signal(value) {
+                return Vec::new();
+            }
+            return vec![QueryTokenFragment {
+                raw: value.to_string(),
+                force_symbol: false,
+                explicit_role: Some(explicit_role),
+            }];
+        }
+    }
     if should_split_slash_compound(trimmed) {
         return trimmed
             .split('/')
@@ -433,6 +454,7 @@ fn query_token_fragments(raw: &str) -> Vec<QueryTokenFragment> {
     vec![QueryTokenFragment {
         raw: trimmed.to_string(),
         force_symbol: false,
+        explicit_role: None,
     }]
 }
 
@@ -567,7 +589,7 @@ pub fn search_pipe_semantic_facts_intent(
                 && !intent_axis
                     .roles
                     .iter()
-                    .any(|role| semantic_fact_role_matches(role, term.role))
+                    .any(|role| semantic_fact_role_matches(*role, term.role))
             {
                 continue;
             }
@@ -596,11 +618,6 @@ pub fn search_pipe_semantic_facts_intent(
     }
 }
 
-fn semantic_fact_role_matches(role: &str, term_role: SearchPipeTermRole) -> bool {
-    matches!(
-        (role, term_role),
-        ("context", SearchPipeTermRole::Context)
-            | ("concept", SearchPipeTermRole::Concept)
-            | ("symbol", SearchPipeTermRole::Symbol)
-    )
+fn semantic_fact_role_matches(role: SearchPipeTermRole, term_role: SearchPipeTermRole) -> bool {
+    role == term_role
 }

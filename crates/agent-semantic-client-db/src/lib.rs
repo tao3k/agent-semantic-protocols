@@ -3,10 +3,12 @@
 //! DB Engine facade and control adapters for `agent-semantic-client`.
 
 pub mod agent_session_registry;
+mod artifact_event_builder;
 pub use agent_session_registry::{
     AgentSessionModelObservationRef, AgentSessionModelObservationSource,
 };
 pub mod artifact_pointer_store;
+pub mod context_run_mvcc;
 mod dependency_index;
 pub mod engine;
 mod source_index;
@@ -20,10 +22,13 @@ pub mod turso_encrypted_storage;
 mod turso_mvcc_keyset;
 pub use turso_mvcc_keyset::{TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey};
 mod turso_mvcc_maintenance;
+pub mod turso_mvcc_partition;
+mod turso_mvcc_partition_sql;
 pub mod turso_mvcc_store;
 mod turso_mvcc_typed;
 pub mod turso_sync_storage;
 mod types;
+pub use types::ClientDbProviderCommandSelectionInput;
 
 pub use agent_semantic_client_core::ClientDbStatus;
 pub use agent_session_registry::{
@@ -37,6 +42,7 @@ pub use agent_session_registry::{
     agent_session_normalized_metadata_json, agent_session_status_is_routable,
     agent_session_unix_timestamp,
 };
+pub use artifact_event_builder::ClientDbArtifactEventBuilder;
 pub use dependency_index::{
     DEFAULT_GERBIL_DEPS_SEARCH_LIMIT, GerbilDepsQueryRequest, GerbilDepsQueryResult,
     GerbilDepsSearchRequest, GerbilDepsSearchResult, gerbil_deps_minimal_import,
