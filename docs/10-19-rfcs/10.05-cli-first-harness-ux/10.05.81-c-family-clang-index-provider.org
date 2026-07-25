@@ -102,6 +102,37 @@ The provider must not reinterpret an unresolved selector by basename or suffix.
 Compilation database paths are canonicalized and projected back to the selected
 workspace before packet emission.
 
+* Index ownership
+
+=ccls-asp= does not own a persistent search index, an incremental generation,
+or a private query database.  Its native responsibility ends at correctly
+parsing C-family translation units and emitting schema-valid structural facts.
+Compilation database discovery, compiler invocation fidelity, Clang AST
+construction, stable symbol identity, relations, owner locators, and source
+fingerprints remain provider-owned parser work.  Persisting, merging, ranking,
+and retrieving those facts is ASP DB Engine work.
+
+The provider ingestion surface is =search/ingest=.  It emits a bounded
+structural feed for the requested workspace or explicit owner set.  The feed
+contains no raw source and has no dependency on a previous generation.
+=query/exact-selector= remains parser-owned and owner-bounded because exact
+selector resolution must be proved against the current translation unit.
+
+The public =asp c=, =asp cpp=, and =asp objective-c= facades continue to expose
+=search prime=, =search owner=, and =search lexical=.  Those are ASP client
+methods backed by Turso generations and dynamic overlay evidence; they are not
+instructions for =ccls-asp= to rebuild a workspace AST index on every search.
+On a cold or stale generation, ASP requests =search/ingest=, validates the
+feed, imports normalized rows into Turso, and renders the agent-facing result.
+ASP compares provider file hashes, derives unchanged / changed / deleted
+owners, requests changed-owner facts, and commits the next generation.
+
+The adaptation removes ccls LSP/editor transport and ccls-owned index
+persistence together.  It reuses compiler/project/TU machinery only as the
+parser implementation behind the structural feed.  Restoring ccls serializer
+databases, query databases, background index workers, or editor incremental
+state would create a second index owner and is out of scope.
+
 * Acceptance gates
 
 The vertical slice is accepted only when all of the following are recorded:
@@ -121,7 +152,7 @@ The vertical slice is accepted only when all of the following are recorded:
 LSP feature parity is explicitly not an acceptance criterion.
 
 The minimal single-file AST visitor is also not an acceptance criterion. The
-C-family parser/index core is accepted only when:
+C-family parser/feed core is accepted only when:
 
 1. a real =compile_commands.json= preserves the selected compiler driver,
    working directory, language mode, defines, include paths, resource

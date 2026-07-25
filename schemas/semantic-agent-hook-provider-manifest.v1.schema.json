@@ -223,9 +223,6 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "prime",
-        "owner",
-        "lexical",
         "ingest"
       ],
       "properties": {
