@@ -80,6 +80,58 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         Some(_) => "mismatch",
         None => "unavailable",
     };
+    let hook_shell_probe = crate::command::protocol_binary_in_codex_hook_shell();
+    let hook_shell_binary_status = match (
+        hook_binary_path
+            .as_ref()
+            .and_then(|path| crate::command::protocol_binary_artifact_digest(path)),
+        hook_shell_probe
+            .path
+            .as_ref()
+            .and_then(|path| crate::command::protocol_binary_artifact_digest(path)),
+    ) {
+        (Some(active), Some(host)) if active == host => "match",
+        (Some(_), Some(_)) => "mismatch",
+        (_, None) if hook_shell_probe.status == "missing" => "missing",
+        _ => "unavailable",
+    };
+    let hook_shell_binary_path = hook_shell_probe
+        .path
+        .as_ref()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|| "missing".to_string());
+    let hook_shell = hook_shell_probe.shell.display().to_string();
+    let event_state_path = agent_semantic_runtime::project_state_paths(&project_root)?
+        .hook_state_dir
+        .join("events.jsonl");
+    let (event_state_status, event_state_bytes, event_state_age_ms) =
+        match fs::metadata(&event_state_path) {
+            Ok(metadata) if metadata.len() == 0 => ("empty", 0, "unavailable".to_string()),
+            Ok(metadata) => {
+                let age_ms = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|modified| std::time::SystemTime::now().duration_since(modified).ok())
+                    .map(|age| age.as_millis());
+                let status = if age_ms.is_some_and(|age_ms| age_ms <= 300_000) {
+                    "live"
+                } else {
+                    "present"
+                };
+                (
+                    status,
+                    metadata.len(),
+                    age_ms
+                        .map(|age_ms| age_ms.to_string())
+                        .unwrap_or_else(|| "unavailable".to_string()),
+                )
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                ("missing", 0, "unavailable".to_string())
+            }
+            Err(_) => ("unreadable", 0, "unavailable".to_string()),
+        };
+    let event_state_path = event_state_path.display().to_string();
     let hook_binary = hook_binary_path.is_some();
     let hook_binary_path = hook_binary_path
         .as_ref()
@@ -199,6 +251,10 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         .unwrap_or("not-applicable");
     let doctor_status = if config_contract_status != "match"
         || binary_contract_status != "match"
+        || (client == "codex" && root_hook && hook_shell_binary_status != "match")
+        || (client == "codex"
+            && root_hook
+            && matches!(event_state_status, "missing" | "empty" | "unreadable"))
         || (client == "codex" && enforcement_status != "ok")
     {
         "warning"
@@ -211,7 +267,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         "not-applicable"
     };
     println!(
-        "[agent-doctor] status={doctor_status} client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} configContractStatus={} configuredContractFingerprint={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} binaryContractStatus={} binaryContractFingerprint={} activeContractFingerprint={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} backgroundThreadHook={} protocol={}",
+        "[agent-doctor] status={doctor_status} client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} configContractStatus={} configuredContractFingerprint={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} binaryContractStatus={} binaryContractFingerprint={} activeContractFingerprint={} hookShell={} hookShellMode=non-login hookShellBinaryStatus={} hookShellBinaryPath={} eventState={} eventStatePath={} eventStateBytes={} eventStateAgeMs={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} backgroundThreadHook={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
         config_path.is_file(),
@@ -235,6 +291,13 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         active_contract_fingerprint
             .as_deref()
             .unwrap_or("unavailable"),
+        hook_shell,
+        hook_shell_binary_status,
+        hook_shell_binary_path,
+        event_state_status,
+        event_state_path,
+        event_state_bytes,
+        event_state_age_ms,
         classifier_probe,
         classifier_reason,
         enforcement_status,
@@ -334,10 +397,12 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         );
     }
     if args.iter().any(|arg| arg == "--strict-contract")
-        && (config_contract_status != "match" || binary_contract_status != "match")
+        && (config_contract_status != "match"
+            || binary_contract_status != "match"
+            || (client == "codex" && root_hook && hook_shell_binary_status != "match"))
     {
         return Err(format!(
-            "hook contract freshness gate failed: config={config_contract_status} activeBinary={binary_contract_status}"
+            "hook contract freshness gate failed: config={config_contract_status} activeBinary={binary_contract_status} hookShellBinary={hook_shell_binary_status}"
         ));
     }
     Ok(())

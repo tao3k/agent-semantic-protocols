@@ -159,3 +159,70 @@ fn install_plan_capture_rejects_non_asp_process_identity() {
         .expect_err("unit test executable must not be accepted as the ASP install source");
     assert!(error.contains("semantic hook setup must run through `asp`"));
 }
+
+#[cfg(unix)]
+#[test]
+fn non_login_shell_probe_uses_cold_host_path() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = protocol_binary_probe_root("found");
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).expect("create probe bin");
+    let asp = bin.join(super::SEMANTIC_AGENT_PROTOCOL_BIN);
+    std::fs::write(&asp, b"#!/bin/sh\nexit 0\n").expect("write probe asp");
+    let mut permissions = std::fs::metadata(&asp)
+        .expect("inspect probe asp")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&asp, permissions).expect("chmod probe asp");
+
+    let probe = super::probe_protocol_binary_in_non_login_shell(
+        std::path::Path::new("/bin/sh"),
+        bin.as_os_str(),
+    );
+
+    assert_eq!(
+        probe,
+        super::ProtocolBinaryShellProbe {
+            shell: std::path::PathBuf::from("/bin/sh"),
+            path: Some(asp),
+            status: "found",
+        }
+    );
+    std::fs::remove_dir_all(root).expect("cleanup probe root");
+}
+
+#[cfg(unix)]
+#[test]
+fn non_login_shell_probe_reports_missing_without_terminal_path() {
+    let root = protocol_binary_probe_root("missing");
+
+    let probe = super::probe_protocol_binary_in_non_login_shell(
+        std::path::Path::new("/bin/sh"),
+        root.as_os_str(),
+    );
+
+    assert_eq!(
+        probe,
+        super::ProtocolBinaryShellProbe {
+            shell: std::path::PathBuf::from("/bin/sh"),
+            path: None,
+            status: "missing",
+        }
+    );
+    std::fs::remove_dir_all(root).expect("cleanup probe root");
+}
+
+#[cfg(unix)]
+fn protocol_binary_probe_root(case: &str) -> std::path::PathBuf {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-binary-shell-probe-{case}-{}-{nonce}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("create probe root");
+    root
+}

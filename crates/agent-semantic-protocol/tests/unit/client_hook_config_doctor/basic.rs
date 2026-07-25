@@ -38,8 +38,45 @@ tool = "Bash"
     let stdout = stdout(&output);
     assert!(stdout.contains("clientConfigStatus=ok"));
     assert!(stdout.contains("configContractStatus=missing"));
+    assert!(stdout.contains("hookShellMode=non-login"));
+    assert!(stdout.contains("hookShellBinaryStatus="));
+    assert!(stdout.contains("hookShellBinaryPath="));
+    assert!(stdout.contains("eventState=missing"));
+    assert!(stdout.contains("eventStateBytes=0"));
+    assert!(stdout.contains("eventStateAgeMs=unavailable"));
     assert!(stdout.contains("enforcement=unavailable"));
     assert!(stdout.contains("enforcementReason=project-hook-missing"));
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn doctor_reports_live_hook_event_state() {
+    let root = temp_project_root("doctor-live-event-state");
+    let activation_path = write_activation(&root);
+    write_client_config(
+        &root,
+        r#"
+[[rules]]
+id = "live-event-state-rule"
+decision = "deny"
+"#,
+    );
+    std::fs::write(
+        activation_path
+            .parent()
+            .expect("activation state parent")
+            .join("events.jsonl"),
+        b"{}\n",
+    )
+    .expect("write hook event state");
+
+    let output = run_doctor(&root, &activation_path);
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let stdout = stdout(&output);
+    assert!(stdout.contains("eventState=live"), "{stdout}");
+    assert!(stdout.contains("eventStateBytes=3"), "{stdout}");
+    assert!(!stdout.contains("eventStateAgeMs=unavailable"), "{stdout}");
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 

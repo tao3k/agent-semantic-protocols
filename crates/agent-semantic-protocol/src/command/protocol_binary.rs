@@ -14,6 +14,13 @@ pub(crate) struct ProtocolBinaryInstall {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ProtocolBinaryShellProbe {
+    pub(crate) shell: PathBuf,
+    pub(crate) path: Option<PathBuf>,
+    pub(crate) status: &'static str,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ProtocolBinaryInstallPlan {
     current_exe: PathBuf,
     target: PathBuf,
@@ -64,6 +71,108 @@ pub(crate) fn protocol_binary_on_path() -> Option<PathBuf> {
         .iter()
         .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))
         .find(|candidate| candidate.is_file())
+}
+
+pub(crate) fn protocol_binary_in_codex_hook_shell() -> ProtocolBinaryShellProbe {
+    #[cfg(unix)]
+    {
+        let shell = env::var_os("SHELL")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/bin/sh"));
+        let base_path = codex_hook_parent_path();
+        probe_protocol_binary_in_non_login_shell(&shell, &base_path)
+    }
+
+    #[cfg(windows)]
+    {
+        let shell = env::var_os("COMSPEC")
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("cmd.exe"));
+        let path = protocol_binary_on_path();
+        ProtocolBinaryShellProbe {
+            shell,
+            status: if path.is_some() { "found" } else { "missing" },
+            path,
+        }
+    }
+}
+
+#[cfg(unix)]
+fn codex_hook_parent_path() -> std::ffi::OsString {
+    let mut dirs = Vec::new();
+    if cfg!(target_os = "macos")
+        && let Some(home) = env::var_os("HOME").filter(|value| !value.is_empty())
+    {
+        let runtime_bin = PathBuf::from(home)
+            .join(".cache")
+            .join("codex-runtimes")
+            .join("codex-primary-runtime")
+            .join("dependencies")
+            .join("bin");
+        dirs.push(runtime_bin.join("override"));
+        dirs.extend([
+            PathBuf::from("/usr/bin"),
+            PathBuf::from("/bin"),
+            PathBuf::from("/usr/sbin"),
+            PathBuf::from("/sbin"),
+        ]);
+        dirs.push(runtime_bin.join("fallback"));
+    } else {
+        dirs.extend([
+            PathBuf::from("/usr/bin"),
+            PathBuf::from("/bin"),
+            PathBuf::from("/usr/sbin"),
+            PathBuf::from("/sbin"),
+        ]);
+    }
+    env::join_paths(dirs).unwrap_or_else(|_| std::ffi::OsString::from("/usr/bin:/bin"))
+}
+
+#[cfg(unix)]
+fn probe_protocol_binary_in_non_login_shell(
+    shell: &Path,
+    base_path: &std::ffi::OsStr,
+) -> ProtocolBinaryShellProbe {
+    let mut command = std::process::Command::new(shell);
+    command
+        .args(["-c", "command -v asp"])
+        .env_clear()
+        .env("PATH", base_path)
+        .env("SHELL", shell);
+    for key in ["HOME", "USER", "LOGNAME", "TMPDIR"] {
+        if let Some(value) = env::var_os(key) {
+            command.env(key, value);
+        }
+    }
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(_) => {
+            return ProtocolBinaryShellProbe {
+                shell: shell.to_path_buf(),
+                path: None,
+                status: "unavailable",
+            };
+        }
+    };
+    let path = output.status.success().then(|| {
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    });
+    let path = path
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.is_file());
+    ProtocolBinaryShellProbe {
+        shell: shell.to_path_buf(),
+        status: if path.is_some() { "found" } else { "missing" },
+        path,
+    }
 }
 
 fn resolve_protocol_binary_install_target(

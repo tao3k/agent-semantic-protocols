@@ -24,6 +24,8 @@ const _: fn(
 ) -> Result<protocol_binary::ProtocolBinaryInstall, String> =
     protocol_binary::ensure_protocol_binary_installed;
 const _: fn() -> Option<std::path::PathBuf> = protocol_binary::protocol_binary_on_path;
+const _: fn() -> protocol_binary::ProtocolBinaryShellProbe =
+    protocol_binary::protocol_binary_in_codex_hook_shell;
 
 #[test]
 fn protocol_binary_install_fields_are_contract_visible() {
