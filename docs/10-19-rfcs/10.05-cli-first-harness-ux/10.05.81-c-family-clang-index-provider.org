@@ -61,8 +61,12 @@ The first slice exposes:
 - =search lexical <term> owner tests= for name/kind discovery;
 - =search ingest= as a packet-producing index export;
 - =query --selector <path-or-range>= for exact source and parser-owned item
-  projection;
-- =check changed= for compilation-database-backed parse verification.
+  projection.
+
+Changed-file selection and scheduling remain ASP core/control-plane
+responsibilities.  The provider CLI does not expose =check changed=; it parses
+only the explicit workspace, owner, selector, or candidate set supplied by
+ASP.
 
 Search JSON conforms to =semantic-search-packet.v1=.  Query JSON conforms to
 =semantic-query-packet.v1=.  Compact output is a renderer over the same

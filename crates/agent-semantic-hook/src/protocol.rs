@@ -89,7 +89,8 @@ pub struct HookRoutes {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<CommandTemplate>,
     pub ingest: CommandTemplate,
-    pub check_changed: CommandTemplate,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_changed: Option<CommandTemplate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dependency_topology: Option<CommandTemplate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
