@@ -148,6 +148,7 @@ fn search_history_audit_reads_prompt_output_command_artifacts() {
                 "elapsedMs": 40,
                 "exitCode": 0,
                 "languageId": "rust",
+                "projectRoot": root.display().to_string(),
                 "providerId": "rs-harness",
                 "stdoutBytes": 1,
                 "stderrBytes": 0
@@ -162,6 +163,7 @@ fn search_history_audit_reads_prompt_output_command_artifacts() {
                 "elapsedMs": 80,
                 "exitCode": 0,
                 "languageId": "rust",
+                "projectRoot": root.display().to_string(),
                 "providerId": "rs-harness",
                 "stdoutBytes": 1,
                 "stderrBytes": 0
@@ -176,6 +178,7 @@ fn search_history_audit_reads_prompt_output_command_artifacts() {
                 "elapsedMs": 10,
                 "exitCode": 0,
                 "languageId": "rust",
+                "projectRoot": root.display().to_string(),
                 "providerId": "rs-harness",
                 "stdoutBytes": 1,
                 "stderrBytes": 0

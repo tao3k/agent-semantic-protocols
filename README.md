@@ -67,8 +67,8 @@ Enter the project shell first when available:
 direnv exec . <command>
 ```
 
-Install agent-facing tools and the Codex project plugin through the current
-convenience target:
+Install agent-facing tools and refresh the Codex integration through the
+current convenience target:
 
 ```sh
 just agent-hooks-install
@@ -80,23 +80,28 @@ This installs the core ASP runtime surface: `asp`, `asp-graph-turbo`,
 supported graph turbo executable and a required local ranking dependency for
 the graph-turbo search/history path, not an optional debugging tool.
 
-Install or refresh the Codex plugin for the current project through the
-unified install command:
+Install or refresh the Codex plugin globally through the unified install
+command:
 
 ```sh
 asp install plugin --codex .
 ```
 
-The Codex installer uses the official plugin marketplace model. It writes or
-refreshes `.agents/plugins/marketplace.json`, installs
-`asp-codex-plugin@asp-project` through the project-scoped `.codex` cache,
-materializes the plugin bundle in
-`.codex/plugins/cache/asp-project/asp-codex-plugin/<version>/`, writes the
-generated skill to that cache, and removes the retired project skill,
-project-root `asp-codex-plugin/` artifact, and direct Codex hook/subagent
-files. It does not create `asp-codex-plugin/` at the downstream project root.
-After installing, restart Codex or start a new thread so the plugin bundle and
-hooks are loaded.
+Global installation is the default when no scope flag is given. To enable and
+cache the plugin only for the current project, pass `--project` (or
+`--project-plugin`) explicitly:
+
+```sh
+asp install plugin --codex --project .
+```
+
+The project-scoped installer uses the official plugin marketplace model. It
+writes or refreshes `.agents/plugins/marketplace.json`, enables
+`asp-codex-plugin@asp-project`, materializes the plugin bundle in the
+project-scoped `.codex` cache, writes the generated skill to that cache, and
+removes retired project-local hook artifacts. It does not create
+`asp-codex-plugin/` at the downstream project root. After installing, restart
+Codex or start a new task so the plugin bundle and hooks are loaded.
 
 For a manual install that mirrors the Codex marketplace flow, run:
 
@@ -249,7 +254,9 @@ asp hook doctor --client claude .
 Codex hook config. Pass a directory argument, such as
 `just install /tmp/asp-bin`, to override the install root.
 
-`asp install plugin --codex` writes the Codex project plugin config.
+`asp install plugin --codex` installs the Codex plugin globally by default.
+Pass `--project` to write the Codex project plugin config and project-local
+cache.
 `asp install hook --client claude` writes the direct Claude hook
 configuration. Both install surfaces refresh cache activation, versioned hook
 policy config, and provider manifests for this repository. They do not build or

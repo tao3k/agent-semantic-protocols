@@ -160,6 +160,35 @@ Old redundant directories are derived state.  They may be migrated or removed
 only after the prevention gates pass.  Garbage collection must never be the
 mechanism that keeps a healthy steady-state directory count bounded.
 
+Source snapshot envelopes are immutable only when their storage identity binds
+all content-bearing dimensions.  The v1 envelope filename therefore includes
+both =providerId= and =sourceSnapshot.providerDigest= beneath the snapshot root:
+
+#+begin_src text
+source-snapshot-envelopes/v1/<snapshot-root>/<provider-id>--<provider-digest>.json
+#+end_src
+
+The older flat =<provider-id>.json= name is migration input, not a read or
+write compatibility path.  Migration derives the digest-qualified filename
+from the typed envelope, rewrites =casRoot= to the canonical workspace CAS,
+and removes the flat file.  Envelopes with the same snapshot root and provider
+ID but different provider digests are distinct immutable artifacts and MUST
+both survive repository/workspace identity migration.  A conflict is valid
+only when two artifacts resolve to the same full storage identity yet differ
+semantically.
+
+Repository/workspace identity migration is canonical-targeted and idempotent.
+When the canonical workspace is already populated, migration moves legacy CAS
+objects and digest-qualified envelopes into the canonical immutable trees.  It
+MUST NOT move canonical data back beneath the legacy identity or require the
+canonical workspace to be empty.  The canonical =live/client= databases remain
+the sole active authority.  Any remaining legacy mutable database, WAL, log,
+or artifact tree is moved beneath the canonical workspace's read-disabled
+=.state/migrations/project-identity-v1/retired-workspaces/= rollback area, with
+a typed identity receipt, before the legacy workspace and repository entry are
+pruned.  Normal reads never consult this rollback area; in particular it is not
+a SQLite-compatible fallback or a second active Turso owner.
+
 For an existing checkout, GC recomputes the canonical repository identity with
 the current resolver.  A directory whose stored repository ID differs from the
 canonical ID is a legacy identity alias, not a second live project.  After the

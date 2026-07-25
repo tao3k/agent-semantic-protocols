@@ -295,18 +295,11 @@ pub fn publish_provider_source_snapshot_envelope(
             envelope_dir.display()
         )
     })?;
-    let provider_file_name = provider_id
-        .as_str()
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-    let envelope_path = envelope_dir.join(format!("{provider_file_name}.json"));
+    let envelope_file_name = source_snapshot_envelope_file_name(
+        provider_id.as_str(),
+        &snapshot.source_snapshot.provider_digest,
+    );
+    let envelope_path = envelope_dir.join(&envelope_file_name);
     let envelope = ProviderSourceSnapshotEnvelopeV1 {
         schema_id: "asp.exact-source-snapshot-envelope.v1",
         schema_version: "1",
@@ -317,7 +310,7 @@ pub fn publish_provider_source_snapshot_envelope(
     };
     let bytes = serde_json::to_vec_pretty(&envelope)
         .map_err(|error| format!("failed to encode provider source snapshot envelope: {error}"))?;
-    let temporary = envelope_dir.join(format!(".{provider_file_name}.tmp-{}", std::process::id()));
+    let temporary = envelope_dir.join(format!(".{envelope_file_name}.tmp-{}", std::process::id()));
     std::fs::write(&temporary, bytes).map_err(|error| {
         format!(
             "failed to write provider source snapshot envelope {}: {error}",
@@ -332,6 +325,27 @@ pub fn publish_provider_source_snapshot_envelope(
         )
     })?;
     Ok(envelope_path)
+}
+
+fn source_snapshot_envelope_file_name(provider_id: &str, provider_digest: &str) -> String {
+    format!(
+        "{}--{}.json",
+        source_snapshot_envelope_component(provider_id),
+        source_snapshot_envelope_component(provider_digest)
+    )
+}
+
+fn source_snapshot_envelope_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 /// Capture the current content-authoritative source snapshot used by both
@@ -816,3 +830,7 @@ fn source_index_refresh_report(
         source_snapshot,
     )
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/source_index_api.rs"]
+mod tests;

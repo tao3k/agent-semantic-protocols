@@ -190,12 +190,20 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     let runtime = load_activation(&activation_path, &invocation_root)?;
     let activation_root = activation_project_root(&activation_path, &runtime.project_root);
     let config = AspConfig::load(&invocation_root, &activation_root);
+    let has_explicit_workspace = command_args
+        .iter()
+        .any(|argument| argument == "--workspace" || argument.starts_with("--workspace="));
     let (project_root, provider_args) = effective_project_root_and_args(
         language_id,
         &command_args,
         &invocation_root,
         &activation_root,
     )?;
+    let search_locator_root = if has_explicit_workspace {
+        project_root.as_path()
+    } else {
+        invocation_root.as_path()
+    };
 
     if !config.language_enabled(language_id) {
         return Err(format!("language `{language_id}` is disabled by asp.toml"));
@@ -305,7 +313,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 FastSearchContext {
                     language_id,
                     project_root: &project_root,
-                    locator_root: &invocation_root,
+                    locator_root: search_locator_root,
                     cache_home: &cache_home,
                     config: &config,
                     provider_context: Some(&provider_context),
@@ -319,7 +327,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             FastSearchContext {
                 language_id,
                 project_root: &project_root,
-                locator_root: &invocation_root,
+                locator_root: search_locator_root,
                 cache_home: &cache_home,
                 config: &config,
                 provider_context: None,

@@ -40,6 +40,14 @@ it MUST NOT expose =search --choice read:*= or equivalent prompt-visible read
 actions. After search closure, the main agent materializes only the exact
 =query --selector= commands described by the handoff.
 
+* Explicit search workspace authority
+
+For =asp <language> search=, an explicit =--workspace <root>= selects both the
+semantic project root and the State/cache locator root. The invocation working
+directory remains the locator only when =--workspace= is absent. A positional
+search path is a query scope, not an implicit workspace selector, and MUST NOT
+materialize activation or persistent State for that path.
+
 * Module map
 
 - [[file:10.05-cli-first-harness-ux/10.05.00-overview.org][Overview And Non-Goals]] :: One-sentence summary through What NOT to build: the anti-patterns.

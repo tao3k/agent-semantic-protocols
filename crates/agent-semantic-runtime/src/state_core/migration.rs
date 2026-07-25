@@ -123,52 +123,105 @@ impl ResolvedState {
         let legacy_workspace_dir = self.legacy_workspace_dir(&legacy_repo_id, &legacy_workspace_id);
         let identity_changed = legacy_repo_id != self.repo.repo_id
             || legacy_workspace_id != self.workspace.workspace_id;
+        let canonical_envelope_root = self
+            .paths
+            .workspace_dir
+            .join("live/client/source-snapshot-envelopes");
+        let canonical_cas_root = self
+            .paths
+            .workspace_dir
+            .join("live/client/source-blob-cas/v1");
+        normalize_source_snapshot_envelope_tree(&canonical_envelope_root, &canonical_cas_root)?;
         if identity_changed && legacy_workspace_dir.exists() {
+            normalize_source_snapshot_envelope_tree(
+                &legacy_workspace_dir.join("live/client/source-snapshot-envelopes"),
+                &canonical_cas_root,
+            )?;
             if self.paths.workspace_dir.exists() {
                 merge_immutable_tree(
-                    &self.paths.workspace_dir.join("live/client/source-blob-cas"),
                     &legacy_workspace_dir.join("live/client/source-blob-cas"),
+                    &self.paths.workspace_dir.join("live/client/source-blob-cas"),
                 )?;
                 merge_immutable_tree(
+                    &legacy_workspace_dir.join("live/client/source-snapshot-envelopes"),
                     &self
                         .paths
                         .workspace_dir
                         .join("live/client/source-snapshot-envelopes"),
-                    &legacy_workspace_dir.join("live/client/source-snapshot-envelopes"),
                 )?;
-            }
-            if self.paths.workspace_dir.exists()
-                && !remove_directory_tree_if_empty(&self.paths.workspace_dir)?
-            {
-                return Err(format!(
-                    "state migration conflict: both legacy and canonical workspaces exist: legacy={} canonical={}",
-                    legacy_workspace_dir.display(),
-                    self.paths.workspace_dir.display()
-                ));
-            }
-            write_json_atomically(
-                &legacy_workspace_dir
+                let retired_workspace_dir = self
+                    .paths
+                    .workspace_dir
                     .join(".state")
                     .join("migrations")
-                    .join("project-identity-v1.json"),
-                &json!({
-                    "migration": "project-identity-v1",
-                    "legacyRepoId": legacy_repo_id,
-                    "legacyWorkspaceId": legacy_workspace_id,
-                    "repoId": self.repo.repo_id,
-                    "workspaceId": self.workspace.workspace_id,
-                    "legacyPath": legacy_workspace_dir,
-                    "canonicalPath": self.paths.workspace_dir,
-                    "status": "committed-by-directory-rename",
-                }),
-            )?;
-            let workspaces_dir = self.paths.project_dir.join("workspaces");
-            fs::create_dir_all(&workspaces_dir)
-                .map_err(io_error("create canonical workspaces dir"))?;
-            fs::rename(&legacy_workspace_dir, &self.paths.workspace_dir)
-                .map_err(io_error("migrate legacy project workspace"))?;
-            remove_file_if_present(&self.paths.workspace_json)?;
-            remove_file_if_present(&self.paths.client_manifest_json)?;
+                    .join("project-identity-v1")
+                    .join("retired-workspaces")
+                    .join(format!(
+                        "{}--{}",
+                        legacy_repo_id.as_str(),
+                        legacy_workspace_id.as_str()
+                    ));
+                if retired_workspace_dir.exists() {
+                    return Err(format!(
+                        "state migration conflict: retired legacy workspace already exists: source={} target={}",
+                        legacy_workspace_dir.display(),
+                        retired_workspace_dir.display()
+                    ));
+                }
+                write_json_atomically(
+                    &legacy_workspace_dir
+                        .join(".state")
+                        .join("migrations")
+                        .join("project-identity-v1.json"),
+                    &json!({
+                        "migration": "project-identity-v1",
+                        "legacyRepoId": legacy_repo_id,
+                        "legacyWorkspaceId": legacy_workspace_id,
+                        "repoId": self.repo.repo_id,
+                        "workspaceId": self.workspace.workspace_id,
+                        "legacyPath": legacy_workspace_dir,
+                        "canonicalPath": self.paths.workspace_dir,
+                        "retiredPath": retired_workspace_dir,
+                        "activeDatabaseAuthority": self.paths.client_dir,
+                        "status": "retired-read-disabled",
+                    }),
+                )?;
+                let retired_parent = retired_workspace_dir.parent().ok_or_else(|| {
+                    format!(
+                        "retired legacy workspace has no parent: {}",
+                        retired_workspace_dir.display()
+                    )
+                })?;
+                fs::create_dir_all(retired_parent)
+                    .map_err(io_error("create retired legacy workspace parent"))?;
+                fs::rename(&legacy_workspace_dir, &retired_workspace_dir)
+                    .map_err(io_error("retire legacy project workspace"))?;
+            } else {
+                write_json_atomically(
+                    &legacy_workspace_dir
+                        .join(".state")
+                        .join("migrations")
+                        .join("project-identity-v1.json"),
+                    &json!({
+                        "migration": "project-identity-v1",
+                        "legacyRepoId": legacy_repo_id,
+                        "legacyWorkspaceId": legacy_workspace_id,
+                        "repoId": self.repo.repo_id,
+                        "workspaceId": self.workspace.workspace_id,
+                        "legacyPath": legacy_workspace_dir,
+                        "canonicalPath": self.paths.workspace_dir,
+                        "activeDatabaseAuthority": self.paths.client_dir,
+                        "status": "committed-by-directory-rename",
+                    }),
+                )?;
+                let workspaces_dir = self.paths.project_dir.join("workspaces");
+                fs::create_dir_all(&workspaces_dir)
+                    .map_err(io_error("create canonical workspaces dir"))?;
+                fs::rename(&legacy_workspace_dir, &self.paths.workspace_dir)
+                    .map_err(io_error("migrate legacy project workspace"))?;
+                remove_file_if_present(&self.paths.workspace_json)?;
+                remove_file_if_present(&self.paths.client_manifest_json)?;
+            }
             self.prune_legacy_project_dir(&legacy_repo_id)?;
         }
 
@@ -388,6 +441,184 @@ fn remove_directory_tree_if_empty(path: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
+fn normalize_source_snapshot_envelope_tree(
+    envelope_root: &Path,
+    canonical_cas_root: &Path,
+) -> Result<(), String> {
+    let version_root = envelope_root.join("v1");
+    if !version_root.exists() {
+        return Ok(());
+    }
+    for snapshot_entry in
+        fs::read_dir(&version_root).map_err(io_error("read snapshot envelope version root"))?
+    {
+        let snapshot_entry =
+            snapshot_entry.map_err(io_error("read snapshot envelope root entry"))?;
+        let snapshot_path = snapshot_entry.path();
+        if !snapshot_entry
+            .file_type()
+            .map_err(io_error("read snapshot envelope root file type"))?
+            .is_dir()
+        {
+            return Err(format!(
+                "state migration conflict: snapshot envelope root contains non-directory entry: {}",
+                snapshot_path.display()
+            ));
+        }
+        let expected_snapshot_root = snapshot_entry.file_name().to_string_lossy().to_string();
+        let envelope_entries = fs::read_dir(&snapshot_path)
+            .map_err(io_error("read provider snapshot envelope directory"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(io_error("read provider snapshot envelope entry"))?;
+        for envelope_entry in envelope_entries {
+            let source_path = envelope_entry.path();
+            if !envelope_entry
+                .file_type()
+                .map_err(io_error("read provider snapshot envelope file type"))?
+                .is_file()
+            {
+                return Err(format!(
+                    "state migration conflict: provider snapshot envelope contains non-file entry: {}",
+                    source_path.display()
+                ));
+            }
+            let mut envelope = serde_json::from_slice::<serde_json::Value>(
+                &fs::read(&source_path).map_err(io_error("read provider snapshot envelope"))?,
+            )
+            .map_err(|error| {
+                format!(
+                    "parse provider snapshot envelope {}: {error}",
+                    source_path.display()
+                )
+            })?;
+            let provider_id = envelope
+                .get("providerId")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    format!(
+                        "provider snapshot envelope lacks providerId: {}",
+                        source_path.display()
+                    )
+                })?;
+            let source_snapshot = envelope
+                .get("sourceSnapshot")
+                .and_then(serde_json::Value::as_object)
+                .ok_or_else(|| {
+                    format!(
+                        "provider snapshot envelope lacks sourceSnapshot: {}",
+                        source_path.display()
+                    )
+                })?;
+            let snapshot_root = source_snapshot
+                .get("rootDigest")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    format!(
+                        "provider snapshot envelope lacks rootDigest: {}",
+                        source_path.display()
+                    )
+                })?;
+            if snapshot_root != expected_snapshot_root {
+                return Err(format!(
+                    "provider snapshot envelope root mismatch: path={} expected={} actual={}",
+                    source_path.display(),
+                    expected_snapshot_root,
+                    snapshot_root
+                ));
+            }
+            let provider_digest = source_snapshot
+                .get("providerDigest")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    format!(
+                        "provider snapshot envelope lacks providerDigest: {}",
+                        source_path.display()
+                    )
+                })?;
+            let target_path = snapshot_path.join(source_snapshot_envelope_file_name(
+                provider_id,
+                provider_digest,
+            ));
+            envelope["casRoot"] =
+                serde_json::Value::String(canonical_cas_root.display().to_string());
+            if source_path == target_path {
+                replace_json_atomically(&target_path, &envelope)?;
+                continue;
+            }
+            if target_path.exists() {
+                let existing = serde_json::from_slice::<serde_json::Value>(
+                    &fs::read(&target_path)
+                        .map_err(io_error("read digest-qualified snapshot envelope"))?,
+                )
+                .map_err(|error| {
+                    format!(
+                        "parse digest-qualified snapshot envelope {}: {error}",
+                        target_path.display()
+                    )
+                })?;
+                if existing != envelope {
+                    return Err(format!(
+                        "state migration conflict: digest-qualified snapshot envelope differs: source={} target={}",
+                        source_path.display(),
+                        target_path.display()
+                    ));
+                }
+            } else {
+                replace_json_atomically(&target_path, &envelope)?;
+            }
+            fs::remove_file(&source_path)
+                .map_err(io_error("remove flat provider snapshot envelope"))?;
+        }
+    }
+    Ok(())
+}
+
+fn source_snapshot_envelope_file_name(provider_id: &str, provider_digest: &str) -> String {
+    format!(
+        "{}--{}.json",
+        source_snapshot_envelope_component(provider_id),
+        source_snapshot_envelope_component(provider_digest)
+    )
+}
+
+fn source_snapshot_envelope_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn replace_json_atomically(path: &Path, value: &serde_json::Value) -> Result<(), String> {
+    let content = serde_json::to_string_pretty(value)
+        .map_err(|error| format!("serialize migrated snapshot envelope: {error}"))?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("snapshot envelope path has no parent: {}", path.display()))?;
+    fs::create_dir_all(parent).map_err(io_error("create snapshot envelope parent"))?;
+    let temporary = parent.join(format!(
+        ".{}.migration-{}.tmp",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!(
+                "snapshot envelope path has no file name: {}",
+                path.display()
+            ))?,
+        std::process::id()
+    ));
+    fs::write(&temporary, format!("{content}\n"))
+        .map_err(io_error("write migrated snapshot envelope"))?;
+    fs::rename(&temporary, path).map_err(io_error("commit migrated snapshot envelope"))
+}
+
 fn merge_immutable_tree(source: &Path, target: &Path) -> Result<(), String> {
     if !source.exists() {
         return Ok(());
@@ -585,3 +816,7 @@ fn sha256_hex(content: &[u8]) -> String {
 fn io_error(action: &'static str) -> impl FnOnce(std::io::Error) -> String {
     move |error| format!("{action}: {error}")
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/state_core_migration_source_snapshot.rs"]
+mod tests;

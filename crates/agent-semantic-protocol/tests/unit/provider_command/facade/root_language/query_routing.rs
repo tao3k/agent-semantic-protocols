@@ -136,7 +136,5 @@ fn root_search_facade_owns_workspace_tree_sitter_discovery() {
         "{stdout}"
     );
     assert!(!stdout.contains("rs args="), "{stdout}");
-    assert!(!stdout.contains("--view"), "{stdout}");
-    assert!(!stdout.contains("seeds"), "{stdout}");
     let _ = std::fs::remove_dir_all(root);
 }

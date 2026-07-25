@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use crate::provider_command::support::{
-    asp_command, install_state_home_provider, prepend_path, provider, state_home,
-    state_runtime_bin, temp_project_root, write_activation, write_echo_provider,
-    write_marker_provider, write_pwd_provider,
+    asp_command, install_state_home_provider, provider, state_home, state_runtime_bin,
+    temp_project_root, write_activation, write_echo_provider, write_marker_provider,
+    write_pwd_provider,
 };
 
 #[test]
@@ -158,12 +158,11 @@ fn rust_search_facade_uses_explicit_workspace_for_graph_backend() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.starts_with("[search-frontier]"), "{stdout}");
     assert!(
-        stdout.contains(
-            &std::fs::canonicalize(provider_root.join("src/lib.rs"))
-                .expect("canonical provider source")
-                .display()
-                .to_string()
-        ),
+        stdout.contains("kind=owner action=owner value=src/lib.rs"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains("value=rust-provider/src/lib.rs"),
         "{stdout}"
     );
     let _ = std::fs::remove_dir_all(root);
@@ -220,7 +219,6 @@ fn gerbil_query_facade_allows_explicit_workspace_outside_activation_workspace() 
     write_activation(&root, &[provider("gerbil-scheme", Vec::new())]);
 
     let output = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "gerbil-scheme",
@@ -366,7 +364,6 @@ fn rust_search_facade_does_not_treat_positional_path_as_project_root() {
     write_activation(&root, &[provider("rust", Vec::new())]);
 
     let output = asp_command(&root)
-        .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
             "rust",
@@ -390,11 +387,16 @@ fn rust_search_facade_does_not_treat_positional_path_as_project_root() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.starts_with("[search-frontier]"), "{stdout}");
-    assert!(stdout.contains(&outside_root.display().to_string()), "{stdout}");
-    let outside_activation =
-        agent_semantic_runtime::project_state_paths_with_state_home(&outside_root, state_home(&root))
-            .expect("outside ephemeral State Home paths")
-            .activation_path;
+    assert!(
+        stdout.contains(&outside_root.display().to_string()),
+        "{stdout}"
+    );
+    let outside_activation = agent_semantic_runtime::project_state_paths_with_state_home(
+        &outside_root,
+        state_home(&root),
+    )
+    .expect("outside ephemeral State Home paths")
+    .activation_path;
     assert!(
         !outside_activation.exists(),
         "positional search scope must not materialize an activation for {}",
