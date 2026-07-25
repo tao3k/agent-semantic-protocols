@@ -104,7 +104,7 @@ pub(super) fn graph_actions(packet: &Value) -> Vec<GraphAction> {
                 target: header_scalar(packet, "query")
                     .or_else(|| selector_target(packet, "feature="))?,
                 locator: None,
-                action: None,
+                action: Some("cfg".to_string()),
                 syntax_query: None,
             }),
             "finding-frontier" => Some(GraphAction {
@@ -152,6 +152,15 @@ pub(super) fn graph_actions(packet: &Value) -> Vec<GraphAction> {
     }
     if let Some(action) = packet_root_action(packet) {
         actions.push(action);
+    }
+    if packet_view(packet) == "prime" {
+        append_fact_note_actions(&mut actions, packet.get("notes"));
+    }
+    if packet_view(packet) == "workspace" {
+        append_package_actions(&mut actions, packet.get("packages"));
+    }
+    if packet_view(packet) == "policy" {
+        append_semantic_handle_actions(&mut actions, packet.get("semanticHandles"));
     }
     if is_owner_item_query_packet(packet, packet_view(packet))
         && let Some(action) = owner_item_query_action(packet)
@@ -212,6 +221,7 @@ pub(super) fn graph_actions(packet: &Value) -> Vec<GraphAction> {
         "tests",
     );
     append_owner_paths(&mut actions, packet.get("owners"));
+    append_typed_node_actions(&mut actions, packet.get("nodes"));
     append_native_fact_owners(&mut actions, packet.get("nativeSyntaxFacts"));
     append_item_symbols(&mut actions, packet.get("items"), language_id);
     if let Some(profile) = reasoning_profile.as_ref() {
@@ -311,7 +321,7 @@ pub(super) fn graph_action_spec(kind: &str) -> Option<GraphActionSpec> {
             node_type: "feature",
             target_role: "feature",
             alias_prefix: "F",
-            action: "cfg",
+            action: "features",
         }),
         "finding" => Some(GraphActionSpec {
             node_type: "finding",
@@ -429,6 +439,113 @@ fn append_owner_paths(actions: &mut Vec<GraphAction>, value: Option<&Value>) {
                 syntax_query: None,
             });
         }
+    }
+}
+
+fn append_package_actions(actions: &mut Vec<GraphAction>, value: Option<&Value>) {
+    let Some(values) = value.and_then(Value::as_array) else {
+        return;
+    };
+    for value in values {
+        let target = value
+            .get("id")
+            .or_else(|| value.get("name"))
+            .or_else(|| value.get("path"))
+            .and_then(Value::as_str);
+        if let Some(target) = target.filter(|target| !target.trim().is_empty()) {
+            actions.push(GraphAction {
+                kind: "package".to_string(),
+                target: target.to_string(),
+                locator: None,
+                action: None,
+                syntax_query: None,
+            });
+        }
+    }
+}
+
+fn append_typed_node_actions(actions: &mut Vec<GraphAction>, value: Option<&Value>) {
+    let Some(values) = value.and_then(Value::as_array) else {
+        return;
+    };
+    for value in values {
+        let Some(kind) = value.get("kind").and_then(Value::as_str) else {
+            continue;
+        };
+        let action_kind = match kind {
+            "package" => "package",
+            "test" => "tests",
+            "dependency" => "dependency",
+            _ => continue,
+        };
+        let target = value
+            .get("path")
+            .or_else(|| value.get("name"))
+            .or_else(|| value.get("target"))
+            .or_else(|| value.get("id"))
+            .and_then(Value::as_str)
+            .map(|target| {
+                target
+                    .strip_prefix("P:")
+                    .or_else(|| target.strip_prefix("T:"))
+                    .or_else(|| target.strip_prefix("D:"))
+                    .unwrap_or(target)
+            });
+        if let Some(target) = target.filter(|target| !target.trim().is_empty()) {
+            actions.push(GraphAction {
+                kind: action_kind.to_string(),
+                target: target.to_string(),
+                locator: None,
+                action: None,
+                syntax_query: None,
+            });
+        }
+    }
+}
+
+fn append_fact_note_actions(actions: &mut Vec<GraphAction>, value: Option<&Value>) {
+    let Some(values) = value.and_then(Value::as_array) else {
+        return;
+    };
+    for value in values {
+        let Some(kind) = value.get("kind").and_then(Value::as_str) else {
+            continue;
+        };
+        if !matches!(kind, "feature" | "cfg") {
+            continue;
+        }
+        let target = value
+            .get("message")
+            .and_then(Value::as_str)
+            .and_then(|message| message.split_whitespace().next())
+            .filter(|target| !target.is_empty());
+        if let Some(target) = target {
+            actions.push(GraphAction {
+                kind: kind.to_string(),
+                target: target.to_string(),
+                locator: None,
+                action: None,
+                syntax_query: None,
+            });
+        }
+    }
+}
+
+fn append_semantic_handle_actions(actions: &mut Vec<GraphAction>, value: Option<&Value>) {
+    let Some(values) = value.and_then(Value::as_array) else {
+        return;
+    };
+    for value in values {
+        if let Some(owner_path) = value.get("ownerPath").and_then(Value::as_str) {
+            actions.push(GraphAction {
+                kind: "owner".to_string(),
+                target: owner_path.to_string(),
+                locator: None,
+                action: None,
+                syntax_query: None,
+            });
+        }
+        append_string_actions(actions, value.get("testPaths"), "tests");
     }
 }
 
@@ -641,12 +758,18 @@ fn action_from_value(value: &Value, language_id: &str) -> Option<GraphAction> {
     let target = graph_item_target(value)
         .or_else(|| graph_item_ownerish_target(value))?
         .to_string();
-    let locator = graph_item_locator(value)?;
+    let locator = graph_item_locator(value);
+    if matches!(kind.as_str(), "hot" | "item-symbol") && locator.is_none() {
+        return None;
+    }
+    let syntax_query = locator
+        .as_ref()
+        .and_then(|_| graph_item_syntax_query(value, language_id, &target));
     Some(GraphAction {
         kind,
-        syntax_query: graph_item_syntax_query(value, language_id, &target),
+        syntax_query,
         target,
-        locator: Some(locator),
+        locator,
         action,
     })
 }
