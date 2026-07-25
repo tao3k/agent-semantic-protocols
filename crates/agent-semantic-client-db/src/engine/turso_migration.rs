@@ -1,11 +1,15 @@
 use std::{
-    fs,
+    fs::{self, File, OpenOptions},
     path::{Path, PathBuf},
 };
+
+use fs2::FileExt;
 
 use super::facade::{ClientDbEngine, ClientDbEngineWriteSession, block_on_db_engine_async};
 
 const TURSO_0_7_MIGRATION_RECEIPT_FILE: &str = "facts.turso.migration.v1.json";
+const TURSO_0_7_ACTIVE_MIGRATION_LOCK_FILE: &str = ".client-turso-0.7-migration.lock";
+pub(super) const TURSO_0_7_ACTIVE_MIGRATION_MARKER_FILE: &str = ".turso-0.7-cutover.v1.json";
 const EMPTY_FAMILY_DIGEST_V1: &str =
     "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262";
 
@@ -68,6 +72,39 @@ impl ClientDbTurso07ReplayFamilyReceipt {
     }
 }
 
+/// Evidence for obsolete derived tables preserved outside active authority.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientDbTurso07RetiredDerivedReceipt {
+    status: &'static str,
+    pub source_record_count: u64,
+    pub source_digest: String,
+    pub source_tables: Vec<String>,
+    disposition: &'static str,
+}
+
+impl ClientDbTurso07RetiredDerivedReceipt {
+    pub(crate) fn preserved(
+        source_record_count: u64,
+        source_digest: impl Into<String>,
+        source_tables: Vec<String>,
+    ) -> Self {
+        Self {
+            status: "preserved",
+            source_record_count,
+            source_digest: source_digest.into(),
+            source_tables,
+            disposition: "read-disabled-rollback-and-rebuild",
+        }
+    }
+
+    /// Record that no obsolete derived rows were present in the source.
+    #[must_use]
+    pub fn enumerated_empty() -> Self {
+        Self::preserved(0, EMPTY_FAMILY_DIGEST_V1, Vec::new())
+    }
+}
+
 /// Records count-and-digest evidence for every durable v1 input family.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -79,6 +116,7 @@ pub struct ClientDbTurso07ReplayCoverage {
     pub provider_command: ClientDbTurso07ReplayFamilyReceipt,
     pub artifact_event: ClientDbTurso07ReplayFamilyReceipt,
     pub artifact_pointer: ClientDbTurso07ReplayFamilyReceipt,
+    pub retired_derived_projection: ClientDbTurso07RetiredDerivedReceipt,
 }
 
 impl ClientDbTurso07ReplayCoverage {
@@ -110,7 +148,63 @@ pub struct ClientDbTurso07MigrationReport {
     pub replay_coverage: ClientDbTurso07ReplayCoverage,
 }
 
+/// Outcome of reconciling the canonical active project client directory.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ClientDbTurso07ActiveMigration {
+    Absent {
+        client_dir: PathBuf,
+    },
+    AlreadyCurrent {
+        client_dir: PathBuf,
+        db_path: PathBuf,
+    },
+    Migrated {
+        report: Box<ClientDbTurso07MigrationReport>,
+        rollback_client_dir: PathBuf,
+    },
+}
+
 impl ClientDbEngine {
+    /// Reconcile an active canonical project client directory to native Turso 0.7.
+    ///
+    /// Non-database artifacts remain in place. The legacy database authority is
+    /// moved into a read-disabled rollback directory only after a complete
+    /// staging replay has passed count-and-digest validation.
+    pub fn migrate_active_project_client_dir_to_turso_0_7(
+        client_dir: impl AsRef<Path>,
+    ) -> Result<ClientDbTurso07ActiveMigration, String> {
+        let client_dir = client_dir.as_ref().to_path_buf();
+        let parent = client_dir.parent().ok_or_else(|| {
+            format!(
+                "active project client dir has no parent: `{}`",
+                client_dir.display()
+            )
+        })?;
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create active Turso migration parent `{}`: {error}",
+                parent.display()
+            )
+        })?;
+        let lock_path = parent.join(TURSO_0_7_ACTIVE_MIGRATION_LOCK_FILE);
+        let lock_file = open_migration_lock(&lock_path)?;
+        lock_file.lock_exclusive().map_err(|error| {
+            format!(
+                "failed to acquire active Turso migration lock `{}`: {error}",
+                lock_path.display()
+            )
+        })?;
+
+        let outcome = migrate_active_project_client_dir_locked(&client_dir);
+        FileExt::unlock(&lock_file).map_err(|error| {
+            format!(
+                "failed to release active Turso migration lock `{}`: {error}",
+                lock_path.display()
+            )
+        })?;
+        outcome
+    }
+
     /// Fully replay a legacy project client DB into a fresh Turso 0.7 project DB.
     pub fn migrate_legacy_project_client_dir_to_turso_0_7(
         source_client_dir: impl AsRef<Path>,
@@ -272,6 +366,324 @@ impl ClientDbEngine {
             replay_coverage,
         })
     }
+}
+
+fn migrate_active_project_client_dir_locked(
+    client_dir: &Path,
+) -> Result<ClientDbTurso07ActiveMigration, String> {
+    let db_path = ClientDbEngine::turso_path_for_client_dir(client_dir);
+    let legacy_db_path = client_dir.join("client.turso");
+    if !db_path.is_file() && !legacy_db_path.is_file() {
+        return Ok(ClientDbTurso07ActiveMigration::Absent {
+            client_dir: client_dir.to_path_buf(),
+        });
+    }
+    let format_receipt_path = super::turso::turso_0_7_format_receipt_path(&db_path);
+    if db_path.is_file() && format_receipt_path.is_file() {
+        let reader = ClientDbEngine::open_read_session_client_dir(client_dir)?
+            .ok_or_else(|| format!("active Turso DB disappeared: `{}`", db_path.display()))?;
+        drop(reader);
+        return Ok(ClientDbTurso07ActiveMigration::AlreadyCurrent {
+            client_dir: client_dir.to_path_buf(),
+            db_path,
+        });
+    }
+
+    fs::create_dir_all(client_dir).map_err(|error| {
+        format!(
+            "failed to create active project client dir `{}`: {error}",
+            client_dir.display()
+        )
+    })?;
+    let nonce = migration_nonce()?;
+    let prepared_client_dir = client_dir
+        .parent()
+        .expect("active client parent checked")
+        .join(format!(".client-turso-0.7-prepared-{nonce}"));
+    let staged_report = ClientDbEngine::migrate_legacy_project_client_dir_to_turso_0_7(
+        client_dir,
+        &prepared_client_dir,
+    )?;
+    let rollback_client_dir = client_dir.join(format!("retired-client-turso-pre-0-7-{nonce}"));
+    fs::create_dir(&rollback_client_dir).map_err(|error| {
+        cleanup_staging_client_dir(&prepared_client_dir);
+        format!(
+            "failed to create read-disabled Turso rollback dir `{}`: {error}",
+            rollback_client_dir.display()
+        )
+    })?;
+    let marker_path = client_dir.join(TURSO_0_7_ACTIVE_MIGRATION_MARKER_FILE);
+    if let Err(error) =
+        write_active_migration_marker(&marker_path, &prepared_client_dir, &rollback_client_dir)
+    {
+        cleanup_staging_client_dir(&prepared_client_dir);
+        let _ = fs::remove_dir(&rollback_client_dir);
+        return Err(error);
+    }
+
+    evict_turso_client_dir(client_dir)?;
+    evict_turso_client_dir(&prepared_client_dir)?;
+    let old_files = database_authority_files(client_dir)?;
+    let new_files = database_authority_files(&prepared_client_dir)?;
+    let cutover = move_database_authority(
+        client_dir,
+        &prepared_client_dir,
+        &rollback_client_dir,
+        &old_files,
+        &new_files,
+    );
+    if let Err(error) = cutover {
+        let _ = fs::remove_file(&marker_path);
+        cleanup_staging_client_dir(&prepared_client_dir);
+        return Err(error);
+    }
+
+    let validation_path = db_path.clone();
+    let validation = block_on_db_engine_async(async move {
+        super::turso::validate_turso_0_7_migration_target(validation_path).await
+    });
+    if let Err(error) = validation {
+        let rollback =
+            rollback_promoted_authority(client_dir, &prepared_client_dir, &rollback_client_dir);
+        let _ = fs::remove_file(&marker_path);
+        cleanup_staging_client_dir(&prepared_client_dir);
+        return match rollback {
+            Ok(()) => Err(format!(
+                "promoted Turso 0.7 DB failed validation and was rolled back: {error}"
+            )),
+            Err(rollback_error) => Err(format!(
+                "promoted Turso 0.7 DB failed validation: {error}; rollback failed: {rollback_error}"
+            )),
+        };
+    }
+    fs::remove_file(&marker_path).map_err(|error| {
+        format!(
+            "failed to clear active Turso migration marker `{}`: {error}",
+            marker_path.display()
+        )
+    })?;
+    fs::remove_dir(&prepared_client_dir).map_err(|error| {
+        format!(
+            "failed to remove empty prepared Turso dir `{}`: {error}",
+            prepared_client_dir.display()
+        )
+    })?;
+
+    Ok(ClientDbTurso07ActiveMigration::Migrated {
+        report: Box::new(ClientDbTurso07MigrationReport {
+            target_client_dir: client_dir.to_path_buf(),
+            db_path: client_dir.join(
+                staged_report
+                    .db_path
+                    .file_name()
+                    .expect("staged DB path has file name"),
+            ),
+            format_receipt_path: client_dir.join(
+                staged_report
+                    .format_receipt_path
+                    .file_name()
+                    .expect("staged format receipt has file name"),
+            ),
+            search_projection_db_path: client_dir.join(
+                staged_report
+                    .search_projection_db_path
+                    .file_name()
+                    .expect("staged search DB path has file name"),
+            ),
+            search_projection_format_receipt_path: client_dir.join(
+                staged_report
+                    .search_projection_format_receipt_path
+                    .file_name()
+                    .expect("staged search receipt has file name"),
+            ),
+            migration_receipt_path: client_dir.join(
+                staged_report
+                    .migration_receipt_path
+                    .file_name()
+                    .expect("staged migration receipt has file name"),
+            ),
+            replay_coverage: staged_report.replay_coverage,
+        }),
+        rollback_client_dir,
+    })
+}
+
+fn open_migration_lock(lock_path: &Path) -> Result<File, String> {
+    OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lock_path)
+        .map_err(|error| {
+            format!(
+                "failed to open active Turso migration lock `{}`: {error}",
+                lock_path.display()
+            )
+        })
+}
+
+fn migration_nonce() -> Result<String, String> {
+    Ok(format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("failed to timestamp active Turso migration: {error}"))?
+            .as_nanos()
+    ))
+}
+
+fn write_active_migration_marker(
+    marker_path: &Path,
+    prepared_client_dir: &Path,
+    rollback_client_dir: &Path,
+) -> Result<(), String> {
+    let receipt = serde_json::to_vec_pretty(&serde_json::json!({
+        "schemaId": "agent.semantic-protocols.turso-client-db-active-cutover",
+        "schemaVersion": "1",
+        "physicalFormat": "turso-0.7-native",
+        "preparedClientDir": prepared_client_dir,
+        "rollbackClientDir": rollback_client_dir,
+    }))
+    .map_err(|error| format!("failed to encode active Turso migration marker: {error}"))?;
+    fs::write(marker_path, receipt).map_err(|error| {
+        format!(
+            "failed to write active Turso migration marker `{}`: {error}",
+            marker_path.display()
+        )
+    })
+}
+
+fn database_authority_files(client_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
+    for entry in fs::read_dir(client_dir).map_err(|error| {
+        format!(
+            "failed to inspect Turso client dir `{}`: {error}",
+            client_dir.display()
+        )
+    })? {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to inspect Turso client entry in `{}`: {error}",
+                client_dir.display()
+            )
+        })?;
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if path.is_file()
+            && (name.starts_with("facts.")
+                || name.starts_with("search-projection.")
+                || name == "client.turso"
+                || name == "client.turso-wal"
+                || name == "client.db-log")
+        {
+            files.push(path);
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn move_database_authority(
+    active_client_dir: &Path,
+    prepared_client_dir: &Path,
+    rollback_client_dir: &Path,
+    old_files: &[PathBuf],
+    new_files: &[PathBuf],
+) -> Result<(), String> {
+    let mut moved_old = Vec::with_capacity(old_files.len());
+    for source in old_files {
+        match move_file_to_dir(source, rollback_client_dir) {
+            Ok(target) => moved_old.push((source.clone(), target)),
+            Err(error) => return rollback_cutover(error, &moved_old, &[]),
+        }
+    }
+    let mut moved_new = Vec::with_capacity(new_files.len());
+    for source in new_files {
+        match move_file_to_dir(source, active_client_dir) {
+            Ok(target) => moved_new.push((source.clone(), target)),
+            Err(error) => return rollback_cutover(error, &moved_old, &moved_new),
+        }
+    }
+    if ClientDbEngine::turso_path_for_client_dir(prepared_client_dir).exists() {
+        return rollback_cutover(
+            "prepared Turso DB still exists after active promotion".to_string(),
+            &moved_old,
+            &moved_new,
+        );
+    }
+    Ok(())
+}
+
+fn move_file_to_dir(source: &Path, target_dir: &Path) -> Result<PathBuf, String> {
+    let file_name = source.file_name().ok_or_else(|| {
+        format!(
+            "Turso migration source has no file name: `{}`",
+            source.display()
+        )
+    })?;
+    let target = target_dir.join(file_name);
+    fs::rename(source, &target)
+        .map(|()| target.clone())
+        .map_err(|error| {
+            format!(
+                "failed to move Turso migration file `{}` to `{}`: {error}",
+                source.display(),
+                target.display()
+            )
+        })
+}
+
+fn rollback_cutover(
+    cutover_error: String,
+    moved_old: &[(PathBuf, PathBuf)],
+    moved_new: &[(PathBuf, PathBuf)],
+) -> Result<(), String> {
+    let mut rollback_errors = Vec::new();
+    if let Err(error) = reverse_moves(moved_new) {
+        rollback_errors.push(error);
+    }
+    if let Err(error) = reverse_moves(moved_old) {
+        rollback_errors.push(error);
+    }
+    if rollback_errors.is_empty() {
+        Err(cutover_error)
+    } else {
+        Err(format!(
+            "{cutover_error}; active Turso rollback also failed: {}",
+            rollback_errors.join("; ")
+        ))
+    }
+}
+
+fn reverse_moves(moves: &[(PathBuf, PathBuf)]) -> Result<(), String> {
+    for (source, target) in moves.iter().rev() {
+        fs::rename(target, source).map_err(|error| {
+            format!(
+                "failed to restore Turso migration file `{}` to `{}`: {error}",
+                target.display(),
+                source.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn rollback_promoted_authority(
+    active_client_dir: &Path,
+    prepared_client_dir: &Path,
+    rollback_client_dir: &Path,
+) -> Result<(), String> {
+    for source in database_authority_files(active_client_dir)? {
+        move_file_to_dir(&source, prepared_client_dir)?;
+    }
+    for source in database_authority_files(rollback_client_dir)? {
+        move_file_to_dir(&source, active_client_dir)?;
+    }
+    Ok(())
 }
 
 fn evict_turso_client_dir(client_dir: &Path) -> Result<(), String> {

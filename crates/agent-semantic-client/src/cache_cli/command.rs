@@ -20,6 +20,9 @@ use agent_semantic_client_db::{ClientDbEngine, ClientDbEngineReport, ClientDbRep
 use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout_in_client_cache};
 use serde_json::json;
 
+use super::source_index_evidence::{
+    source_index_lookup_artifact_evidence, source_index_refresh_artifact_evidence,
+};
 use super::structural_index_import::import_structural_index_artifacts;
 use crate::source_index::{
     SourceIndexLookupRequest, lookup_source_index_in_cache, refresh_runtime_source_index,
@@ -29,28 +32,6 @@ use crate::source_index::{
 const SOURCE_INDEX_REFRESH_INDEX_OWNER: &str = "db-engine";
 const SOURCE_INDEX_REFRESH_PHASE: &str = "source-index-db-engine";
 
-fn source_index_refresh_artifact_evidence(
-    report: &crate::source_index::SourceIndexRefreshReport,
-) -> agent_semantic_content_identity::DerivedSourceArtifactEvidence {
-    agent_semantic_content_identity::DerivedSourceArtifactEvidence::current(
-        agent_semantic_content_identity::DerivedSourceArtifactKind::SourceIndex,
-        report.index_artifact_digest(),
-        report.source_snapshot().clone(),
-    )
-}
-
-fn source_index_lookup_artifact_evidence(
-    result: &crate::source_index::SourceIndexLookupResult,
-) -> Option<agent_semantic_content_identity::DerivedSourceArtifactEvidence> {
-    Some(
-        agent_semantic_content_identity::DerivedSourceArtifactEvidence::current(
-            agent_semantic_content_identity::DerivedSourceArtifactKind::SourceIndex,
-            result.index_artifact_digest.as_deref()?,
-            result.source_snapshot.clone()?,
-        ),
-    )
-}
-
 pub(crate) fn run_cache(
     project_root: &Path,
     facade_language_id: Option<&LanguageId>,
@@ -58,6 +39,9 @@ pub(crate) fn run_cache(
     receipt_json: bool,
 ) -> Result<(), String> {
     match forwarded_args {
+        [subcommand, rest @ ..] if subcommand == "migrate" => {
+            super::run_cache_migration(project_root, rest, receipt_json)
+        }
         [subcommand, action, rest @ ..]
             if subcommand == "runtime-source" && action == "acquire" =>
         {

@@ -320,6 +320,8 @@ fn s5_turso_0_7_atomic_promotion_does_not_open_sqlite() {
                         ClientDbTurso07ReplayFamilyReceipt::enumerated_empty(),
                     artifact_pointer: agent_semantic_client_db::engine::
                         ClientDbTurso07ReplayFamilyReceipt::enumerated_empty(),
+                    retired_derived_projection: agent_semantic_client_db::engine::
+                        ClientDbTurso07RetiredDerivedReceipt::enumerated_empty(),
                 },
             )
         })
@@ -404,6 +406,44 @@ fn s5_turso_0_7_atomic_promotion_does_not_open_sqlite() {
     assert!(
         hit.is_some(),
         "Turso 0.7 cutover lost the replayed generation"
+    );
+}
+
+#[test]
+#[ignore = "explicit real-scale Turso 0.7 migration performance scenario"]
+fn s6_real_scale_turso_0_7_migration_receipt() {
+    let source_client_dir = std::env::var_os("ASP_TURSO_S6_SOURCE_CLIENT_DIR")
+        .map(PathBuf::from)
+        .expect("ASP_TURSO_S6_SOURCE_CLIENT_DIR must select a preserved legacy client dir");
+    let max_wall_ms = scenario_u64("ASP_TURSO_S6_MAX_WALL_MS", 10_000);
+    let root = scenario_root("real-scale-turso-0-7-migration");
+    let target_client_dir = root.join("live/client");
+    let started = Instant::now();
+    let migration = ClientDbEngine::migrate_legacy_project_client_dir_to_turso_0_7(
+        &source_client_dir,
+        &target_client_dir,
+    )
+    .expect("migrate preserved real-scale client DB");
+    let wall_ms = elapsed_us(started).saturating_add(999) / 1_000;
+    let receipt = json!({
+        "schemaId": "agent.semantic-protocols.project-turso-performance-receipt",
+        "schemaVersion": "1",
+        "scenario": "S6",
+        "sourceClientDir": source_client_dir,
+        "targetClientDir": target_client_dir,
+        "wallMs": wall_ms,
+        "maxWallMs": max_wall_ms,
+        "cacheManifestRows": migration.replay_coverage.cache_manifest.target_record_count,
+        "sourceIndexRows": migration.replay_coverage.source_index.target_record_count,
+        "artifactEventRows": migration.replay_coverage.artifact_event.target_record_count,
+        "retiredDerivedRows":
+            migration.replay_coverage.retired_derived_projection.source_record_count,
+    });
+    println!("{receipt}");
+    cleanup_scenario_root(&root);
+    assert!(
+        wall_ms <= max_wall_ms,
+        "real-scale Turso 0.7 migration wall {wall_ms}ms exceeded {max_wall_ms}ms"
     );
 }
 

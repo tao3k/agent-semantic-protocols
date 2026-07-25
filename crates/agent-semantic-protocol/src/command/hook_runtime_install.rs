@@ -110,6 +110,20 @@ fn run_install_for_client(
     let binary_install_plan = ProtocolBinaryInstallPlan::capture()?;
     let runtime_state = project_runtime_state(&project_root)?;
     timings.mark("runtime-state");
+    let client_db_migration =
+        agent_semantic_client_db::ClientDbEngine::migrate_active_project_client_dir_to_turso_0_7(
+            &runtime_state.client_cache_dir,
+        )?;
+    let client_db_migration_status = match client_db_migration {
+        agent_semantic_client_db::engine::ClientDbTurso07ActiveMigration::Absent { .. } => "absent",
+        agent_semantic_client_db::engine::ClientDbTurso07ActiveMigration::AlreadyCurrent {
+            ..
+        } => "current",
+        agent_semantic_client_db::engine::ClientDbTurso07ActiveMigration::Migrated { .. } => {
+            "migrated"
+        }
+    };
+    timings.mark("client-db-migration");
     let org_state_sync =
         crate::command::org_capture::require_materialized_org_state(&project_root)?;
     timings.mark("org-state");
@@ -232,7 +246,7 @@ fn run_install_for_client(
         user_config_status.as_str()
     );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} clientDbMigration={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
@@ -245,6 +259,7 @@ fn run_install_for_client(
         display_path(&project_root, &runtime_state.protocol_home.join("org")),
         org_state_sync.status,
         org_state_sync.source_index_status,
+        client_db_migration_status,
         display_path(&project_root, &config_path),
         extra_config_receipt,
         project_skill_receipt,

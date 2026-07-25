@@ -50,7 +50,8 @@
         "structuralIndex",
         "providerCommand",
         "artifactEvent",
-        "artifactPointer"
+        "artifactPointer",
+        "retiredDerivedProjection"
       ],
       "properties": {
         "cacheManifest": {
@@ -73,6 +74,9 @@
         },
         "artifactPointer": {
           "$ref": "#/$defs/familyReceipt"
+        },
+        "retiredDerivedProjection": {
+          "$ref": "#/$defs/retiredDerivedProjectionReceipt"
         }
       }
     }
@@ -107,6 +111,41 @@
         "targetDigest": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "retiredDerivedProjectionReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "sourceRecordCount",
+        "sourceDigest",
+        "sourceTables",
+        "disposition"
+      ],
+      "properties": {
+        "status": {
+          "const": "preserved"
+        },
+        "sourceRecordCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceTables": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "disposition": {
+          "const": "read-disabled-rollback-and-rebuild"
         }
       }
     }

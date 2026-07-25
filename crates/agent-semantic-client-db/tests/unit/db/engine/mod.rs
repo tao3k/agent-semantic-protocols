@@ -39,6 +39,7 @@ include!("turso_cdc_storage.rs");
 include!("turso_encrypted_storage.rs");
 include!("storage_performance_receipt.rs");
 include!("storage_contract.rs");
+include!("turso_migration.rs");
 include!("turso_agent_storage.rs");
 
 mod turso_mvcc_keyset_tests {

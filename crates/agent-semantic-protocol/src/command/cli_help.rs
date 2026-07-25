@@ -162,6 +162,7 @@ fn cache_command() -> Command {
             .value_name("PATH")
             .help("Select the workspace"),
     )
+    .subcommand(agent_semantic_client::cache_migration_clap_command())
     .subcommand(agent_semantic_client::project_registry_gc_clap_command())
 }
 
@@ -676,6 +677,7 @@ fn selected_command_legacy(args: &[String]) -> Command {
         (Some("providers"), _) => providers_command(),
         (Some("tools"), _) => tools_command(),
         (Some("wrap"), _) => wrap_command(),
+        (Some("cache"), Some("migrate")) => agent_semantic_client::cache_migration_clap_command(),
         (Some("cache"), Some("gc")) => agent_semantic_client::project_registry_gc_clap_command(),
         (Some("cache"), _) => cache_command(),
         (Some("cloud"), _) => cloud_command(),

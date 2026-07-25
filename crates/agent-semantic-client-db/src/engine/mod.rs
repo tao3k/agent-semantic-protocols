@@ -39,8 +39,8 @@ pub use facade::{
 pub use turso::TURSO_BOOTSTRAP_TABLE;
 pub use turso::TursoClientDbEngineReport;
 pub use turso_migration::{
-    ClientDbTurso07MigrationReport, ClientDbTurso07ReplayCoverage,
-    ClientDbTurso07ReplayFamilyReceipt,
+    ClientDbTurso07ActiveMigration, ClientDbTurso07MigrationReport, ClientDbTurso07ReplayCoverage,
+    ClientDbTurso07ReplayFamilyReceipt, ClientDbTurso07RetiredDerivedReceipt,
 };
 pub use turso_search::{
     TursoClientDbSearchDocument, TursoClientDbSearchHit, TursoClientDbSearchResult,

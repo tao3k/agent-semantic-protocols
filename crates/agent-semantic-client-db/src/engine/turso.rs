@@ -129,6 +129,7 @@ pub(super) fn prepare_turso_client_db_path(db_path: &Path) -> Result<PathBuf, St
             .map_err(|error| format!("failed to create Turso client DB dir: {error}"))?;
     }
     let turso_path = db_path.with_file_name(TURSO_CLIENT_DB_FILE);
+    ensure_no_active_turso_migration(&turso_path)?;
     ensure_turso_0_7_format_receipt(&turso_path)?;
     Ok(turso_path)
 }
@@ -154,6 +155,21 @@ fn ensure_turso_0_7_format_receipt(turso_path: &Path) -> Result<(), String> {
             "existing client DB `{}` has no Turso 0.7 format receipt `{}`; full staging migration is required and in-place compatibility bootstrap is forbidden",
             turso_path.display(),
             receipt_path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_no_active_turso_migration(turso_path: &Path) -> Result<(), String> {
+    let Some(client_dir) = turso_path.parent() else {
+        return Ok(());
+    };
+    let marker_path =
+        client_dir.join(super::turso_migration::TURSO_0_7_ACTIVE_MIGRATION_MARKER_FILE);
+    if marker_path.is_file() {
+        return Err(format!(
+            "active Turso 0.7 cutover is in progress for `{}`; retry after migration completes",
+            client_dir.display()
         ));
     }
     Ok(())
@@ -356,8 +372,16 @@ pub(super) fn turso_bootstrap_report(db_path: &Path) -> TursoClientDbEngineRepor
 pub(super) async fn open_turso_client_db_read_only(
     turso_path: PathBuf,
 ) -> Result<turso::Connection, String> {
+    ensure_no_active_turso_migration(&turso_path)?;
     ensure_turso_0_7_format_receipt(&turso_path)?;
     shared_turso_read_only_connection(&turso_path).await
+}
+
+pub(super) async fn validate_turso_0_7_migration_target(turso_path: PathBuf) -> Result<(), String> {
+    ensure_turso_0_7_format_receipt(&turso_path)?;
+    let connection = shared_turso_read_only_connection(&turso_path).await?;
+    drop(connection);
+    Ok(())
 }
 
 fn turso_builder(turso_path: &Path) -> turso::Builder {
