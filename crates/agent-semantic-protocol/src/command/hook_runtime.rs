@@ -574,18 +574,19 @@ fn enforce_resident_child_deny_contract(
     let payload_session_id = ["session_id", "sessionId"]
         .iter()
         .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str));
-    let transcript_targets_other_session = ["transcript_path", "transcriptPath"]
+    let transcript_matches_payload_session = ["transcript_path", "transcriptPath"]
         .iter()
         .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str))
         .and_then(|path| Path::new(path).file_name())
         .and_then(|name| name.to_str())
         .zip(payload_session_id)
-        .is_some_and(|(name, session_id)| !name.contains(session_id));
+        .map(|(name, session_id)| name.contains(session_id));
     let codex_root_thread_id = env::var("CODEX_THREAD_ID").ok();
     if payload_agent_id.is_none()
         && payload_session_id.is_some()
-        && payload_session_id == codex_root_thread_id.as_deref()
-        && !transcript_targets_other_session
+        && (payload_session_id == codex_root_thread_id.as_deref()
+            || transcript_matches_payload_session == Some(true))
+        && transcript_matches_payload_session != Some(false)
     {
         decision.fields.insert(
             "payloadLiveTargetIdentityProofStatus".to_string(),

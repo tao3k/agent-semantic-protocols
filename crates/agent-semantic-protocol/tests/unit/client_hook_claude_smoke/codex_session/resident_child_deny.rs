@@ -227,6 +227,36 @@ fn codex_root_current_session_match_keeps_main_bootstrap() {
 }
 
 #[test]
+fn codex_root_transcript_match_keeps_main_bootstrap_without_thread_env() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    let root_session_id = "019f126d-0000-7000-8000-000000000162";
+    let transcript_path = root.join(format!("rollout-{root_session_id}.jsonl"));
+
+    let decision = run_codex_pre_tool_decision_with_env(
+        &root,
+        json!({
+            "session_id": root_session_id,
+            "transcript_path": transcript_path,
+            "tool_name": "Bash",
+            "tool_input": {"command": "rg -n registry crates"}
+        }),
+        &[],
+    );
+
+    assert_eq!(decision["decision"].as_str(), Some("deny"));
+    assert_eq!(
+        decision["fields"]["payloadLiveTargetIdentityProofStatus"],
+        "root-hook-envelope"
+    );
+    assert_eq!(
+        decision["fields"]["requiredAction"],
+        "enter-asp-explore-choice-pane"
+    );
+}
+
+#[test]
 fn registered_resident_child_transcript_allows_parser_owned_rust_search() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
