@@ -7,7 +7,7 @@ use self::hook_runtime_skill_render::{
     render_agent_semantic_protocols_installed_skill, render_agent_semantic_protocols_plugin_skill,
 };
 
-use agent_semantic_hook::{HookActivation, RuntimeProfiles, project_agent_config_path};
+use agent_semantic_hook::{project_agent_config_path, HookActivation, RuntimeProfiles};
 use agent_semantic_runtime::project_state_paths;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -125,6 +125,13 @@ fn plugin_skill_path(project_root: &Path) -> Result<PathBuf, String> {
     Ok(project_root.join(codex_project_plugin_cache_skill_config_path()?))
 }
 
+fn codex_project_plugin_cache_skill_config_path() -> Result<String, String> {
+    let version = codex_plugin_manifest_version()?;
+    Ok(format!(
+        ".codex/plugins/cache/{ASP_CODEX_PLUGIN_MARKETPLACE_NAME}/{ASP_CODEX_PLUGIN_NAME}/{version}/skills/agent-semantic-protocols/SKILL.org"
+    ))
+}
+
 fn merge_agent_semantic_protocols_agent_config(existing: &str) -> Result<String, String> {
     let mut config = if existing.trim().is_empty() {
         toml::Value::Table(toml::Table::new())
@@ -134,24 +141,35 @@ fn merge_agent_semantic_protocols_agent_config(existing: &str) -> Result<String,
     let root = config
         .as_table_mut()
         .ok_or_else(|| "root document must be a TOML table".to_string())?;
-    let skills = root
-        .entry("skills".to_string())
-        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
-    let skills = skills
-        .as_table_mut()
-        .ok_or_else(|| "`skills` must be a TOML table".to_string())?;
-    let asp_skill = skills
-        .entry("agent-semantic-protocols".to_string())
-        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
-    let asp_skill = asp_skill
-        .as_table_mut()
-        .ok_or_else(|| "`skills.agent-semantic-protocols` must be a TOML table".to_string())?;
-    asp_skill.insert(
-        "pluginSkill".to_string(),
-        toml::Value::String(codex_project_plugin_cache_skill_config_path()?),
-    );
-    asp_skill.remove("aspOrg");
-    asp_skill.remove("orgArtifacts");
+    let remove_empty_skills = root
+        .get_mut("skills")
+        .map(|skills| {
+            let skills = skills
+                .as_table_mut()
+                .ok_or_else(|| "`skills` must be a TOML table".to_string())?;
+            let remove_empty_asp_skill = skills
+                .get_mut("agent-semantic-protocols")
+                .map(|asp_skill| {
+                    let asp_skill = asp_skill.as_table_mut().ok_or_else(|| {
+                        "`skills.agent-semantic-protocols` must be a TOML table".to_string()
+                    })?;
+                    asp_skill.remove("pluginSkill");
+                    asp_skill.remove("aspOrg");
+                    asp_skill.remove("orgArtifacts");
+                    Ok::<bool, String>(asp_skill.is_empty())
+                })
+                .transpose()?
+                .unwrap_or(false);
+            if remove_empty_asp_skill {
+                skills.remove("agent-semantic-protocols");
+            }
+            Ok::<bool, String>(skills.is_empty())
+        })
+        .transpose()?
+        .unwrap_or(false);
+    if remove_empty_skills {
+        root.remove("skills");
+    }
 
     let remove_empty_hook = root
         .get_mut("hook")
@@ -165,13 +183,6 @@ fn merge_agent_semantic_protocols_agent_config(existing: &str) -> Result<String,
         root.remove("hook");
     }
     toml::to_string_pretty(&config).map_err(|error| error.to_string())
-}
-
-fn codex_project_plugin_cache_skill_config_path() -> Result<String, String> {
-    let version = codex_plugin_manifest_version()?;
-    Ok(format!(
-        ".codex/plugins/cache/{ASP_CODEX_PLUGIN_MARKETPLACE_NAME}/{ASP_CODEX_PLUGIN_NAME}/{version}/skills/agent-semantic-protocols/SKILL.org"
-    ))
 }
 
 fn global_codex_plugin_cache_skill_path() -> Result<PathBuf, String> {

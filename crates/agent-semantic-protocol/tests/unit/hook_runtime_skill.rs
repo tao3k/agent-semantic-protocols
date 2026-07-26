@@ -269,7 +269,7 @@ fn install_plugin_skill_writes_only_codex_plugin_skill() {
 }
 
 #[test]
-fn install_agent_config_preserves_providers_and_adds_skill_config() {
+fn install_agent_config_preserves_providers_and_removes_legacy_skill_config() {
     let root = temp_project_root("agent-config");
     let config_path = root.join(".agents").join("asp.toml");
     std::fs::create_dir_all(config_path.parent().expect("agent config parent"))
@@ -280,8 +280,12 @@ fn install_agent_config_preserves_providers_and_adds_skill_config() {
 bin = \"tools/rs-harness\"\n\
 \n\
 [skills.agent-semantic-protocols]\n\
+pluginSkill = \".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org\"\n\
 aspOrg = \"/old/ASP_ORG_SKILL.org#asp-org\"\n\
 orgArtifacts = \"/old/artifacts/org\"\n\
+\n\
+[skills.other]\n\
+enabled = true\n\
 \n\
 [hook.agentOrgArtifacts]\n\
 enabled = true\n\
@@ -297,16 +301,13 @@ entrySkillPath = \"/old/ASP_ORG_SKILL.org\"\n",
 
     assert!(config.contains("[providers.rust]"), "{config}");
     assert!(config.contains("bin = \"tools/rs-harness\""), "{config}");
+    assert!(config.contains("[skills.other]"), "{config}");
+    assert!(config.contains("enabled = true"), "{config}");
     assert!(
-        config.contains("[skills.agent-semantic-protocols]"),
+        !config.contains("[skills.agent-semantic-protocols]"),
         "{config}"
     );
-    assert!(
-        config.contains(
-            "pluginSkill = \".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org\""
-        ),
-        "{config}"
-    );
+    assert!(!config.contains("pluginSkill"), "{config}");
     assert!(!config.contains("template = \"SKILL.org\""), "{config}");
     assert!(!config.contains("projectSkill = "), "{config}");
     assert!(!config.contains("aspOrg"), "{config}");

@@ -470,15 +470,10 @@ fallback = ["gpt-5.4-mini"]
         let agent_config =
             std::fs::read_to_string(&agent_config_path).expect("read canonical agent config");
         assert!(
-            agent_config.contains("[skills.agent-semantic-protocols]"),
+            !agent_config.contains("[skills.agent-semantic-protocols]"),
             "{agent_config}"
         );
-        assert!(
-            agent_config.contains(
-                "pluginSkill = \".codex/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org\""
-            ),
-            "{agent_config}"
-        );
+        assert!(!agent_config.contains("pluginSkill"), "{agent_config}");
         assert!(!agent_config.contains("aspOrg"), "{agent_config}");
         assert!(!agent_config.contains("orgArtifacts"), "{agent_config}");
         assert!(
