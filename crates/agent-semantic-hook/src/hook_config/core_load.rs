@@ -2,7 +2,8 @@ use std::path::{Path, PathBuf};
 
 use agent_semantic_config::{
     default_hook_client_config_template, load_asp_project_config_file,
-    load_hook_client_config_file, merge_asp_project_hook_config,
+    load_hook_client_config_file, load_hook_client_config_overlay_file,
+    merge_asp_project_hook_config,
 };
 
 use crate::hook_config::core::{ClientHookConfig, compile_config};
@@ -32,6 +33,18 @@ pub fn load_client_config_for_project(
     project_root: &Path,
 ) -> Result<ClientHookConfig, String> {
     let parsed = load_hook_client_config_file(path)?;
+    let agent_config_path = project_agent_config_path(project_root);
+    let project = load_asp_project_config_file(&agent_config_path)?;
+    compile_config(merge_asp_project_hook_config(parsed, project)?)
+}
+
+/// Load a partial hook config over the embedded defaults, then apply
+/// project-local hook declarations.
+pub fn load_client_config_overlay_for_project(
+    path: &Path,
+    project_root: &Path,
+) -> Result<ClientHookConfig, String> {
+    let parsed = load_hook_client_config_overlay_file(path)?;
     let agent_config_path = project_agent_config_path(project_root);
     let project = load_asp_project_config_file(&agent_config_path)?;
     compile_config(merge_asp_project_hook_config(parsed, project)?)

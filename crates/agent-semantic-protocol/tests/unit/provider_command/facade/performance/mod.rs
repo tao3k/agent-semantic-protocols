@@ -730,7 +730,7 @@ fn dependency_manifest_graph_requests_finish_inside_performance_gate() {
         &root,
         &providers
             .iter()
-            .map(|(language, _, _)| provider(*language, Vec::new()))
+            .map(|(language, _binary, _)| provider(*language, Vec::new()))
             .collect::<Vec<_>>(),
     );
 

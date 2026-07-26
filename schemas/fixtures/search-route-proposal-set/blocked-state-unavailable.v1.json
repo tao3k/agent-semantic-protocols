@@ -1,0 +1,20 @@
+{
+  "schemaId": "agent.semantic-protocols.search-route-proposal-set",
+  "schemaVersion": "1",
+  "proposalSetId": "PS2",
+  "runId": "R1",
+  "basedOnRevision": 0,
+  "contextBindingDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "intentDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "catalogDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "plannerBackendId": "graph-turbo",
+  "plannerBackendDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "state": "blocked",
+  "blocker": {
+    "reasonKind": "state-unavailable",
+    "providerId": "python-provider",
+    "capabilityRef": "state-client-read",
+    "detail": "authorized State client is unavailable"
+  },
+  "setDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

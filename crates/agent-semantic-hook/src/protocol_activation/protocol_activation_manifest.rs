@@ -332,6 +332,20 @@ impl ProviderSemanticFactsIntentAxis {
     pub fn roles(&self) -> &[ProviderQueryPackTermRole] {
         &self.roles
     }
+
+    /// Return this intent axis with a replaced typed term set.
+    #[must_use]
+    pub fn with_terms<I, S>(mut self, terms: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.terms = terms
+            .into_iter()
+            .map(|term| ProviderSemanticFactTerm(term.into()))
+            .collect();
+        self
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

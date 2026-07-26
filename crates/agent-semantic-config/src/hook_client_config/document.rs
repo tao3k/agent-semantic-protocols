@@ -404,6 +404,75 @@ pub fn load_hook_client_config_file(path: &Path) -> Result<HookClientConfigFile,
     Ok(parsed)
 }
 
+/// Load an explicit hook config as a typed overlay on the embedded TOML
+/// defaults. Complete managed configs continue to use
+/// [`load_hook_client_config_file`] and remain strict about required tables.
+pub fn load_hook_client_config_overlay_file(path: &Path) -> Result<HookClientConfigFile, String> {
+    if !path.is_file() {
+        return Err(format!(
+            "hook client config does not exist: {}",
+            path.display()
+        ));
+    }
+    let mut merged = toml::from_str::<toml::Value>(&default_hook_client_config_template())
+        .map_err(|error| format!("failed to parse default hook client config template: {error}"))?;
+    let overlay_source = std::fs::read_to_string(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let overlay = toml::from_str::<toml::Value>(&overlay_source)
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+    let overlay_declares_contract_fingerprint = overlay.get("contractFingerprint").is_some();
+    merge_toml_overlay(&mut merged, overlay);
+    if !overlay_declares_contract_fingerprint && let Some(document) = merged.as_table_mut() {
+        document.remove("contractFingerprint");
+    }
+    let parsed = merged
+        .try_into::<HookClientConfigFile>()
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+    validate_config(&parsed)?;
+    Ok(parsed)
+}
+
+/// Read only the ownership-bearing contract fingerprint declared by a hook
+/// config. A missing fingerprint identifies a valid user overlay; a present
+/// fingerprint identifies an ASP-managed complete document.
+pub fn load_hook_client_config_declared_contract_fingerprint(
+    path: &Path,
+) -> Result<Option<String>, String> {
+    if !path.is_file() {
+        return Err(format!(
+            "hook client config does not exist: {}",
+            path.display()
+        ));
+    }
+    let source = std::fs::read_to_string(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let document = toml::from_str::<toml::Value>(&source)
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+    match document.get("contractFingerprint") {
+        None => Ok(None),
+        Some(toml::Value::String(fingerprint)) => Ok(Some(fingerprint.clone())),
+        Some(_) => Err(format!(
+            "{} contractFingerprint must be a string",
+            path.display()
+        )),
+    }
+}
+
+fn merge_toml_overlay(base: &mut toml::Value, overlay: toml::Value) {
+    match (base, overlay) {
+        (toml::Value::Table(base), toml::Value::Table(overlay)) => {
+            for (key, value) in overlay {
+                if let Some(base_value) = base.get_mut(&key) {
+                    merge_toml_overlay(base_value, value);
+                } else {
+                    base.insert(key, value);
+                }
+            }
+        }
+        (base, overlay) => *base = overlay,
+    }
+}
+
 /// Load the ASP project config. Unknown project sections are ignored here; each
 /// subsystem owns its own parsed subset.
 pub fn load_asp_project_config_file(path: &Path) -> Result<AspProjectConfigFile, String> {

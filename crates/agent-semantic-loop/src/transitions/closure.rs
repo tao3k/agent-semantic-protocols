@@ -58,12 +58,12 @@ where
                 ));
             }
         };
-        if !matches!(
-            current.wire().execution,
-            ExecutionAuthority::None
-                | ExecutionAuthority::Consumed { .. }
-                | ExecutionAuthority::Revoked { .. }
-        ) {
+        if current.wire().executions.iter().any(|execution| {
+            !matches!(
+                execution,
+                ExecutionAuthority::Consumed { .. } | ExecutionAuthority::Revoked { .. }
+            )
+        }) {
             return Err(GraphRouterError::InvalidTransition(
                 "search closure requires no active execution authority",
             ));
@@ -73,6 +73,7 @@ where
             intent_digest,
             program_id,
             program_digest,
+            program,
             ..
         } = &current.wire().active_program
         else {
@@ -80,6 +81,17 @@ where
                 "search closure requires an admitted route program",
             ));
         };
+        if program.execution_groups.iter().any(|group| {
+            !current
+                .wire()
+                .joined_execution_groups
+                .iter()
+                .any(|joined| joined.execution_group_id == group.group_id)
+        }) {
+            return Err(GraphRouterError::InvalidTransition(
+                "search closure requires every execution group joined",
+            ));
+        }
 
         let required_count = current
             .wire()
@@ -256,6 +268,8 @@ where
             expected,
             ContextProductEvent::ClosureFinalized(receipt),
             next_state,
+            current.search_loop_capabilities().to_vec(),
+            current.search_loop_runtime().cloned(),
             committed_at_ms,
         )
         .await

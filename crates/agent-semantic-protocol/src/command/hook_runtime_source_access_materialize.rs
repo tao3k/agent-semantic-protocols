@@ -11,6 +11,9 @@ pub(super) fn materialize_source_access_deny_message(
     if hook_selected_resident_execution(decision) {
         return;
     }
+    if hook_config.contract_fingerprint().is_none() {
+        return;
+    }
     decision
         .fields
         .entry("residentChildName".to_string())

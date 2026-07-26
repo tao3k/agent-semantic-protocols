@@ -480,6 +480,7 @@ pub(super) fn classify_session_start_bootstrap(
                         "agentSessionDuplicateChildAction".to_string(),
                         serde_json::Value::String("close-native-subagent".to_string()),
                     );
+                    decision.decision = DecisionKind::Deny;
                     return Ok(Some(decision));
                 }
                 let message_target_id = codex_native_event

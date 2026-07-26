@@ -101,7 +101,7 @@ fn resident_authorization_rejects_missing_proof() {
         "asp_explorer",
         "asp_explorer",
         true,
-        "explorer",
+        "asp_explorer",
         None,
         "019f-root-session",
     );
@@ -114,7 +114,7 @@ fn resident_authorization_rejects_wrong_session() {
         "asp_explorer",
         "asp_explorer",
         true,
-        "explorer",
+        "asp_explorer",
         Some(ResidentChildIdentityProof::CodexHookPayloadLiveTarget),
         "019f-other-session",
     );
@@ -127,7 +127,7 @@ fn resident_authorization_rejects_disabled_resident() {
         "asp_explorer",
         "asp_explorer",
         false,
-        "explorer",
+        "asp_explorer",
         Some(ResidentChildIdentityProof::CodexHookPayloadLiveTarget),
         "019f-root-session",
     );

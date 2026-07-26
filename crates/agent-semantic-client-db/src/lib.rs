@@ -112,3 +112,4 @@ pub use types::{
     ClientDbSyntaxNodeType, ClientDbSyntaxQueryInputKind, ClientDbSyntaxQueryLookup,
     ClientDbSyntaxQueryReplay,
 };
+extern crate self as agent_semantic_client_db;

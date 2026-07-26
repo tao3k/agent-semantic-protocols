@@ -33,6 +33,15 @@ pub enum RouteActionClass {
     ReasoningCheckpoint,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RequiredClosure {
+    Discovery,
+    Existential,
+    Enumeration,
+    NegativeCompleteness,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RouteNode {
@@ -40,10 +49,11 @@ pub struct RouteNode {
     pub action_class: RouteActionClass,
     pub provider_id: ProtocolId,
     pub language_id: ProtocolId,
-    pub operation: ProtocolId,
+    pub catalog_id: ProtocolId,
     pub input_template_digest: Digest,
     pub covers_obligation_ids: Vec<ProtocolId>,
     pub depends_on_node_ids: Vec<ProtocolId>,
+    pub required_closure: RequiredClosure,
     pub evidence_predicate: EvidencePredicate,
 }
 
@@ -62,12 +72,50 @@ pub struct RouteProposal {
     pub based_on_revision: u64,
     pub context_binding_digest: Digest,
     pub intent_digest: Digest,
+    pub catalog_digest: Digest,
     pub proposed_by: ProtocolId,
+    pub agent_reasoning_receipt_ref: ProtocolId,
+    pub graph_derivation_receipt_ref: ProtocolId,
     pub obligation_ids: Vec<ProtocolId>,
     pub nodes: Vec<RouteNode>,
     pub edges: Vec<RouteEdge>,
+    pub execution_groups: Vec<RouteProposalExecutionGroup>,
+    pub joins: Vec<RouteProposalJoin>,
+    pub estimate_receipt_refs: Vec<ProtocolId>,
     pub budget_proposal: SearchBudget,
     pub proposal_digest: Digest,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RouteExecutionMode {
+    Batch,
+    Serial,
+    Parallel,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RouteProposalExecutionGroup {
+    pub group_id: ProtocolId,
+    pub mode: RouteExecutionMode,
+    pub node_ids: Vec<ProtocolId>,
+    pub join_policy: JoinPolicy,
+    pub max_parallel: u64,
+    pub derivation_receipt_ref: ProtocolId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch_capability_ref: Option<ProtocolId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub independence_proof_ref: Option<ProtocolId>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RouteProposalJoin {
+    pub join_id: ProtocolId,
+    pub required_node_ids: Vec<ProtocolId>,
+    pub continuation_node_id: ProtocolId,
+    pub policy: JoinPolicy,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -76,16 +124,35 @@ pub struct RouteStage {
     pub stage_id: ProtocolId,
     pub proposal_node_id: ProtocolId,
     pub provider_id: ProtocolId,
-    pub operation: ProtocolId,
+    pub catalog_id: ProtocolId,
     pub input_template_digest: Digest,
     pub covers_obligation_ids: Vec<ProtocolId>,
+    pub required_closure: RequiredClosure,
     pub evidence_predicate: EvidencePredicate,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum JoinPolicy {
-    All,
+    AllRequired,
+    FirstExact,
+    CompleteEnumeration,
+    DisambiguateAll,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RouteExecutionGroup {
+    pub group_id: ProtocolId,
+    pub mode: RouteExecutionMode,
+    pub stage_ids: Vec<ProtocolId>,
+    pub join_policy: JoinPolicy,
+    pub max_parallel: u64,
+    pub derivation_receipt_ref: ProtocolId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batch_capability_ref: Option<ProtocolId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub independence_proof_ref: Option<ProtocolId>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -106,7 +173,9 @@ pub struct RouteProgram {
     pub admitted_at_revision: u64,
     pub context_binding_digest: Digest,
     pub graph_digest: Digest,
+    pub catalog_digest: Digest,
     pub stages: Vec<RouteStage>,
+    pub execution_groups: Vec<RouteExecutionGroup>,
     pub edges: Vec<RouteEdge>,
     pub joins: Vec<RouteJoin>,
     pub budget_limit: SearchBudget,
@@ -151,7 +220,8 @@ pub struct ActionAdmitted {
     pub pre_state_digest: Digest,
     pub admission_id: ProtocolId,
     pub program_id: ProtocolId,
-    pub stage_id: ProtocolId,
+    pub execution_group_id: ProtocolId,
+    pub stage_ids: Vec<ProtocolId>,
     pub context_binding_digest: Digest,
     pub resolved_input_digest: Digest,
     pub action_key: Digest,
@@ -189,7 +259,8 @@ pub struct ExecutionGrantIssued {
     pub admission_digest: Digest,
     pub program_id: ProtocolId,
     pub program_digest: Digest,
-    pub stage_id: ProtocolId,
+    pub execution_group_id: ProtocolId,
+    pub stage_ids: Vec<ProtocolId>,
     pub action_key: Digest,
     pub context_binding_digest: Digest,
     pub resolved_input_digest: Digest,
@@ -295,6 +366,8 @@ pub struct ExecutionStarted {
     pub grant_digest: Digest,
     pub attempt_id: ProtocolId,
     pub attempt_digest: Digest,
+    pub execution_group_id: ProtocolId,
+    pub stage_ids: Vec<ProtocolId>,
     pub provider_id: ProtocolId,
     pub operation: ProtocolId,
     pub lease_fence: u64,
@@ -321,6 +394,10 @@ pub struct ExecutionConsumed {
     pub grant_id: ProtocolId,
     pub grant_digest: Digest,
     pub attempt_id: ProtocolId,
+    pub execution_group_id: ProtocolId,
+    pub stage_ids: Vec<ProtocolId>,
+    pub provider_id: ProtocolId,
+    pub operation: ProtocolId,
     pub result_receipt_ref: ProtocolId,
     pub result_digest: Digest,
     pub lease_fence: u64,
@@ -343,6 +420,10 @@ pub struct ExecutionRevoked {
     pub state_revision: u64,
     pub pre_state_digest: Digest,
     pub reason_code: ProtocolId,
+    pub execution_group_id: ProtocolId,
+    pub stage_ids: Vec<ProtocolId>,
+    pub provider_id: ProtocolId,
+    pub operation: ProtocolId,
     pub admission_id: Option<ProtocolId>,
     pub grant_id: Option<ProtocolId>,
     pub action_key: Option<Digest>,
@@ -355,6 +436,29 @@ pub enum ExecutionRevokedEventType {
     ExecutionRevoked,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ExecutionGroupJoinedEventType {
+    #[serde(rename = "ExecutionGroupJoined")]
+    ExecutionGroupJoined,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExecutionGroupJoined {
+    pub event_type: ExecutionGroupJoinedEventType,
+    pub event_id: ProtocolId,
+    pub run_id: ProtocolId,
+    pub sequence: u64,
+    pub state_revision: u64,
+    pub pre_state_digest: Digest,
+    pub program_digest: Digest,
+    pub execution_group_id: ProtocolId,
+    pub policy: JoinPolicy,
+    pub result_receipt_refs: Vec<ProtocolId>,
+    pub joined_group_digest: Digest,
+    pub event_digest: Digest,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ContextProductEvent {
@@ -364,6 +468,7 @@ pub enum ContextProductEvent {
     ExecutionStarted(ExecutionStarted),
     ExecutionConsumed(ExecutionConsumed),
     ExecutionRevoked(ExecutionRevoked),
+    ExecutionGroupJoined(ExecutionGroupJoined),
     ClosureFinalized(SearchClosureReceipt),
 }
 
@@ -376,6 +481,7 @@ impl ContextProductEvent {
             Self::ExecutionStarted(event) => &event.run_id,
             Self::ExecutionConsumed(event) => &event.run_id,
             Self::ExecutionRevoked(event) => &event.run_id,
+            Self::ExecutionGroupJoined(event) => &event.run_id,
             Self::ClosureFinalized(event) => &event.run_id,
         }
     }
@@ -388,6 +494,7 @@ impl ContextProductEvent {
             Self::ExecutionStarted(event) => &event.event_id,
             Self::ExecutionConsumed(event) => &event.event_id,
             Self::ExecutionRevoked(event) => &event.event_id,
+            Self::ExecutionGroupJoined(event) => &event.event_id,
             Self::ClosureFinalized(event) => &event.event_id,
         }
     }
@@ -400,6 +507,7 @@ impl ContextProductEvent {
             Self::ExecutionStarted(event) => event.sequence,
             Self::ExecutionConsumed(event) => event.sequence,
             Self::ExecutionRevoked(event) => event.sequence,
+            Self::ExecutionGroupJoined(event) => event.sequence,
             Self::ClosureFinalized(event) => event.sequence,
         }
     }
@@ -412,6 +520,7 @@ impl ContextProductEvent {
             Self::ExecutionStarted(event) => &event.event_digest,
             Self::ExecutionConsumed(event) => &event.event_digest,
             Self::ExecutionRevoked(event) => &event.event_digest,
+            Self::ExecutionGroupJoined(event) => &event.event_digest,
             Self::ClosureFinalized(event) => &event.receipt_digest,
         }
     }
@@ -442,3 +551,7 @@ pub trait ParserOwnedCommandAdmission {
 pub struct RecommendedNextAdmission {
     pub candidate: RecommendedNextCandidate,
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/protocol.rs"]
+mod tests;

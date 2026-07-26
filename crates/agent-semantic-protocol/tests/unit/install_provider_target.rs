@@ -17,7 +17,10 @@ fn provider_install_target_uses_state_home_runtime_bin() {
     let target =
         resolve_provider_binary_install_target("rust", "rs-harness").expect("install target");
 
-    assert_eq!(target.path, state_home.join("runtime/bin/rs-harness"));
+    assert_eq!(
+        target.path,
+        canonical_state_home(&state_home).join("runtime/bin/rs-harness")
+    );
     assert_eq!(target.source, "state-home-runtime-bin");
 }
 
@@ -34,7 +37,7 @@ fn provider_install_target_accepts_logical_binary_override_under_state_home() {
 
     assert_eq!(
         target.path,
-        state_home.join("runtime/bin/custom-py-harness")
+        canonical_state_home(&state_home).join("runtime/bin/custom-py-harness")
     );
     assert_eq!(target.source, "state-home-runtime-bin");
 }
@@ -98,4 +101,11 @@ fn temp_state_home(label: &str) -> PathBuf {
         "agent-semantic-protocol-{label}-{}-{unique}",
         std::process::id()
     ))
+}
+
+fn canonical_state_home(path: &Path) -> PathBuf {
+    let parent = path.parent().expect("State Home parent");
+    std::fs::canonicalize(parent)
+        .unwrap_or_else(|_| parent.to_path_buf())
+        .join(path.file_name().expect("State Home basename"))
 }

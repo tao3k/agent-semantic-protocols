@@ -128,3 +128,131 @@ fn ranked_graph_packet_uses_shared_projection_renderer() {
     assert!(rendered.content().contains("density=terse"));
     assert!(rendered.content().contains("I=owner:cli kind=owner"));
 }
+
+#[test]
+fn topology_projects_typed_packages_policy_handles_and_prime_facts() {
+    let workspace = SemanticSearchPacketV1::from_value(json!({
+        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "view": "workspace",
+        "projectRoot": ".",
+        "packages": [{"id": ".", "fields": {}}],
+        "items": [],
+        "owners": [],
+        "nextActions": []
+    }))
+    .expect("workspace packet");
+    let request = SearchProjectionRequestV1::new("topology", SearchProjectionDensityV1::Terse);
+    let renderer = TopologySearchProjectionRenderer;
+    let workspace = renderer
+        .render(&workspace, &request)
+        .expect("workspace projection");
+    assert!(workspace.content().contains("P=package:pkg(.)!owner"));
+    assert!(!workspace.content().contains("G>{}"));
+
+    let policy = SemanticSearchPacketV1::from_value(json!({
+        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "view": "policy",
+        "query": "RULE-001",
+        "semanticHandles": [{
+            "id": "RULE-001",
+            "ownerPath": "src/rules.rs",
+            "testPaths": ["tests/rules.rs"]
+        }],
+        "items": [],
+        "owners": [],
+        "nextActions": []
+    }))
+    .expect("policy packet");
+    let policy = renderer
+        .render(&policy, &request)
+        .expect("policy projection");
+    assert!(
+        policy
+            .content()
+            .contains("O=owner:path(src/rules.rs)!owner")
+    );
+    assert!(
+        policy
+            .content()
+            .contains("T=test:path(tests/rules.rs)!tests")
+    );
+
+    let prime = SemanticSearchPacketV1::from_value(json!({
+        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "view": "prime",
+        "projectRoot": ".",
+        "notes": [
+            {"kind": "feature", "message": "io-util enables=bytes"},
+            {"kind": "cfg", "message": "feature:io-util declared_in=features"}
+        ],
+        "items": [],
+        "owners": [{"path": "src/lib.rs"}],
+        "nextActions": []
+    }))
+    .expect("prime packet");
+    let prime = renderer.render(&prime, &request).expect("prime projection");
+    assert!(
+        prime
+            .content()
+            .contains("F=feature:feature(io-util)!features")
+    );
+    assert!(prime.content().contains("C=cfg:cfg(feature:io-util)!cfg"));
+}
+
+#[test]
+fn topology_preserves_same_symbol_with_distinct_canonical_locators() {
+    let packet = SemanticSearchPacketV1::from_value(json!({
+        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "view": "owner",
+        "query": "src/lib.rs",
+        "header": {"fields": {"itemQuery": "parse"}},
+        "owners": [{"path": "src/lib.rs"}],
+        "items": [
+            {
+                "name": "parse",
+                "kind": "method",
+                "fields": {
+                    "structuralSelector": "rust://src/lib.rs#item/method/parse/scope/type/A"
+                }
+            },
+            {
+                "name": "parse",
+                "kind": "method",
+                "fields": {
+                    "structuralSelector": "rust://src/lib.rs#item/method/parse/scope/type/B"
+                }
+            }
+        ],
+        "nextActions": []
+    }))
+    .expect("owner item packet");
+    let rendered = TopologySearchProjectionRenderer
+        .render(
+            &packet,
+            &SearchProjectionRequestV1::new("topology", SearchProjectionDensityV1::Terse),
+        )
+        .expect("owner item projection");
+
+    assert!(
+        rendered
+            .content()
+            .contains("rust://src/lib.rs#item/method/parse/scope/type/A")
+    );
+    assert!(
+        rendered
+            .content()
+            .contains("rust://src/lib.rs#item/method/parse/scope/type/B")
+    );
+}

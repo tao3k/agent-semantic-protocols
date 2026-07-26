@@ -146,6 +146,34 @@ impl ProviderProcessLimits {
             None => None,
         }
     }
+
+    /// Return these limits with a replaced wall-clock timeout.
+    #[must_use]
+    pub fn with_timeout(mut self, timeout: Option<Duration>) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    /// Return these limits with a replaced stdout retention ceiling.
+    #[must_use]
+    pub fn with_max_stdout_bytes(mut self, max_stdout_bytes: Option<usize>) -> Self {
+        self.max_stdout_bytes = max_stdout_bytes.map(ProviderStdoutByteLimit);
+        self
+    }
+
+    /// Return these limits with a replaced stderr retention ceiling.
+    #[must_use]
+    pub fn with_max_stderr_bytes(mut self, max_stderr_bytes: Option<usize>) -> Self {
+        self.max_stderr_bytes = max_stderr_bytes.map(ProviderStderrByteLimit);
+        self
+    }
+
+    /// Return these limits with a replaced provider memory ceiling.
+    #[must_use]
+    pub fn with_memory_limit_bytes(mut self, memory_limit_bytes: Option<u64>) -> Self {
+        self.memory_limit_bytes = memory_limit_bytes.map(ProviderMemoryByteLimit);
+        self
+    }
 }
 
 /// Structured receipt for provider process execution.
@@ -186,6 +214,18 @@ pub struct ProviderProcessReceipt {
 }
 
 impl ProviderProcessReceipt {
+    /// Return the provider exit status code when it exited normally.
+    #[must_use]
+    pub const fn status_code(&self) -> Option<i32> {
+        self.status_code
+    }
+
+    /// Whether the provider exit status was successful.
+    #[must_use]
+    pub const fn status_success(&self) -> bool {
+        self.status_success
+    }
+
     #[must_use]
     pub const fn stdout_bytes(&self) -> usize {
         self.stdout_bytes

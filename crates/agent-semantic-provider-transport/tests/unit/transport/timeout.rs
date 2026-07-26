@@ -15,16 +15,16 @@ fn times_out_and_kills_child_process() {
         "#!/bin/sh\nsleep 1\nprintf done > marker\n",
     );
     let mut process = spec(program, root.clone());
-    process.limits.timeout = Some(Duration::from_millis(50));
+    process.limits = process.limits.with_timeout(Some(Duration::from_millis(50)));
 
     let error = run_provider_process(process).expect_err("provider should time out");
     match error {
         ProviderProcessError::Timeout { receipt, .. } => {
-            assert!(receipt.timed_out);
-            assert_eq!(receipt.status_code, None);
-            assert!(!receipt.status_success);
-            assert!(receipt.abnormal_termination);
-            assert_eq!(receipt.termination_reason, "timeout");
+            assert!(receipt.timed_out());
+            assert_eq!(receipt.status_code(), None);
+            assert!(!receipt.status_success());
+            assert!(receipt.abnormal_termination());
+            assert_eq!(receipt.termination_reason(), "timeout");
         }
         other => panic!("expected timeout error, got {other:?}"),
     }
@@ -38,7 +38,7 @@ fn completed_child_wins_over_an_already_ready_deadline() {
     let root = temp_dir("completed-before-deadline-observation");
     let program = script(&root, "provider.sh", "#!/bin/sh\nexit 0\n");
     let mut process = spec(program, root.clone());
-    process.limits.timeout = Some(Duration::ZERO);
+    process.limits = process.limits.with_timeout(Some(Duration::ZERO));
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -72,7 +72,7 @@ fn completed_child_wins_over_an_already_ready_deadline() {
                 .await
                 .expect("completed child must not be classified as a timeout");
             assert!(output.status.success());
-            assert!(!output.receipt.timed_out);
+            assert!(!output.receipt.timed_out());
         }
     });
     let _ = fs::remove_dir_all(root);

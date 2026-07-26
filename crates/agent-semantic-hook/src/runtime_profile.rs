@@ -1,6 +1,8 @@
 //! Runtime provider command profiles derived from activation.
 
-use crate::executable::{ExecutableStatus, is_executable_file};
+use crate::executable::{
+    ExecutableResolution, ExecutableStatus, is_executable_file, resolve_executable_with_status,
+};
 use crate::protocol_activation::protocol_activation_manifest::{
     ActivatedProvider, HookActivation, HookRuntime,
 };
@@ -136,7 +138,33 @@ pub fn runtime_profiles_for_activation(
 #[must_use]
 pub fn runtime_profiles_for_runtime(project_root: &Path, runtime: &HookRuntime) -> RuntimeProfiles {
     let runtime_home = project_root;
-    build_runtime_profiles(project_root, runtime_home, runtime)
+    let state_paths = agent_semantic_runtime::project_state_paths(project_root).ok();
+    build_runtime_profiles(
+        project_root,
+        runtime_home,
+        state_paths
+            .as_ref()
+            .map(|paths| paths.runtime_bin_dir.as_path()),
+        runtime,
+    )
+}
+
+/// Build runtime profiles with an explicit State Home authority.
+pub fn runtime_profiles_for_runtime_with_state_home(
+    project_root: &Path,
+    state_home: &Path,
+    runtime: &HookRuntime,
+) -> Result<RuntimeProfiles, String> {
+    let state_paths =
+        agent_semantic_runtime::project_state_paths_with_state_home(project_root, state_home)
+            .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
+    let runtime_home = state_paths.runtime_bin_dir.parent().unwrap_or(state_home);
+    Ok(build_runtime_profiles(
+        project_root,
+        runtime_home,
+        Some(&state_paths.runtime_bin_dir),
+        runtime,
+    ))
 }
 
 /// Return the stored executable argv for an available provider profile.
@@ -165,6 +193,7 @@ pub fn runtime_profile_invocation(
 fn build_runtime_profiles(
     project_root: &Path,
     runtime_home: &Path,
+    runtime_bin_dir: Option<&Path>,
     runtime: &HookRuntime,
 ) -> RuntimeProfiles {
     RuntimeProfiles {
@@ -182,91 +211,31 @@ fn build_runtime_profiles(
         providers: runtime
             .providers
             .iter()
-            .map(|provider| runtime_provider_profile_for_provider(project_root, provider))
+            .map(|provider| runtime_provider_profile_for_provider(provider, runtime_bin_dir))
             .collect(),
     }
 }
 
 fn runtime_provider_profile_for_provider(
-    project_root: &Path,
     provider: &ActivatedProvider,
+    runtime_bin_dir: Option<&Path>,
 ) -> RuntimeProviderProfile {
-    let binary_resolution = match agent_semantic_runtime::state_core::resolve_state_home() {
-        Ok(state_home) => {
-            let state_binary = state_home
-                .join("runtime")
-                .join("bin")
-                .join(&provider.binary);
-            if !state_binary.is_file() {
-                crate::executable::ExecutableResolution {
-                    path: None,
-                    status: ExecutableStatus::Missing,
-                    reason: Some(format!(
-                        "provider runtime binary is not installed: {}",
-                        state_binary.display()
-                    )),
-                }
-            } else if is_executable_file(&state_binary) {
-                let canonical_binary =
-                    std::fs::canonicalize(&state_binary).unwrap_or_else(|_| state_binary.clone());
-                match crate::active_artifact_receipt::active_provider_artifact_input_with_state_home(
-                    project_root,
-                    &state_home,
-                    &provider.language_id,
-                    &provider.provider_id,
-                    canonical_binary.clone(),
-                )
-                .and_then(|artifact| {
-                    let command_prefix = vec![canonical_binary.display().to_string()];
-                    let digest = crate::protocol_activation::digest::provider_execution_command_digest(
-                        &command_prefix,
-                        &artifact.artifact_digest,
-                    )?;
-                    if digest != provider.execution_command_digest {
-                        return Err(format!(
-                            "provider execution digest mismatch: expected={} actual={digest}",
-                            provider.execution_command_digest
-                        ));
-                    }
-                    Ok(())
-                }) {
-                    Ok(()) => crate::executable::ExecutableResolution {
-                        path: Some(canonical_binary),
-                        status: ExecutableStatus::Available,
-                        reason: None,
-                    },
-                    Err(reason) => crate::executable::ExecutableResolution {
-                        path: None,
-                        status: ExecutableStatus::Unexecutable,
-                        reason: Some(reason),
-                    },
-                }
-            } else {
-                crate::executable::ExecutableResolution {
-                    path: None,
-                    status: ExecutableStatus::Unexecutable,
-                    reason: Some(format!(
-                        "provider runtime binary is not executable: {}",
-                        state_binary.display()
-                    )),
-                }
-            }
-        }
-        Err(error) => crate::executable::ExecutableResolution {
-            path: None,
-            status: ExecutableStatus::Missing,
-            reason: Some(format!("failed to resolve ASP State Home: {error}")),
-        },
-    };
-    let command = runtime_provider_command(binary_resolution.path.as_ref());
-    let resolved_binary = command.argv.first().cloned().or_else(|| {
-        binary_resolution
-            .path
-            .as_ref()
-            .map(|path| path.display().to_string())
-    });
+    let program = provider
+        .provider_command_prefix
+        .first()
+        .map(PathBuf::from)
+        .or_else(|| runtime_bin_dir.map(|dir| dir.join(&provider.binary)))
+        .unwrap_or_else(|| PathBuf::from(&provider.binary));
+    let binary_resolution = resolve_executable_with_status(&program.display().to_string());
+    let command = runtime_provider_command(&provider.provider_command_prefix, &binary_resolution);
+    let resolved_binary = binary_resolution
+        .path
+        .as_ref()
+        .map(|path| path.display().to_string());
     let health = RuntimeProviderHealth {
-        status: binary_resolution.status.into(),
+        status: command
+            .status
+            .unwrap_or_else(|| binary_resolution.status.into()),
         checked_at: None,
         reason: command.reason.or(binary_resolution.reason),
     };
@@ -277,7 +246,7 @@ fn runtime_provider_profile_for_provider(
         provider_id: provider.provider_id.clone(),
         binary: provider.binary.clone(),
         execution: provider.execution,
-        provider_command_prefix: Vec::new(),
+        provider_command_prefix: provider.provider_command_prefix.clone(),
         resolved_binary,
         argv: command.argv,
         health,
@@ -286,19 +255,31 @@ fn runtime_provider_profile_for_provider(
 
 struct RuntimeProviderCommand {
     argv: Vec<String>,
+    status: Option<RuntimeProviderHealthStatus>,
     reason: Option<String>,
 }
 
-fn runtime_provider_command(resolved_binary: Option<&PathBuf>) -> RuntimeProviderCommand {
-    if let Some(binary) = resolved_binary {
+fn runtime_provider_command(
+    provider_command_prefix: &[String],
+    binary_resolution: &ExecutableResolution,
+) -> RuntimeProviderCommand {
+    if let Some(binary) = &binary_resolution.path {
+        let mut argv = if provider_command_prefix.is_empty() {
+            vec![binary.display().to_string()]
+        } else {
+            provider_command_prefix.to_vec()
+        };
+        argv[0] = binary.display().to_string();
         return RuntimeProviderCommand {
-            argv: vec![binary.display().to_string()],
+            argv,
+            status: Some(RuntimeProviderHealthStatus::Available),
             reason: None,
         };
     }
     RuntimeProviderCommand {
         argv: Vec::new(),
-        reason: None,
+        status: Some(binary_resolution.status.into()),
+        reason: binary_resolution.reason.clone(),
     }
 }
 

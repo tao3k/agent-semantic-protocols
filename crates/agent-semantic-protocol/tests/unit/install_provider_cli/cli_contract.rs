@@ -1,0 +1,63 @@
+use std::process::Command;
+
+#[test]
+fn install_language_help_separates_locked_release_from_develop_mode() {
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["install", "language", "--help"])
+        .env("ASP_NO_AGENT_PLATFORM", "1")
+        .output()
+        .expect("run asp install language --help");
+
+    assert!(output.status.success());
+    let receipt = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(receipt.contains("Install a language provider"), "{receipt}");
+    assert!(receipt.contains("--target <TARGET>"), "{receipt}");
+    assert!(
+        !receipt.contains("--from-workspace"),
+        "develop installs belong to the root Justfile: {receipt}"
+    );
+    assert!(
+        !receipt.contains("--record-installed-receipt"),
+        "the Justfile-only receipt bridge must stay off the downstream install surface: {receipt}"
+    );
+    assert!(
+        !receipt.contains("state=locked-release-unavailable"),
+        "help must not be resolved as a language release: {receipt}"
+    );
+}
+
+#[test]
+fn install_language_usage_separates_locked_release_from_develop_mode() {
+    let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["install", "language"])
+        .env("ASP_NO_AGENT_PLATFORM", "1")
+        .output()
+        .expect("run asp install language without a language id");
+
+    assert!(!output.status.success());
+    let receipt = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        receipt.contains("release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)"),
+        "{receipt}"
+    );
+    assert!(
+        receipt.contains("develop mode: use the repository Justfile recipes"),
+        "{receipt}"
+    );
+    assert!(
+        receipt.contains("root Justfile owns provider builds and installation"),
+        "{receipt}"
+    );
+    assert!(
+        !receipt.contains("[--from-workspace]"),
+        "the internal workspace switch must not be advertised as the normal install surface: {receipt}"
+    );
+}

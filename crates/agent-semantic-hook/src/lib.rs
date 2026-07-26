@@ -88,7 +88,7 @@ pub use event_state_subagent_model_drift::{
 pub use hook_config::{
     AspSessionPolicy, ClientHookConfig, ConfiguredResidentTarget, default_client_config_path,
     default_client_config_template, load_client_config, load_client_config_for_project,
-    load_embedded_client_config_for_project,
+    load_client_config_overlay_for_project, load_embedded_client_config_for_project,
 };
 pub use hook_config_global::default_global_client_config_path;
 pub use protocol::{
@@ -118,7 +118,8 @@ pub use runtime_profile::{
     RUNTIME_PROFILES_SCHEMA_VERSION, RuntimeProfiles, RuntimeProfilesGeneratedBy,
     RuntimeProviderHealth, RuntimeProviderHealthStatus, RuntimeProviderProfile,
     runtime_profile_command_argv, runtime_profile_invocation, runtime_profiles_for_activation,
-    runtime_profiles_for_runtime, runtime_project_root_for_activation,
+    runtime_profiles_for_runtime, runtime_profiles_for_runtime_with_state_home,
+    runtime_project_root_for_activation,
 };
 pub(crate) use source_selector::{SourceSelectorMatch, collect_source_selector_matches};
 pub(crate) use tool_action::{

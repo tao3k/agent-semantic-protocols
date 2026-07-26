@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use super::actions::{GraphAction, graph_action_spec, graph_actions};
 use super::api::SEARCH_ROOT_ID;
-use super::packet::{is_owner_item_query_packet, packet_view};
+use super::packet::{graph_root, is_owner_item_query_packet, packet_view};
 
 pub(super) struct GraphAlias {
     pub(super) id: String,
@@ -53,7 +53,8 @@ pub(super) fn graph_aliases(packet: &Value, limit: usize) -> Vec<GraphAlias> {
         let Some(spec) = graph_action_spec(action_kind) else {
             continue;
         };
-        let target = action.target.trim();
+        let normalized_target = normalize_action_target(packet, &action);
+        let target = normalized_target.trim();
         if target.is_empty() {
             continue;
         }
@@ -61,7 +62,13 @@ pub(super) fn graph_aliases(packet: &Value, limit: usize) -> Vec<GraphAlias> {
             .action
             .clone()
             .unwrap_or_else(|| spec.action.to_string());
-        let dedupe_key = format!("{}:{}:{}", spec.node_type, target, action_name);
+        let dedupe_key = format!(
+            "{}:{}:{}:{}",
+            spec.node_type,
+            target,
+            action_name,
+            action.locator.as_deref().unwrap_or("-")
+        );
         if !seen.insert(dedupe_key) {
             continue;
         }
@@ -80,6 +87,22 @@ pub(super) fn graph_aliases(packet: &Value, limit: usize) -> Vec<GraphAlias> {
         }
     }
     aliases
+}
+
+fn normalize_action_target(packet: &Value, action: &GraphAction) -> String {
+    let target = action.target.trim();
+    if packet_view(packet) != "prime" || !matches!(action.kind.as_str(), "owner" | "tests") {
+        return target.to_string();
+    }
+    let root = graph_root(packet, "prime");
+    if root == "." {
+        return target.to_string();
+    }
+    target
+        .strip_prefix(root.trim_end_matches('/'))
+        .and_then(|relative| relative.strip_prefix('/'))
+        .unwrap_or(target)
+        .to_string()
 }
 
 pub(super) fn graph_edge_lines(aliases: &[GraphAlias], owner_item_query: bool) -> Vec<String> {

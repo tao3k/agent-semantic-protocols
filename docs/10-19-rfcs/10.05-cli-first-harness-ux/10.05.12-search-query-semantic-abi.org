@@ -1,0 +1,1268 @@
+#+title: Search Query Semantic ABI
+#+status: Draft
+#+protocol: v1
+
+* Decision
+
+The public agent-facing command surface has exactly two semantic classes:
+
+1. =ReasoningSearch= is an interactive, resident-owned evidence loop.
+2. =ExactProjectionQuery= materializes one canonical parser-owned selector.
+
+This is a hard cut inside protocol v1.  It does not create a v2 facade, accept a
+legacy spelling, infer an operation from optional flags, or translate an old
+command into a new one.
+
+The canonical public grammar is:
+
+#+begin_example
+asp <language> search loop open ...
+asp <language> search loop advance ...
+asp <language> search loop poll ...
+asp <language> search loop receipt ...
+
+asp <language> query \
+  --selector <canonical-structural-selector> \
+  --projection <code|skeleton|names|verbatim> \
+  ...
+#+end_example
+
+The grammar FIRST sets are disjoint.  Every accepted argv maps to exactly one
+typed semantic command.  Zero matches are a protocol error.  More than one
+match is a grammar defect and fails closed.  Rule priority MUST NOT resolve a
+semantic ambiguity.
+
+* Calibration of the proposed interactive commands
+
+The execution concepts =batch=, =serial=, and =parallel= are valid, but they are
+not public operations.  The earlier spelling:
+
+#+begin_example
+asp rust search interactive parallel ...
+#+end_example
+
+is rejected because it gives the caller authority to change an admitted route
+program.
+The only advancing command is:
+
+#+begin_example
+asp rust search loop advance \
+  --loop-id <loop-id> \
+  --panel-id <panel-id> \
+  --choice-id <choice-id> \
+  --choice-token <choice-token>
+#+end_example
+
+The selected choice token binds the execution mode, proposal digest, proposed
+execution group, branch count, scope, context binding, concurrency ceiling,
+join policy, and stop condition.  The subagent selects one complete projected
+choice and cannot edit the proposal through argv.
+
+The Choice Panel may display:
+
+#+begin_example
+C4 recommended=true
+mode=parallel
+branches=10
+join=all-required
+whyThisMode=ten mandatory evidence axes are ready and independent
+whyNotSerial=no branch produces a discriminator consumed by another branch
+whyNotBatch=no provider catalog entry covers the heterogeneous relations
+#+end_example
+
+Those fields explain the selected proposed execution group.  They are not
+executable parameters.
+
+* Ownership boundary
+
+The command pipeline is split into four owners:
+
+#+begin_example
+shell text
+  -> generic shell/wrapper normalization
+  -> ASP protocol command parser v1
+  -> typed AgentAction protocol projection
+  -> configuration-driven hook decision
+#+end_example
+
+The generic command-match engine owns:
+
+- bounded shell parsing;
+- environment assignments;
+- wrapper chains;
+- executable, flag, and operand normalization;
+- registered-language source subjects;
+- fail-closed parser and budget errors.
+
+It MUST NOT hard-code =rtk read=, =asp search=, =asp query=, or another product
+command.  ASP-specific grammar belongs to the ASP protocol/router layer.  That
+layer consumes =SemanticCommandInvocationV1= and returns
+=AspSemanticCommandV1=.  The generic hook matcher consumes the typed projection
+and configuration fields.
+
+This boundary prevents replacing one basename special case with another.
+
+* Shared schema ownership
+** Interactive action and capability schemas
+
+The v1 public loop is split across three shared schemas:
+
+- =semantic-command.v1.schema.json= owns the typed input command sum
+- =search-interactive-loop.v1.schema.json= owns the state-derived panel,
+  execution-group, poll-action, query-handoff, and receipt-action projections
+- =search-loop-capability.v1.schema.json= owns the State Home ledger record for
+  the digest and claims behind one issued action
+
+The split is intentional.  Command parsing does not own proposal authority;
+projection rendering does not own durable replay state; and the capability
+ledger does not own graph reasoning.  All three remain schema version =1=
+because this contract is being completed before the v1 ABI is frozen.  There is
+no compatibility branch and no parallel v2 surface.
+
+
+The hard cut reuses existing v1 owners instead of creating parallel contracts:
+
+| Schema | Normative responsibility | Disposition |
+|--------+--------------------------+-------------|
+| =semantic-command-invocation.v1= | Generic shell, wrapper, flag, and operand projection | Keep; it does not know ASP grammar |
+| =agent-action.v1= | Generic action, effect, authority, subjects, and optional invocation list | Keep; add optional =protocolCommand= |
+| =canonical-item-selector.v1= | Cross-language =languageId + kind + symbol + scopes[] + structuralSelector= | Keep; exact query and Query Handoff reference the complete object |
+| =semantic-language-projection.v1= | Common harness owner/item/relation packet | Revise each item to carry =canonicalItemSelector= instead of a free string =selector=; synchronize all five harness copies |
+| =exact-selector-projection-packet.v1= | Parser/source/query-pack proven exact projection | Keep; it already references =canonical-item-selector.v1= |
+| =semantic-exact-selector-receipt.v1= | Legacy string selector, identity, and next action | Remove after typed exact projection packet and Query Handoff cover its live consumers |
+| =semantic-command.v1= | Closed ASP command sum after invocation normalization | New canonical owner |
+| =evidence-query-catalog.v1= | Versioned typed action inputs, outputs, closure capabilities, provider capabilities, backend classes, and cost class | New canonical catalog owner |
+| =context-product-state.v1= | Durable run state, context binding, obligations, frontier, route program, execution authority/events, evidence scope, closure proof, and state authority receipt | Keep as the only state and proof authority; bind route stages to catalog entries and add explicit execution groups |
+| =search-route-proposal-set.v1= | Bounded advisory alternatives for one Context Product revision, including typed planner blockers | New proposal packet; it carries no admission, grant, execution, or closure authority |
+| =search-interactive-loop.v1= | Choice Panel, execution progress view, and exact-query handoff projections | New projection-only owner; it references Context Product state/program/closure receipts and never duplicates them |
+| =semantic-search-packet.v1= | Provider-produced language-neutral evidence facts | Keep; it is an internal plan result, not a public command grammar |
+| =semantic-search-stage-receipt.v1= | Provider/search implementation stage observation | Keep; it is not an interactive execution stage |
+| =semantic-agent-search-playbook-receipt.v1= | Sandtable and real-project trajectory evaluation | Revise to reference execution stages and batch artifacts |
+| =semantic-agent-hook-decision.v1= | Host hook allow/deny/context packet | Revise so =agentAction.protocolCommand= is authoritative; remove string =aspCommandIntent=, =aspCommandRoute=, provider argv routes, and raw interactive argv |
+| =semantic-agent-search-dispatch-receipt.v1= | Exactly-once resident transport identity | Keep transport identity; replace raw =nextCommand= with typed protocol action or receipt reference |
+| =asp-search-command-intent.v1= | Legacy string intent routing | Remove after all live consumers move to =semantic-command.v1= |
+| =semantic-host-action.v1= | Duplicate generic host action | Remove after =agent-action.v1= owns invocations and all action kinds |
+| =semantic-action-authority-projection.v1= | Legacy =argvPrefix -> authority= projection | Remove; typed protocol authority is parser output |
+| =semantic-action-match.v1= | Legacy semantic match facade | Remove after the canonical =agent-action-match.v1= contract is revised |
+
+=agent-action-match.v1= remains configuration-driven, but its ASP branch matches
+=protocolCommand.commandId=, =kind=, =audience=, =dispatchClass=,
+=languageId=, and =exactness=.  Generic command behavior continues to match
+structured invocation fields such as executable, wrapper match, flag presence,
+and typed operand subjects.  It does not regain raw =argvPrefix= or
+=commandContainsAny= as ASP semantic authority.
+
+No schema is retained in a disabled state.  A row marked Remove is deleted when
+its live schema/code consumers reach zero.
+
+* AspSemanticCommandV1
+
+The closed semantic command sum is:
+
+#+begin_src rust
+enum AspSemanticCommandV1 {
+    SearchLoop(SearchLoopCommandV1),
+    ExactQuery(ExactQueryCommandV1),
+    InternalAction(InternalActionCommandV1),
+    Maintenance(MaintenanceCommandV1),
+    Invalid(AspCommandParseErrorV1),
+}
+
+enum SearchLoopCommandV1 {
+    Open(SearchLoopOpenV1),
+    Advance(SearchLoopAdvanceV1),
+    Poll(SearchLoopPollV1),
+    Receipt(SearchLoopReceiptV1),
+}
+#+end_src
+
+=ExactQueryCommandV1= contains typed fields:
+
+#+begin_src rust
+struct ExactQueryCommandV1 {
+    facade_language_id: LanguageId,
+    selector: CanonicalItemSelectorV1,
+    projection: ExactProjectionMode,
+    snapshot_authority: ExactSnapshotAuthority,
+}
+#+end_src
+
+The complete canonical item selector is the shared cross-language identity
+packet.  The router additionally proves
+=facade_language_id == selector.language_id=.  An exact query cannot contain a
+term, catalog entry, raw Tree-sitter query, reasoning view, inferred language,
+or positional owner shortcut.
+
+** Cross-language selector mapping
+
+Every provider emits the same =canonical-item-selector.v1= object.  Only the
+provider-owned =kind=, =symbol=, =scopes[]=, and =structuralSelector= mapping
+varies:
+
+| Language | Item example | Scope mapping |
+|----------+--------------+---------------|
+| Rust | function or associated item | crate/module, then impl or trait |
+| TypeScript | method or property | module, then class or interface |
+| Python | function or attribute | module, then class |
+| Julia | method or binding | module, then type when applicable |
+| Gerbil Scheme | binding or form | module |
+| Org/Markdown | heading or element | ancestor heading chain |
+
+Rust example:
+
+#+begin_src json
+{
+  "schemaId": "asp.canonical-item-selector.v1",
+  "schemaVersion": "v1",
+  "languageId": "rust",
+  "kind": "function",
+  "symbol": "run",
+  "scopes": [
+    {"relation": "inside", "kind": "module", "symbol": "command"},
+    {"relation": "member-of", "kind": "impl", "symbol": "Router"}
+  ],
+  "structuralSelector": "rust://crates/example/src/command.rs#item/function/run"
+}
+#+end_src
+
+Org example:
+
+#+begin_src json
+{
+  "schemaId": "asp.canonical-item-selector.v1",
+  "schemaVersion": "v1",
+  "languageId": "org",
+  "kind": "heading",
+  "symbol": "Exactly-once replay",
+  "scopes": [
+    {"relation": "under", "kind": "heading", "symbol": "Search Query Semantic ABI"}
+  ],
+  "structuralSelector": "org://docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.12-search-query-semantic-abi.org#heading/Exactly-once%20replay"
+}
+#+end_src
+
+Line ranges and =sourceLocatorHint= are display data and never substitute for
+this object.
+
+* Canonical public grammar
+** SearchLoop command service resolution and State Home ownership
+
+The public grammar is not a thin alias over the internal transition methods.
+It is a typed command service over durable State Home records:
+
+#+begin_src text
+dispatchRef
+  -> SearchLoopOpenEnvelopeV1
+  -> SearchLoopRuntimeBindingV1(loopId -> runId)
+  -> capability subject + referenced proposal/batch/receipt artifact
+  -> one atomic GraphRouter + MVCC transition
+  -> next interactive projection
+#+end_src
+
+The service MUST NOT infer =runId= from =loopId=, reconstruct a route proposal
+from argv, or treat a provider dispatch receipt as a bearer capability.
+=dispatchRef= remains the identity of an already-authoritative resident dispatch
+record.  The resident dispatch registry resolves it to exactly one immutable
+=SearchLoopOpenEnvelopeV1=.
+
+The open envelope binds the resident identity, language, Context Product state,
+state-authority receipt, route-proposal set, and initial choice-panel artifacts
+by typed reference and digest.  Opening a loop validates every artifact and
+then atomically creates the Context Product partition, the durable
+=loopId -> runId= runtime binding, and the initial capability ledger.  A
+duplicate open with the same dispatch digest is idempotent; a conflicting
+dispatch digest is rejected.
+
+The runtime binding is the command resolver:
+
+- the active-panel binding identifies the panel and proposal-set artifacts;
+- an advance capability subject identifies the selected panel, choice,
+  proposal digest, and first execution group;
+- a batch binding maps =batchId= to the admitted program and execution group;
+- the terminal binding identifies the closure receipt and immutable query
+  handoff projection.
+
+The runtime binding and Context Product state live in the same MVCC head.  The
+runtime binding therefore does not duplicate the evolving state digest,
+revision, or authority-receipt reference; the enclosing authoritative
+projection owns those values.  This avoids a second mutable state-binding copy
+while preserving explicit =loopId -> runId= resolution.
+
+=advance= authorizes the one-shot bearer, resolves the persisted proposal,
+admits the route program, consumes the capability, and starts the first
+recoverable execution phase in one command-level transaction.  =poll=
+authorizes a state-bound idempotent bearer and resolves =batchId= from the
+runtime binding before observing or joining execution.  =receipt= authorizes a
+terminal-idempotent bearer and returns the persisted query-handoff artifact;
+it never regenerates terminal output from the current filesystem.
+
+The shared v1 runtime-binding schema owns these cross-language identities and
+artifact bindings.  Rust owns the first implementation, but neither Rust nor
+the CLI may introduce a provider-private resolver or a string-only fallback.
+
+*** 2026-07-25 runtime-resolution implementation checkpoint
+
+Landed in this checkpoint:
+
+- =search-loop-runtime-binding.v1.schema.json= with open-envelope, active
+  panel, batch, and terminal artifact bindings;
+- typed Rust validation for distinct loop/run identities, lifecycle shape,
+  revision floor, unique batch/group identities, and no bearer persistence;
+- a Turso MVCC partition alias created atomically with revision-zero Context
+  Product initialization;
+- typed =SearchLoopRuntimeStore= and =GraphRouter::load_search_loop= resolution;
+- alias-conflict rollback and reopen/lookup coverage.
+
+The public four-command adapter is not closed by this checkpoint.  The
+remaining typed owners are the resident dispatch-envelope registry, typed
+proposal-set/panel/handoff artifact decoders, execution-material resolver,
+projection renderer, and command-level capability issuance/rotation during
+advance, poll, and closure.  Until those owners exist, =search loop= MUST NOT be
+exposed as a parser-only or fail-closed shell.
+
+** Capability issuance and authoritative resolution
+
+The public grammar is not complete merely because =open=, =advance=, =poll=,
+and =receipt= parse.  Every state-changing or state-observing command after
+=open= MUST be issued by the preceding interactive projection:
+
+- every choice in a choice panel carries exactly one
+  =asp.search.loop.advance.v1= action with =loopId=, =panelId=, =choiceId=,
+  and =choiceToken=
+- a running or partial execution-group view carries exactly one
+  =asp.search.loop.poll.v1= action with =loopId=, =batchId=, and =pollToken=
+- a joined or failed execution-group view MUST NOT carry a poll action
+- a terminal query handoff carries exactly one
+  =asp.search.loop.receipt.v1= action with =loopId= and =receiptToken=
+
+The agent copies one issued action.  It does not synthesize, shorten, merge, or
+reconstruct capability fields from remembered command grammar.  Knowing the
+shape of a command allows the agent to skip tutorial-style re-entry into the
+loop; it does not grant authority to invent the next token.
+
+ASP State Home owns a v1 capability ledger.  A ledger record binds the token
+digest to the command id, resident identity, loop/run identity, Context Product
+revision and digests, and the exact subject:
+
+#+begin_src text
+advance -> panel + choice + proposal + proposed execution group
+poll    -> batch + admitted execution group
+receipt -> terminal closure receipt
+#+end_src
+
+Only the opaque bearer token is returned to the resident.  The raw token MUST
+NOT be persisted; State Home stores its digest and typed claims.  The command
+adapter resolves the digest through the ledger, validates expiry, resident
+identity, command kind, subject binding, and current MVCC state, and only then
+constructs =SearchLoopAdvanceRequest= or =SearchLoopPollRequest=.
+
+The ASP capability runtime is the sole token issuer.  For every issued action it
+MUST obtain at least 256 bits from the operating system CSPRNG and encode those
+bytes with one fixed URL- and CLI-safe opaque representation.  The v1 Rust
+representation is =capability.= followed by exactly 64 lowercase hexadecimal
+characters (32 random bytes).  Entropy acquisition failure fails issuance
+closed: no capability record, projection action, or fallback token is emitted.
+
+The bearer token is random lookup material only.  It MUST NOT contain encoded
+claims, timestamps, resident ids, proposal ids, MAC input, or another
+self-describing payload, and it is not produced by HMACing visible state.  All
+authority remains in the typed ledger record addressed by
+=Digest(rawBearerToken)=.  The raw token may cross only the issuance boundary
+into the immediately produced interactive action; logs, =Debug= output,
+receipts, Context Product state, Turso rows, and serialized capability records
+contain only redaction or the digest.
+
+=advance= is one-shot.  Consuming its capability and committing the first
+admission/grant/start phase are one MVCC transaction, so replay cannot execute a
+second provider dispatch.  A consumed record MUST retain both
+=consumedAtRevision= and =consumptionReceiptRef=; replay resolves that receipt
+to the persisted recovery point instead of treating the already-consumed token
+as an unrecoverable error.  =poll= is state-bound and idempotent for one
+revision; a response that advances the revision issues a replacement poll
+action.  =receipt= is terminal and idempotent for the same closure digest.
+
+=open --dispatch-ref= is deliberately different: =dispatchRef= resolves an
+already-authoritative resident dispatch receipt.  It is not a free-form search
+prompt and it is not converted into a bearer capability by the argv parser.
+
+This ownership closes the otherwise invalid state in which
+=semantic-command.v1= accepts =pollToken= or =receiptToken= but no prior v1
+packet is responsible for issuing that token.
+
+*** 2026-07-25 implementation checkpoint
+
+The shared v1 schemas now issue =pollAction= and =receiptAction= from the
+preceding projection and reject missing or stale poll actions.  The Rust loop
+owns a typed, validated, redacted capability model.  The Turso context-run
+projection persists capability records beside Context Product state; initial
+issuance and subsequent =RunCommit= mutations therefore use the same MVCC
+partition and projection write.
+
+The authoritative-ledger propagation benchmark records the cost of that
+ownership boundary.  The naive implementation performed an extra Context
+Product head read and measured a 10.286 ms single-run median and 29.431 ms under
+the concurrent case.  Propagating the authoritative ledger through the
+existing transition reduced those measurements to 3.6421 ms and 17.489 ms;
+Criterion reported both improvements as significant.  This optimization
+eliminates a redundant read.  It does not weaken compare-and-append, split
+capability issuance from the state transition, or relax phase atomicity.
+
+This checkpoint does not close the public CLI.  The production adapter still
+has to prove all of the following in one real command path:
+
+1. resolve =dispatchRef= from the resident dispatch registry
+2. load the capability by raw-token digest without persisting the raw token
+3. authorize command, resident, loop, subject, expiry, Context Product head, and
+   context binding
+4. consume =advance= in the same commit that establishes the recoverable
+   advance phase
+5. render the replacement =pollAction= or terminal =receiptAction=
+6. reach =GraphRouter.advance_search_loop= or =GraphRouter.poll_search_loop=
+   from =asp <language> search loop ...=
+
+Until that path and its installed-binary evidence exist, parser coverage,
+schema validity, and storage round trips are necessary evidence but not public
+SearchLoop closure.
+
+
+** Reasoning search
+
+=open= creates or resumes the evidence state from a typed dispatch reference:
+
+#+begin_example
+asp rust search loop open --dispatch-ref <dispatch-ref>
+#+end_example
+
+=advance= selects one persisted proposal, atomically admits its RouteProgram,
+and executes only the first granted group:
+
+#+begin_example
+asp rust search loop advance \
+  --loop-id <loop-id> \
+  --panel-id <panel-id> \
+  --choice-id <choice-id> \
+  --choice-token <choice-token>
+#+end_example
+
+The command remains singular even when the selected group is parallel.  ASP
+lowers the admitted group internally:
+
+| Mode | Internal authority shape | Provider dispatches |
+|------+--------------------------+---------------------|
+| serial | one authority with one-element =stageIds[]= | one |
+| batch | one authority with the complete =stageIds[]= set | one compound dispatch |
+| parallel | one single-stage authority per ready branch | one per branch, bounded by =maxParallel= |
+
+All authorities bind the same =executionGroupId=.  Parallel admission and grant
+fan-out are phase-atomic MVCC transitions: each phase commits its complete
+branch set or none, while the public =advance= command may cross several
+recoverable revisions.  Provider results fan in before the admitted join policy
+is evaluated.  A subagent therefore does not re-enter the interactive loop for
+each branch and cannot manufacture =batch= or =parallel= through command flags.
+
+The join result is persisted as =ExecutionGroupJoined= before the next reducer
+step.  =poll= and resumed =advance= reconstruct stage status and joined groups
+from the authoritative Context Product; agent memory is never the owner of
+branch completion or join completion.
+
+Within the command runtime, =advance= invokes one typed
+=SearchExecutionDriver.executeGroup= operation for the admitted group.  The
+driver sees the Graph-selected dispatch set; it does not decide serial, batch,
+or parallel.  ASP rejects result sets with missing, duplicate, or unknown
+attempt identities before it consumes execution authority.
+
+=poll= observes a running batch without starting it again:
+
+#+begin_example
+asp rust search loop poll \
+  --loop-id <loop-id> \
+  --batch-id <batch-id> \
+  --poll-token <poll-token>
+#+end_example
+
+=receipt= materializes the terminal closure receipt.  It cannot force a
+non-terminal loop to become terminal.
+
+** Exact query
+
+The main agent may execute only:
+
+#+begin_example
+asp rust query \
+  --selector 'rust://crates/example/src/lib.rs#item/function/run' \
+  --projection code \
+  --snapshot-envelope <snapshot-envelope-ref>
+#+end_example
+
+The query router validates language identity, selector kind, source owner,
+snapshot authority, and projection.  It does not discover an owner, select a
+backend, rank candidates, or repair an approximate selector.
+
+** Context reuse and loop admission
+
+Interactive search is not a mandatory preamble.  The router first admits the
+strongest reusable context:
+
+1. A validated canonical item selector plus matching snapshot authority goes
+   directly to exact =query=.
+2. A live loop with an active panel goes directly to =advance=.
+3. A live running batch goes directly to =poll=.
+4. A closure receipt whose snapshot and obligations still match goes directly
+   to its Query Handoff.
+5. Only unresolved reasoning intent without one of these authorities enters
+   =search loop open=.
+
+Agent memory may remember command shape, task intent, owner hypotheses, and a
+previous panel.  It cannot create freshness, snapshot, closure, or capability
+authority.  Remembering that =advance= exists avoids another teaching round;
+it does not authorize an old token on a new Context Product revision.
+
+** Workspace path portability
+
+The public ABI never embeds a developer's machine-specific checkout path.
+User-facing examples use =--workspace .= when the command runs at the project
+root, or =--workspace <PROJECT_ROOT>= when a placeholder is necessary.
+
+Packets identify the workspace through =workspaceId= and Context Product
+digests.  Canonical selectors contain provider-owned, workspace-relative owner
+paths.  A local runtime may resolve the checkout root internally, but that
+absolute path is not a portable selector, receipt identity, program input, or
+documentation default.
+
+Installed state locations are obtained through =asp paths --get ...=.  RFCs,
+schemas, fixtures, generated guidance, and Query Handoff MUST NOT contain
+=/Users/<name>/...=, =/home/<name>/...=, or another host-specific installation
+root.
+
+** Removed public spellings
+
+The following are invalid protocol, not deprecated aliases:
+
+#+begin_example
+asp search --language rust ...
+asp query --language rust ...
+asp rust query --term ...
+asp rust query --treesitter-query ...
+asp rust query --catalog ...
+asp rust query <owner-path> ...
+asp rust query --view seeds ...
+asp rust search owner ...
+asp rust search pipe ...
+asp rust search lexical ...
+asp rust search --treesitter-query ...
+asp fd ...
+asp rg ...
+#+end_example
+
+The search primitives remain available only behind persisted internal actions,
+provider catalog entries, or explicit developer/debug surfaces that are absent
+from agent guidance and Query Handoff.
+
+* AgentAction protocol projection
+
+=AgentActionV1= remains the generic action envelope.  It gains an optional typed
+protocol projection rather than more string flags:
+
+#+begin_src json
+{
+  "action": "execute",
+  "effect": "search",
+  "authority": "parser-owned-search",
+  "subjects": [],
+  "protocolCommand": {
+    "schemaId": "agent.semantic-protocols.semantic-command",
+    "schemaVersion": "1",
+    "commandId": "asp.search.loop.advance.v1",
+    "kind": "search-loop",
+    "audience": "resident",
+    "dispatchClass": "resident-terminal",
+    "languageId": "rust",
+    "loopId": "L1",
+    "panelId": "P2",
+    "choiceId": "C4",
+    "choiceToken": "capability.0123456789abcdef0123456789abcdef",
+    "exactness": "not-applicable"
+  }
+}
+#+end_src
+
+An exact query uses =effect= =read=,
+=authority= =parser-owned-exact-evidence=,
+=commandId= =asp.query.exact.v1=, =audience= =main-agent=, and
+=dispatchClass= =direct=.
+
+The projection is produced only by the ASP command parser.  A caller cannot
+assert it through environment variables or configuration text.
+
+* Hook decision table
+
+| Semantic command       | Actor                | Decision                              |
+|------------------------+----------------------+---------------------------------------|
+| SearchLoop.Open        | main agent           | deny and exactly-once resident dispatch |
+| SearchLoop.Advance     | main agent           | deny; bound resident only             |
+| SearchLoop.Advance     | bound resident       | allow terminal execution              |
+| SearchLoop.Poll        | bound resident       | allow                                 |
+| SearchLoop.Receipt     | bound resident       | allow                                 |
+| ExactQuery             | main agent           | allow                                 |
+| ExactQuery             | resident             | allow without redispatch              |
+| InternalAction         | capability runtime   | allow                                 |
+| InternalAction         | main agent           | deny                                  |
+| Maintenance            | authorized actor     | operation-specific policy             |
+| Invalid                | any actor            | fail-closed protocol error             |
+
+Hook configuration matches typed fields such as =commandId=, =audience=,
+=dispatchClass=, =languageId=, and =exactness=.  It MUST NOT infer these fields
+from =argvPrefix=, =argvPatternAny=, optional flags, or rule priority.
+
+* Context Product state authority
+
+The loop is an incremental evidence-graph algorithm, not a prompt template, but
+it does not define a second durable state machine.  =context-product-state.v1=
+is already the canonical owner of:
+
+- run revision, event sequence, event-log digest, and state digest;
+- complete context binding and source/provider/parser/query-pack identity;
+- obligations, retained proof, proof reuse, and frontier antichain;
+- admitted route program and execution authority;
+- execution grants and lifecycle events;
+- evidence scope, closure proof, closure receipt, and state authority receipt.
+
+=search-interactive-loop.v1= is therefore projection-only.  Its
+=stateBinding={runId,revision,stateDigest,authorityReceiptRef}= points to one
+Context Product revision.  Its Choice Panel obligations are bounded display
+views of the authoritative obligations.  Its execution progress packet points
+to grants and result receipts.  Its Query Handoff points to the authoritative
+closure receipt.
+
+Turso persists the Context Product event log and materialized state under MVCC.
+SQL text is never the semantic interface.  A transition is accepted only when
+the expected revision, state digest, context binding, action capability, and
+resident identity are current.  A conflicting writer receives a typed stale
+authority result and cannot overwrite or replay the winner.
+
+The projection invariant is:
+
+#+begin_example
+ChoicePanel.stateBinding
+ExecutionBatchView.stateBinding
+QueryHandoff.stateBinding
+  -> exactly one ContextProductState revision
+  -> exactly one StateAuthorityReceipt
+#+end_example
+
+No loop projection may introduce its own session epoch, graph root, workspace
+snapshot root, obligations, route plan, or terminal proof.
+
+* Choice and route-program projection
+
+A search choice is:
+
+#+begin_src rust
+struct SearchInteractiveChoiceV1 {
+    id: SearchChoiceId,
+    label: String,
+    recommended: bool,
+    execution: SearchChoiceExecutionV1,
+    reasoning: SearchChoiceReasoningV1,
+    expected_gain: Vec<SearchObligationId>,
+    platform_action: SearchLoopAdvanceActionV1,
+}
+
+struct SearchChoiceExecutionV1 {
+    mode: SearchExecutionModeV1,
+    proposal_ref: RouteProposalRef,
+    proposal_digest: RouteProposalDigest,
+    proposed_execution_group_ref: RouteProposalExecutionGroupRef,
+    branch_count: u16,
+    max_parallel: u16,
+    join_policy: SearchJoinPolicyV1,
+    reenter_loop: bool,
+    stop_condition: SearchStopConditionV1,
+}
+#+end_src
+
+The executable platform action contains only loop, panel, choice, and token
+identity.  It does not contain raw provider commands or backend queries.
+
+Before execution, a branch declares =targets=, =requiresFacts=,
+=producesFacts=, and =dependsOn=.  It does not declare that it =closes= an
+obligation.  Only the joined branch receipt plus identity, freshness, and
+completeness validators can move an obligation to =closed=.  This prevents a
+planner prediction from becoming closure authority.
+
+A persisted parallel stage requires =independenceProofRef= and at least two
+branches.  A persisted batch stage requires =batchCapabilityRef= and exactly one
+compound provider-action branch.  Panel reasoning and route-program authority
+therefore
+cannot drift into different execution modes.
+
+One conforming parallel choice packet is:
+
+#+begin_src json
+{
+  "schemaId": "agent.semantic-protocols.search-choice-panel",
+  "schemaVersion": "1",
+  "loopId": "L1",
+  "residentIdentityRef": "resident:asp-explore:E0597",
+  "stateBinding": {
+    "runId": "run:E0597",
+    "revision": 4,
+    "stateDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "authorityReceiptRef": "authority:R4"
+  },
+  "contextBinding": {
+    "workspaceId": "workspace:E0597",
+    "workspaceRootDigest": "blake3:1111111111111111111111111111111111111111111111111111111111111111",
+    "baseSourceDigest": "blake3:2222222222222222222222222222222222222222222222222222222222222222",
+    "dirtyOverlayDigest": "blake3:3333333333333333333333333333333333333333333333333333333333333333",
+    "sourceSnapshotDigest": "blake3:4444444444444444444444444444444444444444444444444444444444444444",
+    "providerDigest": "blake3:5555555555555555555555555555555555555555555555555555555555555555",
+    "parserDigest": "blake3:6666666666666666666666666666666666666666666666666666666666666666",
+    "queryPackDigest": "blake3:7777777777777777777777777777777777777777777777777777777777777777",
+    "factSchemaDigest": "blake3:8888888888888888888888888888888888888888888888888888888888888888",
+    "projectionSchemaDigest": "blake3:9999999999999999999999999999999999999999999999999999999999999999",
+    "policyDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "graphRevisionDigest": "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "contextEpoch": 4,
+    "bindingDigest": "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "panelId": "P2",
+  "step": 2,
+  "obligations": [
+    {"obligationId": "O3", "claimClass": "causal-flow", "status": "ready", "mandatory": true, "summary": "prove the call path"},
+    {"obligationId": "O4", "claimClass": "causal-flow", "status": "ready", "mandatory": true, "summary": "prove the mutation flow"},
+    {"obligationId": "O5", "claimClass": "quality", "status": "ready", "mandatory": true, "summary": "prove test reachability"}
+  ],
+  "choices": [
+    {
+      "id": "C4",
+      "label": "Close three independent mandatory evidence axes",
+      "recommended": true,
+      "execution": {
+        "mode": "parallel",
+        "proposalRef": "proposal:E0597:P2:C4",
+        "proposalDigest": "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "proposedExecutionGroupRef": "proposal-group:P2:C4",
+        "workItemCount": 3,
+        "providerDispatchCount": 3,
+        "maxParallel": 3,
+        "joinPolicy": "all-required",
+        "reenterLoop": true,
+        "stopCondition": "all three branch receipts joined and validated"
+      },
+      "reasoning": {
+        "whyThisMode": "all branches are ready on one snapshot",
+        "whyNotSerial": "no branch produces a discriminator consumed by another",
+        "whyNotBatch": "no one provider catalog entry covers the three relations",
+        "agentReasoningReceiptRef": "reasoning:agent:P2:C4",
+        "graphDerivationReceiptRef": "derivation:graph:P2:C4",
+        "independenceProofRef": "proof:independence:P2:C4"
+      },
+      "expectedGain": ["O3", "O4", "O5"],
+      "platformAction": {
+        "commandId": "asp.search.loop.advance.v1",
+        "loopId": "L1",
+        "panelId": "P2",
+        "choiceId": "C4",
+      "choiceToken": "capability.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      }
+    }
+  ]
+}
+#+end_src
+
+The CLI renderer derives one =search loop advance= command from
+=platformAction=.  The packet contains no branch argv or backend grammar.
+
+* Org interactive projection boundary
+
+Org is the interactive Choice Panel projection, not the loop runtime:
+
+#+begin_example
+SearchChoicePanelV1
+  -> orgize org-contract validation
+  -> org-interactive Org/Babel projection
+  -> one selected choice
+  -> typed SearchLoopAdvanceV1
+#+end_example
+
+ASP owns:
+
+- loop and session identity;
+- evidence graph and obligations;
+- route proposal, admission, and program construction;
+- authenticated choice and poll capabilities;
+- Turso MVCC state transitions;
+- provider action scheduling;
+- deterministic join;
+- closure and Query Handoff.
+
+The Orgize =org-contract= layer owns the valid Org AST contract for a panel.
+=org-interactive= owns Choice Panel rendering and selection extraction using
+valid Org/Babel syntax.  It does not generate provider commands, mutate the
+route program, decide serial versus parallel, join branches, or determine terminal
+state.
+
+The =languages/org= provider remains a document-language evidence provider.  It
+does not own this interaction protocol merely because the projection is Org.
+
+* Batch, serial, and parallel
+
+=Batch= means one provider, one scope authority, and one query ABI can evaluate
+several obligations in one provider action.  Its branch count and observed
+parallelism are both one.
+
+=Serial= is mandatory when a later branch needs a fact, owner, selector,
+language discriminator, freshness proof, or cost decision produced by an
+earlier branch.  One advance executes one checkpoint action and returns a new
+panel; it never hides a multi-action chain inside one serial choice.
+
+=Parallel= is permitted only when every branch is ready, dependencies are
+empty, snapshot authority is identical, provider capabilities are compatible,
+the join policy is explicit, completeness is preserved, and budget admits the
+fan-out.
+
+The planner applies this order:
+
+#+begin_example
+batchable -> batch
+dependent -> serial
+ready and independent -> parallel
+#+end_example
+
+=Synthesize= and =Clarify= execute zero provider branches.  =Batch= and
+=Serial= execute exactly one.  =Parallel= executes between two and ten.
+
+The independence proof is durable route-program data.  It is not an LLM
+assertion.
+
+* Context Product route program and evidence catalog
+
+The LLM never writes GraphQL, QL, Cypher, raw Tree-sitter queries, or a custom
+graph language.  The persisted language-neutral program is the existing
+=context-product-state.v1= =routeProgram=.  It is catalog-bound:
+
+#+begin_src rust
+struct ContextProductRouteProgramV1 {
+    program_id: RouteProgramId,
+    context_binding_digest: ContextBindingDigest,
+    graph_digest: EvidenceGraphDigest,
+    catalog_digest: EvidenceCatalogDigest,
+    stages: Vec<RouteStageV1>,
+    execution_groups: Vec<RouteExecutionGroupV1>,
+    edges: Vec<RouteEdgeV1>,
+    joins: Vec<RouteJoinV1>,
+    budget_limit: SearchBudgetV1,
+    program_digest: RouteProgramDigest,
+}
+
+struct RouteStageV1 {
+    stage_id: RouteStageId,
+    provider_id: ProviderId,
+    catalog_id: EvidenceCatalogEntryId,
+    input_template_digest: EvidenceInputTemplateDigest,
+    covers_obligation_ids: Vec<SearchObligationId>,
+    required_closure: EvidenceClosureCapabilityV1,
+    evidence_predicate: EvidencePredicateV1,
+}
+#+end_src
+
+Provider-facing operations come from a versioned catalog, for example:
+
+#+begin_example
+resolve-symbol.v1
+owner-items.v1
+definitions.v1
+references.v1
+callers.v1
+callees.v1
+constructors-of.v1
+field-reads.v1
+field-writes.v1
+implements.v1
+overrides.v1
+imports.v1
+reexports.v1
+test-coverage.v1
+diagnostic-chain.v1
+local-source-sink.v1
+guarded-effect.v1
+mutation-flow.v1
+cross-language-owner.v1
+#+end_example
+
+The activated =evidence-query-catalog.v1= declares each entry's typed input
+descriptors, output relations, closure capabilities, provider capabilities,
+backend classes, and cost class.  A persisted program binds the catalog digest.
+The program validator resolves every =catalogId= against that digest and
+validates every input template against the referenced catalog entry.
+
+=routeExecutionGroup= is the only persisted owner of =batch=, =serial=, or
+=parallel=.  Batch and serial groups contain exactly one stage in one advance.
+A parallel group contains two to ten stages and an =independenceProofRef=.
+Execution groups reference route stages; Choice Panel execution fields only
+project the selected group and cannot rewrite it.
+
+Native parsers, source index, Tree-sitter, flow-lite, and optional CodeQL are
+backend lowerings.  Graph-turbo may lower a catalog action to an internal
+operator IR containing seed, scan, match, traverse, join, anti-join, exists,
+aggregate, rank, project, freshness, identity, completeness, and exact-selection
+operators.  That lowering IR is not the public CLI, Choice Panel, persisted
+cross-language route program, or provider command ABI.
+
+* Deterministic join
+
+Joined branches are sorted by branch id, not completion order.  The runtime:
+
+1. verifies one workspace snapshot root;
+2. verifies provider and query-pack authority;
+3. deduplicates nodes by canonical semantic identity;
+4. deduplicates edges by source, relation, and target identity;
+5. rejects conflicting source digests for one selector;
+6. records complete, partial, cancelled, and failed branch states;
+7. validates obligation closure;
+8. ranks only the still-open frontier;
+9. persists the next panel atomically.
+
+The closed join policies are:
+
+- =all-required= for mandatory evidence axes;
+- =first-exact= for existential identity, with safe cancellation;
+- =complete-enumeration= for find-all or prove-none;
+- =disambiguate-all= for competing owners, languages, or selectors.
+
+Top-K, limits, rank scores, and first-hit results never prove enumeration or
+absence.
+
+* Exactly-once replay
+
+The capability ledger record addressed by the choice-token digest binds:
+
+#+begin_example
+loopId
+residentIdentityRef
+runId
+revision
+stateDigest
+authorityReceiptRef
+panelId
+step
+choiceId
+proposalDigest
+proposedExecutionGroupRef
+contextBindingDigest
+#+end_example
+
+The bearer token is a random opaque lookup key, not the bare =proposalDigest=.
+The proposal digest proves proposal identity.  Successful token-digest
+resolution proves that the runtime issued the matching typed ledger record for
+this resident, run revision, proposed execution group, and context binding.  A
+caller cannot create an authoritative choice merely by hashing visible panel
+data or by constructing a string with the canonical token shape.
+
+If an advance is replayed while its batch is running, the runtime returns the
+persisted progress.  If it is replayed after completion, it returns the
+persisted joined panel.  It never starts the branches again.
+
+Long-running work returns =running= with a batch id.  The next legal action is
+=poll=.  Repeating =advance= is not a retry mechanism.
+
+* Rank and proof
+
+=Rank= orders discovery.  =VerifyIdentity= proves an exact selector.
+=VerifyCompleteness= proves enumeration or absence.  The closure validator
+alone decides terminal state.
+
+The following implications are forbidden:
+
+#+begin_example
+highest rank -> proved
+one exact selector -> causal chain closed
+limited result -> enumeration closed
+no top-k hit -> absence proved
+#+end_example
+
+* Rendering
+
+Compact graph rendering is a human/debug adapter:
+
+#+begin_example
+asp debug graph render --format compact
+#+end_example
+
+Hook classification, loop replay, graph restoration, closure, receipt digests,
+and Query Handoff MUST NOT parse compact text, aliases, legends, rank lines,
+frontier lines, or textual next commands.
+
+The agent-facing renderer emits only:
+
+- the current state and unresolved obligations;
+- a bounded Choice Panel;
+- the graph delta for the completed step;
+- a terminal Search Closure Receipt.
+
+* Search closure receipt
+
+Context Product owns the normative =SearchClosureReceipt= and its per-obligation
+=ClosureProof=.  Enumeration and absence closure additionally require complete,
+non-truncated, snapshot-continuous, provider-admitted evidence scope.
+
+=search-interactive-loop.v1= does not define another closure receipt.  It emits
+a =QueryHandoff= projection containing the Context Product closure receipt
+reference and digest plus one or more complete canonical exact-query requests.
+
+Trajectory and benchmark metrics belong to the revised
+=semantic-agent-search-playbook-receipt.v1=.  They distinguish visible
+interaction from internal work but cannot grant closure:
+
+#+begin_src json
+{
+  "choiceDepth": 3,
+  "executionStageCount": 3,
+  "internalActionCount": 12,
+  "batchActionCount": 0,
+  "serialActionCount": 2,
+  "parallelActionCount": 10,
+  "maxObservedParallelism": 10,
+  "criticalPathLatencyMs": 580,
+  "aggregateProviderLatencyMs": 3110,
+  "packetBytes": 18420,
+  "parentVisibleBytes": 2310
+}
+#+end_src
+
+The playbook receipt records execution stages and references batch artifacts.
+It does not
+pretend ten provider actions were one action, and it does not overflow a
+three-stage route field with ten branch entries.
+
+Terminal output projects =EvidenceScope=, obligation closure proof, freshness
+proof, completeness state, missing evidence, and =QueryHandoff= from the
+authoritative Context Product receipt.  The handoff contains only exact v1
+queries.
+
+* Required conformance tests
+
+** Grammar
+
+- every valid argv maps to exactly one semantic variant;
+- every invalid or ambiguous argv fails closed;
+- flag reordering cannot change semantic class;
+- duplicate and unknown flags fail deterministically;
+- a term, catalog, or Tree-sitter flag cannot be added to exact query;
+- a projection or code flag cannot turn search into query;
+- a cross-language selector is rejected;
+- root language inference is absent.
+
+** Wrapper normalization
+
+The following normalize to the same typed ASP semantic command:
+
+#+begin_example
+asp rust ...
+direnv exec . asp rust ...
+command asp rust ...
+exec asp rust ...
+env FOO=1 asp rust ...
+#+end_example
+
+Wrapper normalization does not grant protocol authority.
+
+** Hook classification
+
+- main-agent open is denied and dispatched once;
+- main-agent advance is denied;
+- bound-resident advance is allowed;
+- main-agent exact query is allowed;
+- main-agent internal action is denied;
+- legacy query and search primitives are protocol errors;
+- parse failure and token-budget exhaustion fail closed.
+
+** Plan safety
+
+#+begin_example
+dependentBranchesExecutedInParallel = 0
+batchableBranchesExpandedToParallel = 0
+parallelChoiceHasIndependenceProof = 100%
+staleChoiceRejection = 100%
+parallelChoiceReplayExecutionCount = 0
+crossSnapshotJoinCount = 0
+duplicateBranchExecutionCount = 0
+#+end_example
+
+** Search quality
+
+#+begin_example
+goldNodeCoverage >= 0.95
+goldEdgeCoverage >= 0.90
+falseTerminalRate = 0
+unnecessaryPartialRate <= 0.05
+#+end_example
+
+Each panel is also evaluated by a stateless subagent that receives no previous
+conversation.  Correct selection must follow from persisted evidence state and
+panel reasoning, not model memory.
+
+** Compact-render independence
+
+Removing the compact renderer cannot change hook classification, program
+digest, loop replay, graph closure, or receipt digest.
+
+** Schema and runtime proof boundary
+
+JSON Schema proves packet shape.  It does not prove runtime truth:
+
+| Invariant | Schema | Runtime |
+|-----------+--------+---------|
+| one semantic command variant | =oneOf= and closed properties | parser differential tests |
+| exact query contains no term/catalog/backend query | closed exact-query object | argv parser tests |
+| parallel choice includes an independence proof reference | conditional required fields | resolve and verify the referenced proof |
+| parallel width is at most ten | numeric bound | scheduler also proves =maxParallel <= providerDispatchCount <= workItemCount= |
+| token has capability envelope shape | string contract | authenticate, bind resident/run revision/program/context, and reject replay |
+| facade language equals selector language | documented packet invariant | router equality check |
+| branch dependency graph is ready and acyclic | typed ids and arrays | route-program validator |
+| all joined snapshots are identical | digest field shape | join validator |
+| an obligation is closed | status vocabulary | identity/freshness/completeness proof validator |
+| advance is exactly once | packet ids | MVCC compare-and-swap and persisted batch identity |
+
+The schema conformance fixture set required before Rust implementation is:
+
+#+begin_example
+positive:
+  exact-query
+  choice-panel-projection
+  execution-batch-view
+  query-handoff
+  serial-choice
+  batch-choice
+  parallel-choice
+  typed-protocol-match
+  evidence-query-catalog
+  ready-route-proposal-set
+  blocked-route-proposal-set
+  context-product-catalog-bound-route-program
+  context-product-batch-execution-group
+  context-product-serial-execution-group
+  context-product-parallel-execution-group
+  all five RFC JSON examples
+
+negative:
+  exact-query-term
+  parallel-without-independence-proof
+  bare-digest-token
+  parallel-width-over-ten
+  empty-protocol-match
+  raw-argv-pattern-inside-protocol-match
+  loop-projection-with-duplicate-state
+  query-handoff-without-closure-receipt
+  raw-backend-query-in-route-stage
+  route-stage-with-unknown-catalog-entry
+  route-proposal-with-admission-or-program-authority
+  batch-group-with-two-stages
+  serial-group-with-two-stages
+  parallel-group-without-proof
+  parallel-group-with-one-stage
+#+end_example
+
+Context Product's existing state, event, execution-authority, closure, and MVCC
+fixtures remain authoritative and are not copied into the interactive-loop
+suite.  Cross-schema tests must additionally prove that a panel proposal belongs
+to the same Context Product run, revision, and context binding, and that its
+selected proposal is the unique source of the admitted program referenced by
+the batch view and handoff.
+
+These examples become durable fixtures before Rust implementation begins.
+
+* Real-workspace audit baseline
+
+The 2026-07-25 audit found four independent failures that the conformance suite
+must preserve as red-to-green evidence:
+
+1. Rust rejected broad =query= and required an exact selector, while Org still
+   accepted a provider-private broad query shape.  Public exactness was not
+   cross-language.
+2. An Org metadata search emitted forbidden inline source in compact frontier
+   mode.  Routing still depended on provider rendering behavior.
+3. A legacy multi-symbol recovery step exposed a 1217-byte raw Tree-sitter
+   command containing backend node kinds.  The plan was not encapsulated.
+4. A resident lexical search failed to open the global Turso client DB because
+   the subagent execution context lacked State Home access.  Resident routing
+   and State Home authority were not end-to-end.
+
+These are protocol failures, not documentation examples.  Closure requires
+installed-artifact replay of all four cases after the hard cut.
+
+* Migration order
+
+The implementation order is mandatory:
+
+#+begin_example
+this RFC
+  -> shared v1 schemas
+  -> ASP protocol command parser
+  -> AgentAction typed projection
+  -> configuration-driven hook matcher
+  -> Context Product state and route-program executor
+  -> interactive-loop projections
+  -> provider catalog and backend lowering
+  -> Rust provider
+  -> Org, TypeScript, Python, Julia, and Gerbil alignment
+  -> sandtable and adversarial tests
+  -> representative real-project evidence
+  -> installed State Home reconciliation
+#+end_example
+
+There is no compatibility stage.  Legacy commands are removed when their
+canonical owner is ready; a disabled legacy rule, facade, or feature is not an
+acceptable terminal state.
+
+* Closure gate
+
+This RFC is implemented only when:
+
+- the shared v1 schema validates all semantic command and loop packets;
+- every language facade exposes the same two public command classes;
+- hook policy consumes typed semantic command fields;
+- no public argv contains backend query grammar;
+- exactly-once replay and cross-snapshot rejection are proven;
+- batch, serial, and parallel choices pass dependency tests;
+- rank cannot satisfy a proof obligation;
+- compact rendering can be removed without protocol changes;
+- the four real-workspace audit failures are green against the installed
+  State Home artifact;
+- latency, packet bytes, parent-visible bytes, provider aggregate time, and
+  critical-path time are captured in benchmark receipts.
+
+* 2026-07-25 implementation calibration
+
+The first Rust implementation slice now proves the internal v1 execution
+boundary, but it does not yet prove the public CLI boundary.
+
+The landed internal rules are:
+
+- one =ExecutionAuthority= denotes exactly one provider dispatch;
+- serial is one single-stage authority, batch is one multi-stage authority,
+  and parallel is several single-stage authorities in one execution group;
+- admission, grant, start, consume, and join commit one MVCC phase at a time,
+  while every phase commits all authorities selected by that command
+  atomically;
+- a partial parallel wave may consume only the attempts observed by that
+  command; the execution group joins only after the union of consumed
+  authorities covers every group stage;
+- provider failure leaves the group at the persisted =in-flight= recovery
+  point, and =poll= resumes those attempts without replaying admission, grant,
+  or start;
+- closure reads persisted joined-group authority and cannot infer completion
+  from terminal provider results alone.
+
+Rust uses distinct transparent role types for admission, grant, attempt,
+execution-group, provider, operation, budget, lease, and result identities.
+The seven =SearchBudget= dimensions are also distinct transparent types and
+all seven must be non-zero and JSON-safe.  These types strengthen the Rust
+owner without changing the v1 JSON field names or values.
+
+The public ABI remains open.  No production call site has yet proved that
+=asp <language> search= reaches =GraphRouter.advance_search_loop= or
+=GraphRouter.poll_search_loop=.  The check gate's own suggested line-selector
+recovery also currently fails with =wrapper-snapshot-required=.  Neither gap
+may be hidden behind a compatibility command or a private provider shortcut.

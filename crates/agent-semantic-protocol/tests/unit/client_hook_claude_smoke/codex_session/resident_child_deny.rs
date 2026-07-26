@@ -123,7 +123,8 @@ fn codex_hook_payload_wrong_agent_id_keeps_main_bootstrap() {
         decision["message"]
             .as_str()
             .unwrap_or_default()
-            .contains("asp agent session bootstrap")
+            .contains("asp agent session bootstrap"),
+        "{decision}"
     );
 }
 
@@ -256,7 +257,7 @@ fn registered_resident_child_transcript_allows_parser_owned_rust_search() {
 }
 
 #[test]
-fn registered_resident_child_with_root_env_keeps_main_bootstrap() {
+fn registered_resident_child_with_root_env_routes_main_to_canonical_resume() {
     let root = claude_fixture();
     let codex_home = root.join(".codex-home");
     install_codex_hooks(&root, &codex_home);
@@ -275,11 +276,14 @@ fn registered_resident_child_with_root_env_keeps_main_bootstrap() {
         decision["fields"]["requiredAction"].as_str(),
         Some("enter-asp-explore-choice-pane")
     );
+    let message = decision["message"].as_str().unwrap_or_default();
     assert!(
-        decision["message"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("asp agent session bootstrap")
+        message.contains("resume resident `asp-explore`"),
+        "{decision}"
+    );
+    assert!(
+        !message.contains("asp agent session bootstrap"),
+        "{decision}"
     );
 }
 

@@ -9,6 +9,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod paths;
+mod source_scope;
+#[cfg(test)]
+mod tests;
+
+use source_scope::ensure_provider_source_scope_fixture;
+
 pub(super) const CACHE_SOURCE_PATH: &str = "src/lib.rs";
 pub(super) const CACHE_SOURCE_TEXT: &str = "struct CacheReplay;\n";
 pub(super) const CACHE_SOURCE_SHA256: &str =
@@ -50,7 +57,6 @@ pub(crate) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
 pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers: &[ProviderSpec]) {
     let activation_dir = activation_path.parent().expect("activation parent");
     std::fs::create_dir_all(activation_dir).expect("create activation dir");
-    let package_root = root.display().to_string();
     let providers: Vec<_> = providers
         .iter()
         .map(|spec| {
@@ -93,7 +99,7 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
                 "routes": routes,
                 "coverage": {
-                    "packageRoots": [package_root.clone()],
+                    "packageRoots": ["."],
                     "sourceRoots": manifest.source().default_source_roots,
                     "configFiles": manifest.source().default_config_files,
                     "sourceExtensions": manifest.source().default_extensions,
@@ -270,11 +276,26 @@ pub(crate) fn temp_project_root(name: &str) -> PathBuf {
         .as_nanos();
     let root = env::temp_dir().join(format!("agent-semantic-protocol-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
-    std::fs::create_dir_all(root.join(".git")).expect("create temp git marker");
+    let git_status = Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(&root)
+        .status()
+        .expect("initialize temp git project");
+    assert!(git_status.success(), "initialize temp git project");
+    std::fs::create_dir_all(root.join("src")).expect("create temp source root");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"{}\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+            name.replace('_', "-")
+        ),
+    )
+    .expect("write temp Cargo manifest");
+    std::fs::write(root.join("src/lib.rs"), "").expect("write temp Rust source");
     root
 }
 
-pub(super) fn write_echo_provider(bin_dir: &Path, binary: &str, label: &str) {
+pub(crate) fn write_echo_provider(bin_dir: &Path, binary: &str, label: &str) {
     write_provider_script(
         bin_dir,
         binary,
@@ -528,168 +549,4 @@ fn write_provider_install_receipts(root: &Path) {
         )
         .expect("write provider install receipt");
     }
-}
-
-fn ensure_provider_source_scope_fixture(
-    root: &Path,
-    manifest: &agent_semantic_hook::ProviderManifest,
-) {
-    let source = manifest.source();
-    if source
-        .default_config_files
-        .iter()
-        .any(|path| root.join(path).is_file())
-        || source.default_source_roots.iter().any(|source_root| {
-            directory_contains_registered_source(
-                &root.join(source_root),
-                &source.default_extensions,
-                &state_home(root),
-            )
-        })
-    {
-        return;
-    }
-    let Some(extension) = source.default_extensions.first() else {
-        return;
-    };
-    let source_root = source
-        .default_source_roots
-        .first()
-        .map_or_else(|| root.to_path_buf(), |path| root.join(path));
-    std::fs::create_dir_all(&source_root).expect("create provider source-scope fixture root");
-    std::fs::write(
-        source_root.join(format!(
-            "asp_scope_fixture_{}{}",
-            manifest.language_id(),
-            extension
-        )),
-        "",
-    )
-    .expect("write provider source-scope fixture");
-}
-
-fn directory_contains_registered_source(
-    directory: &Path,
-    extensions: &[String],
-    excluded_state_home: &Path,
-) -> bool {
-    if !directory.is_dir() || directory.starts_with(excluded_state_home) {
-        return false;
-    }
-    let Ok(entries) = std::fs::read_dir(directory) else {
-        return false;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if directory_contains_registered_source(&path, extensions, excluded_state_home) {
-                return true;
-            }
-            continue;
-        }
-        if path.is_file()
-            && path
-                .extension()
-                .and_then(|value| value.to_str())
-                .is_some_and(|extension| {
-                    extensions
-                        .iter()
-                        .any(|candidate| candidate.trim_start_matches('.') == extension)
-                })
-        {
-            return true;
-        }
-    }
-    false
-}
-
-#[test]
-fn state_home_provider_fixture_writes_lock_for_runtime_binary() {
-    let root = temp_project_root("state-home-provider-lock-fixture");
-    write_echo_provider(&state_runtime_bin(&root), "rs-harness", "state-home");
-    write_activation(&root, &[provider("rust", Vec::new())]);
-
-    let _command = asp_command(&root);
-
-    let provider_path = state_runtime_bin(&root).join("rs-harness");
-    let lock_path = state_home(&root).join("runtime/provider-locks/rust.lock.toml");
-    let lock = std::fs::read_to_string(&lock_path).expect("read provider install lock");
-    assert!(
-        lock.contains("schemaId = \"asp.provider-install-lock.v1\""),
-        "{lock}"
-    );
-    assert!(
-        lock.contains(&format!("installedPath = \"{}\"", provider_path.display())),
-        "{lock}"
-    );
-    assert!(!root.join("home/.local/bin/rs-harness").exists());
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn state_home_rust_activation_regeneration_materializes_dependency_routes() {
-    let root = temp_project_root("state-home-rust-activation-dependency-routes");
-    std::fs::create_dir_all(root.join("src")).expect("create Rust source root");
-    std::fs::write(
-        root.join("Cargo.toml"),
-        "[package]\nname = \"activation-routes\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-    )
-    .expect("write Cargo.toml");
-    std::fs::write(root.join("src/lib.rs"), "pub struct ActivationRoutes;\n")
-        .expect("write Rust source");
-    write_echo_provider(&state_runtime_bin(&root), "rs-harness", "state-home-rust");
-
-    let output = asp_command(&root)
-        .args(["rust", "guide"])
-        .output()
-        .expect("generate State Home activation");
-    assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let activation_path = state_activation_path(&root);
-    let activation: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(&activation_path).expect("read regenerated activation"),
-    )
-    .expect("activation JSON");
-    let rust_provider = activation["providers"]
-        .as_array()
-        .expect("activation providers")
-        .iter()
-        .find(|entry| entry["languageId"] == "rust")
-        .expect("Rust activation provider");
-    assert_eq!(
-        rust_provider["routes"]["dependencyTopology"]["argv"],
-        json!([
-            "rs-harness",
-            "search",
-            "dependency-topology",
-            "--json",
-            "--workspace",
-            "{workspace}"
-        ])
-    );
-    assert_eq!(
-        rust_provider["routes"]["dependencyTopologyMetadata"]["argv"],
-        json!([
-            "rs-harness",
-            "search",
-            "dependency-topology-metadata",
-            "--json",
-            "--workspace",
-            "{workspace}"
-        ])
-    );
-
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-#[should_panic(
-    expected = "State Home v1 activation fixtures cannot embed provider command prefixes"
-)]
-fn activation_fixture_rejects_embedded_provider_command_prefix() {
-    let _ = provider("rust", vec!["rs-harness".to_string()]);
 }

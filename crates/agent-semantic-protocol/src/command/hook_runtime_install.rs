@@ -148,8 +148,14 @@ fn run_install_for_client(
         .map(|provider| {
             let binary = provider.resolved_binary.as_ref().ok_or_else(|| {
                 format!(
-                    "active provider has no resolved binary: language={} provider={}",
-                    provider.language_id, provider.provider_id
+                    "active provider has no resolved binary: language={} provider={} \
+                     commandPrefix={:?} argv={:?} health={:?} reason={:?}",
+                    provider.language_id,
+                    provider.provider_id,
+                    provider.provider_command_prefix,
+                    provider.argv,
+                    provider.health.status,
+                    provider.health.reason,
                 )
             })?;
             agent_semantic_hook::active_provider_artifact_input(

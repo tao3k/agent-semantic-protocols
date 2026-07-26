@@ -34,6 +34,10 @@ name = "turso_mvcc_concurrent_write"
 harness = false
 
 [[bench]]
+name = "turso_context_run_search_loop"
+harness = false
+
+[[bench]]
 name = "artifact_pointer_cas"
 harness = false
 

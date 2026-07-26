@@ -26,6 +26,8 @@ pub(crate) fn write_hermetic_provider_registry_config(
 }
 
 pub(crate) fn write_hermetic_provider_executable(path: &Path) {
+    std::fs::create_dir_all(path.parent().expect("hermetic provider parent"))
+        .expect("create hermetic provider parent");
     std::fs::write(path, "#!/bin/sh\nexit 0\n").expect("write hermetic provider executable");
     #[cfg(unix)]
     {

@@ -8,14 +8,12 @@ use crate::test_support::{CACHE_TEST_LOCK, EnvVarGuard};
 fn cached_activation_loader_refreshes_stale_provider_command_prefix() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_project_root("activation-cache-refresh");
-    let state_home = root.join(".asp-state");
-    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", &state_home);
-    let runtime_bin = state_home.join("runtime").join("bin");
-    std::fs::create_dir_all(&runtime_bin).expect("create State Home runtime bin");
+    let runtime_bin = root.join(".asp-state/runtime/bin");
     let provider_v1 = runtime_bin.join("provider-v1");
     let provider_v2 = runtime_bin.join("provider-v2");
     write_executable(&provider_v1);
     write_executable(&provider_v2);
+    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     let _ignored_cache_home = EnvVarGuard::set("PRJ_CACHE_HOME", root.join(".cache-home"));
     let activation_path = root
         .join(".cache")
@@ -63,7 +61,6 @@ fn temp_project_root(name: &str) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!("asp-client-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("create temp project root");
-    std::fs::create_dir(root.join(".git")).expect("create git marker");
     root
 }
 
@@ -76,6 +73,8 @@ fn write_python_provider_install_receipt(root: &std::path::Path, binary: &std::p
 }
 
 fn write_executable(path: &std::path::Path) {
+    std::fs::create_dir_all(path.parent().expect("provider parent"))
+        .expect("create provider parent");
     std::fs::write(path, "#!/bin/sh\nexit 0\n").expect("write executable");
     #[cfg(unix)]
     {

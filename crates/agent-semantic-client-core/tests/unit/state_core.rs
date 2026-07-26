@@ -68,6 +68,7 @@ fn minimal_layout_writes_manifest_without_project_cache() {
     let work = root.join("work");
     let state_home = root.join("state");
     fs::create_dir_all(&work).unwrap();
+    git(&work, &["init"]);
 
     let state = ResolvedState::resolve_with_state_home(&work, &state_home).unwrap();
     state.ensure_minimal_layout().unwrap();
@@ -216,13 +217,8 @@ fn git_remote_url_change_does_not_change_repo_identity() {
         ssh_state.workspace.workspace_id,
         https_state.workspace.workspace_id
     );
-    assert!(ssh_state.repo.identity_basis.starts_with("git-common-dir:"));
-    assert!(
-        https_state
-            .repo
-            .identity_basis
-            .starts_with("git-common-dir:")
-    );
+    assert!(ssh_state.repo.identity_basis.starts_with("git-remote:"));
+    assert!(https_state.repo.identity_basis.starts_with("git-remote:"));
 }
 
 fn temp_root(label: &str) -> PathBuf {

@@ -64,14 +64,44 @@ pub(super) async fn commit_state<S: RunCommitStore>(
     expected: crate::StateHead,
     event: ContextProductEvent,
     next_state: UncheckedContextProductStateV1,
+    search_loop_capabilities: Vec<crate::search_capability::UncheckedSearchLoopCapabilityV1>,
+    search_loop_runtime: Option<crate::search_runtime::UncheckedSearchLoopRuntimeBindingV1>,
     committed_at_ms: u64,
 ) -> Result<ValidatedContextProductStateV1, GraphRouterError> {
+    commit_events(
+        store,
+        expected,
+        vec![event],
+        next_state,
+        search_loop_capabilities,
+        search_loop_runtime,
+        committed_at_ms,
+    )
+    .await
+}
+
+pub(super) async fn commit_events<S: RunCommitStore>(
+    store: &S,
+    expected: crate::StateHead,
+    events: Vec<ContextProductEvent>,
+    next_state: UncheckedContextProductStateV1,
+    search_loop_capabilities: Vec<crate::search_capability::UncheckedSearchLoopCapabilityV1>,
+    search_loop_runtime: Option<crate::search_runtime::UncheckedSearchLoopRuntimeBindingV1>,
+    committed_at_ms: u64,
+) -> Result<ValidatedContextProductStateV1, GraphRouterError> {
+    if events.is_empty() {
+        return Err(GraphRouterError::InvalidTransition(
+            "state commit requires at least one event",
+        ));
+    }
     match store
         .compare_and_append(RunCommit {
             expected,
-            events: vec![event],
+            events,
             next_state: next_state.clone(),
             committed_at_ms,
+            search_loop_capabilities: search_loop_capabilities.clone(),
+            search_loop_runtime: search_loop_runtime.clone(),
         })
         .await
         .map_err(|error| GraphRouterError::Store(error.to_string()))?
@@ -80,8 +110,10 @@ pub(super) async fn commit_state<S: RunCommitStore>(
             ValidatedContextProductStateV1::from_authoritative_record(AuthoritativeStateRecord {
                 state: next_state,
                 authority_receipt: receipt.authority_receipt,
+                search_loop_capabilities,
+                search_loop_runtime,
             })
-            .map_err(GraphRouterError::Validation)
+            .map_err(GraphRouterError::from)
         }
         CompareAndAppendOutcome::Conflict(head) => Err(GraphRouterError::Conflict(head)),
     }

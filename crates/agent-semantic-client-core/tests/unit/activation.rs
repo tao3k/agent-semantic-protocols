@@ -132,12 +132,18 @@ fn provider_registry_fingerprint_binds_complete_semantic_descriptor() {
         .fact_kinds = vec!["changed-family".to_string()];
     mutations.push(families);
     let mut intent = baseline_provider;
+    let intent_axis = intent
+        .semantic_facts_descriptor
+        .as_ref()
+        .expect("semantic descriptor")
+        .intent_axes[0]
+        .clone()
+        .with_terms(["changed-intent"]);
     intent
         .semantic_facts_descriptor
         .as_mut()
         .expect("semantic descriptor")
-        .intent_axes[0]
-        .terms = vec!["changed-intent".to_string()];
+        .intent_axes[0] = intent_axis;
     mutations.push(intent);
     let mut absent = resolved_provider();
     absent.semantic_facts_descriptor = None;
@@ -207,11 +213,12 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
     let activation_path = root.join("activation.json");
     let manifest = builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == "python")
+        .find(|manifest| manifest.language_id().as_str() == "python")
         .expect("python manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
         .expect("python provider routes");
+    let source = manifest.source().clone();
     let activation = agent_semantic_hook::HookActivation {
         schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
@@ -225,25 +232,25 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
         },
         generated_at: None,
         providers: vec![agent_semantic_hook::ActivatedProviderConfig {
-            manifest_id: manifest.manifest_id,
+            manifest_id: manifest.manifest_id().to_owned(),
             manifest_digest,
-            language_id: manifest.language_id,
-            provider_id: manifest.provider_id,
-            binary: manifest.binary,
-            execution: manifest.execution,
+            language_id: manifest.language_id().clone(),
+            provider_id: manifest.provider_id().clone(),
+            binary: manifest.binary().to_owned(),
+            execution: manifest.execution(),
             provider_command_prefix: vec!["missing-python-provider-prefix".to_string()],
             execution_command_digest: "test-execution-command-digest".to_string(),
-            search_capabilities: manifest.search_capabilities,
-            semantic_facts_descriptor: manifest.semantic_facts_descriptor,
-            query_pack_descriptor: manifest.query_pack_descriptor,
+            search_capabilities: manifest.search_capabilities().clone(),
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+            query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
                 package_roots: vec![".".to_string()],
-                source_roots: manifest.source.default_source_roots,
-                config_files: manifest.source.default_config_files,
-                source_extensions: manifest.source.default_extensions,
-                ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
+                source_roots: source.default_source_roots,
+                config_files: source.default_config_files,
+                source_extensions: source.default_extensions,
+                ignored_path_prefixes: source.default_ignored_path_prefixes,
             },
         }],
     };
@@ -282,12 +289,13 @@ fn explicit_activation_path_keeps_requested_project_root() {
     let _path_env = EnvVarGuard::set("PATH", provider_path);
     let manifest = builtin_provider_manifests()
         .into_iter()
-        .find(|manifest| manifest.language_id == "python")
+        .find(|manifest| manifest.language_id().as_str() == "python")
         .expect("python manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let expected_project_root = child.display().to_string();
     let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
         .expect("python provider routes");
+    let source = manifest.source().clone();
     let activation = agent_semantic_hook::HookActivation {
         schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
@@ -301,25 +309,25 @@ fn explicit_activation_path_keeps_requested_project_root() {
         },
         generated_at: None,
         providers: vec![agent_semantic_hook::ActivatedProviderConfig {
-            manifest_id: manifest.manifest_id,
+            manifest_id: manifest.manifest_id().to_owned(),
             manifest_digest,
-            language_id: manifest.language_id,
-            provider_id: manifest.provider_id,
-            binary: manifest.binary,
-            execution: manifest.execution,
+            language_id: manifest.language_id().clone(),
+            provider_id: manifest.provider_id().clone(),
+            binary: manifest.binary().to_owned(),
+            execution: manifest.execution(),
             provider_command_prefix: vec!["py-harness".to_string()],
             execution_command_digest: "test-execution-command-digest".to_string(),
-            search_capabilities: manifest.search_capabilities,
-            semantic_facts_descriptor: manifest.semantic_facts_descriptor,
-            query_pack_descriptor: manifest.query_pack_descriptor,
+            search_capabilities: manifest.search_capabilities().clone(),
+            semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+            query_pack_descriptor: manifest.query_pack_descriptor().clone(),
             semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
                 package_roots: vec![".".to_string()],
-                source_roots: manifest.source.default_source_roots,
-                config_files: manifest.source.default_config_files,
-                source_extensions: manifest.source.default_extensions,
-                ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
+                source_roots: source.default_source_roots,
+                config_files: source.default_config_files,
+                source_extensions: source.default_extensions,
+                ignored_path_prefixes: source.default_ignored_path_prefixes,
             },
         }],
     };

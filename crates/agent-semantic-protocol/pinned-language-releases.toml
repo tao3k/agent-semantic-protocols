@@ -56,3 +56,20 @@ supportedTargets = [
   "x86_64-unknown-linux-gnu",
   "aarch64-apple-darwin",
 ]
+
+[languages.org]
+provider = "orgize"
+repo = "tao3k/orgize"
+version = "v0.10.0-alpha.10"
+downloadBaseUrl = "https://github.com/tao3k/orgize/releases/download/v0.10.0-alpha.10"
+binary = "orgize"
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+]
+
+[languages.org.sha256ByTarget]
+"aarch64-apple-darwin" = "bf29b471d01529f5a98364dddac8aa24d5d57f31ba794e3b94e591d8527f9cf8"
+"x86_64-pc-windows-msvc" = "96e100bb0fa08395c356b4f4b0a8b95c6771d82f1d94fbb8745f20c5076f061e"
+"x86_64-unknown-linux-gnu" = "ec27ef143b3d38f2dd742fec1096947c28a4f595e9549eae6fbb8b88eb8db096"

@@ -20,7 +20,7 @@ fn provider_process_hot_path_stays_inside_performance_gate() {
             run_provider_process(spec(program.clone(), root.clone())).expect("run provider");
         assert!(output.status.success());
         assert_eq!(output.stdout.as_ref(), b"ok");
-        run_times.push(output.receipt.elapsed);
+        run_times.push(output.receipt.elapsed());
     }
 
     let elapsed = started_at.elapsed();

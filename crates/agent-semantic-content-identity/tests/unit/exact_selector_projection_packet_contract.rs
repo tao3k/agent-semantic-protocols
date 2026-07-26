@@ -3,8 +3,6 @@ use agent_semantic_content_identity::exact_selector_merkle::{
     ContentDigestV1, ExactProjectionModeV1,
 };
 use agent_semantic_content_identity::exact_selector_projection_packet::{
-    EXACT_SELECTOR_PROJECTION_PACKET_DIGEST_ALGORITHM, EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_ID,
-    EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_VERSION, ExactSelectorProjectionEncodingV1,
     ExactSelectorProjectionPacketV1, ExactSelectorProjectionPacketV1Error,
     derive_parser_identity_digest_v1, derive_query_pack_identity_digest_v1,
 };

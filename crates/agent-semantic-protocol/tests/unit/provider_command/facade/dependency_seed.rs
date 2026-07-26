@@ -562,6 +562,12 @@ impl DependencySeedCase {
             self.language,
             String::from_utf8_lossy(&output.stderr)
         );
+        assert!(
+            !marker.exists(),
+            "language={} dependency seed should not spawn provider",
+            self.language
+        );
+
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
             stderr.contains("parser-owned manifest facts"),
@@ -570,7 +576,7 @@ impl DependencySeedCase {
         );
         assert!(
             !marker.exists(),
-            "language={} capability rejection should not spawn provider",
+            "language={} dependency seed should not spawn provider",
             self.language
         );
 

@@ -22,6 +22,7 @@ fn search_history_rejects_unknown_subcommand() {
 fn search_history_backfills_artifacts_and_passes_db_engine_events() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("history-backfill");
+    git(&root, &["init"]);
     let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     let artifact_dir = ResolvedState::resolve(&root)
         .expect("state core")
@@ -160,6 +161,15 @@ fn temp_root(name: &str) -> std::path::PathBuf {
     std::fs::create_dir_all(&root).expect("create temp root");
     std::fs::create_dir(root.join(".git")).expect("create git marker");
     root
+}
+
+fn git(root: &Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .status()
+        .expect("run git");
+    assert!(status.success(), "git {args:?}");
 }
 
 fn prepend_path(bin_dir: &Path) -> std::ffi::OsString {

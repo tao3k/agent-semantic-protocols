@@ -1,12 +1,14 @@
 use std::fmt;
 
 use agent_semantic_context_product::{
-    ActiveProgram, ContextProductEvent, Digest, ExecutionAuthority, JSON_SAFE_INTEGER_MAX,
-    ProtocolId, RouteProgram, RouteProgramAdmitted, RouteProgramAdmittedEventType, RouteProposal,
+    ActiveProgram, ContextProductEvent, Digest, JSON_SAFE_INTEGER_MAX, ProtocolId, RouteProgram,
+    RouteProgramAdmitted, RouteProgramAdmittedEventType, RouteProposal,
     UncheckedContextProductStateV1, ValidationError, chained_event_log_digest,
 };
 
-use crate::authoritative_state::ValidatedContextProductStateV1;
+use crate::authoritative_state::{
+    AuthoritativeStateValidationError, ValidatedContextProductStateV1,
+};
 use crate::ports::{
     AuthoritativeStateRecord, CompareAndAppendOutcome, ProofResolver, RunCommit, RunCommitStore,
     StateHead, TrustedClock,
@@ -28,6 +30,11 @@ pub struct AdmitRouteProgramRequest {
 pub enum GraphRouterError {
     Store(String),
     Proof(String),
+    Provider(String),
+    Capability(crate::search_capability::SearchLoopCapabilityValidationError),
+    Runtime(crate::search_runtime::SearchLoopRuntimeValidationError),
+    RuntimeBinding,
+    MissingSearchLoop(ProtocolId),
     Validation(ValidationError),
     Route(RouteValidationError),
     Conflict(StateHead),
@@ -40,6 +47,19 @@ impl fmt::Display for GraphRouterError {
         match self {
             Self::Store(error) => write!(formatter, "context run store failed: {error}"),
             Self::Proof(error) => write!(formatter, "context proof resolver failed: {error}"),
+            Self::Provider(error) => write!(formatter, "search provider execution failed: {error}"),
+            Self::Capability(error) => {
+                write!(formatter, "search-loop capability rejected: {error}")
+            }
+            Self::Runtime(error) => {
+                write!(formatter, "search-loop runtime rejected: {error}")
+            }
+            Self::RuntimeBinding => {
+                formatter.write_str("search-loop runtime disagrees with context state")
+            }
+            Self::MissingSearchLoop(loop_id) => {
+                write!(formatter, "search-loop `{loop_id}` is not registered")
+            }
             Self::Validation(error) => write!(formatter, "context state rejected: {error}"),
             Self::Route(error) => write!(formatter, "route rejected: {error}"),
             Self::Conflict(head) => write!(
@@ -61,6 +81,19 @@ impl fmt::Display for GraphRouterError {
 }
 
 impl std::error::Error for GraphRouterError {}
+
+impl From<AuthoritativeStateValidationError> for GraphRouterError {
+    fn from(error: AuthoritativeStateValidationError) -> Self {
+        match error {
+            AuthoritativeStateValidationError::ContextProduct(error) => Self::Validation(error),
+            AuthoritativeStateValidationError::SearchLoopCapability(error) => {
+                Self::Capability(error)
+            }
+            AuthoritativeStateValidationError::SearchLoopRuntime(error) => Self::Runtime(error),
+            AuthoritativeStateValidationError::SearchLoopRuntimeBinding => Self::RuntimeBinding,
+        }
+    }
+}
 
 pub struct GraphRouter<S, P, C> {
     pub(crate) store: S,
@@ -96,12 +129,50 @@ where
             .await
             .map_err(|error| GraphRouterError::Store(error.to_string()))?;
         ValidatedContextProductStateV1::from_authoritative_record(record)
-            .map_err(GraphRouterError::Validation)
+            .map_err(GraphRouterError::from)
+    }
+
+    pub async fn load_search_loop(
+        &self,
+        loop_id: &ProtocolId,
+    ) -> Result<ValidatedContextProductStateV1, GraphRouterError>
+    where
+        S: crate::ports::SearchLoopRuntimeStore,
+    {
+        let now_ms = self.clock.now_ms();
+        if now_ms > JSON_SAFE_INTEGER_MAX {
+            return Err(GraphRouterError::UnsafeClock(now_ms));
+        }
+        let record = self
+            .store
+            .load_by_loop_id(loop_id)
+            .await
+            .map_err(|error| GraphRouterError::Store(error.to_string()))?
+            .ok_or_else(|| GraphRouterError::MissingSearchLoop(loop_id.clone()))?;
+        ValidatedContextProductStateV1::from_authoritative_record(record)
+            .map_err(GraphRouterError::from)
     }
 
     pub async fn admit_route_program(
         &self,
         request: AdmitRouteProgramRequest,
+    ) -> Result<ValidatedContextProductStateV1, GraphRouterError> {
+        self.admit_route_program_inner(request, None).await
+    }
+
+    pub async fn admit_route_program_with_capability_spend(
+        &self,
+        request: AdmitRouteProgramRequest,
+        capability_spend: crate::search_capability::SearchLoopCapabilitySpend,
+    ) -> Result<ValidatedContextProductStateV1, GraphRouterError> {
+        self.admit_route_program_inner(request, Some(capability_spend))
+            .await
+    }
+
+    async fn admit_route_program_inner(
+        &self,
+        request: AdmitRouteProgramRequest,
+        capability_spend: Option<crate::search_capability::SearchLoopCapabilitySpend>,
     ) -> Result<ValidatedContextProductStateV1, GraphRouterError> {
         let current = self.load(&request.run_id).await?;
         let committed_at_ms = self.clock.now_ms();
@@ -110,7 +181,7 @@ where
         }
         require_expected_head(&current, &request)?;
         if !matches!(current.active_program(), ActiveProgram::None)
-            || !matches!(current.execution(), ExecutionAuthority::None)
+            || !current.executions().is_empty()
         {
             return Err(GraphRouterError::InvalidTransition(
                 "route program requires no active program or execution authority",
@@ -173,6 +244,25 @@ where
         next_state
             .validate()
             .map_err(GraphRouterError::Validation)?;
+        let capability_mutations = capability_spend
+            .map(|spend| {
+                crate::search_capability::SearchLoopCapabilityMutation::Consume(
+                    crate::search_capability::SearchLoopCapabilityConsumption::new(
+                        spend.capability_id().clone(),
+                        spend.token_digest().clone(),
+                        next_revision,
+                        next_state.authority_receipt_ref.clone(),
+                    ),
+                )
+            })
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut search_loop_capabilities = current.search_loop_capabilities().to_vec();
+        crate::search_capability::apply_capability_mutations(
+            &mut search_loop_capabilities,
+            &capability_mutations,
+        )
+        .map_err(|error| GraphRouterError::Store(error.to_string()))?;
 
         let expected = current.head();
         let outcome = self
@@ -182,6 +272,8 @@ where
                 events: vec![ContextProductEvent::RouteProgramAdmitted(event)],
                 next_state: next_state.clone(),
                 committed_at_ms,
+                search_loop_capabilities: search_loop_capabilities.clone(),
+                search_loop_runtime: current.search_loop_runtime().cloned(),
             })
             .await
             .map_err(|error| GraphRouterError::Store(error.to_string()))?;
@@ -191,9 +283,11 @@ where
                     AuthoritativeStateRecord {
                         state: next_state,
                         authority_receipt: receipt.authority_receipt,
+                        search_loop_capabilities,
+                        search_loop_runtime: current.search_loop_runtime().cloned(),
                     },
                 )
-                .map_err(GraphRouterError::Validation)
+                .map_err(GraphRouterError::from)
             }
             CompareAndAppendOutcome::Conflict(head) => Err(GraphRouterError::Conflict(head)),
         }

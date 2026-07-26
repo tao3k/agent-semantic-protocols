@@ -83,6 +83,7 @@ fn newest_asp_hook_surface_source_mtime() -> Option<SystemTime> {
         "crates/agent-semantic-protocol/src/command/hook.rs",
         "crates/agent-semantic-protocol/src/command/hook_runtime.rs",
         "crates/agent-semantic-protocol/src/command/hook_runtime_codex_plugin.rs",
+        "crates/agent-semantic-protocol/src/command/hook_runtime_install.rs",
         "crates/agent-semantic-protocol/src/command/hook_runtime_subagent.rs",
         "crates/agent-semantic-protocol/src/command/install_provider.rs",
         "crates/agent-semantic-protocol/src/command/org_archive.rs",
@@ -92,9 +93,11 @@ fn newest_asp_hook_surface_source_mtime() -> Option<SystemTime> {
         "crates/agent-semantic-config/src/hook_client_config.rs",
         "crates/agent-semantic-hook/src/activation_store.rs",
         "crates/agent-semantic-hook/src/event_state.rs",
+        "crates/agent-semantic-hook/src/executable.rs",
         "crates/agent-semantic-hook/src/hook_config/agent_org_config.rs",
         "crates/agent-semantic-hook/src/provider_manifest.rs",
         "crates/agent-semantic-hook/src/provider_registry.rs",
+        "crates/agent-semantic-hook/src/runtime_profile.rs",
         "crates/agent-semantic-hook/src/protocol_activation/digest.rs",
         "crates/agent-semantic-hook/src/protocol_activation/protocol_activation_manifest.rs",
         "crates/agent-semantic-hook/src/protocol_activation/protocol_activation_runtime.rs",
@@ -283,14 +286,6 @@ pub(super) fn write_unmanaged_provider_file(
     mode: u32,
 ) -> PathBuf {
     write_unmanaged_provider_in_dir(&root.join(".bin"), binary, mode)
-}
-
-pub(super) fn write_home_local_unmanaged_provider_file(
-    home: &std::path::Path,
-    binary: &str,
-    mode: u32,
-) -> PathBuf {
-    write_unmanaged_provider_in_dir(&home.join(".local").join("bin"), binary, mode)
 }
 
 fn write_unmanaged_provider_in_dir(bin_dir: &std::path::Path, binary: &str, mode: u32) -> PathBuf {

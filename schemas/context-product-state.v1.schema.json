@@ -21,7 +21,8 @@
     "proofReuse",
     "frontier",
     "decision",
-    "execution",
+    "executions",
+    "joinedExecutionGroups",
     "closure",
     "stateDigest"
   ],
@@ -84,8 +85,19 @@
     "decision": {
       "$ref": "#/$defs/decisionRequirement"
     },
-    "execution": {
-      "$ref": "#/$defs/executionAuthority"
+    "executions": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "$ref": "#/$defs/executionAuthority"
+      }
+    },
+    "joinedExecutionGroups": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "$ref": "#/$defs/joinedExecutionGroup"
+      }
     },
     "closure": {
       "$ref": "#/$defs/closureDisposition"
@@ -159,9 +171,11 @@
     "claimClass": {
       "enum": [
         "identity",
+        "existential",
         "enumeration",
         "absence",
         "causal-flow",
+        "classification",
         "handoff",
         "quality"
       ]
@@ -641,7 +655,11 @@
       "required": [
         "maxCommands",
         "maxElapsedMs",
-        "maxPacketBytes"
+        "maxPacketBytes",
+        "maxChoiceDepth",
+        "maxParallel",
+        "maxAggregateProviderLatencyMs",
+        "maxParentVisibleBytes"
       ],
       "properties": {
         "maxCommands": {
@@ -651,6 +669,20 @@
           "$ref": "#/$defs/positiveInteger"
         },
         "maxPacketBytes": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "maxChoiceDepth": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "maxParallel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "maxAggregateProviderLatencyMs": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "maxParentVisibleBytes": {
           "$ref": "#/$defs/positiveInteger"
         }
       }
@@ -862,9 +894,6 @@
     "executionAuthority": {
       "oneOf": [
         {
-          "$ref": "#/$defs/noExecution"
-        },
-        {
           "$ref": "#/$defs/admittedExecution"
         },
       {
@@ -881,18 +910,6 @@
         }
       ]
     },
-    "noExecution": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind"
-      ],
-      "properties": {
-        "kind": {
-          "const": "none"
-        }
-      }
-    },
     "admittedExecution": {
       "type": "object",
       "additionalProperties": false,
@@ -902,7 +919,8 @@
       "admissionDigest",
       "actionKey",
       "programDigest",
-      "stageId",
+      "executionGroupId",
+      "stageIds",
       "providerId",
       "operation",
       "resolvedInputDigest",
@@ -927,8 +945,11 @@
       "programDigest": {
         "$ref": "#/$defs/digest"
       },
-      "stageId": {
+      "executionGroupId": {
         "$ref": "#/$defs/id"
+      },
+      "stageIds": {
+        "$ref": "#/$defs/nonEmptyIdArray"
       },
       "providerId": {
         "$ref": "#/$defs/id"
@@ -964,7 +985,8 @@
       "grantDigest",
       "actionKey",
       "programDigest",
-      "stageId",
+      "executionGroupId",
+      "stageIds",
       "providerId",
       "operation",
       "resolvedInputDigest",
@@ -999,8 +1021,11 @@
       "programDigest": {
         "$ref": "#/$defs/digest"
       },
-      "stageId": {
+      "executionGroupId": {
         "$ref": "#/$defs/id"
+      },
+      "stageIds": {
+        "$ref": "#/$defs/nonEmptyIdArray"
       },
       "providerId": {
         "$ref": "#/$defs/id"
@@ -1050,7 +1075,8 @@
         "attemptId",
         "attemptDigest",
         "programDigest",
-        "stageId",
+        "executionGroupId",
+        "stageIds",
         "providerId",
         "operation",
         "resolvedInputDigest",
@@ -1091,8 +1117,11 @@
         "programDigest": {
           "$ref": "#/$defs/digest"
         },
-        "stageId": {
+        "executionGroupId": {
           "$ref": "#/$defs/id"
+        },
+        "stageIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
         },
         "providerId": {
           "$ref": "#/$defs/id"
@@ -1137,9 +1166,14 @@
       "admissionId",
       "grantId",
       "grantDigest",
-      "actionKey",
-      "attemptId",
-      "resultReceiptRef",
+        "actionKey",
+        "attemptId",
+        "programDigest",
+        "executionGroupId",
+        "stageIds",
+        "providerId",
+        "operation",
+        "resultReceiptRef",
       "resultDigest",
       "leaseFence"
       ],
@@ -1159,9 +1193,24 @@
         "actionKey": {
           "$ref": "#/$defs/digest"
         },
-        "attemptId": {
-          "$ref": "#/$defs/id"
-        },
+      "attemptId": {
+        "$ref": "#/$defs/id"
+      },
+      "programDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "executionGroupId": {
+        "$ref": "#/$defs/id"
+      },
+      "stageIds": {
+        "$ref": "#/$defs/nonEmptyIdArray"
+      },
+      "providerId": {
+        "$ref": "#/$defs/id"
+      },
+      "operation": {
+        "$ref": "#/$defs/id"
+      },
       "resultReceiptRef": {
         "$ref": "#/$defs/id"
       },
@@ -1178,15 +1227,35 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "reasonCode"
+        "reasonCode",
+        "programDigest",
+        "executionGroupId",
+        "stageIds",
+        "providerId",
+        "operation"
       ],
       "properties": {
         "kind": {
           "const": "revoked"
         },
-        "reasonCode": {
-          "$ref": "#/$defs/id"
-        },
+      "reasonCode": {
+        "$ref": "#/$defs/id"
+      },
+      "programDigest": {
+        "$ref": "#/$defs/digest"
+      },
+      "executionGroupId": {
+        "$ref": "#/$defs/id"
+      },
+      "stageIds": {
+        "$ref": "#/$defs/nonEmptyIdArray"
+      },
+      "providerId": {
+        "$ref": "#/$defs/id"
+      },
+      "operation": {
+        "$ref": "#/$defs/id"
+      },
         "admissionId": {
           "$ref": "#/$defs/id"
         },
@@ -1194,6 +1263,38 @@
           "$ref": "#/$defs/id"
         },
         "actionKey": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "joinPolicy": {
+      "enum": [
+        "all-required",
+        "first-exact",
+        "complete-enumeration",
+        "disambiguate-all"
+      ]
+    },
+    "joinedExecutionGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executionGroupId",
+        "policy",
+        "resultReceiptRefs",
+        "joinDigest"
+      ],
+      "properties": {
+        "executionGroupId": {
+          "$ref": "#/$defs/id"
+        },
+        "policy": {
+          "$ref": "#/$defs/joinPolicy"
+        },
+        "resultReceiptRefs": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "joinDigest": {
           "$ref": "#/$defs/digest"
         }
       }
@@ -1328,10 +1429,11 @@
         "actionClass",
         "providerId",
         "languageId",
-        "operation",
+        "catalogId",
         "inputTemplateDigest",
         "coversObligationIds",
         "dependsOnNodeIds",
+        "requiredClosure",
         "evidencePredicate"
       ],
       "properties": {
@@ -1351,8 +1453,9 @@
         "languageId": {
           "$ref": "#/$defs/id"
         },
-        "operation": {
-          "$ref": "#/$defs/id"
+        "catalogId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*\\.v1$"
         },
         "inputTemplateDigest": {
           "$ref": "#/$defs/digest"
@@ -1362,6 +1465,14 @@
         },
         "dependsOnNodeIds": {
           "$ref": "#/$defs/idArray"
+        },
+        "requiredClosure": {
+          "enum": [
+            "discovery",
+            "existential",
+            "enumeration",
+            "negative-completeness"
+          ]
         },
         "evidencePredicate": {
           "$ref": "#/$defs/evidencePredicate"
@@ -1393,10 +1504,16 @@
         "basedOnRevision",
         "contextBindingDigest",
         "intentDigest",
+        "catalogDigest",
         "proposedBy",
+        "agentReasoningReceiptRef",
+        "graphDerivationReceiptRef",
         "obligationIds",
         "nodes",
         "edges",
+        "executionGroups",
+        "joins",
+        "estimateReceiptRefs",
         "budgetProposal",
         "proposalDigest"
       ],
@@ -1416,7 +1533,16 @@
         "intentDigest": {
           "$ref": "#/$defs/digest"
         },
+        "catalogDigest": {
+          "$ref": "#/$defs/digest"
+        },
         "proposedBy": {
+          "$ref": "#/$defs/id"
+        },
+        "agentReasoningReceiptRef": {
+          "$ref": "#/$defs/id"
+        },
+        "graphDerivationReceiptRef": {
           "$ref": "#/$defs/id"
         },
         "obligationIds": {
@@ -1435,11 +1561,187 @@
             "$ref": "#/$defs/routeEdge"
           }
         },
+        "executionGroups": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/routeProposalExecutionGroup"
+          }
+        },
+        "joins": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/routeProposalJoin"
+          }
+        },
+        "estimateReceiptRefs": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
         "budgetProposal": {
           "$ref": "#/$defs/budget"
         },
         "proposalDigest": {
           "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "routeProposalExecutionGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "groupId",
+        "mode",
+        "nodeIds",
+        "joinPolicy",
+        "maxParallel",
+        "derivationReceiptRef"
+      ],
+      "properties": {
+        "groupId": {
+          "$ref": "#/$defs/id"
+        },
+        "mode": {
+          "enum": [
+            "batch",
+            "serial",
+            "parallel"
+          ]
+        },
+        "nodeIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "joinPolicy": {
+          "enum": [
+            "all-required",
+            "first-exact",
+            "complete-enumeration",
+            "disambiguate-all"
+          ]
+        },
+        "maxParallel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "derivationReceiptRef": {
+          "$ref": "#/$defs/id"
+        },
+        "batchCapabilityRef": {
+          "$ref": "#/$defs/id"
+        },
+        "independenceProofRef": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "batch"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "batchCapabilityRef"
+            ],
+            "properties": {
+              "nodeIds": {
+                "minItems": 2
+              },
+              "maxParallel": {
+                "const": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "serial"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "maxParallel": {
+                "const": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "parallel"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "independenceProofRef"
+            ],
+            "properties": {
+              "nodeIds": {
+                "minItems": 2
+              },
+              "maxParallel": {
+                "minimum": 2
+              }
+            }
+          }
+        }
+      ]
+    },
+    "routeProposalJoin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "joinId",
+        "requiredNodeIds",
+        "continuationNodeId",
+        "policy"
+      ],
+      "properties": {
+        "joinId": {
+          "$ref": "#/$defs/id"
+        },
+        "requiredNodeIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "continuationNodeId": {
+          "$ref": "#/$defs/id"
+        },
+        "policy": {
+          "enum": [
+            "all-required",
+            "first-exact",
+            "complete-enumeration",
+            "disambiguate-all"
+          ]
         }
       }
     },
@@ -1450,9 +1752,10 @@
         "stageId",
         "proposalNodeId",
         "providerId",
-        "operation",
+        "catalogId",
         "inputTemplateDigest",
         "coversObligationIds",
+        "requiredClosure",
         "evidencePredicate"
       ],
       "properties": {
@@ -1465,8 +1768,9 @@
         "providerId": {
           "$ref": "#/$defs/id"
         },
-        "operation": {
-          "$ref": "#/$defs/id"
+        "catalogId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*\\.v1$"
         },
         "inputTemplateDigest": {
           "$ref": "#/$defs/digest"
@@ -1474,10 +1778,114 @@
         "coversObligationIds": {
           "$ref": "#/$defs/nonEmptyIdArray"
         },
+        "requiredClosure": {
+          "enum": [
+            "discovery",
+            "existential",
+            "enumeration",
+            "negative-completeness"
+          ]
+        },
         "evidencePredicate": {
           "$ref": "#/$defs/evidencePredicate"
         }
       }
+    },
+    "routeExecutionGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "groupId",
+        "mode",
+        "stageIds",
+        "joinPolicy",
+        "maxParallel",
+        "derivationReceiptRef"
+      ],
+      "properties": {
+        "groupId": {
+          "$ref": "#/$defs/id"
+        },
+        "mode": {
+          "enum": ["batch", "serial", "parallel"]
+        },
+        "stageIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "joinPolicy": {
+          "enum": [
+            "all-required",
+            "first-exact",
+            "complete-enumeration",
+            "disambiguate-all"
+          ]
+        },
+        "maxParallel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "derivationReceiptRef": {
+          "$ref": "#/$defs/id"
+        },
+        "batchCapabilityRef": {
+          "$ref": "#/$defs/id"
+        },
+        "independenceProofRef": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": { "const": "batch" }
+            },
+            "required": ["mode"]
+          },
+          "then": {
+            "required": ["batchCapabilityRef"],
+            "properties": {
+              "stageIds": { "minItems": 2 },
+              "maxParallel": { "const": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": { "const": "serial" }
+            },
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": {
+              "maxParallel": { "const": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": { "const": "parallel" }
+            },
+            "required": ["mode"]
+          },
+          "then": {
+            "required": ["independenceProofRef"],
+            "properties": {
+              "stageIds": { "minItems": 2 },
+              "maxParallel": { "minimum": 2 }
+            }
+          }
+        }
+      ]
     },
     "routeJoin": {
       "type": "object",
@@ -1499,7 +1907,12 @@
         "$ref": "#/$defs/id"
       },
         "policy": {
-          "const": "all"
+          "enum": [
+            "all-required",
+            "first-exact",
+            "complete-enumeration",
+            "disambiguate-all"
+          ]
         }
       }
     },
@@ -1513,7 +1926,9 @@
         "admittedAtRevision",
         "contextBindingDigest",
         "graphDigest",
+        "catalogDigest",
         "stages",
+        "executionGroups",
         "edges",
         "joins",
         "budgetLimit",
@@ -1538,11 +1953,21 @@
         "graphDigest": {
           "$ref": "#/$defs/digest"
         },
+        "catalogDigest": {
+          "$ref": "#/$defs/digest"
+        },
         "stages": {
           "type": "array",
           "minItems": 1,
           "items": {
             "$ref": "#/$defs/routeStage"
+          }
+        },
+        "executionGroups": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/routeExecutionGroup"
           }
         },
         "edges": {
@@ -1623,9 +2048,10 @@
       "sequence",
       "stateRevision",
       "preStateDigest",
-      "admissionId",
+        "admissionId",
         "programId",
-        "stageId",
+        "executionGroupId",
+        "stageIds",
         "contextBindingDigest",
         "resolvedInputDigest",
         "actionKey",
@@ -1660,8 +2086,11 @@
         "programId": {
           "$ref": "#/$defs/id"
         },
-        "stageId": {
+        "executionGroupId": {
           "$ref": "#/$defs/id"
+        },
+        "stageIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
         },
         "contextBindingDigest": {
           "$ref": "#/$defs/digest"
@@ -1702,9 +2131,10 @@
       "grantId",
       "admissionId",
       "admissionDigest",
-      "programId",
-      "programDigest",
-        "stageId",
+        "programId",
+        "programDigest",
+        "executionGroupId",
+        "stageIds",
         "actionKey",
         "contextBindingDigest",
         "resolvedInputDigest",
@@ -1751,8 +2181,11 @@
       "programDigest": {
         "$ref": "#/$defs/digest"
       },
-        "stageId": {
+        "executionGroupId": {
           "$ref": "#/$defs/id"
+        },
+        "stageIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
         },
         "actionKey": {
           "$ref": "#/$defs/digest"
@@ -2011,6 +2444,8 @@
         "grantDigest",
         "attemptId",
         "attemptDigest",
+        "executionGroupId",
+        "stageIds",
         "providerId",
         "operation",
         "leaseFence",
@@ -2049,6 +2484,12 @@
         "attemptDigest": {
           "$ref": "#/$defs/digest"
         },
+        "executionGroupId": {
+          "$ref": "#/$defs/id"
+        },
+        "stageIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
         "providerId": {
           "$ref": "#/$defs/id"
         },
@@ -2083,6 +2524,10 @@
         "grantId",
         "grantDigest",
         "attemptId",
+        "executionGroupId",
+        "stageIds",
+        "providerId",
+        "operation",
         "resultReceiptRef",
         "resultDigest",
         "leaseFence",
@@ -2116,6 +2561,18 @@
         "attemptId": {
           "$ref": "#/$defs/id"
         },
+        "executionGroupId": {
+          "$ref": "#/$defs/id"
+        },
+        "stageIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "providerId": {
+          "$ref": "#/$defs/id"
+        },
+        "operation": {
+          "$ref": "#/$defs/id"
+        },
         "resultReceiptRef": {
           "$ref": "#/$defs/id"
         },
@@ -2141,6 +2598,10 @@
         "stateRevision",
         "preStateDigest",
         "reasonCode",
+        "executionGroupId",
+        "stageIds",
+        "providerId",
+        "operation",
         "eventDigest"
       ],
       "properties": {
@@ -2165,6 +2626,18 @@
         "reasonCode": {
           "type": "string",
           "minLength": 1
+        },
+        "executionGroupId": {
+          "$ref": "#/$defs/id"
+        },
+        "stageIds": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "providerId": {
+          "$ref": "#/$defs/id"
+        },
+        "operation": {
+          "$ref": "#/$defs/id"
         },
         "admissionId": {
           "$ref": "#/$defs/id"
@@ -2248,6 +2721,62 @@
         }
       }
     },
+    "executionGroupJoined": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventType",
+        "eventId",
+        "runId",
+        "sequence",
+        "stateRevision",
+        "preStateDigest",
+        "programDigest",
+        "executionGroupId",
+        "policy",
+        "resultReceiptRefs",
+        "joinedGroupDigest",
+        "eventDigest"
+      ],
+      "properties": {
+        "eventType": {
+          "const": "ExecutionGroupJoined"
+        },
+        "eventId": {
+          "$ref": "#/$defs/id"
+        },
+        "runId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/positiveInteger"
+        },
+        "stateRevision": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "preStateDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "programDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "executionGroupId": {
+          "$ref": "#/$defs/id"
+        },
+        "policy": {
+          "$ref": "#/$defs/joinPolicy"
+        },
+        "resultReceiptRefs": {
+          "$ref": "#/$defs/nonEmptyIdArray"
+        },
+        "joinedGroupDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "eventDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
     "contextProductEvent": {
       "oneOf": [
         {
@@ -2267,6 +2796,9 @@
         },
         {
           "$ref": "#/$defs/executionRevoked"
+        },
+        {
+          "$ref": "#/$defs/executionGroupJoined"
         },
         {
           "$ref": "#/$defs/searchClosureReceipt"

@@ -104,6 +104,10 @@ agent-tools-install-global bin_dir="":
       just agent-tools-install-languages "${bin_dir}"; \
       echo "[agent-tools-install-global] installed asp, asp-graph-turbo, and all language provider harnesses into ${bin_dir}"
 
+# Develop mode: build and install the Orgize provider from this checkout.
+agent-tools-install-orgize bin_dir="":
+    @just agent-tools-install-language org "{{ bin_dir }}"
+
 # Develop mode: build and install all language providers from this checkout.
 agent-tools-install-languages bin_dir="":
     @bin_dir="{{bin_dir}}"; \
@@ -113,7 +117,8 @@ agent-tools-install-languages bin_dir="":
       just agent-tools-install-py "${bin_dir}"; \
       just agent-tools-install-julia "${bin_dir}"; \
       just agent-tools-install-gerbil "${bin_dir}"; \
-      echo "[agent-tools-install-languages] installed rs-harness, ts-harness, py-harness, asp-julia-harness, and gslph into ${bin_dir}"
+      just agent-tools-install-orgize "${bin_dir}"; \
+      echo "[agent-tools-install-languages] installed rs-harness, ts-harness, py-harness, asp-julia-harness, gslph, and orgize into ${bin_dir}"
 
 # Develop mode: build and install the shared asp binary from this checkout.
 agent-tools-install-asp bin_dir="":
@@ -156,11 +161,87 @@ agent-tools-install-hook bin_dir="":
 	@just agent-tools-install-protocol "{{bin_dir}}"
 
 # Install a released language provider binary through asp.
-# Develop-mode only: install the current workspace via internal --from-workspace; target priority remains asp.toml, SEMANTIC_AGENT_BIN_DIR, $HOME/.local/bin, then PATH.
+# Develop mode: the root Justfile owns provider builds and installs into the ASP runtime bin.
 agent-tools-install-language language bin_dir="" target="" project=".":
-	@args=(install language "{{language}}" --from-workspace --project "{{project}}"); \
-	if [ -n "{{target}}" ]; then args+=(--target "{{target}}"); fi; \
-	just _agent-tools-run-asp "{{bin_dir}}" "${args[@]}"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo_root="$(cd "{{ project }}" && pwd -P)"
+    state_home="${ASP_STATE_HOME:-${HOME}/.agent-semantic-protocols}"
+    bin_dir="{{ bin_dir }}"
+    if [[ -z "${bin_dir}" ]]; then
+      bin_dir="${SEMANTIC_AGENT_BIN_DIR:-${state_home}/runtime/bin}"
+    fi
+    mkdir -p "${bin_dir}"
+    case "{{ language }}" in
+      rust)
+        direnv exec "${repo_root}" cargo build \
+          --manifest-path "${repo_root}/languages/rust-lang-project-harness/Cargo.toml" \
+          --release --bin rs-harness
+        install -m 755 \
+          "${repo_root}/languages/rust-lang-project-harness/target/release/rs-harness" \
+          "${bin_dir}/rs-harness"
+        provider="rust"
+        binary="rs-harness"
+        ;;
+      typescript)
+        npm --prefix "${repo_root}/languages/typescript-lang-project-harness" ci
+        npm --prefix "${repo_root}/languages/typescript-lang-project-harness" run build
+        artifact_dir="${state_home}/runtime/provider-artifacts/ts-harness/develop"
+        mkdir -p "${artifact_dir}"
+        cp -R "${repo_root}/languages/typescript-lang-project-harness/dist/provider/." "${artifact_dir}/"
+        printf '#!/usr/bin/env bash\nexec node %q "$@"\n' \
+          "${artifact_dir}/ts-harness.mjs" >"${bin_dir}/ts-harness"
+        chmod 755 "${bin_dir}/ts-harness"
+        provider="typescript"
+        binary="ts-harness"
+        ;;
+      python)
+        uv sync --project "${repo_root}/languages/python-lang-project-harness" --frozen
+        printf '#!/usr/bin/env bash\nexec %q "$@"\n' \
+          "${repo_root}/languages/python-lang-project-harness/.venv/bin/py-harness" \
+          >"${bin_dir}/py-harness"
+        chmod 755 "${bin_dir}/py-harness"
+        provider="python"
+        binary="py-harness"
+        ;;
+      julia)
+        direnv exec "${repo_root}" env \
+          ASP_JULIA_BUILD_DIR="${repo_root}/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local" \
+          ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 \
+          "${repo_root}/languages/JuliaLangProjectHarness.jl/juliac/build_provider.sh"
+        install -m 755 \
+          "${repo_root}/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness" \
+          "${bin_dir}/asp-julia-harness"
+        provider="julia"
+        binary="asp-julia-harness"
+        ;;
+      gerbil-scheme)
+        just agent-tools-build-gerbil "${bin_dir}"
+        provider="gerbil-scheme-harness"
+        binary="gslph"
+        ;;
+      org)
+        direnv exec "${repo_root}" cargo build \
+          --manifest-path "${repo_root}/languages/orgize/Cargo.toml" \
+          --release --features md --bin orgize
+        install -m 755 \
+          "${repo_root}/languages/orgize/target/release/orgize" \
+          "${bin_dir}/orgize"
+        provider="orgize"
+        binary="orgize"
+        ;;
+      *)
+        echo "unsupported develop language: {{ language }}" >&2
+        exit 2
+        ;;
+    esac
+    direnv exec "${repo_root}" cargo run --quiet \
+      --manifest-path "${repo_root}/Cargo.toml" \
+      -p agent-semantic-protocol --bin asp -- \
+      install language "{{ language }}" \
+      --project "${repo_root}" \
+      --record-installed-receipt "${bin_dir}/${binary}"
+    echo "[agent-tools-install] provider=${provider} language={{ language }} installMode=develop-workspace source=root-justfile binary=${binary} installedPath=${bin_dir}/${binary} receipt=recorded"
 
 # Install only the core asp-graph-turbo ranking binary.
 # Keep this entry repo-owned; uv tool install moves the same tool executable between bin dirs.
@@ -201,12 +282,7 @@ agent-tools-install-julia bin_dir="":
     @just agent-tools-install-jl "{{bin_dir}}"
 
 agent-tools-install-jl bin_dir="":
-    @package_dir="$PWD/{{julia_harness_project}}"; \
-      direnv exec . env \
-        ASP_JULIA_BUILD_DIR="${package_dir}/build/juliac-asp-local" \
-        ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 \
-        "${package_dir}/juliac/build_provider.sh"; \
-      direnv exec . just _agent-tools-run-asp "{{bin_dir}}" install language julia --from-workspace --project .
+    @just agent-tools-install-language julia "{{ bin_dir }}"
 
 # Develop mode: build and install the Gerbil Scheme provider from this checkout.
 agent-tools-install-gerbil bin_dir="":

@@ -162,7 +162,6 @@ fn cache_command() -> Command {
             .value_name("PATH")
             .help("Select the workspace"),
     )
-    .subcommand(agent_semantic_client::cache_migration_clap_command())
     .subcommand(agent_semantic_client::project_registry_gc_clap_command())
 }
 
@@ -311,36 +310,30 @@ fn install_command() -> Command {
     Command::new("install")
         .bin_name("asp install")
         .about("Install ASP binaries, hooks, plugins, or providers")
-        .subcommand(install_binary_command())
-        .subcommand(install_hook_command())
+        .subcommand(
+            Command::new("binary")
+                .about("Install the ASP protocol binary")
+                .arg(
+                    Arg::new("target")
+                        .long("target")
+                        .value_name("PATH")
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            Command::new("hook")
+                .about("Install host hook integration")
+                .arg(
+                    Arg::new("client")
+                        .long("client")
+                        .value_name("CLIENT")
+                        .required(true)
+                        .value_parser(["claude"]),
+                )
+                .arg(project_root_arg()),
+        )
         .subcommand(install_plugin_command())
         .subcommand(install_language_command())
-}
-
-fn install_binary_command() -> Command {
-    Command::new("binary")
-        .bin_name("asp install binary")
-        .about("Install the ASP protocol binary")
-        .arg(
-            Arg::new("target")
-                .long("target")
-                .value_name("PATH")
-                .required(true),
-        )
-}
-
-fn install_hook_command() -> Command {
-    Command::new("hook")
-        .bin_name("asp install hook")
-        .about("Install host hook integration")
-        .arg(
-            Arg::new("client")
-                .long("client")
-                .value_name("CLIENT")
-                .required(true)
-                .value_parser(["claude"]),
-        )
-        .arg(project_root_arg())
 }
 
 pub(crate) fn install_plugin_command() -> Command {
@@ -562,23 +555,20 @@ fn install_language_command() -> Command {
     Command::new("language")
         .bin_name("asp install language")
         .about("Install a language provider")
-        .long_about(
-            "Install a language provider.\n\nrelease mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n\ndevelop mode: use the repository Justfile recipes; `--from-workspace` is the internal workspace materialization switch",
-        )
         .arg(Arg::new("language").value_name("LANGUAGE").required(true))
         .arg(project_root_arg())
         .arg(Arg::new("target").long("target").value_name("TARGET"))
         .arg(
-            Arg::new("from-workspace")
-                .long("from-workspace")
-                .help("Materialize a provider from its workspace descriptor (develop mode)")
+            Arg::new("reconcile-receipt")
+                .long("reconcile-receipt")
                 .action(ArgAction::SetTrue),
         )
         .arg(
-            Arg::new("reconcile-receipt")
-                .long("reconcile-receipt")
-                .action(ArgAction::SetTrue)
-                .conflicts_with("from-workspace"),
+            Arg::new("record-installed-receipt")
+                .long("record-installed-receipt")
+                .value_name("BINARY")
+                .conflicts_with("reconcile-receipt")
+                .hide(true),
         )
         .arg(Arg::new("project").long("project").value_name("ROOT"))
 }
@@ -659,10 +649,6 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
     };
 
     match path {
-        [install, binary, ..] if install == "install" && binary == "binary" => {
-            install_binary_command()
-        }
-        [install, hook, ..] if install == "install" && hook == "hook" => install_hook_command(),
         [install, language, ..] if install == "install" && language == "language" => {
             install_language_command()
         }
@@ -687,7 +673,6 @@ fn selected_command_legacy(args: &[String]) -> Command {
         (Some("providers"), _) => providers_command(),
         (Some("tools"), _) => tools_command(),
         (Some("wrap"), _) => wrap_command(),
-        (Some("cache"), Some("migrate")) => agent_semantic_client::cache_migration_clap_command(),
         (Some("cache"), Some("gc")) => agent_semantic_client::project_registry_gc_clap_command(),
         (Some("cache"), _) => cache_command(),
         (Some("cloud"), _) => cloud_command(),

@@ -2,9 +2,7 @@ use sha2::{Digest, Sha256};
 
 use crate::rust_harness_activation::support::{asp_bin_dir, write_state_home_provider_binary};
 
-use super::support::{
-    codex_plugin_install_args, git_project_root, protocol_command, sync_test_state, test_host_path,
-};
+use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
 
 fn write_managed_config_sidecar(path: &std::path::Path, bytes: &[u8]) {
     let sidecar = path.with_file_name(format!(
@@ -27,7 +25,6 @@ fn cli_install_uses_state_core_home_over_prj_cache_home() {
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
-    sync_test_state(&root, &asp_state_home);
     let config_path = root.join(".agents").join("asp.toml");
     std::fs::create_dir_all(config_path.parent().expect("agent config parent"))
         .expect("create agent config parent");
@@ -54,10 +51,9 @@ enabled = false
     )
     .expect("write .agents/asp.toml");
     let protocol_bin_dir = root.join(".agent-bin");
-    let host_path = test_host_path(&root, &protocol_bin_dir);
     let prj_cache_home = root.join(".project-cache");
     let output = protocol_command()
-        .env("PATH", &host_path)
+        .env("PATH", &protocol_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("PRJ_CACHE_HOME", &prj_cache_home)
         .env("CODEX_HOME", &codex_home)
@@ -127,9 +123,7 @@ fn cli_install_refreshes_drifted_managed_client_hook_config() {
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
-    sync_test_state(&root, &asp_state_home);
     let protocol_bin_dir = root.join(".agent-bin");
-    let host_path = test_host_path(&root, &protocol_bin_dir);
     let client_config_path = asp_state_home.join("hooks/config.toml");
     std::fs::create_dir_all(client_config_path.parent().expect("config parent"))
         .expect("create client config dir");
@@ -145,7 +139,7 @@ decision = "deny"
     std::fs::write(&client_config_path, custom_config).expect("write custom config");
     write_managed_config_sidecar(&client_config_path, custom_config.as_bytes());
     let output = protocol_command()
-        .env("PATH", &host_path)
+        .env("PATH", &protocol_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
         .env("ASP_STATE_HOME", &asp_state_home)
@@ -176,9 +170,7 @@ fn cli_install_refreshes_legacy_managed_hook_config() {
         "gerbil-scheme-harness",
         "gslph",
     );
-    sync_test_state(&root, &asp_state_home);
     let protocol_bin_dir = root.join(".agent-bin");
-    let host_path = test_host_path(&root, &protocol_bin_dir);
     let client_config_path = asp_state_home.join("hooks/config.toml");
     std::fs::create_dir_all(client_config_path.parent().expect("config parent"))
         .expect("create client config dir");
@@ -204,7 +196,7 @@ argvSourceGlobAny = [
     write_managed_config_sidecar(&client_config_path, legacy_config.as_bytes());
 
     let output = protocol_command()
-        .env("PATH", &host_path)
+        .env("PATH", &protocol_bin_dir)
         .env("SEMANTIC_AGENT_BIN_DIR", &protocol_bin_dir)
         .env("CODEX_HOME", &codex_home)
         .env("ASP_STATE_HOME", &asp_state_home)
@@ -232,9 +224,10 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
-    sync_test_state(&root, &asp_state_home);
     let asp_bin_dir = asp_bin_dir();
-    let host_path = test_host_path(&root, &asp_bin_dir);
+    let protocol_bin_dir = root.join(".agent-bin");
+    let path = std::env::join_paths([protocol_bin_dir.as_path(), asp_bin_dir.as_path()])
+        .expect("protocol and ASP PATH");
     std::fs::create_dir_all(root.join(".codex")).expect("create .codex");
     let config_path = root.join(".codex/config.toml");
     std::fs::write(
@@ -250,7 +243,7 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     .expect("write stale user trust state");
 
     let output = protocol_command()
-        .env("PATH", &host_path)
+        .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
         .env("CODEX_HOME", &codex_home)
         .env("ASP_STATE_HOME", &asp_state_home)
@@ -289,21 +282,20 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     let marketplaces = parsed_config
         .get("marketplaces")
         .and_then(toml::Value::as_table);
-    if let Some(marketplaces) = marketplaces
-        && let Some(asp_project) = marketplaces
+    if let Some(marketplaces) = marketplaces {
+        if let Some(asp_project) = marketplaces
             .get("asp-project")
             .and_then(toml::Value::as_table)
-    {
-        assert_eq!(
-            asp_project.get("source_type").and_then(toml::Value::as_str),
-            Some("local")
-        );
+        {
+            assert_eq!(
+                asp_project.get("source_type").and_then(toml::Value::as_str),
+                Some("local")
+            );
+        }
     }
     let user_config =
         std::fs::read_to_string(codex_home.join("config.toml")).expect("user trust config");
-    let parsed_user_config =
-        toml::from_str::<toml::Value>(&user_config).expect("user Codex config is valid TOML");
-    let plugins = parsed_user_config
+    let plugins = parsed_config
         .get("plugins")
         .and_then(toml::Value::as_table)
         .expect("plugins table");

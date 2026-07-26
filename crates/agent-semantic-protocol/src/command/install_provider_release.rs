@@ -1,5 +1,7 @@
 //! Shared release metadata for provider installation.
 
+use std::collections::BTreeMap;
+
 #[derive(Clone, Debug)]
 pub(super) struct ProviderReleaseSpec {
     pub(super) language_id: String,
@@ -12,4 +14,5 @@ pub(super) struct ProviderReleaseSpec {
     pub(super) archive_binary: String,
     pub(super) require_native_binary: bool,
     pub(super) supported_targets: Vec<String>,
+    pub(super) sha256_by_target: BTreeMap<String, String>,
 }

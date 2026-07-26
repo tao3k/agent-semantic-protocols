@@ -1,6 +1,7 @@
 use crate::rust_harness_activation::support::{asp_command, temp_project_root};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) fn git_project_root(name: &str) -> PathBuf {
@@ -12,44 +13,13 @@ pub(super) fn git_project_root(name: &str) -> PathBuf {
 }
 
 pub(super) fn protocol_command() -> Command {
+    let org_repo = local_test_org_repo();
+    let state_home = isolated_asp_state_home();
     let mut command = asp_command();
-    command.env("ASP_ORG_REPO_URL", local_test_org_repo());
-    command.env("ASP_STATE_HOME", isolated_asp_state_home());
+    command.env("ASP_ORG_REPO_URL", org_repo);
+    command.env("ASP_STATE_HOME", state_home);
     command.env_remove("PRJ_CACHE_HOME");
     command
-}
-
-fn isolated_asp_state_home() -> PathBuf {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system time after unix epoch")
-        .as_nanos();
-    std::env::temp_dir().join(format!("asp-test-state-{}-{nonce}", std::process::id()))
-}
-
-pub(super) fn codex_plugin_install_args(root: &Path) -> [String; 5] {
-    [
-        "install".to_string(),
-        "plugin".to_string(),
-        "--codex".to_string(),
-        "--global".to_string(),
-        root.to_str().expect("utf8 temp root").to_string(),
-    ]
-}
-
-pub(super) fn codex_plugin_install_args_with_subagent_model(
-    root: &Path,
-    model: &str,
-) -> [String; 7] {
-    [
-        "install".to_string(),
-        "plugin".to_string(),
-        "--codex".to_string(),
-        "--global".to_string(),
-        "--subagent-model".to_string(),
-        model.to_string(),
-        root.to_str().expect("utf8 temp root").to_string(),
-    ]
 }
 
 pub(super) fn sync_test_state(root: &Path, state_home: &Path) {
@@ -66,9 +36,58 @@ pub(super) fn sync_test_state(root: &Path, state_home: &Path) {
     );
 }
 
-pub(super) fn test_host_path(root: &Path, protocol_bin_dir: &Path) -> std::ffi::OsString {
-    std::env::join_paths([root.join(".bin"), protocol_bin_dir.to_path_buf()])
-        .expect("join fake host CLI and protocol bin PATH")
+pub(super) fn prepare_project_state(project_root: &Path) {
+    let state_home = project_root.join(".asp-state-home");
+    let org_repo = local_test_org_repo();
+    let output = asp_command()
+        .env("ASP_ORG_REPO_URL", &org_repo)
+        .env("ASP_STATE_HOME", &state_home)
+        .env_remove("PRJ_CACHE_HOME")
+        .arg("sync")
+        .arg(project_root)
+        .output()
+        .expect("sync test Org state");
+    assert!(
+        output.status.success(),
+        "sync test Org state failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn isolated_asp_state_home() -> PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time after unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("asp-test-state-{}-{nonce}", std::process::id()))
+}
+
+pub(super) fn codex_plugin_install_args(root: &Path) -> [String; 5] {
+    prepare_project_state(root);
+    [
+        "install".to_string(),
+        "plugin".to_string(),
+        "--codex".to_string(),
+        "--project".to_string(),
+        root.to_str().expect("utf8 temp root").to_string(),
+    ]
+}
+
+pub(super) fn codex_plugin_install_args_with_subagent_model(
+    root: &Path,
+    model: &str,
+) -> [String; 7] {
+    prepare_project_state(root);
+    [
+        "install".to_string(),
+        "plugin".to_string(),
+        "--codex".to_string(),
+        "--project".to_string(),
+        "--subagent-model".to_string(),
+        model.to_string(),
+        root.to_str().expect("utf8 temp root").to_string(),
+    ]
 }
 
 fn write_test_codex_plugin(root: &Path) {
@@ -97,27 +116,32 @@ fn write_test_codex_plugin(root: &Path) {
 }
 
 fn local_test_org_repo() -> PathBuf {
-    let root = temp_project_root("org-state-source");
-    run_git(&root, &["init", "-q"]);
-    let skill_path = root.join("skills").join("ASP_ORG.org");
-    std::fs::create_dir_all(skill_path.parent().expect("skill parent"))
-        .expect("create org skill dir");
-    std::fs::write(&skill_path, "* ASP Org Test Skill\n").expect("write org skill fixture");
-    run_git(&root, &["add", "."]);
-    run_git(
-        &root,
-        &[
-            "-c",
-            "user.name=ASP Test",
-            "-c",
-            "user.email=asp-test@example.com",
-            "commit",
-            "-q",
-            "-m",
-            "test org resources",
-        ],
-    );
-    root
+    static ORG_REPO: OnceLock<PathBuf> = OnceLock::new();
+    ORG_REPO
+        .get_or_init(|| {
+            let root = temp_project_root("org-state-source");
+            run_git(&root, &["init", "-q"]);
+            let skill_path = root.join("templates").join("ASP_ORG_SKILL.org");
+            std::fs::create_dir_all(skill_path.parent().expect("skill parent"))
+                .expect("create org skill dir");
+            std::fs::write(&skill_path, "* ASP Org Test Skill\n").expect("write org skill fixture");
+            run_git(&root, &["add", "."]);
+            run_git(
+                &root,
+                &[
+                    "-c",
+                    "user.name=ASP Test",
+                    "-c",
+                    "user.email=asp-test@example.com",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "test org resources",
+                ],
+            );
+            root
+        })
+        .clone()
 }
 
 fn run_git(root: &Path, args: &[&str]) {
@@ -136,7 +160,7 @@ fn run_git(root: &Path, args: &[&str]) {
 }
 
 fn write_fake_codex_cli(root: &Path) {
-    let bin_dir = root.join(".bin");
+    let bin_dir = root.join(".agent-bin");
     std::fs::create_dir_all(&bin_dir).expect("create fake Codex bin dir");
     let path = bin_dir.join("codex");
     std::fs::write(

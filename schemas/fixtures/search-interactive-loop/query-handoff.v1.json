@@ -1,0 +1,50 @@
+{
+  "schemaId": "agent.semantic-protocols.search-query-handoff",
+  "schemaVersion": "1",
+  "loopId": "loop:search-1",
+  "stateBinding": {
+    "runId": "run:search-1",
+    "revision": 12,
+    "stateDigest": "blake3:4444444444444444444444444444444444444444444444444444444444444444",
+    "authorityReceiptRef": "receipt:authority-12"
+  },
+  "contextBinding": {
+    "workspaceId": "workspace:search-fixture",
+    "workspaceRootDigest": "blake3:5555555555555555555555555555555555555555555555555555555555555555",
+    "sourceSnapshotDigest": "blake3:6666666666666666666666666666666666666666666666666666666666666666",
+    "baseSourceDigest": "blake3:7777777777777777777777777777777777777777777777777777777777777777",
+    "dirtyOverlayDigest": "blake3:8888888888888888888888888888888888888888888888888888888888888888",
+    "providerDigest": "blake3:9999999999999999999999999999999999999999999999999999999999999999",
+    "parserDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "queryPackDigest": "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "factSchemaDigest": "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "projectionSchemaDigest": "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "graphRevisionDigest": "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "policyDigest": "blake3:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "contextEpoch": 2,
+    "bindingDigest": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  },
+  "closureReceiptRef": "receipt:closure-12",
+  "closureReceiptDigest": "blake3:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  "receiptAction": {
+    "commandId": "asp.search.loop.receipt.v1",
+    "loopId": "loop:search-1",
+    "receiptToken": "capability.2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "queries": [
+    {
+      "languageId": "rust",
+      "selector": {
+        "schemaId": "asp.canonical-item-selector.v1",
+        "schemaVersion": "v1",
+        "languageId": "rust",
+        "kind": "struct",
+        "symbol": "GraphRouter",
+        "scopes": [],
+        "structuralSelector": "rust://crates/agent-semantic-loop/src/graph_router.rs#item/struct/GraphRouter"
+      },
+      "projection": "code",
+      "snapshotEnvelopeRef": "snapshot:search-12"
+    }
+  ]
+}

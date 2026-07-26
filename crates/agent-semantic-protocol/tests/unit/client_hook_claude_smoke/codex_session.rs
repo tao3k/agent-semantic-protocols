@@ -724,6 +724,19 @@ fn codex_bootstrap_attests_unobservable_reasoning_from_typed_profile() {
     let bootstrap: serde_json::Value =
         serde_json::from_slice(&bootstrap_output.stdout).expect("bootstrap JSON");
     assert_eq!(bootstrap["state"].as_str(), Some("Ready"));
+    assert!(
+        bootstrap
+            .pointer("/hostLifecycleObservation/observedReasoningEffort")
+            .is_some_and(serde_json::Value::is_null),
+        "reasoning must remain explicitly unobservable: bootstrap={bootstrap}"
+    );
+    assert_eq!(
+        bootstrap
+            .pointer("/hostLifecycleObservation/reasoningRuntimeObserved")
+            .and_then(serde_json::Value::as_bool),
+        Some(false),
+        "profile attestation must not masquerade as a runtime observation: bootstrap={bootstrap}"
+    );
     assert_eq!(
         bootstrap
             .pointer("/hostLifecycleObservation/reasoningVerificationStatus")

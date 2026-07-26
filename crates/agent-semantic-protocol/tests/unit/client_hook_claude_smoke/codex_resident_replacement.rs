@@ -40,7 +40,7 @@ fn codex_subagent_start_requires_canonical_probe_before_replacement() {
     );
 
     let blocked = native_resident_start(&root, root_session_id, blocked_child_id);
-    assert_eq!(blocked["decision"].as_str(), Some("allow"), "{blocked}");
+    assert_eq!(blocked["decision"].as_str(), Some("deny"), "{blocked}");
     assert_eq!(
         blocked["fields"]["agentSessionAction"].as_str(),
         Some("reuse-resident-child"),
@@ -108,6 +108,150 @@ fn codex_subagent_start_requires_canonical_probe_before_replacement() {
     assert_eq!(
         duplicate["fields"]["childSessionId"].as_str(),
         Some(replacement_child_id),
+        "{duplicate}"
+    );
+    assert_eq!(
+        duplicate["fields"]["agentSessionDuplicateChildId"].as_str(),
+        Some(duplicate_child_id),
+        "{duplicate}"
+    );
+}
+
+#[test]
+fn codex_hidden_but_routable_child_resumes_before_replacement() {
+    let root = claude_fixture();
+    let codex_home = root.join(".codex-home");
+    install_codex_hooks(&root, &codex_home);
+    let root_session_id = "019f126d-0000-7000-8000-000000000036";
+    let resident_child_id = "019f126d-0000-7000-8000-000000000136";
+    let duplicate_child_id = "019f126d-0000-7000-8000-000000000236";
+
+    let start = run_codex_hook_decision_with_env(
+        &root,
+        "subagent-start",
+        json!({
+            "hook_event_name": "SubagentStart",
+            "session_id": root_session_id,
+            "agent_id": resident_child_id,
+            "agent_type": "asp_explorer",
+            "model": "gpt-5.4-mini",
+            "permission_mode": "default",
+        }),
+        &[("CODEX_THREAD_ID", root_session_id)],
+    );
+    assert_eq!(start["decision"].as_str(), Some("allow"), "{start}");
+
+    let run_session_command = |args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&root)
+            .env("CODEX_THREAD_ID", root_session_id)
+            .env("CODEX_HOME", &codex_home)
+            .env("ASP_STATE_HOME", root.join(".agent-semantic-protocols"))
+            .env_remove("PRJ_CACHE_HOME")
+            .args(["agent", "session"])
+            .args(args)
+            .output()
+            .expect("run agent session command")
+    };
+
+    let absent = run_session_command(&[
+        "observe-host-tree",
+        "--name",
+        "asp-explore",
+        "--resident-target-status",
+        "absent",
+    ]);
+    assert!(
+        absent.status.success(),
+        "observe absent failed: {}",
+        String::from_utf8_lossy(&absent.stderr)
+    );
+
+    let before_probe = run_session_command(&[
+        "bootstrap",
+        "--name",
+        "asp-explore",
+        "--root-session-id",
+        root_session_id,
+        "--json",
+    ]);
+    assert!(before_probe.status.success());
+    let before_probe: serde_json::Value =
+        serde_json::from_slice(&before_probe.stdout).expect("pre-probe bootstrap JSON");
+    assert_eq!(
+        before_probe["state"].as_str(),
+        Some("Audit"),
+        "{before_probe}"
+    );
+    assert_eq!(
+        before_probe["choices"][0]["id"].as_str(),
+        Some("probe-hidden-routable-child-before-replacement"),
+        "{before_probe}"
+    );
+
+    let ack = run_session_command(&[
+        "observe-host-ack",
+        "--name",
+        "asp-explore",
+        "--canonical-target",
+        "/root/asp_explorer",
+        "--evidence-ref",
+        "canonical-followup-ok:1",
+    ]);
+    assert!(
+        ack.status.success(),
+        "observe canonical ack failed: {}",
+        String::from_utf8_lossy(&ack.stderr)
+    );
+
+    let resumed = run_session_command(&[
+        "bootstrap",
+        "--name",
+        "asp-explore",
+        "--root-session-id",
+        root_session_id,
+        "--json",
+    ]);
+    assert!(
+        resumed.status.success(),
+        "bootstrap after canonical ack failed: {}",
+        String::from_utf8_lossy(&resumed.stderr)
+    );
+    let resumed: serde_json::Value =
+        serde_json::from_slice(&resumed.stdout).expect("resumed bootstrap JSON");
+    assert_eq!(resumed["state"].as_str(), Some("Ready"), "{resumed}");
+    assert_eq!(
+        resumed
+            .pointer("/hostControlDirective/intent")
+            .and_then(serde_json::Value::as_str),
+        Some("same-child-followup-ack-rebind"),
+        "{resumed}"
+    );
+    assert_eq!(
+        resumed
+            .pointer("/hostLifecycleObservation/childSessionId")
+            .and_then(serde_json::Value::as_str),
+        Some(resident_child_id),
+        "{resumed}"
+    );
+    assert_eq!(
+        resumed
+            .pointer("/hostLifecycleObservation/sameChildIdentity")
+            .and_then(serde_json::Value::as_bool),
+        Some(true),
+        "{resumed}"
+    );
+
+    let duplicate = native_resident_start(&root, root_session_id, duplicate_child_id);
+    assert_eq!(duplicate["decision"].as_str(), Some("deny"), "{duplicate}");
+    assert_eq!(
+        duplicate["fields"]["agentSessionAction"].as_str(),
+        Some("resume-existing-resident-child"),
+        "{duplicate}"
+    );
+    assert_eq!(
+        duplicate["fields"]["childSessionId"].as_str(),
+        Some(resident_child_id),
         "{duplicate}"
     );
     assert_eq!(
