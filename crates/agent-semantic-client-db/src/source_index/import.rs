@@ -88,7 +88,30 @@ pub fn source_index_file_hashes<'a>(
         .iter()
         .map(|file| source_index_file_hash(project_root, file, source_blobs))
         .collect::<Result<Vec<_>, _>>()?;
-    let _ = extra_scope_dirs;
+    file_hashes.extend(files.iter().map(source_index_selector_evidence_hash));
+    let mut scope_dirs = extra_scope_dirs
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    scope_dirs.sort();
+    scope_dirs.dedup();
+    for relative_dir in scope_dirs {
+        let scope_path = project_root.join(&relative_dir);
+        let metadata = fs::metadata(&scope_path).map_err(|error| {
+            format!(
+                "failed to read source-index scope anchor {}: {error}",
+                scope_path.display()
+            )
+        })?;
+        let mtime_ms = metadata_mtime_ms(&metadata, &scope_path)?;
+        file_hashes.push(
+            super::types::client_db_source_index_scope_dir_evidence_hash(
+                &relative_dir,
+                metadata.len(),
+                mtime_ms,
+            ),
+        );
+    }
     file_hashes.extend(source_scope_evidence_hashes(registry_fingerprint));
     Ok(file_hashes)
 }
@@ -311,6 +334,65 @@ fn source_scope_evidence_hashes(registry_fingerprint: &str) -> Vec<ClientCacheFi
             mtime_ms: 0,
         },
     ]
+}
+
+fn source_index_selector_evidence_hash(file: &ClientDbSourceIndexScopeFile) -> ClientCacheFileHash {
+    fn push_component(canonical: &mut String, label: &str, value: &str) {
+        use std::fmt::Write as _;
+        let _ = writeln!(canonical, "{label}:{}:{value}", value.len());
+    }
+
+    let mut selectors = file.selector_receipts.iter().collect::<Vec<_>>();
+    selectors.sort_by(|left, right| {
+        left.owner_path
+            .as_str()
+            .cmp(right.owner_path.as_str())
+            .then_with(|| left.selector_id.as_str().cmp(right.selector_id.as_str()))
+    });
+    let mut canonical = String::from("asp.source-index.selector-generation.v1\n");
+    push_component(&mut canonical, "path", file.path.to_string_lossy().as_ref());
+    push_component(&mut canonical, "language", file.language_id.as_str());
+    push_component(&mut canonical, "provider", file.provider_id.as_str());
+    for selector in selectors {
+        push_component(&mut canonical, "owner", selector.owner_path.as_str());
+        push_component(&mut canonical, "selector", selector.selector_id.as_str());
+        push_component(
+            &mut canonical,
+            "symbol",
+            selector.symbol.as_ref().map_or("", |value| value.as_str()),
+        );
+        push_component(
+            &mut canonical,
+            "kind",
+            selector.kind.as_ref().map_or("", |value| value.as_str()),
+        );
+        push_component(&mut canonical, "source", selector.source.as_str());
+        for query_key in &selector.query_keys {
+            push_component(&mut canonical, "queryKey", query_key.as_str());
+        }
+        if let Some(proof) = selector.payload_proof.as_ref() {
+            push_component(
+                &mut canonical,
+                "payloadSelector",
+                proof.structural_selector.as_str(),
+            );
+            push_component(&mut canonical, "payloadKind", proof.payload_kind.as_str());
+            push_component(
+                &mut canonical,
+                "payloadBounded",
+                if proof.bounded { "true" } else { "false" },
+            );
+        }
+    }
+    ClientCacheFileHash {
+        path: format!(
+            "@scope/selector-generation/{}",
+            file.path.to_string_lossy().replace('\\', "/")
+        ),
+        sha256: format!("{:x}", Sha256::digest(canonical.as_bytes())),
+        byte_len: canonical.len() as u64,
+        mtime_ms: 0,
+    }
 }
 
 fn source_index_file_hash(

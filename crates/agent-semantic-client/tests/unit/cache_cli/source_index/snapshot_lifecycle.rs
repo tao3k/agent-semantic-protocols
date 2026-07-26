@@ -23,7 +23,7 @@ fn cache_source_index_refresh_updates_dirty_tracked_worktree() {
     .expect("write gerbil source");
     let activation_path = write_gerbil_activation_with_command_prefix(
         &root,
-        super::fixtures::noop_provider_command_prefix(&root, "gerbil-scheme"),
+        super::fixtures::noop_provider_command_prefix(),
         &["src"],
     );
     let _activation_env = EnvVarGuard::set(
@@ -104,7 +104,7 @@ fn cache_source_index_refresh_detects_clean_committed_source_change() {
     .expect("write initial gerbil source");
     let activation_path = write_gerbil_activation_with_command_prefix(
         &root,
-        super::fixtures::noop_provider_command_prefix(&root, "gerbil-scheme"),
+        super::fixtures::noop_provider_command_prefix(),
         &["src"],
     );
     let _activation_env = EnvVarGuard::set(
@@ -203,7 +203,7 @@ fn cache_source_index_refresh_tracks_rename_then_delete_without_stale_owner() {
     .expect("write retained source");
     let activation_path = write_gerbil_activation_with_command_prefix(
         &root,
-        super::fixtures::noop_provider_command_prefix(&root, "gerbil-scheme"),
+        super::fixtures::noop_provider_command_prefix(),
         &["src"],
     );
     let _activation_env = EnvVarGuard::set(
@@ -338,7 +338,7 @@ fn cache_source_index_refresh_detects_content_edit_without_stale_artifact() {
     .expect("write initial source content");
     let activation_path = write_gerbil_activation_with_command_prefix(
         &root,
-        super::fixtures::noop_provider_command_prefix(&root, "gerbil-scheme"),
+        super::fixtures::noop_provider_command_prefix(),
         &["src"],
     );
     let _activation_env = EnvVarGuard::set(
@@ -459,7 +459,7 @@ fn cache_source_index_refresh_switches_roots_and_provider_digest_without_leakage
     .expect("write source-b file");
     let activation_path = write_gerbil_activation_with_command_prefix(
         &root,
-        super::fixtures::noop_provider_command_prefix(&root, "gerbil-scheme"),
+        super::fixtures::noop_provider_command_prefix(),
         &["source-a"],
     );
     let _activation_env = EnvVarGuard::set(
@@ -504,7 +504,7 @@ fn cache_source_index_refresh_switches_roots_and_provider_digest_without_leakage
 
     write_gerbil_activation_with_command_prefix(
         &root,
-        super::fixtures::noop_provider_command_prefix(&root, "gerbil-scheme"),
+        super::fixtures::noop_provider_command_prefix(),
         &["source-b"],
     );
     let source_b = refresh_source_index(&root)

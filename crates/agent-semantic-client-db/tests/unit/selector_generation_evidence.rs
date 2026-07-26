@@ -1,0 +1,77 @@
+use std::path::PathBuf;
+
+use agent_semantic_client_db::{
+    ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexScopeFile,
+    ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorId, ClientDbSourceIndexSelectorKind,
+    ClientDbSourceIndexSelectorSymbol, ClientDbSourceIndexSource, ClientDbSourceIndexSourceBlobs,
+    source_index_file_hashes,
+};
+
+fn selector(selector_id: &str) -> ClientDbSourceIndexSelector {
+    ClientDbSourceIndexSelector {
+        owner_path: "src/lib.rs".into(),
+        selector_id: ClientDbSourceIndexSelectorId::from(selector_id),
+        symbol: Some(ClientDbSourceIndexSelectorSymbol::from("target")),
+        kind: Some(ClientDbSourceIndexSelectorKind::from("function")),
+        start_line: 1,
+        end_line: 1,
+        source: ClientDbSourceIndexSource::from("parser"),
+        query_keys: vec![ClientDbSourceIndexQueryKey::from("target")],
+        payload_proof: None,
+    }
+}
+
+fn selector_generation_hash(selectors: Vec<ClientDbSourceIndexSelector>) -> String {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-selector-generation-{}-{nonce}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    let bytes = b"pub fn target() {}\n".to_vec();
+    std::fs::write(root.join("src/lib.rs"), &bytes).unwrap();
+    let files = [ClientDbSourceIndexScopeFile {
+        path: PathBuf::from("src/lib.rs"),
+        language_id: "rust".into(),
+        provider_id: "rust-lang-project-harness".into(),
+        selector_receipts: selectors,
+    }];
+    let source_blobs = ClientDbSourceIndexSourceBlobs::from_normalized(vec![(
+        ClientDbSourceIndexPath::new("src/lib.rs"),
+        bytes,
+    )]);
+    let hash =
+        source_index_file_hashes(&root, &files, &source_blobs, "provider-registry-v1", ["."])
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.path == "@scope/selector-generation/src/lib.rs")
+            .expect("selector generation evidence hash")
+            .sha256;
+    std::fs::remove_dir_all(root).unwrap();
+    hash
+}
+
+#[test]
+fn selector_generation_hash_binds_typed_selector_identity() {
+    let first = selector_generation_hash(vec![selector("rust://src/lib.rs#item/function/target")]);
+    let second = selector_generation_hash(vec![selector(
+        "rust://src/lib.rs#item/method/target/scope/implementation-owner/type/Owner",
+    )]);
+    assert_ne!(first, second);
+}
+
+#[test]
+fn selector_generation_hash_is_order_independent() {
+    let first = selector_generation_hash(vec![
+        selector("rust://src/lib.rs#item/function/a"),
+        selector("rust://src/lib.rs#item/function/b"),
+    ]);
+    let second = selector_generation_hash(vec![
+        selector("rust://src/lib.rs#item/function/b"),
+        selector("rust://src/lib.rs#item/function/a"),
+    ]);
+    assert_eq!(first, second);
+}

@@ -1,0 +1,107 @@
+#+title: Canonical Workspace Generation v1
+#+startup: overview
+
+* Status
+
+This RFC defines the single v1 generation identity consumed by search,
+exact-selector projection, relocation, cache lookup, and cold-package routing.
+
+* Problem
+
+A source snapshot root proves source membership, but it does not by itself
+prove that module edges, package scope, selectors, tombstones, and the
+materialized source envelope belong to the same generation.  Persisting or
+checking those facts independently permits a lookup to combine evidence from
+different workspace states.
+
+The provider source-owner Merkle domain must also remain distinct from package
+and scope anchors.  A package manifest may affect package routing without
+becoming a source owner leaf.
+
+* Canonical generation contract
+
+=asp.workspace-generation-evidence.v1= is the only search generation identity.
+Every artifact-complete generation MUST bind all of these components:
+
+- source root digest, root depth, and leaf count
+- materialization state
+- module graph digest
+- selector generation digest
+- tombstone digest
+- package graph digest
+- source envelope digest
+- owner coverage
+- activated provider digest
+
+The generation digest MUST be derived from the canonical typed component
+encoding.  Callers MUST NOT reconstruct it from a subset such as source root
+plus provider digest, and MUST NOT substitute empty strings, default values, or
+process-local timestamps for unavailable components.
+
+* Producer ownership
+
+Language harnesses own parser-derived module edges, package-manager scope, and
+canonical selectors.  The shared source-index import packet carries these typed
+facts across the language-neutral boundary.  The Rust protocol and Python graph
+layers consume the packet; they MUST NOT infer package anchors, module edges,
+or query-pack identity from hard-coded language names or command strings.
+
+The source envelope contains only provider source-owner leaves selected by the
+activated provider extension contract.  Package and scope anchors contribute
+to =packageGraphDigest=, not =sourceSnapshot.leafCount=.
+
+* Atomic persistence
+
+The Turso =asp_source_index_scope_v1= row stores the complete
+=WorkspaceGenerationEvidenceV1= alongside its source snapshot.  Owner rows,
+selector rows, token postings, membership tombstones, and the scope row are
+published as one transaction for the physical generation.
+
+A lookup is reusable only when the requested generation digest matches the
+persisted generation and the evidence validates.  The lookup result returns the
+same typed generation evidence; consumers MUST NOT recompute a legacy
+source-only artifact digest.
+
+* Router terminal states
+
+The router has exactly three terminal outcomes:
+
+1. =resident-memory=: root depth is zero and the validated resident generation
+   is authoritative; search remains in memory and opens no DB.
+2. =artifact-complete=: the requested and persisted generation digests match;
+   the artifact can be reused without refinement.
+3. =cold-rebuild(reason)=: generation absent, package drift, module drift,
+   selector drift, tombstone drift, envelope drift, provider drift, or partial
+   relocation coverage.  The reason is typed and triggers one atomic rebuild.
+
+There is no loose fallback that runs an exact query without a source envelope,
+and no query loop that repeatedly asks for another term or selector.
+
+* Relocation and selector coverage
+
+An exact-selector envelope is complete only when source-owner coverage equals
+the provider source generation and every relocated selector resolves to a
+canonical item identity produced by the language harness.  Moved paths and
+changed path attributes update the module graph, selector generation,
+tombstones, envelope, and generation digest in the same commit.
+
+Syntax captures are discovery evidence, not canonical query identities.  A
+search projection must attribute a capture to its enclosing canonical item
+before handing it to =query=.
+
+* Performance gates
+
+The following gates are required:
+
+- resident-memory lookup: zero subprocesses, zero DB opens, zero manifest
+  writes, and zero binary byte reads
+- warm artifact lookup: validated metadata/Merkle receipt with the same four
+  zero-I/O counters
+- cold generation: one bounded parser/import pass and one atomic transaction
+- concurrent reconciliation: no mixed binary/receipt generation and no
+  partially visible source-index generation
+- repeated hook events: canonical absolute ASP binary, stable artifact root,
+  and stable generation digest
+
+Latency receipts report routing, parser, graph, DB, and materialization phases
+separately.  Increasing timeouts is not a performance fix.

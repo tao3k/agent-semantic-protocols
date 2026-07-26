@@ -717,10 +717,7 @@ fn claude_install_migrates_stale_managed_config_when_sidecar_proves_ownership() 
 fn run_claude_hook_install(root: &std::path::Path) -> std::process::Output {
     let state_home = root.join(".state");
     materialize_plugin_install_state(root, &state_home);
-    let asp_bin_dir = std::path::Path::new(env!("CARGO_BIN_EXE_asp"))
-        .parent()
-        .expect("CARGO_BIN_EXE_asp has parent")
-        .to_path_buf();
+    let asp_bin_dir = root.join(".agent-bin");
     let existing = std::env::var_os("PATH").unwrap_or_default();
     let mut paths = std::env::split_paths(&existing).collect::<Vec<_>>();
     paths.insert(0, asp_bin_dir.clone());

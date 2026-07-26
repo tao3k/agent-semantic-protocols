@@ -179,12 +179,14 @@ fn owner_items_action_from_quality(
     scope_arg: &str,
 ) -> Option<ActionNode> {
     let owner = request.quality.best_owner.as_ref()?.owner.as_str();
+    let mut seen_terms = std::collections::BTreeSet::new();
     let query = request
         .quality
         .owner_seed_terms
         .iter()
         .chain(request.quality.strong_matched.iter())
         .chain(request.quality.concept_terms.iter())
+        .filter(|term| seen_terms.insert(term.to_ascii_lowercase()))
         .take(6)
         .cloned()
         .collect::<Vec<_>>()

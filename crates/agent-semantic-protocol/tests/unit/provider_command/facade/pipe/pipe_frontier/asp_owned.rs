@@ -77,7 +77,7 @@ fn search_pipe_is_asp_owned_and_routes_bounded_cold_scan_without_provider_spawn(
     assert!(stdout.contains("fallbackReason=warm-miss"), "{stdout}");
     assert!(stdout.contains("providerProcessCount=0"), "{stdout}");
     assert!(stdout.contains("nativeFinderProcessCount=0"), "{stdout}");
-    assert!(stdout.contains("rg-proof:used"), "{stdout}");
+    assert!(stdout.contains("search-overlay:used"), "{stdout}");
     assert!(!stdout.contains("fd-query"), "{stdout}");
     assert!(!stdout.contains("rg-query"), "{stdout}");
     assert!(!stdout.contains("[graph-frontier]"), "{stdout}");

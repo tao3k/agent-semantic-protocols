@@ -310,12 +310,14 @@ fn protocol_binary_install_replaces_existing_target_file() {
     let root = temp_project_root("protocol-binary-replace");
     let source = root.join("source-asp");
     let target = root.join("asp");
+    let artifact_root = root.join("runtime/artifacts");
     std::fs::write(&source, "new asp").expect("write source");
     std::fs::write(&target, "old asp").expect("write target");
     #[cfg(unix)]
     let old_inode = target_inode(&target);
 
-    let install = install_protocol_binary_target(&source, &target).expect("install binary");
+    let install =
+        install_protocol_binary_target(&source, &target, &artifact_root).expect("install binary");
     let status = install.status;
 
     assert_eq!(status, "updated");

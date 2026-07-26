@@ -1,0 +1,365 @@
+# Generated legacy hook config revision. This file is migration input, not a
+# runtime fallback config.
+schemaId = "agent.semantic-protocols.hook.client-config"
+wrapper_match = "enable"
+schemaVersion = "1"
+protocolId = "agent.semantic-protocols.hook"
+protocolVersion = "1"
+contractFingerprint = "hook-client-v1-0000000000000000"
+
+[[rules]]
+id = "deny-agent-search-json"
+priority = 1100
+decision = "deny"
+reasonKind = "agent-search-json"
+decisionMaterializer = "agent-search-json"
+message = "Agent-facing search JSON is denied; use the compact ASP search route."
+
+[rules.match]
+commandContainsAny = ["--json"]
+
+[[rules]]
+id = "materialize-prompt-search-strategy"
+priority = 1050
+decision = "deny"
+decisionMaterializer = "prompt-search-strategy"
+message = "Prompt-scoped ASP search strategy is derived by the configured hook materializer."
+
+[[rules]]
+id = "materialize-apply-patch-policy"
+priority = 1000
+decision = "deny"
+decisionMaterializer = "apply-patch"
+message = "Apply-patch policy is derived by the configured hook materializer."
+
+[[rules]]
+id = "materialize-source-access-policy"
+priority = 900
+decision = "deny"
+decisionMaterializer = "source-access"
+message = "Source-access policy is derived by the configured hook materializer."
+
+[[rules]]
+id = "deny-uncontrolled-source-search-commands"
+priority = 10000
+decision = "deny"
+reasonKind = "raw-broad-search"
+message = "Uncontrolled source search is denied. Route the evidence task to the resident ASP Explore agent."
+
+[rules.match]
+argvPrefixAny = [["rg"], ["ag"], ["grep"], ["fd"], ["find"], ["git", "grep"], ["git", "ls-files"], ["git", "ls-tree"]]
+
+[[rules]]
+id = "deny-uncontrolled-source-materialization-commands"
+priority = 10001
+decision = "deny"
+reasonKind = "bulk-source-dump"
+message = "Direct source materialization is permanently denied. Consume parser-owned ASP evidence; recovery receipts never authorize raw source reads."
+
+[rules.match]
+argvPrefixAny = [["cat"], ["sed"], ["head"], ["tail"], ["awk"], ["nl"], ["less"], ["more"], ["bat"], ["strings"], ["xxd"], ["od"], ["cut"], ["sort"], ["uniq"], ["wc"], ["jq"], ["perl"], ["python"], ["python3"], ["ruby"], ["node"], ["dd"]]
+argvSourceGlobAny = [
+  "*.rs", "**/*.rs",
+  "*.py", "**/*.py",
+  "*.ts", "**/*.ts",
+  "*.tsx", "**/*.tsx",
+  "*.js", "**/*.js",
+  "*.jsx", "**/*.jsx",
+  "*.mts", "**/*.mts",
+  "*.cts", "**/*.cts",
+  "*.mjs", "**/*.mjs",
+  "*.cjs", "**/*.cjs",
+  "*.ss", "**/*.ss",
+  "*.ssi", "**/*.ssi",
+  "*.scm", "**/*.scm",
+  "*.sld", "**/*.sld",
+  "*.jl", "**/*.jl",
+  "*.org", "**/*.org",
+  "*.org_archive", "**/*.org_archive",
+  "*.md", "**/*.md",
+  "*.markdown", "**/*.markdown",
+]
+
+[[rules]]
+id = "deny-uncontrolled-python-inline-source-materialization"
+priority = 10002
+decision = "deny"
+reasonKind = "bulk-source-dump"
+message = "Inline Python source materialization is permanently denied. Consume parser-owned ASP evidence; recovery receipts never authorize raw source reads."
+
+[rules.match]
+argvPrefixAny = [["python"], ["python3"], ["uv", "run", "python"], ["uv", "run", "python3"], ["bash"], ["sh"], ["zsh"]]
+commandContainsAny = [".read_text(", ".read_bytes(", "open(", ".read("]
+pathGlobAny = [
+  "*.rs", "**/*.rs",
+  "*.py", "**/*.py",
+  "*.ts", "**/*.ts",
+  "*.tsx", "**/*.tsx",
+  "*.js", "**/*.js",
+  "*.jsx", "**/*.jsx",
+  "*.mts", "**/*.mts",
+  "*.cts", "**/*.cts",
+  "*.mjs", "**/*.mjs",
+  "*.cjs", "**/*.cjs",
+  "*.ss", "**/*.ss",
+  "*.ssi", "**/*.ssi",
+  "*.scm", "**/*.scm",
+  "*.sld", "**/*.sld",
+  "*.jl", "**/*.jl",
+  "*.org", "**/*.org",
+  "*.org_archive", "**/*.org_archive",
+  "*.md", "**/*.md",
+  "*.markdown", "**/*.markdown",
+]
+
+[[rules]]
+id = "deny-uncontrolled-javascript-inline-source-materialization"
+priority = 10003
+decision = "deny"
+reasonKind = "bulk-source-dump"
+message = "Inline JavaScript source materialization is permanently denied. Consume parser-owned ASP evidence; recovery receipts never authorize raw source reads."
+
+[rules.match]
+argvPrefixAny = [["node"], ["bun"], ["deno"], ["bash"], ["sh"], ["zsh"]]
+commandContainsAny = ["readFileSync(", ".readFile(", "readFile("]
+pathGlobAny = [
+  "*.rs", "**/*.rs",
+  "*.py", "**/*.py",
+  "*.ts", "**/*.ts",
+  "*.tsx", "**/*.tsx",
+  "*.js", "**/*.js",
+  "*.jsx", "**/*.jsx",
+  "*.mts", "**/*.mts",
+  "*.cts", "**/*.cts",
+  "*.mjs", "**/*.mjs",
+  "*.cjs", "**/*.cjs",
+  "*.ss", "**/*.ss",
+  "*.ssi", "**/*.ssi",
+  "*.scm", "**/*.scm",
+  "*.sld", "**/*.sld",
+  "*.jl", "**/*.jl",
+  "*.org", "**/*.org",
+  "*.org_archive", "**/*.org_archive",
+  "*.md", "**/*.md",
+  "*.markdown", "**/*.markdown",
+]
+
+[[rules]]
+id = "deny-uncontrolled-git-source-reads"
+priority = 10000
+decision = "deny"
+reasonKind = "raw-broad-search"
+message = "Git object and diff reads are denied as source-access escapes. Route the evidence task to the resident ASP Explore agent."
+
+[rules.match]
+argvPrefixAny = [["git", "show"], ["git", "diff"], ["git", "cat-file"], ["git", "blame"], ["git", "log"]]
+
+[aspCommandIntentPolicy.controlPlane]
+rootCommands = [
+  "guide",
+  "providers",
+  "tools",
+  "wrap",
+  "cache",
+  "cloud",
+  "hook",
+  "agent",
+  "install",
+  "sync",
+  "paths",
+  "healthcheck",
+  "source-access",
+  "ast-patch",
+  "graph",
+]
+
+[aspCommandIntentPolicy.reasoning]
+rootCommands = []
+guideCommand = true
+searchRoutes = [
+  "prime",
+  "pipe",
+  "owner",
+  "lexical",
+  "deps",
+  "dependency",
+  "failure",
+  "reasoning",
+  "ingest",
+  "guide",
+]
+queryFlags = ["--term"]
+unprojectedQuery = true
+
+[aspCommandIntentPolicy.exactEvidence]
+queryProjectionFlags = ["--code", "--content", "--verbatim", "--names-only"]
+queryProjectionViews = ["metadata"]
+selectorKinds = ["item"]
+requireSameLanguage = true
+
+[aspCommandIntentPolicy.invalidEvidence]
+rejectProjectedQueryWithoutExactSelector = true
+rejectCrossLanguageSelector = true
+
+[executionLanes.testing]
+enabled = true
+transport = "resident-agent"
+residentName = "asp-testing"
+receiptKind = "asp-testing-execution-v1"
+commandPrefixes = [
+  "cargo test",
+  "cargo check",
+  "cargo build",
+  "pytest",
+  "uv run pytest",
+  "just test",
+]
+
+[[agents.residentAgents]]
+enabled = true
+name = "asp-explore"
+role = "asp_explorer"
+roles = ["subagent", "search"]
+permissions = ["read-only"]
+codexAgentName = "asp_explorer"
+lifecycle = "asp-command"
+sessionLifetime = "resident"
+mainAllowedAspCommandPrefixes = [
+  "help",
+  "--help",
+  "-h",
+  "agent session",
+  "org recall",
+  "org capture",
+]
+
+[[agents.residentAgents]]
+enabled = true
+name = "asp-testing"
+role = "asp_testing"
+roles = ["subagent", "testing", "build"]
+permissions = ["workspace-write"]
+codexAgentName = "asp_testing"
+lifecycle = "test-build-command"
+sessionLifetime = "resident"
+commandPrefixes = [
+  "cargo test",
+  "cargo check",
+  "cargo build",
+  "pytest",
+  "uv run pytest",
+  "just test",
+]
+
+[agentSessionGuide]
+register = """
+asp agent session register guide
+Register is a low-level state write owned by the resident-child interactive loop.
+Detected host: {{hostLabel}}
+Session env: {{sessionEnv}}
+Canonical loop entry:
+   asp agent session bootstrap --name <residentChildName-from-hook-decision>
+After a hook deny, run only the loop entry. Choose exactly one number, perform the platform-native action for that choice, then re-enter the same loop until state=Ready.
+The pane owns audit, recovery, cleanup, creation, model alignment, and durable registration. Only run register when a pane choice explicitly asks for it and provides both childSessionId and agentMessageTargetId.
+Configured resident child action: {{createAction}}
+Config source: {{configSource}}
+Host projection: {{hostProjection}}
+Do not run low-level session commands, thread reads, rollout scans, or generic subagent creation as independent fallback paths.
+"""
+list = """
+asp agent session list guide
+List registered child sessions for the current root session.
+"""
+show = """
+asp agent session show guide
+Show one registered child session by --name or --child-session-id.
+"""
+status = """
+asp agent session status guide
+Status is diagnostic only; do not use it as a fallback workflow after hook deny.
+ If a resident child is missing, non-routable, or unclear, enter the canonical choice pane:
+    asp agent session bootstrap --name <residentChildName-from-hook-decision>
+Timeout is not a duplicate-worker trigger. The bootstrap pane owns recovery.
+"""
+
+[agentSessionMessages]
+sessionStartReuse = """
+ASP session-start reuse: this root session already has active resident {{residentChildName}} child session `{{childSessionId}}`.
+Use this exact child session for ASP search/query; do not spawn another {{residentChildName}} session and do not close it while the root session is active.
+If message delivery or wait state is unclear, re-enter the resident-child pane:
+   asp agent session bootstrap --name {{residentChildName}}
+Timeout is not a duplicate-worker trigger; the pane owns recovery.
+"""
+sessionStartBootstrap = """
+ASP resident-child interactive loop required: no registered and profile-valid `{{residentChildName}}` child exists for this root session.
+Run the resident-child choice pane and choose one number. Keep re-entering the same loop until state=Ready.
+   asp agent session bootstrap --name {{residentChildName}}
+The pane owns audit, recovery, cleanup, creation, model alignment, and registration.
+Do not run low-level session commands or create generic subagents outside the pane.
+After state=Ready, send the original denied command to the registered message-agent target and wait for its compact receipt.
+"""
+missingResidentExplore = """
+ASP resident-child interactive loop required: no registered and profile-valid `{{residentChildName}}` child exists for this root session.
+Run the resident-child choice pane and choose one number. Keep re-entering the same loop until state=Ready.
+   asp agent session bootstrap --name {{residentChildName}}
+The pane owns audit, recovery, cleanup, creation, model alignment, and registration.
+Do not run low-level session commands or create generic subagents outside the pane.
+After state=Ready, send the original denied command to the registered message-agent target and wait for its compact receipt.
+{{originalCommandLine}}
+"""
+mainRestrictedWithChild = """
+ASP denied main-session ASP command (`{{commandLabel}}`).
+Main-session ASP usage is limited to session, recovery, and checkpoint commands: `asp agent session ...`, `asp org recall ...`, and `asp org capture ...`.
+Route ASP search/query/evidence work to resident {{residentChildName}} child session `{{childSessionId}}`.
+Command: {{command}}
+"""
+mainRestrictedWithoutChild = """
+ASP denied main-session ASP command (`{{commandLabel}}`).
+Main-session ASP usage is limited to session, recovery, and checkpoint commands: `asp agent session ...`, `asp org recall ...`, and `asp org capture ...`.
+Run the resident-child choice pane and choose one number. Keep re-entering the same loop until state=Ready.
+   asp agent session bootstrap --name {{residentChildName}}
+The pane owns audit, recovery, cleanup, creation, model alignment, and registration.
+Do not run low-level session commands or create generic subagents outside the pane.
+After state=Ready, send the blocked ASP command to the registered message-agent target and wait for its compact receipt.
+Command: {{command}}
+"""
+binaryGateWithChild = """
+ASP query/search command denied in main agent session.
+Route this command to resident {{residentChildName}} child session `{{childSessionId}}`; do not spawn another {{residentChildName}} session.
+rootSessionId={{rootSessionId}}
+childSessionId={{childSessionId}}
+loopCommand=asp agent session bootstrap --name {{residentChildName}}
+command={{command}}
+"""
+binaryGateWithoutChild = """
+ASP query/search command denied in agent session because no active {{residentChildName}} child session is registered for this root session.
+Run the resident-child choice pane and choose one number. Keep re-entering the same loop until state=Ready.
+   asp agent session bootstrap --name {{residentChildName}}
+Do not run low-level session commands or create generic subagents outside the pane.
+After state=Ready, send the blocked ASP command to the registered message-agent target and wait for its compact receipt.
+rootSessionId={{rootSessionId}}
+loopCommand=asp agent session bootstrap --name {{residentChildName}}
+command={{command}}
+"""
+binaryGateInvalidChild = """
+ASP query/search command denied in agent session because the registered {{residentChildName}} child session is not routable.
+blockedState=validation-warning-or-non-routable-child
+rootSessionId={{rootSessionId}}
+childSessionId={{childSessionId}}
+childStatus={{childStatus}}
+Run the resident-child choice pane and choose one number. Keep re-entering the same loop until state=Ready.
+   asp agent session bootstrap --name {{residentChildName}}
+The pane owns status inspection, model alignment, message target recovery, cleanup, creation, and registration. Do not run low-level session commands as independent fallback workflows.
+After state=Ready, send the blocked ASP command to the registered message-agent target and wait for its compact receipt.
+command={{command}}
+"""
+binaryGateRegistryBlocked = """
+ASP query/search command denied in agent session because the ASP session registry is currently unavailable.
+blockedState=registry-locked
+rootSessionId={{rootSessionId}}
+Run the resident-child choice pane again after the registry lock clears.
+   asp agent session bootstrap --name {{residentChildName}}
+Do not fall back to raw source tools while the registry is locked.
+registryError={{registryError}}
+command={{command}}
+"""

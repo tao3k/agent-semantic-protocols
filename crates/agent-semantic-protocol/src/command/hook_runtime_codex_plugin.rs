@@ -33,6 +33,7 @@ pub(super) fn install_codex_plugin_hooks(
     project_root: &Path,
     scope: CodexPluginScope,
     subagent_model: &str,
+    asp_binary_path: &Path,
 ) -> Result<(PathBuf, String), String> {
     let marketplace_name = ASP_CODEX_PLUGIN_MARKETPLACE_NAME;
     let plugin_source_root = codex_plugin_source_root(project_root)?;
@@ -56,7 +57,8 @@ pub(super) fn install_codex_plugin_hooks(
     )
     .map(|path| super::display_path(project_root, &path))
     .unwrap_or_else(|error| format!("skipped:{error}"));
-    let global_plugin_cache = ensure_codex_global_plugin_cache_static_files(&codex_agent_home)?;
+    let global_plugin_cache =
+        ensure_codex_global_plugin_cache_static_files(&codex_agent_home, asp_binary_path)?;
     let plugin_cache_trust_config = agent_semantic_hook::install_codex_user_plugin_trust_state(
         &global_plugin_cache.join("hooks").join("hooks.json"),
         &plugin_hook_key_source,
@@ -65,6 +67,7 @@ pub(super) fn install_codex_plugin_hooks(
     let project_plugin_cache = match scope {
         CodexPluginScope::Project => Some(ensure_codex_project_plugin_cache_static_files(
             project_root,
+            asp_binary_path,
         )?),
         CodexPluginScope::Global => None,
     };
@@ -124,6 +127,7 @@ pub(super) fn install_codex_plugin_hooks(
             }
         }
     };
+    ensure_codex_plugin_cache_static_files(&global_plugin_cache, asp_binary_path)?;
     let config_path = match scope {
         CodexPluginScope::Project => project_root.join(".codex").join("config.toml"),
         CodexPluginScope::Global => global_codex_config_path()?,
@@ -191,36 +195,52 @@ fn write_codex_plugin_file(path: &Path, content: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn render_codex_plugin_hooks_json() -> Result<String, String> {
-    let hooks = serde_json::from_str::<serde_json::Value>(ASP_CODEX_PLUGIN_HOOKS_JSON)
+fn render_codex_plugin_hooks_json(asp_binary_path: &Path) -> Result<String, String> {
+    let mut hooks = serde_json::from_str::<serde_json::Value>(ASP_CODEX_PLUGIN_HOOKS_JSON)
         .map_err(|error| format!("invalid ASP Codex plugin hooks JSON: {error}"))?;
     let hook_events = hooks
-        .get("hooks")
-        .and_then(serde_json::Value::as_object)
+        .get_mut("hooks")
+        .and_then(serde_json::Value::as_object_mut)
         .ok_or_else(|| "ASP Codex plugin hooks JSON missing object `hooks`".to_string())?;
-    for handlers in hook_events.values() {
-        let Some(handlers) = handlers.as_array() else {
+    let asp_binary_command = shell_quote_hook_command_path(asp_binary_path)?;
+    for handlers in hook_events.values_mut() {
+        let Some(handlers) = handlers.as_array_mut() else {
             return Err("ASP Codex plugin hooks event entry must be an array".to_string());
         };
         for handler in handlers {
-            let Some(hooks) = handler.get("hooks").and_then(serde_json::Value::as_array) else {
+            let Some(hooks) = handler
+                .get_mut("hooks")
+                .and_then(serde_json::Value::as_array_mut)
+            else {
                 return Err("ASP Codex plugin hook handler missing array `hooks`".to_string());
             };
             for hook in hooks {
-                let Some(command) = hook.get("command").and_then(serde_json::Value::as_str) else {
+                let Some(serde_json::Value::String(command)) = hook.get_mut("command") else {
                     return Err("ASP Codex plugin hook entry missing string `command`".to_string());
                 };
-                if !command.contains("asp hook ") {
+                let Some(hook_args) = command.strip_prefix("asp hook ") else {
                     return Err(format!(
-                        "ASP Codex plugin hook command must contain `asp hook`: {command}"
+                        "ASP Codex plugin hook command must start with `asp hook`: {command}"
                     ));
-                }
+                };
+                *command = format!("{asp_binary_command} hook {hook_args}");
             }
         }
     }
     serde_json::to_string_pretty(&hooks)
         .map_err(|error| format!("failed to render ASP Codex plugin hooks JSON: {error}"))
 }
+
+fn shell_quote_hook_command_path(path: &Path) -> Result<String, String> {
+    let path = path
+        .to_str()
+        .ok_or_else(|| format!("ASP hook binary path is not UTF-8: {}", path.display()))?;
+    Ok(format!("'{}'", path.replace('\'', "'\"'\"'")))
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/canonical_codex_plugin_hook_binary.rs"]
+mod canonical_codex_plugin_hook_binary_tests;
 
 fn validate_codex_plugin_manifest_hooks_path(plugin_root: &Path) -> Result<(), String> {
     let manifest_path = plugin_root.join(".codex-plugin").join("plugin.json");
@@ -253,26 +273,39 @@ fn validate_codex_plugin_manifest_hooks_path(plugin_root: &Path) -> Result<(), S
 
 pub(super) fn sync_codex_project_plugin_cache(
     project_root: &Path,
+    asp_binary_path: &Path,
 ) -> Result<Option<PathBuf>, String> {
-    let cache_root = ensure_codex_project_plugin_cache_static_files(project_root)?;
+    let cache_root = ensure_codex_project_plugin_cache_static_files(project_root, asp_binary_path)?;
     Ok(Some(cache_root))
 }
 
-fn ensure_codex_project_plugin_cache_static_files(project_root: &Path) -> Result<PathBuf, String> {
-    ensure_codex_plugin_cache_static_files(&codex_project_plugin_cache_path(project_root)?)
+fn ensure_codex_project_plugin_cache_static_files(
+    project_root: &Path,
+    asp_binary_path: &Path,
+) -> Result<PathBuf, String> {
+    ensure_codex_plugin_cache_static_files(
+        &codex_project_plugin_cache_path(project_root)?,
+        asp_binary_path,
+    )
 }
 
-fn ensure_codex_global_plugin_cache_static_files(codex_home: &Path) -> Result<PathBuf, String> {
+fn ensure_codex_global_plugin_cache_static_files(
+    codex_home: &Path,
+    asp_binary_path: &Path,
+) -> Result<PathBuf, String> {
     let cache_root = codex_home
         .join("plugins")
         .join("cache")
         .join(ASP_CODEX_PLUGIN_MARKETPLACE_NAME)
         .join(ASP_CODEX_PLUGIN_NAME)
         .join(asp_codex_plugin_version()?);
-    ensure_codex_plugin_cache_static_files(&cache_root)
+    ensure_codex_plugin_cache_static_files(&cache_root, asp_binary_path)
 }
 
-fn ensure_codex_plugin_cache_static_files(cache_root: &Path) -> Result<PathBuf, String> {
+fn ensure_codex_plugin_cache_static_files(
+    cache_root: &Path,
+    asp_binary_path: &Path,
+) -> Result<PathBuf, String> {
     if !cache_root.is_dir() {
         if cache_root.exists() {
             return Err(format!(
@@ -289,7 +322,7 @@ fn ensure_codex_plugin_cache_static_files(cache_root: &Path) -> Result<PathBuf, 
     )?;
     write_codex_plugin_file(
         &cache_root.join("hooks").join("hooks.json"),
-        &render_codex_plugin_hooks_json()?,
+        &render_codex_plugin_hooks_json(asp_binary_path)?,
     )?;
     validate_codex_plugin_manifest_hooks_path(cache_root)?;
     Ok(cache_root.to_path_buf())

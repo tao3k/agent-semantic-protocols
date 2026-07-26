@@ -137,6 +137,10 @@ pub struct CurrentSourceIndexSnapshot {
     pub source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
 }
 
+#[cfg(test)]
+#[path = "../../tests/unit/provider_source_snapshot_envelope_generation.rs"]
+mod provider_source_snapshot_envelope_generation_tests;
+
 /// Canonical workspace-relative owner path used by source-index acquisition.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceIndexOwnerPath(String);
@@ -209,6 +213,9 @@ struct ProviderSourceSnapshotEnvelopeV1<'a> {
     schema_version: &'static str,
     provider_id: &'a str,
     source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
+    root_depth: usize,
+    materialization_state: &'static str,
+    owner_coverage: &'static str,
     cas_root: &'a Path,
     owners: Vec<ProviderSourceSnapshotOwnerV1>,
 }
@@ -230,6 +237,14 @@ pub fn publish_provider_source_snapshot_envelope(
     source_extensions: &[String],
     cache_home: &Path,
 ) -> Result<std::path::PathBuf, String> {
+    fn merkle_root_depth(leaf_count: usize) -> usize {
+        if leaf_count <= 1 {
+            0
+        } else {
+            usize::BITS as usize - (leaf_count - 1).leading_zeros() as usize
+        }
+    }
+
     let provider_id = provider_id.into();
     let cas_root = cache_home.join("source-blob-cas").join("v1");
     let cas = agent_semantic_content_identity::ContentAddressedStore::new(&cas_root);
@@ -285,10 +300,27 @@ pub fn publish_provider_source_snapshot_envelope(
         });
     }
     owners.sort_by(|left, right| left.path.cmp(&right.path));
+    let provider_workspace_snapshot = agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(
+        owners
+            .iter()
+            .map(|owner| (owner.path.clone(), owner.source_content_digest.clone())),
+    );
+    let provider_source_snapshot = provider_workspace_snapshot.evidence(
+        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
+        snapshot.source_snapshot.provider_digest.clone(),
+    );
+    if provider_source_snapshot.leaf_count != owners.len() {
+        return Err(format!(
+            "provider source envelope generation is incomplete: providerId={} leafCount={} ownerCount={}",
+            provider_id.as_str(),
+            provider_source_snapshot.leaf_count,
+            owners.len()
+        ));
+    }
     let envelope_dir = cache_home
         .join("source-snapshot-envelopes")
         .join("v1")
-        .join(&snapshot.source_snapshot.root_digest);
+        .join(&provider_source_snapshot.root_digest);
     std::fs::create_dir_all(&envelope_dir).map_err(|error| {
         format!(
             "failed to create provider source envelope directory {}: {error}",
@@ -304,7 +336,10 @@ pub fn publish_provider_source_snapshot_envelope(
         schema_id: "asp.exact-source-snapshot-envelope.v1",
         schema_version: "1",
         provider_id: provider_id.as_str(),
-        source_snapshot: &snapshot.source_snapshot,
+        source_snapshot: &provider_source_snapshot,
+        root_depth: merkle_root_depth(provider_source_snapshot.leaf_count),
+        materialization_state: "artifact-complete",
+        owner_coverage: "complete",
         cas_root: &cas_root,
         owners,
     };
@@ -355,6 +390,26 @@ pub fn current_source_index_snapshot(
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
     current_source_index_snapshot_with_registry(project_root, &provider_registry)
+}
+
+/// Capture a workspace-search snapshot, supplementing incomplete provider
+/// source-scope facts from the activated provider coverage only when needed.
+pub fn current_workspace_search_source_index_snapshot(
+    project_root: &Path,
+) -> Result<CurrentSourceIndexSnapshot, String> {
+    let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
+    let registry = provider_registry.evidence(project_root);
+    let files = super::collect::collect_workspace_search_source_index_files(
+        project_root,
+        &provider_registry,
+    )?;
+    let (_, workspace_snapshot, source_snapshot, source_blobs) =
+        source_index_snapshot_from_files(project_root, &files, &registry)?;
+    Ok(CurrentSourceIndexSnapshot {
+        workspace_snapshot,
+        source_snapshot,
+        source_blobs,
+    })
 }
 
 /// Capture a content-authoritative, one-owner snapshot for an exact query.

@@ -38,7 +38,9 @@ pub(super) fn try_run_workspace_tree_sitter_query(
         ));
     }
     let snapshot =
-        agent_semantic_client::source_index::current_source_index_snapshot(project_root)?;
+        agent_semantic_client::source_index::current_workspace_search_source_index_snapshot(
+            project_root,
+        )?;
     let (captures, total_captures) = collect_workspace_captures(
         &language,
         &query,

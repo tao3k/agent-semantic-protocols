@@ -17,10 +17,12 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
     let source = root.join("source/asp");
     let target = root.join("bin/asp");
     let secondary_target = root.join("bin-secondary/asp");
+    let artifact_root = root.join("runtime/artifacts");
     std::fs::write(&source, b"asp artifact one").expect("write source");
 
-    install_protocol_binary_target(&source, &target).expect("install protocol binary");
-    install_protocol_binary_target(&source, &secondary_target)
+    install_protocol_binary_target(&source, &target, &artifact_root)
+        .expect("install protocol binary");
+    install_protocol_binary_target(&source, &secondary_target, &artifact_root)
         .expect("install secondary protocol binary");
     let source_digest = protocol_binary_artifact_digest(&source).expect("source identity");
     let target_digest = protocol_binary_artifact_digest(&target).expect("target identity");
@@ -33,7 +35,7 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
     assert!(
         first_artifact
             .to_string_lossy()
-            .contains("/.asp-artifacts/blake3-256/"),
+            .contains("/runtime/artifacts/blake3-256/"),
         "{}",
         first_artifact.display()
     );
@@ -67,8 +69,9 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
         protocol_binary_artifact_digest(&target),
         Some(target_digest)
     );
-    install_protocol_binary_target(&source, &target).expect("replace public target");
-    install_protocol_binary_target(&source, &secondary_target)
+    install_protocol_binary_target(&source, &target, &artifact_root)
+        .expect("replace public target");
+    install_protocol_binary_target(&source, &secondary_target, &artifact_root)
         .expect("replace secondary public target");
     let second_artifact = std::fs::canonicalize(&target).expect("second artifact");
     assert_eq!(
@@ -106,13 +109,53 @@ fn unrelated_path_asp_is_never_selected_or_modified() {
     std::fs::write(&current_exe, b"current").expect("write current asp");
     std::fs::write(&ambient_asp, b"ambient-sentinel").expect("write ambient asp");
 
-    let error = super::resolve_protocol_binary_install_target(&current_exe, None, &[ambient_dir])
-        .expect_err("unrelated PATH asp must fail closed");
+    let error =
+        super::resolve_protocol_binary_install_target(&current_exe, None, &[ambient_dir], &root)
+            .expect_err("unrelated PATH asp must fail closed");
 
     assert!(error.contains("refusing to update unrelated PATH binary"));
     assert_eq!(
         std::fs::read(&ambient_asp).expect("read ambient sentinel"),
         b"ambient-sentinel"
+    );
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn concurrent_publish_uses_per_attempt_stage_paths() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-binary-concurrent-publish-{}-{nonce}",
+        std::process::id()
+    ));
+    let source = root.join("source/asp");
+    let target = root.join("bin/asp");
+    let artifact_root = root.join("runtime/artifacts");
+    std::fs::create_dir_all(source.parent().expect("source parent")).expect("create source dir");
+    std::fs::write(&source, b"concurrent asp artifact").expect("write source");
+
+    std::thread::scope(|scope| {
+        let attempts = (0..8)
+            .map(|_| {
+                scope.spawn(|| {
+                    super::install_protocol_binary_target(&source, &target, &artifact_root)
+                })
+            })
+            .collect::<Vec<_>>();
+        for attempt in attempts {
+            attempt
+                .join()
+                .expect("publisher thread")
+                .expect("publish protocol binary");
+        }
+    });
+
+    assert_eq!(
+        super::protocol_binary_artifact_digest(&target),
+        super::protocol_binary_artifact_digest(&source)
     );
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
@@ -143,6 +186,7 @@ fn explicit_bin_root_selects_exactly_one_target() {
         &current_exe,
         Some(&explicit_bin),
         &[ambient_bin],
+        &root,
     )
     .expect("resolve explicit target");
 
@@ -155,8 +199,10 @@ fn explicit_bin_root_selects_exactly_one_target() {
 
 #[test]
 fn install_plan_capture_rejects_non_asp_process_identity() {
-    let error = super::ProtocolBinaryInstallPlan::capture()
-        .expect_err("unit test executable must not be accepted as the ASP install source");
+    let error = super::ProtocolBinaryInstallPlan::capture(
+        std::env::temp_dir().join("asp-install-plan-rejected/runtime/artifacts"),
+    )
+    .expect_err("unit test executable must not be accepted as the ASP install source");
     assert!(error.contains("semantic hook setup must run through `asp`"));
 }
 

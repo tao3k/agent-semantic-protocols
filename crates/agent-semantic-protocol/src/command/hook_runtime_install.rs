@@ -107,8 +107,13 @@ fn run_install_for_client(
     let mut timings = InstallTimings::new();
     ensure_supported_client(client)?;
     timings.mark("args");
-    let binary_install_plan = ProtocolBinaryInstallPlan::capture()?;
     let runtime_state = project_runtime_state(&project_root)?;
+    let _reconciliation_guard =
+        crate::command::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
+            &runtime_state.protocol_home,
+        )?;
+    let binary_install_plan =
+        ProtocolBinaryInstallPlan::capture(runtime_state.protocol_home.join("runtime/artifacts"))?;
     timings.mark("runtime-state");
     let client_db_migration =
         agent_semantic_client_db::ClientDbEngine::migrate_active_project_client_dir_to_turso_0_7(
@@ -177,7 +182,12 @@ fn run_install_for_client(
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
     let (config_path, extra_config_receipt) = match client {
-        "codex" => install_codex_plugin_hooks(&project_root, codex_plugin_scope, &subagent_model)?,
+        "codex" => install_codex_plugin_hooks(
+            &project_root,
+            codex_plugin_scope,
+            &subagent_model,
+            &binary_install.path,
+        )?,
         "claude" => install_claude_project_hooks(&project_root, &subagent_model)?,
         _ => unreachable!("client support checked before install"),
     };
@@ -202,7 +212,7 @@ fn run_install_for_client(
     timings.mark("skill");
     let plugin_cache_path =
         if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Project) {
-            sync_codex_project_plugin_cache(&project_root)?
+            sync_codex_project_plugin_cache(&project_root, &binary_install.path)?
         } else {
             None
         };

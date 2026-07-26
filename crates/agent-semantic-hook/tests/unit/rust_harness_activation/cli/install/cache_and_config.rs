@@ -282,16 +282,15 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     let marketplaces = parsed_config
         .get("marketplaces")
         .and_then(toml::Value::as_table);
-    if let Some(marketplaces) = marketplaces {
-        if let Some(asp_project) = marketplaces
+    if let Some(marketplaces) = marketplaces
+        && let Some(asp_project) = marketplaces
             .get("asp-project")
             .and_then(toml::Value::as_table)
-        {
-            assert_eq!(
-                asp_project.get("source_type").and_then(toml::Value::as_str),
-                Some("local")
-            );
-        }
+    {
+        assert_eq!(
+            asp_project.get("source_type").and_then(toml::Value::as_str),
+            Some("local")
+        );
     }
     let user_config =
         std::fs::read_to_string(codex_home.join("config.toml")).expect("user trust config");

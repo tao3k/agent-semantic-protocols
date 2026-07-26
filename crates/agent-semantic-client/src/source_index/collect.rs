@@ -39,6 +39,40 @@ pub(super) fn collect_source_index_files(
         .collect())
 }
 
+pub(super) fn collect_workspace_search_source_index_files(
+    project_root: &Path,
+    snapshot: &ProviderRegistrySnapshot,
+) -> Result<Vec<SourceIndexScopeFile>, String> {
+    let files = collect_source_index_files(project_root, snapshot)?;
+    let source_coverage_complete = snapshot.providers.iter().all(|provider| {
+        files.iter().any(|file| {
+            file.provider_id == provider.provider_id
+                && provider_matches_source_extension(provider, &file.path)
+        })
+    });
+    if source_coverage_complete {
+        return Ok(files);
+    }
+
+    let fallback =
+        collect_activation_scope_fallback_files(project_root, snapshot, SOURCE_INDEX_FILE_LIMIT)?;
+    let mut merged = files
+        .into_iter()
+        .map(|file| (file.path.clone(), file))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    for file in fallback {
+        merged
+            .entry(file.path.clone())
+            .or_insert(SourceIndexScopeFile {
+                path: file.path,
+                language_id: file.language_id,
+                provider_id: file.provider_id,
+                selector_receipts: Vec::new(),
+            });
+    }
+    Ok(merged.into_values().take(SOURCE_INDEX_FILE_LIMIT).collect())
+}
+
 fn collect_activation_scope_fallback_files(
     project_root: &Path,
     snapshot: &ProviderRegistrySnapshot,

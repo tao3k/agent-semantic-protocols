@@ -90,7 +90,15 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
     let target = target.ok_or_else(usage)?;
     let source = env::current_exe()
         .map_err(|error| format!("failed to resolve current ASP binary: {error}"))?;
-    let installed = super::protocol_binary::install_protocol_binary_target(&source, &target)?;
+    let project_root = env::current_dir()
+        .map_err(|error| format!("failed to resolve current project root: {error}"))?;
+    let runtime_state = agent_semantic_runtime::project_runtime_state(&project_root)?;
+    let _reconciliation_guard = super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
+        &runtime_state.protocol_home,
+    )?;
+    let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
+    let installed =
+        super::protocol_binary::install_protocol_binary_target(&source, &target, &artifact_root)?;
     println!(
         "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic",
         installed.path.display(),

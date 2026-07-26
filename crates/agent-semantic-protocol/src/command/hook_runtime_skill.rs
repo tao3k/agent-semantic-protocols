@@ -7,7 +7,7 @@ use self::hook_runtime_skill_render::{
     render_agent_semantic_protocols_installed_skill, render_agent_semantic_protocols_plugin_skill,
 };
 
-use agent_semantic_hook::{project_agent_config_path, HookActivation, RuntimeProfiles};
+use agent_semantic_hook::{HookActivation, RuntimeProfiles, project_agent_config_path};
 use agent_semantic_runtime::project_state_paths;
 use std::fs;
 use std::path::{Path, PathBuf};

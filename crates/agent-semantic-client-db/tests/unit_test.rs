@@ -22,6 +22,8 @@ mod env;
 mod live_source_index_memory;
 #[path = "unit/db/project_scoped_turso_performance.rs"]
 mod project_scoped_turso_performance;
+#[path = "unit/selector_generation_evidence.rs"]
+mod selector_generation_evidence;
 #[path = "unit/db/snapshot_fixture.rs"]
 mod snapshot_fixture;
 #[path = "unit/db/source_index_refresh_perf.rs"]

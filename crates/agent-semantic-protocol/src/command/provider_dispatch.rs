@@ -297,7 +297,9 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
     if is_asp_fast_search(&provider_args) {
         let current_snapshot =
-            agent_semantic_client::source_index::current_source_index_snapshot(&project_root)?;
+            agent_semantic_client::source_index::current_workspace_search_source_index_snapshot(
+                &project_root,
+            )?;
         let provider_context_allowed = !document_owner_items_search
             || !provider_invokes_asp_facade(language_id, provider, &config);
         if provider_context_allowed && fast_search_needs_provider_context(&provider_args, provider)?
@@ -432,9 +434,31 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         } else {
             agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code
         };
+        let normalized_source_extensions = provider
+            .source_extensions
+            .iter()
+            .map(|extension| extension.trim_start_matches('.').to_ascii_lowercase())
+            .collect::<std::collections::BTreeSet<_>>();
         let workspace_tree =
             agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests(
-                [(owner_path.to_string(), source_blob_digest.clone())],
+                snapshot.source_blobs.iter().filter_map(|(path, bytes)| {
+                    let extension = Path::new(path)
+                        .extension()
+                        .map(|extension| extension.to_string_lossy().to_ascii_lowercase());
+                    if !normalized_source_extensions.is_empty()
+                        && extension
+                            .as_ref()
+                            .is_none_or(|extension| {
+                                !normalized_source_extensions.contains(extension)
+                            })
+                    {
+                        return None;
+                    }
+                    Some((
+                        path.to_string(),
+                        agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(bytes),
+                    ))
+                }),
             )
             .map_err(|error| format!("failed to construct exact-selector workspace Merkle tree: {error:?}"))?;
         let owner_subtree_digest =
