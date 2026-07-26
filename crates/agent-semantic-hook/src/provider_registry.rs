@@ -144,7 +144,7 @@ pub fn materialize_provider_routes(
         lexical: resolve_route_invocation(language, &bindings.lexical)?,
         query: optional(&bindings.query)?,
         ingest: resolve_route_invocation(language, &bindings.ingest)?,
-        check_changed: resolve_route_invocation(language, &bindings.check_changed)?,
+        check_changed: optional(&bindings.check_changed)?,
         dependency_topology: optional(&bindings.dependency_topology)?,
         dependency_topology_metadata: optional(&bindings.dependency_topology_metadata)?,
         workspace_scope: optional(&bindings.workspace_scope)?,
@@ -161,8 +161,21 @@ fn language_provider_manifests() -> Vec<ProviderManifest> {
     LANGUAGE_PROVIDER_MANIFEST_JSON
         .iter()
         .map(|json| {
-            let mut manifest = serde_json::from_str::<ProviderManifest>(json)
-                .expect("embedded language provider manifest must be valid JSON");
+            let manifest_id = serde_json::from_str::<serde_json::Value>(json)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("manifestId")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned)
+                })
+                .unwrap_or_else(|| "<unknown>".to_string());
+            let mut manifest =
+                serde_json::from_str::<ProviderManifest>(json).unwrap_or_else(|error| {
+                    panic!(
+                        "embedded language provider manifest `{manifest_id}` must be valid JSON: {error}"
+                    )
+                });
             normalize_language_provider_manifest(&mut manifest);
             manifest
         })

@@ -1,4 +1,4 @@
-use agent_semantic_hook::builtin_provider_manifests;
+use agent_semantic_hook::{builtin_provider_manifests, materialize_provider_routes};
 
 #[test]
 fn builtin_manifests_include_c_family_clang_provider() {
@@ -7,38 +7,35 @@ fn builtin_manifests_include_c_family_clang_provider() {
     for (language, extension) in [("c", ".c"), ("cpp", ".cpp"), ("objective-c", ".m")] {
         let manifest = manifests
             .iter()
-            .find(|manifest| manifest.language_id == language)
+            .find(|manifest| manifest.language_id().as_str() == language)
             .unwrap_or_else(|| panic!("{language} manifest"));
+        let routes = materialize_provider_routes(manifest)
+            .unwrap_or_else(|error| panic!("{language} routes: {error}"));
 
-        assert_eq!(manifest.provider_id, "ccls-asp");
-        assert_eq!(manifest.binary, "ccls-asp");
-        assert_eq!(manifest.command_prefix_args, ["--language", language]);
-        assert!(manifest.search_capabilities.semantic_facts);
-        assert!(!manifest.search_capabilities.dependency_topology);
+        assert_eq!(manifest.provider_id().as_str(), "ccls-asp");
+        assert_eq!(manifest.binary(), "ccls-asp");
         assert!(
             manifest
-                .source
+                .source()
                 .default_extensions
                 .contains(&extension.to_string())
         );
+        assert_eq!(&routes.prime.argv[..3], ["asp", language, "search"]);
+        assert_eq!(&routes.owner.argv[..3], ["asp", language, "search"]);
+        assert_eq!(&routes.lexical.argv[..3], ["asp", language, "search"]);
         assert_eq!(
-            manifest.routes.prime.argv,
-            [
-                "ccls-asp",
-                "--language",
-                language,
-                "search",
-                "prime",
-                "--workspace",
-                "{projectRoot}",
-                "--view",
-                "seeds"
-            ]
-        );
-        assert_eq!(
-            manifest.routes.query.as_ref().expect("query route").argv[0..3],
+            &routes.query.as_ref().expect("query route").argv[..3],
             ["ccls-asp", "--language", language]
         );
+        assert_eq!(
+            &routes.ingest.argv[..3],
+            ["ccls-asp", "--language", language]
+        );
+        assert_eq!(
+            &routes.guide.as_ref().expect("guide route").argv[..3],
+            ["ccls-asp", "--language", language]
+        );
+        assert!(routes.check_changed.is_none());
     }
 }
 
