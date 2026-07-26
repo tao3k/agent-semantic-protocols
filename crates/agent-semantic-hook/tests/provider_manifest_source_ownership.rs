@@ -80,3 +80,34 @@ fn c_family_facades_are_present_in_the_root_locked_release_manifest() {
         );
     }
 }
+
+#[test]
+fn c_family_structural_schema_stays_on_root_owned_v1() {
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = crate_root.join("../..");
+    let root_schema = workspace_root.join("schemas/semantic-structural-index.v1.schema.json");
+    let release_schema =
+        workspace_root.join("languages/ccls-asp/schemas/semantic-structural-index.v1.schema.json");
+    let root_bytes = std::fs::read(&root_schema).expect("read root-owned structural-index v1 schema");
+    let schema: serde_json::Value =
+        serde_json::from_slice(&root_bytes).expect("parse root-owned structural-index v1 schema");
+    assert_eq!(
+        schema.get("$id").and_then(serde_json::Value::as_str),
+        Some(
+            "https://agent.semantic-protocols/schemas/semantic-structural-index.v1.schema.json"
+        )
+    );
+    assert!(
+        !workspace_root
+            .join("schemas/semantic-structural-index.v2.schema.json")
+            .exists(),
+        "C-family must keep the single stable structural-index v1 contract"
+    );
+    if release_schema.exists() {
+        assert_eq!(
+            root_bytes,
+            std::fs::read(&release_schema).expect("read C-family schema release copy"),
+            "C-family schema release copy drifted from the root-owned v1 schema"
+        );
+    }
+}

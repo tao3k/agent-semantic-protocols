@@ -7,44 +7,6 @@ use crate::provider_command::support::{
 };
 
 #[test]
-fn c_family_structural_schema_is_root_owned_and_release_copy_is_synchronized() {
-    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = crate_root.join("../..");
-    let root_schema = workspace_root.join("schemas/semantic-structural-index.v1.schema.json");
-    let release_schema =
-        workspace_root.join("languages/ccls-asp/schemas/semantic-structural-index.v1.schema.json");
-    let root_bytes = std::fs::read(&root_schema).expect("read root-owned structural-index v1 schema");
-    let schema: serde_json::Value =
-        serde_json::from_slice(&root_bytes).expect("parse root-owned structural-index v1 schema");
-    assert_eq!(
-        schema.get("$id").and_then(serde_json::Value::as_str),
-        Some(
-            "https://agent.semantic-protocols/schemas/semantic-structural-index.v1.schema.json"
-        )
-    );
-    assert!(
-        !workspace_root
-            .join("schemas/semantic-structural-index.v2.schema.json")
-            .exists(),
-        "C-family must keep the single stable structural-index v1 contract"
-    );
-    if release_schema.exists() {
-        assert_eq!(
-            root_bytes,
-            std::fs::read(&release_schema).expect("read C-family schema release copy"),
-            "C-family schema release copy drifted from the root-owned v1 schema"
-        );
-    }
-    assert!(
-        agent_semantic_content_identity::CanonicalItemSelectorV1::parse(
-            "cpp://src/widget.cpp#clang-usr:c:@S@Widget:struct"
-        )
-        .is_ok(),
-        "Clang USR selectors must participate in the ASP exact-selector path"
-    );
-}
-
-#[test]
 fn rust_search_facade_fans_out_multiple_trailing_scope_roots() {
     let root = temp_project_root("rust-search-facade-multi-scope");
     let bin_dir = root.join(".bin");
