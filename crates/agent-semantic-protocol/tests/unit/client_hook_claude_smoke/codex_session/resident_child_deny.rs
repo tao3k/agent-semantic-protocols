@@ -116,6 +116,10 @@ fn codex_hook_payload_wrong_agent_id_keeps_main_bootstrap() {
 
     assert_eq!(decision["decision"].as_str(), Some("deny"));
     assert_eq!(
+        decision["fields"]["payloadLiveTargetIdentityProofStatus"],
+        "root-hook-envelope"
+    );
+    assert_eq!(
         decision["fields"]["requiredAction"],
         "enter-asp-explore-choice-pane"
     );

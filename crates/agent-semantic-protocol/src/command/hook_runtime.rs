@@ -568,6 +568,31 @@ fn enforce_resident_child_deny_contract(
     if decision.decision != DecisionKind::Deny {
         return Ok(());
     }
+    let payload_agent_id = ["agent_id", "agentId"]
+        .iter()
+        .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str));
+    let payload_session_id = ["session_id", "sessionId"]
+        .iter()
+        .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str));
+    let transcript_targets_other_session = ["transcript_path", "transcriptPath"]
+        .iter()
+        .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str))
+        .and_then(|path| Path::new(path).file_name())
+        .and_then(|name| name.to_str())
+        .zip(payload_session_id)
+        .is_some_and(|(name, session_id)| !name.contains(session_id));
+    let codex_root_thread_id = env::var("CODEX_THREAD_ID").ok();
+    if payload_agent_id.is_none()
+        && payload_session_id.is_some()
+        && payload_session_id == codex_root_thread_id.as_deref()
+        && !transcript_targets_other_session
+    {
+        decision.fields.insert(
+            "payloadLiveTargetIdentityProofStatus".to_string(),
+            serde_json::Value::String("root-hook-envelope".to_string()),
+        );
+        return Ok(());
+    }
     let configured_resident_name = decision
         .fields
         .get("residentChildName")
@@ -621,9 +646,6 @@ fn enforce_resident_child_deny_contract(
     if identity_proof.is_none()
         && let Some(root_session_id) = root_session_id.as_deref()
     {
-        let payload_agent_id = ["agent_id", "agentId"]
-            .iter()
-            .find_map(|field| payload.get(*field).and_then(serde_json::Value::as_str));
         identity_proof =
             crate::command::agent_session_registry::payload_live_target_resident_identity_proof(
                 project_root,

@@ -55,13 +55,19 @@ fn resident_permission_context<'a>(
     let codex_hook_agent_type = ["agent_type", "agentType"]
         .iter()
         .find_map(|key| payload.get(*key).and_then(serde_json::Value::as_str));
-    let identity_proof = hook_runtime_agent_session::current_session_resident_child_identity_proof(
-        project_root,
-        asp_session_policy,
-        payload,
-    )
-    .ok()
-    .flatten();
+    let identity_proof = if codex_hook_agent_id.is_some()
+        && codex_hook_agent_type == Some(asp_session_policy.resident_codex_agent_name())
+    {
+        hook_runtime_agent_session::current_session_resident_child_identity_proof(
+            project_root,
+            asp_session_policy,
+            payload,
+        )
+        .ok()
+        .flatten()
+    } else {
+        None
+    };
     let live_target_proof = matches!(
         identity_proof,
         Some(crate::command::ResidentChildIdentityProof::CodexHookPayloadLiveTarget)
