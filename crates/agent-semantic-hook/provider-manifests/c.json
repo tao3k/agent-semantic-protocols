@@ -1,0 +1,78 @@
+{
+  "schemaId": "agent.semantic-protocols.hook.provider-manifest",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.hook",
+  "protocolVersion": "1",
+  "manifestId": "agent.semantic-protocols.providers.c.ccls-asp",
+  "manifestVersion": "v1",
+  "languageId": "c",
+  "providerId": "ccls-asp",
+  "namespace": "agent.semantic-protocols.languages.c.ccls-asp",
+  "binary": "ccls-asp",
+  "execution": "external-process",
+  "source": {
+    "defaultExtensions": [".c", ".h"],
+    "defaultConfigFiles": ["compile_commands.json", ".ccls", "CMakeLists.txt", "meson.build"],
+    "defaultSourceRoots": ["src", "include", "tests"],
+    "defaultIgnoredPathPrefixes": ["build", "cmake-build-debug", "cmake-build-release"],
+    "defaultProjectMarkers": ["compile_commands.json", ".ccls", "CMakeLists.txt", "meson.build"],
+    "defaultDependencyMarkers": ["compile_commands.json", "CMakeLists.txt", "meson.build"]
+  },
+  "searchCapabilities": {
+    "ownerItems": false,
+    "semanticFacts": true,
+    "dependencyTopology": false,
+    "dependencyTopologyMetadata": false,
+    "workspaceScope": false,
+    "sourceSnapshot": {
+      "descriptorId": "c.source-snapshot",
+      "descriptorVersion": "1",
+      "languageId": "c",
+      "authority": "live-parser",
+      "algorithm": "blake3-merkle-v1",
+      "packetSchemaId": "asp.source-snapshot.v1",
+      "overlayMode": "merkle-delta",
+      "exactSelectorResolution": "pinned-live-module-graph",
+      "canonicalItemSelectorSchemaId": "asp.canonical-item-selector.v1",
+      "exactSourcePacketSchemaId": "asp.exact-source-query-result.v1",
+      "sourceSnapshotEnvelopeSchemaId": "asp.exact-source-snapshot-envelope.v1",
+      "derivedArtifactEvidenceSchemaId": "asp.derived-source-artifact-evidence.v1"
+    }
+  },
+  "policy": {
+    "directSourceRead": "block",
+    "bulkSourceDump": "block",
+    "rawSourceSearch": "block",
+    "agentSearchJson": "block"
+  },
+  "queryPackDescriptor": {
+    "descriptorId": "c.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "c",
+    "termRoleOverrides": [],
+    "recipes": [
+      {
+        "recipeId": "c-symbol-owner",
+        "trigger": {
+          "terms": ["symbol", "owner", "definition", "reference"],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": ["symbol", "owner", "definition", "reference"],
+            "roles": ["concept", "symbol"],
+            "intentAxes": ["data-shape"]
+          }
+        ]
+      }
+    ]
+  },
+  "routeBindings": {
+    "prime": "search/prime",
+    "owner": "search/owner",
+    "lexical": "search/lexical",
+    "query": "query/exact-selector",
+    "ingest": "search/ingest",
+    "guide": "guide"
+  }
+}

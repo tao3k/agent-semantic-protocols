@@ -156,6 +156,28 @@ fn parse_symbol_rows(packet: &Value) -> Result<Vec<ClientDbStructuralSymbol>, St
                 kind: ClientDbStructuralKind::new(string_field(value, "kind")?),
                 visibility: optional_string_field(value, "visibility")
                     .map(ClientDbStructuralKind::new),
+                logical_symbol_id: optional_string_field(value, "symbolId")
+                    .map(ClientDbStructuralName::new),
+                semantic_variant_id: variant_string_field(
+                    value,
+                    "semanticVariantId",
+                    false,
+                )?
+                .map(ClientDbStructuralName::new),
+                translation_unit: variant_string_field(
+                    value,
+                    "translationUnit",
+                    false,
+                )?
+                .map(ClientDbStructuralPath::new),
+                compile_context_digest: variant_string_field(
+                    value,
+                    "compileContextDigest",
+                    false,
+                )?
+                .map(ClientDbStructuralHash::new),
+                structural_selector: optional_string_field(value, "structuralSelector")
+                    .map(ClientDbStructuralLocator::new),
                 source_locator: optional_string_field(value, "sourceLocator")
                     .map(ClientDbStructuralLocator::new),
                 query_keys,
@@ -171,6 +193,24 @@ fn parse_dependency_rows(packet: &Value) -> Result<Vec<ClientDbStructuralDepende
             reject_raw_source_fields(value, "dependency usage")?;
             Ok(ClientDbStructuralDependencyUsage {
                 owner_path: ClientDbStructuralPath::new(string_field(value, "ownerPath")?),
+                translation_unit: variant_string_field(
+                    value,
+                    "translationUnit",
+                    false,
+                )?
+                .map(ClientDbStructuralPath::new),
+                compile_context_digest: variant_string_field(
+                    value,
+                    "compileContextDigest",
+                    false,
+                )?
+                .map(ClientDbStructuralHash::new),
+                semantic_variant_id: variant_string_field(
+                    value,
+                    "semanticVariantId",
+                    false,
+                )?
+                .map(ClientDbStructuralName::new),
                 package_name: ClientDbStructuralName::new(string_field(value, "packageName")?),
                 package_version: optional_string_field(value, "packageVersion")
                     .map(ClientDbStructuralName::new),
@@ -188,6 +228,20 @@ fn parse_dependency_rows(packet: &Value) -> Result<Vec<ClientDbStructuralDepende
             })
         })
         .collect()
+}
+
+fn variant_string_field<'a>(
+    value: &'a Value,
+    field: &str,
+    required: bool,
+) -> Result<Option<&'a str>, String> {
+    let field_value = optional_string_field(value, field);
+    if required && field_value.is_none_or(str::is_empty) {
+        return Err(format!(
+            "structural index C-family profile requires non-empty `{field}`"
+        ));
+    }
+    Ok(field_value)
 }
 
 fn reject_raw_source_fields(value: &Value, row_kind: &str) -> Result<(), String> {

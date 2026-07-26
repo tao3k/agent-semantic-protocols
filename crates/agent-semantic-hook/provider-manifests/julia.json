@@ -1,0 +1,243 @@
+{
+  "schemaId": "agent.semantic-protocols.hook.provider-manifest",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.hook",
+  "protocolVersion": "1",
+  "manifestId": "agent.semantic-protocols.languages.julia.julia-lang-project-harness",
+  "manifestVersion": "0.1.0",
+  "languageId": "julia",
+  "providerId": "julia-lang-project-harness",
+  "namespace": "agent.semantic-protocols.languages.julia.julia-lang-project-harness",
+  "binary": "asp-julia-harness",
+  "execution": "external-process",
+  "source": {
+    "defaultProjectMarkers": [
+      "Project.toml"
+    ],
+    "defaultDependencyMarkers": [
+      "Project.toml",
+      "Manifest.toml"
+    ],
+    "defaultConfigFiles": [
+      "Project.toml"
+    ],
+    "defaultSourceRoots": [
+      "src",
+      "test",
+      "docs",
+      "examples",
+      "benchmark"
+    ],
+    "defaultExtensions": [
+      ".jl"
+    ],
+    "defaultIgnoredPathPrefixes": [
+      ".devenv",
+      ".git",
+      "build",
+      "Manifest.toml",
+      ".cache",
+      ".codex/harness-state",
+      ".codex/rs-harness",
+      ".data",
+      ".direnv",
+      ".idea",
+      ".jj",
+      ".run",
+      ".vscode",
+      "node_modules",
+      "target"
+    ]
+  },
+  "searchCapabilities": {
+    "ownerItems": false,
+    "workspaceScope": false,
+    "dependencyTopology": false,
+    "dependencyTopologyMetadata": false,
+    "semanticFacts": true,
+    "sourceSnapshot": {
+      "descriptorId": "julia.source-snapshot",
+      "descriptorVersion": "1",
+      "languageId": "julia",
+      "packetSchemaId": "asp.source-snapshot.v1",
+      "sourceSnapshotEnvelopeSchemaId": "asp.exact-source-snapshot-envelope.v1",
+      "exactSourcePacketSchemaId": "asp.exact-source-query-result.v1",
+      "canonicalItemSelectorSchemaId": "asp.canonical-item-selector.v1",
+      "derivedArtifactEvidenceSchemaId": "asp.derived-source-artifact-evidence.v1",
+      "algorithm": "blake3-merkle-v1",
+      "overlayMode": "merkle-delta",
+      "authority": "live-parser",
+      "exactSelectorResolution": "pinned-live-module-graph"
+    }
+  },
+  "semanticFactsDescriptor": {
+    "descriptorId": "julia.semantic-facts",
+    "descriptorVersion": "1",
+    "packetSchemaIds": [
+      "agent.semantic-protocols.semantic-fact-graph"
+    ],
+    "factKinds": [
+      "field",
+      "type",
+      "collection"
+    ],
+    "intentAxes": [
+      {
+        "axis": "data-shape",
+        "terms": [
+          "field",
+          "fields",
+          "type",
+          "types",
+          "collection",
+          "collections",
+          "scalar",
+          "scalars"
+        ],
+        "roles": []
+      },
+      {
+        "axis": "collection",
+        "terms": [
+          "array",
+          "arrays",
+          "vector",
+          "vectors",
+          "list",
+          "lists",
+          "map",
+          "maps",
+          "dict",
+          "dicts",
+          "dictionary",
+          "dictionaries",
+          "set",
+          "sets",
+          "tuple",
+          "tuples",
+          "record",
+          "records",
+          "namedtuple",
+          "namedtuples"
+        ],
+        "roles": []
+      }
+    ]
+  },
+  "queryPackDescriptor": {
+    "descriptorId": "julia.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "julia",
+    "semanticFactsDescriptorId": "julia.semantic-facts",
+    "recipes": [
+      {
+        "recipeId": "julia-task-runtime",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "Task",
+            "schedule",
+            "concurrency"
+          ]
+        },
+        "clauses": [
+          {
+            "terms": [
+              "Task",
+              "schedule",
+              "concurrency"
+            ],
+            "roles": [
+              "symbol",
+              "concept"
+            ],
+            "intentAxes": [
+              "concurrency"
+            ]
+          }
+        ]
+      },
+      {
+        "recipeId": "julia-channel-stream",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "Channel",
+            "stream",
+            "backpressure"
+          ]
+        },
+        "clauses": [
+          {
+            "terms": [
+              "Channel",
+              "stream",
+              "backpressure"
+            ],
+            "roles": [
+              "symbol",
+              "concept"
+            ],
+            "intentAxes": [
+              "collection",
+              "stream"
+            ]
+          }
+        ]
+      },
+      {
+        "recipeId": "julia-resource-lifecycle",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "open",
+            "do",
+            "lifecycle"
+          ]
+        },
+        "clauses": [
+          {
+            "terms": [
+              "open",
+              "do",
+              "lifecycle"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "intentAxes": [
+              "resource-lifecycle"
+            ]
+          }
+        ]
+      }
+    ],
+    "termRoleOverrides": [
+      {
+        "term": "Task",
+        "role": "symbol",
+        "caseSensitive": true
+      },
+      {
+        "term": "Channel",
+        "role": "symbol",
+        "caseSensitive": true
+      }
+    ]
+  },
+  "policy": {
+    "directSourceRead": "block",
+    "rawSourceSearch": "block",
+    "bulkSourceDump": "block",
+    "agentSearchJson": "block"
+  },
+  "routeBindings": {
+    "prime": "search/prime",
+    "owner": "search/owner",
+    "lexical": "search/lexical",
+    "query": "query/exact-selector",
+    "ingest": "search/ingest",
+    "checkChanged": "check/changed",
+    "guide": "guide"
+  }
+}

@@ -19,24 +19,24 @@ pub fn semantic_registry_digest() -> String {
 }
 
 const LANGUAGE_PROVIDER_MANIFEST_JSON: &[&str] = &[
-    include_str!("../../../languages/ccls-asp/provider/asp-c-provider-manifest.json"),
-    include_str!("../../../languages/ccls-asp/provider/asp-cpp-provider-manifest.json"),
-    include_str!("../../../languages/ccls-asp/provider/asp-objective-c-provider-manifest.json"),
+    include_str!("../provider-manifests/c.json"),
+    include_str!("../provider-manifests/cpp.json"),
+    include_str!("../provider-manifests/objective-c.json"),
     include_str!(
-        "../../../languages/rust-lang-project-harness/provider/asp-provider-manifest.json"
+        "../provider-manifests/rust.json"
     ),
     include_str!(
-        "../../../languages/typescript-lang-project-harness/provider/asp-provider-manifest.json"
+        "../provider-manifests/typescript.json"
     ),
     include_str!(
-        "../../../languages/python-lang-project-harness/provider/asp-provider-manifest.json"
+        "../provider-manifests/python.json"
     ),
     include_str!(
-        "../../../languages/gerbil-scheme-language-project-harness/provider/asp-provider-manifest.json"
+        "../provider-manifests/gerbil-scheme.json"
     ),
-    include_str!("../../../languages/JuliaLangProjectHarness.jl/juliac/asp-provider-manifest.json"),
-    include_str!("../../../languages/org/provider/asp-org-provider-manifest.json"),
-    include_str!("../../../languages/org/provider/asp-md-provider-manifest.json"),
+    include_str!("../provider-manifests/julia.json"),
+    include_str!("../provider-manifests/org.json"),
+    include_str!("../provider-manifests/md.json"),
 ];
 
 const COMMON_IGNORED_PATH_PREFIXES: &[&str] = &[

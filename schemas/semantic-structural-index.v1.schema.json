@@ -214,6 +214,24 @@
         "visibility": {
           "type": "string"
         },
+        "symbolId": {
+          "type": "string"
+        },
+        "semanticVariantId": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "translationUnit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compileContextDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "structuralSelector": {
+          "type": "string"
+        },
         "sourceLocator": {
           "type": "string"
         },
@@ -245,6 +263,18 @@
         "kind": {
           "type": "string",
           "minLength": 1
+        },
+        "semanticVariantId": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "translationUnit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compileContextDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         },
         "sourceLocator": {
           "type": "string",
@@ -286,6 +316,18 @@
         "packageName": {
           "type": "string",
           "minLength": 1
+        },
+        "semanticVariantId": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "translationUnit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compileContextDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         },
         "packageVersion": {
           "type": ["string", "null"]

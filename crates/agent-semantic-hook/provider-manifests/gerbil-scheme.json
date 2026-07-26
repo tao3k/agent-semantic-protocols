@@ -1,0 +1,98 @@
+{
+  "schemaId": "agent.semantic-protocols.hook.provider-manifest",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.hook",
+  "protocolVersion": "1",
+  "manifestId": "agent.semantic-protocols.languages.gerbil-scheme.gerbil-scheme-harness",
+  "manifestVersion": "v1",
+  "languageId": "gerbil-scheme",
+  "providerId": "gerbil-scheme-harness",
+  "namespace": "agent.semantic-protocols.languages.gerbil-scheme.gerbil-scheme-harness",
+  "binary": "gslph",
+  "execution": "external-process",
+  "source": {
+    "defaultExtensions": [".ss", ".ssi", ".scm", ".sld"],
+    "defaultConfigFiles": ["gerbil.pkg", "build.ss"],
+    "defaultSourceRoots": ["src", "test", "tests", "doc", "docs", "examples", "tutorial"],
+    "defaultIgnoredPathPrefixes": [],
+    "defaultProjectMarkers": ["gerbil.pkg"],
+    "defaultDependencyMarkers": ["gerbil.pkg"]
+  },
+  "searchCapabilities": {
+    "ownerItems": true,
+    "semanticFacts": false,
+    "dependencyTopology": false,
+    "dependencyTopologyMetadata": false,
+    "workspaceScope": true,
+    "sourceSnapshot": {
+      "descriptorId": "gerbil-scheme.source-snapshot",
+      "descriptorVersion": "1",
+      "languageId": "gerbil-scheme",
+      "packetSchemaId": "asp.source-snapshot.v1",
+      "exactSourcePacketSchemaId": "asp.exact-source-query-result.v1",
+      "canonicalItemSelectorSchemaId": "asp.canonical-item-selector.v1",
+      "sourceSnapshotEnvelopeSchemaId": "asp.exact-source-snapshot-envelope.v1",
+      "derivedArtifactEvidenceSchemaId": "asp.derived-source-artifact-evidence.v1",
+      "algorithm": "blake3-merkle-v1",
+      "authority": "live-parser",
+      "exactSelectorResolution": "pinned-live-module-graph",
+      "overlayMode": "merkle-delta"
+    }
+  },
+  "queryPackDescriptor": {
+    "descriptorId": "gerbil-scheme.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "gerbil-scheme",
+    "termRoleOverrides": [],
+    "recipes": [
+      {
+        "recipeId": "gerbil-fiber-runtime",
+        "trigger": {"terms": ["fiber", "thread", "scheduling"], "match": "any"},
+        "clauses": [
+          {
+            "terms": ["fiber", "thread", "scheduling"],
+            "roles": ["concept"],
+            "intentAxes": []
+          }
+        ]
+      },
+      {
+        "recipeId": "gerbil-dynamic-wind-lifecycle",
+        "trigger": {"terms": ["dynamic-wind", "resource", "lifecycle"], "match": "any"},
+        "clauses": [
+          {
+            "terms": ["dynamic-wind", "resource", "lifecycle"],
+            "roles": ["symbol", "concept"],
+            "intentAxes": []
+          }
+        ]
+      },
+      {
+        "recipeId": "gerbil-channel-stream",
+        "trigger": {"terms": ["channel", "stream", "backpressure"], "match": "any"},
+        "clauses": [
+          {
+            "terms": ["channel", "stream", "backpressure"],
+            "roles": ["concept"],
+            "intentAxes": []
+          }
+        ]
+      }
+    ]
+  },
+  "policy": {
+    "directSourceRead": "block",
+    "bulkSourceDump": "block",
+    "rawSourceSearch": "block",
+    "agentSearchJson": "block"
+  },
+  "routeBindings": {
+    "prime": "search/prime",
+    "owner": "search/owner",
+    "lexical": "search/lexical",
+    "query": "query/exact-selector",
+    "ingest": "search/ingest",
+    "checkChanged": "check/changed",
+    "guide": "guide"
+  }
+}

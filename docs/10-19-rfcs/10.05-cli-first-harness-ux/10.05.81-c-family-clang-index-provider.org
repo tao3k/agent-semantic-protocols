@@ -103,6 +103,46 @@ Compilation database paths are canonicalized and projected back to the selected
 workspace before packet emission.
 
 * Index ownership
+** Compile-context semantic variants
+
+The C-family structural feed MUST use the only stable
+=agent.semantic-protocols.semantic-structural-index= schema version =1=.
+Every parser-owned symbol, occurrence, relation, and dependency-usage fact MUST
+carry:
+
+- =translationUnit=: the compilation unit whose Clang invocation produced the
+  fact;
+- =compileContextDigest=: the normalized digest of that invocation's effective
+  compile database command, provider flags, resource directory, and language;
+- =semanticVariantId=: a stable digest of logical identity, fact kind/role,
+  translation unit, and compile context.
+
+The Clang USR remains the logical symbol identity.  It MUST NOT absorb display
+line/column offsets or compile-context identity.  A header parsed through two
+translation units therefore retains one logical symbol with two semantic
+variants instead of collapsing the facts or inventing two logical symbols.
+
+=ccls-asp= computes these v1 extension fields and exports them as JSON facts.  It does
+not compare generations and does not persist an index.  ASP imports the v2
+facts into Turso, scopes replacement to provider/language/project/generation,
+and owns changed/unchanged/deleted generation decisions.
+
+** Exact query output boundary
+
+The provider-side =query/exact-selector= transport is JSON.  Agent-facing
+rendering remains an ASP core responsibility:
+
+- =asp c|cpp|objective-c query ... --code= writes the verified source bytes
+  directly to stdout;
+- =--json= writes the structured query/proof packet;
+- callers MUST NOT pipe =--code= through =jq= or extract a =source= field.
+
+ASP MAY normalize a provider =semantic-query-packet= into its typed
+exact-selector cache record after validating provider identity, parser/query
+pack identity, source snapshot digest, owner path, and structural selector.
+The provider must never render the public CLI projection and must never own the
+Turso cache.
+
 
 =ccls-asp= does not own a persistent search index, an incremental generation,
 or a private query database.  Its native responsibility ends at correctly
@@ -134,6 +174,17 @@ databases, query databases, background index workers, or editor incremental
 state would create a second index owner and is out of scope.
 
 * Acceptance gates
+
+- Validate the emitted packet against
+  =schemas/semantic-structural-index.v1.schema.json= and the synchronized
+  provider copy via =tools schema profiles validate c-family=.
+- Parse one shared header from two translation units with distinct effective
+  compile contexts and prove that the logical selector is stable while the two
+  =semanticVariantId= values and provenance rows remain distinct.
+- Import the same packet through the real ASP/Turso path and prove both variants
+  remain queryable without a provider-private index.
+- Prove public =--code= stdout is raw source and public =--json= stdout is the
+  packet; no =jq .source= adapter is permitted in the acceptance command.
 
 The vertical slice is accepted only when all of the following are recorded:
 

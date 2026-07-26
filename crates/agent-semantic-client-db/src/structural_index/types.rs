@@ -115,6 +115,11 @@ pub struct ClientDbStructuralSymbol {
     pub name: ClientDbStructuralName,
     pub kind: ClientDbStructuralKind,
     pub visibility: Option<ClientDbStructuralKind>,
+    pub logical_symbol_id: Option<ClientDbStructuralName>,
+    pub semantic_variant_id: Option<ClientDbStructuralName>,
+    pub translation_unit: Option<ClientDbStructuralPath>,
+    pub compile_context_digest: Option<ClientDbStructuralHash>,
+    pub structural_selector: Option<ClientDbStructuralLocator>,
     pub source_locator: Option<ClientDbStructuralLocator>,
     pub query_keys: Vec<ClientDbStructuralQueryKey>,
 }
@@ -123,6 +128,9 @@ pub struct ClientDbStructuralSymbol {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbStructuralDependencyUsage {
     pub owner_path: ClientDbStructuralPath,
+    pub translation_unit: Option<ClientDbStructuralPath>,
+    pub compile_context_digest: Option<ClientDbStructuralHash>,
+    pub semantic_variant_id: Option<ClientDbStructuralName>,
     pub package_name: ClientDbStructuralName,
     pub package_version: Option<ClientDbStructuralName>,
     pub api_name: Option<ClientDbStructuralName>,
