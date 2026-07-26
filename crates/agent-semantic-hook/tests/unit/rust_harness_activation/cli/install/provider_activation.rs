@@ -1,5 +1,6 @@
 use agent_semantic_hook::{
-    RuntimeProviderHealthStatus, parse_hook_activation, runtime_profiles_for_runtime,
+    RuntimeProviderHealthStatus, parse_hook_activation,
+    runtime_profiles_for_runtime_with_state_home,
 };
 use std::env;
 
@@ -50,7 +51,9 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
             .iter()
             .any(|provider| provider.language_id == "python")
     );
-    let runtime_profiles = runtime_profiles_for_runtime(&root, &registry);
+    let runtime_profiles =
+        runtime_profiles_for_runtime_with_state_home(&root, &asp_state_home, &registry)
+            .expect("runtime profiles with explicit State Home");
     let python_profile = runtime_profiles
         .providers
         .iter()
@@ -63,7 +66,7 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
     let resolved_binary = python_profile
         .resolved_binary
         .as_deref()
-        .expect("resolved provider binary");
+        .unwrap_or_else(|| panic!("resolved provider binary: profile={python_profile:?}"));
     assert_eq!(resolved_binary, provider_bin.display().to_string());
     assert!(
         !root
@@ -108,7 +111,9 @@ fn cli_install_runtime_profile_uses_state_home_provider_only() {
     let activation = std::fs::read_to_string(installed_activation_path(&asp_state_home))
         .expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
-    let runtime_profiles = runtime_profiles_for_runtime(&root, &registry);
+    let runtime_profiles =
+        runtime_profiles_for_runtime_with_state_home(&root, &asp_state_home, &registry)
+            .expect("runtime profiles with explicit State Home");
     let python_profile = runtime_profiles
         .providers
         .iter()
@@ -117,7 +122,7 @@ fn cli_install_runtime_profile_uses_state_home_provider_only() {
     let resolved_binary = python_profile
         .resolved_binary
         .as_deref()
-        .expect("resolved provider binary");
+        .unwrap_or_else(|| panic!("resolved provider binary: profile={python_profile:?}"));
     assert_eq!(resolved_binary, state_home_provider.display().to_string());
     assert!(
         !root
@@ -245,29 +250,35 @@ enabled = false
         .iter()
         .find(|provider| provider.language_id == "python")
         .expect("python provider");
-    assert_eq!(python.binary, "py-harness");
-    assert_eq!(python.provider_command_prefix.len(), 1);
+    assert_eq!(python.binary, "custom-py-harness");
     assert!(
-        python.provider_command_prefix[0] == custom_provider.display().to_string(),
-        "{:?}",
-        python.provider_command_prefix
+        python.provider_command_prefix.is_empty(),
+        "State Home v1 activation must persist only the logical basename"
     );
-
-    let runtime_profiles = runtime_profiles_for_runtime(&root, &registry);
-    assert_eq!(runtime_profiles.providers.len(), 1);
-    let profile = &runtime_profiles.providers[0];
-    assert_eq!(profile.language_id, "python");
+    let runtime_profiles =
+        runtime_profiles_for_runtime_with_state_home(&root, &asp_state_home, &registry)
+            .expect("runtime profiles with explicit State Home");
+    let python_profile = runtime_profiles
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "python")
+        .expect("python runtime profile");
+    let expected_binary = custom_provider.display().to_string();
     assert_eq!(
-        profile.resolved_binary.as_deref(),
-        Some(profile.argv[0].as_str())
-    );
-    assert!(
-        profile.argv[0] == custom_provider.display().to_string(),
-        "{:?}",
-        profile.argv
+        python_profile.resolved_binary.as_deref(),
+        Some(expected_binary.as_str())
     );
     assert_eq!(
-        profile.health.status,
+        python_profile.resolved_binary.as_deref(),
+        Some(python_profile.argv[0].as_str())
+    );
+    assert!(
+        python_profile.argv[0] == custom_provider.display().to_string(),
+        "{:?}",
+        python_profile.argv
+    );
+    assert_eq!(
+        python_profile.health.status,
         RuntimeProviderHealthStatus::Available
     );
     assert!(

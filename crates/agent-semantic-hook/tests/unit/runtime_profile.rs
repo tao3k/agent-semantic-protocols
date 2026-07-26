@@ -14,13 +14,30 @@ use super::{
 
 #[test]
 fn runtime_project_root_for_generated_activation_uses_activation_storage_root() {
-    let activation_path =
-        PathBuf::from("/tmp/project/.cache/agent-semantic-protocol/hooks/activation.json");
+    let root = temp_root("activation-project-root");
+    std::fs::create_dir_all(root.join(".git")).expect("git marker");
+    let state_home = root.join("state-home");
+    let resolved = agent_semantic_runtime::state_core::ResolvedState::resolve_with_state_home(
+        &root, state_home,
+    )
+    .expect("resolve State Home activation path");
+    std::fs::create_dir_all(&resolved.paths.workspace_dir).expect("workspace state");
+    let canonical_root = std::fs::canonicalize(&root).expect("canonical project root");
+    std::fs::write(
+        &resolved.paths.workspace_json,
+        serde_json::to_string(&serde_json::json!({
+            "root": canonical_root.display().to_string()
+        }))
+        .expect("workspace manifest"),
+    )
+    .expect("write workspace manifest");
+    let activation_path = resolved.paths.hooks_dir.join("state/activation.json");
 
     assert_eq!(
         runtime_project_root_for_activation(&activation_path, "."),
-        PathBuf::from("/tmp/project")
+        canonical_root
     );
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -43,7 +60,7 @@ fn resolved_provider_binary_materializes_authoritative_command() {
 }
 
 #[test]
-fn runtime_profiles_for_activation_uses_activation_command_prefix() {
+fn runtime_profiles_for_activation_rejects_persisted_command_prefix() {
     let root = temp_root("activation-command-prefix");
     let wrapper = write_executable_provider(&root, "provider-wrapper");
     let provider = activated_rust_provider(vec![
@@ -85,25 +102,12 @@ fn runtime_profiles_for_activation_uses_activation_command_prefix() {
             },
         }],
     };
-    let profiles = runtime_profiles_for_activation(&root, &activation).expect("profiles");
-    let invocation =
-        runtime_profile_invocation(&profiles, &provider, &["query".into()]).expect("invocation");
-
-    assert_eq!(
-        invocation,
-        [
-            std::fs::canonicalize(&wrapper)
-                .expect("canonical provider wrapper")
-                .display()
-                .to_string(),
-            "rs-harness".to_string(),
-            "query".to_string(),
-        ]
-    );
+    let error = runtime_profiles_for_activation(&root, &activation)
+        .err()
+        .expect("persisted provider command prefix must fail closed");
     assert!(
-        !root
-            .join(".cache/agent-semantic-protocol/runtime/profiles.json")
-            .exists()
+        error.contains("provider activation command prefix must be empty"),
+        "unexpected activation validation error: {error}"
     );
     let _ = std::fs::remove_dir_all(root);
 }

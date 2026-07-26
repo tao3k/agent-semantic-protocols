@@ -118,7 +118,8 @@ pub use runtime_profile::{
     RUNTIME_PROFILES_SCHEMA_VERSION, RuntimeProfiles, RuntimeProfilesGeneratedBy,
     RuntimeProviderHealth, RuntimeProviderHealthStatus, RuntimeProviderProfile,
     runtime_profile_command_argv, runtime_profile_invocation, runtime_profiles_for_activation,
-    runtime_profiles_for_runtime, runtime_project_root_for_activation,
+    runtime_profiles_for_runtime, runtime_profiles_for_runtime_with_state_home,
+    runtime_project_root_for_activation,
 };
 pub(crate) use source_selector::{SourceSelectorMatch, collect_source_selector_matches};
 pub(crate) use tool_action::{

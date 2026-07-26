@@ -138,7 +138,33 @@ pub fn runtime_profiles_for_activation(
 #[must_use]
 pub fn runtime_profiles_for_runtime(project_root: &Path, runtime: &HookRuntime) -> RuntimeProfiles {
     let runtime_home = project_root;
-    build_runtime_profiles(project_root, runtime_home, runtime)
+    let state_paths = agent_semantic_runtime::project_state_paths(project_root).ok();
+    build_runtime_profiles(
+        project_root,
+        runtime_home,
+        state_paths
+            .as_ref()
+            .map(|paths| paths.runtime_bin_dir.as_path()),
+        runtime,
+    )
+}
+
+/// Build runtime profiles with an explicit State Home authority.
+pub fn runtime_profiles_for_runtime_with_state_home(
+    project_root: &Path,
+    state_home: &Path,
+    runtime: &HookRuntime,
+) -> Result<RuntimeProfiles, String> {
+    let state_paths =
+        agent_semantic_runtime::project_state_paths_with_state_home(project_root, state_home)
+            .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
+    let runtime_home = state_paths.runtime_bin_dir.parent().unwrap_or(state_home);
+    Ok(build_runtime_profiles(
+        project_root,
+        runtime_home,
+        Some(&state_paths.runtime_bin_dir),
+        runtime,
+    ))
 }
 
 /// Return the stored executable argv for an available provider profile.
@@ -167,6 +193,7 @@ pub fn runtime_profile_invocation(
 fn build_runtime_profiles(
     project_root: &Path,
     runtime_home: &Path,
+    runtime_bin_dir: Option<&Path>,
     runtime: &HookRuntime,
 ) -> RuntimeProfiles {
     RuntimeProfiles {
@@ -184,20 +211,22 @@ fn build_runtime_profiles(
         providers: runtime
             .providers
             .iter()
-            .map(runtime_provider_profile_for_provider)
+            .map(|provider| runtime_provider_profile_for_provider(provider, runtime_bin_dir))
             .collect(),
     }
 }
 
-fn runtime_provider_profile_for_provider(provider: &ActivatedProvider) -> RuntimeProviderProfile {
-    let binary_resolution = provider.provider_command_prefix.first().map_or_else(
-        || ExecutableResolution {
-            path: None,
-            status: ExecutableStatus::Missing,
-            reason: Some("activation provider command prefix is empty".to_string()),
-        },
-        |program| resolve_executable_with_status(program),
-    );
+fn runtime_provider_profile_for_provider(
+    provider: &ActivatedProvider,
+    runtime_bin_dir: Option<&Path>,
+) -> RuntimeProviderProfile {
+    let program = provider
+        .provider_command_prefix
+        .first()
+        .map(PathBuf::from)
+        .or_else(|| runtime_bin_dir.map(|dir| dir.join(&provider.binary)))
+        .unwrap_or_else(|| PathBuf::from(&provider.binary));
+    let binary_resolution = resolve_executable_with_status(&program.display().to_string());
     let command = runtime_provider_command(&provider.provider_command_prefix, &binary_resolution);
     let resolved_binary = binary_resolution
         .path
@@ -235,15 +264,12 @@ fn runtime_provider_command(
     binary_resolution: &ExecutableResolution,
 ) -> RuntimeProviderCommand {
     if let Some(binary) = &binary_resolution.path {
-        let mut argv = provider_command_prefix.to_vec();
-        let Some(program) = argv.first_mut() else {
-            return RuntimeProviderCommand {
-                argv: Vec::new(),
-                status: Some(RuntimeProviderHealthStatus::Missing),
-                reason: Some("activation provider command prefix is empty".to_string()),
-            };
+        let mut argv = if provider_command_prefix.is_empty() {
+            vec![binary.display().to_string()]
+        } else {
+            provider_command_prefix.to_vec()
         };
-        *program = binary.display().to_string();
+        argv[0] = binary.display().to_string();
         return RuntimeProviderCommand {
             argv,
             status: Some(RuntimeProviderHealthStatus::Available),

@@ -1,6 +1,7 @@
 use crate::rust_harness_activation::support::{asp_command, temp_project_root};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) fn git_project_root(name: &str) -> PathBuf {
@@ -19,6 +20,20 @@ pub(super) fn protocol_command() -> Command {
     command.env("ASP_STATE_HOME", state_home);
     command.env_remove("PRJ_CACHE_HOME");
     command
+}
+
+pub(super) fn sync_test_state(root: &Path, state_home: &Path) {
+    let output = protocol_command()
+        .env("ASP_STATE_HOME", state_home)
+        .env("CODEX_HOME", root.join(".codex-home"))
+        .args(["sync", root.to_str().expect("utf8 temp root")])
+        .output()
+        .expect("run explicit ASP state sync");
+    assert!(
+        output.status.success(),
+        "state sync stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 pub(super) fn prepare_project_state(project_root: &Path) {
@@ -101,27 +116,32 @@ fn write_test_codex_plugin(root: &Path) {
 }
 
 fn local_test_org_repo() -> PathBuf {
-    let root = temp_project_root("org-state-source");
-    run_git(&root, &["init", "-q"]);
-    let skill_path = root.join("templates").join("ASP_ORG_SKILL.org");
-    std::fs::create_dir_all(skill_path.parent().expect("skill parent"))
-        .expect("create org skill dir");
-    std::fs::write(&skill_path, "* ASP Org Test Skill\n").expect("write org skill fixture");
-    run_git(&root, &["add", "."]);
-    run_git(
-        &root,
-        &[
-            "-c",
-            "user.name=ASP Test",
-            "-c",
-            "user.email=asp-test@example.com",
-            "commit",
-            "-q",
-            "-m",
-            "test org resources",
-        ],
-    );
-    root
+    static ORG_REPO: OnceLock<PathBuf> = OnceLock::new();
+    ORG_REPO
+        .get_or_init(|| {
+            let root = temp_project_root("org-state-source");
+            run_git(&root, &["init", "-q"]);
+            let skill_path = root.join("templates").join("ASP_ORG_SKILL.org");
+            std::fs::create_dir_all(skill_path.parent().expect("skill parent"))
+                .expect("create org skill dir");
+            std::fs::write(&skill_path, "* ASP Org Test Skill\n").expect("write org skill fixture");
+            run_git(&root, &["add", "."]);
+            run_git(
+                &root,
+                &[
+                    "-c",
+                    "user.name=ASP Test",
+                    "-c",
+                    "user.email=asp-test@example.com",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "test org resources",
+                ],
+            );
+            root
+        })
+        .clone()
 }
 
 fn run_git(root: &Path, args: &[&str]) {

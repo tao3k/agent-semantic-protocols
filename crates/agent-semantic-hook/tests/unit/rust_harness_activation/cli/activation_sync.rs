@@ -16,12 +16,9 @@ use crate::rust_harness_activation::support::{
 fn cli_hook_repairs_missing_activation_and_denies_source_read() {
     let root = temp_project_root("hook-activation-missing-fail-closed");
     super::super::support::write_default_client_hook_config(&root);
-    let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
-    let state_home = activation_path
-        .parent()
-        .and_then(Path::parent)
-        .expect("legacy activation state home");
-    write_state_home_provider_binary(state_home, "rust", "rs-harness", "rs-harness");
+    let activation_path = test_activation_path(&root);
+    let state_home = root.join(".agent-semantic-protocols");
+    write_state_home_provider_binary(&state_home, "rust", "rs-harness", "rs-harness");
     let _ = std::fs::remove_file(&activation_path);
     std::fs::create_dir_all(root.join("src")).expect("create Rust source fixture directory");
     std::fs::write(
@@ -33,6 +30,7 @@ fn cli_hook_repairs_missing_activation_and_denies_source_read() {
         .expect("write Rust source fixture");
 
     let (decision, _stderr) = run_hook_with_activation(
+        &root,
         &activation_path,
         json!({"tool_name": "Read", "tool_input": {"file_path": "src/lib.rs"}}),
     );
@@ -55,12 +53,9 @@ fn cli_hook_repairs_missing_activation_and_denies_source_read() {
 #[test]
 fn cli_hook_repairs_missing_activation_then_classifies_source_read() {
     let root = temp_project_root("hook-activation-missing-non-source-allow");
-    let activation_path = root.join(".cache/agent-semantic-protocol/hooks/activation.json");
-    let state_home = activation_path
-        .parent()
-        .and_then(Path::parent)
-        .expect("legacy activation state home");
-    write_state_home_provider_binary(state_home, "rust", "rs-harness", "rs-harness");
+    let activation_path = test_activation_path(&root);
+    let state_home = root.join(".agent-semantic-protocols");
+    write_state_home_provider_binary(&state_home, "rust", "rs-harness", "rs-harness");
     let _ = std::fs::remove_file(&activation_path);
     std::fs::create_dir_all(root.join("src")).expect("create Rust source fixture directory");
     std::fs::write(
@@ -72,6 +67,7 @@ fn cli_hook_repairs_missing_activation_then_classifies_source_read() {
         .expect("write Rust source fixture");
 
     let (decision, stderr) = run_hook_with_activation(
+        &root,
         &activation_path,
         json!({"tool_name": "Read", "tool_input": {"file_path": "src/lib.rs"}}),
     );
@@ -91,6 +87,7 @@ fn cli_hook_fails_closed_on_generated_activation_drift_for_source_read() {
     super::super::support::write_default_client_hook_config(&root);
     let activation_path = write_invalid_generated_activation(&root);
     let (decision, stderr) = run_hook_with_activation(
+        &root,
         &activation_path,
         json!({"tool_name": "Read", "tool_input": {"path": "src/lib.rs"}}),
     );
@@ -238,23 +235,17 @@ fn test_activation_path(root: &std::path::Path) -> std::path::PathBuf {
 }
 
 fn run_hook_with_activation(
+    project_root: &Path,
     activation_path: &Path,
     payload: serde_json::Value,
 ) -> (serde_json::Value, String) {
-    let project_root = activation_path
-        .ancestors()
-        .nth(4)
-        .expect("legacy activation project root");
     let home = project_root.join(".home");
     std::fs::create_dir_all(&home).expect("create isolated hook HOME");
     let mut child = asp_command()
         .env("HOME", home)
         .env(
             "ASP_STATE_HOME",
-            activation_path
-                .parent()
-                .and_then(Path::parent)
-                .expect("legacy activation state home"),
+            project_root.join(".agent-semantic-protocols"),
         )
         .env("CODEX_HOME", project_root.join(".codex-home"))
         .current_dir(project_root)

@@ -288,14 +288,6 @@ pub(super) fn write_unmanaged_provider_file(
     write_unmanaged_provider_in_dir(&root.join(".bin"), binary, mode)
 }
 
-pub(super) fn write_home_local_unmanaged_provider_file(
-    home: &std::path::Path,
-    binary: &str,
-    mode: u32,
-) -> PathBuf {
-    write_unmanaged_provider_in_dir(&home.join(".local").join("bin"), binary, mode)
-}
-
 fn write_unmanaged_provider_in_dir(bin_dir: &std::path::Path, binary: &str, mode: u32) -> PathBuf {
     std::fs::create_dir_all(bin_dir).expect("create fake provider bin dir");
     let path = bin_dir.join(binary);
