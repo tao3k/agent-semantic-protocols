@@ -1,4 +1,5 @@
 use super::{Digest, ProtocolId};
+use crate::{execution_authority::ExecutionAuthority, search_budget::SearchBudget};
 use serde::{Deserialize, Serialize};
 
 pub const CONTEXT_PRODUCT_SCHEMA_ID: &str = "asp.context-product-state";
@@ -29,9 +30,11 @@ pub struct ContextBinding {
 #[serde(rename_all = "kebab-case")]
 pub enum ClaimClass {
     Identity,
+    Existential,
     Enumeration,
     Absence,
     CausalFlow,
+    Classification,
     Handoff,
     Quality,
 }
@@ -152,14 +155,6 @@ pub struct FrontierAntichain {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SearchBudget {
-    pub max_commands: u64,
-    pub max_elapsed_ms: u64,
-    pub max_packet_bytes: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(
     tag = "kind",
     rename_all = "kebab-case",
@@ -213,89 +208,12 @@ pub enum ActiveProgram {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(
-    tag = "kind",
-    rename_all = "kebab-case",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
-)]
-pub enum ExecutionAuthority {
-    None,
-    Admitted {
-        admission_id: ProtocolId,
-        admission_digest: Digest,
-        action_key: Digest,
-        program_digest: Digest,
-        stage_id: ProtocolId,
-        provider_id: ProtocolId,
-        operation: ProtocolId,
-        resolved_input_digest: Digest,
-        policy_digest: Digest,
-        dependency_digest: Digest,
-        budget_reservation_id: ProtocolId,
-        budget_charge_key: Digest,
-    },
-    Granted {
-        admission_id: ProtocolId,
-        admission_digest: Digest,
-        grant_id: ProtocolId,
-        grant_digest: Digest,
-        action_key: Digest,
-        program_digest: Digest,
-        stage_id: ProtocolId,
-        provider_id: ProtocolId,
-        operation: ProtocolId,
-        resolved_input_digest: Digest,
-        policy_digest: Digest,
-        dependency_digest: Digest,
-        budget_reservation_id: ProtocolId,
-        budget_charge_key: Digest,
-        lease_fence: u64,
-        expires_at_ms: u64,
-        effect_class: super::EffectClass,
-        provider_idempotency_key: ProtocolId,
-    },
-    InFlight {
-        admission_id: ProtocolId,
-        admission_digest: Digest,
-        grant_id: ProtocolId,
-        grant_digest: Digest,
-        action_key: Digest,
-        attempt_id: ProtocolId,
-        attempt_digest: Digest,
-        provider_id: ProtocolId,
-        operation: ProtocolId,
-        program_digest: Digest,
-        stage_id: ProtocolId,
-        resolved_input_digest: Digest,
-        policy_digest: Digest,
-        dependency_digest: Digest,
-        budget_reservation_id: ProtocolId,
-        budget_charge_key: Digest,
-        effect_class: super::EffectClass,
-        lease_fence: u64,
-        expires_at_ms: u64,
-        provider_idempotency_key: ProtocolId,
-    },
-    Consumed {
-        admission_id: ProtocolId,
-        grant_id: ProtocolId,
-        grant_digest: Digest,
-        action_key: Digest,
-        attempt_id: ProtocolId,
-        result_receipt_ref: ProtocolId,
-        result_digest: Digest,
-        lease_fence: u64,
-    },
-    Revoked {
-        reason_code: ProtocolId,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        admission_id: Option<ProtocolId>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        grant_id: Option<ProtocolId>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        action_key: Option<Digest>,
-    },
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JoinedExecutionGroup {
+    pub execution_group_id: ProtocolId,
+    pub policy: super::JoinPolicy,
+    pub result_receipt_refs: Vec<ProtocolId>,
+    pub join_digest: Digest,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -340,7 +258,8 @@ pub struct UncheckedContextProductStateV1 {
     pub proof_reuse: ProofReuse,
     pub frontier: FrontierAntichain,
     pub decision: DecisionRequirement,
-    pub execution: ExecutionAuthority,
+    pub executions: Vec<ExecutionAuthority>,
+    pub joined_execution_groups: Vec<JoinedExecutionGroup>,
     pub closure: ClosureDisposition,
     pub state_digest: Digest,
 }

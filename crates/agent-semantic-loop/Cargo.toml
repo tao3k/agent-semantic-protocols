@@ -7,5 +7,6 @@ description = "Reusable interactive loop and choice-pane primitives for ASP agen
 
 [dependencies]
 agent-semantic-context-product = { path = "../agent-semantic-context-product" }
+getrandom = "0.3"
 serde_json.workspace = true
 serde.workspace = true

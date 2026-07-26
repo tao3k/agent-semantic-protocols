@@ -120,6 +120,18 @@ impl super::ExecutionRevoked {
     }
 }
 
+impl super::ExecutionGroupJoined {
+    pub fn recompute_event_digest(&self) -> Digest {
+        canonical_digest_without_field(self, "eventDigest")
+    }
+}
+
+impl super::JoinedExecutionGroup {
+    pub fn recompute_join_digest(&self) -> Digest {
+        canonical_digest_without_field(self, "joinDigest")
+    }
+}
+
 impl super::SearchClosureReceipt {
     pub fn recompute_receipt_digest(&self) -> Digest {
         canonical_digest_without_field(self, "receiptDigest")
@@ -189,6 +201,7 @@ impl UncheckedContextProductStateV1 {
         self.validate_frontier()?;
         self.validate_decision()?;
         self.validate_execution()?;
+        self.validate_joined_execution_groups()?;
         self.validate_closure()
     }
 
@@ -197,31 +210,160 @@ impl UncheckedContextProductStateV1 {
     }
 
     fn validate_execution(&self) -> Result<(), ValidationError> {
-        match &self.execution {
-            super::ExecutionAuthority::None
-            | super::ExecutionAuthority::Admitted { .. }
-            | super::ExecutionAuthority::Revoked { .. } => {}
-            super::ExecutionAuthority::Granted {
-                lease_fence,
-                expires_at_ms,
-                ..
+        if self.executions.len() > 10 {
+            return Err(ValidationError::InvalidExecutionState);
+        }
+        let mut authority_stage_ids = BTreeSet::new();
+        for execution in &self.executions {
+            let program_digest = execution.program_digest();
+            let execution_group_id = execution.execution_group_id();
+            let stage_ids = execution.stage_ids();
+            let provider_id = execution.provider_id();
+            let operation = execution.operation();
+            if stage_ids.is_empty()
+                || stage_ids
+                    .iter()
+                    .any(|stage_id| !authority_stage_ids.insert(stage_id))
+            {
+                return Err(ValidationError::InvalidExecutionState);
             }
-            | super::ExecutionAuthority::InFlight {
-                lease_fence,
-                expires_at_ms,
+            let super::ActiveProgram::Admitted {
+                program,
+                program_digest: active_program_digest,
                 ..
-            } => {
-                if *lease_fence == 0
-                    || *lease_fence > super::JSON_SAFE_INTEGER_MAX
-                    || *expires_at_ms > super::JSON_SAFE_INTEGER_MAX
+            } = &self.active_program
+            else {
+                return Err(ValidationError::InvalidExecutionState);
+            };
+            let Some(group) = program
+                .execution_groups
+                .iter()
+                .find(|group| &group.group_id == execution_group_id)
+            else {
+                return Err(ValidationError::InvalidExecutionState);
+            };
+            if program_digest != active_program_digest
+                || stage_ids.iter().any(|stage_id| {
+                    !program
+                        .stages
+                        .iter()
+                        .any(|stage| &stage.stage_id == stage_id)
+                })
+                || stage_ids
+                    .iter()
+                    .any(|stage_id| !group.stage_ids.contains(stage_id))
+                || stage_ids.iter().any(|stage_id| {
+                    program
+                        .stages
+                        .iter()
+                        .find(|stage| &stage.stage_id == stage_id)
+                        .is_none_or(|stage| {
+                            &stage.provider_id != provider_id || &stage.catalog_id != operation
+                        })
+                })
+            {
+                return Err(ValidationError::InvalidExecutionState);
+            }
+            match group.mode {
+                super::RouteExecutionMode::Batch if stage_ids != group.stage_ids => {
+                    return Err(ValidationError::InvalidExecutionState);
+                }
+                super::RouteExecutionMode::Serial | super::RouteExecutionMode::Parallel
+                    if stage_ids.len() != 1 =>
                 {
                     return Err(ValidationError::InvalidExecutionState);
                 }
+                _ => {}
             }
-            super::ExecutionAuthority::Consumed { lease_fence, .. } => {
-                if *lease_fence == 0 || *lease_fence > super::JSON_SAFE_INTEGER_MAX {
-                    return Err(ValidationError::InvalidExecutionState);
+            match execution {
+                super::ExecutionAuthority::Admitted(_) | super::ExecutionAuthority::Revoked(_) => {}
+                super::ExecutionAuthority::Granted(_) | super::ExecutionAuthority::InFlight(_) => {
+                    let lease_fence = execution
+                        .lease_fence()
+                        .expect("granted and in-flight authorities have a lease fence");
+                    let expires_at_ms = execution
+                        .expires_at_ms()
+                        .expect("granted and in-flight authorities have an expiry");
+                    if lease_fence == 0
+                        || lease_fence > super::JSON_SAFE_INTEGER_MAX
+                        || expires_at_ms > super::JSON_SAFE_INTEGER_MAX
+                    {
+                        return Err(ValidationError::InvalidExecutionState);
+                    }
                 }
+                super::ExecutionAuthority::Consumed(_) => {
+                    let lease_fence = execution
+                        .lease_fence()
+                        .expect("consumed authorities have a lease fence");
+                    if lease_fence == 0 || lease_fence > super::JSON_SAFE_INTEGER_MAX {
+                        return Err(ValidationError::InvalidExecutionState);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_joined_execution_groups(&self) -> Result<(), ValidationError> {
+        if self.joined_execution_groups.len() > 10 {
+            return Err(ValidationError::InvalidExecutionState);
+        }
+        let super::ActiveProgram::Admitted {
+            program,
+            program_digest,
+            ..
+        } = &self.active_program
+        else {
+            return if self.joined_execution_groups.is_empty() {
+                Ok(())
+            } else {
+                Err(ValidationError::InvalidExecutionState)
+            };
+        };
+        let mut joined_ids = BTreeSet::new();
+        for joined in &self.joined_execution_groups {
+            let Some(group) = program
+                .execution_groups
+                .iter()
+                .find(|group| group.group_id == joined.execution_group_id)
+            else {
+                return Err(ValidationError::InvalidExecutionState);
+            };
+            if !joined_ids.insert(&joined.execution_group_id)
+                || joined.policy != group.join_policy
+                || joined.result_receipt_refs.is_empty()
+                || joined
+                    .result_receipt_refs
+                    .windows(2)
+                    .any(|pair| pair[0] >= pair[1])
+                || joined.join_digest != joined.recompute_join_digest()
+            {
+                return Err(ValidationError::InvalidExecutionState);
+            }
+            let consumed = self
+                .executions
+                .iter()
+                .filter(|execution| {
+                    execution.execution_group_id() == &group.group_id
+                        && execution.program_digest() == program_digest
+                        && matches!(execution, super::ExecutionAuthority::Consumed(_))
+                })
+                .collect::<Vec<_>>();
+            if group.stage_ids.iter().any(|stage_id| {
+                !consumed
+                    .iter()
+                    .any(|execution| execution.stage_ids().contains(stage_id))
+            }) {
+                return Err(ValidationError::InvalidExecutionState);
+            }
+            let mut result_refs = consumed
+                .iter()
+                .filter_map(|execution| execution.result_receipt_ref().cloned())
+                .collect::<Vec<_>>();
+            result_refs.sort();
+            result_refs.dedup();
+            if result_refs != joined.result_receipt_refs {
+                return Err(ValidationError::InvalidExecutionState);
             }
         }
         Ok(())
@@ -413,12 +555,20 @@ impl UncheckedContextProductStateV1 {
                         "openObligationIds",
                     ));
                 }
-                if budget.max_commands == 0
-                    || budget.max_elapsed_ms == 0
-                    || budget.max_packet_bytes == 0
-                    || budget.max_commands > super::JSON_SAFE_INTEGER_MAX
-                    || budget.max_elapsed_ms > super::JSON_SAFE_INTEGER_MAX
-                    || budget.max_packet_bytes > super::JSON_SAFE_INTEGER_MAX
+                if budget.max_commands.get() == 0
+                    || budget.max_elapsed_ms.get() == 0
+                    || budget.max_packet_bytes.get() == 0
+                    || budget.max_choice_depth.get() == 0
+                    || budget.max_parallel.get() == 0
+                    || budget.max_aggregate_provider_latency_ms.get() == 0
+                    || budget.max_parent_visible_bytes.get() == 0
+                    || budget.max_commands.get() > super::JSON_SAFE_INTEGER_MAX
+                    || budget.max_elapsed_ms.get() > super::JSON_SAFE_INTEGER_MAX
+                    || budget.max_packet_bytes.get() > super::JSON_SAFE_INTEGER_MAX
+                    || budget.max_choice_depth.get() > super::JSON_SAFE_INTEGER_MAX
+                    || budget.max_parallel.get() > super::JSON_SAFE_INTEGER_MAX
+                    || budget.max_aggregate_provider_latency_ms.get() > super::JSON_SAFE_INTEGER_MAX
+                    || budget.max_parent_visible_bytes.get() > super::JSON_SAFE_INTEGER_MAX
                 {
                     return Err(ValidationError::InvalidBudget);
                 }
@@ -507,12 +657,13 @@ impl UncheckedContextProductStateV1 {
                     return Err(ValidationError::FinalizedWithOpenObligations);
                 }
                 if !matches!(self.decision, DecisionRequirement::None)
-                    || !matches!(
-                        self.execution,
-                        super::ExecutionAuthority::None
-                            | super::ExecutionAuthority::Consumed { .. }
-                            | super::ExecutionAuthority::Revoked { .. }
-                    )
+                    || !self.executions.iter().all(|execution| {
+                        matches!(
+                            execution,
+                            super::ExecutionAuthority::Consumed(_)
+                                | super::ExecutionAuthority::Revoked(_)
+                        )
+                    })
                 {
                     return Err(ValidationError::InvalidExecutionState);
                 }

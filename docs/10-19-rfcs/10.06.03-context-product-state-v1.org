@@ -1,5 +1,6 @@
 #+title: Context product state v1
 #+startup: overview
+#+see_also: docs/10-19-rfcs/10.06.04-graph-turbo-evidence-planner.org
 
 * Status
 
@@ -245,22 +246,32 @@ cannot honor the grant fence and idempotency contract are not executable.
 
 * Route proposal and admitted program
 
-=RouteProposal= is advisory.  It contains bounded provider-search,
+=RouteProposal= is advisory.  It contains catalog-bound provider-search,
 provider-query, and reasoning-checkpoint nodes, their dependencies, evidence
-predicates, covered obligations, and a proposed budget.
+predicates, covered obligations, proposed execution groups and joins, estimate
+receipt references, and a proposed budget.  A bounded =RouteProposalSet= may
+carry several concrete alternatives for one run revision and Context Binding.
 
 A proposal cannot contain admission, grant, execution, graph mutation, or
 closure fields.
 
 =RouteProgram= is a GraphRouter-admitted DAG.  Each stage still requires an
-independent =ActionAdmitted= event.  V1 joins use only:
+independent =ActionAdmitted= event.  V1 join policies are:
 
 #+begin_src text
-policy = all
+all-required
+first-exact
+complete-enumeration
+disambiguate-all
 #+end_src
 
-Every mandatory branch enters its declared join.  A missing, stale, late,
-duplicate, mixed-epoch, or truncated branch cannot satisfy the join.
+=all-required= requires every mandatory branch.  =first-exact= permits safe
+cancellation only after exact identity proof.  =complete-enumeration= cannot
+cancel branches needed for admitted scope completeness.  =disambiguate-all=
+retains every competing identity required by the ambiguity contract.
+
+A missing, stale, late, duplicate, mixed-context, or improperly truncated
+branch cannot satisfy its declared join.
 
 Parallel subagents and sequential execution must produce equivalent canonical
 events and terminal state.  Multi-agent execution is an accelerator, not a

@@ -1,0 +1,99 @@
+{
+  "schemaId": "agent.semantic-protocols.search-route-proposal-set",
+  "schemaVersion": "1",
+  "proposalSetId": "PS-INVALID-PARALLEL",
+  "runId": "R1",
+  "basedOnRevision": 0,
+  "contextBindingDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "intentDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "catalogDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "plannerBackendId": "graph-turbo",
+  "plannerBackendDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "state": "ready",
+  "proposals": [
+    {
+      "proposalId": "P-INVALID-PARALLEL",
+      "runId": "R1",
+      "basedOnRevision": 0,
+      "contextBindingDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "intentDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "catalogDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "proposedBy": "graph-turbo",
+      "agentReasoningReceiptRef": "reasoning.agent.invalid",
+      "graphDerivationReceiptRef": "derivation.graph.invalid",
+      "obligationIds": ["O1", "O2"],
+      "nodes": [
+        {
+          "nodeId": "N1",
+          "actionClass": "provider-search",
+          "providerId": "rust-provider",
+          "languageId": "rust",
+          "catalogId": "resolve-symbol.v1",
+          "inputTemplateDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "coversObligationIds": ["O1"],
+          "dependsOnNodeIds": [],
+          "requiredClosure": "existential",
+          "evidencePredicate": {
+            "predicateId": "EP1",
+            "claimClass": "existential",
+            "scopeDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "acceptedSchemaIds": ["semantic-search-packet.v1"],
+            "requiredFields": ["canonicalItemSelector"],
+            "completeness": "identity-only",
+            "requiresFreshBinding": true,
+            "requiresUntruncated": false,
+            "maxResults": 10
+          }
+        },
+        {
+          "nodeId": "N2",
+          "actionClass": "provider-query",
+          "providerId": "rust-provider",
+          "languageId": "rust",
+          "catalogId": "owner-items.v1",
+          "inputTemplateDigest": "blake3:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "coversObligationIds": ["O2"],
+          "dependsOnNodeIds": ["N1"],
+          "requiredClosure": "existential",
+          "evidencePredicate": {
+            "predicateId": "EP2",
+            "claimClass": "existential",
+            "scopeDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "acceptedSchemaIds": ["semantic-search-packet.v1"],
+            "requiredFields": ["canonicalItemSelector"],
+            "completeness": "identity-only",
+            "requiresFreshBinding": true,
+            "requiresUntruncated": false,
+            "maxResults": 10
+          }
+        }
+      ],
+      "edges": [{"from": "N1", "to": "N2"}],
+      "executionGroups": [
+        {
+          "groupId": "G-INVALID-PARALLEL",
+          "mode": "parallel",
+          "nodeIds": ["N1", "N2"],
+          "joinPolicy": "all-required",
+          "maxParallel": 2,
+          "derivationReceiptRef": "derivation.group.invalid",
+          "independenceProofRef": "proof.invalid-dependent"
+        }
+      ],
+      "joins": [],
+      "estimateReceiptRefs": [],
+      "budgetProposal": {
+        "maxCommands": 2,
+        "maxElapsedMs": 1000,
+        "maxPacketBytes": 20000,
+        "maxChoiceDepth": 1,
+        "maxParallel": 2,
+        "maxAggregateProviderLatencyMs": 2000,
+        "maxParentVisibleBytes": 3000
+      },
+      "proposalDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "recommendedProposalId": "P-INVALID-PARALLEL",
+  "setDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

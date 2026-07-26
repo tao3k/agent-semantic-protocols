@@ -33,6 +33,8 @@ fn v1_execution_events_deserialize_from_the_shared_wire_shape() {
             "grantDigest": digest('b'),
             "attemptId": "attempt-1",
             "attemptDigest": digest('c'),
+            "executionGroupId": "execution-group-1",
+            "stageIds": ["stage-1"],
             "providerId": "provider-1",
             "operation": "search",
             "leaseFence": 1,
@@ -51,6 +53,10 @@ fn v1_execution_events_deserialize_from_the_shared_wire_shape() {
             "grantId": "grant-1",
             "grantDigest": digest('b'),
             "attemptId": "attempt-1",
+            "executionGroupId": "execution-group-1",
+            "stageIds": ["stage-1"],
+            "providerId": "provider-1",
+            "operation": "search",
             "resultReceiptRef": "result-1",
             "resultDigest": digest('d'),
             "leaseFence": 1
@@ -65,6 +71,10 @@ fn v1_execution_events_deserialize_from_the_shared_wire_shape() {
     revoked.extend(
         json!({
             "reasonCode": "lease-expired",
+            "executionGroupId": "execution-group-1",
+            "stageIds": ["stage-1"],
+            "providerId": "provider-1",
+            "operation": "search",
             "admissionId": "admission-1",
             "grantId": "grant-1",
             "actionKey": digest('e')

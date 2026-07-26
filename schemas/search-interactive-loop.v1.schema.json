@@ -1,0 +1,610 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/search-interactive-loop.v1.schema.json",
+  "title": "Search Interactive Loop v1",
+  "description": "Interactive projection over authoritative Context Product state. This schema owns panels, choice capabilities, batch progress views, and exact-query handoff; it does not own evidence state or closure proof.",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/choicePanel" },
+    { "$ref": "#/$defs/executionGroupView" },
+    { "$ref": "#/$defs/queryHandoff" }
+  ],
+  "$defs": {
+    "typedId": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._:-]*$"
+    },
+    "digest": {
+      "$ref": "context-product-state.v1.schema.json#/$defs/digest"
+    },
+    "opaqueToken": {
+      "type": "string",
+      "minLength": 75,
+      "maxLength": 75,
+      "pattern": "^capability\\.[0-9a-f]{64}$"
+    },
+    "executionMode": {
+      "enum": ["batch", "serial", "parallel", "synthesize", "clarify"]
+    },
+    "joinPolicy": {
+      "enum": [
+        "all-required",
+        "first-exact",
+        "complete-enumeration",
+        "disambiguate-all"
+      ]
+    },
+    "stateBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "revision",
+        "stateDigest",
+        "authorityReceiptRef"
+      ],
+      "properties": {
+        "runId": { "$ref": "#/$defs/typedId" },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stateDigest": { "$ref": "#/$defs/digest" },
+        "authorityReceiptRef": { "$ref": "#/$defs/typedId" }
+      }
+    },
+    "obligationView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "obligationId",
+        "claimClass",
+        "status",
+        "mandatory",
+        "summary"
+      ],
+      "properties": {
+        "obligationId": { "$ref": "#/$defs/typedId" },
+        "claimClass": {
+          "$ref": "context-product-state.v1.schema.json#/$defs/claimClass"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "ready",
+            "running",
+            "resolved",
+            "refresh-required",
+            "blocked"
+          ]
+        },
+        "mandatory": { "type": "boolean" },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "choicePanel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "loopId",
+        "residentIdentityRef",
+        "stateBinding",
+        "contextBinding",
+        "panelId",
+        "step",
+        "obligations",
+        "choices"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.search-choice-panel"
+        },
+        "schemaVersion": { "const": "1" },
+        "loopId": { "$ref": "#/$defs/typedId" },
+        "residentIdentityRef": { "$ref": "#/$defs/typedId" },
+        "stateBinding": { "$ref": "#/$defs/stateBinding" },
+        "contextBinding": {
+          "$ref": "context-product-state.v1.schema.json#/$defs/contextBinding"
+        },
+        "panelId": { "$ref": "#/$defs/typedId" },
+        "step": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "obligations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/obligationView" }
+        },
+        "choices": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/choice" }
+        }
+      }
+    },
+    "choice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "recommended",
+        "execution",
+        "reasoning",
+        "expectedGain",
+        "platformAction"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/typedId" },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommended": { "type": "boolean" },
+        "execution": { "$ref": "#/$defs/choiceExecution" },
+        "reasoning": { "$ref": "#/$defs/choiceReasoning" },
+        "expectedGain": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/typedId" }
+        },
+        "platformAction": {
+          "$ref": "#/$defs/advanceAction"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "execution": {
+                "properties": {
+                  "mode": { "const": "batch" }
+                },
+                "required": ["mode"]
+              }
+            },
+            "required": ["execution"]
+          },
+          "then": {
+            "properties": {
+              "reasoning": {
+                "required": [
+                  "whyNotSerial",
+                  "batchCapabilityRef"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "execution": {
+                "properties": {
+                  "mode": { "const": "parallel" }
+                },
+                "required": ["mode"]
+              }
+            },
+            "required": ["execution"]
+          },
+          "then": {
+            "properties": {
+              "reasoning": {
+                "required": [
+                  "whyNotSerial",
+                  "whyNotBatch",
+                  "independenceProofRef"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "choiceExecution": {
+      "oneOf": [
+        { "$ref": "#/$defs/providerExecutionChoice" },
+        { "$ref": "#/$defs/controlExecutionChoice" }
+      ]
+    },
+    "providerExecutionChoice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "proposalRef",
+        "proposalDigest",
+        "proposedExecutionGroupRef",
+        "workItemCount",
+        "providerDispatchCount",
+        "maxParallel",
+        "joinPolicy",
+        "reenterLoop",
+        "stopCondition"
+      ],
+      "properties": {
+        "mode": {
+          "enum": ["batch", "serial", "parallel"]
+        },
+        "proposalRef": { "$ref": "#/$defs/typedId" },
+        "proposalDigest": { "$ref": "#/$defs/digest" },
+        "proposedExecutionGroupRef": { "$ref": "#/$defs/typedId" },
+        "workItemCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "providerDispatchCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "maxParallel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "joinPolicy": { "$ref": "#/$defs/joinPolicy" },
+        "reenterLoop": { "const": true },
+        "stopCondition": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": { "const": "serial" }
+            },
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": {
+              "maxParallel": { "const": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": { "const": "batch" }
+            },
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": {
+              "workItemCount": { "minimum": 2 },
+              "providerDispatchCount": { "const": 1 },
+              "maxParallel": { "const": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": { "const": "parallel" }
+            },
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": {
+              "workItemCount": { "minimum": 2 },
+              "providerDispatchCount": { "minimum": 2 },
+              "maxParallel": { "minimum": 2 }
+            }
+          }
+        }
+      ]
+    },
+    "controlExecutionChoice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "decisionRef",
+        "decisionDigest",
+        "workItemCount",
+        "providerDispatchCount",
+        "maxParallel",
+        "reenterLoop",
+        "stopCondition"
+      ],
+      "properties": {
+        "mode": {
+          "enum": ["synthesize", "clarify"]
+        },
+        "decisionRef": { "$ref": "#/$defs/typedId" },
+        "decisionDigest": { "$ref": "#/$defs/digest" },
+        "workItemCount": { "const": 0 },
+        "providerDispatchCount": { "const": 0 },
+        "maxParallel": { "const": 0 },
+        "reenterLoop": { "type": "boolean" },
+        "stopCondition": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "choiceReasoning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "whyThisMode",
+        "agentReasoningReceiptRef",
+        "graphDerivationReceiptRef"
+      ],
+      "properties": {
+        "whyThisMode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "whyNotSerial": {
+          "type": "string",
+          "minLength": 1
+        },
+        "whyNotBatch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "whyNotParallel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agentReasoningReceiptRef": { "$ref": "#/$defs/typedId" },
+        "graphDerivationReceiptRef": { "$ref": "#/$defs/typedId" },
+        "dependencyProofRef": { "$ref": "#/$defs/typedId" },
+        "batchCapabilityRef": { "$ref": "#/$defs/typedId" },
+        "independenceProofRef": { "$ref": "#/$defs/typedId" }
+      }
+    },
+    "advanceAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandId",
+        "loopId",
+        "panelId",
+        "choiceId",
+        "choiceToken"
+      ],
+      "properties": {
+        "commandId": {
+          "const": "asp.search.loop.advance.v1"
+        },
+        "loopId": { "$ref": "#/$defs/typedId" },
+        "panelId": { "$ref": "#/$defs/typedId" },
+        "choiceId": { "$ref": "#/$defs/typedId" },
+        "choiceToken": { "$ref": "#/$defs/opaqueToken" }
+      }
+    },
+    "pollAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandId",
+        "loopId",
+        "batchId",
+        "pollToken"
+      ],
+      "properties": {
+        "commandId": {
+          "const": "asp.search.loop.poll.v1"
+        },
+        "loopId": { "$ref": "#/$defs/typedId" },
+        "batchId": { "$ref": "#/$defs/typedId" },
+        "pollToken": { "$ref": "#/$defs/opaqueToken" }
+      }
+    },
+    "receiptAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commandId",
+        "loopId",
+        "receiptToken"
+      ],
+      "properties": {
+        "commandId": {
+          "const": "asp.search.loop.receipt.v1"
+        },
+        "loopId": { "$ref": "#/$defs/typedId" },
+        "receiptToken": { "$ref": "#/$defs/opaqueToken" }
+      }
+    },
+    "executionGroupView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "loopId",
+        "stateBinding",
+        "viewId",
+        "programRef",
+        "programDigest",
+        "executionGroupRef",
+        "mode",
+        "workItemCount",
+        "providerDispatchCount",
+        "status",
+        "completed",
+        "pending",
+        "failed",
+        "cancelled",
+        "grantRefs",
+        "resultReceiptRefs"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.search-execution-group-view"
+        },
+        "schemaVersion": { "const": "1" },
+        "loopId": { "$ref": "#/$defs/typedId" },
+        "stateBinding": { "$ref": "#/$defs/stateBinding" },
+        "viewId": { "$ref": "#/$defs/typedId" },
+        "programRef": { "$ref": "#/$defs/typedId" },
+        "programDigest": { "$ref": "#/$defs/digest" },
+        "executionGroupRef": { "$ref": "#/$defs/typedId" },
+        "mode": {
+          "enum": ["batch", "serial", "parallel"]
+        },
+        "workItemCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "providerDispatchCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "status": {
+          "enum": ["running", "joined", "partial", "failed"]
+        },
+        "completed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "pending": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "cancelled": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "grantRefs": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/typedId" }
+        },
+        "resultReceiptRefs": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/typedId" }
+        },
+        "pollAction": {
+          "$ref": "#/$defs/pollAction"
+        },
+        "joinedEventSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "nextPanelRef": { "$ref": "#/$defs/typedId" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["running", "partial"]
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["pollAction"]
+          },
+          "else": {
+            "not": {
+              "required": ["pollAction"]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "const": "joined" }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["joinedEventSequence", "nextPanelRef"],
+            "properties": {
+              "pending": { "const": 0 }
+            }
+          }
+        }
+      ]
+    },
+    "queryHandoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "loopId",
+        "stateBinding",
+        "contextBinding",
+        "closureReceiptRef",
+        "closureReceiptDigest",
+        "receiptAction",
+        "queries"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.search-query-handoff"
+        },
+        "schemaVersion": { "const": "1" },
+        "loopId": { "$ref": "#/$defs/typedId" },
+        "stateBinding": { "$ref": "#/$defs/stateBinding" },
+        "contextBinding": {
+          "$ref": "context-product-state.v1.schema.json#/$defs/contextBinding"
+        },
+        "closureReceiptRef": { "$ref": "#/$defs/typedId" },
+        "closureReceiptDigest": { "$ref": "#/$defs/digest" },
+        "receiptAction": {
+          "$ref": "#/$defs/receiptAction"
+        },
+        "queries": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/exactQueryRequest" }
+        }
+      }
+    },
+    "exactQueryRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "languageId",
+        "selector",
+        "projection",
+        "snapshotEnvelopeRef"
+      ],
+      "properties": {
+        "languageId": {
+          "$ref": "semantic-command.v1.schema.json#/$defs/languageId"
+        },
+        "selector": {
+          "$ref": "canonical-item-selector.v1.schema.json"
+        },
+        "projection": {
+          "enum": ["code", "skeleton", "names", "verbatim"]
+        },
+        "snapshotEnvelopeRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

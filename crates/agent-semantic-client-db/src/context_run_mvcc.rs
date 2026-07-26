@@ -32,6 +32,10 @@ struct ContextRunProjection {
     schema_id: String,
     state: UncheckedContextProductStateV1,
     authority_receipt: StateAuthorityReceipt,
+    search_loop_capabilities:
+        Vec<agent_semantic_loop::search_capability::UncheckedSearchLoopCapabilityV1>,
+    search_loop_runtime:
+        Option<agent_semantic_loop::search_runtime::UncheckedSearchLoopRuntimeBindingV1>,
 }
 
 #[derive(Serialize)]
@@ -56,9 +60,82 @@ impl TursoMvccContextRunStore {
         &self.store
     }
 
+    pub async fn load_search_loop_runtime(
+        &self,
+        loop_id: &ProtocolId,
+    ) -> Result<Option<AuthoritativeStateRecord>, StorageError> {
+        let Some(head) = self
+            .store
+            .load_partition_head_by_alias("search-loop", loop_id.as_str())
+            .await
+            .map_err(backend)?
+        else {
+            if self
+                .store
+                .resolve_partition_alias("search-loop", loop_id.as_str())
+                .await
+                .map_err(backend)?
+                .is_some()
+            {
+                return Err(invalid(
+                    "search-loop alias points to a missing MVCC partition",
+                ));
+            }
+            return Ok(None);
+        };
+        let record = decode_head(&head)?;
+        let Some(runtime) = &record.search_loop_runtime else {
+            return Err(invalid(
+                "search-loop alias points to a partition without a runtime binding",
+            ));
+        };
+        let runtime = agent_semantic_loop::search_runtime::SearchLoopRuntimeBindingV1::validate(
+            runtime.clone(),
+        )
+        .map_err(|error| invalid(format!("invalid search-loop runtime binding: {error}")))?;
+        if runtime.loop_id() != loop_id {
+            return Err(invalid(
+                "search-loop alias resolved a different loop identity",
+            ));
+        }
+        Ok(Some(record))
+    }
+
+    pub async fn load_search_loop_capability(
+        &self,
+        run_id: &ProtocolId,
+        token_digest: &Digest,
+    ) -> Result<Option<agent_semantic_loop::search_capability::SearchLoopCapabilityV1>, StorageError>
+    {
+        let Some(head) = self
+            .store
+            .load_partition_head(&partition_key(run_id))
+            .await
+            .map_err(backend)?
+        else {
+            return Ok(None);
+        };
+        decode_head(&head)?;
+        let projection: ContextRunProjection =
+            serde_json::from_slice(&head.projection).map_err(|error| {
+                backend(format!("failed to decode context run projection: {error}"))
+            })?;
+        projection
+            .search_loop_capabilities
+            .into_iter()
+            .find(|capability| capability.token_digest() == token_digest)
+            .map(agent_semantic_loop::search_capability::SearchLoopCapabilityV1::from_unchecked)
+            .transpose()
+            .map_err(|error| invalid(format!("invalid search-loop capability: {error}")))
+    }
+
     pub async fn initialize(
         &self,
         state: UncheckedContextProductStateV1,
+        initial_capabilities: Vec<agent_semantic_loop::search_capability::SearchLoopCapabilityV1>,
+        search_loop_runtime: Option<
+            agent_semantic_loop::search_runtime::SearchLoopRuntimeBindingV1,
+        >,
         issued_at_ms: u64,
     ) -> Result<RunCommitReceipt, StorageError> {
         state.validate().map_err(contract_error)?;
@@ -71,7 +148,34 @@ impl TursoMvccContextRunStore {
             ));
         }
         let authority_receipt = authority_receipt(&self.authority_id, &state, issued_at_ms)?;
-        let projection = encode_projection(&state, &authority_receipt)?;
+        for capability in &initial_capabilities {
+            validate_capability_binding(capability, &state)?;
+        }
+        if let Some(runtime) = &search_loop_runtime {
+            validate_runtime_binding(runtime, &state, &authority_receipt)?;
+        }
+        let mutations = initial_capabilities
+            .into_iter()
+            .map(|capability| {
+                agent_semantic_loop::search_capability::SearchLoopCapabilityMutation::Issue(
+                    Box::new(capability),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut initial_capabilities = Vec::new();
+        agent_semantic_loop::search_capability::apply_capability_mutations(
+            &mut initial_capabilities,
+            &mutations,
+        )
+        .map_err(|error| invalid(format!("invalid initial search-loop capability: {error}")))?;
+        let search_loop_runtime = search_loop_runtime
+            .map(agent_semantic_loop::search_runtime::SearchLoopRuntimeBindingV1::into_unchecked);
+        let projection = encode_projection(
+            &state,
+            &authority_receipt,
+            &initial_capabilities,
+            search_loop_runtime.as_ref(),
+        )?;
         let state_head = state_head(&state);
         let commit = TursoMvccPartitionCommit {
             partition_key: partition_key(&state.run_id),
@@ -82,9 +186,27 @@ impl TursoMvccContextRunStore {
             records: Vec::new(),
             committed_at_ms: safe_i64(issued_at_ms, "issuedAtMs")?,
         };
+        let aliases = search_loop_runtime
+            .as_ref()
+            .map(|runtime| {
+                agent_semantic_loop::search_runtime::SearchLoopRuntimeBindingV1::validate(
+                    runtime.clone(),
+                )
+                .map_err(|error| invalid(format!("invalid search-loop runtime binding: {error}")))
+                .and_then(|runtime| {
+                    crate::turso_mvcc_partition::TursoMvccPartitionAlias::parse(
+                        "search-loop",
+                        runtime.loop_id().as_str(),
+                    )
+                    .map_err(invalid)
+                })
+            })
+            .transpose()?
+            .into_iter()
+            .collect::<Vec<_>>();
         match self
             .store
-            .compare_and_append_partition(&commit)
+            .compare_and_append_partition_with_aliases(&commit, &aliases)
             .await
             .map_err(backend)?
         {
@@ -92,8 +214,15 @@ impl TursoMvccContextRunStore {
                 Ok(RunCommitReceipt { authority_receipt })
             }
             TursoMvccPartitionCommitOutcome::Conflict(Some(observed)) => {
+                let observed_projection: ContextRunProjection =
+                    serde_json::from_slice(&observed.projection).map_err(|error| {
+                        backend(format!("failed to decode context run projection: {error}"))
+                    })?;
                 let observed = decode_head(&observed)?;
-                if observed.state == state {
+                if observed.state == state
+                    && observed_projection.search_loop_capabilities == initial_capabilities
+                    && observed_projection.search_loop_runtime == search_loop_runtime
+                {
                     Ok(RunCommitReceipt {
                         authority_receipt: observed.authority_receipt,
                     })
@@ -139,8 +268,19 @@ impl RunCommitStore for TursoMvccContextRunStore {
             let next_state = commit.next_state();
             let authority_receipt =
                 authority_receipt(&self.authority_id, next_state, commit.committed_at_ms())?;
-            let projection = encode_projection(next_state, &authority_receipt)?;
             let expected = commit.expected();
+            for capability in commit.search_loop_capabilities() {
+                agent_semantic_loop::search_capability::SearchLoopCapabilityV1::from_unchecked(
+                    capability.clone(),
+                )
+                .map_err(|error| invalid(format!("invalid search-loop capability: {error}")))?;
+            }
+            let projection = encode_projection(
+                next_state,
+                &authority_receipt,
+                commit.search_loop_capabilities(),
+                commit.search_loop_runtime(),
+            )?;
             let records = commit
                 .events()
                 .iter()
@@ -190,6 +330,10 @@ impl RunCommitStore for TursoMvccContextRunStore {
     }
 }
 
+#[cfg(test)]
+#[path = "../tests/unit/context_run_mvcc.rs"]
+mod tests;
+
 fn validate_run_commit(commit: &RunCommit) -> Result<(), StorageError> {
     let expected = commit.expected();
     let next = commit.next_state();
@@ -228,6 +372,15 @@ fn validate_run_commit(commit: &RunCommit) -> Result<(), StorageError> {
     Ok(())
 }
 
+impl agent_semantic_loop::SearchLoopRuntimeStore for TursoMvccContextRunStore {
+    fn load_by_loop_id<'a>(
+        &'a self,
+        loop_id: &'a ProtocolId,
+    ) -> PortFuture<'a, Option<AuthoritativeStateRecord>, Self::Error> {
+        Box::pin(async move { self.load_search_loop_runtime(loop_id).await })
+    }
+}
+
 fn event_record(event: &ContextProductEvent) -> Result<TursoMvccPartitionRecord, StorageError> {
     let payload = serde_json::to_vec(event)
         .map_err(|error| backend(format!("failed to encode context event: {error}")))?;
@@ -256,14 +409,40 @@ fn authority_receipt(
     Ok(receipt)
 }
 
+fn validate_capability_binding(
+    capability: &agent_semantic_loop::search_capability::SearchLoopCapabilityV1,
+    state: &UncheckedContextProductStateV1,
+) -> Result<(), StorageError> {
+    let binding = capability.state_binding();
+    if binding.run_id() != &state.run_id
+        || binding.revision() != state.revision
+        || binding.state_digest() != &state.state_digest
+        || binding.authority_receipt_ref() != &state.authority_receipt_ref
+        || capability.context_binding_digest() != &state.context.binding_digest
+    {
+        return Err(invalid(
+            "search-loop capability binding disagrees with context run state",
+        ));
+    }
+    Ok(())
+}
+
 fn encode_projection(
     state: &UncheckedContextProductStateV1,
     authority_receipt: &StateAuthorityReceipt,
+    search_loop_capabilities: &[
+        agent_semantic_loop::search_capability::UncheckedSearchLoopCapabilityV1
+    ],
+    search_loop_runtime: Option<
+        &agent_semantic_loop::search_runtime::UncheckedSearchLoopRuntimeBindingV1,
+    >,
 ) -> Result<Vec<u8>, StorageError> {
     serde_json::to_vec(&ContextRunProjection {
         schema_id: PROJECTION_SCHEMA_ID.to_string(),
         state: state.clone(),
         authority_receipt: authority_receipt.clone(),
+        search_loop_capabilities: search_loop_capabilities.to_vec(),
+        search_loop_runtime: search_loop_runtime.cloned(),
     })
     .map_err(|error| backend(format!("failed to encode context run projection: {error}")))
 }
@@ -279,6 +458,19 @@ fn decode_head(head: &TursoMvccPartitionHead) -> Result<AuthoritativeStateRecord
         .authority_receipt
         .validate_for_state(&projection.state)
         .map_err(contract_error)?;
+    for capability in &projection.search_loop_capabilities {
+        agent_semantic_loop::search_capability::SearchLoopCapabilityV1::from_unchecked(
+            capability.clone(),
+        )
+        .map_err(|error| invalid(format!("invalid search-loop capability: {error}")))?;
+    }
+    if let Some(runtime) = &projection.search_loop_runtime {
+        let runtime = agent_semantic_loop::search_runtime::SearchLoopRuntimeBindingV1::validate(
+            runtime.clone(),
+        )
+        .map_err(|error| invalid(format!("invalid search-loop runtime binding: {error}")))?;
+        validate_runtime_binding(&runtime, &projection.state, &projection.authority_receipt)?;
+    }
     let state_head = state_head(&projection.state);
     if projection.state.revision != head.revision
         || projection.state.last_event_sequence != head.last_sequence
@@ -291,7 +483,25 @@ fn decode_head(head: &TursoMvccPartitionHead) -> Result<AuthoritativeStateRecord
     Ok(AuthoritativeStateRecord {
         state: projection.state,
         authority_receipt: projection.authority_receipt,
+        search_loop_capabilities: projection.search_loop_capabilities,
+        search_loop_runtime: projection.search_loop_runtime,
     })
+}
+
+fn validate_runtime_binding(
+    runtime: &agent_semantic_loop::search_runtime::SearchLoopRuntimeBindingV1,
+    state: &UncheckedContextProductStateV1,
+    authority_receipt: &StateAuthorityReceipt,
+) -> Result<(), StorageError> {
+    if runtime.run_id() != &state.run_id
+        || runtime.context_binding_digest() != &state.context.binding_digest
+        || authority_receipt.run_id != state.run_id
+    {
+        return Err(invalid(
+            "search-loop runtime binding disagrees with authoritative context state",
+        ));
+    }
+    Ok(())
 }
 
 fn state_head(state: &UncheckedContextProductStateV1) -> StateHead {

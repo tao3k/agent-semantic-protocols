@@ -198,6 +198,7 @@ name = "agent-semantic-loop"
 version = "0.1.0"
 dependencies = [
  "agent-semantic-context-product",
+ "getrandom 0.3.4",
  "serde",
  "serde_json",
 ]

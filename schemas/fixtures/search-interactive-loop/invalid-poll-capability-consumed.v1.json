@@ -1,0 +1,26 @@
+{
+  "schemaId": "agent.semantic-protocols.search-loop-capability",
+  "schemaVersion": "1",
+  "capabilityId": "capability:poll-1",
+  "tokenDigest": "blake3:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "commandId": "asp.search.loop.poll.v1",
+  "residentIdentityRef": "resident:asp-explore",
+  "loopId": "loop:search-1",
+  "stateBinding": {
+    "runId": "run:search-1",
+    "revision": 4,
+    "stateDigest": "blake3:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "authorityReceiptRef": "receipt:authority-4"
+  },
+  "contextBindingDigest": "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "subject": {
+    "kind": "poll",
+    "batchId": "batch:parallel-1",
+    "executionGroupRef": "group:parallel-1"
+  },
+  "replayPolicy": "state-bound-idempotent",
+  "status": "consumed",
+  "issuedAtUnixMs": 2000,
+  "expiresAtUnixMs": 62000,
+  "consumedAtRevision": 5
+}

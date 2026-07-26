@@ -106,6 +106,36 @@ pub struct TursoMvccPartitionCommit {
     pub committed_at_ms: i64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TursoMvccPartitionAlias {
+    alias_namespace: String,
+    alias_key: String,
+}
+
+impl TursoMvccPartitionAlias {
+    pub fn parse(
+        alias_namespace: impl Into<String>,
+        alias_key: impl Into<String>,
+    ) -> Result<Self, String> {
+        let alias_namespace = alias_namespace.into();
+        let alias_key = alias_key.into();
+        validate_alias_component(&alias_namespace, "namespace")?;
+        validate_alias_component(&alias_key, "key")?;
+        Ok(Self {
+            alias_namespace,
+            alias_key,
+        })
+    }
+
+    pub fn alias_namespace(&self) -> &str {
+        &self.alias_namespace
+    }
+
+    pub fn alias_key(&self) -> &str {
+        &self.alias_key
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TursoMvccPartitionCommitReceipt {
@@ -170,6 +200,18 @@ impl TursoMvccStore {
         select_head(&connection, partition_key).await
     }
 
+    pub async fn load_partition_head_by_alias(
+        &self,
+        alias_namespace: &str,
+        alias_key: &str,
+    ) -> Result<Option<TursoMvccPartitionHead>, String> {
+        validate_alias_component(alias_namespace, "namespace")?;
+        validate_alias_component(alias_key, "key")?;
+        let lane = partition_lane(self, alias_key);
+        let connection = lane.lock_owned().await;
+        select_head_by_alias(&connection, alias_namespace, alias_key).await
+    }
+
     pub async fn read_partition_records(
         &self,
         partition_key: &str,
@@ -184,7 +226,23 @@ impl TursoMvccStore {
         &self,
         commit: &TursoMvccPartitionCommit,
     ) -> Result<TursoMvccPartitionCommitOutcome, String> {
+        self.compare_and_append_partition_with_aliases(commit, &[])
+            .await
+    }
+
+    pub async fn compare_and_append_partition_with_aliases(
+        &self,
+        commit: &TursoMvccPartitionCommit,
+        aliases: &[TursoMvccPartitionAlias],
+    ) -> Result<TursoMvccPartitionCommitOutcome, String> {
         validate_commit(commit)?;
+        validate_aliases(aliases)?;
+        if commit.expected.is_some() && !aliases.is_empty() {
+            return Err(
+                "MVCC partition aliases may only be created with revision-zero initialization"
+                    .to_string(),
+            );
+        }
         let lane = partition_lane(self, &commit.partition_key);
         let connection = lane.lock_owned().await;
         let mut busy_count = 0;
@@ -192,7 +250,7 @@ impl TursoMvccStore {
         let mut last_retryable_error = None;
 
         for attempt in 0..self.inner.retry_attempts {
-            match compare_and_append_once(&connection, commit).await {
+            match compare_and_append_once(&connection, commit, aliases).await {
                 Ok(AttemptOutcome::Committed(head)) => {
                     return Ok(TursoMvccPartitionCommitOutcome::Committed(
                         TursoMvccPartitionCommitReceipt {
@@ -223,6 +281,18 @@ impl TursoMvccStore {
             self.inner.retry_attempts
         ))
     }
+
+    pub async fn resolve_partition_alias(
+        &self,
+        alias_namespace: &str,
+        alias_key: &str,
+    ) -> Result<Option<String>, String> {
+        validate_alias_component(alias_namespace, "namespace")?;
+        validate_alias_component(alias_key, "key")?;
+        let lane = partition_lane(self, alias_key);
+        let connection = lane.lock_owned().await;
+        select_partition_alias(&connection, alias_namespace, alias_key).await
+    }
 }
 
 enum AttemptOutcome {
@@ -238,12 +308,13 @@ enum AttemptError {
 async fn compare_and_append_once(
     connection: &turso::Connection,
     commit: &TursoMvccPartitionCommit,
+    aliases: &[TursoMvccPartitionAlias],
 ) -> Result<AttemptOutcome, AttemptError> {
     connection
         .execute("BEGIN CONCURRENT", ())
         .await
         .map_err(|error| classify_error("begin MVCC partition transaction", error))?;
-    let result = compare_and_append_body(connection, commit).await;
+    let result = compare_and_append_body(connection, commit, aliases).await;
     if result.is_err() {
         let _ = connection.execute("ROLLBACK", ()).await;
     }
@@ -253,6 +324,7 @@ async fn compare_and_append_once(
 async fn compare_and_append_body(
     connection: &turso::Connection,
     commit: &TursoMvccPartitionCommit,
+    aliases: &[TursoMvccPartitionAlias],
 ) -> Result<AttemptOutcome, AttemptError> {
     let observed = select_head(connection, &commit.partition_key)
         .await
@@ -263,6 +335,32 @@ async fn compare_and_append_body(
             .await
             .map_err(|error| classify_error("rollback MVCC head conflict", error))?;
         return Ok(AttemptOutcome::Conflict(observed));
+    }
+
+    for alias in aliases {
+        connection
+            .execute(
+                crate::turso_mvcc_partition_sql::INSERT_PARTITION_ALIAS_SQL,
+                (
+                    alias.alias_namespace(),
+                    alias.alias_key(),
+                    commit.partition_key.as_str(),
+                    commit.committed_at_ms,
+                ),
+            )
+            .await
+            .map_err(|error| classify_error("insert MVCC partition alias", error))?;
+        let observed_partition =
+            select_partition_alias(connection, alias.alias_namespace(), alias.alias_key())
+                .await
+                .map_err(AttemptError::Fatal)?;
+        if observed_partition.as_deref() != Some(commit.partition_key.as_str()) {
+            return Err(AttemptError::Fatal(format!(
+                "MVCC partition alias `{}/{}` already resolves another partition",
+                alias.alias_namespace(),
+                alias.alias_key()
+            )));
+        }
     }
 
     let base_sequence = commit
@@ -358,6 +456,76 @@ async fn write_head(
         }
     }
     Ok(())
+}
+
+async fn select_partition_alias(
+    connection: &turso::Connection,
+    alias_namespace: &str,
+    alias_key: &str,
+) -> Result<Option<String>, String> {
+    let mut statement = connection
+        .prepare_cached(crate::turso_mvcc_partition_sql::SELECT_PARTITION_ALIAS_SQL)
+        .await
+        .map_err(|error| format!("failed to prepare MVCC partition alias read: {error}"))?;
+    let mut rows = statement
+        .query((alias_namespace, alias_key))
+        .await
+        .map_err(|error| format!("failed to query MVCC partition alias: {error}"))?;
+    let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to step MVCC partition alias: {error}"))?
+    else {
+        return Ok(None);
+    };
+    row.get(0)
+        .map(Some)
+        .map_err(|error| format!("failed to decode MVCC partition alias: {error}"))
+}
+
+async fn select_head_by_alias(
+    connection: &turso::Connection,
+    alias_namespace: &str,
+    alias_key: &str,
+) -> Result<Option<TursoMvccPartitionHead>, String> {
+    let mut statement = connection
+        .prepare_cached(crate::turso_mvcc_partition_sql::SELECT_PARTITION_HEAD_BY_ALIAS_SQL)
+        .await
+        .map_err(|error| format!("failed to prepare MVCC aliased head read: {error}"))?;
+    let mut rows = statement
+        .query((alias_namespace, alias_key))
+        .await
+        .map_err(|error| format!("failed to query MVCC aliased head: {error}"))?;
+    let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to step MVCC aliased head: {error}"))?
+    else {
+        return Ok(None);
+    };
+    let partition_key: String = row
+        .get(0)
+        .map_err(|error| format!("failed to decode MVCC aliased partition key: {error}"))?;
+    let revision: i64 = row
+        .get(1)
+        .map_err(|error| format!("failed to decode MVCC aliased head revision: {error}"))?;
+    let last_sequence: i64 = row
+        .get(3)
+        .map_err(|error| format!("failed to decode MVCC aliased head sequence: {error}"))?;
+    Ok(Some(TursoMvccPartitionHead {
+        partition_key,
+        revision: revision.max(0) as u64,
+        head_digest: row
+            .get(2)
+            .map_err(|error| format!("failed to decode MVCC aliased head digest: {error}"))?,
+        last_sequence: last_sequence.max(0) as u64,
+        projection: row
+            .get(4)
+            .map_err(|error| format!("failed to decode MVCC aliased head projection: {error}"))?,
+        committed_at_ms: row
+            .get(5)
+            .map_err(|error| format!("failed to decode MVCC aliased head timestamp: {error}"))?,
+    }))
 }
 
 async fn select_head(
@@ -507,6 +675,30 @@ fn validate_commit(commit: &TursoMvccPartitionCommit) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn validate_aliases(aliases: &[TursoMvccPartitionAlias]) -> Result<(), String> {
+    let mut identities = BTreeSet::new();
+    for alias in aliases {
+        validate_alias_component(alias.alias_namespace(), "namespace")?;
+        validate_alias_component(alias.alias_key(), "key")?;
+        if !identities.insert((alias.alias_namespace(), alias.alias_key())) {
+            return Err("MVCC partition aliases require unique identities".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn validate_alias_component(value: &str, component: &str) -> Result<(), String> {
+    if (1..=256).contains(&value.len())
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'/' | b'-')
+        })
+    {
+        Ok(())
+    } else {
+        Err(format!("invalid MVCC partition alias {component}"))
+    }
 }
 
 fn validate_partition_key(partition_key: &str) -> Result<(), String> {

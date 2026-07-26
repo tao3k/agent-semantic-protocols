@@ -17,6 +17,7 @@
 * Sandtable evidence
 
 - [[file:10.06-agent-search-projection-sandtable-proof.org][Search Loop Sandtable Proof Dossier]] :: Real-project pre-Rust search-loop traces, fault injection, design gaps, and implementation gates.
+- [[file:10.06.04-graph-turbo-evidence-planner.org][Graph Turbo Evidence Planner Boundary]] :: Audited Python planner role, proposal/admission/closure authority, algorithm experiments, and B0/B1/B2 evidence gates.
 
 * Search projection summary
 
@@ -230,6 +231,32 @@ executes no provider action, and consumes no search budget. Only repeated
 invalid attempts or an explicit protocol attack may become =protocol-error=.
 
 *** Proof-carrying context reconciliation
+
+**** Exact-selector relocation coverage
+
+An =asp.exact-source-snapshot-envelope.v1= is not a complete relocation
+authority merely because its =sourceSnapshot.rootDigest= names the complete
+workspace.  The envelope MUST carry one of these root-bound coverage proofs:
+
+- =full-workspace=: every live owner leaf is materialized and
+  =owners.length == sourceSnapshot.leafCount=.
+- =selector-relocation-closure=: the live parser materializes the requested
+  owner plus the complete owner-candidate closure for the canonical item
+  identity.  The proof binds the requested selector, ordered owner set, parser
+  identity, query-pack identity, and =sourceSnapshot.rootDigest=.
+
+The exact-query consumer MAY return =item-not-in-live-owner=,
+=owner-not-in-snapshot=, or any other terminal missing state only when the
+coverage proof is complete for the current root.  A partial envelope without
+that proof is =source-unavailable= with
+=reasonKind=relocation-coverage-incomplete=; it is never negative evidence.
+
+When source-index state is =cold-required=, =package-drift=, or its provider
+digest is not committed by the current source-snapshot root, the wrapper MUST
+materialize a fresh selector relocation closure before invoking =query=.  It
+MUST NOT reuse an older owner-only envelope.  Implementations MAY use an
+in-memory symbol/owner map and Merkle multiproof so this remains a
+millisecond-scale operation without materializing the whole workspace.
 
 **** Decision status
 

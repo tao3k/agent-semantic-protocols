@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
 
 use agent_semantic_context_product::{
-    JSON_SAFE_INTEGER_MAX, RouteEdge, RouteProgram, RouteProposal, UncheckedContextProductStateV1,
+    JSON_SAFE_INTEGER_MAX, ProtocolId, RouteEdge, RouteExecutionMode, RouteProgram, RouteProposal,
+    RouteProposalExecutionGroup, UncheckedContextProductStateV1,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -16,6 +17,9 @@ pub enum RouteValidationError {
     DuplicateId,
     MissingReference,
     DependencyMismatch,
+    ExecutionGroupMismatch,
+    ParallelDependency,
+    BatchCapability,
     StageLowering,
     JoinMismatch,
     Cycle,
@@ -37,6 +41,13 @@ impl fmt::Display for RouteValidationError {
                 Self::DuplicateId => "route contains a duplicate identity",
                 Self::MissingReference => "route contains a missing reference",
                 Self::DependencyMismatch => "proposal dependency forms disagree",
+                Self::ExecutionGroupMismatch => "route execution groups are invalid",
+                Self::ParallelDependency => {
+                    "parallel route group contains a dependency path"
+                }
+                Self::BatchCapability => {
+                    "batch route group is not covered by one provider capability"
+                }
                 Self::StageLowering => "program does not faithfully lower proposal nodes",
                 Self::JoinMismatch => "program join does not match its continuation inputs",
                 Self::Cycle => "route graph is cyclic",
@@ -60,6 +71,7 @@ pub(crate) fn validate_route(
         || program.proposal_id != proposal.proposal_id
         || program.admitted_at_revision != state.revision
         || program.context_binding_digest != state.context.binding_digest
+        || program.catalog_digest != proposal.catalog_digest
     {
         return Err(RouteValidationError::StateBinding);
     }
@@ -114,6 +126,8 @@ pub(crate) fn validate_route(
         return Err(RouteValidationError::DependencyMismatch);
     }
     validate_dag(proposal_nodes.keys().copied().collect(), &proposal_edges)?;
+    let proposal_groups =
+        validate_proposal_execution_groups(&proposal_nodes, &proposal_edges, proposal)?;
 
     let program_stages: BTreeMap<_, _> = program
         .stages
@@ -133,9 +147,10 @@ pub(crate) fn validate_route(
             .insert(&stage.proposal_node_id, &stage.stage_id)
             .is_some()
             || stage.provider_id != node.provider_id
-            || stage.operation != node.operation
+            || stage.catalog_id != node.catalog_id
             || stage.input_template_digest != node.input_template_digest
             || stage.covers_obligation_ids != node.covers_obligation_ids
+            || stage.required_closure != node.required_closure
             || stage.evidence_predicate != node.evidence_predicate
         {
             return Err(RouteValidationError::StageLowering);
@@ -160,6 +175,14 @@ pub(crate) fn validate_route(
         return Err(RouteValidationError::StageLowering);
     }
     validate_dag(program_stages.keys().copied().collect(), &program_edges)?;
+    validate_program_execution_groups(
+        &proposal_groups,
+        &program_stages,
+        &program_edges,
+        &node_to_stage,
+        program,
+    )?;
+    validate_proposal_join_lowering(proposal, program, &node_to_stage)?;
     validate_joins(&program_stages, &program_edges, program)?;
     Ok(())
 }
@@ -170,18 +193,35 @@ fn validate_budget(
 ) -> Result<(), RouteValidationError> {
     let proposed = &proposal.budget_proposal;
     let admitted = &program.budget_limit;
-    if proposed.max_commands == 0
-        || proposed.max_elapsed_ms == 0
-        || proposed.max_packet_bytes == 0
-        || admitted.max_commands == 0
-        || admitted.max_elapsed_ms == 0
-        || admitted.max_packet_bytes == 0
-        || proposed.max_commands > JSON_SAFE_INTEGER_MAX
-        || proposed.max_elapsed_ms > JSON_SAFE_INTEGER_MAX
-        || proposed.max_packet_bytes > JSON_SAFE_INTEGER_MAX
-        || admitted.max_commands > proposed.max_commands
-        || admitted.max_elapsed_ms > proposed.max_elapsed_ms
-        || admitted.max_packet_bytes > proposed.max_packet_bytes
+    if proposed.max_commands.get() == 0
+        || proposed.max_elapsed_ms.get() == 0
+        || proposed.max_packet_bytes.get() == 0
+        || proposed.max_choice_depth.get() == 0
+        || proposed.max_parallel.get() == 0
+        || proposed.max_aggregate_provider_latency_ms.get() == 0
+        || proposed.max_parent_visible_bytes.get() == 0
+        || admitted.max_commands.get() == 0
+        || admitted.max_elapsed_ms.get() == 0
+        || admitted.max_packet_bytes.get() == 0
+        || admitted.max_choice_depth.get() == 0
+        || admitted.max_parallel.get() == 0
+        || admitted.max_aggregate_provider_latency_ms.get() == 0
+        || admitted.max_parent_visible_bytes.get() == 0
+        || proposed.max_commands.get() > JSON_SAFE_INTEGER_MAX
+        || proposed.max_elapsed_ms.get() > JSON_SAFE_INTEGER_MAX
+        || proposed.max_packet_bytes.get() > JSON_SAFE_INTEGER_MAX
+        || proposed.max_choice_depth.get() > JSON_SAFE_INTEGER_MAX
+        || proposed.max_parallel.get() > 10
+        || proposed.max_aggregate_provider_latency_ms.get() > JSON_SAFE_INTEGER_MAX
+        || proposed.max_parent_visible_bytes.get() > JSON_SAFE_INTEGER_MAX
+        || admitted.max_commands.get() > proposed.max_commands.get()
+        || admitted.max_elapsed_ms.get() > proposed.max_elapsed_ms.get()
+        || admitted.max_packet_bytes.get() > proposed.max_packet_bytes.get()
+        || admitted.max_choice_depth.get() > proposed.max_choice_depth.get()
+        || admitted.max_parallel.get() > proposed.max_parallel.get()
+        || admitted.max_aggregate_provider_latency_ms.get()
+            > proposed.max_aggregate_provider_latency_ms.get()
+        || admitted.max_parent_visible_bytes.get() > proposed.max_parent_visible_bytes.get()
     {
         return Err(RouteValidationError::Budget);
     }
@@ -199,6 +239,257 @@ fn validate_evidence_predicate(
         || unique_refs(&predicate.required_fields)?.len() != predicate.required_fields.len()
     {
         return Err(RouteValidationError::EvidencePredicate);
+    }
+    Ok(())
+}
+
+fn validate_proposal_execution_groups<'a>(
+    nodes: &BTreeMap<&'a ProtocolId, &'a agent_semantic_context_product::RouteNode>,
+    edges: &BTreeSet<(&'a ProtocolId, &'a ProtocolId)>,
+    proposal: &'a RouteProposal,
+) -> Result<BTreeMap<&'a ProtocolId, &'a RouteProposalExecutionGroup>, RouteValidationError> {
+    let groups: BTreeMap<_, _> = proposal
+        .execution_groups
+        .iter()
+        .map(|group| (&group.group_id, group))
+        .collect();
+    if groups.is_empty() || groups.len() != proposal.execution_groups.len() {
+        return Err(RouteValidationError::ExecutionGroupMismatch);
+    }
+
+    let mut assigned = BTreeSet::new();
+    for group in &proposal.execution_groups {
+        let group_nodes = unique_refs(&group.node_ids)?;
+        if group_nodes.is_empty()
+            || group_nodes
+                .iter()
+                .any(|node_id| !nodes.contains_key(*node_id))
+            || group_nodes.iter().any(|node_id| !assigned.insert(*node_id))
+        {
+            return Err(RouteValidationError::ExecutionGroupMismatch);
+        }
+        validate_execution_mode(
+            group.mode,
+            group.node_ids.len(),
+            group.max_parallel,
+            group.batch_capability_ref.as_ref(),
+            group.independence_proof_ref.as_ref(),
+        )?;
+
+        validate_group_dependencies(group.mode, &group.node_ids, edges)?;
+
+        if group.mode == RouteExecutionMode::Batch {
+            let first = nodes
+                .get(&group.node_ids[0])
+                .ok_or(RouteValidationError::MissingReference)?;
+            if group.node_ids.iter().skip(1).any(|node_id| {
+                nodes.get(node_id).is_none_or(|node| {
+                    node.provider_id != first.provider_id || node.catalog_id != first.catalog_id
+                })
+            }) {
+                return Err(RouteValidationError::BatchCapability);
+            }
+        }
+    }
+    if assigned.len() != nodes.len() {
+        return Err(RouteValidationError::ExecutionGroupMismatch);
+    }
+    Ok(groups)
+}
+
+fn validate_program_execution_groups<'a>(
+    proposal_groups: &BTreeMap<&'a ProtocolId, &'a RouteProposalExecutionGroup>,
+    stages: &BTreeMap<&'a ProtocolId, &'a agent_semantic_context_product::RouteStage>,
+    edges: &BTreeSet<(&'a ProtocolId, &'a ProtocolId)>,
+    node_to_stage: &BTreeMap<&'a ProtocolId, &'a ProtocolId>,
+    program: &'a RouteProgram,
+) -> Result<(), RouteValidationError> {
+    let groups: BTreeMap<_, _> = program
+        .execution_groups
+        .iter()
+        .map(|group| (&group.group_id, group))
+        .collect();
+    if groups.len() != program.execution_groups.len() || groups.len() != proposal_groups.len() {
+        return Err(RouteValidationError::ExecutionGroupMismatch);
+    }
+
+    let mut assigned = BTreeSet::new();
+    for group in &program.execution_groups {
+        let proposal_group = proposal_groups
+            .get(&group.group_id)
+            .ok_or(RouteValidationError::ExecutionGroupMismatch)?;
+        let expected_stage_ids: Vec<_> = proposal_group
+            .node_ids
+            .iter()
+            .map(|node_id| {
+                node_to_stage
+                    .get(node_id)
+                    .copied()
+                    .ok_or(RouteValidationError::StageLowering)
+            })
+            .collect::<Result<_, _>>()?;
+        if expected_stage_ids != group.stage_ids.iter().collect::<Vec<_>>()
+            || group.mode != proposal_group.mode
+            || group.join_policy != proposal_group.join_policy
+            || group.max_parallel != proposal_group.max_parallel
+            || group.derivation_receipt_ref != proposal_group.derivation_receipt_ref
+            || group.batch_capability_ref != proposal_group.batch_capability_ref
+            || group.independence_proof_ref != proposal_group.independence_proof_ref
+        {
+            return Err(RouteValidationError::ExecutionGroupMismatch);
+        }
+
+        let group_stages = unique_refs(&group.stage_ids)?;
+        if group_stages
+            .iter()
+            .any(|stage_id| !stages.contains_key(*stage_id))
+            || group_stages
+                .iter()
+                .any(|stage_id| !assigned.insert(*stage_id))
+        {
+            return Err(RouteValidationError::ExecutionGroupMismatch);
+        }
+        validate_execution_mode(
+            group.mode,
+            group.stage_ids.len(),
+            group.max_parallel,
+            group.batch_capability_ref.as_ref(),
+            group.independence_proof_ref.as_ref(),
+        )?;
+        validate_group_dependencies(group.mode, &group.stage_ids, edges)?;
+    }
+    if assigned.len() != stages.len() {
+        return Err(RouteValidationError::ExecutionGroupMismatch);
+    }
+    Ok(())
+}
+
+fn validate_execution_mode(
+    mode: RouteExecutionMode,
+    item_count: usize,
+    max_parallel: u64,
+    batch_capability_ref: Option<&ProtocolId>,
+    independence_proof_ref: Option<&ProtocolId>,
+) -> Result<(), RouteValidationError> {
+    match mode {
+        RouteExecutionMode::Serial => {
+            if item_count == 0
+                || max_parallel != 1
+                || batch_capability_ref.is_some()
+                || independence_proof_ref.is_some()
+            {
+                return Err(RouteValidationError::ExecutionGroupMismatch);
+            }
+        }
+        RouteExecutionMode::Batch => {
+            if item_count < 2
+                || max_parallel != 1
+                || batch_capability_ref.is_none()
+                || independence_proof_ref.is_some()
+            {
+                return Err(RouteValidationError::BatchCapability);
+            }
+        }
+        RouteExecutionMode::Parallel => {
+            if item_count < 2
+                || max_parallel < 2
+                || max_parallel > item_count as u64
+                || batch_capability_ref.is_some()
+                || independence_proof_ref.is_none()
+            {
+                return Err(RouteValidationError::ExecutionGroupMismatch);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn contains_dependency_path<'a>(
+    ids: &[ProtocolId],
+    edges: &BTreeSet<(&'a ProtocolId, &'a ProtocolId)>,
+) -> bool {
+    ids.iter().enumerate().any(|(index, from)| {
+        ids.iter()
+            .skip(index + 1)
+            .any(|to| has_path(from, to, edges) || has_path(to, from, edges))
+    })
+}
+
+fn validate_group_dependencies<'a>(
+    mode: RouteExecutionMode,
+    ids: &[ProtocolId],
+    edges: &BTreeSet<(&'a ProtocolId, &'a ProtocolId)>,
+) -> Result<(), RouteValidationError> {
+    if matches!(
+        mode,
+        RouteExecutionMode::Batch | RouteExecutionMode::Parallel
+    ) && contains_dependency_path(ids, edges)
+    {
+        return Err(RouteValidationError::ParallelDependency);
+    }
+    Ok(())
+}
+
+fn has_path<'a>(
+    from: &ProtocolId,
+    to: &ProtocolId,
+    edges: &BTreeSet<(&'a ProtocolId, &'a ProtocolId)>,
+) -> bool {
+    let mut ready = vec![from.clone()];
+    let mut visited = BTreeSet::new();
+    while let Some(current) = ready.pop() {
+        if !visited.insert(current.clone()) {
+            continue;
+        }
+        for (edge_from, edge_to) in edges {
+            if **edge_from == current {
+                if **edge_to == *to {
+                    return true;
+                }
+                ready.push((*edge_to).clone());
+            }
+        }
+    }
+    false
+}
+
+fn validate_proposal_join_lowering(
+    proposal: &RouteProposal,
+    program: &RouteProgram,
+    node_to_stage: &BTreeMap<&ProtocolId, &ProtocolId>,
+) -> Result<(), RouteValidationError> {
+    let program_joins: BTreeMap<_, _> = program
+        .joins
+        .iter()
+        .map(|join| (&join.join_id, join))
+        .collect();
+    if program_joins.len() != program.joins.len() || program_joins.len() != proposal.joins.len() {
+        return Err(RouteValidationError::JoinMismatch);
+    }
+    for proposal_join in &proposal.joins {
+        let program_join = program_joins
+            .get(&proposal_join.join_id)
+            .ok_or(RouteValidationError::JoinMismatch)?;
+        let required_stage_ids: Vec<_> = proposal_join
+            .required_node_ids
+            .iter()
+            .map(|node_id| {
+                node_to_stage
+                    .get(node_id)
+                    .copied()
+                    .ok_or(RouteValidationError::MissingReference)
+            })
+            .collect::<Result<_, _>>()?;
+        let continuation_stage_id = node_to_stage
+            .get(&proposal_join.continuation_node_id)
+            .copied()
+            .ok_or(RouteValidationError::MissingReference)?;
+        if required_stage_ids != program_join.required_stage_ids.iter().collect::<Vec<_>>()
+            || continuation_stage_id != &program_join.continuation_stage_id
+            || proposal_join.policy != program_join.policy
+        {
+            return Err(RouteValidationError::JoinMismatch);
+        }
     }
     Ok(())
 }
@@ -311,3 +602,7 @@ fn unique_refs(
     }
     Ok(unique)
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/route_validation.rs"]
+mod tests;

@@ -1,0 +1,30 @@
+{
+  "schemaId": "agent.semantic-protocols.search-loop-open-envelope",
+  "schemaVersion": "1",
+  "dispatchRef": "dispatch:search-1",
+  "dispatchReceiptDigest": "blake3:1111111111111111111111111111111111111111111111111111111111111111",
+  "residentIdentityRef": "resident:asp-explore",
+  "languageId": "rust",
+  "contextBindingDigest": "blake3:2222222222222222222222222222222222222222222222222222222222222222",
+  "contextStateArtifact": {
+    "artifactRef": "artifact:context-state-1",
+    "artifactDigest": "blake3:3333333333333333333333333333333333333333333333333333333333333333",
+    "artifactSchemaId": "asp.context-product-state"
+  },
+  "authorityReceiptArtifact": {
+    "artifactRef": "artifact:authority-receipt-1",
+    "artifactDigest": "blake3:4444444444444444444444444444444444444444444444444444444444444444",
+    "artifactSchemaId": "asp.context-product-state-authority-receipt"
+  },
+  "proposalSetArtifact": {
+    "artifactRef": "artifact:proposal-set-1",
+    "artifactDigest": "blake3:5555555555555555555555555555555555555555555555555555555555555555",
+    "artifactSchemaId": "agent.semantic-protocols.search-route-proposal-set"
+  },
+  "choicePanelArtifact": {
+    "artifactRef": "artifact:choice-panel-1",
+    "artifactDigest": "blake3:6666666666666666666666666666666666666666666666666666666666666666",
+    "artifactSchemaId": "agent.semantic-protocols.search-choice-panel"
+  },
+  "issuedAtUnixMs": 1785027439000
+}

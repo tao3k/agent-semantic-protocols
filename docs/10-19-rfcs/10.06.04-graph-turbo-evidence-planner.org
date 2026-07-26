@@ -1,0 +1,742 @@
+#+TITLE: RFC: Graph Turbo Evidence Planner Boundary
+#+STATUS: draft
+#+PROTOCOL: v1
+#+DEPENDS: docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.12-search-query-semantic-abi.org
+#+DEPENDS: docs/10-19-rfcs/10.06.03-context-product-state-v1.org
+#+DEPENDS: schemas/context-product-state.v1.schema.json
+#+DEPENDS: schemas/evidence-query-catalog.v1.schema.json
+#+DEPENDS: schemas/search-interactive-loop.v1.schema.json
+
+* Decision
+
+Graph Turbo may evolve from a typed graph frontier ranker into an evidence
+planning backend, but it is not a new protocol authority.
+
+The accepted role is:
+
+#+begin_src text
+ContextProductState revision
+  + EvidenceQueryCatalog
+  + EvidenceGraph snapshot
+  + versioned cost evidence
+  -> Graph Turbo planner backend
+  -> advisory RouteProposalSet
+  -> SearchReasoningRouter comparison
+  -> ChoicePanel projection
+  -> GraphRouter admission
+  -> RouteProgram
+  -> SearchRouter execution
+  -> GraphRouter closure validation
+  -> QueryHandoff
+#+end_src
+
+The rejected role is:
+
+#+begin_src text
+Python planner
+  -> authoritative obligations
+  -> executable program
+  -> execution grant
+  -> terminal closure
+#+end_src
+
+Python may propose obligation decompositions, action candidates, execution
+groups, expected gain, and cost estimates.  It cannot admit a program, issue an
+execution grant, mutate Context Product state, authenticate a choice, validate
+provider proof authority, or emit =ClosureFinalized=.
+
+This distinction is required even if the first production planner backend is
+implemented in Python.  Search semantics remain language-neutral and backend
+replaceable.
+
+* Audited implementation baseline
+
+The proposal was checked against the current package, not accepted from prose
+alone.
+
+| Claim | Current evidence | Verdict |
+|-------+------------------+---------|
+| Graph Turbo directly depends on SciPy | =packages/python/asp_graph_turbo/pyproject.toml= declares =scipy>=1.14= and no NetworkX or Scrapy dependency | Confirmed |
+| =rank_frontier= is a relevance/frontier pipeline | =ranking.py::rank_frontier= resolves a profile and seeds, collects scores, ranks nodes, applies a read-loop second pass, and builds =GraphResult= | Confirmed |
+| Relation matrices already exist | =backend.py::GraphBackend= carries =relation_matrices=, counts, and weight mass | Confirmed |
+| PPR currently consumes the aggregate transition | =pagerank.py= multiplies =backend.transition.T @ rank= | Confirmed |
+| Profiles still select fixed =code= actions | =profiles.py::_DEFAULT_FRONTIER_ACTIONS= maps field, hot, item, symbol, type, range, window, and related kinds to =code= | Confirmed |
+| SciPy path lowering collapses parallel relations | =path_scipy_backend.py= retains one lowest-cost edge per =(source,target)= and stores one relation per pair | Confirmed |
+| Path cost is relation-blind | =edge_cost= is =1.0 / edge.weight= for positive weights | Confirmed |
+| Existing benchmark is already a search-quality benchmark | Current benchmark surfaces duration, median/p95, path backend/fallback, PPR, cache, and matrix statistics; the proposed closure/terminal/handoff metrics are absent | Rejected |
+| Python provider evidence is independent of global State Home | The parser-owned audit reached the package root but failed to open the Turso client DB under the resident sandbox | Not proven; State authority remains a gate |
+
+The State Home failure is not source evidence about the planner algorithm.  It
+is evidence that a read-only planner invocation needs an explicit State access
+contract and must not depend on an implicit developer checkout or home path.
+
+* Calibration of the proposal
+
+| Proposed idea | Decision | Calibration |
+|---------------+----------+-------------|
+| Keep SciPy as the production numeric backend | Accept | Use sparse relation matrices, diffusion, reachability, support paths, matching, and connected components |
+| Replace ranking with obligation planning | Accept with boundary | Ranking remains a relevance prior; the planner emits advisory proposals |
+| Python owns the Obligation Compiler | Reject as exclusive ownership | Obligation vocabulary and authoritative state belong to the shared Context Product contract; Python may propose a decomposition |
+| Persist an AND/OR planner IR as the public ABI | Reject | AND/OR search is backend-internal; the shared ABI is a catalog-bound proposal DAG |
+| Python decides batch, serial, and parallel | Accept as proposal only | GraphRouter independently validates catalog capability, dependencies, snapshot identity, proof references, and budget |
+| Python validates terminal closure | Reject | Python may emit proof candidates; GraphRouter and provider proof resolvers validate closure |
+| PPR becomes relation-aware | Accept experimentally | Relation policy is versioned planner input and cannot satisfy proof gates |
+| Replace independent paths with a small support subgraph | Accept experimentally | The subgraph explains selected evidence; it cannot prove enumeration or absence |
+| Learned cost model controls planning | Accept with hard fence | It changes ordering and estimates only; it cannot alter identity, freshness, scope, completeness, or authority |
+| Use MILP in the prompt hot path | Reject for v1 | Use it as a bounded offline oracle for route-regret measurement |
+| Add NetworkX to production | Reject until benchmark evidence | It may be a research/oracle dependency |
+| Add Scrapy to search runtime | Reject | Corpus acquisition is a separate ingestion concern |
+
+* Authority matrix
+
+| Component | May do | Must not do |
+|-----------+--------+-------------|
+| Language harness | Emit parser-owned facts and catalog capabilities | Plan cross-provider execution or close obligations |
+| Graph Turbo planner backend | Generate candidates, estimate gain/cost, propose dependencies and execution groups | Admit, grant, execute, mutate state, or close |
+| SearchReasoningRouter | Compare bounded proposals and decide whether a semantic choice is needed | Grant execution or finalize closure |
+| Choice Panel projection | Explain proposal choices and carry an authenticated selection action | Carry provider argv, backend query language, or mutable plan fields |
+| GraphRouter | Validate proposals, admit one RouteProgram, apply state transitions, validate joins and closure | Infer facts that providers did not prove |
+| SearchRouter | Execute a granted admitted stage and return evidence receipts | Admit its own action or declare terminal state |
+| Provider proof resolver | Resolve proof references and verify identity, freshness, scope, and support closure | Rank alternatives or mutate the run head |
+
+* Proposal, choice, and admission handshake
+
+The schemas must distinguish an advisory proposal from an admitted program.
+
+1. A planner emits a bounded =RouteProposalSet= for one run revision and one
+   Context Binding.
+2. Each proposal binds one Evidence Query Catalog digest and contains catalog
+   action nodes, dependencies, proposed execution groups, joins, expected
+   obligation gain, and cost estimates.
+3. SearchReasoningRouter removes invalid or dominated proposals.  If one route
+   is deterministic, GraphRouter may auto-advance it without a panel.
+4. If a semantic or budget tradeoff remains, the Choice Panel references
+   proposal identity and digest.  It does not claim that the proposal is already
+   an admitted RouteProgram.
+5. The authenticated choice token binds the proposal, proposed execution group,
+   run revision, Context Binding, resident identity, and panel identity.
+6. =search loop advance= consumes the token exactly once.  GraphRouter
+   revalidates the selected proposal and admits a RouteProgram atomically.
+7. Only the admitted program and its =ActionAdmitted= event can produce an
+   execution grant.
+
+Therefore the Choice Panel provider-execution variant uses:
+
+#+begin_src text
+proposalRef
+proposalDigest
+proposedExecutionGroupRef
+workItemCount
+providerDispatchCount
+maxParallel
+joinPolicy
+#+end_src
+
+The execution progress view uses:
+
+#+begin_src text
+programRef
+programDigest
+executionGroupRef
+grantRefs
+resultReceiptRefs
+#+end_src
+
+Conflating those two phases would let a UI projection manufacture admission
+authority.
+
+* Obligation model
+
+The shared =ClaimClass= vocabulary must cover at least:
+
+#+begin_src text
+identity
+existential
+enumeration
+absence
+causal-flow
+classification
+handoff
+quality
+#+end_src
+
+=identity= proves which canonical item or owner a fact names.
+=existential= proves that at least one admitted witness exists.
+=enumeration= proves a complete admitted set.
+=absence= proves no admitted witness exists in a complete scope.
+=causal-flow= proves a typed support path or flow relation.
+=classification= proves membership in a closed classification vocabulary.
+=handoff= proves that exact queries are ready for the main agent.
+=quality= records a quality obligation whose proof contract is explicitly
+declared.
+
+An obligation compiler may propose:
+
+#+begin_src text
+intent
+  -> anchors
+  -> claim classes
+  -> evidence predicates
+  -> candidate catalog actions
+#+end_src
+
+The reducer validates obligation identity and state transitions.  A planner
+prediction such as =expectedGain=[O1,O2]= never moves either obligation to
+=resolved=.
+
+* Internal AND/OR planning
+
+AND/OR search is a valid planner implementation technique:
+
+- OR represents alternative ways to obtain the same required evidence;
+- AND represents evidence axes that must all be satisfied;
+- dependency edges represent facts that must exist before a later action can be
+  instantiated.
+
+The internal representation may contain =ACTION=, =AND=, =OR=, and =GATE=
+nodes.  Those node kinds do not enter the shared route ABI.
+
+The exported form is deliberately smaller:
+
+- one bounded proposal per concrete alternative;
+- catalog-bound action nodes;
+- explicit dependency edges;
+- proposed execution groups;
+- explicit joins;
+- expected-gain and estimate receipts.
+
+This prevents Python-private planner structure from becoming a required
+cross-language protocol.
+
+* Agent, Choice Panel, and graph co-reasoning
+
+Execution topology is not a client feature flag and is not selected by a
+fixed =serial-then-parallel= pipeline.  It is a bounded decision derived from
+the current Context Product, the Agent's evidence obligations, the graph's
+dependency and capability facts, and the available budget.
+
+The cooperating responsibilities are:
+
+- the Agent states the evidence obligations and may propose a search strategy;
+- the graph derives dependency edges, provider capability compatibility,
+  Context Binding continuity, possible execution groups, join requirements,
+  and estimate receipts;
+- the Choice Panel projects the remaining admissible alternatives, their
+  reasoning, expected gain, cost, stop condition, and proof requirements;
+- the Agent selects one choice when a real semantic or budget tradeoff remains;
+- GraphRouter revalidates the selected proposal against the authoritative
+  Context Product and atomically admits the corresponding =RouteProgram=;
+- SearchLoop executes the admitted execution group, joins its receipts, folds
+  the evidence into Context Product, and emits either the next panel or an
+  authoritative closure receipt.
+
+Neither the Agent nor the Choice Panel may manufacture execution authority.
+Graph-derived topology is advisory until GraphRouter admission.  A recommended
+choice is not an admitted program.
+
+** One command per interactive turn
+
+An Agent turn issues one SearchLoop command.  Selecting a parallel choice does
+not require the Agent to emit several provider commands, spawn ad-hoc workers,
+or concatenate their outputs.
+
+#+begin_example
+search loop advance(choice)
+  -> atomically admit one RouteProgram
+  -> issue one execution group
+  -> fan out zero or more provider dispatches inside ASP
+  -> apply the declared join
+  -> fold one joined receipt set into Context Product
+  -> return one next panel or closure receipt
+#+end_example
+
+The public interaction therefore remains valid when client-side multi-agent or
+tool-parallel features are disabled.  Those client features may accelerate an
+implementation, but they are not part of the shared protocol.
+
+** Evidence-state-driven topology
+
+The graph may propose a parallel multi-point query immediately when the
+authoritative Context Product already supplies concrete owners or selectors and
+the evidence obligations are independent.  It must not force an unnecessary
+seed query merely because parallel execution is possible.
+
+Conversely, when a later node needs an owner, selector, scope, or other fact
+produced by an earlier node, the dependency must be explicit and the dependent
+nodes cannot occupy the same parallel execution group.
+
+The modes are peers:
+
+- =serial= contains one or more actions ordered by dependency edges and permits
+  at most one provider dispatch at a time;
+- =batch= contains two or more work items consumed by one declared provider
+  batch capability and produces one provider dispatch;
+- =parallel= contains two or more independent actions, requires an
+  independence proof, and may issue several provider dispatches;
+- a focused single action is a one-action =serial= group, not a separate
+  architecture.
+
+The graph must reject an execution group before it reaches the Choice Panel
+when any of these conditions holds:
+
+- its nodes bind different Context Binding, snapshot, catalog, provider
+  capability, or policy identities without an explicit cross-context contract;
+- a parallel node depends on evidence produced by another node in the group;
+- a batch group has no matching provider batch capability;
+- the declared join cannot satisfy the covered claim classes;
+- the execution estimate exceeds the admitted budget.
+
+** Choice reasoning ABI
+
+Every provider-execution choice binds:
+
+- the proposal identity and digest;
+- the proposed execution-group identity;
+- the number of work items and expected provider dispatches;
+- the execution mode and maximum concurrency;
+- the join policy and stop condition;
+- an Agent reasoning receipt;
+- a graph derivation receipt;
+- the mode-specific dependency, batch-capability, or independence proof.
+
+The Choice Panel may explain why another topology was rejected, but prose is
+never the proof itself.  Proof references and the Context Binding remain the
+machine-verifiable authority.
+
+** Memory-aware continuation
+
+Agent memory may eliminate redundant interaction but may not replace state
+authority:
+
+- a valid active panel permits direct =advance= with its authenticated choice;
+- an admitted or running program permits direct =run= or =poll=;
+- a valid closure receipt permits direct handoff;
+- an expired token, changed Context Binding, changed context epoch, or stale
+  program requires re-entry through the authoritative loop state.
+
+Knowing the command shape alone never authorizes replay, admission, dispatch,
+or closure.
+
+* Batch, serial, and parallel derivation
+
+The decision order is:
+
+#+begin_src text
+dependency exists
+  -> serial is mandatory
+else one catalog action has an admitted compound/batch capability
+  -> batch
+else two or more actions are ready and independently provable
+  -> parallel
+else
+  -> one serial checkpoint action
+#+end_src
+
+The shorthand =batch > parallel > serial= is invalid because it hides the
+dependency gate.
+
+For proposed action =B= after =A=, a dependency exists when a required input,
+selector, scope, language discriminator, freshness proof, or budget decision of
+=B= is produced by =A=.  String overlap between free-form =requires= and
+=produces= fields is not sufficient.  Dependencies are derived from catalog
+descriptors plus typed instantiated inputs and outputs.
+
+A parallel proposal additionally requires:
+
+- every action is ready at the same Context Binding;
+- no dependency path exists between selected nodes;
+- provider capability and State access are available;
+- the join policy preserves the claim class;
+- aggregate and critical-path budgets both admit the fan-out;
+- an =independenceProofRef= is present and resolvable.
+
+Batch requires one provider action and one =batchCapabilityRef=.  Several
+selectors inside that action do not become several protocol branches.
+
+** Execution-group authority
+
+Context Product stores execution authority per provider dispatch, not per route
+stage.  Every authority binds:
+
+#+begin_src text
+programDigest
+executionGroupId
+stageIds[]
+providerId
+catalogId
+#+end_src
+
+The cardinality is normative:
+
+| Mode | Authority count admitted for one group step | =stageIds[]= per authority | Provider dispatch count |
+|------+---------------------------------------------+----------------------------+-------------------------|
+| serial | 1 | 1 | 1 |
+| batch | 1 | 2 or more, exactly the admitted group | 1 |
+| parallel | one per ready stage | 1 | number of ready stages |
+
+Consequently, replacing a singular authority with a vector of single-stage
+authorities is insufficient: it misrepresents batch as parallel dispatch.
+=ActionAdmitted=, grant, start, consume, and revoke events carry the same
+=executionGroupId + stageIds[]= identity as the authority they advance.
+
+One =search loop advance= command may lower a parallel choice to several
+provider dispatch authorities inside ASP.  Admission and grant fan-out append
+their ordered events through separate phase-atomic compare-and-append
+transitions.  A competing writer observes either the complete branch set for
+one phase or none of that phase; a crash between phases leaves a resumable
+admitted or granted group, never a partially admitted branch set.  The client
+does not replay one interactive command per branch.
+
+Batch produces one admission, one grant, one attempt, and one result receipt for
+the compound provider action.  Parallel produces independent admissions,
+grants, attempts, and result receipts, then evaluates the admitted join policy.
+Serial admits only the next dependency-ready stage.
+
+Join completion is authoritative state, not an in-memory reducer hint.
+=ExecutionGroupJoined= binds the program digest, execution group, admitted join
+policy, and the canonical unique result-receipt set.  The reducer derives its
+=joinedGroupIds= from Context Product state.  Closure is invalid while any
+RouteProgram execution group lacks this persisted join record, even when all
+provider executions are already terminal.
+
+** One-command advance coordinator
+
+The =advance= handler is a coordinator over typed ports, not another execution
+mode selector:
+
+#+begin_src text
+SearchLoopDirective
+  -> admit complete dispatch set
+  -> issue complete grant set
+  -> start complete attempt set
+  -> SearchExecutionDriver.executeGroup
+  -> consume complete result set
+  -> persist ExecutionGroupJoined
+#+end_src
+
+The driver receives only granted provider dispatches, including attempt,
+provider, catalog operation, stage set, resolved-input digest, lease fence, and
+provider idempotency key.  It returns a result for every attempt exactly once;
+unknown, duplicate, or missing attempts fail closed before consumption.
+
+The phase boundaries are intentional recovery points.  A resident process that
+dies after =start= leaves =InFlight= authorities and stable provider idempotency
+keys.  Resume/poll uses those authorities; it does not repeat admission or
+create new attempts.  Thus “one subagent command” does not mean “one database
+revision” or “one uninterruptible transaction.”
+
+For a parallel group wider than the available concurrency window, admission,
+start, and consume are atomic per selected wave.  A wave consumes only the
+attempts it started or explicitly polled; pre-existing in-flight attempts remain
+authoritative.  =ExecutionGroupJoined= is emitted only after consumed
+authorities collectively cover every stage in the group.
+
+* Ranking and action utility
+
+PPR and token matching remain useful as candidate priors.  They do not become
+proof strength.
+
+A planner may estimate:
+
+#+begin_src text
+utility(action | state) =
+    expected mandatory-obligation gain
+  + ambiguity reduction
+  + identity-resolution gain
+  + completeness gain
+  + estimated closure probability
+  - critical-path latency cost
+  - aggregate provider cost
+  - packet and parent-visible byte cost
+  - repeat risk
+#+end_src
+
+All terms are estimates with a versioned model receipt.  The proposal records
+the estimate receipt reference and the catalog/context digests used to compute
+it.  The estimate cannot be copied into =ClosureProof=.
+
+Greedy budgeted maximum coverage is a valid production candidate-selection
+baseline.  A pinned MILP oracle may calculate the optimal bounded action set for
+small offline fixtures.  Benchmarking reports route regret between the
+production heuristic and the oracle; the oracle is not a runtime dependency.
+
+* Relation-aware graph execution
+
+The current aggregate transition mixes relation semantics before PPR.  An
+experimental backend may construct a stage-specific transition:
+
+#+begin_src text
+T_stage = sum(
+  relationPolicy[relation] * normalize(relationMatrix[relation])
+)
+#+end_src
+
+The policy is selected from typed obligation and catalog capabilities.  It is
+not authored as free-form weights by the model.
+
+Typed meta-paths may be backend-internal lowering templates.  They do not enter
+the public CLI or Query Handoff.
+
+Relation-aware diffusion is still discovery.  A high diffusion score cannot
+prove identity, enumeration, absence, or causal closure.
+
+* Support subgraph
+
+Shortest path remains a support primitive after source and sink candidates are
+known.  A multi-obligation response may compress repeated paths into a small
+support subgraph connecting anchors and selected proof candidates.
+
+Steiner-style approximation is suitable for context compression research, not
+for closure.  Terminal selection is still a planner decision, scalar edge cost
+cannot erase relation identity, and enumeration or absence still require a
+complete admitted scope.
+
+The current one-edge-per-pair SciPy lowering is acceptable only for a numeric
+distance view.  Proof reconstruction must retain every typed edge identity
+needed by the selected support relation.  A =(source,target)= pair is not a
+semantic edge key.
+
+* Enumeration and absence
+
+Ranking, top-K, diffusion, shortest path, and support-subgraph algorithms cannot
+close =enumeration= or =absence=.
+
+Those claims require an admitted provider operation and =EvidenceScope= with:
+
+#+begin_src text
+complete = true
+truncated = false
+snapshotContinuous = true
+providerAdmitted = true
+#+end_src
+
+Graph Turbo may internally lower catalog operations to scan, filter, traverse,
+join, anti-join, group, count, project, identity, freshness, and completeness
+operators.  This operator IR is private to the backend.  Persisted
+=RouteProposal= and =RouteProgram= continue to reference catalog entries rather
+than raw GraphQL, QL, Cypher, Tree-sitter, Datalog, or another query language.
+
+* Cost evidence
+
+Historical receipts may estimate latency distribution, hit probability,
+candidate cardinality, closure probability, timeout rate, cache hit rate,
+packet bytes, and parent-visible bytes.
+
+Every estimate binds:
+
+- catalog entry and provider version;
+- Context Binding compatibility class;
+- sample window and count;
+- estimator version;
+- generated-at event sequence;
+- estimate receipt digest.
+
+Cost evidence affects proposal order and budget selection only.  Stale or
+missing estimates fall back to conservative policy; they never relax freshness,
+identity, completeness, admission, or exactly-once gates.
+
+* Library boundary
+
+SciPy remains the only production numeric graph dependency for the first
+implementation phase.  Its sparse graph and optimization primitives support
+the proposed experiments, but library capability is not protocol correctness.
+
+- =scipy.sparse.csgraph= may implement sparse reachability and support paths.
+- =scipy.optimize.milp= may serve the offline bounded oracle.
+- NetworkX may serve research fixtures; it is not added to production until
+  measured need exists.
+- =python-igraph= is out of scope until SciPy CSR is a measured bottleneck.
+- Scrapy belongs to separately admitted corpus ingestion.  It is not a search
+  planner, ranker, executor, or closure dependency.
+
+Official capability references:
+
+- [[https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csgraph.shortest_path.html][SciPy sparse shortest path]]
+- [[https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.milp.html][SciPy MILP]]
+- [[https://networkx.org/documentation/stable/reference/algorithms/approximation.html][NetworkX approximation algorithms]]
+- [[https://docs.scrapy.org/en/latest/topics/architecture.html][Scrapy architecture]]
+
+* Package refactor boundary
+
+A possible Python package decomposition is:
+
+#+begin_src text
+asp_graph_turbo/
+  graph/
+  candidate/
+  planner/
+  cost/
+  proposal/
+  oracle/
+#+end_src
+
+This is not a normative module ABI.  In particular, =execution/=, =closure/=,
+and =loop/= must not imply that Python owns execution authority, closure
+authority, or the interactive state machine.
+
+| Current surface | Future responsibility |
+|-----------------+-----------------------|
+| =ranking.py= | Candidate relevance prior |
+| =pagerank.py= | Aggregate baseline and relation-aware diffusion primitive |
+| =paths.py= and =path_scipy_*= | Numeric support-path primitive |
+| =profiles.py= | Versioned policy preset feeding catalog-aware planning |
+| =render.py= | Debug adapter only |
+| =evidence_reliability.py= | Proof-candidate features, not scalar closure authority |
+
+* Benchmark contract
+
+Three baselines are mandatory:
+
+#+begin_src text
+B0 lexical-only
+B1 current PPR + diversity + support paths
+B2 obligation planner + relation-aware graph + closure validators
+#+end_src
+
+Every scenario runs against the same source snapshot, provider/query-pack
+identity, budget envelope, and gold evidence contract.
+
+Algorithm-performance metrics include =wallLatencyMs=,
+=criticalPathLatencyMs=, =aggregateProviderLatencyMs=, =pprIterations=,
+=pprResidual=, =cacheStatus=, =matrixBytes=, and =pathCandidateCount=.
+
+Search-quality metrics include =ownerPrecisionAt1=, =ownerRecallAt3=,
+=selectorMRR=, =goldNodeCoverage=, =goldEdgeCoverage=,
+=obligationClosureRate=, =falseTerminalRate=, =unnecessaryPartialRate=,
+=crossLanguageFalseOwnership=, =staleEvidenceAcceptanceRate=,
+=queryHandoffPrecision=, and =unusedExactQueryRate=.
+
+Interaction and cost metrics include =choiceDepth=, =executionStageCount=,
+=internalActionCount=, =batchActionCount=, =serialActionCount=,
+=parallelActionCount=, =maxObservedParallelism=, =packetBytes=,
+=parentVisibleBytes=, and =repeatedTriggerCount=.
+
+Context-run storage metrics include =providerDispatchesPerAdvance=,
+=mvccPhaseCount=, =eventsPerPhase=, =endToEndAdvanceLatencyMs=,
+=dispatchesPerSecond=, =conflictRate=, =retryCount=, and =lockErrorCount=.
+The executable baseline is
+=turso_context_run_search_loop/parallel_2_dispatch_full_lifecycle=.  It must
+exercise =TursoMvccContextRunStore= through the =RunCommitStore= adapter and the
+real =GraphRouter.advance_search_loop= path; a direct =append_batch= benchmark
+does not satisfy this gate.
+
+=falseTerminalRate= and =staleEvidenceAcceptanceRate= are hard zero gates.
+Coverage and latency improvements do not compensate for either failure.
+=lockErrorCount= is also a hard zero gate for the context-run benchmark.
+
+** Reference storage benchmark evidence
+
+The first executable smoke baseline on 2026-07-25 used Criterion sample size 10
+for =parallel_2_dispatch_full_lifecycle=:
+
+#+begin_src text
+time interval:       3.4316 ms .. 4.1241 ms
+median estimate:     3.7563 ms
+throughput interval: 484.95 .. 582.81 provider dispatches/s
+median throughput:   532.44 provider dispatches/s
+result:              success; no lock error
+#+end_src
+
+This is evidence that the benchmark executes; it is not a portable SLO.  A
+release gate must retain the Criterion artifact and bind machine, Turso build,
+store configuration, source revision, and Context Product schema digest in a
+typed benchmark receipt.
+
+** Repeated context-run benchmark evidence
+
+After execution-group authority, partial-wave consumption, persisted join, and
+typed budget enforcement landed, the same sample-size 10 benchmark was
+repeated:
+
+#+begin_src text
+parallel_2_dispatch_full_lifecycle:
+  time interval:       3.8115 ms .. 4.4095 ms
+  median estimate:     4.1450 ms
+  throughput interval: 453.56 .. 524.73 provider dispatches/s
+  median throughput:   482.51 provider dispatches/s
+  lock errors:         0
+
+concurrent_4_runs_x2_dispatches:
+  time interval:       25.086 ms .. 37.377 ms
+  median estimate:     30.246 ms
+  throughput interval: 214.03 .. 318.91 provider dispatches/s
+  median throughput:   264.50 provider dispatches/s
+  lock errors:         0
+#+end_src
+
+The single-run median is close to, but slower than, the first smoke baseline;
+the intervening run measured 6.9815 ms and Criterion classified the latest
+repeat as improved relative to that run.  The four-run concurrent interval is
+wide and Criterion detected no stable change.  Therefore the evidence proves
+that the =RunCommitStore= path no longer reproduces the Turso file-lock
+failure, but it does not yet establish a stable performance SLO.
+
+The next performance gate must emit a typed receipt containing the machine,
+Turso build, store configuration, source revision, schema digest, per-phase
+latency, conflict/retry counts, and =lockErrorCount=.  Criterion's local
+baseline comparison alone is not authoritative.
+
+* Required sandtables
+
+The first evidence suite covers:
+
+1. Rust/Tokio identity followed by dependent causal-flow evidence.
+2. Rust/rustc diagnostic discovery, independent evidence branches, and test
+   reachability.
+3. Python/FastAPI recursive dependency resolution, cache/scope relations, and
+   cleanup tests.
+4. Enumeration with a complete admitted provider scope.
+5. Absence using negative completeness and no truncation.
+6. A stale snapshot during parallel execution.
+7. A provider that lacks State Home access.
+8. A batch-capable selector set compared with unnecessary parallel fan-out.
+9. A cost model that recommends a cheaper but incomplete route.
+10. Removal of compact rendering with identical proposal, program, and closure
+    digests.
+
+The large-library examples are hypotheses until captured as version-pinned,
+replayable fixtures with gold owners, selectors, relations, obligations, and
+closure expectations.
+
+* Shared v1 schema work before implementation
+
+The protocol cannot start Python refactoring until the v1 schemas express:
+
+1. =existential= and =classification= claim classes.
+2. A catalog-bound =RouteProposal= with proposed execution groups and joins.
+3. A bounded =RouteProposalSet= tied to one run revision and Context Binding.
+4. Choice Panel proposal references distinct from execution progress program
+   references.
+5. Typed estimate receipts that cannot appear as closure proof.
+6. Benchmark receipts that separate performance, quality, interaction, and
+   provider aggregate time.
+7. Provider capability and State-access blockers as typed proposal outcomes.
+
+No compatibility aliases or v2 packet are introduced.  Legacy raw commands,
+free-form operation names, fixed =code= frontier actions, and untyped planner
+output are removed when their v1 consumers move.
+
+* GO and NO-GO gates
+
+GO for Schema and sandtable implementation:
+
+- the audited limitations are real;
+- the proposal/admission/closure boundary is explicit;
+- SciPy can remain the production numeric dependency;
+- the new benchmark can compare the current algorithm with the planner.
+
+NO-GO for production Python refactoring until:
+
+- the proposal-set and choice/admission handshake validate;
+- cross-language catalog fixtures exist;
+- dependency and independence proofs have runtime validators;
+- closure remains GraphRouter-owned in adversarial tests;
+- B0/B1/B2 gold fixtures are version-pinned;
+- the installed provider can access its authorized State without embedding a
+  developer-specific path;
+- benchmark evidence shows quality gain without false terminal or stale
+  evidence acceptance.
+
+Passing unit tests for a new module layout is not closure.  The production gate
+requires installed-artifact replay against representative Rust and Python
+projects plus the shared v1 packet suite.

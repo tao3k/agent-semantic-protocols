@@ -71,12 +71,15 @@
           "budget": {
             "maxCommands": 4,
             "maxElapsedMs": 10000,
-            "maxPacketBytes": 65536
+            "maxPacketBytes": 65536,
+            "maxChoiceDepth": 4,
+            "maxParallel": 4,
+            "maxAggregateProviderLatencyMs": 20000,
+            "maxParentVisibleBytes": 65536
           }
         },
-        "execution": {
-          "kind": "none"
-        },
+        "executions": [],
+        "joinedExecutionGroups": [],
         "closure": {
           "kind": "open",
           "openObligationIds": [
@@ -185,6 +188,8 @@
         "grantDigest": "blake3:1111111111111111111111111111111111111111111111111111111111111111",
         "attemptId": "attempt-1",
         "attemptDigest": "blake3:2222222222222222222222222222222222222222222222222222222222222222",
+        "executionGroupId": "group-1",
+        "stageIds": ["stage-1"],
         "providerId": "provider-1",
         "operation": "search",
         "leaseFence": 1,
@@ -207,6 +212,10 @@
         "grantId": "grant-1",
         "grantDigest": "blake3:1111111111111111111111111111111111111111111111111111111111111111",
         "attemptId": "attempt-1",
+        "executionGroupId": "group-1",
+        "stageIds": ["stage-1"],
+        "providerId": "provider-1",
+        "operation": "search",
         "resultReceiptRef": "result-1",
         "resultDigest": "blake3:4444444444444444444444444444444444444444444444444444444444444444",
         "leaseFence": 1,
@@ -225,10 +234,33 @@
         "stateRevision": 1,
         "preStateDigest": "blake3:3333333333333333333333333333333333333333333333333333333333333333",
         "reasonCode": "lease-expired",
+        "executionGroupId": "group-1",
+        "stageIds": ["stage-1"],
+        "providerId": "provider-1",
+        "operation": "search",
         "admissionId": "admission-1",
         "grantId": "grant-1",
         "actionKey": "blake3:6666666666666666666666666666666666666666666666666666666666666666",
         "eventDigest": "blake3:7777777777777777777777777777777777777777777777777777777777777777"
+      }
+    },
+    {
+      "name": "valid-execution-group-joined-event-v1",
+      "target": "#/$defs/contextProductEvent",
+      "valid": true,
+      "value": {
+        "eventType": "ExecutionGroupJoined",
+        "eventId": "event-joined-1",
+        "runId": "run-1",
+        "sequence": 3,
+        "stateRevision": 2,
+        "preStateDigest": "blake3:5555555555555555555555555555555555555555555555555555555555555555",
+        "programDigest": "blake3:8888888888888888888888888888888888888888888888888888888888888888",
+        "executionGroupId": "group-1",
+        "policy": "all-required",
+        "resultReceiptRefs": ["result-1"],
+        "joinedGroupDigest": "blake3:9999999999999999999999999999999999999999999999999999999999999999",
+        "eventDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     },
     {
