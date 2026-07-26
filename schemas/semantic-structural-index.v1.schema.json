@@ -74,6 +74,12 @@
         "$ref": "#/$defs/fileHash"
       }
     },
+    "compileContexts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/compileContext"
+      }
+    },
     "owners": {
       "type": "array",
       "items": {
@@ -89,6 +95,18 @@
     "symbolTotal": {
       "type": "integer",
       "minimum": 0
+    },
+    "occurrences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/occurrence"
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/semanticRelation"
+      }
     },
     "syntaxFacts": {
       "type": "array",
@@ -123,9 +141,28 @@
         },
         "source": {
           "type": "string"
+        },
+        "compileContextDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       },
       "additionalProperties": true
+    },
+    "compileContext": {
+      "type": "object",
+      "required": ["translationUnit", "digest"],
+      "properties": {
+        "translationUnit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
     },
     "owner": {
       "type": "object",
@@ -188,6 +225,55 @@
         "$ref": "#/$defs/rawSourceFields"
       },
       "additionalProperties": true
+    },
+    "occurrence": {
+      "type": "object",
+      "required": ["id", "ownerPath", "name", "kind", "sourceLocator", "queryKeys"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceLocator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetSymbolId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "containerSymbolId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "queryKeys": {
+          "$ref": "#/$defs/queryKeys"
+        }
+      },
+      "additionalProperties": true
+    },
+    "semanticRelation": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/occurrence"
+        },
+        {
+          "type": "object",
+          "required": ["targetSymbolId"]
+        }
+      ]
     },
     "dependencyUsage": {
       "type": "object",
