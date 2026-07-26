@@ -93,7 +93,7 @@
     "syntaxFacts": {
       "type": "array",
       "items": {
-        "$ref": "semantic-native-syntax-fact-index.v1.schema.json#/$defs/nativeSyntaxFact"
+        "$ref": "https://agent-semantic-protocols.local/schemas/semantic-native-syntax-fact-index.v1.schema.json#/$defs/nativeSyntaxFact"
       }
     },
     "dependencyUsages": {

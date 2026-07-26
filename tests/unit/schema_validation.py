@@ -14,6 +14,7 @@ def schema_validator_for(schema_path: Path) -> Draft202012Validator:
     registry = Registry().with_resources(
         (loaded_schema["$id"], Resource.from_contents(loaded_schema))
         for loaded_schema in _load_local_schemas(schema_path.parent)
+        if "$id" in loaded_schema
     )
     return Draft202012Validator(schema, registry=registry)
 
