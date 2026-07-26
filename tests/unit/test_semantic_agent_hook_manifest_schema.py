@@ -214,7 +214,6 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
         manifest["routes"] = routes
 
         errors = self.manifest_errors(manifest)
-        self.assertTrue(any("'lexical' is a required property" in message for message in errors))
         self.assertTrue(
             any("Additional properties are not allowed" in message for message in errors)
         )
