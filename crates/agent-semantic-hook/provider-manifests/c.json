@@ -10,6 +10,15 @@
   "namespace": "agent.semantic-protocols.languages.c.ccls-asp",
   "binary": "ccls-asp",
   "execution": "external-process",
+  "nativeLibrary": {
+    "descriptorId": "c-family.native-parser-library",
+    "descriptorVersion": "1",
+    "abiVersion": 1,
+    "artifactStem": "ccls-asp-parser",
+    "parseTranslationUnitSymbol": "ccls_asp_parse_translation_unit_with_args_v1",
+    "freeResultSymbol": "ccls_asp_result_free_v1",
+    "fallbackExecution": "external-process"
+  },
   "source": {
     "defaultExtensions": [".c", ".h"],
     "defaultConfigFiles": ["compile_commands.json", ".ccls", "CMakeLists.txt", "meson.build"],

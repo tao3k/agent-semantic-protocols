@@ -1,0 +1,131 @@
+#+TITLE: RFC 10.05.82 - C-family native parser library boundary
+#+STATUS: Draft
+#+PROPERTY: ASP_SCHEMA semantic-structural-index.v1
+
+* Scope
+
+This amendment narrows the runtime responsibilities described by
+=10.05.81-c-family-clang-index-provider.org=.  It does not introduce a new
+structural-index schema version.  C, C++, and Objective-C continue to use the
+single stable =semantic-structural-index.v1= contract.
+
+The native ccls-derived component is a linked Clang parser library.  It is not
+a workspace search service, persistence engine, scheduler, or renderer.  The
+=ccls-asp= executable may remain as a compatibility and conformance shell, but
+ASP production execution must not require one process per owner or translation
+unit.
+
+* Runtime ownership
+
+ASP Rust owns:
+
+- workspace and source-snapshot enumeration;
+- compilation-database discovery and normalized compile-command selection;
+- changed-owner detection and incremental scheduling;
+- process/thread concurrency and cancellation;
+- structural packet validation and stable-v1 normalization;
+- Turso generations, replacement, graph/FTS projection, and persistence;
+- public =search prime|owner|lexical= behavior;
+- public exact-query rendering, including raw =--code= output.
+
+The linked C-family parser library owns:
+
+- one explicitly supplied translation unit at a time;
+- Clang compiler invocation using the supplied normalized arguments;
+- AST and preprocessor traversal;
+- canonical USR identities, semantic variant facts, occurrences, relations,
+  dependencies, source ranges, and parser diagnostics;
+- stable-v1 parser fact serialization.
+
+The native library must not discover a workspace, walk directories, compare
+file hashes, decide generations, open Turso, rank results, or render
+agent-facing output.
+
+* Stable native ABI
+
+The Rust-to-native boundary is a versioned C ABI, not a C++ STL ABI.
+
+The request supplies:
+
+- protocol and ABI version;
+- language id;
+- workspace-relative translation-unit path;
+- normalized compiler executable and argument vector;
+- compile-context digest;
+- source-snapshot identity;
+- optional unsaved source bytes.
+
+The response supplies either:
+
+- one =semantic-structural-index.v1= parser packet for the requested
+  translation unit; or
+- a typed parser error with diagnostics.
+
+The ABI transfers owned byte buffers with an explicit library-provided free
+function.  Rust validates the returned packet before import.  Native pointers,
+=std::string=, =std::vector=, exceptions, and allocator ownership never cross
+the boundary.
+
+* Compatibility executable
+
+The =ccls-asp= executable links the same parser library and is retained for:
+
+- provider release conformance;
+- fixture generation;
+- exact parser debugging;
+- compatibility with installed provider manifests during migration.
+
+Its workspace-oriented commands are adapters only.  New production
+optimization must target the linked-library path.  The compatibility shell
+must not become the owner of scheduling or persistence.
+
+* Snapshot scenarios
+
+Git owns deterministic functional snapshots for:
+
+- C declarations, macros, and include dependencies;
+- C++ templates, overloads, lambdas, inheritance, overrides, and indirect
+  calls;
+- Objective-C interfaces, protocols, categories, messages, and properties;
+- the same header parsed under multiple translation units and compile contexts;
+- diagnostics and partial facts from an invalid translation unit;
+- stable semantic identities after line-only source movement;
+- Rust-to-native ABI request/response compatibility.
+
+Snapshots store normalized stable-v1 facts and counts.  They must exclude
+absolute paths, wall-clock timestamps, process ids, allocator addresses, and
+machine-specific Clang installation paths.
+
+* Performance scenarios
+
+Performance receipts are generated from the same snapshot fixtures and record:
+
+- native calls and process launches;
+- translation units parsed;
+- wall, user, and system time;
+- peak resident memory;
+- request and packet byte counts;
+- symbol, occurrence, relation, and dependency counts;
+- warm and cold repetitions.
+
+The primary regression invariant is architectural: the linked path launches no
+provider subprocess per translation unit and performs no provider-side
+workspace scan.  Timing thresholds are platform profiles, not universal
+constants.  CI compares a result only with a matching platform, build mode,
+Clang identity, fixture digest, and scenario version.
+
+* Acceptance
+
+- =ccls-asp-parser= is a separately linkable, position-independent library.
+- Rust calls a stable C ABI rather than the C++ STL symbol
+  =ccls_asp::parse_translation_units=.
+- ASP supplies an explicit translation unit and normalized compile context.
+- the native library performs no workspace discovery or Turso work;
+- the compatibility executable and linked path produce the same normalized
+  stable-v1 snapshot for the same request;
+- C, C++, Objective-C, multi-context, and invalid-source snapshots are stored
+  in Git;
+- a performance receipt demonstrates zero per-TU provider process launches on
+  the linked path;
+- existing provider conformance and structural-index v1 validation remain
+  green.

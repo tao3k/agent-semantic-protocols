@@ -14,7 +14,7 @@ use crate::protocol::{
 use crate::protocol_activation::digest::provider_manifest_digest;
 use crate::protocol_activation::protocol_activation_manifest::{
     ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy, HookActivation,
-    ProviderExecution, ProviderManifest,
+    ProviderExecution, ProviderManifest, ProviderNativeLibraryDescriptor,
 };
 use crate::provider_registry::schema_registry_provider_manifests;
 
@@ -119,6 +119,7 @@ pub struct ProviderCommandSelection {
     pub(crate) provider_id: agent_semantic_config::ProviderId,
     pub(crate) binary: String,
     pub(crate) execution: ProviderExecution,
+    pub(crate) native_library: Option<ProviderNativeLibraryDescriptor>,
     pub(crate) provider_command_prefix: Vec<String>,
 }
 
@@ -151,6 +152,11 @@ impl ProviderCommandSelection {
     #[must_use]
     pub fn execution(&self) -> &ProviderExecution {
         &self.execution
+    }
+
+    #[must_use]
+    pub fn native_library(&self) -> Option<&ProviderNativeLibraryDescriptor> {
+        self.native_library.as_ref()
     }
 
     #[must_use]
@@ -208,6 +214,7 @@ pub fn provider_command_selections(
             provider_id: manifest.provider_id.clone(),
             binary,
             execution: manifest.execution,
+            native_library: manifest.native_library.clone(),
             provider_command_prefix: command_prefix,
         });
     }
