@@ -252,7 +252,14 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     if let Some(request) =
         super::language_projection_import::LanguageProjectionImportRequest::parse(&provider_args)?
     {
-        if request.try_import_native(language_id, &project_root, &activation_root, provider)? {
+        if request.try_import_native(
+            language_id,
+            &project_root,
+            &activation_root,
+            &activation_path,
+            &runtime,
+            provider,
+        )? {
             return Ok(());
         }
         let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
@@ -272,7 +279,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         if !output.status.success() {
             return Err(request.provider_failure(output.status.code(), output.stderr.as_ref()));
         }
-        return request.import_output(language_id, &project_root, output.stdout.as_ref());
+        return request.import_output(language_id, &project_root, output.stdout.as_ref(), 1);
     }
     if is_search_dependency_seed(&provider_args) {
         if !provider.search_capabilities.dependency_topology {

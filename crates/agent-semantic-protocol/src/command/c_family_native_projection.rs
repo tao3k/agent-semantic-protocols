@@ -27,13 +27,32 @@ pub(crate) struct NativeProjectionRequest<'a> {
     pub(crate) free_symbol: &'a str,
 }
 
+pub(crate) struct NativeProjectionOutput {
+    pub(crate) language_projection: Vec<u8>,
+    pub(crate) structural_index_packet: Vec<u8>,
+    pub(crate) generation: agent_semantic_client_core::ClientCacheGeneration,
+    pub(crate) source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+}
+
+#[cfg(unix)]
+pub(crate) fn native_library_available(activation_root: &Path, artifact_stem: &str) -> bool {
+    installed_library_path(activation_root, artifact_stem).is_file()
+}
+
+#[cfg(not(unix))]
+pub(crate) fn native_library_available(_activation_root: &Path, _artifact_stem: &str) -> bool {
+    false
+}
+
 /// Parse one caller-selected translation unit and shape parser facts for the
-/// existing ASP-owned projection import. `None` means the declared
-/// external-process fallback must be used.
+/// ASP-owned projection/import path. Callers with a declared native capability
+/// must treat `None` as a hard availability error, never as permission to spawn
+/// the legacy provider process.
 #[cfg(unix)]
 pub(crate) fn try_native_projection(
     request: NativeProjectionRequest<'_>,
-) -> Result<Option<Vec<u8>>, String> {
+    source_snapshot: &agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+) -> Result<Option<NativeProjectionOutput>, String> {
     let library_path = installed_library_path(request.activation_root, request.artifact_stem);
     if !library_path.is_file() {
         return Ok(None);
@@ -65,13 +84,22 @@ pub(crate) fn try_native_projection(
             result.errors.join("; ")
         ));
     }
-    native_projection_json(request, result).map(Some)
+    let language_projection = native_projection_json(&request, &result)?;
+    let (generation, structural_index_packet) =
+        native_structural_index_packet(&request, &result, source_snapshot)?;
+    Ok(Some(NativeProjectionOutput {
+        language_projection,
+        structural_index_packet,
+        generation,
+        source_snapshot: source_snapshot.source_snapshot.clone(),
+    }))
 }
 
 #[cfg(not(unix))]
 pub(crate) fn try_native_projection(
     request: NativeProjectionRequest<'_>,
-) -> Result<Option<Vec<u8>>, String> {
+    source_snapshot: &agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+) -> Result<Option<NativeProjectionOutput>, String> {
     let NativeProjectionRequest {
         activation_root,
         project_root,
@@ -93,6 +121,7 @@ pub(crate) fn try_native_projection(
         abi_version,
         parse_symbol,
         free_symbol,
+        source_snapshot,
     );
     Ok(None)
 }
@@ -227,18 +256,18 @@ pub(crate) fn split_shell_words(command: &str) -> Result<Vec<String>, String> {
 
 #[cfg(unix)]
 pub(crate) fn native_projection_json(
-    request: NativeProjectionRequest<'_>,
-    result: NativeParseResult,
+    request: &NativeProjectionRequest<'_>,
+    result: &NativeParseResult,
 ) -> Result<Vec<u8>, String> {
     let owner = request.owner.to_string_lossy();
     let source_id = format!("source:{owner}");
     let owner_id = format!("owner:{owner}");
     let mut items = std::collections::BTreeMap::new();
-    for fact in result.facts {
+    for fact in &result.facts {
         if fact.location.path != owner {
             continue;
         }
-        let selector = fact.location.structural_selector;
+        let selector = &fact.location.structural_selector;
         if selector.is_empty() {
             continue;
         }
@@ -279,4 +308,171 @@ pub(crate) fn native_projection_json(
     });
     serde_json::to_vec(&packet)
         .map_err(|error| format!("failed to encode native C-family projection: {error}"))
+}
+
+#[cfg(unix)]
+fn native_structural_index_packet(
+    request: &NativeProjectionRequest<'_>,
+    result: &NativeParseResult,
+    snapshot: &agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+) -> Result<(agent_semantic_client_core::ClientCacheGeneration, Vec<u8>), String> {
+    use sha2::{Digest, Sha256};
+
+    let requested_owner = request.owner.to_string_lossy().into_owned();
+    let mut owner_paths = std::collections::BTreeSet::from([requested_owner.clone()]);
+    owner_paths.extend(result.facts.iter().map(|fact| fact.location.path.clone()));
+    owner_paths.extend(
+        result
+            .dependency_usages
+            .iter()
+            .map(|dependency| dependency.owner_path.clone()),
+    );
+    owner_paths.retain(|owner| snapshot.source_blobs.get(&owner.as_str().into()).is_some());
+    if !owner_paths.contains(&requested_owner) {
+        return Err(format!(
+            "native C-family source snapshot omitted requested owner: {requested_owner}"
+        ));
+    }
+
+    let file_hashes = owner_paths
+        .iter()
+        .map(|owner| {
+            let bytes = snapshot
+                .source_blobs
+                .get(&owner.as_str().into())
+                .ok_or_else(|| format!("source snapshot omitted C-family owner: {owner}"))?;
+            Ok(agent_semantic_client_core::ClientCacheFileHash {
+                path: owner.clone(),
+                sha256: format!("{:x}", Sha256::digest(bytes)),
+                byte_len: bytes.len() as u64,
+                mtime_ms: 0,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let generation_id = agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
+        &snapshot.source_snapshot,
+    );
+    let generation = agent_semantic_client_core::ClientCacheGeneration {
+        generation_id: generation_id.clone(),
+        language_id: request.language_id.into(),
+        provider_id: request.provider_id.into(),
+        provider_version: None,
+        export_method: Some("native-library".to_string()),
+        project_root: request.project_root.display().to_string(),
+        package_root: None,
+        schema_ids: vec!["agent.semantic-protocols.semantic-structural-index".into()],
+        cache_status: agent_semantic_client_core::CacheStatus::WarmProvider,
+        raw_source_stored: false,
+        request_fingerprint: result
+            .compile_contexts
+            .first()
+            .map(|context| context.digest.clone()),
+        file_hashes: Some(file_hashes.clone()),
+        artifact_ids: None,
+    };
+
+    let owners = owner_paths
+        .iter()
+        .map(|owner| {
+            serde_json::json!({
+                "ownerPath": owner,
+                "ownerKind": if owner == &requested_owner {
+                    "translation-unit"
+                } else {
+                    "included-source"
+                },
+                "sourceAuthority": "ccls-asp-native",
+                "queryKeys": [owner],
+            })
+        })
+        .collect::<Vec<_>>();
+    let symbols = result
+        .facts
+        .iter()
+        .filter(|fact| owner_paths.contains(&fact.location.path))
+        .map(|fact| {
+            serde_json::json!({
+                "ownerPath": fact.location.path,
+                "name": fact.name,
+                "qualifiedName": fact.qualified_name,
+                "kind": fact.kind,
+                "visibility": fact.visibility,
+                "symbolId": fact.symbol_id,
+                "semanticVariantId": fact.semantic_variant_id,
+                "translationUnit": fact.translation_unit,
+                "compileContextDigest": fact.compile_context_digest,
+                "structuralSelector": fact.location.structural_selector,
+                "sourceLocator": format!(
+                    "{}:{}:{}",
+                    fact.location.path,
+                    fact.location.start_line,
+                    fact.location.end_line
+                ),
+                "queryKeys": [
+                    fact.name,
+                    fact.qualified_name,
+                    fact.symbol_id,
+                    fact.semantic_variant_id,
+                ],
+            })
+        })
+        .collect::<Vec<_>>();
+    let dependency_usages = result
+        .dependency_usages
+        .iter()
+        .filter(|dependency| owner_paths.contains(&dependency.owner_path))
+        .map(|dependency| {
+            let package_name = if dependency.package_name.is_empty() {
+                dependency
+                    .import_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("unknown")
+            } else {
+                dependency.package_name.as_str()
+            };
+            serde_json::json!({
+                "ownerPath": dependency.owner_path,
+                "translationUnit": dependency.translation_unit,
+                "compileContextDigest": dependency.compile_context_digest,
+                "semanticVariantId": dependency.semantic_variant_id,
+                "packageName": package_name,
+                "importPath": dependency.import_path,
+                "source": "clang-preprocessor",
+                "sourceLocator": dependency.source_locator,
+                "queryKeys": dependency.query_keys,
+            })
+        })
+        .collect::<Vec<_>>();
+    let compile_contexts = result
+        .compile_contexts
+        .iter()
+        .map(|context| {
+            serde_json::json!({
+                "translationUnit": context.translation_unit,
+                "digest": context.digest,
+            })
+        })
+        .collect::<Vec<_>>();
+    let packet = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-structural-index",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.semantic-language",
+        "protocolVersion": "1",
+        "generationId": generation_id.as_str(),
+        "languageId": request.language_id,
+        "providerId": request.provider_id,
+        "exportMethod": "native-library",
+        "projectRoot": request.project_root,
+        "rawSourceStored": false,
+        "fileHashes": file_hashes,
+        "owners": owners,
+        "symbols": symbols,
+        "dependencyUsages": dependency_usages,
+        "compileContexts": compile_contexts,
+        "translationUnits": result.translation_units,
+    });
+    let bytes = serde_json::to_vec(&packet)
+        .map_err(|error| format!("failed to encode native structural-index v1 packet: {error}"))?;
+    Ok((generation, bytes))
 }

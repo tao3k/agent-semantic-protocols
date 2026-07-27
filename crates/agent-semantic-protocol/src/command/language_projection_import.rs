@@ -10,18 +10,43 @@ pub(super) struct LanguageProjectionImportRequest {
 }
 
 impl LanguageProjectionImportRequest {
-    /// Prefer the manifest-declared native parser for a single caller-owned TU.
-    /// Returning `false` authorizes the declared external-process fallback.
+    /// Use the manifest-declared native parser for one caller-owned TU.
+    /// Once a provider declares a native library, every native failure is
+    /// fail-closed; returning `false` is reserved for providers that do not
+    /// declare this capability.
     pub(super) fn try_import_native(
         &self,
         language_id: &str,
         project_root: &Path,
         activation_root: &Path,
+        activation_path: &Path,
+        runtime: &agent_semantic_hook::HookRuntime,
         provider: &agent_semantic_hook::ActivatedProvider,
     ) -> Result<bool, String> {
         let Some(descriptor) = provider.native_library.as_ref() else {
             return Ok(false);
         };
+        if !super::c_family_native_projection::native_library_available(
+            activation_root,
+            descriptor.artifact_stem(),
+        ) {
+            return Err(format!(
+                "activated native parser library is unavailable: provider={} artifact={}; external-process fallback is disabled",
+                provider.provider_id,
+                descriptor.artifact_stem()
+            ));
+        }
+        let source_snapshot =
+            agent_semantic_client::source_index::current_source_index_snapshot_for_owner_from_activation(
+                (
+                    project_root,
+                    activation_path,
+                    runtime,
+                    self.owner.to_string_lossy().into_owned().into(),
+                    language_id.into(),
+                    provider.provider_id.as_str().into(),
+                ),
+            )?;
         let request = super::c_family_native_projection::NativeProjectionRequest {
             activation_root,
             project_root,
@@ -33,11 +58,27 @@ impl LanguageProjectionImportRequest {
             parse_symbol: descriptor.parse_translation_unit_symbol(),
             free_symbol: descriptor.free_result_symbol(),
         };
-        let Some(output) = super::c_family_native_projection::try_native_projection(request)?
-        else {
-            return Ok(false);
-        };
-        self.import_output(language_id, project_root, &output)?;
+        let output =
+            super::c_family_native_projection::try_native_projection(request, &source_snapshot)?
+                .ok_or_else(|| {
+                    format!(
+                        "native parser produced no translation-unit output: provider={} owner={}; external-process fallback is disabled",
+                        provider.provider_id,
+                        self.owner.display()
+                    )
+                })?;
+        self.import_output(language_id, project_root, &output.language_projection, 0)?;
+        let db_engine = agent_semantic_client_db::ClientDbEngine::resolve(project_root)?;
+        agent_semantic_client_db::ClientDbEngine::import_semantic_structural_index_refresh_packet_from_client_dir(
+            db_engine.client_dir(),
+            &output.generation,
+            &output.structural_index_packet,
+            &output.source_snapshot,
+        )?;
+        println!(
+            "[structural-index-import] language={language_id} owner={} schemaVersion=1 parserProcessCount=0",
+            self.owner.display()
+        );
         Ok(true)
     }
 }
@@ -95,6 +136,7 @@ impl LanguageProjectionImportRequest {
         language_id: &str,
         project_root: &Path,
         stdout: &[u8],
+        parser_process_count: u8,
     ) -> Result<(), String> {
         let stdout = std::str::from_utf8(stdout)
             .map_err(|error| format!("projection import emitted non-UTF-8 JSON: {error}"))?;
@@ -122,7 +164,7 @@ impl LanguageProjectionImportRequest {
             "imported"
         };
         println!(
-            "[projection-import] language={language_id} owner={owner} status={status} parserProcessCount=1 nodeLocatorCount={}",
+            "[projection-import] language={language_id} owner={owner} status={status} parserProcessCount={parser_process_count} nodeLocatorCount={}",
             report.node_locator_count()
         );
         Ok(())

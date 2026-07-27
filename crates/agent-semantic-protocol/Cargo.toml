@@ -48,3 +48,7 @@ rust-lang-project-harness = { workspace = true }
 toml.workspace = true
 insta.workspace = true
 asp-rust-project-harness-policy = { path = "../../build-support/asp-rust-project-harness-policy" }
+
+[[test]]
+name = "c_family_native_projection"
+path = "tests/integration/c_family_native_projection.rs"
