@@ -64,3 +64,67 @@ fn wrapped_cargo_test_arguments_cannot_match_raw_search_rules() {
         "resident testing dispatch missing from config"
     );
 }
+
+#[test]
+fn wrapper_match_enable_accepts_arbitrary_wrapper_names() {
+    let testing_case = match_config::rule_prefixes()
+        .into_iter()
+        .find(|case| {
+            case.rule_id == "resident-testing-dispatch"
+                && case.argv_prefix == ["cargo".to_string(), "test".to_string()]
+        })
+        .expect("cargo test dispatch rule");
+
+    for command in [
+        "direnv exec . cargo test -p agent-semantic-hook --lib runtime_profiles_for_",
+        "organization-local-wrapper --profile ci cargo test -p agent-semantic-hook --lib runtime_profiles_for_",
+        "future-wrapper alpha beta gamma cargo test -p agent-semantic-hook --lib runtime_profiles_for_",
+    ] {
+        assert_eq!(
+            match_config::outcome(&testing_case, command),
+            match_config::outcome(&testing_case, "cargo test"),
+            "{command}"
+        );
+    }
+}
+
+#[test]
+fn wrapped_command_match_stays_within_git_snapshot_budget() {
+    let scenario = toml::from_str::<toml::Value>(include_str!(
+        "../../../agent-semantic-hook/tests/fixtures/scenarios/generic_wrapper_testing_resident_dispatch/scenario.toml"
+    ))
+    .expect("hook match scenario snapshot");
+    let commands = scenario["commands"].as_array().expect("scenario commands");
+    let max_matcher_micros = scenario["performance"]["maxMatcherMicros"]
+        .as_integer()
+        .expect("max matcher micros") as u128;
+    let testing_case = match_config::rule_prefixes()
+        .into_iter()
+        .find(|case| {
+            case.rule_id == "resident-testing-dispatch"
+                && case.argv_prefix == ["cargo".to_string(), "test".to_string()]
+        })
+        .expect("cargo test dispatch rule");
+
+    let iterations = 512u128;
+    let started = std::time::Instant::now();
+    for _ in 0..iterations {
+        for command in commands {
+            assert!(matches!(
+                match_config::outcome(&testing_case, command.as_str().expect("scenario command")),
+                agent_semantic_command_match::BashCommandMatchV1::Parsed(
+                    agent_semantic_command_match::PrefixMatch::Matched
+                )
+            ));
+        }
+    }
+    let average_micros = started.elapsed().as_micros() / (iterations * commands.len() as u128);
+    eprintln!(
+        "[wrapper-match-benchmark] samples={} averageMicros={average_micros} budgetMicros={max_matcher_micros}",
+        iterations * commands.len() as u128
+    );
+    assert!(
+        average_micros <= max_matcher_micros,
+        "average matcher latency {average_micros}us exceeded {max_matcher_micros}us"
+    );
+}

@@ -51,12 +51,10 @@ pub(super) fn rank_live_source_index_candidates(
                 selector_haystack.push(' ');
                 selector_haystack.push_str(query_key.as_str());
             }
-            if selector_proof.is_none()
-                && let Some(payload_proof) = selector.payload_proof.as_ref()
-            {
+            if selector_proof.is_none() {
                 selector_symbol = selector.symbol.clone();
                 selector_kind = selector.kind.clone();
-                selector_proof = Some(payload_proof.clone());
+                selector_proof = Some(selector.materialization_proof.clone());
             }
         }
 

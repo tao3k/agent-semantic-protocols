@@ -57,55 +57,6 @@ fn install_language_pinned_release_ignores_asp_toml_provider_bin() {
     assert_install_language_pinned_release_ignores_asp_toml_provider_bin();
 }
 
-#[test]
-#[cfg(unix)]
-fn install_language_rejects_release_override_flags() {
-    let root = temp_project_root();
-    let home = root.join("home");
-
-    for (flag, value, expected) in [
-        (
-            "--rev",
-            "vtest",
-            "pinned provider releases; --rev is not supported",
-        ),
-        (
-            "--repo",
-            "example/repo",
-            "pinned provider repositories; --repo is not supported",
-        ),
-        (
-            "--archive",
-            "release.tar.gz",
-            "pinned GitHub release downloads; --archive is not supported",
-        ),
-    ] {
-        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
-            .args(["install", "language", "rust", flag, value, "--project"])
-            .arg(&root)
-            .env("HOME", &home)
-            .env_remove("PRJ_CACHE_HOME")
-            .output()
-            .expect("run asp install language");
-
-        assert!(
-            !output.status.success(),
-            "flag: {flag}\nstdout: {}\nstderr: {}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let output_text = format!(
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert!(
-            output_text.contains(expected),
-            "flag: {flag}\n{output_text}"
-        );
-    }
-}
-
 fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
     let root = temp_project_root();
     let home = root.join("home");

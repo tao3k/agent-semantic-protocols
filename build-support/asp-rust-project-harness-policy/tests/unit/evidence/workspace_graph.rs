@@ -54,7 +54,10 @@ fn default_workspace_receipt_uses_central_member_policy_registry() {
 
     let receipt = build_asp_workspace_evidence_graph_receipt(PathBuf::from("/tmp/asp"), &graph);
 
-    assert_eq!(receipt.summary.member_crate_count, 6);
+    assert_eq!(
+        receipt.summary.member_crate_count,
+        asp_rust_project_harness_policy::asp_workspace_member_policies().len()
+    );
     assert!(
         receipt
             .members

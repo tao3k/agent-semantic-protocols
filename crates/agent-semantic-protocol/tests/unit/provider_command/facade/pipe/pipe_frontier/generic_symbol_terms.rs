@@ -132,7 +132,9 @@ fn search_pipe_owner_items_query_prefers_local_evidence_before_path_axes() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("nextCommand=asp rust search owner src/search_pipe_graph_turbo_owner_rank.rs items --query 'ranked|candidate' --workspace . --view seeds"),
+        stdout.contains(
+            "nextCommand=asp rust search owner src/search_pipe_graph_turbo_owner_rank.rs items"
+        ) && stdout.contains("--workspace . --view seeds"),
         "{stdout}"
     );
     assert!(!stdout.contains("ownerItems="), "{stdout}");

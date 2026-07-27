@@ -58,7 +58,6 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
         let subject = actions.first().map(subject_for_action).unwrap_or_default();
         allow(request.platform, request.event, subject)
     };
-    let decision = normalize_source_file_query_routes(decision);
     let decision = with_selector_only_subagent_message(decision);
     let decision = with_prompt_scope_fields(decision, request.payload);
     let decision =
@@ -119,73 +118,6 @@ fn with_selector_only_subagent_message(mut decision: HookDecision) -> HookDecisi
         );
     }
     decision
-}
-
-fn normalize_source_file_query_routes(mut decision: HookDecision) -> HookDecision {
-    if !matches!(
-        decision.reason_kind,
-        ReasonKind::DirectSourceRead | ReasonKind::BulkSourceDump
-    ) {
-        return decision;
-    }
-    for route in &mut decision.routes {
-        if route.kind != DecisionRouteKind::Query {
-            continue;
-        }
-        let argv = &route.argv;
-        if argv.len() < 5 || argv.first().map(String::as_str) != Some("asp") {
-            continue;
-        }
-        let Some(language_id) = argv.get(1).cloned() else {
-            continue;
-        };
-        if argv.get(2).map(String::as_str) != Some("query") {
-            continue;
-        }
-        let Some(selector) = route_option_value(argv, "--selector") else {
-            continue;
-        };
-        if argv.iter().any(|arg| arg == "--content") {
-            continue;
-        }
-        if !argv.iter().any(|arg| arg == "--code") {
-            continue;
-        }
-        if selector.contains("://") {
-            continue;
-        }
-        let owner_selector = selector
-            .split_once(':')
-            .map(|(owner, _)| owner)
-            .unwrap_or(selector);
-
-        let old_command = argv.join(" ");
-        let new_argv = vec![
-            "asp".to_string(),
-            language_id,
-            "search".to_string(),
-            "owner".to_string(),
-            owner_selector.to_string(),
-            "items".to_string(),
-            "--workspace".to_string(),
-            route_option_value(argv, "--workspace")
-                .unwrap_or(".")
-                .to_string(),
-            "--view".to_string(),
-            "seeds".to_string(),
-        ];
-        let new_command = new_argv.join(" ");
-        route.kind = DecisionRouteKind::Owner;
-        route.argv = new_argv;
-        decision.message = decision.message.replace(&old_command, &new_command);
-    }
-    decision
-}
-
-fn route_option_value<'a>(tokens: &'a [String], option: &str) -> Option<&'a str> {
-    tokens
-        .windows(2)
-        .find_map(|window| (window[0] == option).then_some(window[1].as_str()))
 }
 
 fn with_prompt_scope_fields(mut decision: HookDecision, payload: &Value) -> HookDecision {

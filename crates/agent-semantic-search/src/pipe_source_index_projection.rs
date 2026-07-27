@@ -70,19 +70,22 @@ fn source_index_candidate_confidence(
     if !project_root.join(candidate.path.as_str()).is_file() {
         return "stale-index";
     }
-    if source_index_candidate_has_payload_proof(candidate) {
+    if source_index_candidate_has_materialization_proof(candidate) {
         return "selector-ready";
     }
     "inventory-only"
 }
 
-fn source_index_candidate_has_payload_proof(candidate: &SearchPipeSourceIndexCandidate) -> bool {
+fn source_index_candidate_has_materialization_proof(
+    candidate: &SearchPipeSourceIndexCandidate,
+) -> bool {
     let Some(proof) = candidate.selector_proof.as_ref() else {
         return false;
     };
-    if !proof.bounded
-        || proof.payload_kind != "code".into()
+    if proof.projection_mode != agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code
         || proof.structural_selector.trim().is_empty()
+        || agent_semantic_content_identity::ExactSelectorGenerationRecordV1::try_from(proof)
+            .is_err()
     {
         return false;
     }
@@ -138,12 +141,11 @@ fn source_index_candidate_text(candidate: &SearchPipeSourceIndexCandidate) -> St
     let proof = candidate
         .selector_proof
         .as_ref()
-        .map(|proof| {
-            if proof.bounded {
-                proof.payload_kind.as_str()
-            } else {
-                "unbounded"
-            }
+        .map(|proof| match proof.projection_mode {
+            agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code => "code",
+            agent_semantic_content_identity::ExactSelectorProjectionModeV1::Names => "names",
+            agent_semantic_content_identity::ExactSelectorProjectionModeV1::Verbatim => "verbatim",
+            agent_semantic_content_identity::ExactSelectorProjectionModeV1::Skeleton => "skeleton",
         })
         .unwrap_or("none");
     let keys = candidate

@@ -27,3 +27,82 @@ fn wrapper_source_access_rule_routes_to_provider_query_when_supported() {
         );
     }
 }
+
+#[test]
+fn generic_wrapper_testing_resident_dispatch_matches_git_snapshot() {
+    let scenario = toml::from_str::<toml::Value>(include_str!(
+        "../../../../fixtures/scenarios/generic_wrapper_testing_resident_dispatch/scenario.toml"
+    ))
+    .expect("hook match scenario snapshot");
+    let scenario_schema = serde_json::from_str::<serde_json::Value>(include_str!(
+        "../../../../../../../schemas/semantic-hook-match-scenario.v1.schema.json"
+    ))
+    .expect("hook match scenario schema");
+    let scenario_json = serde_json::to_value(&scenario).expect("scenario JSON projection");
+    assert!(
+        jsonschema::validator_for(&scenario_schema)
+            .expect("hook match scenario validator")
+            .is_valid(&scenario_json),
+        "{scenario_json}"
+    );
+    let expected = &scenario["expected"];
+    for command in scenario["commands"]
+        .as_array()
+        .expect("scenario commands")
+        .iter()
+        .map(|command| command.as_str().expect("scenario command"))
+    {
+        let decision = classify_hook(
+            &crate::classifier::registry_without_providers(),
+            "codex",
+            "pre-tool",
+            &json!({ "tool_name": "functions.exec_command", "tool_input": { "cmd": command } }),
+        );
+
+        assert_eq!(decision.decision, DecisionKind::Deny, "{command}");
+        assert_eq!(
+            decision.reason_kind,
+            ReasonKind::SubagentReceiptRequired,
+            "{command}"
+        );
+        assert_eq!(
+            decision
+                .fields
+                .get("configRuleId")
+                .and_then(serde_json::Value::as_str),
+            expected["ruleId"].as_str(),
+            "{command}"
+        );
+        assert_eq!(
+            decision
+                .fields
+                .get("residentName")
+                .and_then(serde_json::Value::as_str),
+            expected["residentName"].as_str(),
+            "{command}"
+        );
+        assert_eq!(
+            decision
+                .fields
+                .get("receiptKind")
+                .and_then(serde_json::Value::as_str),
+            expected["receiptKind"].as_str(),
+            "{command}"
+        );
+        let loop_command = decision
+            .configured_resident_interactive_command_line()
+            .expect("configured resident interactive command");
+        assert!(
+            loop_command.starts_with(
+                expected["loopCommandPrefix"]
+                    .as_str()
+                    .expect("loop command prefix")
+            ),
+            "{command}: {loop_command}"
+        );
+        assert!(
+            loop_command.contains(command),
+            "interactive loop lost exact denied command: {loop_command}"
+        );
+    }
+}

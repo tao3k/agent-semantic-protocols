@@ -159,6 +159,7 @@ dependencies = [
 name = "agent-semantic-content-identity"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "blake3",
  "serde",
  "serde_json",
@@ -225,6 +226,7 @@ dependencies = [
  "globset",
  "ignore",
  "insta",
+ "jsonschema",
  "libc",
  "orgize",
  "proc-macro2",
@@ -247,6 +249,7 @@ dependencies = [
  "bstr",
  "bytes",
  "criterion",
+ "fs2",
  "futures-util",
  "libc",
  "memchr",
@@ -306,12 +309,15 @@ dependencies = [
  "bytes",
  "globset",
  "ignore",
+ "jsonschema",
  "orgize",
  "rust-lang-project-harness 0.1.2",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "toml 0.9.12+spec-1.1.0",
  "turso",
  "which 8.0.4",
 ]

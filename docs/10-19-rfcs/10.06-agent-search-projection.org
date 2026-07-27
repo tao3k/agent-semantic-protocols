@@ -2958,10 +2958,11 @@ Completed:
   boundary.
 - [X] =asp <language> search pipe <query> --surface <classes> --view seeds
   <root>= selects prompt-facing graph projection classes before the graph-turbo
-  request is ranked.  Supported classes are =owner=, =items=, =tests=, and
-  =deps=, with the default =owner,items,tests=.  This option is a surface
-  selector, not a pipeline expression: it chooses which owner/item/test/
-  dependency fact channels enter the schema-owned request and compact
+  request is ranked.  =<classes>= is one comma-separated list.  Supported
+  classes are =owner=, =items=, =tests=, =deps=, and =topology=, with the
+  default =owner,items,tests,topology=.  This option is a surface selector, not
+  a pipeline expression: it chooses which owner/item/test/dependency/
+  project-topology fact channels enter the schema-owned request and compact
   projection.  It must not emit runnable branch commands beyond the primary
   selector projection, and it must not reintroduce pipeline DSL syntax into
   agent-facing output.

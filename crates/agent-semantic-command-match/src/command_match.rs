@@ -55,6 +55,40 @@ pub fn command_stages_match_prefix(stages: &[CommandStageV1], prefix: &[String])
     command_stages_match_prefix_impl(stages, prefix)
 }
 
+/// Match a configured command prefix at any bounded argv position in a parsed stage.
+///
+/// This is the generic wrapper mode: the outer executable remains parser-visible,
+/// while a protected inner command may begin at a later argv position.
+pub fn command_stages_match_wrapped_prefix(
+    stages: &[CommandStageV1],
+    prefix: &[String],
+) -> PrefixMatch {
+    if prefix.is_empty() {
+        return PrefixMatch::Matched;
+    }
+    let mut inspected_candidates = 0usize;
+    for stage in stages {
+        let words = stage.words();
+        if words.len() > MAX_STAGE_TOKENS {
+            return PrefixMatch::BudgetExceeded;
+        }
+        if words.len() < prefix.len() {
+            continue;
+        }
+        if inspected_candidates == MAX_COMMAND_CANDIDATES {
+            return PrefixMatch::BudgetExceeded;
+        }
+        inspected_candidates += 1;
+        if words
+            .windows(prefix.len())
+            .any(|candidate| candidate_matches_prefix(candidate, prefix))
+        {
+            return PrefixMatch::Matched;
+        }
+    }
+    PrefixMatch::NotMatched
+}
+
 fn command_stages_match_prefix_impl(stages: &[CommandStageV1], prefix: &[String]) -> PrefixMatch {
     if prefix.is_empty() {
         return PrefixMatch::Matched;
@@ -95,16 +129,122 @@ pub fn candidate_matches_prefix(candidate: &[String], prefix: &[String]) -> bool
 
 /// Parse a Bash command into bounded normalized command candidates.
 pub fn parse_bash_command_candidates(command: &str) -> Result<Vec<CommandStageV1>, String> {
-    parse_bash_command_candidates_impl(command)
+    parse_bash_command_candidates_with_nested_scripts(command, 0)
+}
+
+fn parse_bash_command_candidates_with_nested_scripts(
+    command: &str,
+    depth: usize,
+) -> Result<Vec<CommandStageV1>, String> {
+    let candidates = if let Some(words) = simple_command_words(command) {
+        vec![CommandStageV1 { words }]
+    } else {
+        parse_bash_command_candidates_impl(command)?
+    };
+    if depth >= 4 {
+        return Ok(candidates);
+    }
+    let scripts = candidates
+        .iter()
+        .flat_map(|candidate| command_script_arguments(candidate.words()))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if scripts.is_empty() {
+        return Ok(candidates);
+    }
+    let mut nested_stages = Vec::new();
+    for script in scripts {
+        let Ok(nested_candidates) =
+            parse_bash_command_candidates_with_nested_scripts(script.as_str(), depth + 1)
+        else {
+            continue;
+        };
+        for nested in nested_candidates {
+            if nested_stages.len() >= MAX_COMMAND_CANDIDATES
+                || nested_stages.iter().any(|candidate| candidate == &nested)
+            {
+                continue;
+            }
+            nested_stages.push(nested);
+        }
+    }
+    if nested_stages.is_empty() {
+        Ok(candidates)
+    } else {
+        Ok(nested_stages)
+    }
+}
+
+fn simple_command_words(command: &str) -> Option<Vec<String>> {
+    if command.is_empty()
+        || command.chars().any(|character| {
+            matches!(
+                character,
+                '\\' | ';' | '&' | '|' | '(' | ')' | '$' | '<' | '>' | '\n' | '\r'
+            )
+        })
+    {
+        return None;
+    }
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut quote = None;
+    for character in command.chars() {
+        match quote {
+            Some(delimiter) if character == delimiter => quote = None,
+            Some(_) => word.push(character),
+            None if matches!(character, '\'' | '"') => quote = Some(character),
+            None if character.is_ascii_whitespace() => {
+                if !word.is_empty() {
+                    words.push(std::mem::take(&mut word));
+                }
+            }
+            None => word.push(character),
+        }
+    }
+    if quote.is_some() {
+        return None;
+    }
+    if !word.is_empty() {
+        words.push(word);
+    }
+    (!words.is_empty() && words.len() <= MAX_STAGE_TOKENS).then_some(words)
+}
+
+fn command_script_arguments(words: &[String]) -> Vec<&str> {
+    let mut scripts = Vec::new();
+    for (index, word) in words.iter().enumerate() {
+        if matches!(word.as_str(), "bash" | "sh" | "zsh") {
+            if let Some(script) = words[index + 1..]
+                .windows(2)
+                .find_map(|pair| shell_command_flag(pair[0].as_str()).then_some(pair[1].as_str()))
+            {
+                scripts.push(script);
+            }
+        }
+        if word == "rtk" && words.get(index + 1).is_some_and(|next| next == "run") {
+            if let Some(script) = words[index + 2..].windows(2).find_map(|pair| {
+                (pair[0] == "-c" || pair[0] == "--command").then_some(pair[1].as_str())
+            }) {
+                scripts.push(script);
+            }
+        }
+    }
+    scripts
+}
+
+fn shell_command_flag(argument: &str) -> bool {
+    argument
+        .strip_prefix('-')
+        .is_some_and(|flags| flags.contains('c'))
 }
 
 fn parse_bash_command_candidates_impl(command: &str) -> Result<Vec<CommandStageV1>, String> {
     let tokens = bash_parser::bash_ast_tokens(command)
         .ok_or_else(|| "bash-tree-sitter-parse-failed".to_string())?;
-    let raw_stages = bash_parser::split_command_stages(tokens);
-    let mut pending = std::collections::VecDeque::from(raw_stages);
     let mut candidates = Vec::new();
-    while let Some(words) = pending.pop_front() {
+    let mut executable_candidates = 0usize;
+    for words in bash_parser::split_command_stages(tokens) {
         if words.is_empty() {
             continue;
         }
@@ -116,13 +256,13 @@ fn parse_bash_command_candidates_impl(command: &str) -> Result<Vec<CommandStageV
         {
             continue;
         }
-        let normalized = bash_parser::unwrap_command_stage(&words)?;
-        candidates.push(CommandStageV1 { words });
-        for stage in normalized {
-            if !stage.is_empty() {
-                pending.push_back(stage);
+        if !is_separator_stage {
+            if executable_candidates > MAX_COMMAND_CANDIDATES {
+                break;
             }
+            executable_candidates += 1;
         }
+        candidates.push(CommandStageV1 { words });
     }
     (!candidates.is_empty())
         .then_some(candidates)
@@ -145,6 +285,22 @@ pub fn match_bash_command_prefix(command: &str, prefix: &[&str]) -> BashCommandM
                 .map(|token| (*token).to_string())
                 .collect::<Vec<_>>();
             BashCommandMatchV1::Parsed(command_stages_match_prefix(&stages, &prefix))
+        }
+        Err(_) => BashCommandMatchV1::InvalidSyntax {
+            reason: "bash-tree-sitter-parse-failed",
+        },
+    }
+}
+
+/// Parse and match a Bash command with generic wrapper-prefix discovery enabled.
+pub fn match_bash_wrapped_command_prefix(command: &str, prefix: &[&str]) -> BashCommandMatchV1 {
+    match parse_bash_command_candidates(command) {
+        Ok(stages) => {
+            let prefix = prefix
+                .iter()
+                .map(|token| (*token).to_string())
+                .collect::<Vec<_>>();
+            BashCommandMatchV1::Parsed(command_stages_match_wrapped_prefix(&stages, &prefix))
         }
         Err(_) => BashCommandMatchV1::InvalidSyntax {
             reason: "bash-tree-sitter-parse-failed",

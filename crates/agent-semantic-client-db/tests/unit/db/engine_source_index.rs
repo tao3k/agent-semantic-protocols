@@ -663,7 +663,7 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_lock_errors() {
+async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lock_errors() {
     let client_dir = temp_root("db-engine-source-index-pressure-client");
     let project_root = temp_root("db-engine-source-index-pressure-project");
     let rust_language_id = LanguageId::from("rust");
@@ -703,7 +703,6 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
     let shared_client_dir = Arc::new(client_dir.clone());
     let shared_project_root = Arc::new(project_root.clone());
     let completed_lookup_count = Arc::new(AtomicUsize::new(0));
-    let busy_lookup_count = Arc::new(AtomicUsize::new(0));
 
     let writer_client_dir = Arc::clone(&shared_client_dir);
     let writer_project_root = Arc::clone(&shared_project_root);
@@ -758,7 +757,6 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
             let rust_language_id = rust_language_id.clone();
             let source_snapshot = initial_source_snapshot.clone();
             let completed_lookup_count = Arc::clone(&completed_lookup_count);
-            let busy_lookup_count = Arc::clone(&busy_lookup_count);
             std::thread::spawn(move || -> Result<(), String> {
                 let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
@@ -777,12 +775,13 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
                     match lookup.state {
                         ClientDbSourceIndexLookupState::Hit
                         | ClientDbSourceIndexLookupState::Miss
-                        | ClientDbSourceIndexLookupState::Busy
                         | ClientDbSourceIndexLookupState::ColdRequired => {
                             completed_lookup_count.fetch_add(1, Ordering::Relaxed);
-                            if lookup.state == ClientDbSourceIndexLookupState::Busy {
-                                busy_lookup_count.fetch_add(1, Ordering::Relaxed);
-                            }
+                        }
+                        ClientDbSourceIndexLookupState::Busy => {
+                            return Err(format!(
+                                "pressure lookup exposed writer contention: {lookup:?}"
+                            ));
                         }
                         ClientDbSourceIndexLookupState::MissingDb
                         | ClientDbSourceIndexLookupState::EmptyIndex => {
@@ -812,32 +811,17 @@ async fn db_engine_source_index_refresh_lookup_pressure_returns_busy_instead_of_
         completed_lookup_count.load(Ordering::Relaxed) >= 8,
         "pressure test should complete concurrent lookup attempts"
     );
-    let final_lookup_deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
     let final_source_snapshot = crate::snapshot_fixture::source_snapshot_evidence_for(7);
-    let final_lookup = loop {
-        let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-            &client_dir,
-            &final_source_snapshot,
-            "source_index_pressure_fixture",
-            Some(&rust_language_id),
-            8,
-        )
-        .await
-        .expect("final pressure lookup should not fail");
-        if lookup.state != ClientDbSourceIndexLookupState::Busy {
-            break lookup;
-        }
-        assert!(
-            std::time::Instant::now() < final_lookup_deadline,
-            "final pressure lookup remained busy past the test deadline"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    };
+    let final_lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
+        &client_dir,
+        &final_source_snapshot,
+        "source_index_pressure_fixture",
+        Some(&rust_language_id),
+        8,
+    )
+    .await
+    .expect("final pressure lookup should complete once without retry");
     assert_eq!(final_lookup.state, ClientDbSourceIndexLookupState::Hit);
-    assert!(
-        busy_lookup_count.load(Ordering::Relaxed) <= completed_lookup_count.load(Ordering::Relaxed),
-        "busy count must be bounded by completed lookups"
-    );
 
     let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);

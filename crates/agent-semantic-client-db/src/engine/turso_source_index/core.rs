@@ -116,7 +116,9 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
     Ok(())
 }
 
-async fn ensure_turso_source_index_schema(connection: &turso::Connection) -> Result<bool, String> {
+pub(super) async fn ensure_turso_source_index_schema(
+    connection: &turso::Connection,
+) -> Result<bool, String> {
     match validate_turso_source_index_schema(connection).await {
         Ok(()) => Ok(false),
         Err(error) if error.contains("no such table") || error.contains("no such column") => {
@@ -243,7 +245,7 @@ pub async fn refresh_turso_source_index_import(
     source_index_db_trace("operation-lock-acquired", trace_started);
     crate::engine::turso_bootstrap::bootstrap_turso_source_index_db(db_path).await?;
     source_index_db_trace("base-bootstrap-complete", trace_started);
-    let connection = connect_turso_client_db(db_path).await?;
+    let mut connection = connect_turso_client_db(db_path).await?;
     source_index_db_trace("write-connection-open", trace_started);
     let source_index_schema_rebuilt = ensure_turso_source_index_schema(&connection).await?;
     source_index_db_trace(
@@ -272,7 +274,7 @@ pub async fn refresh_turso_source_index_import(
     }
     source_index_db_trace("reuse-probe-missed", trace_started);
     let write_stats = write_turso_source_index_rows(
-        &connection,
+        &mut connection,
         &import,
         &membership_change_set,
         &project_root,
@@ -372,74 +374,38 @@ pub async fn latest_turso_source_index_scope_files(
     schema_id: &SemanticSchemaId,
     schema_version: &SemanticSchemaVersion,
 ) -> Result<Option<Vec<ClientDbSourceIndexScopeFile>>, String> {
-    let Some((generation_id, _, _, _, _)) =
-        latest_turso_source_index_generation(db_path, project_root, schema_id, schema_version)
-            .await?
+    let Some(snapshot) = super::generation_snapshot::latest_turso_source_index_generation_snapshot(
+        db_path,
+        project_root,
+        schema_id,
+        schema_version,
+    )
+    .await?
     else {
         return Ok(None);
     };
-    let connection = connect_turso_client_db(db_path).await?;
-    ensure_turso_source_index_schema(&connection).await?;
-    let normalized_project_root = normalized_project_root(project_root);
-    let mut rows = run_turso_operation(
-        || async {
-            connection
-                .query(
-                    "SELECT owner_path, language_id, provider_id
-                     FROM asp_source_index_owner_v1
-                     WHERE project_root = ?1
-                       AND schema_id = ?2
-                       AND schema_version = ?3
-                       AND generation_id = ?4
-                     ORDER BY owner_path",
-                    (
-                        normalized_project_root.as_str(),
-                        schema_id.as_str(),
-                        schema_version.as_str(),
-                        generation_id.as_str(),
-                    ),
-                )
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to query Turso source-index scope files",
-    )
-    .await?;
-    let mut files = Vec::new();
-    while let Some(row) = rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to read Turso source-index scope file: {error}"))?
-    {
-        let Some(language_id) = row
-            .get::<Option<String>>(1)
-            .map_err(|error| format!("failed to read Turso source-index language id: {error}"))?
-        else {
-            continue;
-        };
-        let Some(provider_id) = row
-            .get::<Option<String>>(2)
-            .map_err(|error| format!("failed to read Turso source-index provider id: {error}"))?
-        else {
-            continue;
-        };
-        let owner_path =
-            PathBuf::from(row.get::<String>(0).map_err(|error| {
-                format!("failed to read Turso source-index owner path: {error}")
-            })?);
-        let path = if owner_path.is_absolute() {
-            owner_path
-        } else {
-            project_root.join(owner_path)
-        };
-        files.push(ClientDbSourceIndexScopeFile {
-            path,
-            language_id: LanguageId::from(language_id),
-            provider_id: ProviderId::from(provider_id),
-            selector_receipts: Vec::new(),
-        });
-    }
-    Ok(Some(files))
+    Ok(Some(
+        snapshot
+            .owners
+            .into_iter()
+            .filter_map(|owner| {
+                let language_id = owner.language_id?;
+                let provider_id = owner.provider_id?;
+                let owner_path = PathBuf::from(owner.owner_path);
+                let path = if owner_path.is_absolute() {
+                    owner_path
+                } else {
+                    project_root.join(owner_path)
+                };
+                Some(ClientDbSourceIndexScopeFile {
+                    path,
+                    language_id: LanguageId::from(language_id),
+                    provider_id: ProviderId::from(provider_id),
+                    selector_receipts: Vec::new(),
+                })
+            })
+            .collect(),
+    ))
 }
 
 pub async fn lookup_reusable_turso_source_index_generation(
@@ -526,54 +492,13 @@ async fn latest_turso_source_index_generation(
     let project_root = normalized_project_root(project_root);
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
-    let mut rows = run_turso_operation(
-        || async {
-            connection
-                .query(
-                    "SELECT generation_id, file_hashes_json, source_snapshot_json, owner_count, selector_count
-                     FROM asp_source_index_scope_v1
-WHERE project_root = ?1
-  AND schema_id = ?2
-  AND schema_version = ?3
-  AND source_snapshot_json <> ''
-ORDER BY updated_at_ms DESC, generation_id DESC
-LIMIT 1",
-                    (
-                        project_root.as_str(),
-                        schema_id.as_str(),
-                        schema_version.as_str(),
-                    ),
-                )
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to query latest Turso source-index generation",
+    super::generation_snapshot::latest_turso_source_index_generation_on_connection(
+        &connection,
+        project_root.as_str(),
+        schema_id.as_str(),
+        schema_version.as_str(),
     )
-    .await?;
-    let Some(row) = rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to read latest Turso source-index generation: {error}"))?
-    else {
-        return Ok(None);
-    };
-    Ok(Some((
-        row.get::<String>(0)
-            .map_err(|error| format!("failed to read Turso source-index generation id: {error}"))?,
-        row.get::<String>(1)
-            .map_err(|error| format!("failed to read Turso source-index file hashes: {error}"))?,
-        row.get::<String>(2).map_err(|error| {
-            format!("failed to read Turso source-index source snapshot evidence: {error}")
-        })?,
-        row.get::<i64>(3)
-            .map_err(|error| format!("failed to read Turso source-index owner count: {error}"))?
-            .max(0)
-            .min(i64::from(u32::MAX)) as u32,
-        row.get::<i64>(4)
-            .map_err(|error| format!("failed to read Turso source-index selector count: {error}"))?
-            .max(0)
-            .min(i64::from(u32::MAX)) as u32,
-    )))
+    .await
 }
 
 pub(super) fn turso_source_index_selector_fingerprint(
@@ -599,22 +524,26 @@ pub(super) fn turso_source_index_selector_fingerprint(
             &mut hasher,
             selector.kind.as_ref().map_or("", |value| value.as_str()),
         );
-        hasher.update(selector.start_line.to_be_bytes());
-        hasher.update(selector.end_line.to_be_bytes());
         update_text(&mut hasher, selector.source.as_str());
         hasher.update((selector.query_keys.len() as u64).to_be_bytes());
         for query_key in &selector.query_keys {
             update_text(&mut hasher, query_key.as_str());
         }
-        match &selector.payload_proof {
-            Some(proof) => {
-                hasher.update([1]);
-                update_text(&mut hasher, proof.structural_selector.as_str());
-                update_text(&mut hasher, proof.payload_kind.as_str());
-                hasher.update([u8::from(proof.bounded)]);
-            }
-            None => hasher.update([0]),
-        }
+        let proof = &selector.materialization_proof;
+        update_text(&mut hasher, &proof.language_id);
+        update_text(&mut hasher, &proof.provider_id);
+        update_text(&mut hasher, &proof.structural_selector);
+        update_text(&mut hasher, &proof.owner_path);
+        hasher.update(proof.parser_identity_digest);
+        hasher.update(proof.query_pack_digest);
+        hasher.update(proof.workspace_root_digest);
+        hasher.update(proof.owner_subtree_digest);
+        hasher.update(proof.source_blob_digest);
+        hasher.update(proof.normalized_parser_facts_digest);
+        hasher.update(proof.source_byte_start.to_be_bytes());
+        hasher.update(proof.source_byte_end.to_be_bytes());
+        hasher.update([proof.projection_mode as u8]);
+        hasher.update(proof.projection_digest);
     }
     Ok(format!("{:x}", hasher.finalize()))
 }

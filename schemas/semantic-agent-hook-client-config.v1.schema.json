@@ -18,6 +18,18 @@
     "protocolVersion": {
       "const": "1"
     },
+    "wrapper_match": {
+      "const": "enable"
+    },
+    "agents": {
+      "$ref": "#/$defs/agents"
+    },
+    "commandProfiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/commandProfile"
+      }
+    },
     "agentOrgArtifacts": {
       "$ref": "#/$defs/agentOrgArtifacts"
     },
@@ -46,6 +58,135 @@
     "identifier": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placeholders", "residentAgents"],
+      "properties": {
+        "placeholders": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "residentAgents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/residentAgent"
+          }
+        }
+      }
+    },
+    "residentAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "role", "codexAgentName"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "role": {
+          "$ref": "#/$defs/identifier"
+        },
+        "roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "permissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "codexAgentName": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sessionLifetime": {
+          "enum": ["temporary", "resident"]
+        }
+      }
+    },
+    "commandProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "languageIds", "categories"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "languageIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "categories": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "commandProfileRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "category"],
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/identifier"
+        },
+        "category": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "dispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transport", "agent", "receiptKind"],
+      "properties": {
+        "transport": {
+          "const": "resident-agent"
+        },
+        "agent": {
+          "$ref": "#/$defs/identifier"
+        },
+        "receiptKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lazyProvider": {
+          "enum": ["matched-language"]
+        }
+      }
     },
     "event": {
       "enum": [
@@ -244,6 +385,13 @@
         "priority": {
           "type": "integer"
         },
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dispatch": {
+          "$ref": "#/$defs/dispatch"
+        },
         "fields": {
           "type": "object",
           "additionalProperties": {
@@ -324,6 +472,24 @@
           "items": {
             "type": "string",
             "minLength": 1
+          }
+        },
+        "commandProfileAny": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/commandProfileRef"
+          }
+        },
+        "argvPrefixAny": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "commandContainsAny": {

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::Deserialize;
 
 fn default_enabled() -> bool {
@@ -12,6 +14,8 @@ fn default_session_lifetime() -> String {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientAgentsConfig {
+    #[serde(default)]
+    pub placeholders: BTreeMap<String, String>,
     #[serde(default)]
     pub resident_agents: Vec<HookClientResidentAgentConfig>,
 }

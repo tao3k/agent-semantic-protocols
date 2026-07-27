@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use super::agent_runtime::HookClientResidentAgentConfig;
+use super::agent_runtime::{HookClientAgentsConfig, HookClientResidentAgentConfig};
 use super::document::{
     CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
     HOOK_PROTOCOL_VERSION, HookClientAgentOrgArtifactsArchiveWarningConfig,
@@ -10,6 +10,7 @@ use super::document::{
     HookClientRecoveryPromptConfig,
 };
 use super::routing::{HookClientRuleConfig, HookClientRuleMatchConfig, HookClientRuleRouteConfig};
+use super::{HookClientCommandProfileConfig, expand_command_profile_prefixes};
 
 pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), String> {
     validate_protocol(config)?;
@@ -22,35 +23,44 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     validate_agent_session_guide(&config.agent_session_guide)?;
     validate_agent_session_messages(&config.agent_session_messages)?;
     validate_resident_agents(&config.agents.resident_agents)?;
-    validate_rule_dispatches(&config.rules, &config.agents.resident_agents)?;
+    validate_agent_placeholders(&config.agents)?;
+    validate_command_profiles(&config.command_profiles)?;
+    validate_rule_dispatches(&config.rules, &config.agents)?;
     validate_unique_rule_ids(&config.rules)?;
-    validate_rule_schema_shape(&config.rules)
+    validate_rule_schema_shape(&config.rules, &config.command_profiles)
 }
 
 fn validate_rule_dispatches(
     rules: &[HookClientRuleConfig],
-    resident_agents: &[HookClientResidentAgentConfig],
+    agents: &HookClientAgentsConfig,
 ) -> Result<(), String> {
     for rule in rules.iter().filter(|rule| rule.enabled) {
         let Some(dispatch) = rule.dispatch.as_ref() else {
             continue;
         };
         let prefix = format!("rules[{}].dispatch", rule.id);
-        validate_non_empty(
-            &format!("{prefix}.residentName"),
-            dispatch.resident_name.as_str(),
-        )?;
+        validate_identifier(&format!("{prefix}.agent"), dispatch.agent.as_str())?;
+        let resident_name = agents
+            .placeholders
+            .get(dispatch.agent.as_str())
+            .ok_or_else(|| {
+                format!(
+                    "{prefix}.agent `{}` must name an agents.placeholders entry",
+                    dispatch.agent.as_str()
+                )
+            })?;
         validate_non_empty(
             &format!("{prefix}.receiptKind"),
             dispatch.receipt_kind.as_str(),
         )?;
-        if !resident_agents
+        if !agents
+            .resident_agents
             .iter()
-            .any(|agent| agent.enabled && agent.name == dispatch.resident_name.as_str())
+            .any(|agent| agent.enabled && agent.name == *resident_name)
         {
             return Err(format!(
-                "{prefix}.residentName `{}` must name an enabled agents.residentAgents entry",
-                dispatch.resident_name.as_str()
+                "{prefix}.agent `{}` resolves to unavailable resident `{resident_name}`",
+                dispatch.agent.as_str()
             ));
         }
     }
@@ -115,7 +125,14 @@ fn reject_legacy_flat_subagent_receipt_message(
 }
 
 fn validate_resident_agents(configs: &[HookClientResidentAgentConfig]) -> Result<(), String> {
+    let mut names = HashSet::new();
     for config in configs {
+        if !names.insert(config.name.as_str()) {
+            return Err(format!(
+                "duplicate agents.residentAgents name `{}`",
+                config.name
+            ));
+        }
         validate_resident_agent(config)?;
     }
     Ok(())
@@ -124,7 +141,12 @@ fn validate_resident_agents(configs: &[HookClientResidentAgentConfig]) -> Result
 fn validate_resident_agent(config: &HookClientResidentAgentConfig) -> Result<(), String> {
     validate_optional_non_empty("agents.residentAgents[].name", Some(config.name.as_str()))?;
     validate_optional_non_empty("agents.residentAgents[].role", Some(config.role.as_str()))?;
-    if !config.codex_agent_name.is_empty() {
+    if config.enabled {
+        validate_non_empty(
+            "agents.residentAgents[].codexAgentName",
+            &config.codex_agent_name,
+        )?;
+    } else if !config.codex_agent_name.is_empty() {
         validate_optional_non_empty(
             "agents.residentAgents[].codexAgentName",
             Some(config.codex_agent_name.as_str()),
@@ -139,6 +161,58 @@ fn validate_resident_agent(config: &HookClientResidentAgentConfig) -> Result<(),
     validate_unique_values("agents.residentAgents[].permissions[]", &config.permissions)?;
     for permission in &config.permissions {
         validate_session_permission("agents.residentAgents[].permissions[]", permission)?;
+    }
+    Ok(())
+}
+
+fn validate_agent_placeholders(config: &HookClientAgentsConfig) -> Result<(), String> {
+    for (placeholder, resident_name) in &config.placeholders {
+        validate_identifier("agents.placeholders key", placeholder)?;
+        validate_non_empty("agents.placeholders value", resident_name)?;
+        if !config
+            .resident_agents
+            .iter()
+            .any(|agent| agent.name == *resident_name)
+        {
+            return Err(format!(
+                "agents.placeholders.{placeholder} references missing resident `{resident_name}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_command_profiles(configs: &[HookClientCommandProfileConfig]) -> Result<(), String> {
+    let mut ids = HashSet::new();
+    for config in configs {
+        validate_identifier("commandProfiles[].id", &config.id)?;
+        if !ids.insert(config.id.as_str()) {
+            return Err(format!("duplicate command profile id `{}`", config.id));
+        }
+        if config.language_ids.is_empty() {
+            return Err(format!(
+                "commandProfiles[{}].languageIds must not be empty",
+                config.id
+            ));
+        }
+        validate_unique_values("commandProfiles[].languageIds", &config.language_ids)?;
+        validate_identifiers("commandProfiles[].languageIds[]", &config.language_ids)?;
+        if config.categories.is_empty() {
+            return Err(format!(
+                "commandProfiles[{}].categories must not be empty",
+                config.id
+            ));
+        }
+        for (category, prefixes) in &config.categories {
+            validate_identifier("commandProfiles[].categories key", category)?;
+            if prefixes.is_empty() {
+                return Err(format!(
+                    "commandProfiles[{}].categories.{category} must not be empty",
+                    config.id
+                ));
+            }
+            validate_argv_prefix_patterns("commandProfiles[].categories argv prefixes", prefixes)?;
+        }
     }
     Ok(())
 }
@@ -177,7 +251,10 @@ fn validate_unique_rule_ids(rules: &[HookClientRuleConfig]) -> Result<(), String
     Ok(())
 }
 
-fn validate_rule_schema_shape(rules: &[HookClientRuleConfig]) -> Result<(), String> {
+fn validate_rule_schema_shape(
+    rules: &[HookClientRuleConfig],
+    profiles: &[HookClientCommandProfileConfig],
+) -> Result<(), String> {
     for rule in rules {
         validate_identifier("rules[].id", &rule.id)?;
         validate_optional_non_empty("rules[].message", rule.message.as_deref())?;
@@ -185,7 +262,7 @@ fn validate_rule_schema_shape(rules: &[HookClientRuleConfig]) -> Result<(), Stri
         validate_optional_platform(rule.platform.as_deref())?;
         validate_unique_values("rules[].languageIds", &rule.language_ids)?;
         validate_identifiers("rules[].languageIds[]", &rule.language_ids)?;
-        validate_match_schema_shape(&rule.match_config)?;
+        validate_match_schema_shape(&rule.match_config, profiles)?;
         if rule.decision_materializer.is_some() && !rule.routes.is_empty() {
             return Err(format!(
                 "hook rule `{}` cannot combine decisionMaterializer with static routes",
@@ -199,7 +276,28 @@ fn validate_rule_schema_shape(rules: &[HookClientRuleConfig]) -> Result<(), Stri
     Ok(())
 }
 
-fn validate_match_schema_shape(match_config: &HookClientRuleMatchConfig) -> Result<(), String> {
+fn validate_match_schema_shape(
+    match_config: &HookClientRuleMatchConfig,
+    profiles: &[HookClientCommandProfileConfig],
+) -> Result<(), String> {
+    let mut profile_references = HashSet::new();
+    for reference in &match_config.command_profile_any {
+        validate_identifier(
+            "rules[].match.commandProfileAny[].profile",
+            &reference.profile,
+        )?;
+        validate_identifier(
+            "rules[].match.commandProfileAny[].category",
+            &reference.category,
+        )?;
+        if !profile_references.insert((reference.profile.as_str(), reference.category.as_str())) {
+            return Err(format!(
+                "duplicate command profile reference `{}:{}`",
+                reference.profile, reference.category
+            ));
+        }
+    }
+    expand_command_profile_prefixes(&match_config.command_profile_any, profiles)?;
     validate_optional_non_empty("rules[].match.tool", match_config.tool.as_deref())?;
     validate_non_empty_values("rules[].match.toolAny[]", &match_config.tool_any)?;
     validate_non_empty_values("rules[].match.commandAny[]", &match_config.command_any)?;

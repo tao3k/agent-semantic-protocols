@@ -234,6 +234,22 @@ pub(super) fn graph_turbo_request(
             surfaces: &surfaces,
         },
     );
+    let edge_integrity = retain_graph_edges_with_known_nodes(&nodes, &mut edges);
+    let mut graph_source_trace = graph_turbo_source_trace(source_trace);
+    if edge_integrity.rejected > 0
+        && let Value::Array(entries) = &mut graph_source_trace
+    {
+        entries.push(json!({
+            "source": "graph-edge-integrity",
+            "status": "filtered",
+            "matched": edge_integrity.kept,
+            "missing": edge_integrity.rejected,
+            "normalized": edge_integrity.input,
+            "fields": {
+                "rejectionKinds": edge_integrity.rejection_kinds,
+            },
+        }));
+    }
 
     let route = (surface == "search-lexical")
         .then(|| {
@@ -261,7 +277,7 @@ pub(super) fn graph_turbo_request(
         "source": source,
         "sourceSnapshot": source_snapshot,
         "candidateSources": candidate_sources,
-        "sourceTrace": graph_turbo_source_trace(source_trace),
+        "sourceTrace": graph_source_trace,
         "seedIds": seed_ids,
         "seedPlan": seed_plan,
         "budget": 10,
@@ -445,6 +461,52 @@ fn sparse_graph_candidates(candidates: &[Candidate], _query: Option<&str>) -> Ve
     .into_iter()
     .filter_map(|index| candidates.get(index).cloned())
     .collect()
+}
+
+struct GraphEdgeIntegrity {
+    input: usize,
+    kept: usize,
+    rejected: usize,
+    rejection_kinds: Vec<&'static str>,
+}
+
+fn retain_graph_edges_with_known_nodes(
+    nodes: &[Value],
+    edges: &mut Vec<Value>,
+) -> GraphEdgeIntegrity {
+    let node_ids = nodes
+        .iter()
+        .filter_map(|node| node.get("id").and_then(Value::as_str))
+        .collect::<std::collections::BTreeSet<_>>();
+    let input = edges.len();
+    let mut missing_source = false;
+    let mut missing_target = false;
+    edges.retain(|edge| {
+        let source_known = edge
+            .get("source")
+            .and_then(Value::as_str)
+            .is_some_and(|source| node_ids.contains(source));
+        let target_known = edge
+            .get("target")
+            .and_then(Value::as_str)
+            .is_some_and(|target| node_ids.contains(target));
+        missing_source |= !source_known;
+        missing_target |= !target_known;
+        source_known && target_known
+    });
+    let mut rejection_kinds = Vec::new();
+    if missing_source {
+        rejection_kinds.push("missing-source");
+    }
+    if missing_target {
+        rejection_kinds.push("missing-target");
+    }
+    GraphEdgeIntegrity {
+        input,
+        kept: edges.len(),
+        rejected: input.saturating_sub(edges.len()),
+        rejection_kinds,
+    }
 }
 
 fn graph_turbo_source_trace(source_trace: &[SearchPipeSourceTrace]) -> Value {

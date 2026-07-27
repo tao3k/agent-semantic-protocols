@@ -40,7 +40,7 @@
       "minLength": 1
     },
     "canonicalItemSelector": {
-      "$ref": "canonical-item-selector.v1.schema.json"
+      "$ref": "https://agent-semantic-protocols.dev/schemas/canonical-item-selector.v1.schema.json"
     },
     "parserIdentityDigest": {
       "$ref": "#/$defs/digest"

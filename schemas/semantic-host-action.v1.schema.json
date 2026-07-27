@@ -50,7 +50,7 @@
     "invocations": {
       "type": "array",
       "items": {
-        "$ref": "semantic-command-invocation.v1.schema.json"
+        "$ref": "https://agent-semantic-protocols.dev/schemas/semantic-command-invocation.v1.schema.json"
       }
     }
   },

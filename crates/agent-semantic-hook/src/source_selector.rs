@@ -51,10 +51,6 @@ fn is_path_operand(registry: &HookRuntime, value: &str) -> bool {
         return true;
     }
 
-    if value.contains(['/', '\\']) {
-        return true;
-    }
-
     let leaf = value.rsplit(['/', '\\']).next().unwrap_or(value);
     let Some((stem, suffix)) = leaf.rsplit_once('.') else {
         return false;
@@ -91,8 +87,38 @@ fn infer_agent_action_subject_kind(
         return AgentActionSubjectKind::Other;
     }
 
-    let registered =
-        !collect_source_selector_matches(registry, std::iter::once(value), |_| true).is_empty();
+    let registered = if suffix
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+    {
+        let extension = format!(".{suffix}");
+        let normalized = normalize_source_selector(value);
+        registry.providers.iter().any(|provider| {
+            let extension_matches = provider
+                .source_extensions
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(&extension));
+            let ignored = provider.ignored_path_prefixes.iter().any(|prefix| {
+                normalized == prefix
+                    || normalized
+                        .strip_prefix(prefix)
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+            });
+            let root_matches = !normalized.contains('/')
+                || provider.source_roots.is_empty()
+                || provider.source_roots.iter().any(|root| {
+                    root == "."
+                        || normalized == root
+                        || normalized
+                            .strip_prefix(root)
+                            .is_some_and(|suffix| suffix.starts_with('/'))
+                        || contains_path_component_sequence(&normalized, root)
+                });
+            extension_matches && !ignored && root_matches
+        })
+    } else {
+        !collect_source_selector_matches(registry, std::iter::once(value), |_| true).is_empty()
+    };
     if !registered {
         return AgentActionSubjectKind::Other;
     }
@@ -101,6 +127,14 @@ fn infer_agent_action_subject_kind(
     } else {
         AgentActionSubjectKind::RegisteredLanguageSource
     }
+}
+
+fn contains_path_component_sequence(path: &str, sequence: &str) -> bool {
+    path.match_indices(sequence).any(|(start, matched)| {
+        let end = start + matched.len();
+        (start == 0 || path.as_bytes().get(start.wrapping_sub(1)) == Some(&b'/'))
+            && (end == path.len() || path.as_bytes().get(end) == Some(&b'/'))
+    })
 }
 
 pub(crate) fn collect_source_selector_matches<'provider, I, S, F>(

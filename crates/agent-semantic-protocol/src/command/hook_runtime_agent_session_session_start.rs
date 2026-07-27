@@ -244,7 +244,14 @@ pub(super) fn classify_session_start_bootstrap(
     });
     let codex_native_managed_subagent_start = codex_native_event.as_ref().is_some_and(|native| {
         native.kind == crate::codex::native_agent_transport::CodexNativeSubagentEventKind::Start
-            && native.agent_type == asp_session_policy.resident_agent_role()
+            && (native.agent_type == asp_session_policy.resident_agent_role()
+                || codex_native_rollout_metadata.as_ref().is_some_and(|metadata| {
+                    crate::command::agent_session_registry::rollout_metadata_matches_managed_agent_profile(
+                        asp_session_policy.resident_child_name(),
+                        asp_session_policy.resident_agent_role(),
+                        metadata,
+                    )
+                }))
     });
     if codex_native_managed_subagent_start && let Some(native) = codex_native_event.as_ref() {
         let root_session_id = native_root_session_id

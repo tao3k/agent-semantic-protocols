@@ -1,6 +1,6 @@
 use super::{
     codex_enforcement_report, codex_project_plugin_hooks_present, display_path,
-    ensure_supported_client, flag_value, project_root_arg, protocol_binary_on_path,
+    ensure_supported_client, flag_value, project_root_arg,
 };
 use agent_semantic_hook::{
     DecisionKind, HOOK_PROTOCOL_ID, HookClassificationRequest, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END,
@@ -62,7 +62,8 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         project_plugin_hook,
         global_plugin_hook,
     );
-    let hook_binary_path = protocol_binary_on_path();
+    let hook_binary_probe = crate::command::protocol_binary::protocol_binary_path_probe();
+    let hook_binary_path = hook_binary_probe.path.clone();
     let active_contract_fingerprint = hook_binary_path.as_ref().and_then(|path| {
         let output = std::process::Command::new(path)
             .arg("--contract-fingerprint")
@@ -84,11 +85,11 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     let hook_shell_binary_status = match (
         hook_binary_path
             .as_ref()
-            .and_then(|path| crate::command::protocol_binary_artifact_digest(path)),
+            .and_then(|path| crate::command::protocol_binary_artifact_path_digest(path)),
         hook_shell_probe
             .path
             .as_ref()
-            .and_then(|path| crate::command::protocol_binary_artifact_digest(path)),
+            .and_then(|path| crate::command::protocol_binary_artifact_path_digest(path)),
     ) {
         (Some(active), Some(host)) if active == host => "match",
         (Some(_), Some(_)) => "mismatch",
@@ -100,6 +101,13 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         .as_ref()
         .map(|path| path.display().to_string())
         .unwrap_or_else(|| "missing".to_string());
+    let asp_path_status = match hook_shell_binary_status {
+        "match" => "current",
+        "mismatch" => "stale",
+        "missing" => "missing",
+        _ => "unavailable",
+    };
+    let asp_path = hook_shell_binary_path.clone();
     let hook_shell = hook_shell_probe.shell.display().to_string();
     let event_state_path = agent_semantic_runtime::project_state_paths(&project_root)?
         .hook_state_dir
@@ -133,7 +141,8 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         };
     let event_state_path = event_state_path.display().to_string();
     let hook_binary = hook_binary_path.is_some();
-    let hook_binary_path = hook_binary_path
+    let hook_binary_path = hook_binary_probe
+        .candidate
         .as_ref()
         .map(|path| path.display().to_string())
         .unwrap_or_else(|| "missing".to_string());
@@ -251,6 +260,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         .unwrap_or("not-applicable");
     let doctor_status = if config_contract_status != "match"
         || binary_contract_status != "match"
+        || hook_binary_probe.status != "found"
         || (client == "codex" && root_hook && hook_shell_binary_status != "match")
         || (client == "codex"
             && root_hook
@@ -267,7 +277,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         "not-applicable"
     };
     println!(
-        "[agent-doctor] status={doctor_status} client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} configContractStatus={} configuredContractFingerprint={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} binaryContractStatus={} binaryContractFingerprint={} activeContractFingerprint={} hookShell={} hookShellMode=non-login hookShellBinaryStatus={} hookShellBinaryPath={} eventState={} eventStatePath={} eventStateBytes={} eventStateAgeMs={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} backgroundThreadHook={} protocol={}",
+        "[agent-doctor] status={doctor_status} client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} configContractStatus={} configuredContractFingerprint={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} binaryPathStatus={} binaryContractStatus={} binaryContractFingerprint={} activeContractFingerprint={} aspPathStatus={} aspPath={} hookShell={} hookShellMode=non-login hookShellBinaryStatus={} hookShellBinaryPath={} eventState={} eventStatePath={} eventStateBytes={} eventStateAgeMs={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} backgroundThreadHook={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
         config_path.is_file(),
@@ -286,11 +296,14 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         trust_config,
         hook_binary,
         hook_binary_path,
+        hook_binary_probe.status,
         binary_contract_status,
         binary_contract_fingerprint,
         active_contract_fingerprint
             .as_deref()
             .unwrap_or("unavailable"),
+        asp_path_status,
+        asp_path,
         hook_shell,
         hook_shell_binary_status,
         hook_shell_binary_path,
@@ -399,10 +412,12 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--strict-contract")
         && (config_contract_status != "match"
             || binary_contract_status != "match"
+            || hook_binary_probe.status != "found"
             || (client == "codex" && root_hook && hook_shell_binary_status != "match"))
     {
         return Err(format!(
-            "hook contract freshness gate failed: config={config_contract_status} activeBinary={binary_contract_status} hookShellBinary={hook_shell_binary_status}"
+            "hook contract freshness gate failed: config={config_contract_status} activeBinary={binary_contract_status} binaryPath={} aspPath={asp_path_status} hookShellBinary={hook_shell_binary_status}",
+            hook_binary_probe.status,
         ));
     }
     Ok(())

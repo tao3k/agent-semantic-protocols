@@ -52,7 +52,7 @@ fn search_pipe_graph_turbo_request_accepts_python_provider_semantic_facts() {
         .iter()
         .find(|entry| entry["source"] == "providerFacts")
         .expect("providerFacts source trace");
-    assert_eq!(provider_trace["state"], "used");
+    assert_eq!(provider_trace["status"], "used");
     assert_eq!(
         provider_trace["fields"]["descriptorId"],
         "python.semantic-facts"

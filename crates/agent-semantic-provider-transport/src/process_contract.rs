@@ -181,6 +181,8 @@ impl ProviderProcessLimits {
 pub struct ProviderProcessReceipt {
     /// Elapsed wall-clock duration.
     elapsed: Duration,
+    /// Time spent waiting for a host-global provider execution slot.
+    admission_wait: Duration,
     /// Provider exit status code when the process exited normally.
     status_code: Option<i32>,
     /// Whether the provider exit status was successful.
@@ -308,10 +310,17 @@ impl ProviderProcessReceipt {
     pub const fn elapsed(&self) -> Duration {
         self.elapsed
     }
+
+    /// Return the time spent waiting for provider-process admission.
+    #[must_use]
+    pub const fn admission_wait(&self) -> Duration {
+        self.admission_wait
+    }
 }
 
 pub(crate) struct ProviderProcessReceiptInput {
     pub(crate) elapsed: Duration,
+    pub(crate) admission_wait: Duration,
     pub(crate) status_code: Option<i32>,
     pub(crate) status_success: bool,
     pub(crate) stdout_bytes: usize,
@@ -333,6 +342,7 @@ impl ProviderProcessReceipt {
     pub(crate) fn from_input(input: ProviderProcessReceiptInput) -> Self {
         Self {
             elapsed: input.elapsed,
+            admission_wait: input.admission_wait,
             status_code: input.status_code,
             status_success: input.status_success,
             stdout_bytes: input.stdout_bytes,

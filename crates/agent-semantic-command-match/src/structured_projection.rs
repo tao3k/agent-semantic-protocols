@@ -14,7 +14,10 @@ pub enum BoundedPathSegmentV1 {
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Classification of a structured-filter command.
 pub enum StructuredFilterClassificationV1 {
-    BoundedPath { segments: Vec<BoundedPathSegmentV1> },
+    BoundedPath {
+        segments: Vec<BoundedPathSegmentV1>,
+        source_operands: Vec<String>,
+    },
     Identity,
     RecursiveDescent,
     ArrayIteration,
@@ -98,11 +101,22 @@ fn classify_bounded_path_stage(
         break word;
     };
 
-    let remaining_operands = words.filter(|word| word.as_str() != "--").count();
-    if remaining_operands != 1 {
+    let source_operands = words
+        .filter(|word| word.as_str() != "--")
+        .cloned()
+        .collect::<Vec<_>>();
+    if source_operands.len() != 1 {
         return StructuredFilterClassificationV1::Compound;
     }
-    classify_bounded_path_filter(filter)
+    match classify_bounded_path_filter(filter) {
+        StructuredFilterClassificationV1::BoundedPath { segments, .. } => {
+            StructuredFilterClassificationV1::BoundedPath {
+                segments,
+                source_operands,
+            }
+        }
+        classification => classification,
+    }
 }
 
 /// Classify a structured-filter expression without executing it.
@@ -195,7 +209,10 @@ pub fn classify_bounded_path_filter(filter: &str) -> StructuredFilterClassificat
     if segments.is_empty() {
         StructuredFilterClassificationV1::Identity
     } else {
-        StructuredFilterClassificationV1::BoundedPath { segments }
+        StructuredFilterClassificationV1::BoundedPath {
+            segments,
+            source_operands: Vec::new(),
+        }
     }
 }
 

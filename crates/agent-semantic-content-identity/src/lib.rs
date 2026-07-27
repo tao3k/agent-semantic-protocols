@@ -79,10 +79,17 @@ pub mod active_artifact_merkle_v1;
 #[path = "../tests/unit/canonical_item_identity.rs"]
 mod canonical_item_identity_tests;
 pub mod exact_selector_cache;
+pub mod exact_selector_generation_fixture;
+pub use exact_selector_generation_fixture::{
+    ExactSelectorGenerationRecordV1, ExactSelectorMaterializationProofErrorV1,
+    ExactSelectorMaterializationProofV1, ExactSelectorMerkleProofSideV1,
+    ExactSelectorMerkleProofStepV1, ExactSelectorProjectionModeV1,
+};
 pub mod exact_selector_merkle;
 pub mod exact_selector_projection_packet;
 #[cfg(test)]
 #[path = "../tests/unit/overlay.rs"]
 mod overlay_tests;
 pub mod workspace_merkle_v1;
+pub mod workspace_search_identity;
 extern crate self as agent_semantic_content_identity;

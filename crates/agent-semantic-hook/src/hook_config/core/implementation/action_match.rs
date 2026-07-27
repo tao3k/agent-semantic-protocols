@@ -1,25 +1,17 @@
-use agent_semantic_command_match::{
-    CommandFlagPresenceV1, CommandInvocationShapeV1, CommandWrapperMatchV1, CommandWrapperSpecV1,
-    SemanticCommandInvocationV1, normalize_bash_command_invocations,
-};
+use agent_semantic_command_match::{CommandStageV1, parse_bash_command_candidates};
 use agent_semantic_config::AgentActionEffectRule;
 use agent_semantic_config::{
     AgentActionAuthorityRule, HookClientActionAuthority, HookClientActionKind,
-    HookClientActionSubjectKind, HookClientCommandWrapper, HookClientFlagPresence,
-    HookClientInvocationShape, HookClientWrapperMatch,
+    HookClientActionSubjectKind,
 };
 
 use crate::HookRuntime;
-use crate::tool_action::{AgentActionKind, ToolAction};
+use crate::tool_action::ToolAction;
 
 #[derive(Debug)]
 pub(super) struct AgentActionMatch {
     authority_rules: Vec<AgentActionAuthorityRule>,
     effect_rules: Vec<AgentActionEffectRule>,
-    command_wrappers: Vec<CommandWrapperSpecV1>,
-    invocation_shape_any: Vec<HookClientInvocationShape>,
-    wrapper_match_any: Vec<HookClientWrapperMatch>,
-    flag_presence_any: Vec<HookClientFlagPresence>,
     action_any: Vec<HookClientActionKind>,
     effect_any: Vec<HookClientActionKind>,
     subject_kind_any: Vec<HookClientActionSubjectKind>,
@@ -31,10 +23,6 @@ pub(super) struct AgentActionMatch {
 pub(super) struct AgentActionMatchConfig {
     pub(super) authority_rules: Vec<AgentActionAuthorityRule>,
     pub(super) effect_rules: Vec<AgentActionEffectRule>,
-    pub(super) command_wrappers: Vec<HookClientCommandWrapper>,
-    pub(super) invocation_shape_any: Vec<HookClientInvocationShape>,
-    pub(super) wrapper_match_any: Vec<HookClientWrapperMatch>,
-    pub(super) flag_presence_any: Vec<HookClientFlagPresence>,
     pub(super) action_any: Vec<HookClientActionKind>,
     pub(super) effect_any: Vec<HookClientActionKind>,
     pub(super) subject_kind_any: Vec<HookClientActionSubjectKind>,
@@ -47,10 +35,6 @@ impl AgentActionMatch {
         let AgentActionMatchConfig {
             authority_rules,
             effect_rules,
-            command_wrappers,
-            invocation_shape_any,
-            wrapper_match_any,
-            flag_presence_any,
             action_any,
             effect_any,
             subject_kind_any,
@@ -60,15 +44,6 @@ impl AgentActionMatch {
         Self {
             authority_rules,
             effect_rules,
-            command_wrappers: command_wrappers
-                .into_iter()
-                .map(|wrapper| CommandWrapperSpecV1 {
-                    executable: wrapper.executable,
-                })
-                .collect(),
-            invocation_shape_any,
-            wrapper_match_any,
-            flag_presence_any,
             action_any,
             effect_any,
             subject_kind_any,
@@ -87,13 +62,47 @@ impl AgentActionMatch {
         action: &ToolAction,
         match_paths: Option<&[String]>,
     ) -> bool {
-        let (agent_action, invocations) = self.derive_agent_action(
-            registry,
-            action,
-            match_paths,
-            !self.subject_kind_any.is_empty(),
-        );
-        self.matches_envelope(&agent_action, &invocations)
+        if self.authority_rules.is_empty()
+            && self.effect_rules.is_empty()
+            && self.action_any.is_empty()
+            && self.effect_any.is_empty()
+            && self.subject_kind_any.is_empty()
+            && self.authority_any.is_empty()
+            && self.authority_exclude_any.is_empty()
+        {
+            return true;
+        }
+        let agent_action = self.derive_agent_action(registry, action, match_paths, None, false);
+        if !self.matches_non_subject_envelope(&agent_action) {
+            return false;
+        }
+        if self.subject_kind_any.is_empty() {
+            return true;
+        }
+        let agent_action = self.derive_agent_action(registry, action, match_paths, None, true);
+        self.matches_envelope(&agent_action)
+    }
+
+    fn matches_non_subject_envelope(&self, agent_action: &crate::tool_action::AgentAction) -> bool {
+        (self.action_any.is_empty()
+            || self.action_any.iter().copied().any(|configured| {
+                crate::tool_action::action_kind_matches(agent_action.action, configured)
+            }))
+            && (self.effect_any.is_empty()
+                || self.effect_any.iter().copied().any(|configured| {
+                    crate::tool_action::action_kind_matches(agent_action.effect, configured)
+                }))
+            && (self.authority_any.is_empty()
+                || self.authority_any.iter().copied().any(|configured| {
+                    crate::tool_action::authority_matches(agent_action.authority, configured)
+                }))
+            && !self
+                .authority_exclude_any
+                .iter()
+                .copied()
+                .any(|configured| {
+                    crate::tool_action::authority_matches(agent_action.authority, configured)
+                })
     }
 
     pub(super) fn derive_agent_action_for_rule(
@@ -101,11 +110,15 @@ impl AgentActionMatch {
         registry: &HookRuntime,
         action: &ToolAction,
         match_paths: Option<&[String]>,
+        structured_source_operands: Option<&[String]>,
     ) -> Option<crate::tool_action::AgentAction> {
-        Some(
-            self.derive_agent_action(registry, action, match_paths, true)
-                .0,
-        )
+        Some(self.derive_agent_action(
+            registry,
+            action,
+            match_paths,
+            structured_source_operands,
+            true,
+        ))
     }
 
     pub(super) fn matching_subject_paths(
@@ -113,13 +126,19 @@ impl AgentActionMatch {
         registry: &HookRuntime,
         action: &ToolAction,
         match_paths: &[String],
+        structured_source_operands: Option<&[String]>,
     ) -> Vec<String> {
-        self.derive_agent_action(registry, action, Some(match_paths), true)
-            .0
-            .subjects
-            .into_iter()
-            .map(|subject| subject.value)
-            .collect()
+        self.derive_agent_action(
+            registry,
+            action,
+            Some(match_paths),
+            structured_source_operands,
+            true,
+        )
+        .subjects
+        .into_iter()
+        .map(|subject| subject.value)
+        .collect()
     }
 
     fn derive_agent_action(
@@ -127,40 +146,52 @@ impl AgentActionMatch {
         registry: &HookRuntime,
         action: &ToolAction,
         match_paths: Option<&[String]>,
+        structured_source_operands: Option<&[String]>,
         include_subjects: bool,
-    ) -> (
-        crate::tool_action::AgentAction,
-        Vec<SemanticCommandInvocationV1>,
-    ) {
+    ) -> crate::tool_action::AgentAction {
         let mut agent_action = action.derive_agent_action();
         if let Some(authority) = self.infer_authority(registry, action) {
             agent_action.authority = authority;
         }
-        let needs_invocations = include_subjects
-            || !self.effect_rules.is_empty()
-            || !self.invocation_shape_any.is_empty()
-            || !self.wrapper_match_any.is_empty()
-            || !self.flag_presence_any.is_empty()
-            || !self.effect_any.is_empty();
-        let invocations = if needs_invocations {
-            self.command_invocations(action)
+        let needs_command_stages =
+            include_subjects || !self.effect_rules.is_empty() || !self.effect_any.is_empty();
+        let command_stages = if needs_command_stages {
+            self.command_stages(action)
         } else {
             Vec::new()
         };
-        if let Some(effect) = self.infer_effect(&invocations, action.semantic_command_text()) {
+        if let Some(effect) = self.infer_effect(&command_stages, action.semantic_command_text()) {
             agent_action.effect = effect;
         }
         if include_subjects {
-            let invocation_operands = invocations
-                .iter()
-                .flat_map(|invocation| invocation.operands.iter().cloned())
-                .collect::<Vec<_>>();
-            let mut subject_paths = match_paths.unwrap_or_default().to_vec();
-            for operand in invocation_operands {
-                if !subject_paths.contains(&operand) {
-                    subject_paths.push(operand);
+            let mut subject_paths = if let Some(source_operands) = structured_source_operands {
+                source_operands.to_vec()
+            } else {
+                let invocation_operands = command_stages
+                    .iter()
+                    .flat_map(|stage| stage.words().iter().skip(1).cloned())
+                    .collect::<Vec<_>>();
+                let invocation_operands = crate::source_selector::project_shell_subject_paths(
+                    registry,
+                    &invocation_operands,
+                );
+                let mut subject_paths =
+                    if action.operation == crate::tool_action::OperationIntent::ShellCommand {
+                        crate::source_selector::project_shell_subject_paths(
+                            registry,
+                            match_paths.unwrap_or_default(),
+                        )
+                    } else {
+                        match_paths.unwrap_or_default().to_vec()
+                    };
+                for operand in invocation_operands {
+                    if !subject_paths.contains(&operand) {
+                        subject_paths.push(operand);
+                    }
                 }
-            }
+                subject_paths
+            };
+            subject_paths.dedup();
             agent_action.subjects =
                 crate::source_selector::derive_agent_action_subjects(registry, &subject_paths);
             if !self.subject_kind_any.is_empty() {
@@ -172,19 +203,14 @@ impl AgentActionMatch {
             }
         }
 
-        (agent_action, invocations)
+        agent_action
     }
 
-    fn matches_envelope(
-        &self,
-        agent_action: &crate::tool_action::AgentAction,
-        invocations: &[SemanticCommandInvocationV1],
-    ) -> bool {
-        self.matches_invocation_facts(agent_action.action, invocations)
-            && (self.action_any.is_empty()
-                || self.action_any.iter().copied().any(|configured| {
-                    crate::tool_action::action_kind_matches(agent_action.action, configured)
-                }))
+    fn matches_envelope(&self, agent_action: &crate::tool_action::AgentAction) -> bool {
+        (self.action_any.is_empty()
+            || self.action_any.iter().copied().any(|configured| {
+                crate::tool_action::action_kind_matches(agent_action.action, configured)
+            }))
             && (self.effect_any.is_empty()
                 || self.effect_any.iter().copied().any(|configured| {
                     crate::tool_action::action_kind_matches(agent_action.effect, configured)
@@ -208,12 +234,10 @@ impl AgentActionMatch {
                 }))
     }
 
-    fn command_invocations(&self, action: &ToolAction) -> Vec<SemanticCommandInvocationV1> {
+    fn command_stages(&self, action: &ToolAction) -> Vec<CommandStageV1> {
         action
             .semantic_command_text()
-            .and_then(|command| {
-                normalize_bash_command_invocations(command, &self.command_wrappers).ok()
-            })
+            .and_then(|command| parse_bash_command_candidates(command).ok())
             .unwrap_or_default()
     }
 
@@ -235,14 +259,14 @@ impl AgentActionMatch {
 
     fn infer_effect(
         &self,
-        invocations: &[agent_semantic_command_match::SemanticCommandInvocationV1],
+        command_stages: &[CommandStageV1],
         command: Option<&str>,
     ) -> Option<crate::tool_action::AgentActionKind> {
         self.effect_rules.iter().find_map(|rule| {
             let prefix_matches = !rule.argv_prefix.is_empty()
                 && matches!(
-                    agent_semantic_command_match::semantic_invocations_match_prefix(
-                        invocations,
+                    agent_semantic_command_match::command_stages_match_wrapped_prefix(
+                        command_stages,
                         &rule.argv_prefix,
                     ),
                     agent_semantic_command_match::PrefixMatch::Matched
@@ -256,53 +280,6 @@ impl AgentActionMatch {
             (prefix_matches || command_matches)
                 .then(|| crate::tool_action::action_kind_from_config(rule.effect))
                 .flatten()
-        })
-    }
-
-    fn matches_invocation_facts(
-        &self,
-        action_kind: AgentActionKind,
-        invocations: &[SemanticCommandInvocationV1],
-    ) -> bool {
-        let matches_fact = |shape, wrapper_match, flag_presence| {
-            (self.invocation_shape_any.is_empty() || self.invocation_shape_any.contains(&shape))
-                && (self.wrapper_match_any.is_empty()
-                    || self.wrapper_match_any.contains(&wrapper_match))
-                && (self.flag_presence_any.is_empty()
-                    || self.flag_presence_any.contains(&flag_presence))
-        };
-
-        if action_kind != AgentActionKind::Execute {
-            return matches_fact(
-                HookClientInvocationShape::HostNative,
-                HookClientWrapperMatch::Unmatched,
-                HookClientFlagPresence::Absent,
-            );
-        }
-        if invocations.is_empty() {
-            return matches_fact(
-                HookClientInvocationShape::Command,
-                HookClientWrapperMatch::Unknown,
-                HookClientFlagPresence::Absent,
-            );
-        }
-
-        invocations.iter().any(|invocation| {
-            let shape = match invocation.shape {
-                CommandInvocationShapeV1::Command => HookClientInvocationShape::Command,
-                CommandInvocationShapeV1::WrappedCommand => {
-                    HookClientInvocationShape::WrappedCommand
-                }
-            };
-            let wrapper_match = match invocation.wrapper_match {
-                CommandWrapperMatchV1::Matched => HookClientWrapperMatch::Matched,
-                CommandWrapperMatchV1::Unmatched => HookClientWrapperMatch::Unmatched,
-            };
-            let flag_presence = match invocation.flag_presence {
-                CommandFlagPresenceV1::Present => HookClientFlagPresence::Present,
-                CommandFlagPresenceV1::Absent => HookClientFlagPresence::Absent,
-            };
-            matches_fact(shape, wrapper_match, flag_presence)
         })
     }
 }

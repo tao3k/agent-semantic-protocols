@@ -1,4 +1,4 @@
-use agent_semantic_config::{HookClientActionKind, HookClientConfigFile};
+use agent_semantic_config::{HookClientActionKind, HookClientConfigFile, WrapperMatchMode};
 
 #[test]
 fn git_source_read_rule_dispatches_to_testing_resident() {
@@ -15,7 +15,7 @@ fn git_source_read_rule_dispatches_to_testing_resident() {
         .as_ref()
         .expect("git source read rule should declare a resident dispatch");
 
-    assert_eq!(dispatch.resident_name.as_str(), "asp-testing");
+    assert_eq!(dispatch.agent.as_str(), "testing");
     assert_eq!(dispatch.receipt_kind.as_str(), "asp-testing-execution-v1");
     assert!(
         rule.message
@@ -25,7 +25,7 @@ fn git_source_read_rule_dispatches_to_testing_resident() {
 }
 
 #[test]
-fn default_template_parses_typed_action_and_wrapper_match_fields() {
+fn default_template_uses_one_top_level_wrapper_match_mode() {
     let config =
         toml::from_str::<HookClientConfigFile>(include_str!("../../templates/hooks/config.toml"))
             .expect("default hook config template should parse");
@@ -35,10 +35,7 @@ fn default_template_parses_typed_action_and_wrapper_match_fields() {
         .iter()
         .find(|rule| rule.id == "deny-raw-registered-source-action")
         .expect("action-first source deny rule should exist");
-    assert_eq!(action_rule.match_config.command_wrappers.len(), 1);
-    assert_eq!(action_rule.match_config.invocation_shape_any.len(), 3);
-    assert_eq!(action_rule.match_config.wrapper_match_any.len(), 3);
-    assert_eq!(action_rule.match_config.flag_presence_any.len(), 2);
+    assert_eq!(config.wrapper_match, WrapperMatchMode::Enable);
     assert_eq!(
         action_rule.match_config.action_any,
         vec![HookClientActionKind::Execute]
@@ -58,16 +55,14 @@ fn default_template_parses_typed_action_and_wrapper_match_fields() {
 }
 
 #[test]
-fn invocation_rfc_records_bash_producer_and_hook_consumer_ownership() {
+fn wrapper_match_rfc_records_parser_owned_snapshot_contract() {
     let rfc = include_str!(
-        "../../../../docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/09-invocation-shape-and-wrapper-match.org"
+        "../../../../docs/10-19-rfcs/10.15-agent-hook-interception-protocol/10.15.40-parser-owned-wrapper-match-snapshots.org"
     );
 
-    assert!(rfc.contains("The Bash parser crate owns shell syntax"));
-    assert!(rfc.contains("The hook crate MUST consume those facts"));
-    assert!(rfc.contains("Rust matcher code MUST NOT contain wrapper names"));
-    assert!(rfc.contains("~effect=read|unknown~"));
-    assert!(rfc.contains("~effect=edit~ MUST NOT"));
+    assert!(rfc.contains("wrapper_match"));
+    assert!(rfc.contains("commandWrappers"));
+    assert!(rfc.contains("Git snapshot"));
 }
 
 #[test]

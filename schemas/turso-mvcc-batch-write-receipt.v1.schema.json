@@ -43,7 +43,7 @@
       "minimum": 0
     },
     "optimization": {
-      "$ref": "turso-mvcc-optimization-receipt.v1.schema.json"
+      "$ref": "https://agent-semantic-protocols.local/schemas/turso-mvcc-optimization-receipt.v1.schema.json"
     }
   }
 }

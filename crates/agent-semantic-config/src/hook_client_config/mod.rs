@@ -3,6 +3,7 @@
 mod agent_runtime;
 mod document;
 mod invocation;
+mod profiles;
 mod routing;
 mod validation;
 
@@ -15,20 +16,20 @@ pub use document::{
     CLIENT_HOOK_CONFIG_SCHEMA_VERSION, HookClientAgentOrgArtifactsArchiveWarningConfig,
     HookClientAgentOrgArtifactsConfig, HookClientAgentSessionGuideConfig,
     HookClientAgentSessionMessagesConfig, HookClientConfigFile, HookClientRecoveryPromptConfig,
-    default_hook_client_config_file, default_hook_client_config_template,
+    WrapperMatchMode, default_hook_client_config_file, default_hook_client_config_template,
     hook_client_contract_fingerprint, load_asp_project_config_file,
     load_hook_client_config_declared_contract_fingerprint, load_hook_client_config_file,
     load_hook_client_config_overlay_file, merge_asp_project_hook_config,
     render_hook_client_message_template,
 };
-pub use invocation::{
-    AgentActionAuthorityRule, AgentActionEffectRule, HookClientCommandWrapper,
-    HookClientFlagPresence, HookClientInvocationShape, HookClientWrapperMatch,
+pub use invocation::{AgentActionAuthorityRule, AgentActionEffectRule};
+pub use profiles::{
+    HookClientCommandProfileConfig, HookClientCommandProfileRef, expand_command_profile_prefixes,
 };
 pub use routing::{
     HookClientActionAuthority, HookClientActionKind, HookClientActionSubjectKind,
-    HookClientConfigDecision, HookClientConfigReasonKind, HookClientConfigRouteKind,
-    HookClientConfigStdinMode, HookClientDecisionMaterializer, HookClientLazyProviderPolicy,
-    HookClientRuleConfig, HookClientRuleDispatchConfig, HookClientRuleDispatchTransport,
-    HookClientRuleMatchConfig, HookClientRuleRouteConfig,
+    HookClientAgentPlaceholder, HookClientConfigDecision, HookClientConfigReasonKind,
+    HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientDecisionMaterializer,
+    HookClientLazyProviderPolicy, HookClientRuleConfig, HookClientRuleDispatchConfig,
+    HookClientRuleDispatchTransport, HookClientRuleMatchConfig, HookClientRuleRouteConfig,
 };

@@ -272,7 +272,10 @@ impl SemanticWorkspaceScope {
             .extension()
             .and_then(|extension| extension.to_str())
             .map(|extension| format!(".{extension}"));
+        let is_provider_config =
+            crate::language_file_spec(self.language_id.as_str()).is_config_path(&canonical_path);
         if !is_anchor
+            && !is_provider_config
             && !candidate_extension.as_ref().is_some_and(|extension| {
                 self.source_extensions
                     .iter()
@@ -282,7 +285,7 @@ impl SemanticWorkspaceScope {
             return Err(WorkspaceCandidateRejection {
                 reason_kind: "candidate-language-mismatch",
                 detail: format!(
-                    "candidate {} matches neither provider anchors nor sourceExtensions {}",
+                    "candidate {} matches neither provider anchors, config filenames, nor sourceExtensions {}",
                     canonical_path.display(),
                     self.source_extensions.join("|")
                 ),

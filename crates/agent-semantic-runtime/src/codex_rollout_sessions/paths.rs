@@ -73,15 +73,6 @@ fn direct_rollout_paths_for_session_id(
                 )
             })?;
             let path = entry.path();
-            let file_type = entry.file_type().map_err(|error| {
-                format!(
-                    "failed to inspect Codex session entry {}: {error}",
-                    path.display()
-                )
-            })?;
-            if !file_type.is_file() {
-                continue;
-            }
             let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
                 continue;
             };

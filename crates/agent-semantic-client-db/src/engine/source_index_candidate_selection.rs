@@ -2,10 +2,7 @@ use std::collections::BTreeSet;
 
 use agent_semantic_client_core::{LanguageId, ProviderId};
 
-use crate::{
-    ClientDbSourceIndexCandidate, ClientDbSourceIndexSelectorPayloadProof,
-    ClientDbSourceIndexSourceKind,
-};
+use crate::{ClientDbSourceIndexCandidate, ClientDbSourceIndexSourceKind};
 
 use super::source_index_candidate_types::{
     TursoSourceIndexCandidateScope, TursoSourceIndexCanonicalSelectorFact,
@@ -21,7 +18,7 @@ pub(super) type TursoSourceIndexCanonicalSelectorProjection = (
     String,
     Option<crate::ClientDbSourceIndexSelectorSymbol>,
     Option<crate::ClientDbSourceIndexSelectorKind>,
-    Option<ClientDbSourceIndexSelectorPayloadProof>,
+    Option<agent_semantic_content_identity::ExactSelectorMaterializationProofV1>,
 );
 
 pub(super) fn decode_turso_source_index_canonical_selectors(
@@ -37,18 +34,10 @@ pub(super) fn decode_turso_source_index_canonical_selectors(
     let mut selector_kind = None;
     let mut selector_proof = None;
     for selector in selector_facts {
-        if selector_proof.is_none()
-            && let Some(payload_kind) = selector
-                .payload_kind
-                .filter(|value| !value.trim().is_empty())
-        {
+        if selector_proof.is_none() {
             selector_symbol = selector.symbol.clone().map(Into::into);
             selector_kind = selector.kind.clone().map(Into::into);
-            selector_proof = Some(ClientDbSourceIndexSelectorPayloadProof {
-                structural_selector: selector.selector_id.clone().into(),
-                payload_kind: payload_kind.into(),
-                bounded: selector.payload_bounded,
-            });
+            selector_proof = Some(selector.materialization_proof);
         }
         haystack.push(' ');
         haystack.push_str(&selector.selector_id);

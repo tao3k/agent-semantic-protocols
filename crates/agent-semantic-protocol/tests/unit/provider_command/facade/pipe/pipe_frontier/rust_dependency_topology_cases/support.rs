@@ -47,6 +47,8 @@ pub(super) fn rust_dependency_graph_request_payload(
             "search",
             "pipe",
             query,
+            "--surface",
+            "deps",
             "--view",
             "graph-turbo-request",
             ".",

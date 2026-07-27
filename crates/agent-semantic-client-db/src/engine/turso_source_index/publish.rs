@@ -11,22 +11,22 @@ fn unix_time_ms() -> i64 {
         .min(i64::MAX as u128) as i64
 }
 
-pub(super) struct PublishTursoSourceIndexScopeRequest<'a> {
-    pub connection: &'a turso::Connection,
-    pub project_root: &'a str,
-    pub schema_id: &'a str,
-    pub schema_version: &'a str,
-    pub generation_id: &'a str,
-    pub file_hashes_json: &'a str,
-    pub source_snapshot_json: &'a str,
-    pub selector_fingerprint: &'a str,
+pub(super) struct PublishTursoSourceIndexScopeRequest<'transaction, 'connection, 'value> {
+    pub transaction: &'transaction turso::transaction::Transaction<'connection>,
+    pub project_root: &'value str,
+    pub schema_id: &'value str,
+    pub schema_version: &'value str,
+    pub generation_id: &'value str,
+    pub file_hashes_json: &'value str,
+    pub source_snapshot_json: &'value str,
+    pub selector_fingerprint: &'value str,
 }
 
 pub(super) async fn publish_turso_source_index_scope(
-    request: PublishTursoSourceIndexScopeRequest<'_>,
+    request: PublishTursoSourceIndexScopeRequest<'_, '_, '_>,
 ) -> Result<(u32, u32), String> {
     let PublishTursoSourceIndexScopeRequest {
-        connection,
+        transaction,
         project_root,
         schema_id,
         schema_version,
@@ -36,7 +36,7 @@ pub(super) async fn publish_turso_source_index_scope(
         selector_fingerprint,
     } = request;
     let (effective_owner_count, effective_selector_count) = turso_source_index_scope_row_counts(
-        connection,
+        &*transaction,
         project_root,
         schema_id,
         schema_version,
@@ -45,8 +45,8 @@ pub(super) async fn publish_turso_source_index_scope(
     .await?;
     execute_turso_operation(
         || async {
-            let mut statement = connection
-                .prepare_cached(
+            let mut statement = transaction
+                .prepare(
                     "INSERT INTO asp_source_index_scope_v1 (
                         project_root,
                         schema_id,
@@ -91,8 +91,8 @@ pub(super) async fn publish_turso_source_index_scope(
     .await?;
     execute_turso_operation(
         || async {
-            let mut statement = connection
-                .prepare_cached(
+            let mut statement = transaction
+                .prepare(
                     "INSERT INTO asp_source_index_layout_v1 (
                         project_root,
                         schema_id,

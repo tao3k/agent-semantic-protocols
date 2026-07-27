@@ -8,8 +8,7 @@ use serde::Deserialize;
 
 use super::types::{
     ClientDbSourceIndexOwner, ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey,
-    ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
-    ClientDbSourceIndexSelectorPayloadProof, ClientDbSourceIndexSource,
+    ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector, ClientDbSourceIndexSource,
 };
 
 pub const CLIENT_DB_LANGUAGE_PROJECTION_SCHEMA_ID: &str =
@@ -116,6 +115,7 @@ pub struct ClientDbLanguageProjectionItem {
     kind: String,
     name: String,
     selector: String,
+    materialization_proof: agent_semantic_content_identity::ExactSelectorMaterializationProofV1,
 }
 
 /// One typed relation preserved for EvidenceGraph import.
@@ -308,22 +308,31 @@ pub(crate) fn language_projection_source_index_rows(
         );
         let source_selectors = source_items
             .iter()
-            .map(|item| ClientDbSourceIndexSelector {
-                owner_path: owner_path.clone(),
-                selector_id: item.selector.clone().into(),
-                symbol: Some(item.name.clone().into()),
-                kind: Some(item.kind.clone().into()),
-                start_line: 0,
-                end_line: 0,
-                source: ClientDbSourceIndexSource::from("harness-projection"),
-                query_keys: projection_query_keys([item.kind.as_str(), item.name.as_str()]),
-                payload_proof: Some(ClientDbSourceIndexSelectorPayloadProof {
-                    structural_selector: item.selector.clone().into(),
-                    payload_kind: "code".into(),
-                    bounded: true,
-                }),
+            .map(|item| {
+                let proof = &item.materialization_proof;
+                agent_semantic_content_identity::ExactSelectorGenerationRecordV1::try_from(proof)
+                    .map_err(|error| error.to_string())?;
+                if proof.structural_selector != item.selector
+                    || proof.owner_path != source.path
+                    || proof.language_id != projection.language_id
+                    || proof.provider_id != projection.harness.harness_id
+                {
+                    return Err(format!(
+                        "language projection item {} materialization proof identity mismatch",
+                        item.item_id
+                    ));
+                }
+                Ok(ClientDbSourceIndexSelector {
+                    owner_path: owner_path.clone(),
+                    selector_id: item.selector.clone().into(),
+                    symbol: Some(item.name.clone().into()),
+                    kind: Some(item.kind.clone().into()),
+                    source: ClientDbSourceIndexSource::from("harness-projection"),
+                    query_keys: projection_query_keys([item.kind.as_str(), item.name.as_str()]),
+                    materialization_proof: proof.clone(),
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, String>>()?;
         selectors.extend(source_selectors.iter().cloned());
         scope_files.push(ClientDbSourceIndexScopeFile {
             path: project_root.join(&source.path),

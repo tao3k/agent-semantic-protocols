@@ -30,7 +30,7 @@ use super::search_pipe_source::{
     CandidateAcquisition, CollectSearchPipeCandidatesRequest, SourceSpec,
     collect_search_pipe_candidates,
 };
-use super::search_pipe_surfaces::default_search_surfaces;
+use super::search_pipe_surfaces::normalized_search_surfaces;
 use super::search_pipe_view::{
     SearchPipeViewRequest, print_search_pipe_view, reject_non_graph_turbo_receipt,
 };
@@ -334,7 +334,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         &provider_facts,
     );
     let rendered_source = resolved_search_pipe_source(pipe_args.source, &acquisition);
-    let surfaces = default_search_surfaces();
+    let surfaces = normalized_search_surfaces(&pipe_args.surfaces);
     let source_snapshot = acquisition
         .source_snapshot
         .as_ref()

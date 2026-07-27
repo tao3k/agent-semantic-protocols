@@ -13,20 +13,19 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
     root: &Path,
     ignored: &[&str],
 ) -> std::path::PathBuf {
-    let provider_command_prefix = noop_provider_command_prefix();
     let manifest = builtin_provider_manifests()
         .into_iter()
         .find(|manifest| manifest.language_id().as_str() == "rust")
         .expect("rust manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let semantic_registry_digest = agent_semantic_hook::semantic_registry_digest();
+    let installed_provider = ensure_state_home_v1_provider(root, manifest.binary());
+    let resolved_execution_prefix = vec![installed_provider.display().to_string()];
     let verified_executable_artifact_digest =
-        agent_semantic_content_identity::file_content_digest_v1(Path::new(
-            &provider_command_prefix[0],
-        ))
-        .expect("provider executable artifact digest");
+        agent_semantic_content_identity::file_content_digest_v1(&installed_provider)
+            .expect("provider executable artifact digest");
     let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
-        &provider_command_prefix,
+        &resolved_execution_prefix,
         &verified_executable_artifact_digest,
     )
     .expect("provider execution command digest");
@@ -56,7 +55,7 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
             provider_id: manifest.provider_id().clone(),
             binary: manifest.binary().to_owned(),
             execution: manifest.execution(),
-            provider_command_prefix,
+            provider_command_prefix: Vec::new(),
             execution_command_digest,
             search_capabilities: manifest.search_capabilities().clone(),
             semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
@@ -103,13 +102,16 @@ pub(super) fn write_gerbil_activation_with_command_prefix(
         .expect("gerbil manifest");
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let semantic_registry_digest = agent_semantic_hook::semantic_registry_digest();
+    let installed_provider = provider_command_prefix
+        .first()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| ensure_state_home_v1_provider(root, manifest.binary()));
+    let resolved_execution_prefix = vec![installed_provider.display().to_string()];
     let verified_executable_artifact_digest =
-        agent_semantic_content_identity::file_content_digest_v1(Path::new(
-            &provider_command_prefix[0],
-        ))
-        .expect("provider executable artifact digest");
+        agent_semantic_content_identity::file_content_digest_v1(&installed_provider)
+            .expect("provider executable artifact digest");
     let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
-        &provider_command_prefix,
+        &resolved_execution_prefix,
         &verified_executable_artifact_digest,
     )
     .expect("provider execution command digest");
@@ -139,7 +141,7 @@ pub(super) fn write_gerbil_activation_with_command_prefix(
             provider_id: manifest.provider_id().clone(),
             binary: manifest.binary().to_owned(),
             execution: manifest.execution(),
-            provider_command_prefix,
+            provider_command_prefix: Vec::new(),
             execution_command_digest,
             search_capabilities: manifest.search_capabilities().clone(),
             semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
@@ -175,12 +177,19 @@ pub(super) fn make_executable(path: &Path) {
 }
 
 pub(super) fn noop_provider_command_prefix() -> Vec<String> {
-    ["/usr/bin/true", "/bin/true"]
-        .into_iter()
-        .map(Path::new)
-        .find(|candidate| candidate.is_file())
-        .map(|candidate| vec![candidate.display().to_string()])
-        .expect("platform true executable")
+    Vec::new()
+}
+
+fn ensure_state_home_v1_provider(root: &Path, binary: &str) -> std::path::PathBuf {
+    let provider_bin = home_local_provider_path(root, binary);
+    if !provider_bin.exists() {
+        std::fs::create_dir_all(provider_bin.parent().expect("provider parent"))
+            .expect("create state home provider bin");
+        std::fs::write(&provider_bin, "#!/bin/sh\nexit 2\n")
+            .expect("write state home provider fixture");
+        make_executable(&provider_bin);
+    }
+    provider_bin
 }
 
 pub(super) fn isolate_home(root: &Path) -> EnvVarGuard {

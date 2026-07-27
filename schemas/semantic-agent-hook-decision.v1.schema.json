@@ -284,7 +284,7 @@
       "type": "object",
       "properties": {
         "agentAction": {
-          "$ref": "agent-action.v1.schema.json",
+          "$ref": "https://agent-semantic-protocols.dev/schemas/agent-action.v1.schema.json",
           "description": "Typed action, authority, effect, and subjects derived from the host tool payload."
         },
         "normalizedActions": {

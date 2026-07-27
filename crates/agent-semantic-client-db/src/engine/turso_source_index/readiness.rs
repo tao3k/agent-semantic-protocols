@@ -83,17 +83,20 @@ pub(super) async fn turso_source_index_projection_ready(
         .map_err(|error| format!("failed to read Turso source-index token projection: {error}"))
 }
 
-pub(super) fn validate_turso_source_index_selector_payload_proofs(
+pub(super) fn validate_turso_source_index_selector_materialization_proofs(
     import: &ClientDbSourceIndexImport,
 ) -> Result<(), String> {
     for selector in &import.selectors {
-        if let Some(proof) = &selector.payload_proof
-            && proof.structural_selector.as_str() != selector.selector_id.as_str()
+        let proof = &selector.materialization_proof;
+        agent_semantic_content_identity::ExactSelectorGenerationRecordV1::try_from(proof)
+            .map_err(|error| error.to_string())?;
+        if proof.structural_selector != selector.selector_id.as_str()
+            || proof.owner_path != selector.owner_path.as_str()
         {
             return Err(format!(
-                "source-index selector payload proof selector mismatch: selector_id={} proof={}",
+                "source-index selector materialization proof identity mismatch: selector_id={} proof={}",
                 selector.selector_id.as_str(),
-                proof.structural_selector.as_str()
+                proof.structural_selector
             ));
         }
     }

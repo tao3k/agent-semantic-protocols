@@ -12,6 +12,8 @@ pub use rust_lang_project_harness::{
 pub mod build_gate;
 pub use build_gate::assert_asp_rust_project_harness_member_policy_from_env;
 pub mod evidence;
+/// Reusable hook scenarios for Rust project harness policy checks.
+pub mod hook_scenarios;
 pub mod member_policy;
 pub mod package_evidence_graph;
 pub mod scenario;

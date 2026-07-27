@@ -10,14 +10,23 @@ pub use api::{
     CurrentSourceIndexSnapshot, current_source_index_snapshot,
     current_source_index_snapshot_for_owner,
     current_source_index_snapshot_for_owner_from_activation,
-    current_workspace_search_source_index_snapshot, publish_provider_source_snapshot_envelope,
+    current_workspace_search_source_index_snapshot,
+    publish_current_workspace_search_source_index_generation_v1,
+    publish_provider_source_snapshot_envelope, ProviderSourceSnapshotEnvelopePublicationV1,
 };
 pub use projection::{LanguageProjectionImportReport, import_language_projection};
 mod collect;
+mod generation;
+
+pub use generation::{
+    CompleteSourceIndexGenerationPublicationV1, PublishedSourceIndexGenerationV1,
+};
 mod config;
 mod lookup;
 mod model;
 
+pub use api::CurrentSourceIndexOwnerFromActivationRequest;
+pub use api::current_source_index_snapshot_from_activation;
 pub use api::{refresh_runtime_source_index, refresh_source_index};
 #[cfg(test)]
 pub(crate) use lookup::search_pipe_source_index_lookup_from_client_result;

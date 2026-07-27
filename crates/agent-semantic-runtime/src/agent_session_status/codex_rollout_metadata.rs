@@ -364,6 +364,7 @@ fn read_codex_rollout_metadata(
         permission_profile: None,
     };
     let mut saw_matching_session_meta = false;
+    let mut saw_turn_context = false;
     for (line_index, line) in reader.lines().enumerate() {
         if line_index >= CODEX_ROLLOUT_METADATA_HEADER_LINE_LIMIT {
             break;
@@ -428,7 +429,11 @@ fn read_codex_rollout_metadata(
                 if let Some(permission_profile) = string_at(payload, "/permission_profile/type") {
                     metadata.permission_profile = Some(permission_profile);
                 }
+                saw_turn_context = true;
             }
+            // Turn contexts form the metadata header. Once history begins,
+            // later event records cannot refine this passive metadata view.
+            _ if saw_turn_context => break,
             _ => {}
         }
     }

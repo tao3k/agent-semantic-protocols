@@ -23,6 +23,7 @@ pub(super) const CACHE_SOURCE_SHA256: &str =
 
 pub(crate) struct ProviderSpec {
     language_id: String,
+    dependency_topology_fixture: bool,
 }
 
 pub(crate) fn provider(language_id: impl AsRef<str>, command_prefix: Vec<String>) -> ProviderSpec {
@@ -32,6 +33,7 @@ pub(crate) fn provider(language_id: impl AsRef<str>, command_prefix: Vec<String>
     );
     ProviderSpec {
         language_id: language_id.as_ref().to_string(),
+        dependency_topology_fixture: false,
     }
 }
 
@@ -46,7 +48,9 @@ pub(super) fn provider_with_dependency_topology(
     language_id: &'static str,
     command_prefix: Vec<String>,
 ) -> ProviderSpec {
-    provider(language_id, command_prefix)
+    let mut spec = provider(language_id, command_prefix);
+    spec.dependency_topology_fixture = true;
+    spec
 }
 
 pub(crate) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
@@ -82,8 +86,26 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 provider_execution_command_digest(&resolved_execution_prefix, &artifact_digest)
                     .expect("provider execution command digest");
             let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
-            let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
-                .expect("materialize provider routes");
+            let mut routes = serde_json::to_value(
+                agent_semantic_hook::materialize_provider_routes(&manifest)
+                    .expect("materialize provider routes"),
+            )
+            .expect("serialize provider routes");
+            let mut search_capabilities = serde_json::to_value(manifest.search_capabilities())
+                .expect("serialize search capabilities");
+            if spec.dependency_topology_fixture {
+                search_capabilities["dependencyTopology"] = json!(true);
+                routes["dependencyTopology"] = json!({
+                    "argv": [
+                        manifest.binary(),
+                        "search",
+                        "dependency-topology",
+                        "--json",
+                        "--workspace",
+                        "{workspace}"
+                    ]
+                });
+            }
             let provider = json!({
                 "manifestId": manifest.manifest_id(),
                 "manifestDigest": manifest_digest,
@@ -93,7 +115,7 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 "execution": manifest.execution(),
                 "providerCommandPrefix": [],
                 "executionCommandDigest": execution_command_digest,
-                "searchCapabilities": manifest.search_capabilities(),
+                "searchCapabilities": search_capabilities,
                 "semanticFactsDescriptor": manifest.semantic_facts_descriptor(),
                 "queryPackDescriptor": manifest.query_pack_descriptor(),
                 "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
@@ -309,7 +331,11 @@ pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path)
     let delegate = bin_dir.join(format!(".{binary}-delegate"));
     let (language_id, provider_id, source_extensions) = match binary {
         "rs-harness" => ("rust", binary, r#"[".rs"]"#),
-        "ts-harness" => ("typescript", binary, r#"[".ts",".tsx"]"#),
+        "ts-harness" => (
+            "typescript",
+            binary,
+            r#"[".ts",".tsx",".js",".jsx",".mts",".cts",".mjs",".cjs"]"#,
+        ),
         "python-harness" | "py-harness" => ("python", binary, r#"[".py"]"#),
         "julia-harness" | "asp-julia-harness" => ("julia", binary, r#"[".jl"]"#),
         "gslph" => (

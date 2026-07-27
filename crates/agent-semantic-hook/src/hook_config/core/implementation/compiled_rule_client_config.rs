@@ -94,6 +94,13 @@ impl ClientHookConfig {
             } else {
                 None
             };
+            let structured_source_operands = match rule
+                .match_config
+                .structured_projection_source_operands(action)
+            {
+                Ok(source_operands) => source_operands,
+                Err(()) => continue,
+            };
             if !rule.matches_before_paths(runtime, platform, event, action, command_token_slice) {
                 continue;
             }
@@ -147,6 +154,7 @@ impl ClientHookConfig {
                                 runtime,
                                 action,
                                 Some(action.paths.as_slice()),
+                                structured_source_operands.as_deref(),
                             );
                         crate::classifier::materialize_source_access_decision(
                             runtime,
@@ -164,6 +172,7 @@ impl ClientHookConfig {
                         runtime,
                         action,
                         decision.subject.paths.as_slice(),
+                        structured_source_operands.as_deref(),
                     ) {
                         decision
                             .fields
@@ -188,9 +197,40 @@ impl ClientHookConfig {
                 }
                 continue;
             }
-            return Some(rule.decision(runtime, platform, event, action, decision_paths));
+            return Some(rule.decision(
+                runtime,
+                platform,
+                event,
+                action,
+                decision_paths,
+                structured_source_operands.as_deref(),
+            ));
         }
         None
+    }
+}
+
+fn merge_agents(
+    configured: agent_semantic_config::HookClientAgentsConfig,
+    defaults: agent_semantic_config::HookClientAgentsConfig,
+) -> agent_semantic_config::HookClientAgentsConfig {
+    let configured_names = configured
+        .resident_agents
+        .iter()
+        .map(|agent| agent.name.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut resident_agents = defaults
+        .resident_agents
+        .into_iter()
+        .filter(|agent| !configured_names.contains(agent.name.as_str()))
+        .collect::<Vec<_>>();
+    resident_agents.extend(configured.resident_agents);
+
+    let mut placeholders = defaults.placeholders;
+    placeholders.extend(configured.placeholders);
+    agent_semantic_config::HookClientAgentsConfig {
+        placeholders,
+        resident_agents,
     }
 }
 
@@ -198,6 +238,7 @@ pub(in crate::hook_config) fn compile_config(
     config: HookClientConfigFile,
 ) -> Result<ClientHookConfig, String> {
     let contract_fingerprint = config.contract_fingerprint.clone();
+    let wrapper_match = config.wrapper_match;
     let default_config = agent_semantic_config::default_hook_client_config_file()?;
     let default_agent_session_messages = default_config.agent_session_messages;
     let agent_session_messages = merge_agent_session_messages(
@@ -210,6 +251,17 @@ pub(in crate::hook_config) fn compile_config(
         .and_then(|feature| feature.get("enabled"))
         .copied()
         .unwrap_or(true);
+    let configured_profile_ids = config
+        .command_profiles
+        .iter()
+        .map(|profile| profile.id.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut command_profiles = default_config
+        .command_profiles
+        .into_iter()
+        .filter(|profile| !configured_profile_ids.contains(profile.id.as_str()))
+        .collect::<Vec<_>>();
+    command_profiles.extend(config.command_profiles);
     let configured_rule_ids = config
         .rules
         .iter()
@@ -221,11 +273,13 @@ pub(in crate::hook_config) fn compile_config(
         .filter(|rule| !configured_rule_ids.contains(rule.id.as_str()))
         .collect::<Vec<_>>();
     rule_configs.extend(config.rules);
-    let agents = config.agents;
+    let agents = merge_agents(config.agents, default_config.agents);
     let mut rules = rule_configs
         .into_iter()
         .filter(|rule| rule.enabled)
-        .map(|rule| CompiledHookRule::try_from_with_agents(rule, &agents.resident_agents))
+        .map(|rule| {
+            CompiledHookRule::try_from_with_agents(rule, &agents, &command_profiles, wrapper_match)
+        })
         .collect::<Result<Vec<_>, _>>()?;
     // `sort_by_key` is stable, so equal-priority rules keep config file order.
     rules.sort_by_key(|rule| std::cmp::Reverse(rule.priority));

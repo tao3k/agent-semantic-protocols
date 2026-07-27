@@ -81,6 +81,8 @@ pub fn search_pipe_package_cohesion(
         || best_owner_high_value_hits * 2 < high_value_count
     {
         "low".to_string()
+    } else if has_strong_owner_anchor && package_axis_terms.is_empty() {
+        "high".to_string()
     } else if packages.len() > 1 {
         "medium".to_string()
     } else {
@@ -161,7 +163,7 @@ pub fn search_pipe_missing_path_terms(
     terms
         .iter()
         .filter(|term| crate::search_pipe_is_path_like_token(&term.raw))
-        .filter(|term| !global_matched.iter().any(|matched| matched == &term.raw))
+        .filter(|term| !global_matched.iter().any(|matched| matched == &term.lower))
         .map(|term| term.raw.clone())
         .collect()
 }

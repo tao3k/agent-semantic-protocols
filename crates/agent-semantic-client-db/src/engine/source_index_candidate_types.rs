@@ -20,8 +20,8 @@ pub(super) struct TursoSourceIndexCanonicalSelectorFact {
     pub(super) symbol: Option<String>,
     pub(super) kind: Option<String>,
     pub(super) source: String,
-    pub(super) payload_kind: Option<String>,
-    pub(super) payload_bounded: bool,
+    pub(super) materialization_proof:
+        agent_semantic_content_identity::ExactSelectorMaterializationProofV1,
     pub(super) query_keys: Vec<String>,
 }
 

@@ -1,3 +1,5 @@
+#[path = "integration/exact_selector_generation_fixture.rs"]
+mod exact_selector_generation_fixture;
 #[path = "integration/search_projection.rs"]
 mod search_projection;
 

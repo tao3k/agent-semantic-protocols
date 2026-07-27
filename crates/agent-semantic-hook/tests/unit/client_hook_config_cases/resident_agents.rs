@@ -9,6 +9,9 @@ fn missing_resident_agent_route_is_rejected_without_a_compatibility_fallback() {
         r#"
 [agents]
 residentAgents = []
+[agents.placeholders]
+explore = "asp-explore"
+testing = "asp-testing"
 "#,
     )
     .expect("write hook config without resident route");
@@ -16,7 +19,7 @@ residentAgents = []
     let error = load_client_config(&config_path)
         .expect_err("missing configured residents must fail closed");
     assert!(
-        error.contains("unavailable resident `asp-explore`"),
+        error.contains("agents.placeholders.explore references missing resident `asp-explore`"),
         "{error}"
     );
     let _ = fs::remove_dir_all(root);

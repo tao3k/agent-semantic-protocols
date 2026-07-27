@@ -1,5 +1,5 @@
 use agent_semantic_command_match::{
-    PrefixMatch, bash::parse_bash_command_candidates, command_stages_match_prefix,
+    PrefixMatch, bash::parse_bash_command_candidates, command_stages_match_wrapped_prefix,
 };
 
 fn tokens(values: &[&str]) -> Vec<String> {
@@ -9,7 +9,7 @@ fn tokens(values: &[&str]) -> Vec<String> {
 fn assert_rg_is_routed(command: &str) {
     let stages = parse_bash_command_candidates(command).expect("valid Bash command");
     assert_eq!(
-        command_stages_match_prefix(&stages, &tokens(&["rg"])),
+        command_stages_match_wrapped_prefix(&stages, &tokens(&["rg"])),
         PrefixMatch::Matched,
         "command={command} stages={stages:?}"
     );

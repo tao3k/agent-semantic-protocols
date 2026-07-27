@@ -7,16 +7,13 @@ use agent_semantic_config::{
 use crate::executable::{ExecutableStatus, resolve_executable_with_status};
 use crate::tool_action::ToolAction;
 
-/// Match one structured projection contract against the parsed tool action.
-pub(super) fn matches(
-    projection: Option<&HookClientStructuredProjectionMatchConfig>,
+/// Match one structured projection contract and retain its typed source operands.
+pub(super) fn match_source_operands(
+    projection: &HookClientStructuredProjectionMatchConfig,
     action: &ToolAction,
-) -> bool {
-    let Some(projection) = projection else {
-        return true;
-    };
+) -> Option<Vec<String>> {
     let Some(command) = action.command.as_deref() else {
-        return false;
+        return None;
     };
     let classification = match projection.filter_grammar {
         HookClientStructuredFilterGrammar::BoundedPathV1 => {
@@ -31,11 +28,15 @@ pub(super) fn matches(
             )
         }
     };
-    if !matches!(
-        classification,
-        crate::command_match::structured::StructuredFilterClassificationV1::BoundedPath { .. }
-    ) {
-        return false;
+    let crate::command_match::structured::StructuredFilterClassificationV1::BoundedPath {
+        source_operands,
+        ..
+    } = classification
+    else {
+        return None;
+    };
+    if resolve_executable_with_status(&projection.binary).status != ExecutableStatus::Available {
+        return None;
     }
-    resolve_executable_with_status(&projection.binary).status == ExecutableStatus::Available
+    Some(source_operands)
 }

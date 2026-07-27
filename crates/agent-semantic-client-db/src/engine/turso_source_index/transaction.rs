@@ -1,6 +1,3 @@
-pub(super) const TURSO_SOURCE_INDEX_COLD_WRITE_BUDGET: std::time::Duration =
-    std::time::Duration::from_secs(30);
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct TursoSourceIndexWriteStats {
     pub(super) physical_generation_id: String,

@@ -91,7 +91,7 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
 }
 
 #[test]
-fn unrelated_path_asp_is_never_selected_or_modified() {
+fn unrelated_path_asp_is_ignored_by_canonical_target_selection() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
@@ -100,20 +100,19 @@ fn unrelated_path_asp_is_never_selected_or_modified() {
         "asp-binary-unrelated-path-gate-{}-{nonce}",
         std::process::id()
     ));
-    let current_dir = root.join("current");
     let ambient_dir = root.join("ambient");
-    std::fs::create_dir_all(&current_dir).expect("create current dir");
     std::fs::create_dir_all(&ambient_dir).expect("create ambient dir");
-    let current_exe = current_dir.join(super::SEMANTIC_AGENT_PROTOCOL_BIN);
     let ambient_asp = ambient_dir.join(super::SEMANTIC_AGENT_PROTOCOL_BIN);
-    std::fs::write(&current_exe, b"current").expect("write current asp");
     std::fs::write(&ambient_asp, b"ambient-sentinel").expect("write ambient asp");
 
-    let error =
-        super::resolve_protocol_binary_install_target(&current_exe, None, &[ambient_dir], &root)
-            .expect_err("unrelated PATH asp must fail closed");
-
-    assert!(error.contains("refusing to update unrelated PATH binary"));
+    let artifact_root = root.join("runtime/artifacts");
+    let target = super::resolve_protocol_binary_install_target(None, &artifact_root)
+        .expect("resolve canonical runtime target");
+    assert_eq!(
+        target,
+        root.join("runtime/bin")
+            .join(super::SEMANTIC_AGENT_PROTOCOL_BIN)
+    );
     assert_eq!(
         std::fs::read(&ambient_asp).expect("read ambient sentinel"),
         b"ambient-sentinel"
@@ -182,13 +181,9 @@ fn explicit_bin_root_selects_exactly_one_target() {
     )
     .expect("write ambient asp");
 
-    let target = super::resolve_protocol_binary_install_target(
-        &current_exe,
-        Some(&explicit_bin),
-        &[ambient_bin],
-        &root,
-    )
-    .expect("resolve explicit target");
+    let target =
+        super::resolve_protocol_binary_install_target(Some(&explicit_bin), &root.join("artifacts"))
+            .expect("resolve explicit target");
 
     assert_eq!(
         target,

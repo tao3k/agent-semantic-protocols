@@ -18,7 +18,7 @@
       "pattern": "^(?:blake3:)?[a-f0-9]{64}$"
     },
     "canonicalSelector": {
-      "$ref": "canonical-item-selector.v1.schema.json"
+      "$ref": "https://agent-semantic-protocols.dev/schemas/canonical-item-selector.v1.schema.json"
     },
     "opaqueToken": {
       "type": "string",

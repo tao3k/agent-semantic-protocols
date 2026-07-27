@@ -1,16 +1,14 @@
 use crate::ClientDbSourceIndexImport;
 
-#[derive(serde::Serialize)]
-struct TursoSourceIndexCanonicalSelectorFact {
-    selector_id: String,
-    symbol: Option<String>,
-    kind: Option<String>,
-    start_line: u32,
-    end_line: u32,
-    source: String,
-    payload_kind: Option<String>,
-    payload_bounded: bool,
-    query_keys: Vec<String>,
+#[derive(serde::Deserialize, serde::Serialize)]
+pub(super) struct TursoSourceIndexCanonicalSelectorFact {
+    pub(super) selector_id: String,
+    pub(super) symbol: Option<String>,
+    pub(super) kind: Option<String>,
+    pub(super) source: String,
+    pub(super) materialization_proof:
+        agent_semantic_content_identity::ExactSelectorMaterializationProofV1,
+    pub(super) query_keys: Vec<String>,
 }
 
 const TURSO_SOURCE_INDEX_POSTING_TERMS_PER_OWNER: usize = 16;
@@ -76,17 +74,8 @@ pub(super) fn turso_source_index_canonical_selectors_by_owner(
                     .as_ref()
                     .map(|symbol| symbol.as_str().to_string()),
                 kind: selector.kind.as_ref().map(|kind| kind.as_str().to_string()),
-                start_line: selector.start_line,
-                end_line: selector.end_line,
                 source: selector.source.as_str().to_string(),
-                payload_kind: selector
-                    .payload_proof
-                    .as_ref()
-                    .map(|proof| proof.payload_kind.as_str().to_string()),
-                payload_bounded: selector
-                    .payload_proof
-                    .as_ref()
-                    .is_some_and(|proof| proof.bounded),
+                materialization_proof: selector.materialization_proof.clone(),
                 query_keys: selector
                     .query_keys
                     .iter()

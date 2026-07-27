@@ -503,7 +503,7 @@ fn facade_leaf_command(name: &'static str, bin_name: &'static str) -> Command {
                     .help("Run a workspace-wide structural reasoning search"),
             )
             .after_help(
-                "Tree-sitter discovery belongs to search. Use query with an exact --selector for deterministic projection.",
+                "Tree-sitter discovery belongs to search. Use query with an exact --selector for deterministic projection.\n\nSearch pipe surfaces: asp <language> search pipe <query> --surface <owner,items,tests,deps,topology> [--view seeds|graph-turbo-request] [--workspace ROOT].",
             );
     }
     command.arg(
@@ -554,9 +554,15 @@ mod cli_help_tests;
 fn install_language_command() -> Command {
     Command::new("language")
         .bin_name("asp install language")
-        .about("Install a language provider")
+        .about("Install a language provider globally by default or for one project")
         .arg(Arg::new("language").value_name("LANGUAGE").required(true))
-        .arg(project_root_arg())
+        .arg(
+            Arg::new("global")
+                .long("global")
+                .action(ArgAction::SetTrue)
+                .conflicts_with("project")
+                .help("Install globally (the default scope)"),
+        )
         .arg(Arg::new("target").long("target").value_name("TARGET"))
         .arg(
             Arg::new("reconcile-receipt")
@@ -570,7 +576,13 @@ fn install_language_command() -> Command {
                 .conflicts_with("reconcile-receipt")
                 .hide(true),
         )
-        .arg(Arg::new("project").long("project").value_name("ROOT"))
+        .arg(
+            Arg::new("project")
+                .long("project")
+                .value_name("PATH")
+                .conflicts_with("global")
+                .help("Install only for the project rooted at PATH"),
+        )
 }
 
 fn graph_render_command() -> Command {

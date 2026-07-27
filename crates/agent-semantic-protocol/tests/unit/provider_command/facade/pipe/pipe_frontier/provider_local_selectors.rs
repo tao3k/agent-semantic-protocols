@@ -17,7 +17,7 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
     write_semantic_facts_provider(
         &bin_dir,
         "rs-harness",
-        r#"{"nodes":[{"id":"field:src/lib.rs-scalars-3","kind":"field","role":"struct-field","value":"scalars: Vec<Scalar>","action":"code","path":"src/lib.rs","ownerPath":"src/lib.rs","symbol":"scalars","startLine":3,"endLine":3,"locator":"src/lib.rs:1:4","matchText":"Snapshot::scalars: Vec<Scalar>","fields":{"containerName":"Snapshot","fieldName":"scalars","typeValue":"Vec<Scalar>","collectionKind":"Vec","contextLocator":"src/lib.rs:1:4"}},{"id":"type:src/lib.rs-scalars-vec-3","kind":"type","role":"field-type","value":"Vec<Scalar>","action":"evidence","path":"src/lib.rs","ownerPath":"src/lib.rs","symbol":"Vec","startLine":3,"endLine":3,"locator":"src/lib.rs:3:3","fields":{"fieldName":"scalars","typeValue":"Vec<Scalar>","collectionKind":"Vec"}},{"id":"collection:vec","kind":"collection","role":"family","value":"Vec","action":"evidence","symbol":"Vec","fields":{"collectionKind":"Vec"}}],"edges":[{"source":"query:vec-collection-fields","target":"field:src/lib.rs-scalars-3","relation":"matches"},{"source":"field:src/lib.rs-scalars-3","target":"type:src/lib.rs-scalars-vec-3","relation":"has_type"},{"source":"field:src/lib.rs-scalars-3","target":"collection:vec","relation":"collection_of"}]}"#,
+        r#"{"nodes":[{"id":"field:src/lib.rs-scalars-3","kind":"field","role":"struct-field","value":"scalars: Vec<Scalar>","action":"code","path":"src/lib.rs","ownerPath":"src/lib.rs","symbol":"scalars","startLine":3,"endLine":3,"locator":"src/lib.rs:1:4","matchText":"Snapshot::scalars: Vec<Scalar>","fields":{"containerName":"Snapshot","fieldName":"scalars","typeValue":"Vec<Scalar>","collectionKind":"Vec","contextLocator":"src/lib.rs:1:4"}},{"id":"type:src/lib.rs-scalars-vec-3","kind":"type","role":"field-type","value":"Vec<Scalar>","action":"evidence","path":"src/lib.rs","ownerPath":"src/lib.rs","symbol":"Vec","startLine":3,"endLine":3,"locator":"src/lib.rs:3:3","fields":{"fieldName":"scalars","typeValue":"Vec<Scalar>","collectionKind":"Vec"}},{"id":"collection:vec","kind":"collection","role":"family","value":"Vec","action":"evidence","symbol":"Vec","fields":{"collectionKind":"Vec"}}],"edges":[{"source":"query:vec","target":"field:src/lib.rs-scalars-3","relation":"matches"},{"source":"query:missing-provider-node","target":"field:src/lib.rs-scalars-3","relation":"matches"},{"source":"field:src/lib.rs-scalars-3","target":"type:src/lib.rs-scalars-vec-3","relation":"has_type"},{"source":"field:src/lib.rs-scalars-3","target":"collection:vec","relation":"collection_of"}]}"#,
         "",
     );
     install_state_home_provider(&root, "rust", &bin_dir.join("rs-harness"));
@@ -62,7 +62,7 @@ fn search_pipe_plan_uses_scope_root_for_provider_local_selectors() {
     );
     assert!(
         stdout.contains(
-            "nextCommand=asp rust search owner src/lib.rs items --query 'Vec|vec|collection|fields' --workspace languages/rust-harness --view seeds"
+            "nextCommand=asp rust search owner src/lib.rs items --query 'Vec|collection|fields' --workspace languages/rust-harness --view seeds"
         ),
         "{stdout}"
     );

@@ -41,7 +41,6 @@ pub use types::{
     ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexRefreshResult,
     ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorId,
     ClientDbSourceIndexSelectorKind, ClientDbSourceIndexSelectorLookup,
-    ClientDbSourceIndexSelectorPayloadKind, ClientDbSourceIndexSelectorPayloadProof,
     ClientDbSourceIndexSelectorSymbol, ClientDbSourceIndexSource, ClientDbSourceIndexSourceBlobs,
     ClientDbSourceIndexSourceKind, ClientDbSourceIndexStats, ClientDbSourceIndexStructuralSelector,
     client_db_source_index_artifact_digest, client_db_source_index_file_count,

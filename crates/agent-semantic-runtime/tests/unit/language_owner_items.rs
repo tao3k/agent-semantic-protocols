@@ -175,6 +175,51 @@ fn owner_items_runtime_outcome_compacts_and_caches_provider_success() {
 }
 
 #[test]
+fn owner_items_cache_write_failure_does_not_pollute_provider_stderr() {
+    let root = temp_root("owner-items-cache-write-failure");
+    let cache_home = root.join(".cache");
+    fs::create_dir_all(root.join("src")).expect("create source root");
+    fs::write(root.join("src/lib.rs"), "pub fn owner() {}\n").expect("write owner");
+    fs::write(&cache_home, "cache root is intentionally not a directory")
+        .expect("create invalid cache root");
+    let args = vec!["items".to_string()];
+    let invocation = vec!["rs-harness".to_string(), "query".to_string()];
+    let request = LanguageOwnerItemsCacheRequest {
+        language_id: "rust",
+        args: &args,
+        invocation: &invocation,
+        owner: std::path::Path::new("src/lib.rs"),
+        project_root: &root,
+        cache_home: &cache_home,
+    };
+    assert!(
+        write_language_owner_items_cache(&request, b"unreachable").is_err(),
+        "fixture must force the best-effort cache write to fail"
+    );
+
+    let outcome = resolve_language_owner_items_runtime_outcome(
+        &request,
+        true,
+        Some(LanguageOwnerItemsProviderOutput {
+            status_success: true,
+            stdout: b"|item kind=function name=owner selector=language://src/lib.rs#item/function/owner\n",
+            stderr: b"provider note\n",
+        }),
+    )
+    .expect("resolve provider output");
+    assert_eq!(
+        outcome,
+        LanguageOwnerItemsRuntimeOutcome::Handled {
+            stdout: b"|item kind=function name=owner selector=language://src/lib.rs#item/function/owner\n"
+                .to_vec(),
+            stderr: b"provider note\n".to_vec(),
+            cache_hit: false,
+        }
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn owner_items_runtime_ignores_help_shaped_cache_and_rejects_help_success() {
     let root = temp_root("owner-items-help-output");
     let cache_home = root.join(".cache");

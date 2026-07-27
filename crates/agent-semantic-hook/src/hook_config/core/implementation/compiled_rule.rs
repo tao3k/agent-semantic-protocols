@@ -65,6 +65,7 @@ pub(in crate::hook_config) struct CompiledRuleDispatch {
 #[derive(Debug)]
 pub(super) struct RuleMatch {
     agent_action: action_match::AgentActionMatch,
+    wrapper_match: agent_semantic_config::WrapperMatchMode,
     tool_any: Vec<String>,
     command_any: Vec<String>,
     argv_pattern_any: Vec<Vec<String>>,
@@ -152,10 +153,11 @@ impl CompiledHookRule {
         runtime: &HookRuntime,
         action: &ToolAction,
         paths: &[String],
+        structured_source_operands: Option<&[String]>,
     ) -> Option<serde_json::Value> {
         self.match_config
             .agent_action
-            .derive_agent_action_for_rule(runtime, action, Some(paths))
+            .derive_agent_action_for_rule(runtime, action, Some(paths), structured_source_operands)
             .map(|agent_action| agent_action.receipt_value())
     }
 
@@ -181,11 +183,15 @@ impl CompiledHookRule {
         event: &str,
         action: &ToolAction,
         paths: &[String],
+        structured_source_operands: Option<&[String]>,
     ) -> HookDecision {
         let matched_subject_paths = self.match_config.agent_action.needs_subjects().then(|| {
-            self.match_config
-                .agent_action
-                .matching_subject_paths(runtime, action, paths)
+            self.match_config.agent_action.matching_subject_paths(
+                runtime,
+                action,
+                paths,
+                structured_source_operands,
+            )
         });
         let shell_subject_paths = (matched_subject_paths.is_none()
             && action.surface == crate::tool_action::ToolSurface::CodexShell)
@@ -212,7 +218,9 @@ impl CompiledHookRule {
             .iter()
             .map(|(key, value)| (key.clone(), serde_json::Value::String(value.clone())))
             .collect::<std::collections::BTreeMap<_, _>>();
-        if let Some(agent_action) = self.agent_action_receipt(runtime, action, paths) {
+        if let Some(agent_action) =
+            self.agent_action_receipt(runtime, action, paths, structured_source_operands)
+        {
             decision_fields.insert("agentAction".to_string(), agent_action);
         }
         if let Some(dispatch) = self.dispatch.as_ref() {
@@ -332,7 +340,6 @@ impl RuleMatch {
     ) -> bool {
         self.matches_tool(action)
             && self.matches_command(action, command_tokens)
-            && self.matches_structured_projection(action)
             && (self.argv_pattern_any.is_empty()
                 || crate::hook_config::core::registered_asp::match_registered_asp_command(
                     &self.argv_pattern_any,
@@ -342,14 +349,16 @@ impl RuleMatch {
                 .is_some())
     }
 
-    pub(in crate::hook_config) fn matches_structured_projection(
+    pub(in crate::hook_config) fn structured_projection_source_operands(
         &self,
         action: &ToolAction,
-    ) -> bool {
-        crate::hook_config::core::structured_projection::matches(
-            self.structured_projection.as_ref(),
-            action,
-        )
+    ) -> Result<Option<Vec<String>>, ()> {
+        let Some(projection) = self.structured_projection.as_ref() else {
+            return Ok(None);
+        };
+        crate::hook_config::core::structured_projection::match_source_operands(projection, action)
+            .map(Some)
+            .ok_or(())
     }
 
     fn matches_paths(&self, paths: &[String]) -> bool {
@@ -404,27 +413,59 @@ impl RuleMatch {
         let Some(command) = action.command.as_deref() else {
             return false;
         };
-        let command_stages =
-            match crate::command_match::bash::parse_bash_command_candidates(command) {
-                Ok(stages) => stages,
-                Err(_) => return true,
-            };
-        let _ = command_tokens;
+        let matches_prefix = |prefix: &[String]| match self.wrapper_match {
+            agent_semantic_config::WrapperMatchMode::Enable => command_tokens.map_or_else(
+                || {
+                    crate::command_match::bash::parse_bash_command_candidates(command).map_or(
+                        agent_semantic_command_match::PrefixMatch::BudgetExceeded,
+                        |stages| {
+                            agent_semantic_command_match::command_stages_match_wrapped_prefix(
+                                &stages, prefix,
+                            )
+                        },
+                    )
+                },
+                |tokens| {
+                    if tokens.len() > agent_semantic_command_match::MAX_STAGE_TOKENS {
+                        agent_semantic_command_match::PrefixMatch::BudgetExceeded
+                    } else {
+                        let wrapper = tokens
+                            .iter()
+                            .find(|token| !token.contains('='))
+                            .is_some_and(|token| {
+                                matches!(
+                                    token.as_str(),
+                                    "direnv" | "env" | "bash" | "sh" | "zsh" | "rtk"
+                                )
+                            });
+                        if agent_semantic_command_match::candidate_matches_prefix(tokens, prefix)
+                            || ((wrapper || prefix.len() > 1)
+                                && tokens.windows(prefix.len()).any(|candidate| {
+                                    agent_semantic_command_match::candidate_matches_prefix(
+                                        candidate, prefix,
+                                    )
+                                }))
+                        {
+                            agent_semantic_command_match::PrefixMatch::Matched
+                        } else {
+                            agent_semantic_command_match::PrefixMatch::NotMatched
+                        }
+                    }
+                },
+            ),
+        };
         let token_match = self.command_any.is_empty()
-            || self.command_any.iter().any(|expected| {
-                crate::command_match::command_stages_match_prefix(
-                    &command_stages,
-                    std::slice::from_ref(expected),
-                )
-                .routes_protected()
-            });
+            || self
+                .command_any
+                .iter()
+                .any(|expected| matches_prefix(std::slice::from_ref(expected)).routes_protected());
         let contains_match =
             self.command_contains_any.is_empty() || self.command_contains_any.matches(command);
         let prefix_match = self.argv_prefix_any.is_empty()
-            || self.argv_prefix_any.iter().any(|prefix| {
-                crate::command_match::command_stages_match_prefix(&command_stages, prefix)
-                    .routes_protected()
-            });
+            || self
+                .argv_prefix_any
+                .iter()
+                .any(|prefix| matches_prefix(prefix).routes_protected());
         token_match && prefix_match && contains_match
     }
 
@@ -602,33 +643,49 @@ impl TryFrom<HookClientRuleConfig> for CompiledHookRule {
     type Error = String;
 
     fn try_from(config: HookClientRuleConfig) -> Result<Self, Self::Error> {
-        Self::try_from_with_agents(config, &[])
+        let agents = agent_semantic_config::HookClientAgentsConfig::default();
+        Self::try_from_with_agents(
+            config,
+            &agents,
+            &[],
+            agent_semantic_config::WrapperMatchMode::default(),
+        )
     }
 }
 
 impl CompiledHookRule {
     pub(in crate::hook_config) fn try_from_with_agents(
         config: HookClientRuleConfig,
-        resident_agents: &[agent_semantic_config::HookClientResidentAgentConfig],
+        agents: &agent_semantic_config::HookClientAgentsConfig,
+        command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],
+        wrapper_match: agent_semantic_config::WrapperMatchMode,
     ) -> Result<Self, String> {
         let dispatch = config
             .dispatch
             .map(|dispatch| {
-                let resident = resident_agents
+                let resident_name = agents
+                    .placeholders
+                    .get(dispatch.agent.as_str())
+                    .ok_or_else(|| {
+                        format!(
+                            "rule `{}` dispatch references unavailable agent placeholder `{}`",
+                            config.id,
+                            dispatch.agent.as_str()
+                        )
+                    })?;
+                let resident = agents
+                    .resident_agents
                     .iter()
-                    .find(|resident| {
-                        resident.enabled && resident.name == dispatch.resident_name.as_str()
-                    })
+                    .find(|resident| resident.enabled && resident.name == *resident_name)
                     .ok_or_else(|| {
                         format!(
                             "rule `{}` dispatch references unavailable resident `{}`",
-                            config.id,
-                            dispatch.resident_name.as_str()
+                            config.id, resident_name
                         )
                     })?;
                 Ok::<CompiledRuleDispatch, String>(CompiledRuleDispatch {
                     transport: dispatch.transport,
-                    resident_name: dispatch.resident_name.as_str().to_owned(),
+                    resident_name: resident_name.clone(),
                     resident_codex_agent_name: resident.codex_agent_name.clone(),
                     resident_role: resident.role.clone(),
                     receipt_kind: dispatch.receipt_kind.as_str().to_owned(),
@@ -640,11 +697,7 @@ impl CompiledHookRule {
             .reason_kind
             .map(ReasonKind::from)
             .unwrap_or(ReasonKind::None);
-        let typed_action_contract = !config.match_config.command_wrappers.is_empty()
-            || !config.match_config.invocation_shape_any.is_empty()
-            || !config.match_config.wrapper_match_any.is_empty()
-            || !config.match_config.flag_presence_any.is_empty()
-            || !config.match_config.action_any.is_empty()
+        let typed_action_contract = !config.match_config.action_any.is_empty()
             || !config.match_config.effect_any.is_empty()
             || !config.match_config.subject_kind_any.is_empty()
             || !config.match_config.authority_any.is_empty()
@@ -670,6 +723,17 @@ impl CompiledHookRule {
                 ));
             }
         }
+        let mut raw_match_config = config.match_config;
+        for prefix in agent_semantic_config::expand_command_profile_prefixes(
+            &raw_match_config.command_profile_any,
+            command_profiles,
+        )? {
+            if !raw_match_config.argv_prefix_any.contains(&prefix) {
+                raw_match_config.argv_prefix_any.push(prefix);
+            }
+        }
+        let mut match_config = RuleMatch::try_from(raw_match_config)?;
+        match_config.wrapper_match = wrapper_match;
         Ok(Self {
             id: config.id,
             priority: config.priority,
@@ -687,7 +751,7 @@ impl CompiledHookRule {
                 .collect::<Result<Vec<_>, _>>()?,
             event: config.event,
             platform: config.platform,
-            match_config: RuleMatch::try_from(config.match_config)?,
+            match_config,
             routes: config
                 .routes
                 .into_iter()
@@ -708,10 +772,6 @@ impl TryFrom<HookClientRuleMatchConfig> for RuleMatch {
         Ok(Self {
             agent_action: action_match::AgentActionMatch::new(
                 action_match::AgentActionMatchConfig {
-                    command_wrappers: std::mem::take(&mut config.command_wrappers),
-                    invocation_shape_any: std::mem::take(&mut config.invocation_shape_any),
-                    wrapper_match_any: std::mem::take(&mut config.wrapper_match_any),
-                    flag_presence_any: std::mem::take(&mut config.flag_presence_any),
                     action_any: std::mem::take(&mut config.action_any),
                     effect_any: std::mem::take(&mut config.effect_any),
                     subject_kind_any: std::mem::take(&mut config.subject_kind_any),
@@ -721,6 +781,7 @@ impl TryFrom<HookClientRuleMatchConfig> for RuleMatch {
                     effect_rules: std::mem::take(&mut config.effect_rules),
                 },
             ),
+            wrapper_match: agent_semantic_config::WrapperMatchMode::default(),
             tool_any,
             command_any: config.command_any,
             argv_pattern_any: config.argv_pattern_any,

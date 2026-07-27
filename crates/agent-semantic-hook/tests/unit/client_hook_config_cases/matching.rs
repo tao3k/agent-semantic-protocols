@@ -80,6 +80,10 @@ protocolVersion = "1"
 
 [agents]
 
+[agents.placeholders]
+explore = "asp-explore"
+testing = "asp-testing"
+
 [[agents.residentAgents]]
 enabled = true
 name = "asp-explore"
@@ -766,7 +770,9 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
             json!({
                 "tool_name": "Bash",
                 "tool_input": {
-                    "command": format!("jq '..' {json_document}")
+                    "command": format!(
+                        "jq '{{properties: (.properties | to_entries[:32] | map({{key, type: .value.type}})), required: (.required[:32] // [])}}' {json_document}"
+                    )
                 }
             }),
             DecisionKind::Deny,
@@ -857,5 +863,23 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
             Some(expected_rule),
             "{label}: {decision:?}"
         );
+        if label == "unbounded structured projection" {
+            assert_eq!(
+                decision
+                    .fields
+                    .get("agentAction")
+                    .and_then(|action| action.get("subjects"))
+                    .and_then(serde_json::Value::as_array)
+                    .map(|subjects| {
+                        subjects
+                            .iter()
+                            .filter_map(|subject| subject.get("value"))
+                            .filter_map(serde_json::Value::as_str)
+                            .collect::<Vec<_>>()
+                    }),
+                Some(vec![json_document]),
+                "{label}: filter program must not become a path subject: {decision:?}"
+            );
+        }
     }
 }

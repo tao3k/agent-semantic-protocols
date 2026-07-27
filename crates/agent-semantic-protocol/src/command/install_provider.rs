@@ -43,9 +43,18 @@ struct PinnedLanguageReleaseEntry {
     sha256_by_target: BTreeMap<String, String>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+enum InstallScope {
+    #[default]
+    Global,
+    Project {
+        root: PathBuf,
+    },
+}
+
+#[derive(Debug, Default)]
 struct InstallArgs {
-    project_root: PathBuf,
+    scope: InstallScope,
     target: Option<String>,
     reconcile_receipt: bool,
     record_installed_receipt: Option<PathBuf>,
@@ -154,11 +163,16 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     };
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    let project_root = absolute_project_root(&invocation_root, &install_args.project_root);
+    let project_root = match &install_args.scope {
+        InstallScope::Global => None,
+        InstallScope::Project { root } => Some(root.as_path()),
+    };
     if install_args.reconcile_receipt {
+        let project_root = project_root
+            .ok_or_else(|| "--reconcile-receipt requires --project <ROOT>".to_string())?;
         return super::install_provider_reconcile::reconcile_provider_install_receipt(
             language_id,
-            &project_root,
+            project_root,
         );
     }
     let spec = provider_release(language_id)?;
@@ -190,12 +204,23 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         let installed_entrypoint_metadata_digest =
             agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed_path)?;
         let installed_sha256 = sha256_file(&installed_path)?;
-        let provider_lock_dir = ensure_project_provider_lock_dir(&install_args.project_root)?;
-        let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
+        let (scope, lock_path) = match &install_args.scope {
+            InstallScope::Global => (
+                "global",
+                canonical_global_provider_state_root()?
+                    .join("receipts")
+                    .join(format!("{language_id}.lock.toml")),
+            ),
+            InstallScope::Project { root } => (
+                "project",
+                ensure_project_provider_lock_dir(root)?.join(format!("{language_id}.lock.toml")),
+            ),
+        };
         write_provider_lock(
             &lock_path,
             &ProviderInstallLock {
                 schema_id: "asp.provider-install-lock.v1",
+                scope,
                 language_id: &spec.language_id,
                 provider_id: &spec.provider_id,
                 source_kind: "develop-root-justfile",
@@ -206,7 +231,9 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
                 installed_path: &installed_path,
                 package_path,
                 sha256: &installed_sha256,
-                source: project_root.display().to_string(),
+                source: project_root
+                    .map(|root| root.display().to_string())
+                    .unwrap_or_else(|| installed_path.display().to_string()),
                 source_snapshot_root: None,
                 source_snapshot_algorithm: None,
                 source_leaf_count: None,
@@ -222,9 +249,10 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             },
         )?;
         println!(
-            "[asp-install] provider={} language={} installMode=record-installed-receipt sourceKind=develop-root-justfile target={} binary={} sha256={} installedPath={} lock={} switch=atomic",
+            "[asp-install] provider={} language={} scope={} installMode=record-installed-receipt sourceKind=develop-root-justfile target={} binary={} sha256={} installedPath={} lock={} switch=atomic",
             spec.provider_id,
             spec.language_id,
+            scope,
             target,
             spec.binary,
             installed_sha256,
@@ -236,15 +264,34 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     let provider_binary = binary_file_name(&spec.binary, &target);
     let install_target =
         resolve_provider_binary_install_target(&spec.language_id, &provider_binary)?;
-    let provider_lock_dir = ensure_project_provider_lock_dir(&install_args.project_root)?;
-    let provider_package_dir = provider_lock_dir
+    let (scope, provider_lock_dir, provider_package_root, scope_root) = match &install_args.scope {
+        InstallScope::Global => {
+            let state_root = canonical_global_provider_state_root()?;
+            (
+                "global",
+                state_root.join("receipts"),
+                state_root.join("packages"),
+                state_root,
+            )
+        }
+        InstallScope::Project { root } => {
+            let provider_lock_dir = ensure_project_provider_lock_dir(root)?;
+            (
+                "project",
+                provider_lock_dir.clone(),
+                provider_lock_dir,
+                root.clone(),
+            )
+        }
+    };
+    let provider_package_dir = provider_package_root
         .join(&spec.language_id)
         .join(path_segment(rev))
         .join(&target);
     let asset_name = asset_name(&spec, &target);
     let archive_source = release_asset_url(&spec, &asset_name);
-    let archive_path = download_release_archive(&spec, &target, &install_args.project_root)?;
-    let published_sha256 = checksum_for_archive(&spec, &target, &install_args.project_root)?;
+    let archive_path = download_release_archive(&spec, &target, &scope_root)?;
+    let published_sha256 = checksum_for_archive(&spec, &target, &scope_root)?;
     let pinned_sha256 = pinned_release_sha256(&spec, &target)?;
     if let Some(pinned_sha256) = pinned_sha256
         && pinned_sha256 != published_sha256
@@ -274,12 +321,25 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         &install_target.path,
         &provider_package_dir,
     )?;
-    let state = project_runtime_state(&project_root)?;
-    let runtime_artifact = state.runtime_bin_dir.join(&spec.binary);
-    if installed_entrypoint != runtime_artifact {
-        install_executable_entrypoint(&installed_entrypoint, &runtime_artifact)?;
-    }
-    let installed = runtime_artifact;
+    let (installed, runtime_bin_dir) = match project_root {
+        Some(project_root) => {
+            let state = project_runtime_state(project_root)?;
+            let runtime_artifact = state.runtime_bin_dir.join(&spec.binary);
+            if installed_entrypoint != runtime_artifact {
+                install_executable_entrypoint(&installed_entrypoint, &runtime_artifact)?;
+            }
+            (runtime_artifact, state.runtime_bin_dir)
+        }
+        None => {
+            let runtime_bin_dir = install_target.path.parent().ok_or_else(|| {
+                format!(
+                    "global provider install target has no parent: {}",
+                    install_target.path.display()
+                )
+            })?;
+            (installed_entrypoint, runtime_bin_dir.to_path_buf())
+        }
+    };
     let installed_entrypoint_digest =
         agent_semantic_content_identity::file_content_digest_v1(&installed)?;
     let installed_entrypoint_metadata_digest =
@@ -289,6 +349,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         &lock_path,
         &ProviderInstallLock {
             schema_id: "asp.provider-install-lock.v1",
+            scope,
             language_id: &spec.language_id,
             provider_id: &spec.provider_id,
             source_kind: "release",
@@ -314,11 +375,15 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             launcher_digest: None,
         },
     )?;
-    let org_state_sync = org_capture::run_org_state_sync(&project_root)?;
+    let org_state_sync = match project_root {
+        Some(project_root) => org_capture::run_org_state_sync(project_root)?.status,
+        None => "not-applicable",
+    };
     println!(
-        "[asp-install] provider={} language={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} orgState={} orgStateSync={}",
+        "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} orgState={} orgStateSync={}",
         spec.provider_id,
         spec.language_id,
+        scope,
         rev,
         target,
         spec.binary,
@@ -327,9 +392,14 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         installed.display(),
         install_target.source,
         lock_path.display(),
-        state.runtime_bin_dir.display(),
-        state.protocol_home.join("org").display(),
-        org_state_sync.status,
+        runtime_bin_dir.display(),
+        project_root
+            .map(|root| root
+                .join(".agent-semantic-protocols/org")
+                .display()
+                .to_string())
+            .unwrap_or_else(|| "not-applicable".to_string()),
+        org_state_sync,
     );
     Ok(())
 }
@@ -342,70 +412,87 @@ fn absolute_project_root(invocation_root: &Path, project_root: &Path) -> PathBuf
     }
 }
 
-fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
-    let mut parsed = InstallArgs {
-        project_root: PathBuf::from("."),
-        ..InstallArgs::default()
-    };
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--rev" => {
-                return Err(
-                    "asp install language uses pinned provider releases; --rev is not supported"
-                        .to_string(),
-                );
-            }
-            "--target" => {
-                index += 1;
-                parsed.target = Some(required_value(args, index, "--target")?.to_string());
-            }
-            "--reconcile-receipt" => {
-                parsed.reconcile_receipt = true;
-            }
-            "--record-installed-receipt" => {
-                index += 1;
-                parsed.record_installed_receipt = Some(PathBuf::from(required_value(
-                    args,
-                    index,
-                    "--record-installed-receipt",
-                )?));
-            }
-            "--project" | "--workspace" => {
-                index += 1;
-                parsed.project_root = PathBuf::from(required_value(args, index, "--project")?);
-            }
-            "--archive" => {
-                return Err(
-                    "asp install language uses pinned GitHub release downloads; --archive is not supported"
-                        .to_string(),
-                );
-            }
-            "--repo" => {
-                return Err(
-                    "asp install language uses pinned provider repositories; --repo is not supported"
-                        .to_string(),
-                );
-            }
-            "help" | "--help" | "-h" => return Err(usage()),
-            flag if flag.starts_with('-') => {
-                return Err(format!("unknown install option `{flag}`"));
-            }
-            path => parsed.project_root = PathBuf::from(path),
-        }
-        index += 1;
-    }
-    if parsed.reconcile_receipt && parsed.record_installed_receipt.is_some() {
-        return Err("--reconcile-receipt conflicts with --record-installed-receipt".to_string());
-    }
-    Ok(parsed)
+#[derive(clap::Parser)]
+#[command(
+    name = "asp install language",
+    disable_version_flag = true,
+    about = "Install a pinned language provider into global state or one explicit project"
+)]
+struct InstallCliArgs {
+    /// Install into global ASP state (the default).
+    #[arg(long, conflicts_with = "project")]
+    global: bool,
+
+    /// Install into the canonical state for this project root.
+    #[arg(long, value_name = "ROOT", conflicts_with = "global")]
+    project: Option<PathBuf>,
+
+    #[arg(long, value_name = "TARGET")]
+    target: Option<String>,
+
+    #[arg(long)]
+    reconcile_receipt: bool,
+
+    #[arg(long, value_name = "PATH", conflicts_with = "reconcile_receipt")]
+    record_installed_receipt: Option<PathBuf>,
 }
 
-fn required_value<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a str, String> {
-    args.get(index)
-        .map(String::as_str)
-        .filter(|value| !value.starts_with('-') && !value.is_empty())
-        .ok_or_else(|| format!("{flag} requires a value"))
+fn parse_install_args(args: &[String]) -> Result<InstallArgs, String> {
+    use clap::Parser as _;
+
+    let cli = InstallCliArgs::try_parse_from(
+        std::iter::once("asp install language").chain(args.iter().map(String::as_str)),
+    )
+    .map_err(|error| error.to_string())?;
+    let scope = match (cli.global, cli.project) {
+        (_, Some(root)) => {
+            let invocation_root = env::current_dir()
+                .map_err(|error| format!("failed to read current directory: {error}"))?;
+            let absolute = absolute_project_root(&invocation_root, &root);
+            let root = absolute.canonicalize().map_err(|error| {
+                format!(
+                    "failed to canonicalize project root {}: {error}",
+                    absolute.display()
+                )
+            })?;
+            InstallScope::Project { root }
+        }
+        (true, None) | (false, None) => InstallScope::Global,
+    };
+    Ok(InstallArgs {
+        scope,
+        target: cli.target,
+        reconcile_receipt: cli.reconcile_receipt,
+        record_installed_receipt: cli.record_installed_receipt,
+    })
+}
+
+fn canonical_global_provider_state_root() -> Result<PathBuf, String> {
+    let state_home = env::var_os("ASP_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join(".agent-semantic-protocols"))
+        })
+        .ok_or_else(|| "global provider install requires ASP_STATE_HOME or HOME".to_string())?;
+    canonical_global_provider_state_root_from(&state_home)
+}
+
+fn canonical_global_provider_state_root_from(state_home: &Path) -> Result<PathBuf, String> {
+    let provider_root = state_home.join("runtime").join("providers");
+    fs::create_dir_all(&provider_root).map_err(|error| {
+        format!(
+            "failed to create global provider state root {}: {error}",
+            provider_root.display()
+        )
+    })?;
+    provider_root.canonicalize().map_err(|error| {
+        format!(
+            "failed to canonicalize global provider state root {}: {error}",
+            provider_root.display()
+        )
+    })
 }
 
 fn provider_release(language_id: &str) -> Result<ProviderReleaseSpec, String> {
@@ -496,6 +583,7 @@ fn validate_target(spec: &ProviderReleaseSpec, target: &str) -> Result<(), Strin
 
 struct ProviderInstallLock<'a> {
     schema_id: &'a str,
+    scope: &'a str,
     language_id: &'a str,
     provider_id: &'a str,
     source_kind: &'a str,
@@ -523,8 +611,9 @@ struct ProviderInstallLock<'a> {
 
 fn write_provider_lock(path: &Path, lock: &ProviderInstallLock<'_>) -> Result<(), String> {
     let mut contents = format!(
-        "schemaId = \"{}\"\nlanguage = \"{}\"\nprovider = \"{}\"\nsourceKind = \"{}\"\n",
+        "schemaId = \"{}\"\nscope = \"{}\"\nlanguage = \"{}\"\nprovider = \"{}\"\nsourceKind = \"{}\"\n",
         toml_escape(lock.schema_id),
+        toml_escape(lock.scope),
         toml_escape(lock.language_id),
         toml_escape(lock.provider_id),
         toml_escape(lock.source_kind),
@@ -608,7 +697,7 @@ fn toml_escape(value: &str) -> String {
 }
 
 fn usage() -> String {
-    "usage: asp install binary --target <path>\n       asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [PROJECT_ROOT] [--target <target>] [--project <root>]\n       release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n       develop mode: use the repository Justfile recipes; the root Justfile owns provider builds and installation (installMode=develop-workspace)".to_string()
+    "usage: asp install binary --target <path>\n       asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [--global | --project <canonical-root>] [--target <target>]\n       scope: global is the default; project installation requires explicit --project <canonical-root>\n       release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n       develop mode: use the repository Justfile recipes; the root Justfile owns provider builds and installation (installMode=develop-workspace)".to_string()
 }
 
 fn install_hook_usage() -> String {

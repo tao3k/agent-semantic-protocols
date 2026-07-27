@@ -145,48 +145,6 @@ mod provider_source_snapshot_envelope_generation_tests;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceIndexOwnerPath(String);
 
-/// Inputs for capturing one exact owner from an already-loaded activation.
-#[non_exhaustive]
-pub struct CurrentSourceIndexOwnerFromActivationRequest<'a> {
-    project_root: &'a Path,
-    activation_path: &'a Path,
-    activation: &'a agent_semantic_hook::HookRuntime,
-    owner_path: SourceIndexOwnerPath,
-    language_id: LanguageId,
-    provider_id: ProviderId,
-}
-
-impl<'a>
-    From<(
-        &'a Path,
-        &'a Path,
-        &'a agent_semantic_hook::HookRuntime,
-        SourceIndexOwnerPath,
-        LanguageId,
-        ProviderId,
-    )> for CurrentSourceIndexOwnerFromActivationRequest<'a>
-{
-    fn from(
-        value: (
-            &'a Path,
-            &'a Path,
-            &'a agent_semantic_hook::HookRuntime,
-            SourceIndexOwnerPath,
-            LanguageId,
-            ProviderId,
-        ),
-    ) -> Self {
-        Self {
-            project_root: value.0,
-            activation_path: value.1,
-            activation: value.2,
-            owner_path: value.3,
-            language_id: value.4,
-            provider_id: value.5,
-        }
-    }
-}
-
 impl SourceIndexOwnerPath {
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -231,11 +189,18 @@ struct ProviderSourceSnapshotOwnerV1 {
 }
 
 /// Publish one provider-scoped, root-bound source envelope backed by ASP-owned CAS bytes.
+/// Typed inputs for publishing one provider-scoped source snapshot envelope.
+pub struct ProviderSourceSnapshotEnvelopePublicationV1<'a> {
+    pub snapshot: &'a CurrentSourceIndexSnapshot,
+    pub provider_id: &'a str,
+    pub source_extensions: &'a [String],
+    pub cache_home: &'a Path,
+    pub expected_workspace_root_digest: &'a [u8; 32],
+}
+
+/// Publish one provider-scoped, root-bound source envelope backed by ASP-owned CAS bytes.
 pub fn publish_provider_source_snapshot_envelope(
-    snapshot: &CurrentSourceIndexSnapshot,
-    provider_id: impl Into<ProviderId>,
-    source_extensions: &[String],
-    cache_home: &Path,
+    request: ProviderSourceSnapshotEnvelopePublicationV1<'_>,
 ) -> Result<std::path::PathBuf, String> {
     fn merkle_root_depth(leaf_count: usize) -> usize {
         if leaf_count <= 1 {
@@ -245,7 +210,14 @@ pub fn publish_provider_source_snapshot_envelope(
         }
     }
 
-    let provider_id = provider_id.into();
+    let ProviderSourceSnapshotEnvelopePublicationV1 {
+        snapshot,
+        provider_id,
+        source_extensions,
+        cache_home,
+        expected_workspace_root_digest,
+    } = request;
+    let provider_id = ProviderId::from(provider_id);
     let cas_root = cache_home.join("source-blob-cas").join("v1");
     let cas = agent_semantic_content_identity::ContentAddressedStore::new(&cas_root);
     let normalized_extensions = source_extensions
@@ -315,6 +287,18 @@ pub fn publish_provider_source_snapshot_envelope(
             provider_id.as_str(),
             provider_source_snapshot.leaf_count,
             owners.len()
+        ));
+    }
+    let expected_workspace_root_digest = expected_workspace_root_digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    if provider_source_snapshot.root_digest != expected_workspace_root_digest {
+        return Err(format!(
+            "provider source envelope root does not match admitted workspace identity: providerId={} envelopeRootDigest={} workspaceRootDigest={}",
+            provider_id.as_str(),
+            provider_source_snapshot.root_digest,
+            expected_workspace_root_digest
         ));
     }
     let envelope_dir = cache_home
@@ -392,8 +376,10 @@ pub fn current_source_index_snapshot(
     current_source_index_snapshot_with_registry(project_root, &provider_registry)
 }
 
-/// Capture a workspace-search snapshot, supplementing incomplete provider
-/// source-scope facts from the activated provider coverage only when needed.
+/// Capture a workspace-search snapshot from complete provider-owned coverage.
+///
+/// Missing provider owners fail closed; activation scope is never merged into
+/// the provider snapshot.
 pub fn current_workspace_search_source_index_snapshot(
     project_root: &Path,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
@@ -410,6 +396,38 @@ pub fn current_workspace_search_source_index_snapshot(
         source_snapshot,
         source_blobs,
     })
+}
+
+/// Capture and atomically publish one complete provider generation.
+///
+/// Every owner, selector, source projection, and Merkle proof must come from
+/// the same admitted workspace identity. Partial provider coverage is rejected
+/// before a live generation directory becomes visible.
+pub fn publish_current_workspace_search_source_index_generation_v1(
+    project_root: &Path,
+    publication: super::CompleteSourceIndexGenerationPublicationV1<'_>,
+) -> Result<super::PublishedSourceIndexGenerationV1, String> {
+    if publication.project_root != project_root {
+        return Err(format!(
+            "source-index generation project root drift: requested={} publication={}",
+            project_root.display(),
+            publication.project_root.display()
+        ));
+    }
+    let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
+    let registry = provider_registry.evidence(project_root);
+    let files = super::collect::collect_workspace_search_source_index_files(
+        project_root,
+        &provider_registry,
+    )?;
+    let (_, workspace_snapshot, source_snapshot, source_blobs) =
+        source_index_snapshot_from_files(project_root, &files, &registry)?;
+    let snapshot = CurrentSourceIndexSnapshot {
+        workspace_snapshot,
+        source_snapshot,
+        source_blobs,
+    };
+    super::generation::publish_complete_source_index_generation_v1(&snapshot, &files, publication)
 }
 
 /// Capture a content-authoritative, one-owner snapshot for an exact query.
@@ -432,25 +450,6 @@ pub fn current_source_index_snapshot_for_owner(
         owner_path.as_str(),
         language_id.as_str(),
         provider_id.as_str(),
-        &provider_registry,
-    )
-}
-
-/// Capture one exact owner from an activation that the caller already loaded.
-///
-/// This keeps activation synchronization at the command boundary instead of
-/// re-entering the manifest/activation materializer from the source snapshot.
-pub fn current_source_index_snapshot_for_owner_from_activation<'a>(
-    request: impl Into<CurrentSourceIndexOwnerFromActivationRequest<'a>>,
-) -> Result<CurrentSourceIndexSnapshot, String> {
-    let request = request.into();
-    let provider_registry =
-        ProviderRegistrySnapshot::from_activation(request.activation_path, request.activation)?;
-    current_source_index_snapshot_for_owner_with_registry(
-        request.project_root,
-        request.owner_path.as_str(),
-        request.language_id.as_str(),
-        request.provider_id.as_str(),
         &provider_registry,
     )
 }
@@ -886,6 +885,13 @@ fn source_index_refresh_report(
     )
 }
 
+#[path = "activation_snapshot.rs"]
+mod activation_snapshot;
 #[cfg(test)]
 #[path = "../../tests/unit/source_index_api.rs"]
 mod tests;
+pub use activation_snapshot::{
+    CurrentSourceIndexOwnerFromActivationRequest,
+    current_source_index_snapshot_for_owner_from_activation,
+    current_source_index_snapshot_from_activation,
+};

@@ -1,6 +1,6 @@
 use agent_semantic_command_match::{
     MAX_COMMAND_CANDIDATES, PrefixMatch, bash::parse_bash_command_candidates,
-    command_stages_match_prefix,
+    command_stages_match_wrapped_prefix,
 };
 
 fn tokens(values: &[&str]) -> Vec<String> {
@@ -28,7 +28,7 @@ fn wrapper_scenarios_share_one_prefix_contract() {
     ] {
         let stages = parse_bash_command_candidates(command).expect("valid Bash command");
         assert_eq!(
-            command_stages_match_prefix(&stages, &prefix),
+            command_stages_match_wrapped_prefix(&stages, &prefix),
             PrefixMatch::Matched,
             "command={command:?} stages={stages:?}"
         );
@@ -46,7 +46,7 @@ fn cargo_check_prefix_is_independent_of_downstream_package_names() {
     ] {
         let stages = parse_bash_command_candidates(command).expect("valid Bash command");
         assert_eq!(
-            command_stages_match_prefix(&stages, &prefix),
+            command_stages_match_wrapped_prefix(&stages, &prefix),
             PrefixMatch::Matched,
             "command={command:?} stages={stages:?}"
         );
@@ -59,7 +59,7 @@ fn quoted_text_and_partial_prefixes_do_not_match() {
     for command in ["echo 'cargo test'", "cargo testing", "echo cargo"] {
         let stages = parse_bash_command_candidates(command).expect("valid Bash command");
         assert_eq!(
-            command_stages_match_prefix(&stages, &prefix),
+            command_stages_match_wrapped_prefix(&stages, &prefix),
             PrefixMatch::NotMatched,
             "command={command:?} stages={stages:?}"
         );
@@ -74,7 +74,7 @@ fn bounded_scan_routes_protected_on_exhaustion() {
         .collect::<Vec<_>>()
         .join(" && ");
     let stages = parse_bash_command_candidates(&command).expect("valid Bash command");
-    let result = command_stages_match_prefix(&stages, &cargo_test_prefix());
+    let result = command_stages_match_wrapped_prefix(&stages, &cargo_test_prefix());
     assert_eq!(result, PrefixMatch::BudgetExceeded);
     assert!(result.routes_protected());
 }

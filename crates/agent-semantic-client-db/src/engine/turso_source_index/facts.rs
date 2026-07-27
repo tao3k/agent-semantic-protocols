@@ -6,18 +6,18 @@ use super::projection::{
     refresh_turso_source_index_posting_projection, write_turso_source_index_owner_rows,
 };
 use super::readiness::{
-    turso_source_index_projection_ready, validate_turso_source_index_selector_payload_proofs,
+    turso_source_index_projection_ready,
 };
 use super::trace::{
     source_index_db_trace, source_index_db_trace_membership_changes,
     source_index_db_trace_posting_projection, source_index_db_trace_row_counts,
 };
-use super::transaction::{TURSO_SOURCE_INDEX_COLD_WRITE_BUDGET, TursoSourceIndexWriteStats};
+use super::transaction::TursoSourceIndexWriteStats;
 use crate::ClientDbSourceIndexImport;
 use crate::engine::turso_statement::execute_turso_operation;
 
 pub(super) async fn write_turso_source_index_rows(
-    connection: &turso::Connection,
+    connection: &mut turso::Connection,
     import: &ClientDbSourceIndexImport,
     membership_change_set: &crate::source_index::ClientDbSourceIndexMembershipChangeSet,
     project_root: &str,
@@ -25,15 +25,13 @@ pub(super) async fn write_turso_source_index_rows(
     source_snapshot_json: &str,
 ) -> Result<TursoSourceIndexWriteStats, String> {
     let cold_write_started = std::time::Instant::now();
-    validate_turso_source_index_selector_payload_proofs(import)?;
+    super::readiness::validate_turso_source_index_selector_materialization_proofs(import)?;
     let imported_membership = turso_source_index_import_membership(import)?;
-    let transaction = turso::transaction::Transaction::new_unchecked(
-        connection,
-        turso::transaction::TransactionBehavior::Immediate,
-    )
-    .await
-    .map_err(|error| format!("failed to begin Turso source-index transaction: {error}"))?;
-    let write_result = tokio::time::timeout(TURSO_SOURCE_INDEX_COLD_WRITE_BUDGET, async {
+    let transaction = connection
+        .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
+        .await
+        .map_err(|error| format!("failed to begin Turso source-index transaction: {error}"))?;
+    let write_result = async {
         let connection = &*transaction;
 
         let projection_ready = turso_source_index_projection_ready(
@@ -188,7 +186,7 @@ pub(super) async fn write_turso_source_index_rows(
         source_index_db_trace_posting_projection(cold_write_started, posting_count);
         super::publish::publish_turso_source_index_scope(
             super::publish::PublishTursoSourceIndexScopeRequest {
-                connection,
+                transaction: &transaction,
                 project_root,
                 schema_id: import.schema_id.as_str(),
                 schema_version: import.schema_version.as_str(),
@@ -207,35 +205,20 @@ pub(super) async fn write_turso_source_index_rows(
             posting_write_count: posting_count.min(u32::MAX as usize) as u32,
         };
         Ok(stats)
-    })
+    }
     .await;
 
     match write_result {
-        Ok(Ok(stats)) => {
+        Ok(stats) => {
             transaction.commit().await.map_err(|error| {
                 format!("failed to commit Turso source-index transaction: {error}")
             })?;
             source_index_db_trace("transaction-committed", cold_write_started);
             Ok(stats)
         }
-        Ok(Err(write_error)) => match transaction.rollback().await {
+        Err(write_error) => match transaction.rollback().await {
             Ok(()) => Err(write_error),
             Err(rollback_error) => Err(format!("{write_error}; rollbackError={rollback_error}")),
         },
-        Err(_) => {
-            let write_error = format!(
-                "source-index cold-write budget exhausted: budgetMs={} elapsedMs={} owners={} selectors={}",
-                TURSO_SOURCE_INDEX_COLD_WRITE_BUDGET.as_millis(),
-                cold_write_started.elapsed().as_millis(),
-                import.owners.len(),
-                import.selectors.len(),
-            );
-            match transaction.rollback().await {
-                Ok(()) => Err(write_error),
-                Err(rollback_error) => {
-                    Err(format!("{write_error}; rollbackError={rollback_error}"))
-                }
-            }
-        }
     }
 }

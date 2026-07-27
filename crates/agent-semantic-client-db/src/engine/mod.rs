@@ -26,6 +26,10 @@ mod turso_provider_command;
 mod turso_schema_lifecycle_tests;
 mod turso_search;
 mod turso_source_index;
+pub use turso_source_index::{
+    ClientDbSourceIndexGenerationOwnerV1, ClientDbSourceIndexGenerationSnapshotV1,
+    ClientDbSourceIndexSelectorFactV1, latest_turso_source_index_generation_snapshot,
+};
 pub(crate) mod turso_statement;
 mod turso_syntax;
 

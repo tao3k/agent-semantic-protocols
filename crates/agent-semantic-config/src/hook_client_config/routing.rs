@@ -42,11 +42,11 @@ pub struct HookClientRuleConfig {
     pub routes: Vec<HookClientRuleRouteConfig>,
 }
 
-/// Typed execution dispatch emitted by a matched hook rule.
+/// Stable responsibility key resolved through `agents.placeholders`.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-pub struct HookClientResidentName(String);
+pub struct HookClientAgentPlaceholder(String);
 
-impl HookClientResidentName {
+impl HookClientAgentPlaceholder {
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -65,7 +65,7 @@ impl HookClientReceiptKind {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleDispatchConfig {
     pub transport: HookClientRuleDispatchTransport,
-    pub resident_name: HookClientResidentName,
+    pub agent: HookClientAgentPlaceholder,
     pub receipt_kind: HookClientReceiptKind,
     #[serde(default)]
     pub lazy_provider: Option<HookClientLazyProviderPolicy>,
@@ -136,17 +136,11 @@ pub enum HookClientActionAuthority {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleMatchConfig {
     #[serde(default)]
+    pub command_profile_any: Vec<super::profiles::HookClientCommandProfileRef>,
+    #[serde(default)]
     pub authority_rules: Vec<super::invocation::AgentActionAuthorityRule>,
     #[serde(default)]
     pub effect_rules: Vec<super::invocation::AgentActionEffectRule>,
-    #[serde(default)]
-    pub command_wrappers: Vec<super::invocation::HookClientCommandWrapper>,
-    #[serde(default)]
-    pub invocation_shape_any: Vec<super::invocation::HookClientInvocationShape>,
-    #[serde(default)]
-    pub wrapper_match_any: Vec<super::invocation::HookClientWrapperMatch>,
-    #[serde(default)]
-    pub flag_presence_any: Vec<super::invocation::HookClientFlagPresence>,
     #[serde(default)]
     pub action_any: Vec<HookClientActionKind>,
     #[serde(default)]

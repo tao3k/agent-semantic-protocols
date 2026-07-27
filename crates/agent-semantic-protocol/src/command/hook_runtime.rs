@@ -33,9 +33,7 @@ mod hook_runtime_subagent;
 
 pub(super) use hook_runtime_skill::active_codex_plugin_skill_path;
 
-use super::{
-    codex_enforcement_report, payload_indicates_subagent_context, protocol_binary_on_path,
-};
+use super::{codex_enforcement_report, payload_indicates_subagent_context};
 use agent_semantic_client_db::{AgentSessionLookupRequest, AgentSessionRegistry};
 use agent_semantic_hook::{
     ActiveContextRecord, DecisionKind, HookClassificationRequest, HookDecision, ReasonKind,

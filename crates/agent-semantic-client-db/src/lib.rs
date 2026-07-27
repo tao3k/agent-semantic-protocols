@@ -83,7 +83,6 @@ pub use source_index::{
     ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexRefreshResult,
     ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorId,
     ClientDbSourceIndexSelectorKind, ClientDbSourceIndexSelectorLookup,
-    ClientDbSourceIndexSelectorPayloadKind, ClientDbSourceIndexSelectorPayloadProof,
     ClientDbSourceIndexSelectorSymbol, ClientDbSourceIndexSource, ClientDbSourceIndexSourceBlobs,
     ClientDbSourceIndexSourceKind, ClientDbSourceIndexStats, ClientDbSourceIndexStructuralSelector,
     assemble_source_index_import, build_source_index_import,

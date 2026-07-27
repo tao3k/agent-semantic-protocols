@@ -25,6 +25,13 @@ pub(crate) fn registry() -> HookRuntime {
     }
 }
 
+pub(crate) fn registry_without_providers() -> HookRuntime {
+    HookRuntime {
+        project_root: ".".to_string(),
+        providers: Vec::new(),
+    }
+}
+
 pub(crate) fn rust_registry() -> HookRuntime {
     HookRuntime {
         project_root: ".".to_string(),

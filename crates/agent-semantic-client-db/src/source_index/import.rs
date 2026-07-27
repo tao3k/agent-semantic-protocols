@@ -17,7 +17,7 @@ use super::types::{
     ClientDbSourceIndexImport, ClientDbSourceIndexImportAssemblyRequest,
     ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest, ClientDbSourceIndexOwner,
     ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexScopeFile,
-    ClientDbSourceIndexSelector, ClientDbSourceIndexSource,
+    ClientDbSourceIndexSource,
 };
 
 /// Build source-index file hashes and import rows from collected workspace
@@ -220,20 +220,6 @@ fn build_source_index_import_from_started(
                 .map(ClientDbSourceIndexQueryKey::from)
                 .collect(),
         });
-        selectors.push(ClientDbSourceIndexSelector {
-            owner_path,
-            selector_id: format!("{}://{relative_path}#file", file.language_id.as_str()).into(),
-            symbol: file_symbol(&relative_path).map(Into::into),
-            kind: Some("file".into()),
-            start_line: 1,
-            end_line: line_count.max(1),
-            source: request.selector_source.clone(),
-            query_keys: query_keys
-                .into_iter()
-                .map(ClientDbSourceIndexQueryKey::from)
-                .collect(),
-            payload_proof: None,
-        });
         for selector in &file.selectors {
             if selector.owner_path.as_str() != relative_path {
                 return Err(format!(
@@ -273,18 +259,6 @@ fn ensure_source_index_cold_assembly_budget(
         SOURCE_INDEX_COLD_ASSEMBLY_BUDGET.as_millis(),
         elapsed.as_millis(),
     ))
-}
-
-fn file_symbol(relative_path: &str) -> Option<String> {
-    let file_name = relative_path.rsplit('/').next()?;
-    let stem = file_name
-        .rsplit_once('.')
-        .map_or(file_name, |(stem, _extension)| stem);
-    if stem.is_empty() {
-        None
-    } else {
-        Some(stem.to_string())
-    }
 }
 
 /// Return the slash-normalized project-relative path used by source-index rows.
@@ -342,6 +316,17 @@ fn source_index_selector_evidence_hash(file: &ClientDbSourceIndexScopeFile) -> C
         let _ = writeln!(canonical, "{label}:{}:{value}", value.len());
     }
 
+    fn digest_hex(digest: &[u8; 32]) -> String {
+        use std::fmt::Write as _;
+        digest.iter().fold(
+            String::with_capacity(digest.len() * 2),
+            |mut encoded, byte| {
+                let _ = write!(encoded, "{byte:02x}");
+                encoded
+            },
+        )
+    }
+
     let mut selectors = file.selector_receipts.iter().collect::<Vec<_>>();
     selectors.sort_by(|left, right| {
         left.owner_path
@@ -370,19 +355,48 @@ fn source_index_selector_evidence_hash(file: &ClientDbSourceIndexScopeFile) -> C
         for query_key in &selector.query_keys {
             push_component(&mut canonical, "queryKey", query_key.as_str());
         }
-        if let Some(proof) = selector.payload_proof.as_ref() {
-            push_component(
-                &mut canonical,
-                "payloadSelector",
-                proof.structural_selector.as_str(),
-            );
-            push_component(&mut canonical, "payloadKind", proof.payload_kind.as_str());
-            push_component(
-                &mut canonical,
-                "payloadBounded",
-                if proof.bounded { "true" } else { "false" },
-            );
-        }
+        let proof = &selector.materialization_proof;
+        push_component(
+            &mut canonical,
+            "materializationSelector",
+            &proof.structural_selector,
+        );
+        push_component(&mut canonical, "materializationOwner", &proof.owner_path);
+        push_component(
+            &mut canonical,
+            "workspaceRootDigest",
+            &digest_hex(&proof.workspace_root_digest),
+        );
+        push_component(
+            &mut canonical,
+            "ownerSubtreeDigest",
+            &digest_hex(&proof.owner_subtree_digest),
+        );
+        push_component(
+            &mut canonical,
+            "sourceBlobDigest",
+            &digest_hex(&proof.source_blob_digest),
+        );
+        push_component(
+            &mut canonical,
+            "parserFactDigest",
+            &digest_hex(&proof.normalized_parser_facts_digest),
+        );
+        push_component(
+            &mut canonical,
+            "projectionDigest",
+            &digest_hex(&proof.projection_digest),
+        );
+        push_component(
+            &mut canonical,
+            "sourceByteStart",
+            &proof.source_byte_start.to_string(),
+        );
+        push_component(
+            &mut canonical,
+            "sourceByteEnd",
+            &proof.source_byte_end.to_string(),
+        );
     }
     ClientCacheFileHash {
         path: format!(

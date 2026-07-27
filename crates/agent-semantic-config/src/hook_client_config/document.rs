@@ -53,6 +53,8 @@ pub struct HookClientConfigFile {
     pub agent_session_messages: HookClientAgentSessionMessagesConfig,
     pub agents: HookClientAgentsConfig,
     #[serde(default)]
+    pub command_profiles: Vec<super::profiles::HookClientCommandProfileConfig>,
+    #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
 }
 
@@ -244,7 +246,6 @@ pub fn merge_asp_project_hook_config(
             ));
         }
     }
-
     for resident in project.hook.agents.resident_agents {
         if let Some(index) = base
             .agents

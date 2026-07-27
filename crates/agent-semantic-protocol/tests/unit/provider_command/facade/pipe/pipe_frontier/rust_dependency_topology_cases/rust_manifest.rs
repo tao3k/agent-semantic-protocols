@@ -26,12 +26,13 @@ fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
     .expect("write source");
     write_dependency_topology_provider(
         &bin_dir,
-        "rs-harness",
+        ".rs-harness-delegate",
         &marker,
         "serde",
         "1.0.228",
         "Cargo.toml",
     );
+    support::write_marker_provider(&bin_dir, "rs-harness", &marker);
     support::write_activation(
         &root,
         &[support::provider_with_dependency_topology(
@@ -49,6 +50,8 @@ fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
             "search",
             "pipe",
             "serde|Serialize",
+            "--surface",
+            "deps",
             "--view",
             "graph-turbo-request",
             ".",
@@ -101,7 +104,7 @@ fn search_pipe_graph_request_uses_rust_manifest_dependency_versions() {
 #[test]
 fn search_pipe_graph_request_reuses_cached_manifest_dependency_seed() {
     let root = support::temp_project_root("search-pipe-rust-dependency-seed-cache");
-    let bin_dir = root.join(".bin");
+    let bin_dir = support::state_runtime_bin(&root);
     let marker = root.join("provider-called");
     let cache_home = root.join(".cache");
     std::fs::create_dir_all(root.join("src")).expect("create src");
@@ -115,6 +118,14 @@ fn search_pipe_graph_request_reuses_cached_manifest_dependency_seed() {
         "use serde::Serialize;\npub struct Receipt;\n",
     )
     .expect("write source");
+    write_dependency_topology_provider(
+        &bin_dir,
+        ".rs-harness-delegate",
+        &marker,
+        "serde",
+        "1",
+        "Cargo.toml",
+    );
     support::write_marker_provider(&bin_dir, "rs-harness", &marker);
     support::write_activation(&root, &[support::provider("rust", Vec::new())]);
 

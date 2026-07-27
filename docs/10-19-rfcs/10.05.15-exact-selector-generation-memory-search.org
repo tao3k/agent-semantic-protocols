@@ -1,0 +1,272 @@
+#+title: 10.05.15 Exact Selector Generation Memory Search
+#+options: toc:2
+
+* Status
+
+Draft for implementation and performance-gate closure.
+
+This RFC removes database, workspace scan, Merkle reconstruction, and provider
+process startup from the exact-selector query path.  It does not add a cache in
+front of the existing path.  It makes an immutable, complete generation fixture
+the query authority.
+
+* Problem
+
+An exact query already carries the full structural identity:
+
+#+begin_example
+rust://src/engine/turso_source_index/transaction.rs#item/const/TURSO_SOURCE_INDEX_COLD_WRITE_BUDGET
+#+end_example
+
+The current command still performs work that belongs to activation:
+
+1. load the complete source snapshot;
+2. hash every source blob and reconstruct the workspace Merkle tree;
+3. open the Turso client database;
+4. consult a projection record only after those costs;
+5. on a miss, publish an envelope and start the language provider.
+
+Consequently a warm exact query takes seconds and can fail on a Turso file lock.
+The selector is not the expensive input.  Reconstructing generation authority
+inside the query is the architectural error.
+
+* V1 authority
+
+The active generation MUST atomically publish one exact-selector memory-search
+fixture.  The fixture is content addressed by:
+
+#+begin_example
+languageId
+providerId
+workspaceRootDigest
+parserIdentityDigest
+queryPackDigest
+generationDigest
+#+end_example
+
+** Workspace identity admission
+
+Memory Search MUST NOT load or publish a fixture until the provider emits one
+typed workspace-search identity receipt.  The receipt keeps these roots
+separate:
+
+#+begin_example
+requestedDiscoveryRoot
+cargoWorkspaceRoot
+selectedPackageRoot
+providerToolRoot
+envelopeRoot
+#+end_example
+
+=providerToolRoot= identifies the installed language harness and is never
+compared with a downstream target root.
+
+When the requested path is a package root inside a larger Cargo workspace, the
+scope is =package= and admission requires:
+
+#+begin_example
+requestedDiscoveryRoot == selectedPackageRoot == envelopeRoot
+#+end_example
+
+When the requested path is the Cargo workspace root, the scope is =workspace=
+and admission requires:
+
+#+begin_example
+requestedDiscoveryRoot == cargoWorkspaceRoot == envelopeRoot
+selectedPackageRoot == null
+#+end_example
+
+Package selection MUST come from the registered language harness package graph.
+It MUST NOT be inferred from path depth or promoted to the outer workspace
+merely because a workspace manifest exists above the requested package.
+
+Package-manager roots are resolved exactly once.  An absolute package root is
+already resolved and MUST NOT be joined to the discovery or workspace root.
+Only a relative member path may be joined to the Cargo workspace root, and the
+normalized result must remain inside that workspace.
+
+An envelope with zero roots, zero owners, partial owner coverage, or a root from
+another package is not a frontier.  It is an identity-admission failure and MUST
+stop before ranking, graph routing, or Memory Search load-once.
+
+** Nested item identity
+
+An exact selector names one parser-owned canonical item, not the nearest
+top-level ancestor that happens to contain the matched symbol.
+
+For languages that permit declarations inside another declaration or block,
+the registered language harness MUST recursively materialize those declarations
+as independent items.  Their identity carries the complete enclosing scope
+chain in addition to the language, owner path, item kind, and symbol.
+
+For Rust this includes at least:
+
+- functions, structs, enums, unions, traits, impls, type aliases, constants,
+  statics, and modules declared inside a function or block;
+- methods and associated items qualified by impl owner and optional trait owner;
+- nested declarations whose symbols repeat in different enclosing scopes.
+
+The provider MUST NOT resolve a requested nested symbol to its outer function.
+If the nested canonical identity is absent from the admitted generation, exact
+query fails with =nested-item-not-in-active-generation=.  It MUST NOT return the
+outer item's projection, scan the owner text, or invent a line-range selector.
+
+=--code= projects the inclusive parser byte slice of the selected canonical
+item.  Selecting an outer function intentionally returns the whole function;
+selecting a nested item returns only that nested item's slice.
+
+Callsites are graph facts rather than declaration identities.  A callsite query
+must use its parser-owned syntax selector and MUST NOT be represented as a
+synthetic function item.
+
+Each record MUST contain:
+
+#+begin_example
+canonical selector
+owner path
+owner subtree digest
+source blob digest
+projection mode
+inclusive source byte range or immutable projection bytes
+normalized parser facts digest
+#+end_example
+
+The fixture is complete only when =leafCount == ownerCount= and
+=recordCount == selectorCount=, and when its item and projection coverage
+receipts agree with the published generation.  A partial fixture MUST NOT be
+activated.
+
+The activation pointer and fixture manifest MUST be committed as one atomic
+generation publication.  Readers pin the generation digest once and never mix
+records from two generations.
+
+Inside the immutable content-addressed generation directory the artifact name
+is =exact-selector-generation.v1.bin=.  The stable name is not a mutable global
+pointer: the generation directory identity and the header fixture digest
+together pin the bytes.
+
+* Ownership
+
+- =agent-semantic-content-identity= owns the language-neutral V1 binary format,
+  canonical key, digest validation, and zero-allocation lookup primitive.
+- =agent-semantic-search= owns fixture loading, memory mapping, generation
+  admission, lookup, and performance receipts.
+- every registered language harness owns population of canonical selectors,
+  normalized parser facts, and exact projection ranges for its language.
+- =agent-semantic-protocol= resolves the active fixture and delegates exact
+  lookup to Search.  It MUST NOT reconstruct a workspace Merkle tree, open
+  Turso, scan source, or spawn a provider for an exact query.
+- =asp-rust-project-harness-policy= (FixTool) gates the Rust harness producer
+  and shared lookup primitive without depending on the Search crate.  This
+  avoids the existing Search -> FixTool build-dependency cycle.
+
+* Query contract
+
+An exact query follows only this flow:
+
+#+begin_example
+activation receipt
+  -> pin generation fixture
+  -> validate fixture header/root
+  -> canonical selector lookup
+  -> validate record proof
+  -> render immutable projection
+#+end_example
+
+An absent selector returns =selector-not-in-active-generation=.  It MUST NOT
+silently invoke the provider, rebuild a snapshot, consult Turso, or fall back to
+raw source.  Activation or an explicit generation refresh owns rebuilding.
+
+Relocation is handled before publication.  Moved owners and path attributes are
+part of the generation transaction, not query-time recovery.
+
+* Required performance receipt
+
+Every gate sample records:
+
+#+begin_example
+fixtureAttachMicros
+selectorResolveMicros
+proofValidateMicros
+renderMicros
+totalMicros
+subprocesses
+dbOpens
+sourceFilesRead
+sourceBytesRead
+manifestWrites
+generationDigest
+fixtureDigest
+hit
+#+end_example
+
+The V1 budgets are:
+
+| scenario | p95 budget |
+|----------+------------|
+| cold fixture attach + exact resolve + render | <= 1000 microseconds |
+| warm exact resolve + render | <= 250 microseconds |
+| installed active command dispatch | <= 5000 microseconds |
+| absent selector fail-closed receipt | <= 1000 microseconds |
+
+All four scenarios require =subprocesses=0=, =dbOpens=0=,
+=sourceFilesRead=0=, =sourceBytesRead=0=, and =manifestWrites=0=.
+
+The gate MUST fail when a segment receipt is missing.  A timeout, retry,
+prewarming step, or widened threshold is not a valid fix.
+
+* FixTool gate
+
+FixTool MUST build a deterministic registered-language fixture through the
+public Rust harness API, publish it through the shared V1 format, then measure:
+
+1. isolated cold attach;
+2. repeated warm exact hits;
+3. absent-selector fail-closed behavior;
+4. parallel readers against the same immutable fixture;
+5. generation replacement while readers remain pinned to the prior digest.
+
+The benchmark MUST assert result identity and zero-I/O counters in addition to
+latency.  A pure function benchmark that bypasses generation loading is
+insufficient.
+
+* Removal boundary
+
+Once the active fixture path is wired, delete the exact-query branches that:
+
+- reconstruct =WorkspacePathMerkleTreeV1= from all source blobs;
+- call =lookup_exact_selector_projection_v1_from_client_dir=;
+- call =persist_exact_selector_projection_v1_from_client_dir=;
+- publish a provider source envelope from an exact query;
+- start a provider to materialize an exact projection.
+
+Those operations may exist only in generation production and publication.
+* Exact query self-hosting materialization
+
+Exact query MUST consume the same admitted generation that produced its
+canonical selector.  Search publishes one immutable generation containing the
+=WorkspaceSearchIdentityV1=, owner-local Merkle evidence, canonical item
+identities, and verified source slices.  Query selects that generation by
+=workspace identity + root digest + selector identity= and materializes the
+recorded source slice without reopening the workspace.
+
+The following states are protocol failures:
+
+- a selector exists without owner-local source materialization evidence;
+- the generation has leaves but no complete owner envelope;
+- the query root differs from the selector generation root;
+- the owner path is missing from the admitted generation;
+- the source slice digest differs from the parser-produced item fact;
+- query attempts to recover through =--from-hook=, direct source reads, or a
+  workspace scan.
+
+There is no wrapper-only query authority.  Wrapper interception may request a
+search, but it does not manufacture source snapshots.  =--from-hook= and
+=direct-source-read= are legacy query surfaces and MUST NOT be accepted by the
+Rust provider.
+
+Warm exact materialization is a Search-owned in-memory lookup and source-slice
+verification.  It MUST perform zero filesystem reads, zero database opens, zero
+provider subprocesses, and zero manifest writes.  Cold materialization means
+loading one already-published immutable generation; it MUST NOT parse or scan
+the workspace and is subject to the same millisecond gate as warm lookup.

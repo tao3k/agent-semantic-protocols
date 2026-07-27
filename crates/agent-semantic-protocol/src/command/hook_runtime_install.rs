@@ -1,18 +1,18 @@
 //! Installation owner for hook runtime and Codex plugin surfaces.
 
 use super::hook_runtime_codex_plugin::{
-    CodexPluginScope, codex_project_plugin_cache_skill_path, install_codex_plugin_hooks,
-    sync_codex_project_plugin_cache,
+    codex_project_plugin_cache_skill_path, install_codex_plugin_hooks,
+    sync_codex_project_plugin_cache, CodexPluginScope,
 };
 use super::hook_runtime_skill::{
-    PluginSkillScope, install_agent_semantic_protocols_agent_config,
-    install_agent_semantic_protocols_plugin_skill, install_agent_semantic_protocols_skill,
+    install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_plugin_skill,
+    install_agent_semantic_protocols_skill, PluginSkillScope,
 };
 use super::hook_runtime_subagent::{install_claude_resident_agents, subagent_model_arg};
 use super::{
     display_path, ensure_supported_client, flag_value, optional_flag_value, project_root_arg,
 };
-use crate::command::{ProtocolBinaryInstallPlan, ensure_protocol_binary_installed};
+use crate::command::{ensure_protocol_binary_installed, ProtocolBinaryInstallPlan};
 use agent_semantic_hook::{
     claude_hook_block, default_claude_settings_path, load_or_refresh_default_activation,
     merge_claude_settings, remove_incompatible_hook_event_state, runtime_profiles_for_activation,
@@ -88,13 +88,21 @@ fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstall
 
 pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
     let request = parse_codex_plugin_install_args(args)?;
-    run_install_for_client(
-        "codex",
-        request.project_root,
+    let asp_binary_path = std::env::current_exe()
+        .map_err(|error| format!("failed to resolve current ASP executable: {error}"))?;
+    let (config_path, plugin_receipt) = install_codex_plugin_hooks(
+        &request.project_root,
         request.scope,
-        request.subagent_model,
-        "plugin-install",
-    )
+        &request.subagent_model,
+        &asp_binary_path,
+    )?;
+    println!(
+        "[plugin-install] client=codex sourceRoot={} config={}{} mode=ensured",
+        display_path(&request.project_root, &request.project_root),
+        display_path(&request.project_root, &config_path),
+        plugin_receipt,
+    );
+    Ok(())
 }
 
 fn run_install_for_client(
@@ -212,7 +220,7 @@ fn run_install_for_client(
     timings.mark("skill");
     let plugin_cache_path =
         if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Project) {
-            sync_codex_project_plugin_cache(&project_root, &binary_install.path)?
+            sync_codex_project_plugin_cache(&project_root)?
         } else {
             None
         };

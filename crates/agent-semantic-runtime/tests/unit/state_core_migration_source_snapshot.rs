@@ -139,6 +139,195 @@ fn populated_canonical_workspace_retires_legacy_mutable_state() {
     assert_eq!(receipt["status"], "retired-read-disabled");
     assert!(!legacy_workspace_dir.exists());
 
+    let duplicate_legacy_client_dir = legacy_workspace_dir.join("live/client");
+    fs::create_dir_all(&duplicate_legacy_client_dir)
+        .expect("recreate interrupted legacy client fixture");
+    fs::write(duplicate_legacy_client_dir.join("facts.turso"), b"legacy")
+        .expect("write duplicate legacy database fixture");
+    let duplicate_legacy_artifact = legacy_workspace_dir.join("artifacts/prompt-output/legacy.txt");
+    fs::create_dir_all(
+        duplicate_legacy_artifact
+            .parent()
+            .expect("duplicate legacy artifact parent"),
+    )
+    .expect("recreate duplicate legacy artifact parent");
+    fs::write(&duplicate_legacy_artifact, b"legacy-artifact")
+        .expect("write duplicate legacy artifact fixture");
+    let duplicate_receipt = legacy_workspace_dir.join(".state/migrations/project-identity-v1.json");
+    fs::create_dir_all(
+        duplicate_receipt
+            .parent()
+            .expect("duplicate migration receipt parent"),
+    )
+    .expect("recreate duplicate migration receipt parent");
+    fs::copy(
+        retired_workspace_dir.join(".state/migrations/project-identity-v1.json"),
+        &duplicate_receipt,
+    )
+    .expect("copy duplicate migration receipt");
+
+    state
+        .ensure_minimal_layout()
+        .expect("identical interrupted migration converges");
+    assert!(!legacy_workspace_dir.exists());
+
+    fs::create_dir_all(&duplicate_legacy_client_dir)
+        .expect("recreate conflicting legacy client fixture");
+    fs::write(
+        duplicate_legacy_client_dir.join("facts.turso"),
+        b"conflicting-legacy",
+    )
+    .expect("write conflicting legacy database fixture");
+    state
+        .ensure_minimal_layout()
+        .expect("different retired state moves to a content-addressed generation");
+    assert!(!legacy_workspace_dir.exists());
+    let retired_parent = retired_workspace_dir
+        .parent()
+        .expect("retired workspace parent");
+    let retired_prefix = format!(
+        "{}--sha256-",
+        retired_workspace_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("retired workspace file name")
+    );
+    let generations = fs::read_dir(retired_parent)
+        .expect("read retired workspace generations")
+        .map(|entry| entry.expect("read retired workspace generation").path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(&retired_prefix))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(generations.len(), 1);
+    assert_eq!(
+        fs::read(generations[0].join("live/client/facts.turso"))
+            .expect("read conflicting retired generation"),
+        b"conflicting-legacy"
+    );
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn populated_canonical_hooks_retire_legacy_non_event_state() {
+    let root = temp_root("populated-canonical-hooks");
+    let checkout = root.join("checkout");
+    fs::create_dir_all(&checkout).expect("create checkout fixture");
+    run_git(&checkout, &["init"]);
+    run_git(
+        &checkout,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "git@github.com:tao3k/state-migration-fixture.git",
+        ],
+    );
+
+    let state_home = root.join("state");
+    let state = crate::state_core::ResolvedState::resolve_with_state_home(&checkout, &state_home)
+        .expect("resolve canonical state");
+    state
+        .ensure_minimal_layout()
+        .expect("materialize canonical state");
+    let canonical_activation = state.paths.hooks_dir.join("state/activation.json");
+    fs::create_dir_all(
+        canonical_activation
+            .parent()
+            .expect("canonical activation parent"),
+    )
+    .expect("create canonical hook state");
+    fs::write(&canonical_activation, b"canonical-activation").expect("write canonical activation");
+
+    let (legacy_repo_id, legacy_workspace_id) = state
+        .legacy_identity_candidates()
+        .into_iter()
+        .next()
+        .expect("legacy path identity candidate");
+    let legacy_hooks_dir = state.legacy_hooks_dir(&legacy_repo_id, &legacy_workspace_id);
+    let legacy_hook_state = legacy_hooks_dir.join("state");
+    fs::create_dir_all(&legacy_hook_state).expect("create legacy hook state");
+    fs::write(
+        legacy_hook_state.join("activation.json"),
+        b"legacy-activation",
+    )
+    .expect("write legacy activation");
+    fs::write(
+        legacy_hook_state.join("active-asp-artifact-receipt.v1.json"),
+        b"legacy-artifact-receipt",
+    )
+    .expect("write legacy artifact receipt");
+
+    state
+        .ensure_minimal_layout()
+        .expect("retire legacy non-event hook state");
+
+    assert_eq!(
+        fs::read(&canonical_activation).expect("read canonical activation"),
+        b"canonical-activation"
+    );
+    let retired_hooks_dir = state
+        .paths
+        .hooks_dir
+        .join(".state/migrations/project-identity-v1/retired-hook-state")
+        .join(format!(
+            "{}--{}",
+            legacy_repo_id.as_str(),
+            legacy_workspace_id.as_str()
+        ));
+    assert_eq!(
+        fs::read(retired_hooks_dir.join("state/activation.json"))
+            .expect("read retired legacy activation"),
+        b"legacy-activation"
+    );
+    assert_eq!(
+        fs::read(retired_hooks_dir.join("state/active-asp-artifact-receipt.v1.json"))
+            .expect("read retired legacy artifact receipt"),
+        b"legacy-artifact-receipt"
+    );
+    let receipt: serde_json::Value = serde_json::from_slice(
+        &fs::read(retired_hooks_dir.join(".state/migrations/hook-project-tree-v1.json"))
+            .expect("read retired hook state receipt"),
+    )
+    .expect("parse retired hook state receipt");
+    assert_eq!(receipt["status"], "retired-read-disabled");
+    assert!(!legacy_hooks_dir.exists());
+
+    let duplicate_legacy_hook_state = legacy_hooks_dir.join("state");
+    fs::create_dir_all(&duplicate_legacy_hook_state)
+        .expect("recreate interrupted legacy hook fixture");
+    fs::write(
+        duplicate_legacy_hook_state.join("activation.json"),
+        b"legacy-activation",
+    )
+    .expect("write duplicate legacy activation");
+    fs::write(
+        duplicate_legacy_hook_state.join("active-asp-artifact-receipt.v1.json"),
+        b"legacy-artifact-receipt",
+    )
+    .expect("write duplicate legacy artifact receipt");
+    let duplicate_hook_receipt =
+        legacy_hooks_dir.join(".state/migrations/hook-project-tree-v1.json");
+    fs::create_dir_all(
+        duplicate_hook_receipt
+            .parent()
+            .expect("duplicate hook receipt parent"),
+    )
+    .expect("recreate duplicate hook receipt parent");
+    fs::copy(
+        retired_hooks_dir.join(".state/migrations/hook-project-tree-v1.json"),
+        &duplicate_hook_receipt,
+    )
+    .expect("copy duplicate hook receipt");
+
+    state
+        .ensure_minimal_layout()
+        .expect("identical interrupted hook migration converges");
+    assert!(!legacy_hooks_dir.exists());
+
     let _ = fs::remove_dir_all(root);
 }
 

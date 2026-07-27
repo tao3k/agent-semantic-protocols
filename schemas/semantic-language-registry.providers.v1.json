@@ -418,6 +418,32 @@
         {
           "acceptsStdin": false,
           "command": "search",
+          "method": "search/dependency-topology",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-dependency-topology"
+          ],
+          "packetSchemas": [
+            "semantic-dependency-topology.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": false,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "dependency-topology",
+          "invocation": {
+            "argv": [
+              "ts-harness",
+              "search",
+              "dependency-topology",
+              "--json",
+              "--workspace",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
           "method": "search/prime",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-search-packet"
@@ -790,6 +816,32 @@
         {
           "acceptsStdin": false,
           "command": "search",
+          "method": "search/dependency-topology",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-dependency-topology"
+          ],
+          "packetSchemas": [
+            "semantic-dependency-topology.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": false,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "dependency-topology",
+          "invocation": {
+            "argv": [
+              "py-harness",
+              "search",
+              "dependency-topology",
+              "--json",
+              "--workspace",
+              "{workspace}"
+            ]
+          }
+        },
+        {
+          "acceptsStdin": false,
+          "command": "search",
           "method": "search/prime",
           "outputSchemaIds": [
             "agent.semantic-protocols.semantic-search-packet"
@@ -1140,6 +1192,32 @@
       "execution": "external-process",
       "languageId": "julia",
       "methodDescriptors": [
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/dependency-topology",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-dependency-topology"
+          ],
+          "packetSchemas": [
+            "semantic-dependency-topology.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": false,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "dependency-topology",
+          "invocation": {
+            "argv": [
+              "asp-julia-harness",
+              "search",
+              "dependency-topology",
+              "--json",
+              "--workspace",
+              "{workspace}"
+            ]
+          }
+        },
         {
           "acceptsStdin": false,
           "command": "search",
@@ -1494,6 +1572,32 @@
       "execution": "external-process",
       "languageId": "gerbil-scheme",
       "methodDescriptors": [
+        {
+          "acceptsStdin": false,
+          "command": "search",
+          "method": "search/dependency-topology",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.semantic-dependency-topology"
+          ],
+          "packetSchemas": [
+            "semantic-dependency-topology.v1"
+          ],
+          "requiresQuery": false,
+          "supportsCompact": false,
+          "supportsJson": true,
+          "supportsPackageScope": true,
+          "view": "dependency-topology",
+          "invocation": {
+            "argv": [
+              "gslph",
+              "search",
+              "dependency-topology",
+              "--json",
+              "--workspace",
+              "{workspace}"
+            ]
+          }
+        },
         {
           "acceptsStdin": false,
           "command": "search",

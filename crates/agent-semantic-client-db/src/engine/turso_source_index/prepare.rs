@@ -57,7 +57,7 @@ async fn active_turso_source_index_generation(
     )))
 }
 
-async fn active_turso_source_index_owner_rows(
+pub(super) async fn active_turso_source_index_owner_rows(
     connection: &turso::Connection,
     project_root: &str,
     schema_id: &str,

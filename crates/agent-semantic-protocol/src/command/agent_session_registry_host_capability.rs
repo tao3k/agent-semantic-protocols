@@ -183,6 +183,13 @@ pub(super) fn observe_host_capability(
     Ok(())
 }
 
+pub(super) fn registered_resident_target_matches(
+    canonical_target: &str,
+    managed_agent_kind: &str,
+) -> bool {
+    canonical_target.strip_prefix("/root/") == Some(managed_agent_kind)
+}
+
 pub(super) fn observe_host_ack(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
@@ -215,7 +222,6 @@ pub(super) fn observe_host_ack(
         observed_at,
         expires_at: observed_at + ttl,
     };
-    write_host_tree_observation(registry, &observation)?;
 
     let project_root = std::env::current_dir()
         .map_err(|error| format!("failed to read current directory: {error}"))?;
@@ -227,6 +233,47 @@ pub(super) fn observe_host_ack(
         root_session_id: Some(root_session_id.as_str().into()),
         name: Some(resident_name.into()),
     })?;
+    let expected_model =
+        super::agent_session_registry_validation::expected_model_for_session_profile(
+            record
+                .as_ref()
+                .map_or(resident_name, |session| session.name.as_str()),
+            record.as_ref().map_or("", |session| session.role.as_str()),
+        )?;
+    let expected_reasoning_effort =
+        super::agent_session_registry_validation::expected_reasoning_effort_for_session_profile(
+            record
+                .as_ref()
+                .map_or(resident_name, |session| session.name.as_str()),
+            record.as_ref().map_or("", |session| session.role.as_str()),
+        )?;
+    let platform =
+        crate::command::agent_session_registry::active_platform().unwrap_or("{platform}");
+    let host_requirement =
+        agent_semantic_client_db::agent_session_registry::resident_child_bootstrap_menu(
+            agent_semantic_client_db::agent_session_registry::ResidentChildBootstrapMenuInput {
+                platform,
+                name: resident_name,
+                root_session_id: Some(&root_session_id),
+                record: record.as_ref(),
+                expected_model: expected_model.as_deref(),
+                expected_reasoning_effort: expected_reasoning_effort.as_deref(),
+                rollout_history_status: None,
+                rollout_history_action: None,
+                now: observed_at,
+            },
+        )
+        .host_requirement;
+    let registered_canonical_target = format!("/root/{}", host_requirement.managed_agent_kind);
+    if !registered_resident_target_matches(
+        canonical_target,
+        host_requirement.managed_agent_kind.as_ref(),
+    ) {
+        return Err(format!(
+            "host acknowledgement target `{canonical_target}` does not match registered resident \
+             target `{registered_canonical_target}` for `{resident_name}`"
+        ));
+    }
 
     let registers_resident_child =
         super::agent_session_registry_bootstrap::binding::maybe_bind_verified_canonical_target(
@@ -242,6 +289,7 @@ pub(super) fn observe_host_ack(
         )?
         .is_some();
 
+    write_host_tree_observation(registry, &observation)?;
     if args.json {
         let mut value = serde_json::to_value(&observation).map_err(|error| error.to_string())?;
         if let serde_json::Value::Object(ref mut object) = value {

@@ -68,8 +68,6 @@ source_index_acquisition_text!(SearchPipeSourceIndexLanguageId);
 source_index_acquisition_text!(SearchPipeSourceIndexProviderId);
 source_index_acquisition_text!(SearchPipeSourceIndexSourceKind);
 source_index_acquisition_text!(SearchPipeSourceIndexQueryKey);
-source_index_acquisition_text!(SearchPipeSourceIndexStructuralSelector);
-source_index_acquisition_text!(SearchPipeSourceIndexPayloadKind);
 source_index_acquisition_text!(SearchPipeSourceIndexLookupState);
 source_index_acquisition_text!(SearchPipeSourceIndexArtifactDigest);
 
@@ -81,14 +79,8 @@ pub struct SearchPipeSourceIndexCandidate {
     pub source_kind: SearchPipeSourceIndexSourceKind,
     pub line_count: Option<u32>,
     pub query_keys: Vec<SearchPipeSourceIndexQueryKey>,
-    pub selector_proof: Option<SearchPipeSelectorPayloadProof>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SearchPipeSelectorPayloadProof {
-    pub structural_selector: SearchPipeSourceIndexStructuralSelector,
-    pub payload_kind: SearchPipeSourceIndexPayloadKind,
-    pub bounded: bool,
+    pub selector_proof:
+        Option<agent_semantic_content_identity::ExactSelectorMaterializationProofV1>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

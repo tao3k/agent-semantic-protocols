@@ -1,0 +1,93 @@
+#+title: Search-owned Memory Search Fixture
+#+startup: overview
+
+* Status
+
+Proposed v1 contract for implementation and performance gating.
+
+* Ownership
+
+=agent-semantic-search= owns Memory Search semantics, immutable generation
+indexes, fixture construction, resolution outcomes, and performance receipts.
+
+Storage crates implement backend adapters only.  Turso, an in-process fixture,
+and future remote stores must expose the same Search-owned contract.  No
+storage backend may define selector relocation semantics.
+
+* V1 flow
+
+#+begin_example
+MemorySearchFixtureV1
+  -> MemorySearchGenerationV1
+  -> MemorySearchIndexV1
+  -> MemorySearchEngineV1
+  -> MemorySearchResolutionV1
+#+end_example
+
+The generation commits to:
+
+- generation identity and source root
+- language and provider identity
+- canonical item identities
+- owner topology and owner content digests
+- parser and query-pack identities
+
+The engine accepts a requested canonical item identity and returns exactly one
+typed outcome:
+
+- =live-hit=
+- =live-relocated=
+- =ambiguous=
+- =kind-mismatch=
+- =missing=
+- =generation-mismatch=
+
+* Fixture contract
+
+=MemorySearchFixtureV1= is a production-shaped fixture, not a test-only text
+stub.  It builds the same immutable indexes consumed by runtime backends.
+
+Required fixture scenarios:
+
+1. exact item remains in its owner
+2. item moves to one sibling owner
+3. two owners contain the same unscoped identity
+4. symbol survives with a different item kind
+5. generation changes after a relocation receipt
+6. empty generation with Merkle root depth zero
+7. concurrent readers share one immutable generation
+
+Fixtures contain typed canonical selectors and owner evidence.  They must not
+derive identities from filenames, source text search, or line ranges.
+
+* Backend contract
+
+A backend loads one immutable generation and may persist a resolution receipt
+bound to:
+
+- generation identity
+- requested canonical identity
+- resolved canonical identity
+- parser identity
+- query-pack identity
+- projection mode
+
+The engine validates the receipt.  The backend does not interpret it.
+
+* Performance receipt
+
+Every fixture and runtime execution reports:
+
+- generation load latency
+- index lookup latency
+- candidate count
+- source bytes materialized
+- DB opens and queries
+- provider subprocess count
+- cache writes
+- resolution state
+
+Warm resolution requires zero provider subprocesses and zero workspace source
+scans.  Cold resolution against an already active generation must remain a
+bounded in-memory/index lookup; fixture gates establish the exact percentile
+budget before the runtime adapter is enabled.

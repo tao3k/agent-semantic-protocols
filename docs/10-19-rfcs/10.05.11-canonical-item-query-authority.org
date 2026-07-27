@@ -1,0 +1,81 @@
+#+TITLE: RFC 10.05.11 Canonical Item Query Authority
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Accepted for implementation.
+
+* Problem
+
+The source-language =query= surface has accepted position-derived syntax
+anchors and client control-plane arguments as if they were parser-owned item
+identities.  A command such as:
+
+#+begin_example
+asp rust query --from-hook item-skeleton \
+  --selector rust://src/lib.rs#syntax:identifier/declaration.name@1:1
+#+end_example
+
+crosses three authority domains:
+
+- =syntax:= identifies search evidence at a source location;
+- =item-skeleton= is a client workflow label;
+- exact source projection requires a provider-owned canonical item identity.
+
+Allowing the three forms to mix produces wrapper-snapshot failures after the
+request has already entered the exact-item materializer.  A warning or a
+syntax-to-item compatibility conversion would preserve the ambiguous
+authority and is therefore not an acceptable repair.
+
+* V1 contract
+
+** Search owns discovery anchors
+
+Search packets may expose syntax node types, captures, fields, source
+locations, and syntax references.  These values are evidence for ranking and
+follow-up discovery.  They are not exact source selectors.
+
+** Query owns canonical item projection
+
+A source-language =query --selector= value MUST be the canonical item selector
+emitted by the activated provider parser and query pack.  For Rust, the public
+shape is:
+
+#+begin_example
+rust://<normalized-owner>#item/<kind>/<symbol>[/scope/...]
+#+end_example
+
+The provider MUST validate selector identity before requiring snapshot
+materialization evidence.  A non-item selector is an invalid selector, not a
+missing wrapper snapshot.
+
+** Client control plane stays outside provider argv
+
+=--from-hook= and =item-skeleton= are not provider query arguments.  Client
+routers may retain workflow state in typed decision or receipt fields, but
+MUST NOT encode that state into the language-provider CLI.
+
+** No legacy compatibility
+
+The following surfaces are removed rather than deprecated:
+
+- path-shaped selectors accepted as exact source selectors;
+- =syntax:= selectors accepted by exact item projection;
+- =owner:= selectors accepted by exact item projection;
+- =--from-hook <workflow-label>= in provider query parsing;
+- warning-based recovery from any of the above.
+
+Callers must return to =search owner ... items= and select the emitted
+canonical item selector.
+
+* Required gates
+
+- parser gate: canonical =#item/= selector is accepted;
+- parser gate: =#syntax:= selector is rejected before snapshot lookup;
+- parser gate: plain path and =owner:= selector are rejected;
+- parser gate: =--from-hook= is rejected as an unknown provider option;
+- renderer gate: agent-facing next commands contain no =--from-hook=;
+- route gate: syntax evidence never materializes a =Query= decision route;
+- installed-artifact gate: the formerly failing command cannot reach
+  =wrapper-snapshot-required=.
+

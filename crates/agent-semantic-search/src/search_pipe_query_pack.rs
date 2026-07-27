@@ -78,7 +78,7 @@ pub fn search_pipe_query_clauses<'a>(
     let language_id = request.language_id;
     let query = request.query.as_str();
     let query_pack_descriptor = request.query_pack_descriptor;
-    query
+    let explicit_clauses = query
         .split('|')
         .map(str::trim)
         .filter(|clause| !clause.is_empty())
@@ -86,7 +86,31 @@ pub fn search_pipe_query_clauses<'a>(
             terms: search_pipe_query_terms(language_id.as_str(), raw_clause, query_pack_descriptor),
         })
         .filter(|clause| !clause.terms.is_empty())
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+    if query.contains('|') || explicit_clauses.is_empty() {
+        return explicit_clauses;
+    }
+
+    let mut owner_terms = Vec::new();
+    let mut symbol_terms = Vec::new();
+    let mut concept_terms = Vec::new();
+    for term in explicit_clauses.into_iter().flat_map(|clause| clause.terms) {
+        if term.role == SearchPipeTermRole::Context {
+            continue;
+        }
+        if is_owner_seed_token(&term.raw) {
+            owner_terms.push(term);
+        } else if term.role == SearchPipeTermRole::Symbol {
+            symbol_terms.push(term);
+        } else {
+            concept_terms.push(term);
+        }
+    }
+    [owner_terms, symbol_terms, concept_terms]
+        .into_iter()
+        .filter(|terms| !terms.is_empty())
+        .map(|terms| SearchPipeQueryClause { terms })
+        .collect()
 }
 
 pub struct SearchPipeQueryClausesRequest<'a, QueryPackDescriptor> {

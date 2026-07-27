@@ -49,7 +49,7 @@ fn search_pipe_plan_preserves_search_scope_in_primary_command() {
     assert!(!stdout.contains("pipe=>asp rust search pipe"), "{stdout}");
     assert!(
         stdout.contains(
-            "nextCommand=asp rust search owner src/lib.rs items --query 'HookDecision|ClientReceipt|hookdecision|clientreceipt' --workspace languages/rust-harness --view seeds"
+            "nextCommand=asp rust search owner src/lib.rs items --query 'HookDecision|ClientReceipt' --workspace languages/rust-harness --view seeds"
         ),
         "{stdout}"
     );

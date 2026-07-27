@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::Instant;
 
 pub const SEARCH_PIPE_SCOPE_TOPOLOGY_ENTRY_VISIT_LIMIT: usize = 256;
-pub const SEARCH_PIPE_SCOPE_TOPOLOGY_CANDIDATE_LIMIT: usize = 12;
+pub const SEARCH_PIPE_SCOPE_TOPOLOGY_CANDIDATE_LIMIT: usize = 64;
 pub const SEARCH_PIPE_SCOPE_TOPOLOGY_SOURCE: &str = "workspace-scope-topology";
 
 pub struct SearchPipeScopeTopologyAcquisitionRequest<'a> {

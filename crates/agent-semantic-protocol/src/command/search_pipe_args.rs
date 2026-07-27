@@ -12,6 +12,7 @@ pub(super) struct SearchPipeArgs {
     pub(super) source: SourceSpec,
     pub(super) workspace: Option<PathBuf>,
     pub(super) scopes: Vec<PathBuf>,
+    pub(super) surfaces: Vec<String>,
     pub(super) view: String,
 }
 
@@ -59,6 +60,7 @@ pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, 
     let mut source = SourceSpec::Auto;
     let mut workspace = None;
     let mut scopes = Vec::new();
+    let mut surfaces = Vec::new();
     let mut view = "seeds".to_string();
     let mut index = if seed_query.is_some() { 3 } else { 2 };
     while index < args.len() {
@@ -101,6 +103,16 @@ pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, 
                     args.get(index + 1)
                         .ok_or_else(|| "--source requires a value".to_string())?,
                 )?;
+                index += 2;
+            }
+            "--surface" | "--surfaces" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| format!("{} requires a value", args[index]))?;
+                if value.starts_with('-') {
+                    return Err(format!("{} requires a value", args[index]));
+                }
+                surfaces.extend(super::search_pipe_surfaces::parse_search_surfaces(value)?);
                 index += 2;
             }
             "--workspace" => {
@@ -161,6 +173,7 @@ pub(super) fn parse_search_pipe_args(args: &[String]) -> Result<SearchPipeArgs, 
         source,
         workspace,
         scopes,
+        surfaces,
         view,
     })
 }

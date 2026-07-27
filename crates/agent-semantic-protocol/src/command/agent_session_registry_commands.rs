@@ -22,6 +22,13 @@ use super::agent_session_registry_validation::{
 };
 use super::normalized_metadata_with_roles;
 
+pub(super) fn should_adopt_reusable_rollout_session(
+    child_session_id: Option<&str>,
+    replace: bool,
+) -> bool {
+    child_session_id.is_none() && !replace
+}
+
 pub(super) fn register_session(
     registry: &AgentSessionRegistry,
     args: &SessionArgs,
@@ -101,7 +108,7 @@ pub(super) fn register_session(
             args.json,
         );
     }
-    if !args.replace
+    if should_adopt_reusable_rollout_session(args.child_session_id.as_deref(), args.replace)
         && let Some(existing) = adopt_reusable_rollout_session(
             registry,
             RolloutAdoptRequest {

@@ -1,5 +1,10 @@
 mod canonical;
 pub(in crate::engine) mod core;
+pub(in crate::engine) mod generation_snapshot;
+pub use generation_snapshot::{
+    ClientDbSourceIndexGenerationOwnerV1, ClientDbSourceIndexGenerationSnapshotV1,
+    ClientDbSourceIndexSelectorFactV1, latest_turso_source_index_generation_snapshot,
+};
 mod facts;
 mod membership;
 mod prepare;

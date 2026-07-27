@@ -37,7 +37,15 @@ fn source_expansion_rule_rejects_non_read_effect_contract() {
     rule.match_config.effect_any = vec![agent_semantic_config::HookClientActionKind::Edit];
     let resident_agents = config.agents.resident_agents;
 
-    let error = match CompiledHookRule::try_from_with_agents(rule, &resident_agents) {
+    let error = match CompiledHookRule::try_from_with_agents(
+        rule,
+        &agent_semantic_config::HookClientAgentsConfig {
+            placeholders: std::collections::BTreeMap::new(),
+            resident_agents,
+        },
+        &[],
+        agent_semantic_config::WrapperMatchMode::Enable,
+    ) {
         Ok(_) => panic!("source expansion must require a typed read effect"),
         Err(error) => error,
     };
@@ -64,7 +72,10 @@ fn bounded_projection_model_comes_from_config_and_is_fail_closed() {
         agent_semantic_config::HookClientStructuredFormat::Json,
         Vec::new(),
     );
-    assert!(rule.matches_structured_projection(&shell_action("sh .package.name package.json")));
+    assert_eq!(
+        rule.structured_projection_source_operands(&shell_action("sh .package.name package.json")),
+        Ok(Some(vec!["package.json".to_string()]))
+    );
     for command in [
         "sh . package.json",
         "sh '..' package.json",
@@ -73,7 +84,8 @@ fn bounded_projection_model_comes_from_config_and_is_fail_closed() {
         "sh .package.name package.json | sed -n 1p package.json",
     ] {
         assert!(
-            !rule.matches_structured_projection(&shell_action(command)),
+            rule.structured_projection_source_operands(&shell_action(command))
+                .is_err(),
             "unexpected bounded projector match: {command}"
         );
     }
@@ -101,10 +113,14 @@ fn optional_subcommand_is_configured_for_toml_projection() {
         agent_semantic_config::HookClientStructuredFormat::Toml,
         vec!["inspect".to_string()],
     );
-    assert!(
-        rule.matches_structured_projection(&shell_action(
+    assert_eq!(
+        rule.structured_projection_source_operands(&shell_action(
             "sh inspect .workspace.members Cargo.toml"
-        ))
+        )),
+        Ok(Some(vec!["Cargo.toml".to_string()]))
     );
-    assert!(!rule.matches_structured_projection(&shell_action("sh . Cargo.toml")));
+    assert!(
+        rule.structured_projection_source_operands(&shell_action("sh . Cargo.toml"))
+            .is_err()
+    );
 }

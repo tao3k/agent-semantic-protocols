@@ -17,7 +17,6 @@ use crate::engine::source_index_candidate_types::{
 };
 use crate::engine::source_index_query_scoring::source_index_read_model_terms;
 use crate::engine::turso::{connect_turso_client_db_read_only, turso_table_exists};
-use crate::engine::turso_lock_policy::is_turso_lock_error;
 use crate::engine::turso_statement::run_turso_operation;
 use crate::source_index::{
     ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexLookupResult,
@@ -211,10 +210,6 @@ fn source_index_lookup_result_for_snapshot(
     }
 }
 
-fn source_index_busy_lookup_result(db_path: PathBuf) -> ClientDbSourceIndexLookupResult {
-    source_index_lookup_result(db_path, ClientDbSourceIndexLookupState::Busy, Vec::new())
-}
-
 fn is_turso_source_index_schema_missing_error(error: &str) -> bool {
     let normalized = error.to_ascii_lowercase();
     normalized.contains("no such table") || normalized.contains("no such column")
@@ -324,17 +319,11 @@ async fn lookup_source_index_read_model_at_path(
         ));
     }
     let _source_index_read_guard =
-        match crate::engine::turso_source_index::turso_source_index_access_lock(&db_path)
-            .try_read_owned()
-        {
-            Ok(guard) => guard,
-            Err(_) => return Ok(source_index_busy_lookup_result(db_path)),
-        };
+        crate::engine::turso_source_index::turso_source_index_access_lock(&db_path)
+            .read_owned()
+            .await;
     let connection = match connect_turso_client_db_read_only(&db_path).await {
         Ok(connection) => connection,
-        Err(error) if is_turso_lock_error(&error) => {
-            return Ok(source_index_busy_lookup_result(db_path));
-        }
         Err(error) if error.to_ascii_lowercase().contains("entity not found") => {
             return Ok(source_index_lookup_result(
                 db_path,
@@ -358,9 +347,6 @@ async fn lookup_source_index_read_model_at_path(
             {
                 Ok(candidates) => candidates,
                 Err(error) if is_turso_source_index_schema_missing_error(&error) => Vec::new(),
-                Err(error) if is_turso_lock_error(&error) => {
-                    return Ok(source_index_busy_lookup_result(db_path));
-                }
                 Err(error) => return Err(error),
             };
         Some(candidates)
@@ -379,9 +365,6 @@ async fn lookup_source_index_read_model_at_path(
                 {
                     Ok(true) => ClientDbSourceIndexLookupState::EmptyIndex,
                     Ok(false) => ClientDbSourceIndexLookupState::ColdRequired,
-                    Err(error) if is_turso_lock_error(&error) => {
-                        return Ok(source_index_busy_lookup_result(db_path));
-                    }
                     Err(error) => return Err(error),
                 };
                 return Ok(source_index_lookup_result(db_path, state, Vec::new()));
@@ -393,9 +376,6 @@ async fn lookup_source_index_read_model_at_path(
                     ClientDbSourceIndexLookupState::EmptyIndex
                 };
                 return Ok(source_index_lookup_result(db_path, state, Vec::new()));
-            }
-            Err(error) if is_turso_lock_error(&error) => {
-                return Ok(source_index_busy_lookup_result(db_path));
             }
             Err(error) => return Err(error),
         };
@@ -445,17 +425,11 @@ async fn lookup_source_index_read_model_at_path(
         .await
         {
             Ok(candidates) => candidates,
-            Err(error) if is_turso_lock_error(&error) => {
-                return Ok(source_index_busy_lookup_result(db_path));
-            }
             Err(error) => return Err(error),
         },
     };
     let owner_rows_exist = match turso_source_index_owner_rows_exist(&connection, &scope).await {
         Ok(owner_rows_exist) => owner_rows_exist,
-        Err(error) if is_turso_lock_error(&error) => {
-            return Ok(source_index_busy_lookup_result(db_path));
-        }
         Err(error) => return Err(error),
     };
     if candidates.is_empty() && !owner_rows_exist {

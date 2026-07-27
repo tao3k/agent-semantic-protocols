@@ -62,6 +62,16 @@ fn search_pipe_package_cohesion_requires_owner_hits_for_package_axes() {
         search_pipe_package_cohesion(&packages, Some(&strong_owner), &terms),
         "medium"
     );
+
+    let api_terms = vec![
+        SearchPipeCohesionTerm::new("BufMut", "bufmut"),
+        SearchPipeCohesionTerm::new("advance_mut", "advance_mut"),
+    ];
+    let api_owner = vec!["bufmut".to_string(), "advance_mut".to_string()];
+    assert_eq!(
+        search_pipe_package_cohesion(&packages, Some(&api_owner), &api_terms),
+        "high"
+    );
 }
 
 #[test]
@@ -104,9 +114,10 @@ fn search_pipe_quality_decision_projects_missing_paths_and_owner_seeds() {
     let terms = vec![
         term("src/runtime.rs", SearchPipeTermRole::Symbol),
         term("SearchRouter", SearchPipeTermRole::Symbol),
+        term("Handle::enter", SearchPipeTermRole::Symbol),
         term("concurrency", SearchPipeTermRole::Concept),
     ];
-    let global_matched = vec!["searchrouter".to_string()];
+    let global_matched = vec!["searchrouter".to_string(), "handle::enter".to_string()];
     let missing_path_terms = search_pipe_missing_path_terms(&terms, &global_matched);
 
     assert_eq!(missing_path_terms, vec!["src/runtime.rs".to_string()]);

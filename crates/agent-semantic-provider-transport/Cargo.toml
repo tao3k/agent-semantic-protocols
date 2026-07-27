@@ -6,6 +6,7 @@ license = "MIT"
 description = "Tokio process transport for external ASP language providers."
 
 [dependencies]
+fs2.workspace = true
 bstr = "1"
 bytes = "1"
 futures-util = "0.3"

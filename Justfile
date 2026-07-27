@@ -162,12 +162,36 @@ agent-tools-install-hook bin_dir="":
 
 # Install a released language provider binary through asp.
 # Develop mode: the root Justfile owns provider builds and installs into the ASP runtime bin.
-agent-tools-install-language language bin_dir="" target="" project=".":
+agent-tools-install-language language bin_dir="" target="" scope="global" project="":
     #!/usr/bin/env bash
     set -euo pipefail
-    repo_root="$(cd "{{ project }}" && pwd -P)"
+    repo_root="$(pwd -P)"
     state_home="${ASP_STATE_HOME:-${HOME}/.agent-semantic-protocols}"
     bin_dir="{{ bin_dir }}"
+    target="{{ target }}"
+    scope="{{ scope }}"
+    project="{{ project }}"
+    case "${scope}" in
+      global)
+        if [[ -n "${project}" ]]; then
+          echo "project must be empty for global provider installation" >&2
+          exit 2
+        fi
+        scope_args=()
+        ;;
+      project)
+        if [[ -z "${project}" ]]; then
+          echo "project is required for project provider installation" >&2
+          exit 2
+        fi
+        project_root="$(cd "${project}" && pwd -P)"
+        scope_args=(--project "${project_root}")
+        ;;
+      *)
+        echo "unsupported provider install scope: ${scope}; expected global or project" >&2
+        exit 2
+        ;;
+    esac
     if [[ -z "${bin_dir}" ]]; then
       bin_dir="${SEMANTIC_AGENT_BIN_DIR:-${state_home}/runtime/bin}"
     fi
@@ -176,7 +200,7 @@ agent-tools-install-language language bin_dir="" target="" project=".":
       rust)
         direnv exec "${repo_root}" cargo build \
           --manifest-path "${repo_root}/languages/rust-lang-project-harness/Cargo.toml" \
-          --release --bin rs-harness
+          --release --features cli --bin rs-harness
         install -m 755 \
           "${repo_root}/languages/rust-lang-project-harness/target/release/rs-harness" \
           "${bin_dir}/rs-harness"
@@ -235,12 +259,23 @@ agent-tools-install-language language bin_dir="" target="" project=".":
         exit 2
         ;;
     esac
-    direnv exec "${repo_root}" cargo run --quiet \
-      --manifest-path "${repo_root}/Cargo.toml" \
-      -p agent-semantic-protocol --bin asp -- \
-      install language "{{ language }}" \
-      --project "${repo_root}" \
+    install_args=(
+      install language "{{ language }}"
+      "${scope_args[@]}"
       --record-installed-receipt "${bin_dir}/${binary}"
+    )
+    if [[ -n "${target}" ]]; then
+      install_args+=(--target "${target}")
+    fi
+    protocol_bin="${ASP_BIN:-${state_home}/runtime/bin/asp}"
+    if [[ ! -x "${protocol_bin}" ]]; then
+      protocol_bin="$(command -v asp || true)"
+    fi
+    if [[ -z "${protocol_bin}" || ! -x "${protocol_bin}" ]]; then
+      echo "canonical ASP binary is required to record the provider receipt; run 'just agent-tools-install-protocol' first" >&2
+      exit 1
+    fi
+    "${protocol_bin}" "${install_args[@]}"
     echo "[agent-tools-install] provider=${provider} language={{ language }} installMode=develop-workspace source=root-justfile binary=${binary} installedPath=${bin_dir}/${binary} receipt=recorded"
 
 # Install only the core asp-graph-turbo ranking binary.

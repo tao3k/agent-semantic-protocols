@@ -2,7 +2,7 @@ use crate::provider_command::support;
 #[test]
 fn search_pipe_seeds_promotes_matching_dependency_route() {
     let root = support::temp_project_root("search-pipe-seeds-dependency-action");
-    let bin_dir = root.join(".bin");
+    let bin_dir = support::state_runtime_bin(&root);
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
@@ -15,8 +15,22 @@ fn search_pipe_seeds_promotes_matching_dependency_route() {
         "use serde::Serialize;\npub struct Receipt;\n",
     )
     .expect("write source");
+    super::support::write_dependency_topology_provider(
+        &bin_dir,
+        ".rs-harness-delegate",
+        &marker,
+        "serde",
+        "1",
+        "Cargo.toml",
+    );
     support::write_marker_provider(&bin_dir, "rs-harness", &marker);
-    support::write_activation(&root, &[support::provider("rust", Vec::new())]);
+    support::write_activation(
+        &root,
+        &[support::provider_with_dependency_topology(
+            "rust",
+            Vec::new(),
+        )],
+    );
 
     let output = support::asp_command(&root)
         .env("PATH", support::prepend_path(&bin_dir))
@@ -26,6 +40,8 @@ fn search_pipe_seeds_promotes_matching_dependency_route() {
             "search",
             "pipe",
             "serde|dependency",
+            "--surface",
+            "deps",
             "--view",
             "seeds",
             ".",
@@ -94,6 +110,54 @@ fn search_pipe_does_not_promote_dependency_route_from_natural_tree_word() {
         "{stdout}"
     );
     assert!(!stdout.contains("recommendedNext="), "{stdout}");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_help_exposes_explicit_surface_contract() {
+    let root = support::temp_project_root("search-pipe-surface-help");
+    let output = support::asp_command(&root)
+        .args(["rust", "search", "pipe", "--help"])
+        .output()
+        .expect("run search pipe help");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Search pipe surfaces:"), "{stdout}");
+    assert!(
+        stdout.contains("--surface <owner,items,tests,deps,topology>"),
+        "{stdout}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn search_pipe_rejects_unknown_surface_class() {
+    let root = support::temp_project_root("search-pipe-unknown-surface");
+    support::write_activation(&root, &[support::provider("rust", Vec::new())]);
+    let output = support::asp_command(&root)
+        .args([
+            "rust",
+            "search",
+            "pipe",
+            "serde",
+            "--surface",
+            "unknown",
+            ".",
+        ])
+        .output()
+        .expect("run search pipe with unknown surface");
+
+    assert!(!output.status.success(), "unexpected success");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown search surface: unknown"),
+        "{stderr}"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

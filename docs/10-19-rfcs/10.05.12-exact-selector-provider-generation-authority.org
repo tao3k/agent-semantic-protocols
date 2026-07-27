@@ -1,0 +1,55 @@
+#+title: Exact Selector Provider Generation Authority
+#+startup: overview
+
+* Status
+
+Implemented for the v1 exact-selector source envelope contract.
+
+* Problem
+
+An owner-scoped source snapshot was published as though it were a complete
+provider generation.  Its internally consistent leaf count, owner count, and
+root depth could not prove that sibling owners were present.  A selector whose
+definition moved to a sibling owner therefore produced =item-not-in-live-owner=
+even though the definition was live in the same provider generation.
+
+* V1 authority contract
+
+The v1 contract has one authority boundary:
+
+#+begin_example
+activated provider registry
+  -> complete provider source scope
+  -> one atomic WorkspaceSnapshot
+  -> provider envelope
+  -> exact-selector relocation
+#+end_example
+
+An owner-only snapshot MUST NOT be labeled =ownerCoverage=complete= and MUST
+NOT authorize relocation.
+
+The envelope producer MUST derive =owners=, =leafCount=, =rootDepth=, and
+=rootDigest= from the same provider-scoped generation.
+
+The provider consumer MUST reconstruct the workspace Merkle root from every
+owner path and source content digest.  Equality between self-reported counts is
+not sufficient evidence.
+
+* Query behavior
+
+=query= remains deterministic and accepts only a parser-owned canonical item
+selector.  When the requested owner is stale, relocation searches the complete
+pinned provider generation by canonical item identity.  A unique match returns
+=live-relocated=.  Ambiguous, kind-mismatched, and genuinely missing identities
+remain typed failures.
+
+No warning, legacy selector adapter, owner-local compatibility envelope, or
+filesystem fallback is permitted.
+
+* Performance contract
+
+Generation identity and owner topology SHOULD be served from the active
+in-memory/source-index generation.  Source bytes SHOULD be materialized only
+for the requested or uniquely relocated owner.  Cold and warm performance gates
+must report metadata lookup, byte materialization, provider invocation, and
+cache write/read separately.

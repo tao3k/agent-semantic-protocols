@@ -1,4 +1,4 @@
-use agent_semantic_command_match::{BashCommandMatchV1, match_bash_command_prefix};
+use agent_semantic_command_match::{BashCommandMatchV1, match_bash_wrapped_command_prefix};
 
 const HOOK_CONFIG_TEMPLATE: &str =
     include_str!("../../../agent-semantic-config/templates/hooks/config.toml");
@@ -20,7 +20,7 @@ pub fn wrapper_match_enabled() -> bool {
 
 pub fn rule_prefixes() -> Vec<RulePrefix> {
     let document = document();
-    document["rules"]
+    let mut prefixes = document["rules"]
         .as_array()
         .expect("rules array")
         .iter()
@@ -53,7 +53,44 @@ pub fn rule_prefixes() -> Vec<RulePrefix> {
                         })
                 })
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    let profiles = document["commandProfiles"]
+        .as_array()
+        .expect("command profiles array");
+    for rule in document["rules"].as_array().expect("rules array") {
+        let rule_id = rule["id"].as_str().expect("rule id");
+        let Some(references) = rule
+            .get("match")
+            .and_then(|matcher| matcher.get("commandProfileAny"))
+            .and_then(toml::Value::as_array)
+        else {
+            continue;
+        };
+        for reference in references {
+            let profile_id = reference["profile"].as_str().expect("profile id");
+            let category = reference["category"].as_str().expect("profile category");
+            let profile = profiles
+                .iter()
+                .find(|profile| profile["id"].as_str() == Some(profile_id))
+                .expect("referenced command profile");
+            for prefix in profile["categories"][category]
+                .as_array()
+                .expect("command profile category")
+            {
+                prefixes.push(RulePrefix {
+                    rule_id: rule_id.to_string(),
+                    argv_prefix: prefix
+                        .as_array()
+                        .expect("command profile prefix")
+                        .iter()
+                        .map(|token| token.as_str().expect("command profile token").to_string())
+                        .collect(),
+                });
+            }
+        }
+    }
+    prefixes
 }
 
 pub fn positive_commands(case: &RulePrefix) -> Vec<String> {
@@ -70,7 +107,7 @@ pub fn positive_commands(case: &RulePrefix) -> Vec<String> {
         "{} --asp-match-probe crates/example/src/lib.rs",
         case.argv_prefix.join(" ")
     );
-    vec![
+    let mut commands = vec![
         command.clone(),
         format!(
             "{} -p downstream-alpha -p downstream-beta",
@@ -84,15 +121,18 @@ pub fn positive_commands(case: &RulePrefix) -> Vec<String> {
         format!("timeout 30s direnv exec . {command}"),
         format!("printf x | {command}"),
         format!("true && {command}"),
-        format!("bash -lc '{command}'"),
         format!("/opt/asp-toolchain/bin/{command}"),
         format!("CARGO_TARGET_DIR=/tmp/asp-match /opt/asp-toolchain/bin/{command}"),
         format!("direnv exec . timeout 30s /opt/asp-toolchain/bin/{command}"),
-    ]
+    ];
+    if case.argv_prefix[0] != "bash" {
+        commands.push(format!("bash -lc '{command}'"));
+    }
+    commands
 }
 
 pub fn invalid_commands(case: &RulePrefix) -> Vec<String> {
-    vec![format!("bash -lc '{} &&'", case.argv_prefix.join(" "))]
+    vec![format!("{} &&", case.argv_prefix.join(" "))]
 }
 
 pub fn negative_commands(case: &RulePrefix) -> Vec<String> {
@@ -114,7 +154,7 @@ pub fn outcome(case: &RulePrefix, command: &str) -> BashCommandMatchV1 {
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    match_bash_command_prefix(command, &prefix)
+    match_bash_wrapped_command_prefix(command, &prefix)
 }
 
 pub fn assert_case(case: &RulePrefix) {

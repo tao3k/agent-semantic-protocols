@@ -280,18 +280,31 @@ fn owner_coverage_score(
     owner: &str,
     matched: &BTreeSet<String>,
     terms: &[QueryTerm],
-) -> (usize, usize, usize, usize) {
+) -> (usize, usize, usize, usize, usize) {
+    let explicit_path_hits = terms
+        .iter()
+        .filter(|term| agent_semantic_search::search_pipe_is_path_like_token(&term.raw))
+        .filter(|term| {
+            owner.eq_ignore_ascii_case(&term.raw)
+                || owner
+                    .rsplit('/')
+                    .next()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(&term.raw))
+        })
+        .count();
     let symbol_hits = terms
         .iter()
         .filter(|term| matches!(term.role, TermRole::Symbol))
         .filter(|term| matched.iter().any(|matched| matched == &term.lower))
         .count();
-    let config_owner_bonus = usize::from(config_like_owner(owner));
+    let explicit_config_owner_bonus =
+        usize::from(explicit_path_hits > 0 && config_like_owner(owner));
     (
         owner_role_score(owner, terms),
+        explicit_path_hits,
+        explicit_config_owner_bonus,
         matched.len(),
         symbol_hits,
-        config_owner_bonus,
     )
 }
 

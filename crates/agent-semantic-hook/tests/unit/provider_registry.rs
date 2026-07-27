@@ -27,3 +27,36 @@ fn registry_is_singleton_and_all_language_routes_materialize_in_milliseconds() {
         "registry and all provider routes must materialize in milliseconds, elapsed={elapsed:?}"
     );
 }
+
+#[test]
+fn dependency_topology_routes_are_registered_for_capable_languages() {
+    let registry = schema_registry();
+    for (language_id, provider_id) in [
+        ("rust", "rs-harness"),
+        ("typescript", "ts-harness"),
+        ("python", "py-harness"),
+        ("julia", "julia-lang-project-harness"),
+        ("gerbil-scheme", "gerbil-scheme-harness"),
+    ] {
+        let language = registry
+            .languages
+            .iter()
+            .find(|language| {
+                language.language_id == language_id && language.provider_id == provider_id
+            })
+            .expect("capable language registration");
+        let descriptor = language
+            .method_descriptors
+            .iter()
+            .find(|descriptor| descriptor.method == "search/dependency-topology")
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing search/dependency-topology descriptor for {language_id}/{provider_id}"
+                )
+            });
+        assert_eq!(
+            descriptor.invocation.argv[0], language.binary,
+            "dependency topology invocation must use the registered binary"
+        );
+    }
+}

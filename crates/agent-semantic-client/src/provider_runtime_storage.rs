@@ -139,6 +139,7 @@ impl From<&str> for ProviderRuntimeMethod {
     }
 }
 
+/// Stable runtime storage identity propagated across provider invocations.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderRuntimeStorageContext {

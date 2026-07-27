@@ -27,6 +27,34 @@ fn host_resident_target_observation_accepts_followup_ack_source() {
 }
 
 #[test]
+fn registered_resident_target_rejects_temporary_same_profile_agent() {
+    assert!(crate::command::agent_session_registry::agent_session_registry_host_capability::registered_resident_target_matches(
+        "/root/asp_explorer",
+        "asp_explorer"
+    ));
+    assert!(!crate::command::agent_session_registry::agent_session_registry_host_capability::registered_resident_target_matches(
+        "/root/policy_owner_explorer",
+        "asp_explorer"
+    ));
+    assert!(crate::command::agent_session_registry::agent_session_registry_host_capability::registered_resident_target_matches(
+        "/root/asp_testing",
+        "asp_testing"
+    ));
+}
+
+#[test]
+fn explicit_child_registration_skips_rollout_adoption_scan() {
+    use crate::command::agent_session_registry::agent_session_registry_commands::should_adopt_reusable_rollout_session;
+
+    assert!(!should_adopt_reusable_rollout_session(
+        Some("child-session"),
+        false
+    ));
+    assert!(!should_adopt_reusable_rollout_session(None, true));
+    assert!(should_adopt_reusable_rollout_session(None, false));
+}
+
+#[test]
 fn trusted_resident_hook_input_preserves_project_root_and_resident_identity() {
     let input = TrustedResidentHookTargetPresentInput {
         project_id: "project-1",

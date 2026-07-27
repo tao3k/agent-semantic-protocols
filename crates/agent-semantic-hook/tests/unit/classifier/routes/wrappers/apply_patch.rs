@@ -69,6 +69,10 @@ protocolVersion = "1"
 
 [agents]
 
+[agents.placeholders]
+explore = "asp-explore"
+testing = "asp-testing"
+
 [[agents.residentAgents]]
 enabled = true
 name = "asp-explore"

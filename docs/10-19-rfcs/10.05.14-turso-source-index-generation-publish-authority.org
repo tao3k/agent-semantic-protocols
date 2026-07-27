@@ -1,0 +1,74 @@
+#+title: Turso Source Index Generation Publish Authority v1
+#+startup: overview
+
+* Status
+
+Implemented as the v1 source-index publication contract.
+
+* Problem
+
+The source-index writer previously erased an open Turso transaction to a
+=Connection= reference before publishing the active scope.  The publisher
+therefore could not prove at the type boundary that owner rows, selector rows,
+scope metadata, and layout metadata belonged to one atomic generation.
+
+The same path also wrapped the transaction in a thirty-second timeout.  That
+budget did not improve throughput or lock ownership.  It delayed the observable
+failure and allowed a slow or contended writer to occupy the only publication
+boundary.
+
+The legacy scope-file reader opened the database once to obtain the active
+generation and a second time to obtain its owners.  Those reads were not one
+MVCC snapshot and multiplied file-lock exposure.
+
+* v1 authority
+
+** Writer
+
+One mutable Turso connection owns one source-index publication.
+
+1. Begin one =Immediate= transaction through the mutable connection.
+2. Stage membership, owner, selector, and posting rows under an immutable
+   physical generation identifier.
+3. Recompute and validate owner and selector counts inside that transaction.
+4. Write the active scope row.
+5. Write the layout row last.
+6. Commit exactly once.
+
+The active-scope publisher accepts =Transaction= rather than =Connection=.
+Publishing outside the writer transaction is therefore unrepresentable.
+Dropping or explicitly rolling back the transaction leaves the previous active
+generation visible.
+
+The writer has no timeout, retry, sleep, or fallback control plane.  Admission
+and serialization belong to the single-writer owner.  Performance is measured
+by typed benchmark receipts rather than by a tolerated wall-clock deadline.
+
+** Reader
+
+The database is opened once to materialize one active generation.  Generation
+identity, Merkle root, root depth, owner coverage, and selector coverage are
+validated from that connection before the snapshot becomes visible.
+
+Search then consumes an immutable in-memory generation.  Query lookup performs
+no database open, source read, subprocess launch, manifest write, or cache
+write.
+
+The two-connection generation-then-owner reader is removed; it is not retained
+as a compatibility fallback.
+
+* Required gates
+
+- A partially staged generation is never visible through the active scope.
+- A publisher cannot be called with a bare =Connection=.
+- A failed publish leaves the previous active generation readable.
+- Concurrent readers observe either the previous complete generation or the
+  next complete generation, never a mixture.
+- Concurrent source-index readers never expose a database =Busy= state or a
+  file-lock error to Search.  Contention is resolved at the single-writer
+  authority before an immutable generation is published.
+- Warm Memory Search opens no database and performs no source materialization.
+- Cold materialization and warm lookup satisfy the typed millisecond
+  performance receipts owned by the Search package.
+- No source-index writer contains a timeout, bounded-retry, sleep, or
+  budget-exhaustion branch.

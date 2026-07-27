@@ -1,6 +1,6 @@
 //! State layout materialization and legacy-tree migration.
 
-use super::identity::{RepoId, WorkspaceId, stable_id};
+use super::identity::{stable_id, RepoId, WorkspaceId};
 use super::layout::{STATE_LAYOUT_VERSION, TURSO_BACKEND};
 use super::resolution::ResolvedState;
 use crate::git::path_identity;
@@ -149,7 +149,7 @@ impl ResolvedState {
                         .workspace_dir
                         .join("live/client/source-snapshot-envelopes"),
                 )?;
-                let retired_workspace_dir = self
+                let preferred_retired_workspace_dir = self
                     .paths
                     .workspace_dir
                     .join(".state")
@@ -161,41 +161,42 @@ impl ResolvedState {
                         legacy_repo_id.as_str(),
                         legacy_workspace_id.as_str()
                     ));
-                if retired_workspace_dir.exists() {
-                    return Err(format!(
-                        "state migration conflict: retired legacy workspace already exists: source={} target={}",
-                        legacy_workspace_dir.display(),
-                        retired_workspace_dir.display()
-                    ));
-                }
-                write_json_atomically(
-                    &legacy_workspace_dir
-                        .join(".state")
-                        .join("migrations")
-                        .join("project-identity-v1.json"),
-                    &json!({
-                        "migration": "project-identity-v1",
-                        "legacyRepoId": legacy_repo_id,
-                        "legacyWorkspaceId": legacy_workspace_id,
-                        "repoId": self.repo.repo_id,
-                        "workspaceId": self.workspace.workspace_id,
-                        "legacyPath": legacy_workspace_dir,
-                        "canonicalPath": self.paths.workspace_dir,
-                        "retiredPath": retired_workspace_dir,
-                        "activeDatabaseAuthority": self.paths.client_dir,
-                        "status": "retired-read-disabled",
-                    }),
+                let retired_workspace_dir = resolve_retired_tree_target(
+                    &legacy_workspace_dir,
+                    &preferred_retired_workspace_dir,
                 )?;
-                let retired_parent = retired_workspace_dir.parent().ok_or_else(|| {
-                    format!(
-                        "retired legacy workspace has no parent: {}",
-                        retired_workspace_dir.display()
-                    )
-                })?;
-                fs::create_dir_all(retired_parent)
-                    .map_err(io_error("create retired legacy workspace parent"))?;
-                fs::rename(&legacy_workspace_dir, &retired_workspace_dir)
-                    .map_err(io_error("retire legacy project workspace"))?;
+                if retired_workspace_dir.exists() {
+                    merge_immutable_tree(&legacy_workspace_dir, &retired_workspace_dir)?;
+                } else {
+                    write_json_atomically(
+                        &legacy_workspace_dir
+                            .join(".state")
+                            .join("migrations")
+                            .join("project-identity-v1.json"),
+                        &json!({
+                            "migration": "project-identity-v1",
+                            "legacyRepoId": legacy_repo_id,
+                            "legacyWorkspaceId": legacy_workspace_id,
+                            "repoId": self.repo.repo_id,
+                            "workspaceId": self.workspace.workspace_id,
+                            "legacyPath": legacy_workspace_dir,
+                            "canonicalPath": self.paths.workspace_dir,
+                            "retiredPath": retired_workspace_dir,
+                            "activeDatabaseAuthority": self.paths.client_dir,
+                            "status": "retired-read-disabled",
+                        }),
+                    )?;
+                    let retired_parent = retired_workspace_dir.parent().ok_or_else(|| {
+                        format!(
+                            "retired legacy workspace has no parent: {}",
+                            retired_workspace_dir.display()
+                        )
+                    })?;
+                    fs::create_dir_all(retired_parent)
+                        .map_err(io_error("create retired legacy workspace parent"))?;
+                    fs::rename(&legacy_workspace_dir, &retired_workspace_dir)
+                        .map_err(io_error("retire legacy project workspace"))?;
+                }
             } else {
                 write_json_atomically(
                     &legacy_workspace_dir
@@ -232,13 +233,64 @@ impl ResolvedState {
                     &legacy_hooks_dir.join("state/events.jsonl"),
                     &self.paths.hooks_dir.join("state/events.jsonl"),
                 )?;
-                if !remove_directory_tree_if_empty(&legacy_hooks_dir)? {
-                    return Err(format!(
-                        "state migration conflict: legacy hook directory contains non-event state after canonical migration: legacy={} canonical={}",
-                        legacy_hooks_dir.display(),
-                        self.paths.hooks_dir.display()
-                    ));
-                }
+                let retired_legacy_hook_state =
+                    if remove_directory_tree_if_empty(&legacy_hooks_dir)? {
+                        None
+                    } else {
+                        let preferred_retired_hooks_dir = self
+                            .paths
+                            .hooks_dir
+                            .join(".state")
+                            .join("migrations")
+                            .join("project-identity-v1")
+                            .join("retired-hook-state")
+                            .join(format!(
+                                "{}--{}",
+                                legacy_repo_id.as_str(),
+                                legacy_workspace_id.as_str()
+                            ));
+                        let retired_hooks_dir = resolve_retired_tree_target(
+                            &legacy_hooks_dir,
+                            &preferred_retired_hooks_dir,
+                        )?;
+                        if retired_hooks_dir.exists() {
+                            merge_immutable_tree(&legacy_hooks_dir, &retired_hooks_dir)?;
+                        } else {
+                            write_json_atomically(
+                                &legacy_hooks_dir
+                                    .join(".state")
+                                    .join("migrations")
+                                    .join("hook-project-tree-v1.json"),
+                                &json!({
+                                    "migration": "hook-project-tree-v1",
+                                    "legacyRepoId": legacy_repo_id,
+                                    "legacyWorkspaceId": legacy_workspace_id,
+                                    "repoId": self.repo.repo_id,
+                                    "workspaceId": self.workspace.workspace_id,
+                                    "legacyPath": legacy_hooks_dir,
+                                    "canonicalPath": self.paths.hooks_dir,
+                                    "retiredPath": retired_hooks_dir,
+                                    "status": "retired-read-disabled",
+                                }),
+                            )?;
+                            let retired_parent = retired_hooks_dir.parent().ok_or_else(|| {
+                                format!(
+                                    "retired legacy hook state has no parent: {}",
+                                    retired_hooks_dir.display()
+                                )
+                            })?;
+                            fs::create_dir_all(retired_parent)
+                                .map_err(io_error("create retired legacy hook state parent"))?;
+                            fs::rename(&legacy_hooks_dir, &retired_hooks_dir)
+                                .map_err(io_error("retire legacy hook state"))?;
+                        }
+                        Some(retired_hooks_dir)
+                    };
+                let migration_status = if retired_legacy_hook_state.is_some() {
+                    "merged-events-and-retired-non-event-state"
+                } else {
+                    "merged-by-event-identity"
+                };
                 write_json_atomically(
                     &self
                         .paths
@@ -254,7 +306,8 @@ impl ResolvedState {
                         "workspaceId": self.workspace.workspace_id,
                         "mergedEventCount": merged_event_count,
                         "windowDigest": format!("sha256:{window_digest}"),
-                        "status": "merged-by-event-identity",
+                        "retiredLegacyHookState": retired_legacy_hook_state,
+                        "status": migration_status,
                     }),
                 )?;
                 prune_empty_ancestors(&legacy_hooks_dir, &self.state_home.join("hooks"));
@@ -617,6 +670,132 @@ fn replace_json_atomically(path: &Path, value: &serde_json::Value) -> Result<(),
     fs::write(&temporary, format!("{content}\n"))
         .map_err(io_error("write migrated snapshot envelope"))?;
     fs::rename(&temporary, path).map_err(io_error("commit migrated snapshot envelope"))
+}
+
+fn resolve_retired_tree_target(
+    source: &Path,
+    preferred: &Path,
+) -> Result<std::path::PathBuf, String> {
+    if !preferred.exists() || immutable_trees_are_merge_compatible(source, preferred)? {
+        return Ok(preferred.to_path_buf());
+    }
+    let digest = immutable_tree_digest(source)?;
+    let file_name = preferred
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            format!(
+                "retired state target has no UTF-8 file name: {}",
+                preferred.display()
+            )
+        })?;
+    let generation = preferred.with_file_name(format!("{file_name}--sha256-{digest}"));
+    if generation.exists() && !immutable_trees_are_merge_compatible(source, &generation)? {
+        return Err(format!(
+            "state migration conflict: digest-addressed retired generation differs: source={} target={}",
+            source.display(),
+            generation.display()
+        ));
+    }
+    Ok(generation)
+}
+
+fn immutable_trees_are_merge_compatible(source: &Path, target: &Path) -> Result<bool, String> {
+    if !source.exists() {
+        return Ok(true);
+    }
+    for entry in fs::read_dir(source).map_err(io_error("read immutable migration source"))? {
+        let entry = entry.map_err(io_error("read immutable migration entry"))?;
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        let source_type = entry
+            .file_type()
+            .map_err(io_error("read immutable migration file type"))?;
+        if !target_path.exists() {
+            if !source_type.is_dir() && !source_type.is_file() {
+                return Err(format!(
+                    "state migration conflict: immutable tree contains non-file entry: {}",
+                    source_path.display()
+                ));
+            }
+            continue;
+        }
+        let target_type = fs::symlink_metadata(&target_path)
+            .map_err(io_error("read immutable migration target type"))?
+            .file_type();
+        if source_type.is_dir() && target_type.is_dir() {
+            if !immutable_trees_are_merge_compatible(&source_path, &target_path)? {
+                return Ok(false);
+            }
+            continue;
+        }
+        if source_type.is_file() && target_type.is_file() {
+            if !files_are_identical(&source_path, &target_path)? {
+                return Ok(false);
+            }
+            continue;
+        }
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+fn immutable_tree_digest(root: &Path) -> Result<String, String> {
+    use std::io::Read;
+
+    let mut pending = vec![root.to_path_buf()];
+    let mut files = Vec::new();
+    while let Some(directory) = pending.pop() {
+        let entries = fs::read_dir(&directory)
+            .map_err(io_error("read retired generation digest directory"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(io_error("read retired generation digest entry"))?;
+        for entry in entries {
+            let path = entry.path();
+            let file_type = entry
+                .file_type()
+                .map_err(io_error("read retired generation digest type"))?;
+            if file_type.is_dir() {
+                pending.push(path);
+            } else if file_type.is_file() {
+                files.push(path);
+            } else {
+                return Err(format!(
+                    "state migration conflict: retired generation contains non-file entry: {}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    files.sort();
+
+    let mut hasher = Sha256::new();
+    for path in files {
+        let relative = path.strip_prefix(root).map_err(|error| {
+            format!(
+                "retired generation digest path escaped root: root={} path={} error={error}",
+                root.display(),
+                path.display()
+            )
+        })?;
+        let relative = relative.to_string_lossy();
+        hasher.update((relative.len() as u64).to_le_bytes());
+        hasher.update(relative.as_bytes());
+        let mut file =
+            fs::File::open(&path).map_err(io_error("open retired generation digest file"))?;
+        let mut buffer = [0_u8; 64 * 1024];
+        loop {
+            let read = file
+                .read(&mut buffer)
+                .map_err(io_error("read retired generation digest file"))?;
+            hasher.update((read as u64).to_le_bytes());
+            hasher.update(&buffer[..read]);
+            if read == 0 {
+                break;
+            }
+        }
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn merge_immutable_tree(source: &Path, target: &Path) -> Result<(), String> {

@@ -27,6 +27,13 @@ pub(crate) struct ProtocolBinaryShellProbe {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ProtocolBinaryPathProbe {
+    pub(crate) candidate: Option<PathBuf>,
+    pub(crate) path: Option<PathBuf>,
+    pub(crate) status: &'static str,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ProtocolBinaryInstallPlan {
     current_exe: PathBuf,
     target: PathBuf,
@@ -113,12 +120,8 @@ impl ProtocolBinaryInstallPlan {
             require_path_contains_dir(bin_dir)?;
         }
         let path_dirs = path_dirs();
-        let target = resolve_protocol_binary_install_target(
-            &current_exe,
-            explicit_bin_dir.as_deref(),
-            &path_dirs,
-            &artifact_root,
-        )?;
+        let target =
+            resolve_protocol_binary_install_target(explicit_bin_dir.as_deref(), &artifact_root)?;
         let managed_path_aliases =
             managed_protocol_binary_path_aliases(&artifact_root, &target, &path_dirs)?;
         Ok(Self {
@@ -162,10 +165,83 @@ fn install_protocol_binary_alias(alias: &Path, canonical_target: &Path) -> Resul
 }
 
 pub(crate) fn protocol_binary_on_path() -> Option<PathBuf> {
-    path_dirs()
+    protocol_binary_path_probe().path
+}
+
+pub(crate) fn protocol_binary_path_probe() -> ProtocolBinaryPathProbe {
+    for candidate in path_dirs()
         .iter()
         .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))
-        .find(|candidate| candidate.is_file())
+    {
+        let Ok(link_metadata) = std::fs::symlink_metadata(&candidate) else {
+            continue;
+        };
+        match std::fs::metadata(&candidate) {
+            Ok(metadata) if metadata.is_file() => {
+                return ProtocolBinaryPathProbe {
+                    candidate: Some(candidate.clone()),
+                    path: Some(candidate),
+                    status: "found",
+                };
+            }
+            Ok(_) => {
+                return ProtocolBinaryPathProbe {
+                    candidate: Some(candidate),
+                    path: None,
+                    status: "not-file",
+                };
+            }
+            Err(_) => {
+                let status = if link_metadata.file_type().is_symlink()
+                    && protocol_binary_symlink_chain_loops(&candidate)
+                {
+                    "symlink-loop"
+                } else if link_metadata.file_type().is_symlink() {
+                    "broken-symlink"
+                } else {
+                    "unreadable"
+                };
+                return ProtocolBinaryPathProbe {
+                    candidate: Some(candidate),
+                    path: None,
+                    status,
+                };
+            }
+        }
+    }
+    ProtocolBinaryPathProbe {
+        candidate: None,
+        path: None,
+        status: "missing",
+    }
+}
+
+fn protocol_binary_symlink_chain_loops(candidate: &Path) -> bool {
+    let mut current = candidate.to_path_buf();
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..64 {
+        if !seen.insert(current.clone()) {
+            return true;
+        }
+        let Ok(metadata) = std::fs::symlink_metadata(&current) else {
+            return false;
+        };
+        if !metadata.file_type().is_symlink() {
+            return false;
+        }
+        let Ok(target) = std::fs::read_link(&current) else {
+            return false;
+        };
+        current = if target.is_absolute() {
+            target
+        } else {
+            current
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(target)
+        };
+    }
+    true
 }
 
 pub(crate) fn protocol_binary_in_codex_hook_shell() -> ProtocolBinaryShellProbe {
@@ -271,44 +347,25 @@ fn probe_protocol_binary_in_non_login_shell(
 }
 
 fn resolve_protocol_binary_install_target(
-    current_exe: &Path,
     explicit_bin_dir: Option<&Path>,
-    path_dirs: &[PathBuf],
     artifact_root: &Path,
 ) -> Result<PathBuf, String> {
     if let Some(bin_dir) = explicit_bin_dir {
         return Ok(bin_dir.join(SEMANTIC_AGENT_PROTOCOL_BIN));
     }
-    let current_identity = fs::canonicalize(current_exe).map_err(|error| {
-        format!(
-            "failed to resolve current protocol binary identity {}: {error}",
-            current_exe.display()
-        )
-    })?;
-    let target = path_dirs
-        .iter()
-        .map(|dir| dir.join(SEMANTIC_AGENT_PROTOCOL_BIN))
-        .find(|candidate| candidate.is_file())
-        .ok_or_else(|| {
-            format!(
-                "`{SEMANTIC_AGENT_PROTOCOL_BIN}` is not resolvable on PATH; set {SEMANTIC_AGENT_BIN_DIR_ENV} to the single install directory"
-            )
-        })?;
-    let target_identity = fs::canonicalize(&target).map_err(|error| {
-        format!(
-            "failed to resolve PATH protocol binary identity {}: {error}",
-            target.display()
-        )
-    })?;
-    if target_identity != current_identity
-        && !is_digest_addressed_protocol_binary(&target_identity, artifact_root)?
-    {
+    if artifact_root.file_name().and_then(|name| name.to_str()) != Some("artifacts") {
         return Err(format!(
-            "refusing to update unrelated PATH binary {}; set {SEMANTIC_AGENT_BIN_DIR_ENV} to the single install directory",
-            target.display()
+            "protocol artifact root must end in `artifacts`: {}",
+            artifact_root.display()
         ));
     }
-    Ok(target)
+    let runtime_root = artifact_root.parent().ok_or_else(|| {
+        format!(
+            "protocol artifact root has no runtime parent: {}",
+            artifact_root.display()
+        )
+    })?;
+    Ok(runtime_root.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN))
 }
 
 fn managed_protocol_binary_path_aliases(
@@ -430,12 +487,27 @@ fn install_protocol_binary_from_artifact(
     Ok(status)
 }
 
-pub(crate) fn protocol_binary_artifact_digest(path: &Path) -> Option<String> {
+pub(crate) fn protocol_binary_artifact_path_digest(path: &Path) -> Option<String> {
     let canonical = fs::canonicalize(path).ok()?;
+    let digest = canonical.parent()?.file_name()?.to_str()?;
+    let algorithm = canonical.parent()?.parent()?.file_name()?.to_str()?;
+    if algorithm == "blake3-256"
+        && digest.len() == 64
+        && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Some(digest.to_string());
+    }
     if let Some(digest) = digest_addressed_protocol_binary_digest(&canonical) {
         return Some(digest);
     }
-    let bytes = fs::read(canonical).ok()?;
+    None
+}
+
+pub(crate) fn protocol_binary_artifact_digest(path: &Path) -> Option<String> {
+    if let Some(digest) = protocol_binary_artifact_path_digest(path) {
+        return Some(digest);
+    }
+    let bytes = fs::read(path).ok()?;
     Some(
         agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(&bytes)
             .as_str()

@@ -55,6 +55,8 @@ decision = "deny"
     assert!(stdout.contains("hookStateTrust=false"));
     assert!(stdout.contains("trustMissing=7"));
     assert!(stdout.contains("trustStale=1"));
+    assert!(stdout.contains("aspPathStatus="));
+    assert!(stdout.contains("aspPath="));
     assert!(stdout.contains("|trust stale=pre-tool"));
     assert!(stdout.contains("|trust missing="));
     std::fs::remove_dir_all(root).expect("cleanup temp project root");

@@ -34,7 +34,7 @@
   },
   "$defs": {
     "agentPolicyId": {
-      "$ref": "semantic-agent-policy-id.v1.schema.json"
+      "$ref": "https://agent-semantic-protocols.local/schemas/semantic-agent-policy-id.v1.schema.json"
     },
     "positiveDuration": {
       "type": "string",

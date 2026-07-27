@@ -97,8 +97,8 @@ pub(crate) use dispatch::run_protocol_command;
 pub(in crate::command) use hook_enforcement::codex_enforcement_report;
 pub(in crate::command) use hook_runtime_context::payload_indicates_subagent_context;
 pub(in crate::command) use protocol_binary::{
-    ProtocolBinaryInstallPlan, ensure_protocol_binary_installed, protocol_binary_artifact_digest,
-    protocol_binary_in_codex_hook_shell, protocol_binary_on_path,
+    ProtocolBinaryInstallPlan, ensure_protocol_binary_installed,
+    protocol_binary_artifact_path_digest, protocol_binary_in_codex_hook_shell,
 };
 pub(in crate::command) use protocol_version::{
     protocol_version_line, run_protocol_version_command,

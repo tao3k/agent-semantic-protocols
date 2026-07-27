@@ -54,6 +54,21 @@ macro_rules! restore_env_var {
 }
 
 pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ProviderNativeExactProjectionV1 {
+        schema_id: String,
+        schema_version: String,
+        language_id: String,
+        provider_id: String,
+        owner_path: String,
+        structural_selector: String,
+        projection_mode:
+            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1,
+        normalized_parser_facts: serde_json::Value,
+        projection_text: String,
+    }
+
     fn uses_client_backend(args: &[String]) -> bool {
         (args.first().is_some_and(|command| command == "search")
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
@@ -401,16 +416,12 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         .ok_or_else(|| {
             "provider-owned structural query is missing an exact selector".to_string()
         })?;
-        let snapshot = agent_semantic_client::source_index::current_source_index_snapshot_for_owner_from_activation(
-            (
+        let snapshot =
+            agent_semantic_client::source_index::current_source_index_snapshot_from_activation(
                 project_root.as_path(),
                 activation_path.as_path(),
                 &runtime,
-                owner_path.into(),
-                language_id.into(),
-                provider.provider_id.clone(),
-            ),
-        )?;
+            )?;
         let source = snapshot
             .source_blobs
             .get(&owner_path.into())
@@ -427,10 +438,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Names
         } else if provider_args.iter().any(|arg| arg == "--verbatim") {
             agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Verbatim
-        } else if super::provider_selector::option_value(&provider_args, "--from-hook")
-            == Some("item-skeleton")
-        {
-            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Skeleton
         } else {
             agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code
         };
@@ -499,10 +506,13 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         }
         let envelope =
             agent_semantic_client::source_index::publish_provider_source_snapshot_envelope(
-                &snapshot,
-                provider.provider_id.as_str(),
-                &provider.source_extensions,
-                &cache_home,
+                agent_semantic_client::source_index::ProviderSourceSnapshotEnvelopePublicationV1 {
+                    snapshot: &snapshot,
+                    provider_id: provider.provider_id.as_str(),
+                    source_extensions: &provider.source_extensions,
+                    cache_home: &cache_home,
+                    expected_workspace_root_digest: workspace_tree.root_digest(),
+                },
             )?;
         provider_argv.extend([
             "--json".to_string(),
@@ -539,9 +549,71 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             ));
         }
         let packet: agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1 =
-            serde_json::from_slice(output.stdout.as_ref()).map_err(|error| {
-                format!("failed to decode exact-selector provider packet: {error}")
-            })?;
+            match serde_json::from_slice(output.stdout.as_ref()) {
+                Ok(packet) => packet,
+                Err(exact_packet_error) => {
+                    let native: ProviderNativeExactProjectionV1 =
+                        serde_json::from_slice(output.stdout.as_ref()).map_err(|native_error| {
+                            format!(
+                                "failed to decode exact-selector provider output as either a final packet or a provider-native projection: finalPacketError={exact_packet_error} nativeProjectionError={native_error}"
+                            )
+                        })?;
+                    if native.schema_id
+                        != "agent.semantic-protocols.provider-native-exact-projection"
+                        || native.schema_version != "1"
+                    {
+                        return Err(format!(
+                            "provider-native exact projection contract mismatch: schemaId={} schemaVersion={}",
+                            native.schema_id, native.schema_version
+                        ));
+                    }
+                    if native.language_id != language_id
+                        || native.provider_id != provider.provider_id.as_str()
+                        || native.owner_path != owner_path
+                        || native.structural_selector != structural_selector
+                        || native.projection_mode != projection_mode
+                    {
+                        return Err(
+                            "provider-native exact projection identity does not match activated request"
+                                .to_string(),
+                        );
+                    }
+                    let canonical_item_selector =
+                        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::parse(
+                            structural_selector,
+                        )
+                        .map_err(|error| {
+                            format!(
+                                "failed to derive canonical item identity from provider-native projection: {error}"
+                            )
+                        })?;
+                    let normalized_parser_facts =
+                        serde_json::to_vec(&native.normalized_parser_facts).map_err(|error| {
+                            format!(
+                                "failed to canonicalize provider-native parser facts: {error}"
+                            )
+                        })?;
+                    let packet_language_id = language_id.into();
+                    let packet_provider_id = provider.provider_id.as_str().into();
+                    let packet_owner_path = owner_path.into();
+                    let packet_structural_selector = structural_selector.into();
+                    agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
+                        agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
+                            language_id: &packet_language_id,
+                            provider_id: &packet_provider_id,
+                            canonical_item_selector,
+                            parser_identity_digest: &parser_identity_digest,
+                            query_pack_digest: &query_pack_digest,
+                            owner_path: &packet_owner_path,
+                            structural_selector: &packet_structural_selector,
+                            projection_mode,
+                            source,
+                            normalized_parser_facts: &normalized_parser_facts,
+                            projection: native.projection_text.as_bytes(),
+                        },
+                    )
+                }
+            };
         packet.validate_shape().map_err(|error| {
             format!(
                 "exact-selector provider packet contract mismatch: error={error:?} schemaId={} expectedSchemaId={} schemaVersion={} expectedSchemaVersion={} digestAlgorithm={} expectedDigestAlgorithm={}",
@@ -555,19 +627,54 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         })?;
         if packet.language_id != language_id.into()
             || packet.provider_id != provider.provider_id.as_str().into()
-            || packet.owner_path != owner_path.into()
-            || packet.structural_selector != structural_selector.into()
         {
             return Err(
-                "exact-selector provider packet identity does not match activated request"
+                "exact-selector provider packet provider identity does not match activated request"
                     .to_string(),
             );
         }
-        if packet.source_blob_digest != source_blob_digest {
+        let requested_identity =
+            agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::parse(
+                structural_selector,
+            )
+            .map_err(|error| {
+                format!("failed to parse requested canonical item identity: {error}")
+            })?;
+        let resolved_identity =
+            agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::parse(
+                packet.structural_selector.as_str(),
+            )
+            .map_err(|error| {
+                format!("failed to parse resolved canonical item identity: {error}")
+            })?;
+        if requested_identity.language_id != resolved_identity.language_id
+            || requested_identity.kind != resolved_identity.kind
+            || requested_identity.symbol != resolved_identity.symbol
+            || requested_identity.scopes != resolved_identity.scopes
+        {
+            return Err(
+                "exact-selector provider relocation changed canonical item identity".to_string(),
+            );
+        }
+        let resolved_owner_path = packet.owner_path.as_str().to_owned();
+        let resolved_structural_selector = packet.structural_selector.as_str().to_owned();
+        let resolved_source = snapshot
+            .source_blobs
+            .get(&resolved_owner_path.as_str().into())
+            .ok_or_else(|| {
+                format!(
+                    "exact-selector provider relocated outside the pinned generation: ownerPath={resolved_owner_path}"
+                )
+            })?;
+        let resolved_source_blob_digest =
+            agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                resolved_source,
+            );
+        if packet.source_blob_digest != resolved_source_blob_digest {
             return Err(format!(
                 "exact-selector provider source digest mismatch: provider={} expected={}",
                 packet.source_blob_digest.as_str(),
-                source_blob_digest.as_str(),
+                resolved_source_blob_digest.as_str(),
             ));
         }
         if packet.parser_identity_digest != parser_identity_digest
@@ -583,6 +690,25 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 packet.projection_mode,
             ));
         }
+        let resolved_owner_subtree_digest = workspace_tree
+            .owner_subtree_digest(&resolved_owner_path)
+            .ok_or_else(|| {
+                format!(
+                    "exact-selector relocated owner is absent from workspace Merkle tree: {resolved_owner_path}"
+                )
+            })?;
+        let resolved_lookup_key =
+            agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1 {
+                language_id,
+                workspace_root_digest: workspace_tree.root_digest(),
+                owner_path: &resolved_owner_path,
+                owner_subtree_digest: resolved_owner_subtree_digest,
+                source_blob_digest: &resolved_source_blob_digest,
+                parser_identity_digest: &parser_identity_digest,
+                query_pack_digest: &query_pack_digest,
+                structural_selector: &resolved_structural_selector,
+                projection_mode,
+            };
         let record = packet
             .enrich_projection_record(&workspace_tree)
             .map_err(|error| {
@@ -591,18 +717,18 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         let validated =
             agent_semantic_content_identity::exact_selector_cache::ValidatedExactSelectorProjectionV1::hydrate(
                 record,
-                &lookup_key,
+                &resolved_lookup_key,
             )
             .map_err(|miss| {
                 format!("exact-selector provider record failed Merkle validation: {miss:?}")
             })?;
         agent_semantic_client_db::ClientDbEngine::persist_exact_selector_projection_v1_from_client_dir(
             &cache_home,
-            &lookup_key,
+            &resolved_lookup_key,
             validated.record(),
         )?;
         let hit = validated
-            .validate_warm_hit(&lookup_key)
+            .validate_warm_hit(&resolved_lookup_key)
             .map_err(|miss| format!("persisted exact-selector record missed: {miss:?}"))?;
         std::io::Write::write_all(&mut std::io::stdout().lock(), hit.projection_payload)
             .map_err(|error| format!("failed to write exact-selector cold projection: {error}"))?;

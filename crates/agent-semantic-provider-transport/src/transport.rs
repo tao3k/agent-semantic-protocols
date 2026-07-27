@@ -123,6 +123,74 @@ pub async fn run_provider_process_async(
     run_provider_process_async_with_framing(spec, ProviderProcessFraming::default()).await
 }
 
+const PROVIDER_PROCESS_ADMISSION_SLOTS: usize = 2;
+const PROVIDER_PROCESS_ADMISSION_POLL_INTERVAL: Duration = Duration::from_millis(2);
+
+struct ProviderProcessAdmissionPermit {
+    _slot: std::fs::File,
+}
+
+async fn acquire_provider_process_admission() -> Option<ProviderProcessAdmissionPermit> {
+    let admission_root = provider_process_admission_root();
+    if let Err(error) = std::fs::create_dir_all(&admission_root) {
+        warn!(
+            path = %admission_root.display(),
+            %error,
+            "failed to create provider process admission directory; continuing without admission"
+        );
+        return None;
+    }
+
+    loop {
+        for slot in 0..PROVIDER_PROCESS_ADMISSION_SLOTS {
+            let slot_path = admission_root.join(format!("slot-{slot}.lock"));
+            let file = match std::fs::OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .truncate(false)
+                .open(&slot_path)
+            {
+                Ok(file) => file,
+                Err(error) => {
+                    warn!(
+                        path = %slot_path.display(),
+                        %error,
+                        "failed to open provider process admission slot; continuing without admission"
+                    );
+                    return None;
+                }
+            };
+            match fs2::FileExt::try_lock_exclusive(&file) {
+                Ok(()) => return Some(ProviderProcessAdmissionPermit { _slot: file }),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(error) => {
+                    warn!(
+                        path = %slot_path.display(),
+                        %error,
+                        "failed to lock provider process admission slot; continuing without admission"
+                    );
+                    return None;
+                }
+            }
+        }
+        tokio::time::sleep(PROVIDER_PROCESS_ADMISSION_POLL_INTERVAL).await;
+    }
+}
+
+fn provider_process_admission_root() -> std::path::PathBuf {
+    let mut root = std::env::temp_dir();
+    #[cfg(unix)]
+    root.push(format!(
+        "agent-semantic-provider-admission-v1-{}",
+        // SAFETY: geteuid has no preconditions and does not dereference memory.
+        unsafe { libc::geteuid() }
+    ));
+    #[cfg(not(unix))]
+    root.push("agent-semantic-provider-admission-v1");
+    root
+}
+
 /// Run a provider process asynchronously with explicit stdout/stderr framing.
 pub async fn run_provider_process_async_with_framing(
     spec: ProviderProcessSpec,
@@ -138,6 +206,11 @@ pub async fn run_provider_process_async_with_framing(
     );
 
     async move {
+        let admission_started = Instant::now();
+        let _admission_permit = acquire_provider_process_admission().await;
+        let admission_wait = admission_started.elapsed();
+        let admission_wait_ms = admission_wait.as_millis();
+        debug!(admission_wait_ms, "admitted provider process");
         let start = Instant::now();
         let stdin_mode = spec.stdin.clone();
         let stdout_mode = spec.stdout;
@@ -153,7 +226,7 @@ pub async fn run_provider_process_async_with_framing(
             limits,
             framing,
         )?;
-        collect_provider_output(child, io_tasks, limits, start).await
+        collect_provider_output(child, io_tasks, limits, start, admission_wait).await
     }
     .instrument(span)
     .await
@@ -299,6 +372,7 @@ async fn collect_provider_output(
     tasks: ProviderIoTasks,
     limits: ProviderProcessLimits,
     start: Instant,
+    admission_wait: Duration,
 ) -> Result<ProviderProcessOutput, ProviderProcessError> {
     let ProviderIoTasks {
         stdin: stdin_task,
@@ -331,7 +405,7 @@ async fn collect_provider_output(
                 return Err(ProviderProcessError::Timeout {
                     timeout,
                     receipt: Box::new(provider_process_receipt(
-                        start, None, stdout, stderr, true, false, limits,
+                        start, admission_wait, None, stdout, stderr, true, false, limits,
                     )),
                 });
                 }
@@ -345,7 +419,7 @@ async fn collect_provider_output(
                 return Err(ProviderProcessError::MemoryLimit {
                     limit_bytes,
                     receipt: Box::new(provider_process_receipt(
-                        start, None, stdout, stderr, false, true, limits,
+                        start, admission_wait, None, stdout, stderr, false, true, limits,
                     )),
                 });
             }
@@ -364,7 +438,7 @@ async fn collect_provider_output(
                 return Err(ProviderProcessError::MemoryLimit {
                     limit_bytes,
                     receipt: Box::new(provider_process_receipt(
-                        start, None, stdout, stderr, false, true, limits,
+                        start, admission_wait, None, stdout, stderr, false, true, limits,
                     )),
                 });
             }
@@ -380,7 +454,14 @@ async fn collect_provider_output(
     let stdout = join_transport_task(stdout_task, "stdout").await?;
     let stderr = join_transport_task(stderr_task, "stderr").await?;
     Ok(provider_process_output(
-        start, status, stdout, stderr, false, false, limits,
+        start,
+        admission_wait,
+        status,
+        stdout,
+        stderr,
+        false,
+        false,
+        limits,
     ))
 }
 
@@ -408,6 +489,7 @@ fn kill_provider_process_group(_child: &Child) {}
 
 fn provider_process_output(
     start: Instant,
+    admission_wait: Duration,
     status: ExitStatus,
     stdout: LimitedRead,
     stderr: LimitedRead,
@@ -417,6 +499,7 @@ fn provider_process_output(
 ) -> ProviderProcessOutput {
     let receipt = provider_process_receipt(
         start,
+        admission_wait,
         Some(status),
         stdout.clone(),
         stderr.clone(),
@@ -434,6 +517,7 @@ fn provider_process_output(
 
 fn provider_process_receipt(
     start: Instant,
+    admission_wait: Duration,
     status: Option<ExitStatus>,
     stdout: LimitedRead,
     stderr: LimitedRead,
@@ -461,6 +545,7 @@ fn provider_process_receipt(
     };
     ProviderProcessReceipt::from_input(crate::process_contract::ProviderProcessReceiptInput {
         elapsed: start.elapsed(),
+        admission_wait,
         status_code: status.and_then(|status| status.code()),
         status_success,
         stdout_bytes: stdout.total_bytes,

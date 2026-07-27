@@ -68,11 +68,18 @@ fn completed_child_wins_over_an_already_ready_deadline() {
                 tokio::task::yield_now().await;
             }
 
-            let output = super::super::collect_provider_output(child, tasks, limits, start)
-                .await
-                .expect("completed child must not be classified as a timeout");
+            let output = super::super::collect_provider_output(
+                child,
+                tasks,
+                limits,
+                start,
+                Duration::from_millis(37),
+            )
+            .await
+            .expect("completed child must not be classified as a timeout");
             assert!(output.status.success());
             assert!(!output.receipt.timed_out());
+            assert_eq!(output.receipt.admission_wait(), Duration::from_millis(37));
         }
     });
     let _ = fs::remove_dir_all(root);

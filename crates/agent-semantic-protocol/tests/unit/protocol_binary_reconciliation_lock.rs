@@ -116,27 +116,19 @@ fn global_reconciliation_atomically_updates_every_managed_path_alias() {
 }
 
 #[test]
-fn install_target_rejects_an_unmanaged_path_binary() {
-    let root =
-        std::env::temp_dir().join(format!("asp-unmanaged-path-binary-{}", std::process::id()));
+fn install_target_is_derived_from_the_canonical_runtime_root() {
+    let root = std::env::temp_dir().join(format!(
+        "asp-canonical-runtime-target-{}",
+        std::process::id()
+    ));
     let artifact_root = root.join("artifacts");
-    std::fs::create_dir_all(&artifact_root).expect("create artifact root");
-    let current = root.join("build/asp");
-    std::fs::create_dir_all(current.parent().expect("current parent")).expect("create current dir");
-    std::fs::write(&current, b"current").expect("write current binary");
-    let unrelated = root.join("path/asp");
-    std::fs::create_dir_all(unrelated.parent().expect("unrelated parent"))
-        .expect("create unrelated dir");
-    std::fs::write(&unrelated, b"unrelated").expect("write unrelated binary");
+    let target = super::resolve_protocol_binary_install_target(None, &artifact_root)
+        .expect("canonical runtime target");
+    assert_eq!(target, root.join("bin/asp"));
 
-    let error = super::resolve_protocol_binary_install_target(
-        &current,
-        None,
-        &[unrelated.parent().expect("unrelated parent").to_path_buf()],
-        &artifact_root,
-    )
-    .expect_err("unmanaged PATH binary must be rejected");
-    assert!(error.contains("refusing to update unrelated PATH binary"));
-
-    std::fs::remove_dir_all(root).expect("remove unmanaged binary fixture");
+    let explicit = root.join("explicit-bin");
+    let explicit_target =
+        super::resolve_protocol_binary_install_target(Some(&explicit), &artifact_root)
+            .expect("explicit runtime target");
+    assert_eq!(explicit_target, explicit.join("asp"));
 }

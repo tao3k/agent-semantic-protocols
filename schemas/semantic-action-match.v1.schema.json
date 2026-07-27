@@ -34,7 +34,7 @@
     "authorityProjections": {
       "type": "array",
       "items": {
-        "$ref": "semantic-action-authority-projection.v1.schema.json"
+        "$ref": "https://agent-semantic-protocols.dev/schemas/semantic-action-authority-projection.v1.schema.json"
       },
       "uniqueItems": true
     }

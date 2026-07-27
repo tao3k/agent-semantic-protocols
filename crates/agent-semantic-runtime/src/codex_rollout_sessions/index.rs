@@ -46,10 +46,17 @@ where
             }
             Err(error) => return Err(error),
         };
-    let root_attributed_rollout_paths = super::paths::root_attributed_rollout_paths_for_session_id(
-        &sessions_dir,
-        root_session_id_text,
-    )?;
+    // An explicit session set is the bounded direct-lookup contract. Keep the
+    // global root-attribution discovery fallback for callers that do not
+    // already have host/registry session identities.
+    let root_attributed_rollout_paths = if child_session_ids.is_empty() {
+        super::paths::root_attributed_rollout_paths_for_session_id(
+            &sessions_dir,
+            root_session_id_text,
+        )?
+    } else {
+        Vec::new()
+    };
     rollout_paths.extend(root_attributed_rollout_paths.iter().cloned());
     let trace_rollout_index = std::env::var_os("ASP_CODEX_ROLLOUT_INDEX_TRACE").is_some();
     if trace_rollout_index {

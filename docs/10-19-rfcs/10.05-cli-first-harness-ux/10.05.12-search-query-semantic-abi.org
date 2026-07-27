@@ -102,6 +102,32 @@ and configuration fields.
 
 This boundary prevents replacing one basename special case with another.
 
+** Typed next-action closure
+
+A discovery packet that advertises a non-terminal frontier MUST carry the next
+action as typed protocol data.  An agent MUST NOT derive a command from an
+=entries== label, prose, a prompt role, or a historical CLI spelling.
+
+For an owner-items frontier whose next semantic step is test reachability, the
+typed action is the =owner-tests= reasoning profile.  Its canonical CLI
+materialization is:
+
+#+begin_src sh
+asp <registered-language> search reasoning owner-tests \
+  --owner <owner-path> --workspace <workspace-root> --view seeds
+#+end_src
+
+The language facade, owner, workspace, reasoning profile, and view are action
+fields owned by the shared search schema.  Language harnesses may render the
+command, but MUST NOT invent a provider-private spelling.  The router MUST
+validate the rendered command against the same typed action before emitting it.
+Removed surfaces such as =search owner <path> tests= MUST NOT be accepted or
+emitted as compatibility aliases.
+
+If no valid next action exists, the packet MUST close the frontier explicitly;
+it MUST NOT leave an =entries= hint that requires the resident agent to guess a
+follow-up command.
+
 * Shared schema ownership
 ** Interactive action and capability schemas
 

@@ -8,6 +8,73 @@ protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
 contractFingerprint = "@HOOK_CLIENT_CONTRACT_FINGERPRINT@"
 
+[agents.placeholders]
+explore = "asp-explore"
+testing = "asp-testing"
+
+[[commandProfiles]]
+id = "rust-cargo"
+languageIds = ["rust"]
+
+[commandProfiles.categories]
+testing = [
+  ["cargo", "test"],
+  ["cargo", "check"],
+  ["cargo", "build"],
+  ["just", "test"],
+  ["rs-harness"],
+]
+review = [["cargo", "clippy"], ["cargo", "fmt", "--check"]]
+
+[[commandProfiles]]
+id = "typescript-node"
+languageIds = ["typescript"]
+
+[commandProfiles.categories]
+testing = [
+  ["npm", "test"],
+  ["npm", "run", "test"],
+  ["pnpm", "test"],
+  ["pnpm", "run", "test"],
+  ["yarn", "test"],
+  ["bun", "test"],
+]
+review = [
+  ["npm", "run", "lint"],
+  ["pnpm", "run", "lint"],
+  ["yarn", "lint"],
+  ["bun", "run", "lint"],
+]
+
+[[commandProfiles]]
+id = "python-uv"
+languageIds = ["python"]
+
+[commandProfiles.categories]
+testing = [["pytest"], ["uv", "run", "pytest"]]
+review = [["ruff", "check"], ["uv", "run", "ruff", "check"]]
+
+[[commandProfiles]]
+id = "julia-pkg"
+languageIds = ["julia"]
+
+[commandProfiles.categories]
+testing = [["julia", "--project=test"]]
+
+[[commandProfiles]]
+id = "c-cmake"
+languageIds = ["c", "cpp", "objective-c"]
+
+[commandProfiles.categories]
+testing = [["ctest"], ["cmake", "--build"]]
+
+[[commandProfiles]]
+id = "gerbil-gxpkg"
+languageIds = ["gerbil-scheme"]
+
+[commandProfiles.categories]
+testing = [["gxpkg", "test"]]
+
 # Registered-language reasoning query/search dispatch. The matcher expands
 # `<registered-language>` from the provider registry; the rule owns the complete
 # match, intent, decision, and resident dispatch policy.
@@ -30,7 +97,7 @@ argvPatternAny = [
 
 [rules.dispatch]
 transport = "resident-agent"
-residentName = "asp-explore"
+agent = "explore"
 receiptKind = "asp-explore-search-v1"
 lazyProvider = "matched-language"
 
@@ -44,19 +111,18 @@ message = "ASP denied this command in the main Agent. Route it exactly through h
 event = "pre-tool"
 
 [rules.match]
-argvPrefixAny = [
-  ["cargo", "test"],
-  ["cargo", "check"],
-  ["cargo", "build"],
-  ["pytest"],
-  ["uv", "run", "pytest"],
-  ["just", "test"],
-  ["rs-harness"],
+commandProfileAny = [
+  { profile = "rust-cargo", category = "testing" },
+  { profile = "typescript-node", category = "testing" },
+  { profile = "python-uv", category = "testing" },
+  { profile = "julia-pkg", category = "testing" },
+  { profile = "c-cmake", category = "testing" },
+  { profile = "gerbil-gxpkg", category = "testing" },
 ]
 
 [rules.dispatch]
 transport = "resident-agent"
-residentName = "asp-testing"
+agent = "testing"
 receiptKind = "asp-testing-execution-v1"
 
 [rules.fields]
@@ -90,10 +156,6 @@ actionAny = ["execute"]
 effectAny = ["read"]
 subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
 authorityAny = ["raw-host-action", "raw-shell", "unknown"]
-commandWrappers = [{ executable = "rtk" }]
-invocationShapeAny = ["host-native", "command", "wrapped-command"]
-wrapperMatchAny = ["matched", "unmatched", "unknown"]
-flagPresenceAny = ["present", "absent"]
 
 [[rules.match.effectRules]]
 argvPrefix = ["read"]
@@ -256,6 +318,102 @@ message = "Direct source materialization is permanently denied. Consume parser-o
 [rules.match]
 argvPrefixAny = [["cat"], ["sed"], ["head"], ["tail"], ["awk"], ["nl"], ["less"], ["more"], ["bat"], ["strings"], ["xxd"], ["od"], ["cut"], ["sort"], ["uniq"], ["wc"], ["jq"], ["perl"], ["python"], ["python3"], ["ruby"], ["node"], ["dd"]]
 argvRegisteredSourceFile = true
+actionAny = ["execute"]
+effectAny = ["read"]
+subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
+authorityAny = ["raw-host-action", "raw-shell", "unknown"]
+
+[[rules.match.effectRules]]
+argvPrefix = ["cat"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["sed"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["head"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["tail"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["awk"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["nl"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["less"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["more"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["bat"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["strings"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["xxd"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["od"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["cut"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["sort"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["uniq"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["wc"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["jq"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["perl"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["python"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["python3"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["ruby"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["node"]
+effect = "read"
+
+[[rules.match.effectRules]]
+argvPrefix = ["dd"]
+effect = "read"
 
 [[rules]]
 id = "deny-uncontrolled-python-inline-source-materialization"
@@ -290,7 +448,7 @@ message = "Git object and diff reads are denied in the main agent. Route the exa
 
 [rules.dispatch]
 transport = "resident-agent"
-residentName = "asp-testing"
+agent = "testing"
 receiptKind = "asp-testing-execution-v1"
 
 [rules.match]

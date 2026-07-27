@@ -7,6 +7,7 @@ description = "Content-addressed identity and Merkle workspace snapshot contract
 
 [dependencies]
 blake3.workspace = true
+base64 = "0.22.1"
 serde.workspace = true
 serde_json.workspace = true
 [[bench]]

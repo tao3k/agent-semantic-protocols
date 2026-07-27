@@ -90,6 +90,10 @@ fn default_template_round_trips_through_config_parser() {
         Some(hook_client_contract_fingerprint().as_str())
     );
     assert!(config.experimental.is_empty());
+    assert_eq!(
+        config.wrapper_match,
+        agent_semantic_config::WrapperMatchMode::Enable
+    );
     assert!(config.agent_org_artifacts.is_none());
     assert!(config.recovery_prompt.template.is_none());
     assert!(config.recovery_prompt.codex_agent_flow.is_none());
@@ -167,7 +171,7 @@ fn default_template_round_trips_through_config_parser() {
         .find(|rule| rule.id == "resident-testing-dispatch")
         .and_then(|rule| rule.dispatch.as_ref())
         .expect("testing resident dispatch");
-    assert_eq!(testing_dispatch.resident_name.as_str(), "asp-testing");
+    assert_eq!(testing_dispatch.agent.as_str(), "testing");
     assert_eq!(
         testing_dispatch.receipt_kind.as_str(),
         "asp-testing-execution-v1"
@@ -179,15 +183,17 @@ fn default_template_round_trips_through_config_parser() {
             .find(|rule| rule.id == "resident-testing-dispatch")
             .expect("testing dispatch rule")
             .match_config
-            .argv_prefix_any,
+            .command_profile_any
+            .iter()
+            .map(|profile| (profile.profile.as_str(), profile.category.as_str()))
+            .collect::<Vec<_>>(),
         vec![
-            vec!["cargo", "test"],
-            vec!["cargo", "check"],
-            vec!["cargo", "build"],
-            vec!["pytest"],
-            vec!["uv", "run", "pytest"],
-            vec!["just", "test"],
-            vec!["rs-harness"],
+            ("rust-cargo", "testing"),
+            ("typescript-node", "testing"),
+            ("python-uv", "testing"),
+            ("julia-pkg", "testing"),
+            ("c-cmake", "testing"),
+            ("gerbil-gxpkg", "testing"),
         ]
     );
     let bounded_json = config
@@ -261,6 +267,10 @@ fn default_template_round_trips_through_config_parser() {
         "mainAllowedAspCommandPrefixes",
         "lifecycle =",
         "prompt-search-strategy",
+        "commandWrappers",
+        "invocationShapeAny",
+        "wrapperMatchAny",
+        "flagPresenceAny",
     ] {
         assert!(
             !rendered.contains(removed_key),

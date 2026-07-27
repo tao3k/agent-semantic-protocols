@@ -111,9 +111,8 @@ fn record_and_reconcile_receipt_modes_are_mutually_exclusive() {
     );
     assert!(
         receipt.contains(
-            "the argument '--record-installed-receipt <BINARY>' cannot be used with '--reconcile-receipt'"
-        ) || receipt
-            .contains("--reconcile-receipt conflicts with --record-installed-receipt"),
+            "the argument '--record-installed-receipt <PATH>' cannot be used with '--reconcile-receipt'"
+        ),
         "{receipt}"
     );
 }

@@ -60,8 +60,7 @@ fn low_cohesion_query_pack_materializes_dominant_owner_package_scope() {
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(stdout.contains("packageCohesion=low"), "{stdout}");
     assert!(
-        stdout.contains("nextCommand=asp rg -query")
-            && stdout.contains("--workspace crates/agent-semantic-protocol"),
+        stdout.contains("nextCommand=asp rust search owner crates/agent-semantic-protocol/"),
         "{stdout}"
     );
     assert!(!stdout.contains("actionFrontier="), "{stdout}");

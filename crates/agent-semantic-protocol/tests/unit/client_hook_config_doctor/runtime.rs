@@ -22,6 +22,30 @@ fn doctor_reports_runtime_profile_health() {
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
+#[cfg(unix)]
+#[test]
+fn doctor_reports_protocol_binary_symlink_loop() {
+    let root = temp_project_root("doctor-protocol-binary-symlink-loop");
+    let activation_path = write_activation(&root);
+    write_client_config(&root, "");
+    let bin_dir = root.join(".doctor-bin");
+    std::fs::create_dir_all(&bin_dir).expect("create doctor bin");
+    std::os::unix::fs::symlink("asp", bin_dir.join("asp"))
+        .expect("create self-referential asp symlink");
+
+    let output = run_doctor_with_env(&root, &activation_path, &[], &[], Some(&bin_dir));
+
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let stdout = stdout(&output);
+    assert!(stdout.contains("status=warning"), "{stdout}");
+    assert!(stdout.contains("binaryPathStatus=symlink-loop"), "{stdout}");
+    assert!(
+        stdout.contains(&format!("binaryPath={}", bin_dir.join("asp").display())),
+        "{stdout}"
+    );
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
 #[test]
 fn doctor_reports_enforced_when_codex_probe_observes_deny() {
     let root = temp_project_root("doctor-codex-probe-deny");

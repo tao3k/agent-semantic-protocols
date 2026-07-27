@@ -2144,7 +2144,8 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "target"
+        "target",
+        "command"
       ],
       "properties": {
         "kind": {
@@ -2164,10 +2165,28 @@
         "ownerPath": {
           "$ref": "#/$defs/projectPath"
         },
-        "read": {
-          "type": "string",
-          "description": "Canonical source read locator for graph/code frontier actions, formatted as project/path:start:end.",
-          "pattern": "^(?:\\.|(?!/)(?![A-Za-z]:)(?![0-9]+:)(?!\\.\\.?($|/))(?!.*(^|/)\\.\\.?($|/))(?!.*//)[^\\s:\\\\]+(?:/[^\\s:\\\\]+)*):[1-9][0-9]*:[1-9][0-9]*$"
+        "command": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Canonical executable action. Consumers execute executable plus argv directly and must not reconstruct commands from prose, fields, or historical CLI spellings.",
+          "required": [
+            "executable",
+            "argv"
+          ],
+          "properties": {
+            "executable": {
+              "type": "string",
+              "minLength": 1
+            },
+            "argv": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
         },
         "fields": {
           "$ref": "#/$defs/fields"

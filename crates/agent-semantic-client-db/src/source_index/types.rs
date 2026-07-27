@@ -342,15 +342,8 @@ pub struct ClientDbSourceIndexCandidate {
     pub selector_symbol: Option<ClientDbSourceIndexSelectorSymbol>,
     /// Parser-owned item kind associated with the bounded selector proof.
     pub selector_kind: Option<ClientDbSourceIndexSelectorKind>,
-    pub selector_proof: Option<ClientDbSourceIndexSelectorPayloadProof>,
-}
-
-/// Provider/parser proof that a source-index candidate has a bounded payload.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ClientDbSourceIndexSelectorPayloadProof {
-    pub structural_selector: ClientDbSourceIndexStructuralSelector,
-    pub payload_kind: ClientDbSourceIndexSelectorPayloadKind,
-    pub bounded: bool,
+    pub selector_proof:
+        Option<agent_semantic_content_identity::ExactSelectorMaterializationProofV1>,
 }
 
 /// Typed source category for source-index candidate rows.
@@ -437,21 +430,20 @@ pub struct ClientDbSourceIndexCandidateLookupResult {
     pub candidates: Vec<ClientDbSourceIndexCandidate>,
 }
 
-/// Rust-owned selector row retained for exact owner-local expansion.
+/// Parser-owned selector row retained for exact owner-local materialization.
 ///
-/// `selector_id` is the stable structural selector identity. Line fields are
-/// compatibility/display hints and must not be used as selector identity.
+/// `selector_id` and `materialization_proof` are the complete identity and
+/// source projection contract. Consumers must not reconstruct either from
+/// line numbers or source rereads.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientDbSourceIndexSelector {
     pub owner_path: ClientDbSourceIndexPath,
     pub selector_id: ClientDbSourceIndexSelectorId,
     pub symbol: Option<ClientDbSourceIndexSelectorSymbol>,
     pub kind: Option<ClientDbSourceIndexSelectorKind>,
-    pub start_line: u32,
-    pub end_line: u32,
     pub source: ClientDbSourceIndexSource,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
-    pub payload_proof: Option<ClientDbSourceIndexSelectorPayloadProof>,
+    pub materialization_proof: agent_semantic_content_identity::ExactSelectorMaterializationProofV1,
 }
 
 /// Aggregate row counts for one source index generation.

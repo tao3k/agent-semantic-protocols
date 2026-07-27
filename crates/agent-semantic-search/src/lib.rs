@@ -17,11 +17,27 @@ pub use graph_owner_rank::{
     GraphOwnerRankCandidate, GraphOwnerRankReport, GraphOwnerRankRequest, GraphOwnerRankScore,
     GraphOwnerRankedOwner, rank_graph_owner_report,
 };
+pub mod exact_selector_generation_fixture;
 mod graph_query_owner_seed;
 mod graph_seed_decision;
 mod graph_topology_projection;
 mod lexical_overlay;
+pub mod memory_search;
+pub mod memory_search_fixture;
+pub mod memory_search_turso;
+pub use memory_search::{
+    MemorySearchBackendV1, MemorySearchGenerationV1, MemorySearchIndexV1, MemorySearchItemV1,
+    MemorySearchPerformanceReceiptV1, MemorySearchRequestV1, MemorySearchResolutionStateV1,
+    MemorySearchResolutionV1,
+};
+pub use memory_search_fixture::{
+    MEMORY_SEARCH_FIXTURE_SCHEMA_ID, MEMORY_SEARCH_FIXTURE_SCHEMA_VERSION, MemorySearchFixtureV1,
+};
+
 mod lexical_search_frame;
+#[cfg(test)]
+#[path = "../tests/unit/memory_search_fixture.rs"]
+mod memory_search_fixture_tests;
 mod owner_items_source_index_trace;
 mod pipe_candidates;
 mod pipe_source;
@@ -122,10 +138,10 @@ pub use pipe_source::{
     collect_search_pipe_search_overlay_acquisition, failure_candidate_query,
 };
 pub use pipe_source_index_acquisition::{
-    SearchPipeSelectorPayloadProof, SearchPipeSourceIndexAcquisition,
-    SearchPipeSourceIndexAcquisitionRequest, SearchPipeSourceIndexCandidate,
-    SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate, SearchPipeSourceIndexLookup,
-    collect_search_pipe_source_index_acquisition, search_pipe_source_index_query_gate,
+    SearchPipeSourceIndexAcquisition, SearchPipeSourceIndexAcquisitionRequest,
+    SearchPipeSourceIndexCandidate, SearchPipeSourceIndexDecision, SearchPipeSourceIndexGate,
+    SearchPipeSourceIndexLookup, collect_search_pipe_source_index_acquisition,
+    search_pipe_source_index_query_gate,
 };
 pub use prompt_output_replay::{
     PromptOutputFingerprintRequest, PromptOutputReplayRequest, is_prime_seed_search_request,

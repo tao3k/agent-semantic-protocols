@@ -595,7 +595,7 @@
           "$ref": "semantic-command.v1.schema.json#/$defs/languageId"
         },
         "selector": {
-          "$ref": "canonical-item-selector.v1.schema.json"
+          "$ref": "https://agent-semantic-protocols.dev/schemas/canonical-item-selector.v1.schema.json"
         },
         "projection": {
           "enum": ["code", "skeleton", "names", "verbatim"]

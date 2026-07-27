@@ -26,6 +26,10 @@ pub(super) fn with_required_resident_agents(config: &str) -> String {
         r#"
 [agents]
 
+[agents.placeholders]
+explore = "asp-explore"
+testing = "asp-testing"
+
 [[agents.residentAgents]]
 enabled = true
 name = "asp-explore"

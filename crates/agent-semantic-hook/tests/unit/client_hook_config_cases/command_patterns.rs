@@ -367,6 +367,22 @@ fn configurable_hook_default_rule_classification_stays_fast() {
         "configurable_hook_default_rule_perf samples={samples} iterations={iterations} best_elapsed_ms={} best_ns_per_decision={per_decision}",
         best_elapsed.as_millis()
     );
+    for (payload_index, payload) in payloads.iter().enumerate() {
+        let started = Instant::now();
+        for _ in 0..200 {
+            let _ = classify_hook_with_config(HookClassificationRequest {
+                registry: &registry,
+                config: &config,
+                platform: "codex",
+                event: "pre-tool",
+                payload,
+            });
+        }
+        eprintln!(
+            "configurable_hook_default_rule_payload_perf index={payload_index} ns_per_decision={}",
+            started.elapsed().as_nanos() / 200
+        );
+    }
 
     assert_eq!(best_denied, iterations * 3 / 4);
     // Debug builds exercise the functional path but include instrumentation and

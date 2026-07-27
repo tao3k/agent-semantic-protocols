@@ -227,7 +227,7 @@ fn search_pipe_graph_turbo_request_accepts_typescript_context_provider_facts() {
             "typescript",
             "search",
             "pipe",
-            "Effect concurrency|Fiber Queue Stream Scope",
+            "Effect concurrency|Fiber Queue Stream Scope|collection fields",
             "--view",
             "graph-turbo-request",
             ".",

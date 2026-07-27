@@ -1,0 +1,10 @@
+harness = "libtest"
+test = "memory_search_fixture_tests"
+route_source = "search-owned-memory-search-fixture"
+max_cold_lookup_micros = 1000
+max_warm_lookup_micros = 250
+max_provider_process_count = 0
+max_source_bytes_materialized = 0
+max_db_queries = 0
+max_db_opens = 0
+max_cache_writes = 0

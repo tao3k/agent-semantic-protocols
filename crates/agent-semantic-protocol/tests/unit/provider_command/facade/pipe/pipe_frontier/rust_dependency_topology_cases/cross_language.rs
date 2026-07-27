@@ -7,7 +7,7 @@ use crate::provider_command::support;
 #[test]
 fn search_pipe_graph_request_uses_typescript_manifest_dependency_versions() {
     let root = support::temp_project_root("search-pipe-typescript-dependency-topology");
-    let bin_dir = root.join(".bin");
+    let bin_dir = support::state_runtime_bin(&root);
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
@@ -20,8 +20,22 @@ fn search_pipe_graph_request_uses_typescript_manifest_dependency_versions() {
         "import React from 'react';\nexport const App = React.Fragment;\n",
     )
     .expect("write source");
+    write_dependency_topology_provider(
+        &bin_dir,
+        ".ts-harness-delegate",
+        &marker,
+        "react",
+        "18.2.0",
+        "package.json",
+    );
     support::write_marker_provider(&bin_dir, "ts-harness", &marker);
-    support::write_activation(&root, &[support::provider("typescript", Vec::new())]);
+    support::write_activation(
+        &root,
+        &[support::provider_with_dependency_topology(
+            "typescript",
+            Vec::new(),
+        )],
+    );
     let output = support::asp_command(&root)
         .env("PATH", support::prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
@@ -29,7 +43,9 @@ fn search_pipe_graph_request_uses_typescript_manifest_dependency_versions() {
             "typescript",
             "search",
             "pipe",
-            "react|version",
+            "react|dependency|version",
+            "--surface",
+            "deps",
             "--view",
             "graph-turbo-request",
             ".",
@@ -51,7 +67,7 @@ fn search_pipe_graph_request_uses_typescript_manifest_dependency_versions() {
 #[test]
 fn search_pipe_graph_request_uses_python_manifest_dependency_versions() {
     let root = support::temp_project_root("search-pipe-python-dependency-topology");
-    let bin_dir = root.join(".bin");
+    let bin_dir = support::state_runtime_bin(&root);
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
@@ -64,8 +80,22 @@ fn search_pipe_graph_request_uses_python_manifest_dependency_versions() {
         "import requests\nSESSION = requests.Session()\n",
     )
     .expect("write source");
+    write_dependency_topology_provider(
+        &bin_dir,
+        ".py-harness-delegate",
+        &marker,
+        "requests",
+        ">=2.31",
+        "pyproject.toml",
+    );
     support::write_marker_provider(&bin_dir, "py-harness", &marker);
-    support::write_activation(&root, &[support::provider("python", Vec::new())]);
+    support::write_activation(
+        &root,
+        &[support::provider_with_dependency_topology(
+            "python",
+            Vec::new(),
+        )],
+    );
 
     let output = support::asp_command(&root)
         .env("PATH", support::prepend_path(&bin_dir))
@@ -74,7 +104,9 @@ fn search_pipe_graph_request_uses_python_manifest_dependency_versions() {
             "python",
             "search",
             "pipe",
-            "requests|version",
+            "requests|dependency|version",
+            "--surface",
+            "deps",
             "--view",
             "graph-turbo-request",
             ".",
@@ -96,7 +128,7 @@ fn search_pipe_graph_request_uses_python_manifest_dependency_versions() {
 #[test]
 fn search_pipe_graph_request_uses_julia_manifest_dependency_versions() {
     let root = support::temp_project_root("search-pipe-julia-dependency-topology");
-    let bin_dir = root.join(".bin");
+    let bin_dir = support::state_runtime_bin(&root);
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
@@ -114,8 +146,22 @@ fn search_pipe_graph_request_uses_julia_manifest_dependency_versions() {
         "using DataFrames\nconst TABLE = DataFrame()\n",
     )
     .expect("write source");
+    write_dependency_topology_provider(
+        &bin_dir,
+        ".asp-julia-harness-delegate",
+        &marker,
+        "DataFrames",
+        "1.6.1",
+        "Project.toml",
+    );
     support::write_marker_provider(&bin_dir, "asp-julia-harness", &marker);
-    support::write_activation(&root, &[support::provider("julia", Vec::new())]);
+    support::write_activation(
+        &root,
+        &[support::provider_with_dependency_topology(
+            "julia",
+            Vec::new(),
+        )],
+    );
 
     let output = support::asp_command(&root)
         .env("PATH", support::prepend_path(&bin_dir))
@@ -124,7 +170,9 @@ fn search_pipe_graph_request_uses_julia_manifest_dependency_versions() {
             "julia",
             "search",
             "pipe",
-            "DataFrames|version",
+            "DataFrames|dependency|version",
+            "--surface",
+            "deps",
             "--view",
             "graph-turbo-request",
             ".",
@@ -146,7 +194,7 @@ fn search_pipe_graph_request_uses_julia_manifest_dependency_versions() {
 #[test]
 fn search_pipe_graph_request_uses_gerbil_manifest_dependencies() {
     let root = support::temp_project_root("search-pipe-gerbil-dependency-topology");
-    let bin_dir = root.join(".bin");
+    let bin_dir = support::state_runtime_bin(&root);
     let marker = root.join("provider-called");
     std::fs::create_dir_all(root.join("src")).expect("create src");
     std::fs::write(
@@ -159,8 +207,22 @@ fn search_pipe_graph_request_uses_gerbil_manifest_dependencies() {
         ";;; -*- Gerbil -*-\n(import :std/sugar)\n(export run)\n(def (run) 'ok)\n",
     )
     .expect("write source");
+    write_dependency_topology_provider(
+        &bin_dir,
+        ".gslph-delegate",
+        &marker,
+        "git.cons.io/mighty-gerbils/gerbil-poo",
+        "unresolved",
+        "gerbil.pkg",
+    );
     support::write_marker_provider(&bin_dir, "gslph", &marker);
-    support::write_activation(&root, &[support::provider("gerbil-scheme", Vec::new())]);
+    support::write_activation(
+        &root,
+        &[support::provider_with_dependency_topology(
+            "gerbil-scheme",
+            Vec::new(),
+        )],
+    );
 
     let output = support::asp_command(&root)
         .env("PATH", support::prepend_path(&bin_dir))
@@ -170,6 +232,8 @@ fn search_pipe_graph_request_uses_gerbil_manifest_dependencies() {
             "search",
             "pipe",
             "gerbil-poo|dependency",
+            "--surface",
+            "deps",
             "--view",
             "graph-turbo-request",
             ".",
@@ -187,4 +251,5 @@ fn search_pipe_graph_request_uses_gerbil_manifest_dependencies() {
     assert_manifest_dependency(&payload, "git.cons.io/mighty-gerbils/gerbil-poo");
     let _ = std::fs::remove_dir_all(root);
 }
+use crate::provider_command::facade::pipe::pipe_frontier::rust_dependency_topology::support::write_dependency_topology_provider;
 use serde_json::Value;

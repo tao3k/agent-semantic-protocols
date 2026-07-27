@@ -171,24 +171,49 @@ pub fn rank_graph_owner_report(request: GraphOwnerRankRequest) -> GraphOwnerRank
         &request.submodule_paths,
     );
     ranks.sort_unstable_by(owner_rank_compare);
-    let mut candidate_descriptors = request
-        .candidates
-        .iter()
-        .map(|candidate| {
-            [
+    let mut candidate_descriptors = request.candidates.iter().collect::<Vec<_>>();
+    candidate_descriptors.sort_unstable_by(|left, right| {
+        (
+            left.path.as_str(),
+            left.symbol.as_str(),
+            left.text.as_str(),
+            left.source.as_str(),
+            left.confidence.as_str(),
+        )
+            .cmp(&(
+                right.path.as_str(),
+                right.symbol.as_str(),
+                right.text.as_str(),
+                right.source.as_str(),
+                right.confidence.as_str(),
+            ))
+    });
+    let candidate_descriptor_bytes = candidate_descriptors.iter().fold(
+        Vec::with_capacity(candidate_descriptors.len() * 128),
+        |mut bytes, candidate| {
+            if !bytes.is_empty() {
+                bytes.extend_from_slice(b"\0\0");
+            }
+            for (index, field) in [
                 candidate.path.as_str(),
                 candidate.symbol.as_str(),
                 candidate.text.as_str(),
                 candidate.source.as_str(),
                 candidate.confidence.as_str(),
             ]
-            .join("\0")
-        })
-        .collect::<Vec<_>>();
-    candidate_descriptors.sort_unstable();
+            .into_iter()
+            .enumerate()
+            {
+                if index > 0 {
+                    bytes.push(0);
+                }
+                bytes.extend_from_slice(field.as_bytes());
+            }
+            bytes
+        },
+    );
     let candidates_digest =
-        agent_semantic_content_identity::hash_blob(candidate_descriptors.join("\0\0").as_bytes())
-            .value;
+        agent_semantic_content_identity::hash_blob(&candidate_descriptor_bytes).value;
     let query_digest =
         agent_semantic_content_identity::hash_blob(query_axes.join("\0").as_bytes()).value;
     let mut submodule_paths = request.submodule_paths.clone();
@@ -349,10 +374,13 @@ fn matched_query_axes(
     if query_axes.is_empty() {
         return Vec::new();
     }
-    let evidence = owner_rank_evidence(candidate, normalized_path);
     query_axes
         .iter()
-        .filter(|axis| evidence.contains(axis.as_str()))
+        .filter(|axis| {
+            normalized_path.contains(axis.as_str())
+                || ascii_contains_ignore_case(&candidate.symbol, axis)
+                || ascii_contains_ignore_case(&candidate.text, axis)
+        })
         .cloned()
         .collect()
 }
@@ -530,26 +558,12 @@ fn is_single_root_owner_segment(segment: &str) -> bool {
     )
 }
 
-fn owner_rank_evidence(candidate: &GraphOwnerRankCandidate, normalized_path: &str) -> String {
-    let mut evidence = String::with_capacity(
-        normalized_path.len() + candidate.symbol.len() + candidate.text.len() + 2,
-    );
-    evidence.push_str(normalized_path);
-    evidence.push(' ');
-    evidence.extend(
-        candidate
-            .symbol
-            .chars()
-            .map(|character| character.to_ascii_lowercase()),
-    );
-    evidence.push(' ');
-    evidence.extend(
-        candidate
-            .text
-            .chars()
-            .map(|character| character.to_ascii_lowercase()),
-    );
-    evidence
+fn ascii_contains_ignore_case(haystack: &str, needle: &str) -> bool {
+    needle.is_empty()
+        || haystack
+            .as_bytes()
+            .windows(needle.len())
+            .any(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
 }
 
 fn owner_rank_query_axes(query_terms: &[String]) -> Vec<String> {

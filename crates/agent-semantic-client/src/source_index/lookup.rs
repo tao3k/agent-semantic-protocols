@@ -44,13 +44,7 @@ pub(crate) fn search_pipe_source_index_lookup_from_client_result(
                     .into_iter()
                     .map(|key| key.as_str().to_string().into())
                     .collect(),
-                selector_proof: candidate.selector_proof.map(|proof| {
-                    agent_semantic_search::SearchPipeSelectorPayloadProof {
-                        structural_selector: proof.structural_selector.as_str().to_string().into(),
-                        payload_kind: proof.payload_kind.as_str().to_string().into(),
-                        bounded: proof.bounded,
-                    }
-                }),
+                selector_proof: candidate.selector_proof,
             })
             .collect(),
         source_snapshot,
