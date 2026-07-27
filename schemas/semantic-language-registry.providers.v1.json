@@ -1,6 +1,321 @@
 {
   "languages": [
     {
+      "binary": "ccls-asp",
+      "displayName": "C Clang Provider",
+      "execution": "external-process",
+      "languageId": "c",
+      "methodDescriptors": [
+        {
+          "command": "search",
+          "method": "search/prime",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["asp", "c", "search", "prime", "--workspace", "{workspace}", "--view", "seeds"]
+          }
+        },
+        {
+          "command": "search",
+          "method": "search/owner",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["asp", "c", "search", "owner", "{owner}", "--workspace", "{workspace}", "--view", "seeds"]
+          }
+        },
+        {
+          "command": "search",
+          "method": "search/lexical",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["asp", "c", "search", "lexical", "{query}", "owner", "tests", "--workspace", "{workspace}", "--view", "seeds"]
+          }
+        },
+        {
+          "command": "query",
+          "method": "query/exact-selector",
+          "supportsCompact": true,
+          "supportsJson": false,
+          "invocation": {
+            "argv": ["ccls-asp", "--language", "c", "query", "--selector", "{owner}", "--workspace", "{workspace}", "--code"]
+          }
+        },
+        {
+          "command": "search",
+          "method": "search/ingest",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["ccls-asp", "--language", "c", "search", "ingest", "--workspace", "{workspace}"],
+            "stdinMode": "pipe-candidates"
+          }
+        },
+        {
+          "command": "guide",
+          "method": "guide",
+          "supportsCompact": false,
+          "supportsJson": false,
+          "invocation": {
+            "argv": ["ccls-asp", "--language", "c", "guide", "--workspace", "{workspace}"]
+          }
+        }
+      ],
+      "methods": ["search/prime", "search/owner", "search/lexical", "query/exact-selector", "search/ingest", "guide"],
+      "namespace": "asp.c",
+      "providerId": "ccls-asp",
+      "queryPackDescriptor": {
+        "descriptorId": "c.query-pack",
+        "descriptorVersion": "1",
+        "languageId": "c",
+        "termRoleOverrides": [],
+        "recipes": [
+          {
+            "recipeId": "c-symbol-owner",
+            "trigger": {
+              "terms": ["symbol", "owner", "definition", "reference"],
+              "match": "any"
+            },
+            "clauses": [
+              {
+                "terms": ["symbol", "owner", "definition", "reference"],
+                "roles": ["concept", "symbol"],
+                "intentAxes": ["data-shape"]
+              }
+            ]
+          }
+        ]
+      },
+      "schemas": [
+        {
+          "path": "schemas/semantic-search-packet.v1.schema.json",
+          "schemaId": "agent.semantic-protocols.semantic-search-packet",
+          "schemaVersion": "1"
+        },
+        {
+          "path": "schemas/semantic-query-packet.v1.schema.json",
+          "schemaId": "agent.semantic-protocols.semantic-query-packet",
+          "schemaVersion": "1"
+        },
+        {
+          "path": "schemas/semantic-structural-index.v1.schema.json",
+          "schemaId": "agent.semantic-protocols.semantic-structural-index",
+          "schemaVersion": "1"
+        }
+      ]
+    },
+    {
+      "binary": "ccls-asp",
+      "displayName": "C++ Clang Provider",
+      "execution": "external-process",
+      "languageId": "cpp",
+      "methodDescriptors": [
+        {
+          "command": "search",
+          "method": "search/prime",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["asp", "cpp", "search", "prime", "--workspace", "{workspace}", "--view", "seeds"]
+          }
+        },
+        {
+          "command": "search",
+          "method": "search/owner",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["asp", "cpp", "search", "owner", "{owner}", "--workspace", "{workspace}", "--view", "seeds"]
+          }
+        },
+        {
+          "command": "search",
+          "method": "search/lexical",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["asp", "cpp", "search", "lexical", "{query}", "owner", "tests", "--workspace", "{workspace}", "--view", "seeds"]
+          }
+        },
+        {
+          "command": "query",
+          "method": "query/exact-selector",
+          "supportsCompact": true,
+          "supportsJson": false,
+          "invocation": {
+            "argv": ["ccls-asp", "--language", "cpp", "query", "--selector", "{owner}", "--workspace", "{workspace}", "--code"]
+          }
+        },
+        {
+          "command": "search",
+          "method": "search/ingest",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["ccls-asp", "--language", "cpp", "search", "ingest", "--workspace", "{workspace}"],
+            "stdinMode": "pipe-candidates"
+          }
+        },
+        {
+          "command": "guide",
+          "method": "guide",
+          "supportsCompact": false,
+          "supportsJson": false,
+          "invocation": {
+            "argv": ["ccls-asp", "--language", "cpp", "guide", "--workspace", "{workspace}"]
+          }
+        }
+      ],
+      "methods": ["search/prime", "search/owner", "search/lexical", "query/exact-selector", "search/ingest", "guide"],
+      "namespace": "asp.cpp",
+      "providerId": "ccls-asp",
+      "queryPackDescriptor": {
+        "descriptorId": "cpp.query-pack",
+        "descriptorVersion": "1",
+        "languageId": "cpp",
+        "termRoleOverrides": [],
+        "recipes": [
+          {
+            "recipeId": "cpp-symbol-owner",
+            "trigger": {
+              "terms": ["symbol", "owner", "definition", "reference"],
+              "match": "any"
+            },
+            "clauses": [
+              {
+                "terms": ["symbol", "owner", "definition", "reference"],
+                "roles": ["concept", "symbol"],
+                "intentAxes": ["data-shape"]
+              }
+            ]
+          }
+        ]
+      },
+      "schemas": [
+        {
+          "path": "schemas/semantic-search-packet.v1.schema.json",
+          "schemaId": "agent.semantic-protocols.semantic-search-packet",
+          "schemaVersion": "1"
+        },
+        {
+          "path": "schemas/semantic-query-packet.v1.schema.json",
+          "schemaId": "agent.semantic-protocols.semantic-query-packet",
+          "schemaVersion": "1"
+        },
+        {
+          "path": "schemas/semantic-structural-index.v1.schema.json",
+          "schemaId": "agent.semantic-protocols.semantic-structural-index",
+          "schemaVersion": "1"
+        }
+      ]
+    },
+    {
+      "binary": "ccls-asp",
+      "displayName": "Objective-C Clang Provider",
+      "execution": "external-process",
+      "languageId": "objective-c",
+      "methodDescriptors": [
+        {
+          "command": "search",
+          "method": "search/prime",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["asp", "objective-c", "search", "prime", "--workspace", "{workspace}", "--view", "seeds"]
+          }
+        },
+        {
+          "command": "search",
+          "method": "search/owner",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["asp", "objective-c", "search", "owner", "{owner}", "--workspace", "{workspace}", "--view", "seeds"]
+          }
+        },
+        {
+          "command": "search",
+          "method": "search/lexical",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["asp", "objective-c", "search", "lexical", "{query}", "owner", "tests", "--workspace", "{workspace}", "--view", "seeds"]
+          }
+        },
+        {
+          "command": "query",
+          "method": "query/exact-selector",
+          "supportsCompact": true,
+          "supportsJson": false,
+          "invocation": {
+            "argv": ["ccls-asp", "--language", "objective-c", "query", "--selector", "{owner}", "--workspace", "{workspace}", "--code"]
+          }
+        },
+        {
+          "command": "search",
+          "method": "search/ingest",
+          "supportsCompact": true,
+          "supportsJson": true,
+          "invocation": {
+            "argv": ["ccls-asp", "--language", "objective-c", "search", "ingest", "--workspace", "{workspace}"],
+            "stdinMode": "pipe-candidates"
+          }
+        },
+        {
+          "command": "guide",
+          "method": "guide",
+          "supportsCompact": false,
+          "supportsJson": false,
+          "invocation": {
+            "argv": ["ccls-asp", "--language", "objective-c", "guide", "--workspace", "{workspace}"]
+          }
+        }
+      ],
+      "methods": ["search/prime", "search/owner", "search/lexical", "query/exact-selector", "search/ingest", "guide"],
+      "namespace": "asp.objective-c",
+      "providerId": "ccls-asp",
+      "queryPackDescriptor": {
+        "descriptorId": "objective-c.query-pack",
+        "descriptorVersion": "1",
+        "languageId": "objective-c",
+        "termRoleOverrides": [],
+        "recipes": [
+          {
+            "recipeId": "objective-c-symbol-owner",
+            "trigger": {
+              "terms": ["symbol", "owner", "definition", "reference"],
+              "match": "any"
+            },
+            "clauses": [
+              {
+                "terms": ["symbol", "owner", "definition", "reference"],
+                "roles": ["concept", "symbol"],
+                "intentAxes": ["data-shape"]
+              }
+            ]
+          }
+        ]
+      },
+      "schemas": [
+        {
+          "path": "schemas/semantic-search-packet.v1.schema.json",
+          "schemaId": "agent.semantic-protocols.semantic-search-packet",
+          "schemaVersion": "1"
+        },
+        {
+          "path": "schemas/semantic-query-packet.v1.schema.json",
+          "schemaId": "agent.semantic-protocols.semantic-query-packet",
+          "schemaVersion": "1"
+        },
+        {
+          "path": "schemas/semantic-structural-index.v1.schema.json",
+          "schemaId": "agent.semantic-protocols.semantic-structural-index",
+          "schemaVersion": "1"
+        }
+      ]
+    },
+    {
       "binary": "rs-harness",
       "displayName": "Rust Harness",
       "execution": "external-process",

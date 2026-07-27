@@ -74,6 +74,12 @@
         "$ref": "#/$defs/fileHash"
       }
     },
+    "compileContexts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/compileContext"
+      }
+    },
     "owners": {
       "type": "array",
       "items": {
@@ -90,10 +96,22 @@
       "type": "integer",
       "minimum": 0
     },
+    "occurrences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/occurrence"
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/semanticRelation"
+      }
+    },
     "syntaxFacts": {
       "type": "array",
       "items": {
-        "$ref": "semantic-native-syntax-fact-index.v1.schema.json#/$defs/nativeSyntaxFact"
+        "$ref": "https://agent-semantic-protocols.local/schemas/semantic-native-syntax-fact-index.v1.schema.json#/$defs/nativeSyntaxFact"
       }
     },
     "dependencyUsages": {
@@ -123,9 +141,28 @@
         },
         "source": {
           "type": "string"
+        },
+        "compileContextDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       },
       "additionalProperties": true
+    },
+    "compileContext": {
+      "type": "object",
+      "required": ["translationUnit", "digest"],
+      "properties": {
+        "translationUnit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
     },
     "owner": {
       "type": "object",
@@ -177,6 +214,24 @@
         "visibility": {
           "type": "string"
         },
+        "symbolId": {
+          "type": "string"
+        },
+        "semanticVariantId": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "translationUnit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compileContextDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "structuralSelector": {
+          "type": "string"
+        },
         "sourceLocator": {
           "type": "string"
         },
@@ -189,6 +244,67 @@
       },
       "additionalProperties": true
     },
+    "occurrence": {
+      "type": "object",
+      "required": ["id", "ownerPath", "name", "kind", "sourceLocator", "queryKeys"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "semanticVariantId": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "translationUnit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compileContextDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sourceLocator": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetSymbolId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "containerSymbolId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "queryKeys": {
+          "$ref": "#/$defs/queryKeys"
+        }
+      },
+      "additionalProperties": true
+    },
+    "semanticRelation": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/occurrence"
+        },
+        {
+          "type": "object",
+          "required": ["targetSymbolId"]
+        }
+      ]
+    },
     "dependencyUsage": {
       "type": "object",
       "required": ["ownerPath", "packageName", "source", "queryKeys"],
@@ -200,6 +316,18 @@
         "packageName": {
           "type": "string",
           "minLength": 1
+        },
+        "semanticVariantId": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "translationUnit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compileContextDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         },
         "packageVersion": {
           "type": ["string", "null"]

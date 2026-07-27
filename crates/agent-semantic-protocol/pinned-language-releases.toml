@@ -32,6 +32,42 @@ supportedTargets = [
   "aarch64-apple-darwin",
 ]
 
+[languages.c]
+provider = "ccls-asp"
+repo = "tao3k/ccls-asp"
+version = "v0.1.0"
+downloadBaseUrl = "https://github.com/tao3k/ccls-asp/releases/download/v0.1.0"
+binary = "ccls-asp"
+requireNativeBinary = true
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
+
+[languages.cpp]
+provider = "ccls-asp"
+repo = "tao3k/ccls-asp"
+version = "v0.1.0"
+downloadBaseUrl = "https://github.com/tao3k/ccls-asp/releases/download/v0.1.0"
+binary = "ccls-asp"
+requireNativeBinary = true
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
+
+[languages.objective-c]
+provider = "ccls-asp"
+repo = "tao3k/ccls-asp"
+version = "v0.1.0"
+downloadBaseUrl = "https://github.com/tao3k/ccls-asp/releases/download/v0.1.0"
+binary = "ccls-asp"
+requireNativeBinary = true
+supportedTargets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+]
+
 [languages.julia]
 provider = "julia-lang-project-harness"
 repo = "JuliaCN/JuliaLangProjectHarness.jl"

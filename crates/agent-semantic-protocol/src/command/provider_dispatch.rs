@@ -252,6 +252,9 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     if let Some(request) =
         super::language_projection_import::LanguageProjectionImportRequest::parse(&provider_args)?
     {
+        if request.try_import_native(language_id, &project_root, &activation_root, provider)? {
+            return Ok(());
+        }
         let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
         let invocation = provider_invocation_with_profile(
             &runtime_profiles,
@@ -373,6 +376,8 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
     let mut provider_argv = provider_process_args(&provider_args);
     if is_provider_owned_structural_selector_query(language_id, &provider_args) {
+        let public_json_requested = provider_args.iter().any(|arg| arg == "--json")
+            && !provider_args.iter().any(|arg| arg == "--code");
         let parser_identity_digest = agent_semantic_content_identity::exact_selector_projection_packet::derive_parser_identity_digest_v1(
             &provider.provider_id.as_str().into(),
             &provider.execution_command_digest.as_str().into(),
@@ -466,11 +471,23 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             let hit = validated
                 .validate_warm_hit(&lookup_key)
                 .map_err(|miss| format!("validated exact-selector cache entry missed: {miss:?}"))?;
-            std::io::Write::write_all(
-                &mut std::io::stdout().lock(),
-                hit.projection_payload,
-            )
-            .map_err(|error| format!("failed to write exact-selector warm projection: {error}"))?;
+            if public_json_requested {
+                serde_json::to_writer(&mut std::io::stdout().lock(), validated.record())
+                    .map_err(|error| {
+                        format!("failed to write exact-selector warm JSON record: {error}")
+                    })?;
+                std::io::Write::write_all(&mut std::io::stdout().lock(), b"\n").map_err(
+                    |error| format!("failed to terminate exact-selector warm JSON record: {error}"),
+                )?;
+            } else {
+                std::io::Write::write_all(
+                    &mut std::io::stdout().lock(),
+                    hit.projection_payload,
+                )
+                .map_err(|error| {
+                    format!("failed to write exact-selector warm projection: {error}")
+                })?;
+            }
             return Ok(());
         }
         let envelope =
@@ -515,9 +532,67 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             ));
         }
         let packet: agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1 =
-            serde_json::from_slice(output.stdout.as_ref()).map_err(|error| {
-                format!("failed to decode exact-selector provider packet: {error}")
-            })?;
+            match serde_json::from_slice(output.stdout.as_ref()) {
+                Ok(packet) => packet,
+                Err(typed_packet_error) => {
+                    let semantic_packet: serde_json::Value =
+                        serde_json::from_slice(output.stdout.as_ref()).map_err(|semantic_error| {
+                            format!(
+                                "failed to decode exact-selector provider packet: typedError={typed_packet_error} semanticQueryError={semantic_error}"
+                            )
+                        })?;
+                    if semantic_packet.get("schemaId").and_then(serde_json::Value::as_str)
+                        != Some("agent.semantic-protocols.semantic-query-packet")
+                    {
+                        return Err(format!(
+                            "exact-selector provider output is neither a typed projection packet nor a semantic-query-packet: {typed_packet_error}"
+                        ));
+                    }
+                    if semantic_packet.get("ownerPath").and_then(serde_json::Value::as_str)
+                        != Some(owner_path)
+                    {
+                        return Err(
+                            "semantic-query-packet ownerPath does not match the exact-selector owner"
+                                .to_string(),
+                        );
+                    }
+                    let projection = semantic_packet
+                        .get("source")
+                        .and_then(serde_json::Value::as_str)
+                        .ok_or_else(|| {
+                            "semantic-query-packet exact source projection omitted `source`"
+                                .to_string()
+                        })?;
+                    let normalized_parser_facts =
+                        serde_json::to_vec(&semantic_packet).map_err(|error| {
+                            format!("failed to normalize semantic-query-packet facts: {error}")
+                        })?;
+                    let canonical_item_selector =
+                        agent_semantic_content_identity::CanonicalItemSelectorV1::parse(
+                            structural_selector,
+                        )
+                        .map_err(|error| {
+                            format!(
+                                "failed to parse provider-owned canonical item selector: {error:?}"
+                            )
+                        })?;
+                    agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
+                        agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
+                            language_id: &language_id.into(),
+                            provider_id: &provider.provider_id.as_str().into(),
+                            canonical_item_selector,
+                            parser_identity_digest: &parser_identity_digest,
+                            query_pack_digest: &query_pack_digest,
+                            owner_path: &owner_path.into(),
+                            structural_selector: &structural_selector.into(),
+                            projection_mode,
+                            source,
+                            normalized_parser_facts: &normalized_parser_facts,
+                            projection: projection.as_bytes(),
+                        },
+                    )
+                }
+            };
         packet.validate_shape().map_err(|error| {
             format!(
                 "exact-selector provider packet contract mismatch: error={error:?} schemaId={} expectedSchemaId={} schemaVersion={} expectedSchemaVersion={} digestAlgorithm={} expectedDigestAlgorithm={}",
@@ -580,8 +655,19 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         let hit = validated
             .validate_warm_hit(&lookup_key)
             .map_err(|miss| format!("persisted exact-selector record missed: {miss:?}"))?;
-        std::io::Write::write_all(&mut std::io::stdout().lock(), hit.projection_payload)
-            .map_err(|error| format!("failed to write exact-selector cold projection: {error}"))?;
+        if public_json_requested {
+            serde_json::to_writer(&mut std::io::stdout().lock(), validated.record()).map_err(
+                |error| format!("failed to write exact-selector cold JSON record: {error}"),
+            )?;
+            std::io::Write::write_all(&mut std::io::stdout().lock(), b"\n").map_err(|error| {
+                format!("failed to terminate exact-selector cold JSON record: {error}")
+            })?;
+        } else {
+            std::io::Write::write_all(&mut std::io::stdout().lock(), hit.projection_payload)
+                .map_err(|error| {
+                    format!("failed to write exact-selector cold projection: {error}")
+                })?;
+        }
         return Ok(());
     }
     for invocation in

@@ -1,0 +1,197 @@
+{
+  "schemaId": "agent.semantic-protocols.hook.provider-manifest",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.hook",
+  "protocolVersion": "1",
+  "manifestId": "agent.semantic-protocols.providers.python.py-harness",
+  "manifestVersion": "v1",
+  "languageId": "python",
+  "providerId": "py-harness",
+  "namespace": "agent.semantic-protocols.languages.python.py-harness",
+  "binary": "py-harness",
+  "execution": "external-process",
+  "source": {
+    "defaultExtensions": [
+      ".py"
+    ],
+    "defaultConfigFiles": [
+      "pyproject.toml",
+      "setup.py",
+      "setup.cfg"
+    ],
+    "defaultSourceRoots": [
+      "src",
+      "tests"
+    ],
+    "defaultIgnoredPathPrefixes": [
+      ".venv",
+      "venv",
+      "__pycache__",
+      ".mypy_cache"
+    ],
+    "defaultProjectMarkers": [
+      "pyproject.toml",
+      "setup.py",
+      "setup.cfg"
+    ],
+    "defaultDependencyMarkers": [
+      "pyproject.toml",
+      "requirements.txt",
+      "requirements-dev.txt",
+      "uv.lock",
+      "poetry.lock",
+      "Pipfile",
+      "Pipfile.lock"
+    ]
+  },
+  "searchCapabilities": {
+    "sourceSnapshot": {
+      "descriptorId": "python.source-snapshot",
+      "descriptorVersion": "1",
+      "languageId": "python",
+      "packetSchemaId": "asp.source-snapshot.v1",
+      "exactSourcePacketSchemaId": "asp.exact-source-query-result.v1",
+      "canonicalItemSelectorSchemaId": "asp.canonical-item-selector.v1",
+      "sourceSnapshotEnvelopeSchemaId": "asp.exact-source-snapshot-envelope.v1",
+      "derivedArtifactEvidenceSchemaId": "asp.derived-source-artifact-evidence.v1",
+      "algorithm": "blake3-merkle-v1",
+      "authority": "live-parser",
+      "exactSelectorResolution": "pinned-live-module-graph",
+      "overlayMode": "merkle-delta"
+    },
+    "ownerItems": true,
+    "semanticFacts": true,
+    "dependencyTopology": false,
+    "dependencyTopologyMetadata": false,
+    "workspaceScope": true
+  },
+  "semanticFactsDescriptor": {
+    "descriptorId": "python.semantic-facts",
+    "descriptorVersion": "1",
+    "packetSchemaIds": [
+      "semantic-fact-graph.v1",
+      "semantic-fact-ontology.v1"
+    ],
+    "factKinds": [
+      "field"
+    ],
+    "intentAxes": [
+      {
+        "axis": "data-shape",
+        "terms": [
+          "fields",
+          "collection"
+        ]
+      },
+      {
+        "axis": "collection",
+        "terms": [
+          "list"
+        ]
+      }
+    ]
+  },
+  "policy": {
+    "directSourceRead": "block",
+    "bulkSourceDump": "block",
+    "rawSourceSearch": "block",
+    "agentSearchJson": "block"
+  },
+  "queryPackDescriptor": {
+    "descriptorId": "python.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "python",
+    "semanticFactsDescriptorId": "python.semantic-facts",
+    "termRoleOverrides": [],
+    "recipes": [
+      {
+        "recipeId": "python-asyncio-runtime",
+        "trigger": {
+          "terms": [
+            "asyncio",
+            "task",
+            "scheduling"
+          ],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": [
+              "asyncio",
+              "task",
+              "scheduling"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "intentAxes": [
+              "concurrency"
+            ]
+          }
+        ]
+      },
+      {
+        "recipeId": "python-context-lifecycle",
+        "trigger": {
+          "terms": [
+            "contextmanager",
+            "resource",
+            "lifecycle"
+          ],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": [
+              "contextmanager",
+              "resource",
+              "lifecycle"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "intentAxes": [
+              "resource-lifecycle"
+            ]
+          }
+        ]
+      },
+      {
+        "recipeId": "python-stream-backpressure",
+        "trigger": {
+          "terms": [
+            "queue",
+            "async-generator",
+            "backpressure"
+          ],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": [
+              "queue",
+              "async-generator",
+              "backpressure"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "intentAxes": [
+              "collection",
+              "stream"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "routeBindings": {
+    "prime": "search/prime",
+    "owner": "search/owner",
+    "lexical": "search/lexical",
+    "query": "query/exact-selector",
+    "ingest": "search/ingest",
+    "checkChanged": "check/changed",
+    "guide": "guide"
+  }
+}

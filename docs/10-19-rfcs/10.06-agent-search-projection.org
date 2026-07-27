@@ -100,6 +100,42 @@ invariant: every selector carried by a recommended exact-read command must
 execute through that provider's exact query surface. A scenario gate must
 exercise the invariant across every registered language provider.
 
+*** Native parser identity and compile context
+
+A native parser provider MUST preserve the distinction between a materialized
+item and graph-only evidence.  Declarations and definitions may expose a
+parser-owned =structuralSelector= accepted by exact =query --selector=.
+References, calls, overrides, inheritance edges, macro expansions, and other
+occurrences remain graph evidence and MUST NOT become executable selectors
+merely because they have a line range.  They may carry the canonical target
+symbol identity and an enclosing materialized selector.
+
+The parser-owned selector identity MUST be derived from the language, canonical
+project path, stable parser identity such as a Clang USR, and the semantic item
+kind.  =displayLineRange= and =sourceLocatorHint= remain non-authoritative
+metadata.  Moving an item without changing its parser identity must not turn a
+display line range into the new identity.
+
+Native parser generations are also compilation-context-sensitive.  The source
+snapshot contribution for a translation unit MUST include a deterministic
+digest of the effective compiler invocation: language mode, working directory,
+normalized arguments, and compiler/resource identity.  A file-content match
+with a different compilation-context digest is not the same structural
+generation.
+
+Structural feeds therefore separate:
+
+- canonical declaration/definition items, keyed by parser-owned symbol identity;
+- occurrences such as references and calls, keyed by occurrence identity and
+  linked to a canonical target symbol;
+- semantic relations such as inheritance, override, implementation, and
+  protocol conformance;
+- dependency and preprocessor evidence such as includes, macro definitions,
+  and macro expansions.
+
+ASP/Turso persists and ranks these facts.  The native parser owns their
+identity, source range, target resolution, and compilation-context proof.
+
 ** Search closure, quality proof, and query handoff
 
 Agent-facing =search= is the reasoning plane. Exact =query= is the evidence

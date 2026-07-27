@@ -1,0 +1,169 @@
+{
+  "schemaId": "agent.semantic-protocols.hook.provider-manifest",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.hook",
+  "protocolVersion": "1",
+  "manifestId": "agent.semantic-protocols.providers.md.orgize",
+  "manifestVersion": "0.1.0",
+  "languageId": "md",
+  "providerId": "orgize",
+  "namespace": "agent.semantic-protocols.languages.md.orgize",
+  "binary": "orgize",
+  "execution": "external-process",
+  "source": {
+    "defaultExtensions": [
+      ".md",
+      ".markdown"
+    ],
+    "defaultSourceRoots": [
+      "docs"
+    ],
+    "defaultProjectMarkers": [],
+    "defaultDependencyMarkers": [],
+    "defaultConfigFiles": [],
+    "defaultIgnoredPathPrefixes": [
+      "target",
+      ".cache",
+      ".codex/harness-state",
+      ".codex/rs-harness",
+      ".data",
+      ".devenv",
+      ".direnv",
+      ".git",
+      ".idea",
+      ".jj",
+      ".run",
+      ".vscode",
+      "node_modules"
+    ]
+  },
+  "searchCapabilities": {
+    "dependencyTopology": false,
+    "dependencyTopologyMetadata": false,
+    "ownerItems": true,
+    "semanticFacts": false,
+    "workspaceScope": false,
+    "sourceSnapshot": {
+      "descriptorId": "md.source-snapshot",
+      "descriptorVersion": "1",
+      "languageId": "md",
+      "authority": "live-parser",
+      "algorithm": "blake3-merkle-v1",
+      "overlayMode": "merkle-delta",
+      "exactSelectorResolution": "pinned-live-module-graph",
+      "packetSchemaId": "asp.source-snapshot.v1",
+      "sourceSnapshotEnvelopeSchemaId": "asp.exact-source-snapshot-envelope.v1",
+      "derivedArtifactEvidenceSchemaId": "asp.derived-source-artifact-evidence.v1",
+      "exactSourcePacketSchemaId": "asp.exact-source-query-result.v1",
+      "canonicalItemSelectorSchemaId": "asp.canonical-item-selector.v1"
+    }
+  },
+  "queryPackDescriptor": {
+    "descriptorId": "md.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "md",
+    "termRoleOverrides": [
+      {
+        "term": "markdownheading",
+        "role": "concept",
+        "caseSensitive": false
+      },
+      {
+        "term": "markdownparagraph",
+        "role": "concept",
+        "caseSensitive": false
+      },
+      {
+        "term": "codeblock",
+        "role": "concept",
+        "caseSensitive": false
+      },
+      {
+        "term": "taskitem",
+        "role": "concept",
+        "caseSensitive": false
+      },
+      {
+        "term": "frontmatter",
+        "role": "concept",
+        "caseSensitive": false
+      },
+      {
+        "term": "thematicbreak",
+        "role": "concept",
+        "caseSensitive": false
+      }
+    ],
+    "recipes": [
+      {
+        "recipeId": "md-document-structure",
+        "trigger": {
+          "terms": [
+            "markdownheading",
+            "markdownparagraph",
+            "frontmatter",
+            "thematicbreak"
+          ],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": [
+              "markdownheading",
+              "markdownparagraph",
+              "frontmatter",
+              "thematicbreak"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "intentAxes": []
+          }
+        ]
+      },
+      {
+        "recipeId": "md-task-content",
+        "trigger": {
+          "terms": [
+            "taskitem",
+            "checklistitem",
+            "link",
+            "image",
+            "codeblock"
+          ],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": [
+              "taskitem",
+              "checklistitem",
+              "link",
+              "image",
+              "codeblock"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "intentAxes": []
+          }
+        ]
+      }
+    ]
+  },
+  "policy": {
+    "directSourceRead": "block",
+    "rawSourceSearch": "block",
+    "bulkSourceDump": "block",
+    "agentSearchJson": "block"
+  },
+  "routeBindings": {
+    "prime": "search/prime",
+    "owner": "search/toc",
+    "lexical": "search/lexical",
+    "query": "query/exact-selector",
+    "ingest": "search/ingest",
+    "checkChanged": "search/prime",
+    "guide": "guide"
+  }
+}

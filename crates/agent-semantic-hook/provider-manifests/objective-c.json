@@ -1,0 +1,87 @@
+{
+  "schemaId": "agent.semantic-protocols.hook.provider-manifest",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.hook",
+  "protocolVersion": "1",
+  "manifestId": "agent.semantic-protocols.providers.objective-c.ccls-asp",
+  "manifestVersion": "v1",
+  "languageId": "objective-c",
+  "providerId": "ccls-asp",
+  "namespace": "agent.semantic-protocols.languages.objective-c.ccls-asp",
+  "binary": "ccls-asp",
+  "execution": "external-process",
+  "nativeLibrary": {
+    "descriptorId": "c-family.native-parser-library",
+    "descriptorVersion": "1",
+    "abiVersion": 1,
+    "artifactStem": "ccls-asp-parser",
+    "parseTranslationUnitSymbol": "ccls_asp_parse_translation_unit_with_args_v1",
+    "freeResultSymbol": "ccls_asp_result_free_v1",
+    "fallbackExecution": "external-process"
+  },
+  "source": {
+    "defaultExtensions": [".m", ".mm", ".h"],
+    "defaultConfigFiles": ["compile_commands.json", ".ccls", "CMakeLists.txt", "project.pbxproj"],
+    "defaultSourceRoots": ["src", "Sources", "include", "tests"],
+    "defaultIgnoredPathPrefixes": ["build", "DerivedData"],
+    "defaultProjectMarkers": ["compile_commands.json", ".ccls", "CMakeLists.txt", "project.pbxproj"],
+    "defaultDependencyMarkers": ["compile_commands.json", "CMakeLists.txt", "project.pbxproj"]
+  },
+  "searchCapabilities": {
+    "ownerItems": false,
+    "semanticFacts": true,
+    "dependencyTopology": false,
+    "dependencyTopologyMetadata": false,
+    "workspaceScope": false,
+    "sourceSnapshot": {
+      "descriptorId": "objective-c.source-snapshot",
+      "descriptorVersion": "1",
+      "languageId": "objective-c",
+      "authority": "live-parser",
+      "algorithm": "blake3-merkle-v1",
+      "packetSchemaId": "asp.source-snapshot.v1",
+      "overlayMode": "merkle-delta",
+      "exactSelectorResolution": "pinned-live-module-graph",
+      "canonicalItemSelectorSchemaId": "asp.canonical-item-selector.v1",
+      "exactSourcePacketSchemaId": "asp.exact-source-query-result.v1",
+      "sourceSnapshotEnvelopeSchemaId": "asp.exact-source-snapshot-envelope.v1",
+      "derivedArtifactEvidenceSchemaId": "asp.derived-source-artifact-evidence.v1"
+    }
+  },
+  "policy": {
+    "directSourceRead": "block",
+    "bulkSourceDump": "block",
+    "rawSourceSearch": "block",
+    "agentSearchJson": "block"
+  },
+  "queryPackDescriptor": {
+    "descriptorId": "objective-c.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "objective-c",
+    "termRoleOverrides": [],
+    "recipes": [
+      {
+        "recipeId": "objective-c-symbol-owner",
+        "trigger": {
+          "terms": ["symbol", "owner", "definition", "reference"],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": ["symbol", "owner", "definition", "reference"],
+            "roles": ["concept", "symbol"],
+            "intentAxes": ["data-shape"]
+          }
+        ]
+      }
+    ]
+  },
+  "routeBindings": {
+    "prime": "search/prime",
+    "owner": "search/owner",
+    "lexical": "search/lexical",
+    "query": "query/exact-selector",
+    "ingest": "search/ingest",
+    "guide": "guide"
+  }
+}

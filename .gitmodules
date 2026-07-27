@@ -28,3 +28,6 @@
 [submodule "analyzers/AspGraphsSearch.jl"]
 	path = analyzers/AspGraphsSearch.jl
 	url = git@github.com:tao3k/AspGraphsSearch.jl.git
+[submodule "languages/ccls-asp"]
+	path = languages/ccls-asp
+	url = https://github.com/tao3k/ccls-asp

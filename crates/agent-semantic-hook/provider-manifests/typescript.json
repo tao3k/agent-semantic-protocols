@@ -1,0 +1,170 @@
+{
+  "schemaId": "agent.semantic-protocols.hook.provider-manifest",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.hook",
+  "protocolVersion": "1",
+  "manifestId": "agent.semantic-protocols.providers.typescript.ts-harness",
+  "manifestVersion": "v1",
+  "languageId": "typescript",
+  "providerId": "ts-harness",
+  "namespace": "agent.semantic-protocols.languages.typescript.ts-harness",
+  "binary": "ts-harness",
+  "execution": "external-process",
+  "source": {
+    "defaultExtensions": [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"],
+    "defaultConfigFiles": ["package.json", "tsconfig.json", "pnpm-workspace.yaml"],
+    "defaultSourceRoots": ["src", "tests", "app", "packages"],
+    "defaultIgnoredPathPrefixes": ["node_modules", "dist", "build", ".next"],
+    "defaultProjectMarkers": [
+      "package.json",
+      "tsconfig.json",
+      "jsconfig.json",
+      "pnpm-workspace.yaml"
+    ],
+    "defaultDependencyMarkers": [
+      "package.json",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "bun.lock",
+      "bun.lockb"
+    ]
+  },
+  "searchCapabilities": {
+    "sourceSnapshot": {
+      "descriptorId": "typescript.source-snapshot",
+      "descriptorVersion": "1",
+      "languageId": "typescript",
+      "packetSchemaId": "asp.source-snapshot.v1",
+      "exactSourcePacketSchemaId": "asp.exact-source-query-result.v1",
+      "canonicalItemSelectorSchemaId": "asp.canonical-item-selector.v1",
+      "sourceSnapshotEnvelopeSchemaId": "asp.exact-source-snapshot-envelope.v1",
+      "derivedArtifactEvidenceSchemaId": "asp.derived-source-artifact-evidence.v1",
+      "algorithm": "blake3-merkle-v1",
+      "authority": "live-parser",
+      "exactSelectorResolution": "pinned-live-module-graph",
+      "overlayMode": "merkle-delta"
+    },
+    "ownerItems": false,
+    "semanticFacts": true,
+    "dependencyTopology": false,
+    "dependencyTopologyMetadata": false,
+    "workspaceScope": true
+  },
+  "semanticFactsDescriptor": {
+    "descriptorId": "typescript.semantic-facts",
+    "descriptorVersion": "1",
+    "packetSchemaIds": ["agent.semantic-protocols.semantic-fact-graph"],
+    "factKinds": ["field", "type", "collection"],
+    "intentAxes": [
+      {
+        "axis": "data-shape",
+        "terms": ["collection", "collections", "scalar", "scalars"]
+      },
+      {
+        "axis": "collection",
+        "terms": [
+          "array",
+          "arrays",
+          "list",
+          "lists",
+          "map",
+          "maps",
+          "set",
+          "sets",
+          "record",
+          "records",
+          "tuple",
+          "tuples"
+        ]
+      }
+    ]
+  },
+  "policy": {
+    "directSourceRead": "block",
+    "bulkSourceDump": "block",
+    "rawSourceSearch": "block",
+    "agentSearchJson": "block"
+  },
+  "queryPackDescriptor": {
+    "descriptorId": "typescript.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "typescript",
+    "semanticFactsDescriptorId": "typescript.semantic-facts",
+    "termRoleOverrides": [
+      {
+        "term": "Effect",
+        "role": "symbol",
+        "caseSensitive": true
+      },
+      {
+        "term": "Scope",
+        "role": "symbol",
+        "caseSensitive": true
+      },
+      {
+        "term": "Queue",
+        "role": "symbol",
+        "caseSensitive": true
+      },
+      {
+        "term": "Stream",
+        "role": "symbol",
+        "caseSensitive": true
+      }
+    ],
+    "recipes": [
+      {
+        "recipeId": "typescript-effect-runtime",
+        "trigger": {
+          "terms": ["Effect", "runtime", "scheduling"],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": ["Effect", "runtime", "scheduling"],
+            "roles": ["symbol", "concept"],
+            "intentAxes": ["concurrency"]
+          }
+        ]
+      },
+      {
+        "recipeId": "typescript-scope-lifecycle",
+        "trigger": {
+          "terms": ["Scope", "lifecycle"],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": ["Scope", "lifecycle"],
+            "roles": ["symbol", "concept"],
+            "intentAxes": ["resource-lifecycle"]
+          }
+        ]
+      },
+      {
+        "recipeId": "typescript-stream-backpressure",
+        "trigger": {
+          "terms": ["Queue", "Stream", "backpressure"],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": ["Queue", "Stream", "backpressure"],
+            "roles": ["symbol", "concept"],
+            "intentAxes": ["collection", "stream"]
+          }
+        ]
+      }
+    ]
+  },
+  "routeBindings": {
+    "prime": "search/prime",
+    "owner": "search/owner",
+    "lexical": "search/lexical",
+    "query": "query/exact-selector",
+    "ingest": "search/ingest",
+    "checkChanged": "check/changed",
+    "guide": "guide"
+  }
+}

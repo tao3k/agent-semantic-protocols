@@ -10,6 +10,39 @@ pub(super) struct LanguageProjectionImportRequest {
 }
 
 impl LanguageProjectionImportRequest {
+    /// Prefer the manifest-declared native parser for a single caller-owned TU.
+    /// Returning `false` authorizes the declared external-process fallback.
+    pub(super) fn try_import_native(
+        &self,
+        language_id: &str,
+        project_root: &Path,
+        activation_root: &Path,
+        provider: &agent_semantic_hook::ActivatedProvider,
+    ) -> Result<bool, String> {
+        let Some(descriptor) = provider.native_library.as_ref() else {
+            return Ok(false);
+        };
+        let request = super::c_family_native_projection::NativeProjectionRequest {
+            activation_root,
+            project_root,
+            owner: &self.owner,
+            language_id,
+            provider_id: provider.provider_id.as_str(),
+            artifact_stem: descriptor.artifact_stem(),
+            abi_version: descriptor.abi_version(),
+            parse_symbol: descriptor.parse_translation_unit_symbol(),
+            free_symbol: descriptor.free_result_symbol(),
+        };
+        let Some(output) = super::c_family_native_projection::try_native_projection(request)?
+        else {
+            return Ok(false);
+        };
+        self.import_output(language_id, project_root, &output)?;
+        Ok(true)
+    }
+}
+
+impl LanguageProjectionImportRequest {
     /// Parse the explicit, query-free projection-import surface.
     pub(super) fn parse(args: &[String]) -> Result<Option<Self>, String> {
         let Some(command) = args.first().map(String::as_str) else {

@@ -1,0 +1,192 @@
+{
+  "schemaId": "agent.semantic-protocols.hook.provider-manifest",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.hook",
+  "protocolVersion": "1",
+  "manifestId": "agent.semantic-protocols.providers.rust.rs-harness",
+  "manifestVersion": "v1",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "namespace": "agent.semantic-protocols.languages.rust.rs-harness",
+  "binary": "rs-harness",
+  "execution": "external-process",
+  "source": {
+    "defaultExtensions": [
+      ".rs"
+    ],
+    "defaultConfigFiles": [
+      "Cargo.toml"
+    ],
+    "defaultSourceRoots": [
+      "src",
+      "crates",
+      "tests"
+    ],
+    "defaultIgnoredPathPrefixes": [
+      "target"
+    ],
+    "defaultProjectMarkers": [
+      "Cargo.toml"
+    ],
+    "defaultDependencyMarkers": [
+      "Cargo.toml",
+      "Cargo.lock"
+    ]
+  },
+  "searchCapabilities": {
+    "sourceSnapshot": {
+      "descriptorId": "rust.source-snapshot",
+      "descriptorVersion": "1",
+      "languageId": "rust",
+      "packetSchemaId": "asp.source-snapshot.v1",
+      "exactSourcePacketSchemaId": "asp.exact-source-query-result.v1",
+      "canonicalItemSelectorSchemaId": "asp.canonical-item-selector.v1",
+      "sourceSnapshotEnvelopeSchemaId": "asp.exact-source-snapshot-envelope.v1",
+      "derivedArtifactEvidenceSchemaId": "asp.derived-source-artifact-evidence.v1",
+      "algorithm": "blake3-merkle-v1",
+      "authority": "live-parser",
+      "exactSelectorResolution": "pinned-live-module-graph",
+      "overlayMode": "merkle-delta"
+    },
+    "ownerItems": true,
+    "semanticFacts": true,
+    "dependencyTopology": true,
+    "dependencyTopologyMetadata": true,
+    "workspaceScope": true
+  },
+  "semanticFactsDescriptor": {
+    "descriptorId": "rust.semantic-facts",
+    "descriptorVersion": "1",
+    "packetSchemaIds": [
+      "agent.semantic-protocols.semantic-fact-graph"
+    ],
+    "factKinds": [
+      "owner",
+      "field",
+      "type",
+      "collection"
+    ],
+    "intentAxes": [
+      {
+        "axis": "data-shape",
+        "terms": [
+          "field",
+          "fields",
+          "scalar"
+        ]
+      },
+      {
+        "axis": "collection",
+        "terms": [
+          "collection",
+          "Vec"
+        ]
+      }
+    ]
+  },
+  "policy": {
+    "directSourceRead": "block",
+    "bulkSourceDump": "block",
+    "rawSourceSearch": "block",
+    "agentSearchJson": "block"
+  },
+  "queryPackDescriptor": {
+    "descriptorId": "rust.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "rust",
+    "semanticFactsDescriptorId": "rust.semantic-facts",
+    "termRoleOverrides": [],
+    "recipes": [
+      {
+        "recipeId": "rust-concurrency-runtime",
+        "trigger": {
+          "terms": [
+            "concurrency",
+            "runtime",
+            "scheduling"
+          ],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": [
+              "concurrency",
+              "runtime",
+              "scheduling"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "intentAxes": [
+              "concurrency"
+            ]
+          }
+        ]
+      },
+      {
+        "recipeId": "rust-resource-lifecycle",
+        "trigger": {
+          "terms": [
+            "scope",
+            "lifecycle",
+            "drop"
+          ],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": [
+              "scope",
+              "lifecycle",
+              "drop"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "intentAxes": [
+              "resource-lifecycle"
+            ]
+          }
+        ]
+      },
+      {
+        "recipeId": "rust-stream-backpressure",
+        "trigger": {
+          "terms": [
+            "queue",
+            "stream",
+            "backpressure"
+          ],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": [
+              "queue",
+              "stream",
+              "backpressure"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "intentAxes": [
+              "collection",
+              "stream"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "routeBindings": {
+    "prime": "search/prime",
+    "owner": "search/owner",
+    "lexical": "search/lexical",
+    "query": "query/exact-selector",
+    "ingest": "search/ingest",
+    "checkChanged": "check/changed",
+    "dependencyTopology": "search/dependency-topology",
+    "dependencyTopologyMetadata": "search/dependency-topology-metadata",
+    "guide": "guide"
+  }
+}

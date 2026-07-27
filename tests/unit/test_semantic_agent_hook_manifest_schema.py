@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -31,57 +32,47 @@ def minimal_provider_manifest() -> dict[str, object]:
             "defaultSourceRoots": ["src", "tests"],
             "defaultIgnoredPathPrefixes": ["node_modules", "dist"],
         },
+        "searchCapabilities": {
+            "ownerItems": True,
+            "semanticFacts": True,
+            "dependencyTopology": False,
+            "dependencyTopologyMetadata": False,
+            "workspaceScope": False,
+        },
+        "queryPackDescriptor": {
+            "descriptorId": "typescript.query-pack",
+            "descriptorVersion": "1",
+            "languageId": "typescript",
+            "termRoleOverrides": [],
+            "recipes": [
+                {
+                    "recipeId": "typescript-symbol-owner",
+                    "trigger": {
+                        "terms": ["symbol", "owner"],
+                        "match": "any",
+                    },
+                    "clauses": [
+                        {
+                            "terms": ["symbol", "owner"],
+                            "roles": ["concept", "symbol"],
+                            "intentAxes": ["data-shape"],
+                        }
+                    ],
+                }
+            ],
+        },
         "policy": {
             "directSourceRead": "block",
             "bulkSourceDump": "block",
             "rawSourceSearch": "block",
             "agentSearchJson": "block",
         },
-        "routes": {
-            "prime": {
-                "argv": ["ts-harness", "search", "prime", "--view", "seeds", "."]
-            },
-            "owner": {
-                "argv": [
-                    "ts-harness",
-                    "search",
-                    "owner",
-                    "{path}",
-                    "--workspace",
-                    ".",
-                    "--view",
-                    "seeds",
-                ]
-            },
-            "lexical": {
-                "argv": [
-                    "ts-harness",
-                    "search",
-                    "lexical",
-                    "{query}",
-                    "owner",
-                    "tests",
-                    "--workspace",
-                    ".",
-                    "--view",
-                    "seeds",
-                ]
-            },
-            "ingest": {
-                "argv": [
-                    "ts-harness",
-                    "search",
-                    "ingest",
-                    "owner",
-                    "tests",
-                    "--workspace",
-                    ".",
-                    "--view",
-                    "seeds",
-                ],
-                "stdinMode": "pipe-candidates",
-            },
-            "checkChanged": {"argv": ["ts-harness", "check", "--changed", "."]},
+        "routeBindings": {
+            "prime": "search/prime",
+            "owner": "search/owner",
+            "lexical": "search/lexical",
+            "ingest": "search/ingest",
+            "checkChanged": "check/changed",
         },
     }
 
@@ -126,8 +117,21 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
         activation_schema_path = (
             _REPO_ROOT / "schemas" / "semantic-agent-hook-activation.v1.schema.json"
         )
+        query_pack_schema_path = (
+            _REPO_ROOT / "schemas" / "provider-query-pack-descriptor.v1.schema.json"
+        )
         with manifest_schema_path.open("r", encoding="utf-8") as handle:
-            self.manifest_validator = Draft202012Validator(json.load(handle))
+            manifest_schema = json.load(handle)
+        with query_pack_schema_path.open("r", encoding="utf-8") as handle:
+            query_pack_schema = json.load(handle)
+        registry = Registry().with_resource(
+            query_pack_schema["$id"],
+            Resource.from_contents(query_pack_schema),
+        )
+        self.manifest_validator = Draft202012Validator(
+            manifest_schema,
+            registry=registry,
+        )
         with activation_schema_path.open("r", encoding="utf-8") as handle:
             self.activation_validator = Draft202012Validator(json.load(handle))
 
@@ -148,6 +152,30 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
 
         self.assertEqual([], self.manifest_errors(manifest))
 
+    def test_provider_manifest_rejects_retired_command_prefix_args(self) -> None:
+        manifest = minimal_provider_manifest()
+        manifest["commandPrefixArgs"] = ["--language", "cpp"]
+
+        self.assertTrue(
+            any(
+                "Additional properties are not allowed" in message
+                for message in self.manifest_errors(manifest)
+            )
+        )
+
+    def test_c_family_provider_manifests_follow_the_shared_schema(self) -> None:
+        for filename in [
+            "asp-c-provider-manifest.json",
+            "asp-cpp-provider-manifest.json",
+            "asp-objective-c-provider-manifest.json",
+        ]:
+            manifest = json.loads(
+                (
+                    _REPO_ROOT / "languages" / "ccls-asp" / "provider" / filename
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual([], self.manifest_errors(manifest), filename)
+
     def test_provider_manifest_rejects_unknown_execution_mode(self) -> None:
         manifest = minimal_provider_manifest()
         manifest["execution"] = "bin-wrap"
@@ -159,11 +187,11 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
             )
         )
 
-    def test_provider_manifest_accepts_export_index_route(self) -> None:
+    def test_provider_manifest_accepts_export_index_binding(self) -> None:
         manifest = minimal_provider_manifest()
-        routes = copy.deepcopy(manifest["routes"])
-        routes["exportIndex"] = {"argv": ["ts-harness", "export", "index", "."]}
-        manifest["routes"] = routes
+        bindings = copy.deepcopy(manifest["routeBindings"])
+        bindings["exportIndex"] = "search/export-index"
+        manifest["routeBindings"] = bindings
 
         self.assertEqual([], self.manifest_errors(manifest))
 
@@ -177,40 +205,38 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
             any("should not be valid" in message for message in self.manifest_errors(manifest))
         )
 
-    def test_provider_manifest_requires_core_routes(self) -> None:
+    def test_provider_manifest_requires_core_route_bindings(self) -> None:
         manifest = minimal_provider_manifest()
-        routes = copy.deepcopy(manifest["routes"])
-        del routes["ingest"]
-        manifest["routes"] = routes
+        bindings = copy.deepcopy(manifest["routeBindings"])
+        del bindings["ingest"]
+        manifest["routeBindings"] = bindings
 
         self.assertTrue(
             any("'ingest' is a required property" in message for message in self.manifest_errors(manifest))
         )
 
-    def test_provider_manifest_rejects_retired_text_route(self) -> None:
+    def test_provider_manifest_rejects_retired_text_binding(self) -> None:
         manifest = minimal_provider_manifest()
-        routes = copy.deepcopy(manifest["routes"])
-        routes["text"] = routes["lexical"]
-        del routes["lexical"]
-        manifest["routes"] = routes
+        bindings = copy.deepcopy(manifest["routeBindings"])
+        bindings["text"] = bindings["lexical"]
+        del bindings["lexical"]
+        manifest["routeBindings"] = bindings
 
         errors = self.manifest_errors(manifest)
-        self.assertTrue(any("'lexical' is a required property" in message for message in errors))
         self.assertTrue(
             any("Additional properties are not allowed" in message for message in errors)
         )
 
-    def test_provider_manifest_routes_require_argv_not_text(self) -> None:
+    def test_provider_manifest_route_bindings_require_method_names(self) -> None:
         manifest = minimal_provider_manifest()
-        routes = copy.deepcopy(manifest["routes"])
-        routes["prime"] = {"text": "ts-harness search prime --workspace . --view seeds"}
-        manifest["routes"] = routes
+        bindings = copy.deepcopy(manifest["routeBindings"])
+        bindings["prime"] = {
+            "argv": ["ts-harness", "search", "prime", "--workspace", "."]
+        }
+        manifest["routeBindings"] = bindings
 
         errors = self.manifest_errors(manifest)
-        self.assertTrue(any("'argv' is a required property" in message for message in errors))
-        self.assertTrue(
-            any("Additional properties are not allowed" in message for message in errors)
-        )
+        self.assertTrue(any("is not of type 'string'" in message for message in errors))
 
     def test_provider_manifest_action_policy_rejects_unknown_modes(self) -> None:
         manifest = minimal_provider_manifest()

@@ -211,6 +211,7 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
         provider_id: manifest.provider_id,
         binary: manifest.binary,
         execution: manifest.execution,
+        native_library: manifest.native_library,
         execution_command_digest:
             crate::protocol_activation::digest::provider_execution_command_digest(
                 &provider_command_prefix,
@@ -255,6 +256,7 @@ fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedP
         provider_id: manifest.provider_id,
         binary: manifest.binary,
         execution: manifest.execution,
+        native_library: manifest.native_library,
         execution_command_digest:
             crate::protocol_activation::digest::provider_execution_command_digest(
                 &provider_command_prefix,

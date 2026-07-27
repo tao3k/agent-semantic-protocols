@@ -19,21 +19,24 @@ pub fn semantic_registry_digest() -> String {
 }
 
 const LANGUAGE_PROVIDER_MANIFEST_JSON: &[&str] = &[
+    include_str!("../provider-manifests/c.json"),
+    include_str!("../provider-manifests/cpp.json"),
+    include_str!("../provider-manifests/objective-c.json"),
     include_str!(
-        "../../../languages/rust-lang-project-harness/provider/asp-provider-manifest.json"
+        "../provider-manifests/rust.json"
     ),
     include_str!(
-        "../../../languages/typescript-lang-project-harness/provider/asp-provider-manifest.json"
+        "../provider-manifests/typescript.json"
     ),
     include_str!(
-        "../../../languages/python-lang-project-harness/provider/asp-provider-manifest.json"
+        "../provider-manifests/python.json"
     ),
     include_str!(
-        "../../../languages/gerbil-scheme-language-project-harness/provider/asp-provider-manifest.json"
+        "../provider-manifests/gerbil-scheme.json"
     ),
-    include_str!("../../../languages/JuliaLangProjectHarness.jl/juliac/asp-provider-manifest.json"),
-    include_str!("../../../languages/org/provider/asp-org-provider-manifest.json"),
-    include_str!("../../../languages/org/provider/asp-md-provider-manifest.json"),
+    include_str!("../provider-manifests/julia.json"),
+    include_str!("../provider-manifests/org.json"),
+    include_str!("../provider-manifests/md.json"),
 ];
 
 const COMMON_IGNORED_PATH_PREFIXES: &[&str] = &[
@@ -141,7 +144,7 @@ pub fn materialize_provider_routes(
         lexical: resolve_route_invocation(language, &bindings.lexical)?,
         query: optional(&bindings.query)?,
         ingest: resolve_route_invocation(language, &bindings.ingest)?,
-        check_changed: resolve_route_invocation(language, &bindings.check_changed)?,
+        check_changed: optional(&bindings.check_changed)?,
         dependency_topology: optional(&bindings.dependency_topology)?,
         dependency_topology_metadata: optional(&bindings.dependency_topology_metadata)?,
         workspace_scope: optional(&bindings.workspace_scope)?,
@@ -158,8 +161,21 @@ fn language_provider_manifests() -> Vec<ProviderManifest> {
     LANGUAGE_PROVIDER_MANIFEST_JSON
         .iter()
         .map(|json| {
-            let mut manifest = serde_json::from_str::<ProviderManifest>(json)
-                .expect("embedded language provider manifest must be valid JSON");
+            let manifest_id = serde_json::from_str::<serde_json::Value>(json)
+                .ok()
+                .and_then(|value| {
+                    value
+                        .get("manifestId")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned)
+                })
+                .unwrap_or_else(|| "<unknown>".to_string());
+            let mut manifest =
+                serde_json::from_str::<ProviderManifest>(json).unwrap_or_else(|error| {
+                    panic!(
+                        "embedded language provider manifest `{manifest_id}` must be valid JSON: {error}"
+                    )
+                });
             normalize_language_provider_manifest(&mut manifest);
             manifest
         })

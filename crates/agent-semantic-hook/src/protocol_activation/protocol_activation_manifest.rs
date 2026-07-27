@@ -87,6 +87,55 @@ pub struct ActivationCoverage {
     pub ignored_path_prefixes: Vec<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderNativeLibraryDescriptor {
+    pub(crate) descriptor_id: String,
+    pub(crate) descriptor_version: String,
+    pub(crate) abi_version: u32,
+    pub(crate) artifact_stem: String,
+    pub(crate) parse_translation_unit_symbol: String,
+    pub(crate) free_result_symbol: String,
+    pub(crate) fallback_execution: ProviderExecution,
+}
+
+impl ProviderNativeLibraryDescriptor {
+    #[must_use]
+    pub fn descriptor_id(&self) -> &str {
+        &self.descriptor_id
+    }
+
+    #[must_use]
+    pub fn descriptor_version(&self) -> &str {
+        &self.descriptor_version
+    }
+
+    #[must_use]
+    pub const fn abi_version(&self) -> u32 {
+        self.abi_version
+    }
+
+    #[must_use]
+    pub fn artifact_stem(&self) -> &str {
+        &self.artifact_stem
+    }
+
+    #[must_use]
+    pub fn parse_translation_unit_symbol(&self) -> &str {
+        &self.parse_translation_unit_symbol
+    }
+
+    #[must_use]
+    pub fn free_result_symbol(&self) -> &str {
+        &self.free_result_symbol
+    }
+
+    #[must_use]
+    pub const fn fallback_execution(&self) -> ProviderExecution {
+        self.fallback_execution
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Static provider-owned hook manifest.
@@ -106,6 +155,8 @@ pub struct ProviderManifest {
     pub(crate) binary: String,
     #[serde(default)]
     pub(crate) execution: ProviderExecution,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) native_library: Option<ProviderNativeLibraryDescriptor>,
     pub(crate) source: ManifestSourceDefaults,
     pub(crate) search_capabilities: ProviderSearchCapabilities,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -158,6 +209,10 @@ impl ProviderManifest {
 
     pub const fn execution(&self) -> ProviderExecution {
         self.execution
+    }
+
+    pub fn native_library(&self) -> Option<&ProviderNativeLibraryDescriptor> {
+        self.native_library.as_ref()
     }
 
     pub fn source(&self) -> &ManifestSourceDefaults {
@@ -488,6 +543,7 @@ pub struct ActivatedProvider {
     pub provider_id: agent_semantic_config::ProviderId,
     pub binary: String,
     pub execution: ProviderExecution,
+    pub native_library: Option<ProviderNativeLibraryDescriptor>,
     pub provider_command_prefix: Vec<String>,
     pub execution_command_digest: String,
     pub namespace: String,

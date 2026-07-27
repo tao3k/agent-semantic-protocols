@@ -1,0 +1,87 @@
+{
+  "schemaId": "agent.semantic-protocols.hook.provider-manifest",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.hook",
+  "protocolVersion": "1",
+  "manifestId": "agent.semantic-protocols.providers.cpp.ccls-asp",
+  "manifestVersion": "v1",
+  "languageId": "cpp",
+  "providerId": "ccls-asp",
+  "namespace": "agent.semantic-protocols.languages.cpp.ccls-asp",
+  "binary": "ccls-asp",
+  "execution": "external-process",
+  "nativeLibrary": {
+    "descriptorId": "c-family.native-parser-library",
+    "descriptorVersion": "1",
+    "abiVersion": 1,
+    "artifactStem": "ccls-asp-parser",
+    "parseTranslationUnitSymbol": "ccls_asp_parse_translation_unit_with_args_v1",
+    "freeResultSymbol": "ccls_asp_result_free_v1",
+    "fallbackExecution": "external-process"
+  },
+  "source": {
+    "defaultExtensions": [".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"],
+    "defaultConfigFiles": ["compile_commands.json", ".ccls", "CMakeLists.txt", "meson.build"],
+    "defaultSourceRoots": ["src", "include", "tests"],
+    "defaultIgnoredPathPrefixes": ["build", "cmake-build-debug", "cmake-build-release"],
+    "defaultProjectMarkers": ["compile_commands.json", ".ccls", "CMakeLists.txt", "meson.build"],
+    "defaultDependencyMarkers": ["compile_commands.json", "CMakeLists.txt", "meson.build"]
+  },
+  "searchCapabilities": {
+    "ownerItems": false,
+    "semanticFacts": true,
+    "dependencyTopology": false,
+    "dependencyTopologyMetadata": false,
+    "workspaceScope": false,
+    "sourceSnapshot": {
+      "descriptorId": "cpp.source-snapshot",
+      "descriptorVersion": "1",
+      "languageId": "cpp",
+      "authority": "live-parser",
+      "algorithm": "blake3-merkle-v1",
+      "packetSchemaId": "asp.source-snapshot.v1",
+      "overlayMode": "merkle-delta",
+      "exactSelectorResolution": "pinned-live-module-graph",
+      "canonicalItemSelectorSchemaId": "asp.canonical-item-selector.v1",
+      "exactSourcePacketSchemaId": "asp.exact-source-query-result.v1",
+      "sourceSnapshotEnvelopeSchemaId": "asp.exact-source-snapshot-envelope.v1",
+      "derivedArtifactEvidenceSchemaId": "asp.derived-source-artifact-evidence.v1"
+    }
+  },
+  "policy": {
+    "directSourceRead": "block",
+    "bulkSourceDump": "block",
+    "rawSourceSearch": "block",
+    "agentSearchJson": "block"
+  },
+  "queryPackDescriptor": {
+    "descriptorId": "cpp.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "cpp",
+    "termRoleOverrides": [],
+    "recipes": [
+      {
+        "recipeId": "cpp-symbol-owner",
+        "trigger": {
+          "terms": ["symbol", "owner", "definition", "reference"],
+          "match": "any"
+        },
+        "clauses": [
+          {
+            "terms": ["symbol", "owner", "definition", "reference"],
+            "roles": ["concept", "symbol"],
+            "intentAxes": ["data-shape"]
+          }
+        ]
+      }
+    ]
+  },
+  "routeBindings": {
+    "prime": "search/prime",
+    "owner": "search/owner",
+    "lexical": "search/lexical",
+    "query": "query/exact-selector",
+    "ingest": "search/ingest",
+    "guide": "guide"
+  }
+}

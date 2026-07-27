@@ -1,4 +1,43 @@
-use agent_semantic_hook::builtin_provider_manifests;
+use agent_semantic_hook::{builtin_provider_manifests, materialize_provider_routes};
+
+#[test]
+fn builtin_manifests_include_c_family_clang_provider() {
+    let manifests = builtin_provider_manifests();
+
+    for (language, extension) in [("c", ".c"), ("cpp", ".cpp"), ("objective-c", ".m")] {
+        let manifest = manifests
+            .iter()
+            .find(|manifest| manifest.language_id().as_str() == language)
+            .unwrap_or_else(|| panic!("{language} manifest"));
+        let routes = materialize_provider_routes(manifest)
+            .unwrap_or_else(|error| panic!("{language} routes: {error}"));
+
+        assert_eq!(manifest.provider_id().as_str(), "ccls-asp");
+        assert_eq!(manifest.binary(), "ccls-asp");
+        assert!(
+            manifest
+                .source()
+                .default_extensions
+                .contains(&extension.to_string())
+        );
+        assert_eq!(&routes.prime.argv[..3], ["asp", language, "search"]);
+        assert_eq!(&routes.owner.argv[..3], ["asp", language, "search"]);
+        assert_eq!(&routes.lexical.argv[..3], ["asp", language, "search"]);
+        assert_eq!(
+            &routes.query.as_ref().expect("query route").argv[..3],
+            ["ccls-asp", "--language", language]
+        );
+        assert_eq!(
+            &routes.ingest.argv[..3],
+            ["ccls-asp", "--language", language]
+        );
+        assert_eq!(
+            &routes.guide.as_ref().expect("guide route").argv[..3],
+            ["ccls-asp", "--language", language]
+        );
+        assert!(routes.check_changed.is_none());
+    }
+}
 
 #[test]
 fn builtin_manifests_include_julia_juliac_provider() {

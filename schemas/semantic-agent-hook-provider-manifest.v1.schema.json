@@ -17,8 +17,10 @@
     "namespace",
     "binary",
     "source",
+    "searchCapabilities",
     "policy",
-    "routes"
+    "queryPackDescriptor",
+    "routeBindings"
   ],
   "properties": {
     "schemaId": {
@@ -60,11 +62,17 @@
     "searchCapabilities": {
       "$ref": "#/$defs/searchCapabilities"
     },
+    "semanticFactsDescriptor": {
+      "type": "object"
+    },
     "policy": {
       "$ref": "#/$defs/policy"
     },
-    "routes": {
-      "$ref": "#/$defs/routes"
+    "queryPackDescriptor": {
+      "$ref": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-query-pack-descriptor.v1.schema.json"
+    },
+    "routeBindings": {
+      "$ref": "#/$defs/routeBindings"
     }
   },
   "$defs": {
@@ -175,6 +183,9 @@
         "workspaceScope": {
           "type": "boolean",
           "default": false
+        },
+        "sourceSnapshot": {
+          "type": "object"
         }
       }
     },
@@ -209,75 +220,54 @@
         "advisory"
       ]
     },
-    "routes": {
+    "routeBindings": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "prime",
         "owner",
         "lexical",
-        "ingest",
-        "checkChanged"
+        "ingest"
       ],
       "properties": {
         "prime": {
-          "$ref": "#/$defs/commandTemplate"
+          "$ref": "#/$defs/methodBinding"
         },
         "owner": {
-          "$ref": "#/$defs/commandTemplate"
+          "$ref": "#/$defs/methodBinding"
         },
         "query": {
-          "$ref": "#/$defs/commandTemplate"
+          "$ref": "#/$defs/methodBinding"
         },
         "ingest": {
-          "$ref": "#/$defs/commandTemplate"
+          "$ref": "#/$defs/methodBinding"
         },
         "checkChanged": {
-          "$ref": "#/$defs/commandTemplate"
+          "$ref": "#/$defs/methodBinding"
         },
         "dependencyTopology": {
-          "$ref": "#/$defs/commandTemplate"
+          "$ref": "#/$defs/methodBinding"
         },
-      "dependencyTopologyMetadata": {
-        "$ref": "#/$defs/commandTemplate"
-      },
-      "workspaceScope": {
-        "$ref": "#/$defs/commandTemplate"
-      },
+        "dependencyTopologyMetadata": {
+          "$ref": "#/$defs/methodBinding"
+        },
+        "workspaceScope": {
+          "$ref": "#/$defs/methodBinding"
+        },
         "guide": {
-          "$ref": "#/$defs/commandTemplate"
+          "$ref": "#/$defs/methodBinding"
         },
         "lexical": {
-          "$ref": "#/$defs/commandTemplate"
+          "$ref": "#/$defs/methodBinding"
         },
         "exportIndex": {
-          "$ref": "#/$defs/commandTemplate"
+          "$ref": "#/$defs/methodBinding"
         }
       }
     },
-    "commandTemplate": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "argv"
-      ],
-      "properties": {
-        "argv": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string"
-          }
-        },
-        "stdinMode": {
-          "enum": [
-            "none",
-            "pipe-candidates",
-            "pipe-diff",
-            "unknown"
-          ]
-        }
-      }
+    "methodBinding": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$|^guide$"
     }
   }
 }
