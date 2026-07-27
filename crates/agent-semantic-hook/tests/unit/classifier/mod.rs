@@ -97,6 +97,7 @@ pub(super) fn provider(
         provider_id: manifest.provider_id().clone(),
         binary: manifest.binary().to_string(),
         execution: manifest.execution(),
+        native_library: manifest.native_library().cloned(),
         provider_command_prefix: Vec::new(),
         execution_command_digest: "test-execution-command-digest".to_string(),
         namespace: manifest.namespace().to_string(),

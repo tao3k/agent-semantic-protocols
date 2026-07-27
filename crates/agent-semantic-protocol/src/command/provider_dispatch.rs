@@ -252,6 +252,9 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     if let Some(request) =
         super::language_projection_import::LanguageProjectionImportRequest::parse(&provider_args)?
     {
+        if request.try_import_native(language_id, &project_root, &activation_root, provider)? {
+            return Ok(());
+        }
         let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
         let invocation = provider_invocation_with_profile(
             &runtime_profiles,
@@ -656,9 +659,9 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             serde_json::to_writer(&mut std::io::stdout().lock(), validated.record()).map_err(
                 |error| format!("failed to write exact-selector cold JSON record: {error}"),
             )?;
-            std::io::Write::write_all(&mut std::io::stdout().lock(), b"\n").map_err(
-                |error| format!("failed to terminate exact-selector cold JSON record: {error}"),
-            )?;
+            std::io::Write::write_all(&mut std::io::stdout().lock(), b"\n").map_err(|error| {
+                format!("failed to terminate exact-selector cold JSON record: {error}")
+            })?;
         } else {
             std::io::Write::write_all(&mut std::io::stdout().lock(), hit.projection_payload)
                 .map_err(|error| {

@@ -11,7 +11,17 @@ pub(crate) use agent_session_registry::{
     validate_session_profile,
 };
 mod ast_patch;
+mod c_family_native;
+mod c_family_native_projection;
 mod cli_help;
+
+#[cfg(test)]
+#[path = "../../tests/unit/command/c_family_native.rs"]
+mod c_family_native_tests;
+
+#[cfg(all(test, unix))]
+#[path = "../../tests/unit/command/c_family_native_projection.rs"]
+mod c_family_native_projection_tests;
 mod client_backend_worker;
 mod dispatch;
 mod dispatch_agent_session_policy;

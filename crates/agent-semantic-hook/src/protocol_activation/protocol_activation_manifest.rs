@@ -211,6 +211,10 @@ impl ProviderManifest {
         self.execution
     }
 
+    pub fn native_library(&self) -> Option<&ProviderNativeLibraryDescriptor> {
+        self.native_library.as_ref()
+    }
+
     pub fn source(&self) -> &ManifestSourceDefaults {
         &self.source
     }
@@ -539,6 +543,7 @@ pub struct ActivatedProvider {
     pub provider_id: agent_semantic_config::ProviderId,
     pub binary: String,
     pub execution: ProviderExecution,
+    pub native_library: Option<ProviderNativeLibraryDescriptor>,
     pub provider_command_prefix: Vec<String>,
     pub execution_command_digest: String,
     pub namespace: String,

@@ -128,6 +128,7 @@ fn resolve_activation(
             provider_id: activated.provider_id.clone(),
             binary: activated.binary.clone(),
             execution: activated.execution,
+            native_library: manifest.native_library.clone(),
             provider_command_prefix: activated.provider_command_prefix.clone(),
             execution_command_digest: activated.execution_command_digest.clone(),
             namespace: manifest.namespace.clone(),
