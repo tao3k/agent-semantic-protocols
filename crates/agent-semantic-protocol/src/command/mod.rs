@@ -11,11 +11,12 @@ pub(crate) use agent_session_registry::{
     validate_session_profile,
 };
 mod ast_patch;
+#[cfg(unix)]
 mod c_family_native;
 mod c_family_native_projection;
 mod cli_help;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "../../tests/unit/command/c_family_native.rs"]
 mod c_family_native_tests;
 

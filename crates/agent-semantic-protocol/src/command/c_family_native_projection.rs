@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+#[cfg(unix)]
+use std::path::PathBuf;
 
 #[cfg(unix)]
 use super::c_family_native::{NativeParseResult, NativeParserLibrary, installed_library_path};
@@ -67,8 +70,30 @@ pub(crate) fn try_native_projection(
 
 #[cfg(not(unix))]
 pub(crate) fn try_native_projection(
-    _request: NativeProjectionRequest<'_>,
+    request: NativeProjectionRequest<'_>,
 ) -> Result<Option<Vec<u8>>, String> {
+    let NativeProjectionRequest {
+        activation_root,
+        project_root,
+        owner,
+        language_id,
+        provider_id,
+        artifact_stem,
+        abi_version,
+        parse_symbol,
+        free_symbol,
+    } = request;
+    let _ = (
+        activation_root,
+        project_root,
+        owner,
+        language_id,
+        provider_id,
+        artifact_stem,
+        abi_version,
+        parse_symbol,
+        free_symbol,
+    );
     Ok(None)
 }
 
