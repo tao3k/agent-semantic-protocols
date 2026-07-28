@@ -86,7 +86,6 @@ pub(super) fn collect_provider_workspace_scope(
         context.provider,
         &invocation,
         project_root,
-        context.cache_home,
         Vec::new(),
         limits,
     )
@@ -265,7 +264,6 @@ pub(super) fn collect_provider_graph_facts(
         context.provider,
         &invocation,
         project_root,
-        context.cache_home,
         candidate_stdin(project_root, &fact_candidates),
         semantic_fact_limits,
     ) {

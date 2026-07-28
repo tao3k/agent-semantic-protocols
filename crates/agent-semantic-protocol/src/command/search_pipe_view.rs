@@ -20,6 +20,8 @@ pub(super) struct SearchPipeViewRequest<'a> {
     pub(super) language_id: &'a str,
     pub(super) project_root: &'a Path,
     pub(super) source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub(super) generation:
+        &'a agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1<'a>,
     pub(super) locator_root: &'a Path,
     pub(super) cache_home: &'a Path,
     pub(super) surface: &'a str,
@@ -43,6 +45,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
         language_id,
         project_root,
         source_snapshot,
+        generation,
         locator_root,
         cache_home,
         surface,
@@ -81,7 +84,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
                 surface,
                 language_id,
                 dependency_root: project_root,
-                source_snapshot,
+                generation,
                 cache_home,
                 query,
                 query_clauses: &graph_query_clauses,
@@ -105,6 +108,7 @@ pub(super) fn print_search_pipe_view(request: SearchPipeViewRequest<'_>) -> Resu
         }
         "seeds" => render_search_pipe_seeds_view(SearchPipeSeedsViewRequest {
             source_snapshot,
+            generation,
             language_id,
             project_root,
             locator_root,
@@ -171,6 +175,8 @@ struct SearchPipeSeedsViewRequest<'a> {
     language_id: &'a str,
     project_root: &'a Path,
     source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
+    generation:
+        &'a agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1<'a>,
     locator_root: &'a Path,
     cache_home: &'a Path,
     surface: &'a str,
@@ -193,6 +199,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
     let render_started_at = Instant::now();
     let SearchPipeSeedsViewRequest {
         source_snapshot,
+        generation,
         language_id,
         project_root,
         locator_root,
@@ -229,7 +236,7 @@ fn render_search_pipe_seeds_view(request: SearchPipeSeedsViewRequest<'_>) -> Res
         surface,
         language_id,
         dependency_root: project_root,
-        source_snapshot,
+        generation,
         cache_home,
         query,
         query_clauses: graph_query_clauses,

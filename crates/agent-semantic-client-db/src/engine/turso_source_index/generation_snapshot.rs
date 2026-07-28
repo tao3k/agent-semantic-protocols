@@ -91,8 +91,7 @@ pub struct ClientDbSourceIndexSelectorFactV1 {
     /// Optional parser-owned item kind.
     pub kind: Option<String>,
     /// Complete parser-owned exact-selector materialization proof.
-    pub materialization_proof:
-        agent_semantic_content_identity::ExactSelectorMaterializationProofV1,
+    pub materialization_proof: agent_semantic_content_identity::ExactSelectorMaterializationProofV1,
     /// Canonical query keys associated with the selector.
     pub query_keys: Vec<String>,
 }
@@ -254,8 +253,8 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
         Vec<agent_semantic_client_core::ClientCacheFileHash>,
     >(file_hashes_json)
     .map_err(|error| {
-            ClientDbSourceIndexGenerationSnapshotErrorV1::FileHashesDecode(error.to_string())
-        })?;
+        ClientDbSourceIndexGenerationSnapshotErrorV1::FileHashesDecode(error.to_string())
+    })?;
     let file_hash_record_count = file_hash_records.len();
     let all_file_hashes = file_hash_records
         .into_iter()

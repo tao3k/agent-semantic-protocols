@@ -13,8 +13,8 @@ use crate::protocol::{
 };
 use crate::protocol_activation::digest::provider_manifest_digest;
 use crate::protocol_activation::protocol_activation_manifest::{
-    ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy, HookActivation,
-    ProviderExecution, ProviderManifest,
+    ActivatedProviderConfig, ActivatedRankerConfig, ActivationCoverage, ActivationGeneratedBy,
+    HookActivation, ProviderExecution, ProviderManifest,
 };
 use crate::provider_registry::schema_registry_provider_manifests;
 
@@ -32,10 +32,13 @@ pub(crate) fn provider_manifests() -> Vec<ProviderManifest> {
 
 /// Build the default project activation from configured project providers.
 pub fn build_default_activation(project_root: &Path) -> Result<HookActivation, String> {
-    let selections = provider_command_selections(project_root)?;
+    let selections = default_activation_selections(project_root)?;
     build_default_activation_from_selections(project_root, &selections)
 }
 
+#[cfg(test)]
+#[path = "../tests/unit/provider_command_selection_scope.rs"]
+mod provider_command_selection_scope_tests;
 #[cfg(test)]
 #[path = "../tests/unit/provider_manifest_selection_identity.rs"]
 mod provider_manifest_selection_identity_tests;
@@ -43,9 +46,9 @@ mod provider_manifest_selection_identity_tests;
 /// Build an activation from the provider selections already resolved for this project.
 pub fn build_default_activation_from_selections(
     project_root: &Path,
-    selections: &[ProviderCommandSelection],
+    selections: &DefaultActivationSelections,
 ) -> Result<HookActivation, String> {
-    if selections.is_empty() {
+    if selections.providers.is_empty() {
         return Err(
             "expected State Home runtime bin to contain at least one executable semantic provider binary"
                 .to_string(),
@@ -53,6 +56,7 @@ pub fn build_default_activation_from_selections(
     }
     let manifests = provider_manifests();
     let selected_providers = selections
+        .providers
         .iter()
         .map(|selection| {
             let manifest = manifests
@@ -94,6 +98,7 @@ pub fn build_default_activation_from_selections(
             &semantic_registry_digest,
         )?);
     }
+    let rankers = vec![activate_builtin_graph_turbo_ranker(&selections.graph_turbo)];
     Ok(HookActivation {
         schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
@@ -106,8 +111,77 @@ pub fn build_default_activation_from_selections(
             version: env!("CARGO_PKG_VERSION").to_string(),
         },
         generated_at: None,
+        rankers,
         providers,
     })
+}
+
+fn capture_current_asp_binary_selection(
+    activation_path: Option<&Path>,
+) -> Result<RuntimeBinarySelectionV1, String> {
+    let binary = std::env::var_os("SEMANTIC_AGENT_PROTOCOL_BIN")
+        .map(PathBuf::from)
+        .unwrap_or(std::env::current_exe().map_err(|error| {
+            format!("failed to resolve ASP binary for built-in graph-turbo ranker: {error}")
+        })?);
+    capture_asp_binary_selection(&binary, activation_path)
+}
+
+fn capture_asp_binary_selection(
+    binary: &Path,
+    activation_path: Option<&Path>,
+) -> Result<RuntimeBinarySelectionV1, String> {
+    let binary = binary.canonicalize().map_err(|error| {
+        format!("failed to canonicalize ASP graph-turbo ranker binary: {error}")
+    })?;
+    if let Some(selection) = activation_path.and_then(|activation_path| {
+        reuse_asp_binary_selection_from_active_receipt(&binary, activation_path)
+    }) {
+        return Ok(selection);
+    }
+    let content_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&binary)?.to_string();
+    let artifact_metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&binary)?.to_string();
+    RuntimeBinarySelectionV1::new(
+        binary.display().to_string(),
+        content_digest,
+        artifact_metadata_digest,
+    )
+}
+
+fn reuse_asp_binary_selection_from_active_receipt(
+    binary: &Path,
+    activation_path: &Path,
+) -> Option<RuntimeBinarySelectionV1> {
+    let receipt = crate::verify_active_asp_artifact_receipt(activation_path, &[binary]).ok()?;
+    let artifact_metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(binary).ok()?;
+    RuntimeBinarySelectionV1::new(
+        binary.display().to_string(),
+        receipt
+            .asp_binary_leaf()
+            .artifact_digest()
+            .as_str()
+            .to_string(),
+        artifact_metadata_digest.to_string(),
+    )
+    .ok()
+}
+
+fn activate_builtin_graph_turbo_ranker(
+    selection: &RuntimeBinarySelectionV1,
+) -> ActivatedRankerConfig {
+    ActivatedRankerConfig {
+        schema_id: "asp.activated-ranker.v1".to_string(),
+        ranker_id: "asp-graph-turbo".to_string(),
+        capability_id: "graph-turbo".to_string(),
+        protocol_version: "1".to_string(),
+        binary: selection.binary.clone(),
+        argv_prefix: vec!["graph".to_string(), "render".to_string()],
+        content_digest: selection.content_digest.clone(),
+        artifact_metadata_digest: selection.artifact_metadata_digest.clone(),
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -159,14 +233,149 @@ impl ProviderCommandSelection {
     }
 }
 
+/// Producer-owned identity for the ASP executable used by a built-in runtime.
+///
+/// Activation materialization consumes this selection without reopening or
+/// hashing the executable.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeBinarySelectionV1 {
+    binary: String,
+    content_digest: String,
+    artifact_metadata_digest: String,
+}
+
+impl RuntimeBinarySelectionV1 {
+    pub fn new(
+        binary: String,
+        content_digest: String,
+        artifact_metadata_digest: String,
+    ) -> Result<Self, String> {
+        if binary.is_empty() {
+            return Err("runtime binary selection requires a non-empty binary path".to_string());
+        }
+        if content_digest.is_empty() {
+            return Err("runtime binary selection requires a content digest".to_string());
+        }
+        if artifact_metadata_digest.is_empty() {
+            return Err(
+                "runtime binary selection requires an artifact metadata digest".to_string(),
+            );
+        }
+        Ok(Self {
+            binary,
+            content_digest,
+            artifact_metadata_digest,
+        })
+    }
+
+    #[must_use]
+    pub fn binary(&self) -> &str {
+        &self.binary
+    }
+
+    #[must_use]
+    pub fn content_digest(&self) -> &str {
+        &self.content_digest
+    }
+
+    #[must_use]
+    pub fn artifact_metadata_digest(&self) -> &str {
+        &self.artifact_metadata_digest
+    }
+}
+
+/// Complete typed producer input for default activation materialization.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DefaultActivationSelections {
+    providers: Vec<ProviderCommandSelection>,
+    graph_turbo: RuntimeBinarySelectionV1,
+}
+
+impl DefaultActivationSelections {
+    #[must_use]
+    pub fn new(
+        providers: Vec<ProviderCommandSelection>,
+        graph_turbo: RuntimeBinarySelectionV1,
+    ) -> Self {
+        Self {
+            providers,
+            graph_turbo,
+        }
+    }
+
+    #[must_use]
+    pub fn providers(&self) -> &[ProviderCommandSelection] {
+        &self.providers
+    }
+
+    #[must_use]
+    pub fn graph_turbo(&self) -> &RuntimeBinarySelectionV1 {
+        &self.graph_turbo
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProviderCommandSelectionScopeV1 {
+    TargetLanguage(agent_semantic_config::LanguageId),
+    TargetProviderId(agent_semantic_config::ProviderId),
+    CompleteGeneration,
+}
+
+impl ProviderCommandSelectionScopeV1 {
+    fn selects(
+        &self,
+        language_id: &agent_semantic_config::LanguageId,
+        provider_id: &agent_semantic_config::ProviderId,
+    ) -> bool {
+        match self {
+            Self::TargetLanguage(target) => target == language_id,
+            Self::TargetProviderId(target) => target == provider_id,
+            Self::CompleteGeneration => true,
+        }
+    }
+}
+
 pub fn provider_command_selections(
     project_root: &Path,
+) -> Result<Vec<ProviderCommandSelection>, String> {
+    provider_command_selections_for_scope(
+        project_root,
+        &ProviderCommandSelectionScopeV1::CompleteGeneration,
+    )
+}
+
+pub fn default_activation_selections(
+    project_root: &Path,
+) -> Result<DefaultActivationSelections, String> {
+    default_activation_selections_for_scope(
+        project_root,
+        &ProviderCommandSelectionScopeV1::CompleteGeneration,
+        None,
+    )
+}
+
+pub fn default_activation_selections_for_scope(
+    project_root: &Path,
+    scope: &ProviderCommandSelectionScopeV1,
+    activation_path: Option<&Path>,
+) -> Result<DefaultActivationSelections, String> {
+    let providers = provider_command_selections_for_scope(project_root, scope)?;
+    let graph_turbo = capture_current_asp_binary_selection(activation_path)?;
+    Ok(DefaultActivationSelections::new(providers, graph_turbo))
+}
+
+pub fn provider_command_selections_for_scope(
+    project_root: &Path,
+    scope: &ProviderCommandSelectionScopeV1,
 ) -> Result<Vec<ProviderCommandSelection>, String> {
     let project_config = ProjectProviderConfigSet::load(project_root)?;
     let state_paths = agent_semantic_runtime::project_state_paths(project_root)
         .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
     let mut providers = Vec::new();
     for manifest in provider_manifests() {
+        if !scope.selects(&manifest.language_id, &manifest.provider_id) {
+            continue;
+        }
         let Some(provider_config) = project_config.provider_config(manifest.language_id.as_str())
         else {
             continue;
@@ -212,10 +421,22 @@ pub fn provider_command_selections(
         });
     }
     if providers.is_empty() {
-        return Err(format!(
-            "expected State Home runtime bin to contain at least one executable semantic provider binary: {}",
-            state_paths.runtime_bin_dir.display()
-        ));
+        return Err(match scope {
+            ProviderCommandSelectionScopeV1::TargetLanguage(language_id) => format!(
+                "requested language provider is unavailable: languageId={} runtimeBin={}",
+                language_id.as_str(),
+                state_paths.runtime_bin_dir.display()
+            ),
+            ProviderCommandSelectionScopeV1::TargetProviderId(provider_id) => format!(
+                "requested provider is unavailable: providerId={} runtimeBin={}",
+                provider_id.as_str(),
+                state_paths.runtime_bin_dir.display()
+            ),
+            ProviderCommandSelectionScopeV1::CompleteGeneration => format!(
+                "expected State Home runtime bin to contain at least one executable semantic provider binary: {}",
+                state_paths.runtime_bin_dir.display()
+            ),
+        });
     }
     Ok(providers)
 }

@@ -3,7 +3,7 @@ use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
     provider_process_limits_from_environment, run_provider_process as run_transport_process,
 };
-use agent_semantic_runtime::{project_state_paths, runtime_bin_dir_for_cache_home};
+use agent_semantic_runtime::project_state_paths;
 use std::collections::BTreeMap;
 use std::env;
 use std::io::{self, Write};
@@ -14,20 +14,12 @@ pub(super) fn run_provider_command(
     provider: &ActivatedProvider,
     invocation: &[String],
     project_root: &Path,
-    cache_home: &Path,
     require_semantic_document_query_packet: bool,
 ) -> Result<(), String> {
     let (program, forwarded) = invocation
         .split_first()
         .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
-    let output = run_provider_process(
-        language_id,
-        provider,
-        program,
-        forwarded,
-        project_root,
-        cache_home,
-    )?;
+    let output = run_provider_process(language_id, provider, program, forwarded, project_root)?;
     write_facade_stream(language_id, provider, output.stderr.as_ref(), io::stderr())?;
     if require_semantic_document_query_packet {
         validate_semantic_document_query_packet(output.stdout.as_ref(), provider)?;
@@ -110,7 +102,6 @@ pub(super) fn run_provider_command_with_stdin(
     provider: &ActivatedProvider,
     invocation: &[String],
     project_root: &Path,
-    cache_home: &Path,
     stdin: Vec<u8>,
 ) -> Result<ProviderProcessOutput, String> {
     let limits = default_provider_process_limits()?;
@@ -119,10 +110,32 @@ pub(super) fn run_provider_command_with_stdin(
         provider,
         invocation,
         project_root,
-        cache_home,
         stdin,
         limits,
     )
+}
+
+pub(super) fn run_catalog_provider_command_with_stdin(
+    language_id: &str,
+    provider_id: &str,
+    execution_command_digest: &str,
+    invocation: &[String],
+    project_root: &Path,
+    stdin: Vec<u8>,
+) -> Result<ProviderProcessOutput, String> {
+    let (program, forwarded) = invocation
+        .split_first()
+        .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
+    run_provider_process_with_stdin(ProviderProcessRun {
+        language_id,
+        provider_id,
+        execution_command_digest,
+        program,
+        forwarded,
+        project_root,
+        limits: default_provider_process_limits()?,
+        stdin: StdinMode::bytes(stdin),
+    })
 }
 
 pub(super) fn run_provider_command_with_stdin_limits(
@@ -130,7 +143,6 @@ pub(super) fn run_provider_command_with_stdin_limits(
     provider: &ActivatedProvider,
     invocation: &[String],
     project_root: &Path,
-    cache_home: &Path,
     stdin: Vec<u8>,
     limits: ProviderProcessLimits,
 ) -> Result<ProviderProcessOutput, String> {
@@ -139,11 +151,11 @@ pub(super) fn run_provider_command_with_stdin_limits(
         .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
     run_provider_process_with_stdin(ProviderProcessRun {
         language_id,
-        provider,
+        provider_id: provider.provider_id.as_str(),
+        execution_command_digest: &provider.execution_command_digest,
         program,
         forwarded,
         project_root,
-        cache_home,
         limits,
         stdin: StdinMode::bytes(stdin),
     })
@@ -154,19 +166,11 @@ pub(super) fn run_guide_command(
     provider: &ActivatedProvider,
     invocation: &[String],
     project_root: &Path,
-    cache_home: &Path,
 ) -> Result<(), String> {
     let (program, forwarded) = invocation
         .split_first()
         .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
-    let output = run_provider_process(
-        language_id,
-        provider,
-        program,
-        forwarded,
-        project_root,
-        cache_home,
-    )?;
+    let output = run_provider_process(language_id, provider, program, forwarded, project_root)?;
     io::stderr()
         .write_all(&output.stderr)
         .map_err(|error| format!("failed to write provider stderr: {error}"))?;
@@ -191,15 +195,14 @@ fn run_provider_process(
     program: &str,
     forwarded: &[String],
     project_root: &Path,
-    cache_home: &Path,
 ) -> Result<ProviderProcessOutput, String> {
     run_provider_process_with_stdin(ProviderProcessRun {
         language_id,
-        provider,
+        provider_id: provider.provider_id.as_str(),
+        execution_command_digest: &provider.execution_command_digest,
         program,
         forwarded,
         project_root,
-        cache_home,
         limits: default_provider_process_limits()?,
         stdin: StdinMode::Inherit,
     })
@@ -211,11 +214,11 @@ fn default_provider_process_limits() -> Result<ProviderProcessLimits, String> {
 
 struct ProviderProcessRun<'a> {
     language_id: &'a str,
-    provider: &'a ActivatedProvider,
+    provider_id: &'a str,
+    execution_command_digest: &'a str,
     program: &'a str,
     forwarded: &'a [String],
     project_root: &'a Path,
-    cache_home: &'a Path,
     stdin: StdinMode,
     limits: ProviderProcessLimits,
 }
@@ -225,29 +228,23 @@ fn run_provider_process_with_stdin(
 ) -> Result<ProviderProcessOutput, String> {
     let ProviderProcessRun {
         language_id,
-        provider,
+        provider_id,
+        execution_command_digest,
         program,
         forwarded,
         project_root,
-        cache_home,
         stdin,
         limits,
     } = request;
-    let runtime_bin = project_state_paths(project_root)
-        .map(|paths| paths.runtime_bin_dir)
-        .unwrap_or_else(|_| runtime_bin_dir_for_cache_home(cache_home));
+    let runtime_bin = project_state_paths(project_root)?.runtime_bin_dir;
     let mut envs = BTreeMap::new();
-    envs.insert(
-        "PRJ_CACHE_HOME".to_string(),
-        cache_home.to_string_lossy().to_string(),
-    );
     envs.insert(
         "ASP_RUNTIME_BIN_DIR".to_string(),
         runtime_bin.to_string_lossy().to_string(),
     );
     envs.insert(
         "ASP_PROVIDER_EXECUTION_COMMAND_DIGEST".to_string(),
-        provider.execution_command_digest.clone(),
+        execution_command_digest.to_owned(),
     );
     if let Ok(protocol_bin) = env::current_exe() {
         envs.insert(
@@ -276,7 +273,7 @@ fn run_provider_process_with_stdin(
     .map_err(|error| {
         format!(
             "failed to run provider `{}` for language `{language_id}`: {error}",
-            provider.provider_id
+            provider_id
         )
     })
 }

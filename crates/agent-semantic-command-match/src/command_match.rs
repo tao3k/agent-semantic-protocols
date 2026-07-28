@@ -90,6 +90,12 @@ pub fn command_stages_match_wrapped_prefix(
 }
 
 fn command_stages_match_prefix_impl(stages: &[CommandStageV1], prefix: &[String]) -> PrefixMatch {
+    if std::env::var_os("ASP_TRACE_COMMAND_MATCH").is_some() {
+        eprintln!(
+            "[command-match-trace] prefix={prefix:?} stages={:?}",
+            stages.iter().map(CommandStageV1::words).collect::<Vec<_>>()
+        );
+    }
     if prefix.is_empty() {
         return PrefixMatch::Matched;
     }
@@ -103,12 +109,15 @@ fn command_stages_match_prefix_impl(stages: &[CommandStageV1], prefix: &[String]
         if words.len() < prefix.len() {
             continue;
         }
-        if inspected_candidates == MAX_COMMAND_CANDIDATES {
-            return PrefixMatch::BudgetExceeded;
-        }
-        inspected_candidates += 1;
-        if candidate_matches_prefix(words, prefix) {
-            return PrefixMatch::Matched;
+
+        for candidate in words.windows(prefix.len()) {
+            if inspected_candidates == MAX_COMMAND_CANDIDATES {
+                return PrefixMatch::BudgetExceeded;
+            }
+            inspected_candidates += 1;
+            if candidate_matches_prefix(candidate, prefix) {
+                return PrefixMatch::Matched;
+            }
         }
     }
     PrefixMatch::NotMatched

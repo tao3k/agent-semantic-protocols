@@ -5,9 +5,7 @@ use super::membership::{
 use super::projection::{
     refresh_turso_source_index_posting_projection, write_turso_source_index_owner_rows,
 };
-use super::readiness::{
-    turso_source_index_projection_ready,
-};
+use super::readiness::turso_source_index_projection_ready;
 use super::trace::{
     source_index_db_trace, source_index_db_trace_membership_changes,
     source_index_db_trace_posting_projection, source_index_db_trace_row_counts,

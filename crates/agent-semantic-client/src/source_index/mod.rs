@@ -2,31 +2,48 @@
 
 mod api;
 mod projection;
+mod provider_envelope;
 
 pub(crate) use api::current_runtime_source_index_snapshot;
 pub(crate) use api::current_source_index_snapshot_with_registry;
+#[cfg(test)]
+pub(crate) use api::materialized_current_source_index_snapshot;
 pub use api::rebuild_source_index;
 pub use api::{
-    CurrentSourceIndexSnapshot, current_source_index_snapshot,
-    current_source_index_snapshot_for_owner,
+    CurrentSourceIndexSnapshot, current_provider_source_index_snapshot_with_registry,
+    current_source_index_snapshot, current_source_index_snapshot_for_owner,
     current_source_index_snapshot_for_owner_from_activation,
     current_workspace_search_source_index_snapshot,
-    publish_current_workspace_search_source_index_generation_v1,
-    publish_provider_source_snapshot_envelope, ProviderSourceSnapshotEnvelopePublicationV1,
 };
 pub use projection::{LanguageProjectionImportReport, import_language_projection};
+pub use provider_envelope::{
+    ProviderSourceEnvelopeLookupRequestV1, ProviderSourceSnapshotEnvelopePublicationV1,
+    ProviderWorkspaceIdentityV1, provider_workspace_identity_v1,
+    current_provider_source_index_snapshot_at_artifact_root_with_registry,
+    ensure_provider_source_index_snapshot_at_artifact_root_with_registry,
+    provider_source_snapshot_envelope_path_at_artifact_root_with_registry,
+    publish_provider_source_snapshot_envelope,
+};
 mod collect;
 mod generation;
 
+pub use collect::{SourceIndexCollectionScopeV1, collect_workspace_search_source_index_files};
 pub use generation::{
-    CompleteSourceIndexGenerationPublicationV1, PublishedSourceIndexGenerationV1,
+    PublishedSourceIndexGenerationV1, TargetProviderSourceEnvelopePublicationRequestV1,
+    WorkspaceSearchGenerationPublicationRequestV1, publish_target_provider_source_envelope_v1,
+    publish_workspace_search_generation_v1,
 };
 mod config;
 mod lookup;
 mod model;
 
 pub use api::CurrentSourceIndexOwnerFromActivationRequest;
-pub use api::current_source_index_snapshot_from_activation;
+pub use api::{
+    current_provider_source_index_snapshot_from_activation,
+    current_source_index_snapshot_from_activation,
+    ensure_provider_source_index_snapshot_from_activation,
+    provider_source_snapshot_envelope_path_from_activation,
+};
 pub use api::{refresh_runtime_source_index, refresh_source_index};
 #[cfg(test)]
 pub(crate) use lookup::search_pipe_source_index_lookup_from_client_result;

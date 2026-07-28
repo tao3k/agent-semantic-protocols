@@ -1,0 +1,193 @@
+schemaId = "agent.semantic-protocols.hook-match-config-test"
+schemaVersion = "v1"
+productionConfig = "config.toml"
+
+wrapperTemplates = [
+  "direnv exec . {command}",
+  "organization-local-wrapper --profile ci {command}",
+  "future-wrapper alpha beta {command}",
+  "env ASP_MATCH_SCENARIO=1 {command}",
+  "bash -lc \"{command}\"",
+]
+
+[performance]
+maxMatcherMicros = 1000
+
+[[rules]]
+id = "registered-asp-reasoning-search"
+positiveCommands = [
+  "asp org search owner docs/design.org items --query capability --workspace . --view seeds",
+  "/runtime/bin/asp rust search pipe HookDecision --workspace . --view seeds",
+  "asp typescript search pipe Effect --workspace . --view seeds",
+  "asp python search owner packages/python/project.py items --query policy --workspace . --view seeds",
+  "asp julia search pipe runtime --workspace . --view seeds",
+  "asp gerbil-scheme search owner src/main.ss items --query profile --workspace . --view seeds",
+  "asp md search pipe architecture --workspace . --view seeds",
+]
+negativeCommands = [
+  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --code",
+  "asp healthcheck",
+]
+
+[[rules]]
+id = "resident-testing-dispatch"
+positiveCommands = [
+  "cargo test -p agent-semantic-hook --lib",
+  "cargo check -p agent-semantic-hook",
+  "cargo build -p agent-semantic-hook",
+  "just test",
+  "rs-harness check --full .",
+  "uv run pytest tests/unit",
+  "pytest tests/unit",
+  "npm test",
+  "npm run test",
+  "pnpm test",
+  "pnpm run test",
+  "yarn test",
+  "bun test",
+  "julia --project=test",
+  "ctest",
+  "cmake --build build",
+  "gxpkg test",
+]
+negativeCommands = [
+  "cargo metadata --no-deps",
+  "cargo clippy -p agent-semantic-hook",
+  "cargo fmt --check",
+  "uv run python --version",
+  "uv run ruff check .",
+  "npm view",
+  "npm run lint",
+  "pnpm run lint",
+  "yarn lint",
+  "bun run lint",
+]
+
+[[rules]]
+id = "deny-raw-registered-source-search-action"
+positiveTools = [
+  { name = "command_execution", input = { commandActions = [{ type = "search", command = "rg -n -g '*.rs' HookDecision crates/agent-semantic-hook/src", query = "HookDecision", path = "crates/agent-semantic-hook/src" }] } },
+]
+negativeTools = [
+  { name = "command_execution", input = { commandActions = [{ type = "search", command = "rg HookDecision Cargo.lock", query = "HookDecision", path = "Cargo.lock" }] } },
+]
+wrapperExemption = "host search is a typed action; shell wrappers belong to deny-uncontrolled-source-search-commands"
+
+[[rules]]
+id = "deny-raw-registered-source-action"
+positiveCommands = [
+  "read crates/agent-semantic-hook/src/lib.rs",
+  "git show HEAD:crates/agent-semantic-hook/src/lib.rs",
+]
+negativeCommands = [
+  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --code",
+  "git mv old.rs new.rs",
+]
+
+[[rules]]
+id = "deny-agent-search-json"
+positiveCommands = ["asp healthcheck --json", "asp paths --json"]
+negativeCommands = ["asp healthcheck", "asp paths"]
+
+[[rules]]
+id = "materialize-apply-patch-policy"
+positiveTools = [
+  { name = "functions.apply_patch", input = { patch = "*** Begin Patch\n*** Update File: crates/agent-semantic-hook/src/lib.rs\n@@\n-old\n+new\n*** End Patch" } },
+]
+negativeTools = [
+  { name = "functions.exec_command", input = { cmd = "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --code" } },
+]
+wrapperExemption = "apply-patch is a typed host action, not a shell command"
+
+[[rules]]
+id = "materialize-registered-source-read-action"
+positiveTools = [
+  { name = "Read", input = { file_path = "crates/agent-semantic-hook/src/lib.rs" } },
+]
+negativeTools = [
+  { name = "Read", input = { file_path = "Cargo.lock" } },
+]
+wrapperExemption = "host read is a typed action, not a shell command"
+
+[[rules]]
+id = "materialize-source-access-policy"
+positiveCommands = [
+  "custom-runner Path('crates/agent-semantic-hook/src/lib.rs').read_text()",
+  "custom-runner read_to_string('crates/agent-semantic-hook/src/lib.rs')",
+]
+negativeCommands = [
+  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --code",
+]
+
+[[rules]]
+id = "deny-uncontrolled-source-search-commands"
+positiveCommands = ["rg HookDecision Cargo.lock", "git ls-files Cargo.lock"]
+negativeCommands = [
+  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --code",
+]
+
+[[rules]]
+id = "allow-bounded-json-projection"
+positiveCommands = [
+  "jq -r '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
+  "jq -c '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
+]
+negativeCommands = [
+  "jq . schemas/semantic-hook-match-scenario.v1.schema.json",
+  "jq '..' schemas/semantic-hook-match-scenario.v1.schema.json",
+]
+
+[[rules]]
+id = "allow-bounded-toml-projection"
+positiveCommands = [
+  "yq -p=toml '.rules[0].id' crates/agent-semantic-config/templates/hooks/config.toml",
+  "yq eval -p=toml '.rules[0].priority' crates/agent-semantic-config/templates/hooks/config.toml",
+]
+negativeCommands = [
+  "yq '.' crates/agent-semantic-config/templates/hooks/config.toml",
+]
+
+[[rules]]
+id = "deny-unbounded-structured-projection"
+positiveCommands = [
+  "jq . schemas/semantic-hook-match-scenario.v1.schema.json",
+  "yq '.' crates/agent-semantic-config/templates/hooks/config.toml",
+]
+negativeCommands = [
+  "jq -r '.properties.expected' schemas/semantic-hook-match-scenario.v1.schema.json",
+  "yq -p=toml '.rules[0].id' crates/agent-semantic-config/templates/hooks/config.toml",
+]
+
+[[rules]]
+id = "deny-uncontrolled-source-materialization-commands"
+positiveCommands = [
+  "cat crates/agent-semantic-hook/src/lib.rs",
+  "sed -n '1,20p' crates/agent-semantic-hook/src/lib.rs",
+  "jq . crates/agent-semantic-hook/src/provider_manifest.rs",
+]
+negativeCommands = ["cat Cargo.lock", "wc -l Cargo.lock"]
+
+[[rules]]
+id = "deny-uncontrolled-python-inline-source-materialization"
+positiveCommands = [
+  "python3 -c \"from pathlib import Path; Path('crates/agent-semantic-hook/src/lib.rs').read_text()\"",
+  "uv run python -c \"open('crates/agent-semantic-hook/src/lib.rs').read()\"",
+]
+negativeCommands = [
+  "python3 -c \"from pathlib import Path; Path('Cargo.lock').read_text()\"",
+]
+
+[[rules]]
+id = "deny-uncontrolled-javascript-inline-source-materialization"
+positiveCommands = [
+  "node -e \"require('fs').readFileSync('crates/agent-semantic-hook/src/lib.rs','utf8')\"",
+  "bun -e \"Bun.file('crates/agent-semantic-hook/src/lib.rs').text()\"",
+]
+negativeCommands = [
+  "node -e \"require('fs').readFileSync('Cargo.lock','utf8')\"",
+]
+
+[[rules]]
+id = "deny-uncontrolled-git-source-reads"
+positiveCommands = ["git diff --check", "git show HEAD"]
+negativeCommands = ["git mv old.rs new.rs", "git status --short"]

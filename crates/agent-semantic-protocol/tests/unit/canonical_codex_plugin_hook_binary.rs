@@ -1,6 +1,6 @@
 use super::{
-    render_codex_plugin_hooks_json, validate_codex_plugin_hooks_manifest,
-    ASP_CODEX_PLUGIN_HOOKS_JSON,
+    ASP_CODEX_PLUGIN_HOOKS_JSON, render_codex_plugin_hooks_json,
+    validate_codex_plugin_hooks_manifest,
 };
 
 #[test]

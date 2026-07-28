@@ -841,12 +841,34 @@ fn source_index_import_assembly_uses_turso_ready_contract_rows() {
     let src = root.join("src");
     std::fs::create_dir_all(&src).expect("create src dir");
     let lib = src.join("lib.rs");
-    std::fs::write(&lib, "pub fn turso_source_index_fixture() {}\n").expect("write source");
+    let source = b"pub fn turso_source_index_fixture() {}\n";
+    std::fs::write(&lib, source).expect("write source");
+    let selector = "rust://src/lib.rs#item/function/turso_source_index_fixture";
     let scope_file = ClientDbSourceIndexScopeFile {
         path: lib.clone(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
-        selector_receipts: Vec::new(),
+        selector_receipts: vec![agent_semantic_client_db::ClientDbSourceIndexSelector {
+            owner_path: "src/lib.rs".into(),
+            selector_id: selector.into(),
+            symbol: Some("turso_source_index_fixture".into()),
+            kind: Some("function".into()),
+            source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+            query_keys: vec!["turso_source_index_fixture".into()],
+            materialization_proof: crate::materialization_fixture::materialization_proof(
+                crate::materialization_fixture::MaterializationFixtureInput {
+                    language_id: "rust",
+                    provider_id: "rs-harness",
+                    owner_path: "src/lib.rs",
+                    structural_selector: selector,
+                    item_kind: "function",
+                    item_name: "turso_source_index_fixture",
+                    source,
+                    source_byte_start: 0,
+                    source_byte_end: source.len() as u64,
+                },
+            ),
+        }],
     };
 
     let import = agent_semantic_client_db::assemble_source_index_import(

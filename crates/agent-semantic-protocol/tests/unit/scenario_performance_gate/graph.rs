@@ -380,11 +380,28 @@ pub(super) fn asp_graph_owner_rank_cold_functional_path_stays_inside_scenario_ga
         "b".repeat(64),
     );
     let started_at = Instant::now();
+    let workspace_generation =
+        agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1::new(
+            agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
+                root_digest: source_snapshot.root_digest.clone(),
+                root_depth: 1,
+                leaf_count: source_snapshot.leaf_count as u64,
+                owner_count: source_snapshot.leaf_count as u64,
+            },
+        )
+        .expect("performance fixture should describe one complete indexed generation");
+    let admitted_generation =
+        agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1::admit(
+            &source_snapshot,
+            &workspace_generation,
+            &workspace_generation,
+        )
+        .expect("performance fixture generation should match its source snapshot");
     let ranked = agent_semantic_search::ranked_graph_owner_paths_for_submodule_paths(
         &candidates,
         &query_terms,
         &submodule_paths,
-        &source_snapshot,
+        &admitted_generation,
     );
     let elapsed = started_at.elapsed();
     let elapsed_ms = elapsed.as_millis();

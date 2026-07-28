@@ -29,6 +29,14 @@ pub const SEARCH_SOURCE_INDEX_COLD_REQUIRED_SCENARIO_ID: &str =
 pub const SEARCH_SOURCE_INDEX_READ_ONLY_CLIENT_DB_SCENARIO_ID: &str =
     "search-source-index-read-only-client-db-zero-write";
 
+/// Merkle-qualified live-memory code search must never open Turso on the warm path.
+pub const CODE_SEARCH_MERKLE_MEMORY_WARM_PATH_SCENARIO_ID: &str =
+    "code-search-merkle-memory-warm-path";
+
+/// Merkle-qualified code search over one resident Turso 0.7 read session.
+pub const CODE_SEARCH_TURSO_RESIDENT_SESSION_WARM_PATH_SCENARIO_ID: &str =
+    "code-search-turso-resident-session-warm-path";
+
 /// GraphRouter next-action policy for selector-ready evidence.
 pub const SEARCH_GRAPH_ROUTER_NEXT_EXACT_ACTION_SCENARIO_ID: &str =
     "search-graph-router-next-exact-action";
@@ -173,6 +181,52 @@ pub fn asp_search_scenario_package() -> AspRustProjectHarnessScenarioPackage {
                             "--test",
                             "unit_test",
                             "db_engine_source_index_lookup_succeeds_without_client_dir_write_permission",
+                            "--",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: CODE_SEARCH_MERKLE_MEMORY_WARM_PATH_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Merkle-qualified live-memory code search stays below one millisecond p95 without opening Turso or starting providers.",
+                fixture_root: "crates/agent-semantic-client-db/tests/unit/scenarios/code_search_merkle_memory_warm_path",
+                tags: ["search", "code-search", "performance", "merkle", "memory", "turso"],
+                commands: [
+                    {
+                        label: "merkle-memory-warm-path-gate",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-client-db",
+                            "--test",
+                            "performance_test",
+                            "code_search_merkle_memory_warm_path_is_a_strong_gate",
+                            "--",
+                            "--nocapture",
+                        ]
+                    },
+                ],
+            ),
+            crate::asp_rust_project_harness_scenario!(
+                name: CODE_SEARCH_TURSO_RESIDENT_SESSION_WARM_PATH_SCENARIO_ID,
+                package: ASP_SEARCH_SCENARIO_PACKAGE_NAME,
+                description: "Merkle-qualified code search reuses one resident Turso 0.7 read session without reconnecting or starting providers.",
+                fixture_root: "crates/agent-semantic-client-db/tests/unit/scenarios/code_search_turso_resident_session_warm_path",
+                tags: ["search", "code-search", "performance", "merkle", "turso", "resident-session"],
+                commands: [
+                    {
+                        label: "turso-resident-session-warm-path-gate",
+                        argv: [
+                            "cargo",
+                            "test",
+                            "-p",
+                            "agent-semantic-client-db",
+                            "--test",
+                            "performance_test",
+                            "code_search_turso_resident_session_warm_path_is_a_strong_gate",
                             "--",
                             "--nocapture",
                         ]

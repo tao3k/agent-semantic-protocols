@@ -442,7 +442,7 @@ fn materialize_smoke_rust_provider(
         .into_iter()
         .find(|manifest| manifest.language_id().as_str() == "rust")
         .ok_or_else(|| "registered Rust provider manifest is missing".to_string())?;
-    let lock_dir = smoke_state_home.join("runtime/provider-locks");
+    let lock_dir = agent_semantic_runtime::provider_receipt_dir(&smoke_state_home);
     std::fs::create_dir_all(&lock_dir)
         .map_err(|error| format!("create smoke provider lock registry: {error}"))?;
     std::fs::write(

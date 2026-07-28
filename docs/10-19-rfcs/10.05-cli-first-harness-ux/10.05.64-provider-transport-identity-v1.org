@@ -1,0 +1,44 @@
+#+title: 10.05.64 Provider Transport Identity v1
+#+options: toc:2
+
+* Status
+
+Proposed for immediate P0 implementation.
+
+* Problem
+
+ASP provider transport may carry =--asp-provider-id= as an execution identity
+proof.  A protocol process must not append that flag to a provider command
+unless the receiving provider entrypoint consumes and validates it.  Otherwise
+an exact query fails before parser-owned resolution with an unknown-option
+error.
+
+* v1 Rule
+
+Provider transport identity is a control-plane field, not a search term and not
+a compatibility option.
+
+- ASP derives the expected provider id from the activated provider receipt.
+- The provider entrypoint consumes the identity flag before passing remaining
+  arguments to its public query parser.
+- The provider rejects missing values, duplicate identity flags, non-UTF-8
+  values, and identity drift.
+- The consumed identity is not forwarded into language query parsing.
+- Request and response provider ids must equal the activated provider id.
+
+The same identity semantics apply to native exact and native incremental owner
+transports.  Provider implementations should share one identity parser rather
+than independently weakening validation.
+
+* Gates
+
+Each provider declaring a transport that carries the identity proof MUST test:
+
+- matching identity is consumed exactly once
+- mismatched identity fails before parser execution
+- duplicate identity fails before parser execution
+- public query arguments are unchanged after identity consumption
+- installed ASP exact projection succeeds through the active provider artifact
+
+An unknown-option recovery, silent flag removal, or retry without identity is
+Legacy and MUST NOT exist.

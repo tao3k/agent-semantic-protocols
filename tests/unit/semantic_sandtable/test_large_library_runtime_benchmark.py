@@ -30,9 +30,14 @@ from tools.semantic_sandtable.large_library_runtime_types import Corpus
 
 
 _ROOT = Path(__file__).resolve().parents[3]
-_SCHEMA = _ROOT / "schemas/semantic-sandtable-large-library-runtime-benchmark.v1.schema.json"
-_CORPUS_SCHEMA = _ROOT / "schemas/semantic-sandtable-large-library-corpora.v1.schema.json"
+_SCHEMA = (
+    _ROOT / "schemas/semantic-sandtable-large-library-runtime-benchmark.v1.schema.json"
+)
+_CORPUS_SCHEMA = (
+    _ROOT / "schemas/semantic-sandtable-large-library-corpora.v1.schema.json"
+)
 _CORPUS_MANIFEST = _ROOT / "benchmarks/large-library-runtime-corpora.v1.json"
+_PROVIDER_REGISTRY = _ROOT / "schemas/semantic-language-registry.providers.v1.json"
 
 
 def test_runtime_benchmark_rejects_missing_release_binary_and_corpora(
@@ -41,7 +46,7 @@ def test_runtime_benchmark_rejects_missing_release_binary_and_corpora(
     receipt = run_large_library_runtime_benchmark(
         _ROOT,
         asp_binary=tmp_path / "missing-asp",
-        corpus_root=tmp_path / "corpora",
+        state_home=tmp_path / "state",
     )
 
     Draft202012Validator(json.loads(_SCHEMA.read_text(encoding="utf-8"))).validate(
@@ -59,7 +64,7 @@ def test_runtime_benchmark_rejects_missing_release_binary_and_corpora(
         "missingMethods": [],
         "missingCorpusMethods": [],
     }
-    assert len(receipt["missingCorpora"]) == 14
+    assert len(receipt["missingCorpora"]) == 17
     assert {entry["repository"] for entry in receipt["missingCorpora"]} >= {
         "JuliaData/DataFrames.jl",
         "fastapi/fastapi",
@@ -68,7 +73,9 @@ def test_runtime_benchmark_rejects_missing_release_binary_and_corpora(
     }
 
 
-def test_runtime_benchmark_uses_provider_template_through_public_language_facade() -> None:
+def test_runtime_benchmark_uses_provider_template_through_public_language_facade() -> (
+    None
+):
     invocation = benchmark_command_from_descriptor(
         {
             "method": "search/lexical",
@@ -89,7 +96,12 @@ def test_runtime_benchmark_uses_provider_template_through_public_language_facade
             },
         },
         "python",
-        {"workspace": "/tmp/python-large", "owner": "pkg/router.py", "query": "router", "dependency": "pydantic"},
+        {
+            "workspace": "/tmp/python-large",
+            "owner": "pkg/router.py",
+            "query": "router",
+            "dependency": "pydantic",
+        },
     )
 
     assert invocation.command == [
@@ -131,9 +143,13 @@ def test_runtime_benchmark_executes_fd_as_an_independent_path_stage(
         fake_run,
     )
     corpus = Corpus(
+        resource_id="rust.runtime-fd-stage",
         scenario_id="runtime-fd-stage",
+        provider_id="rs-harness",
         language="rust",
         repository="example/runtime-fd-stage",
+        remote="https://github.com/example/runtime-fd-stage.git",
+        revision="1111111111111111111111111111111111111111",
         directory="runtime-fd-stage",
         environment="ASP_RUNTIME_FD_STAGE",
         inputs={"owner": "src/lib.rs", "query": "worker-count", "dependency": "tokio"},
@@ -158,11 +174,20 @@ def test_runtime_benchmark_executes_fd_as_an_independent_path_stage(
 def test_runtime_corpus_manifest_has_all_unique_real_library_targets() -> None:
     manifest = json.loads(_CORPUS_MANIFEST.read_text(encoding="utf-8"))
 
-    Draft202012Validator(json.loads(_CORPUS_SCHEMA.read_text(encoding="utf-8"))).validate(
-        manifest
-    )
+    Draft202012Validator(
+        json.loads(_CORPUS_SCHEMA.read_text(encoding="utf-8"))
+    ).validate(manifest)
     corpora = manifest["corpora"]
-    assert len(corpora) == 14
+    assert len(corpora) == 17
+    assert all(len(entry["git"]["revision"]) == 40 for entry in corpora)
+    assert {entry["providerId"] for entry in corpora} == {
+        "julia-lang-project-harness",
+        "gerbil-scheme-harness",
+        "orgize",
+        "py-harness",
+        "rs-harness",
+        "ts-harness",
+    }
     assert {entry["repository"] for entry in corpora} == {
         "JuliaData/DataFrames.jl",
         "FluxML/Flux.jl",
@@ -178,7 +203,16 @@ def test_runtime_corpus_manifest_has_all_unique_real_library_targets() -> None:
         "microsoft/playwright",
         "vitejs/vite",
         "vuejs/core",
+        "mighty-gerbils/gerbil",
+        "bzg/worg",
+        "mdn/content",
     }
+    registry = json.loads(_PROVIDER_REGISTRY.read_text(encoding="utf-8"))
+    registered = {
+        entry["languageId"]: entry["providerId"] for entry in registry["languages"]
+    }
+    locked = {entry["language"]: entry["providerId"] for entry in corpora}
+    assert locked == registered
 
 
 def test_runtime_workspace_deployment_uses_release_install_command(
@@ -189,7 +223,9 @@ def test_runtime_workspace_deployment_uses_release_install_command(
 
     def fake_run(command: list[str], **kwargs: object) -> object:
         calls.append({"command": command, **kwargs})
-        return type("Completed", (), {"returncode": 0, "stdout": "installed", "stderr": ""})()
+        return type(
+            "Completed", (), {"returncode": 0, "stdout": "installed", "stderr": ""}
+        )()
 
     monkeypatch.setattr(
         "tools.semantic_sandtable.large_library_runtime_deployment.subprocess.run",

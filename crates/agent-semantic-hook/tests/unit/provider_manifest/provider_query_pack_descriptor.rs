@@ -222,6 +222,7 @@ fn activation_rejects_search_capabilities_drift() {
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
     let mut activation = agent_semantic_hook::HookActivation {
+        rankers: Vec::new(),
         schema_id: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
         schema_authority: agent_semantic_hook::CANONICAL_SCHEMA_AUTHORITY.to_string(),
@@ -284,6 +285,7 @@ fn activation_rejects_semantic_facts_descriptor_drift() {
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("provider routes");
     let mut activation = agent_semantic_hook::HookActivation {
+        rankers: Vec::new(),
         schema_id: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
         schema_authority: agent_semantic_hook::CANONICAL_SCHEMA_AUTHORITY.to_string(),

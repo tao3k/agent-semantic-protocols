@@ -187,6 +187,33 @@ impl ClientDbEngineReport {
 pub struct ClientDbEngineReadSession {
     pub(super) turso_db_path: PathBuf,
     pub(super) turso_connection: std::sync::Arc<turso::Connection>,
+    pub(super) source_index_scope_cache: std::sync::Arc<
+        tokio::sync::RwLock<
+            Option<(
+                String,
+                String,
+                super::source_index_candidate_types::TursoSourceIndexLookupScope,
+                agent_semantic_content_identity::SourceSnapshotEvidence,
+            )>,
+        >,
+    >,
+    pub(super) source_index_query_cache: std::sync::Arc<
+        [parking_lot::Mutex<
+            std::collections::HashMap<
+                ClientDbEngineSourceIndexQueryCacheKey,
+                crate::ClientDbSourceIndexLookupResult,
+            >,
+        >],
+    >,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(super) struct ClientDbEngineSourceIndexQueryCacheKey {
+    pub(super) snapshot_root: String,
+    pub(super) artifact_digest: String,
+    pub(super) query: String,
+    pub(super) language_id: Option<String>,
+    pub(super) limit: u32,
 }
 
 /// DB Engine write session over the active Turso adapter.
@@ -305,6 +332,11 @@ impl ClientDbEngine {
         Ok(Some(ClientDbEngineReadSession {
             turso_db_path,
             turso_connection: std::sync::Arc::new(turso_connection),
+            source_index_scope_cache: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
+            source_index_query_cache: (0..16)
+                .map(|_| parking_lot::Mutex::new(std::collections::HashMap::new()))
+                .collect::<Vec<_>>()
+                .into(),
         }))
     }
 

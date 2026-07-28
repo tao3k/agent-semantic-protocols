@@ -45,6 +45,7 @@ pub(crate) fn record() -> ExactSelectorProjectionRecordV1 {
         &projection_payload,
     );
     ExactSelectorProjectionRecordV1 {
+        source_byte_range: 0..16,
         proof: serde_json::from_value(serde_json::json!({
             "canonicalItemSelector": agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
                 agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new(

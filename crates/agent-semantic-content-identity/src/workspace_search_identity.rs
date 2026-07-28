@@ -261,9 +261,7 @@ fn require_absolute(
     }
 }
 
-fn normalize_absolute_path_v1(
-    path: &Path,
-) -> Result<PathBuf, WorkspaceSearchIdentityErrorV1> {
+fn normalize_absolute_path_v1(path: &Path) -> Result<PathBuf, WorkspaceSearchIdentityErrorV1> {
     require_absolute("path", path)?;
     let mut normalized = PathBuf::new();
     for component in path.components() {
@@ -431,9 +429,8 @@ mod tests {
 
     #[test]
     fn relative_package_root_cannot_escape_workspace() {
-        let error =
-            resolve_workspace_member_root_v1(Path::new("/repo"), Path::new("../other"))
-                .expect_err("workspace escape");
+        let error = resolve_workspace_member_root_v1(Path::new("/repo"), Path::new("../other"))
+            .expect_err("workspace escape");
         assert!(matches!(
             error,
             WorkspaceSearchIdentityErrorV1::PackageRootOutsideWorkspace { .. }

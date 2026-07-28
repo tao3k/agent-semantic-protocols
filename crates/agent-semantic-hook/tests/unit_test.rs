@@ -29,6 +29,8 @@ mod event_state_subagent_model_drift;
 #[path = "unit/provider_manifest/mod.rs"]
 mod provider_manifest;
 
+#[path = "unit/match_policy_contract.rs"]
+mod match_policy_contract;
 #[path = "unit/rust_harness_activation/mod.rs"]
 mod rust_harness_activation;
 #[path = "unit/rust_project_harness_gate.rs"]

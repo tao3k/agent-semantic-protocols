@@ -183,6 +183,117 @@ fn provider_source_scope_manifest_fallback_collects_config_and_source_files() {
 }
 
 #[test]
+fn provider_id_query_ignores_unrelated_provider_scope_gaps() {
+    let root = temp_root("provider-id-source-scope");
+    std::fs::create_dir_all(root.join("src")).expect("create source dir");
+    std::fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write source fixture");
+
+    let mut rust = provider();
+    rust.source_roots = vec!["src".to_string()];
+    rust.source_extensions = vec!["rs".to_string()];
+    let mut unrelated = provider();
+    unrelated.language_id = "gerbil-scheme".into();
+    unrelated.provider_id = "gerbil-scheme-harness".into();
+    unrelated.source_roots = vec!["missing-gerbil-source".to_string()];
+    unrelated.source_extensions = vec!["ss".to_string()];
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join("registry.json"),
+        providers: vec![rust, unrelated],
+    };
+
+    let files = crate::collect_target_provider_source_scope_files_by_provider_id(
+        &root,
+        &snapshot,
+        &"rs-harness".into(),
+        16,
+    )
+    .expect("collect target provider by provider id");
+
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].provider_id.as_str(), "rs-harness");
+    assert_eq!(files[0].language_id.as_str(), "rust");
+    assert_eq!(
+        files[0].path.strip_prefix(&root).expect("workspace path"),
+        std::path::Path::new("src/lib.rs")
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn language_provider_query_ignores_unrelated_provider_scope_gaps() {
+    let root = temp_root("language-provider-source-scope");
+    std::fs::create_dir_all(root.join("src")).expect("create source dir");
+    std::fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write source fixture");
+
+    let mut rust = provider();
+    rust.source_roots = vec!["src".to_string()];
+    rust.source_extensions = vec!["rs".to_string()];
+    let mut unrelated = provider();
+    unrelated.language_id = "gerbil-scheme".into();
+    unrelated.provider_id = "gerbil-scheme-harness".into();
+    unrelated.source_roots = vec!["missing-gerbil-source".to_string()];
+    unrelated.source_extensions = vec!["ss".to_string()];
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join("registry.json"),
+        providers: vec![rust, unrelated],
+    };
+
+    let files = crate::collect_target_provider_source_scope_files(
+        &root,
+        &snapshot,
+        &"rust".into(),
+        &"rs-harness".into(),
+        16,
+    )
+    .expect("collect target language provider");
+
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].provider_id.as_str(), "rs-harness");
+    assert_eq!(files[0].language_id.as_str(), "rust");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn provider_id_query_fails_closed_when_requested_provider_is_missing() {
+    let root = temp_root("missing-provider-id-source-scope");
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join("registry.json"),
+        providers: vec![provider()],
+    };
+
+    let error = crate::collect_target_provider_source_scope_files_by_provider_id(
+        &root,
+        &snapshot,
+        &"gerbil-scheme-harness".into(),
+        16,
+    )
+    .expect_err("missing requested provider must fail closed");
+
+    assert!(error.contains("providerId=gerbil-scheme-harness"));
+}
+
+#[test]
+fn language_provider_query_fails_closed_when_requested_language_is_missing() {
+    let root = temp_root("missing-language-source-scope");
+    let snapshot = ProviderRegistrySnapshot {
+        activation_path: root.join("registry.json"),
+        providers: vec![provider()],
+    };
+
+    let error = crate::collect_target_provider_source_scope_files(
+        &root,
+        &snapshot,
+        &"gerbil-scheme".into(),
+        &"rs-harness".into(),
+        16,
+    )
+    .expect_err("missing requested language must fail closed");
+
+    assert!(error.contains("languageId=gerbil-scheme"));
+    assert!(error.contains("providerId=rs-harness"));
+}
+
+#[test]
 fn provider_source_scope_workspace_scope_timeout_falls_back_to_manifest() {
     let root = temp_root("provider-source-scope-timeout");
     std::fs::create_dir_all(root.join("src")).expect("create source dir");

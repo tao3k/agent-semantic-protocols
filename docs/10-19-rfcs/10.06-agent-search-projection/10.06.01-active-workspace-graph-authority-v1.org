@@ -1,0 +1,91 @@
+#+title: Active Workspace Generation Authority for Graph Search v1
+#+startup: overview
+
+* Status
+
+P0 implementation contract.
+
+* Problem
+
+A valid source snapshot is not proof that a graph represents the active
+workspace.  A filesystem or search overlay can contain only one package, carry
+a valid digest, and still omit most owners and relations.  Ranking such an
+overlay produces plausible but wrong owner and caller routes.  The observed
+=package-drift= packet with a 19-leaf snapshot is this failure mode.
+
+Timeouts and fallback search do not repair the graph.  They only hide that the
+router admitted a fragment as generation authority.
+
+* v1 invariant
+
+Every graph candidate set MUST carry the canonical
+=WorkspaceGenerationEvidenceV1= that produced it.  Before ranking or rendering,
+the router MUST prove all of the following against the active artifact receipt:
+
+- generation root digest is identical;
+- root depth is identical and belongs to ={1,0}=; depth one selects the stable
+  indexed/Merkle projection, while depth zero selects the high-change active
+  load-once Memory Search projection so an agent can retain structural search
+  capability without bias from a stale materialized index;
+- leaf and owner coverage satisfy the published complete-generation receipt;
+- graph topology, exact-selector fixture, and source owners are leaves of the
+  same active generation;
+- package-local overlays may contribute untrusted discovery hints, but MUST NOT
+  become graph authority.
+
+The generation evidence is mandatory in the shared Search acquisition
+contract.  It is not an optional provider field and must not be reconstructed
+from argv, paths, filesystem state, or a provider-private cache.
+
+* Failure contract
+
+An absent, stale, partial, or root-mismatched generation fails closed before
+rank:
+
+#+begin_example
+state=cold-required
+reasonKind=active-workspace-generation-required
+#+end_example
+
+or:
+
+#+begin_example
+state=generation-mismatch
+reasonKind=graph-generation-not-active
+#+end_example
+
+The receipt must name the active root, candidate root, depth, leaf count, owner
+count, and the publication action required.  It must be emitted within the
+scenario performance budget.  The router must never replace it with
+=package-drift= ranking, filesystem overlay authority, raw source search, or an
+unbounded resident retry.
+
+* Atomic publication
+
+Source-owner facts, topology relations, exact-selector projection records, and
+their generation evidence are validated first and then published in one atomic
+generation transition.  Readers acquire one immutable active receipt and use it
+for the complete request.  Mixed-generation reads are invalid.
+
+Validation occurs once at publication or resident load.  The query hot path
+consumes a =ValidatedWorkspaceGenerationV1= and performs only generation
+identity admission; it must not re-open the DB or repeat full receipt
+validation for every graph query.
+
+The graph-turbo request packet carries both =sourceSnapshot= and mandatory
+=workspaceGeneration=.  A snapshot-only request is invalid even when its root
+digest is syntactically valid.
+
+* Performance gate
+
+Fixtures cover:
+
+- incomplete overlay rejected before graph rank;
+- active-root mismatch rejected before graph rank;
+- complete generation routes owner and caller facts;
+- moved owner and tombstone are observed in the same generation transition;
+- cold admission and warm lookup both satisfy the repository millisecond gate;
+- concurrent readers observe one generation and perform no DB opens, manifest
+  writes, provider subprocesses, or source-byte reads on the warm path.
+
+Passing a unit assertion without the receipt and timing evidence is not closure.

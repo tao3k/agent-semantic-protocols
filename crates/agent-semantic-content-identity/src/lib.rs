@@ -85,11 +85,14 @@ pub use exact_selector_generation_fixture::{
     ExactSelectorMaterializationProofV1, ExactSelectorMerkleProofSideV1,
     ExactSelectorMerkleProofStepV1, ExactSelectorProjectionModeV1,
 };
+pub mod callable_skeleton_projection;
 pub mod exact_selector_merkle;
 pub mod exact_selector_projection_packet;
+pub mod exact_structural_selector;
 #[cfg(test)]
 #[path = "../tests/unit/overlay.rs"]
 mod overlay_tests;
+pub mod workspace_generation_evidence;
 pub mod workspace_merkle_v1;
 pub mod workspace_search_identity;
 extern crate self as agent_semantic_content_identity;

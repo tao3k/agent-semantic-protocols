@@ -140,6 +140,8 @@ impl From<&str> for ProviderRuntimeMethod {
 }
 
 /// Stable runtime storage identity propagated across provider invocations.
+/// Persisted summary of one provider execution.
+/// Persisted summary of one provider execution.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderRuntimeStorageContext {
@@ -152,6 +154,7 @@ pub struct ProviderRuntimeStorageContext {
     pub(crate) invocation_id: String,
 }
 
+/// Persisted summary of one provider execution.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderExecutionStorageEvent {
@@ -165,6 +168,7 @@ pub struct ProviderExecutionStorageEvent {
     pub(crate) root_session_id: String,
 }
 
+/// Unpersisted provider execution fields used to construct a storage event.
 pub struct ProviderExecutionStorageEventInput<'a, Phase, Method, Language, RootSession> {
     pub phase: Phase,
     pub provider_method: Method,
@@ -199,6 +203,7 @@ impl ProviderExecutionStorageEvent {
     }
 }
 
+/// Storage adapter that applies provider-runtime transaction and retry policy.
 #[derive(Clone)]
 pub struct ProviderRuntimeStorageAdapter {
     storage: Arc<dyn AgentStorage>,
@@ -207,6 +212,7 @@ pub struct ProviderRuntimeStorageAdapter {
     retry_policy: StorageRetryPolicy,
 }
 
+/// Bound provider storage adapter and its stable runtime identity.
 #[derive(Clone)]
 pub struct ProviderRuntimeStorageBinding {
     pub adapter: ProviderRuntimeStorageAdapter,
@@ -219,6 +225,10 @@ impl ProviderRuntimeStorageBinding {
     /// Manual CLI use without one unambiguous agent session remains supported
     /// and explicitly skips lifecycle persistence.
     pub fn from_current_runtime(project_root: impl AsRef<Path>) -> Result<Option<Self>, String> {
+        Self::from_current_runtime_inner(project_root)
+    }
+
+    fn from_current_runtime_inner(project_root: impl AsRef<Path>) -> Result<Option<Self>, String> {
         let Some(runtime_session) = agent_semantic_runtime::current_agent_runtime_session() else {
             return Ok(None);
         };
@@ -266,6 +276,15 @@ impl ProviderRuntimeStorageBinding {
     /// embedders that already resolved runtime identity without environment
     /// probing.
     pub fn from_runtime_identity(
+        project_root: impl AsRef<Path>,
+        client: impl Into<ProviderRuntimeClientId>,
+        session_id: impl Into<ProviderRuntimeSessionId>,
+        root_session_id: impl Into<ProviderRuntimeRootSessionId>,
+    ) -> Result<Self, String> {
+        Self::from_runtime_identity_inner(project_root, client, session_id, root_session_id)
+    }
+
+    fn from_runtime_identity_inner(
         project_root: impl AsRef<Path>,
         client: impl Into<ProviderRuntimeClientId>,
         session_id: impl Into<ProviderRuntimeSessionId>,

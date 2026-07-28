@@ -17,6 +17,7 @@ pub use codex_app_server_sessions::codex_app_server_child_session_metadata;
 mod git;
 mod graph_render;
 pub mod language_owner_items;
+mod live_corpus;
 mod runtime_source;
 pub mod state;
 pub mod state_core;
@@ -59,6 +60,15 @@ pub use language_owner_items::{
     read_language_owner_items_cache, resolve_language_owner_items_runtime_outcome,
     run_language_owner_items_dispatch_plan, write_language_owner_items_cache,
 };
+pub use live_corpus::{
+    LIVE_CORPUS_ARTIFACT_SCHEMA_ID, LIVE_CORPUS_ARTIFACT_SCHEMA_VERSION,
+    LiveCorpusArtifactGitIdentityV1, LiveCorpusArtifactIdentity, LiveCorpusArtifactManifestV1,
+    LiveCorpusArtifactPaths, LiveCorpusGitCheckoutQualification, LiveCorpusGitCheckoutSync,
+    LiveCorpusGitRepositoryPaths, LiveCorpusLanguageExtensionEvidenceV1,
+    live_corpus_artifact_manifest, live_corpus_artifact_paths, live_corpus_git_checkout_is_clean,
+    live_corpus_git_repository_paths, live_corpus_lock_digest, qualify_live_corpus_git_checkout,
+    qualify_live_corpus_language_extensions, sync_live_corpus_git_checkout,
+};
 pub use runtime_source::{
     RuntimeSourceCheckout, RuntimeSourceIndexContext, RuntimeSourceIndexContextRequest,
     RuntimeSourceIndexFile, RuntimeSourceIndexFilesRequest,
@@ -71,10 +81,12 @@ pub use state::{
     ProjectRuntimeState, ProjectStatePaths, ensure_project_artifacts_dir,
     ensure_project_client_cache_dir, ensure_project_hook_cache_dir, ensure_project_hook_state_dir,
     ensure_project_provider_bin_dir, ensure_project_provider_lock_dir, ensure_project_runtime_home,
-    project_activation_path, project_cache_home, project_cache_home_for_roots,
-    project_protocol_home_path, project_runtime_state, project_runtime_state_with_state_home,
-    project_state_paths, project_state_paths_with_state_home, runtime_bin_dir_for_cache_home,
+    project_activation_path, project_protocol_home_path, project_runtime_state,
+    project_runtime_state_with_state_home, project_state_paths,
+    project_state_paths_with_state_home, provider_package_dir, provider_receipt_dir,
+    provider_state_root,
 };
+pub use state_core::resolve_state_home;
 pub use timeout_policy::{
     RuntimeOperationTimeoutPolicy, RuntimeOperationTimeoutReceipt,
     runtime_operation_timeout_receipt,

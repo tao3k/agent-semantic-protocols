@@ -70,6 +70,7 @@ fn arbitrary_wrapper_with_inferred_read_effect_matches_registered_source_pattern
 #[test]
 fn structured_query_program_is_not_projected_as_a_shell_subject() {
     let registry = HookRuntime {
+        rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: Vec::new(),
     };
@@ -108,6 +109,7 @@ fn structured_query_program_is_not_projected_as_a_shell_subject() {
 #[test]
 fn slash_operator_does_not_create_path_authority() {
     let registry = HookRuntime {
+        rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: Vec::new(),
     };
@@ -141,6 +143,7 @@ fn slash_operator_does_not_create_path_authority() {
 #[test]
 fn registered_source_path_remains_a_typed_shell_subject() {
     let registry = HookRuntime {
+        rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: Vec::new(),
     };

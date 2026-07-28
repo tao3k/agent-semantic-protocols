@@ -12,27 +12,156 @@ use agent_semantic_content_identity::exact_selector_generation_fixture::{
 };
 use agent_semantic_content_identity::workspace_search_identity::WorkspaceSearchIdentityV1;
 use agent_semantic_search::exact_selector_generation_fixture::{
-    ExactSelectorGenerationMemorySearchV1,
-    publish_immutable_exact_selector_generation_fixture_v1,
+    ExactSelectorGenerationMemorySearchV1, publish_immutable_exact_selector_generation_fixture_v1,
 };
 
 use super::CurrentSourceIndexSnapshot;
 
 static GENERATION_TRANSACTION_ID: AtomicU64 = AtomicU64::new(0);
 
-/// Typed inputs required to publish one complete source-index generation.
-pub struct CompleteSourceIndexGenerationPublicationV1<'a> {
+/// Typed inputs for publishing one ordinary target-provider source envelope.
+pub struct TargetProviderSourceEnvelopePublicationRequestV1<'a> {
+    pub collection_scope: super::collect::SourceIndexCollectionScopeV1,
+    pub provider_registry: &'a agent_semantic_client_core::ProviderRegistrySnapshot,
+    pub artifact_root: &'a Path,
+    pub project_root: &'a Path,
+}
+
+/// Publish one provider-scoped source envelope without opening a complete
+/// workspace generation transaction.
+pub fn publish_target_provider_source_envelope_v1(
+    publication: TargetProviderSourceEnvelopePublicationRequestV1<'_>,
+) -> Result<PathBuf, String> {
+    let requested_provider = match &publication.collection_scope {
+        super::collect::SourceIndexCollectionScopeV1::TargetProvider {
+            language_id,
+            provider_id,
+        } => publication
+            .provider_registry
+            .providers
+            .iter()
+            .find(|provider| {
+                &provider.language_id == language_id && &provider.provider_id == provider_id
+            })
+            .ok_or_else(|| {
+                format!(
+                    "requested target provider is not registered: languageId={} providerId={}",
+                    language_id, provider_id
+                )
+            })?,
+        super::collect::SourceIndexCollectionScopeV1::TargetProviderId { provider_id } => {
+            let mut matches = publication
+                .provider_registry
+                .providers
+                .iter()
+                .filter(|provider| &provider.provider_id == provider_id);
+            let requested_provider = matches.next().ok_or_else(|| {
+                format!("requested target provider is not registered: providerId={provider_id}")
+            })?;
+            if matches.next().is_some() {
+                return Err(format!(
+                    "requested target provider id is ambiguous: providerId={provider_id}"
+                ));
+            }
+            requested_provider
+        }
+        super::collect::SourceIndexCollectionScopeV1::CompleteGeneration => {
+            return Err(
+                "target-provider source envelope publication requires target-provider collection scope"
+                    .to_owned(),
+            );
+        }
+    };
+    let snapshot = super::api::fresh_target_provider_source_index_snapshot_with_registry(
+        publication.project_root,
+        &requested_provider.language_id,
+        &requested_provider.provider_id,
+        &publication.collection_scope,
+        publication.provider_registry,
+    )?;
+    let normalized_extensions = requested_provider
+        .source_extensions
+        .iter()
+        .map(|extension| extension.trim_start_matches('.').to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    let provider_owner_count = snapshot
+        .source_blobs
+        .iter()
+        .filter(|(path, _)| {
+            normalized_extensions.is_empty()
+                || Path::new(path)
+                    .extension()
+                    .map(|extension| extension.to_string_lossy().to_ascii_lowercase())
+                    .is_some_and(|extension| normalized_extensions.contains(&extension))
+        })
+        .count();
+    if provider_owner_count == 0 {
+        return Err(format!(
+            "target-provider source envelope publication has no provider owners: reason=owners-empty languageId={} providerId={}",
+            requested_provider.language_id, requested_provider.provider_id
+        ));
+    }
+    let immutable_envelope = super::publish_provider_source_snapshot_envelope(
+        super::ProviderSourceSnapshotEnvelopePublicationV1 {
+            snapshot: &snapshot,
+            provider_id: requested_provider.provider_id.as_str(),
+            source_extensions: &requested_provider.source_extensions,
+            artifact_root: publication.artifact_root,
+            provider_workspace_root: publication.project_root,
+        },
+    )?;
+    let canonical_directory = publication
+        .artifact_root
+        .join("source-snapshot-envelopes")
+        .join("v1");
+    let canonical_file_name = super::provider_envelope::source_snapshot_envelope_file_name(
+        requested_provider.provider_id.as_str(),
+        &snapshot.source_snapshot.provider_digest,
+        &super::provider_envelope::provider_workspace_identity_v1(publication.project_root)?.digest,
+    );
+    let canonical_envelope = canonical_directory.join(&canonical_file_name);
+    let temporary = canonical_directory.join(format!(
+        ".{canonical_file_name}.tmp-{}-{}",
+        std::process::id(),
+        GENERATION_TRANSACTION_ID.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::copy(&immutable_envelope, &temporary).map_err(|error| {
+        format!(
+            "failed to stage canonical target-provider source envelope {}: {error}",
+            temporary.display()
+        )
+    })?;
+    fs::rename(&temporary, &canonical_envelope).map_err(|error| {
+        let _ = fs::remove_file(&temporary);
+        format!(
+            "failed to publish canonical target-provider source envelope {}: {error}",
+            canonical_envelope.display()
+        )
+    })?;
+    Ok(canonical_envelope)
+}
+
+/// Typed evidence required to publish one complete source-index generation.
+pub struct WorkspaceSearchGenerationPublicationRequestV1<'a> {
+    pub collection_scope: super::collect::SourceIndexCollectionScopeV1,
+    pub snapshot: &'a CurrentSourceIndexSnapshot,
+    pub files: &'a [SourceIndexScopeFile],
+    pub registry_evidence: &'a agent_semantic_client_core::ProviderRegistryEvidence,
     pub artifact_root: &'a Path,
     pub project_root: &'a Path,
     pub provider_id: &'a str,
     pub source_extensions: &'a [String],
     pub workspace_identity: &'a WorkspaceSearchIdentityV1,
     pub generation_identity: ExactSelectorGenerationIdentityV1,
+    pub exact_selector_projection_records:
+        Vec<agent_semantic_content_identity::exact_selector_cache::ExactSelectorProjectionRecordV1>,
 }
 
 /// Paths and content identities committed by one generation transaction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishedSourceIndexGenerationV1 {
+    pub exact_selector_fixture_publication:
+        agent_semantic_search::exact_selector_fixture_publication::ExactSelectorFixturePublicationReceiptV1,
     pub generation_directory: PathBuf,
     pub provider_envelope_path: PathBuf,
     pub exact_selector_fixture_path: PathBuf,
@@ -41,12 +170,28 @@ pub struct PublishedSourceIndexGenerationV1 {
     pub workspace_identity_digest: [u8; 32],
 }
 
-pub(super) fn publish_complete_source_index_generation_v1(
-    snapshot: &CurrentSourceIndexSnapshot,
-    files: &[SourceIndexScopeFile],
-    publication: CompleteSourceIndexGenerationPublicationV1<'_>,
+/// Validate and atomically publish one immutable complete workspace search generation.
+pub fn publish_workspace_search_generation_v1(
+    publication: WorkspaceSearchGenerationPublicationRequestV1<'_>,
 ) -> Result<PublishedSourceIndexGenerationV1, String> {
-    let provider_files = files
+    match &publication.collection_scope {
+        super::collect::SourceIndexCollectionScopeV1::CompleteGeneration => {
+            publish_complete_workspace_search_generation_v1(publication)
+        }
+        super::collect::SourceIndexCollectionScopeV1::TargetProvider { .. }
+        | super::collect::SourceIndexCollectionScopeV1::TargetProviderId { .. } => Err(
+            "workspace search generation publication requires complete-generation collection scope"
+                .to_owned(),
+        ),
+    }
+}
+
+fn publish_complete_workspace_search_generation_v1(
+    publication: WorkspaceSearchGenerationPublicationRequestV1<'_>,
+) -> Result<PublishedSourceIndexGenerationV1, String> {
+    let _registry_evidence = publication.registry_evidence;
+    let provider_files = publication
+        .files
         .iter()
         .filter(|file| file.provider_id.as_str() == publication.provider_id)
         .collect::<Vec<_>>();
@@ -72,9 +217,7 @@ pub(super) fn publish_complete_source_index_generation_v1(
             selector.materialization_proof.workspace_root_digest
                 == publication.generation_identity.workspace_root_digest
                 && selector.materialization_proof.workspace_root_digest
-                    == *publication
-                        .workspace_identity
-                        .source_snapshot_root_digest()
+                    == *publication.workspace_identity.source_snapshot_root_digest()
                 && selector.materialization_proof.parser_identity_digest
                     == publication.generation_identity.parser_identity_digest
                 && selector.materialization_proof.query_pack_digest
@@ -131,11 +274,11 @@ pub(super) fn publish_complete_source_index_generation_v1(
         ));
     }
 
-    let fixture = build_exact_selector_generation_fixture_v1(
-        &publication.generation_identity,
-        records,
-    )
-    .map_err(|error| format!("failed to build complete exact-selector generation: {error}"))?;
+    let fixture =
+        build_exact_selector_generation_fixture_v1(&publication.generation_identity, records)
+            .map_err(|error| {
+                format!("failed to build complete exact-selector generation: {error}")
+            })?;
     let fixture_digest = *fixture_digest_v1(&fixture)
         .map_err(|error| format!("failed to identify exact-selector fixture: {error}"))?;
     let generation_digest = publication.generation_identity.generation_digest;
@@ -165,30 +308,29 @@ pub(super) fn publish_complete_source_index_generation_v1(
             staging_directory.display()
         )
     })?;
-    let provider_envelope_path = super::api::publish_provider_source_snapshot_envelope(
-        snapshot,
-        publication.provider_id.to_string(),
-        publication.source_extensions,
-        &staging_directory,
-        publication
-            .workspace_identity
-            .source_snapshot_root_digest(),
+    let provider_envelope_path = super::publish_provider_source_snapshot_envelope(
+        super::ProviderSourceSnapshotEnvelopePublicationV1 {
+            snapshot: publication.snapshot,
+            provider_id: publication.provider_id,
+            source_extensions: publication.source_extensions,
+            artifact_root: &staging_directory,
+            provider_workspace_root: publication.project_root,
+        },
     )
     .inspect_err(|_| {
         let _ = fs::remove_dir_all(&staging_directory);
     })?;
-    let exact_selector_fixture_path =
-        publish_immutable_exact_selector_generation_fixture_v1(
-            &staging_directory.join("exact-selector"),
-            &fixture,
-            publication.workspace_identity,
-            generation_digest,
-            fixture_digest,
-        )
-        .map_err(|error| {
-            let _ = fs::remove_dir_all(&staging_directory);
-            format!("failed to stage exact-selector generation: {error:?}")
-        })?;
+    let exact_selector_fixture_path = publish_immutable_exact_selector_generation_fixture_v1(
+        &staging_directory.join("exact-selector"),
+        &fixture,
+        publication.workspace_identity,
+        generation_digest,
+        fixture_digest,
+    )
+    .map_err(|error| {
+        let _ = fs::remove_dir_all(&staging_directory);
+        format!("failed to stage exact-selector generation: {error:?}")
+    })?;
     fs::File::open(&provider_envelope_path)
         .and_then(|file| file.sync_all())
         .map_err(|error| {
@@ -256,6 +398,12 @@ pub(super) fn publish_complete_source_index_generation_v1(
             )
         })?;
     Ok(PublishedSourceIndexGenerationV1 {
+        exact_selector_fixture_publication:
+            agent_semantic_search::exact_selector_fixture_publication::publish_exact_selector_fixture_v1(
+                publication.artifact_root,
+                &publication.generation_identity,
+                publication.exact_selector_projection_records.clone(),
+            )?,
         provider_envelope_path: generation_directory.join(envelope_relative_path),
         exact_selector_fixture_path: generation_directory.join(fixture_relative_path),
         generation_directory,

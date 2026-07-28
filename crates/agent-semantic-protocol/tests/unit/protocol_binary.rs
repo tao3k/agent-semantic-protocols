@@ -1,6 +1,8 @@
 use super::{install_protocol_binary_target, protocol_binary_artifact_digest};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use super::RuntimeBinaryIdentityV1;
+
 #[test]
 fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
     let nonce = SystemTime::now()
@@ -20,10 +22,20 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
     let artifact_root = root.join("runtime/artifacts");
     std::fs::write(&source, b"asp artifact one").expect("write source");
 
-    install_protocol_binary_target(&source, &target, &artifact_root)
-        .expect("install protocol binary");
-    install_protocol_binary_target(&source, &secondary_target, &artifact_root)
-        .expect("install secondary protocol binary");
+    install_protocol_binary_target(
+        &source,
+        &target,
+        &artifact_root,
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .expect("install protocol binary");
+    install_protocol_binary_target(
+        &source,
+        &secondary_target,
+        &artifact_root,
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .expect("install secondary protocol binary");
     let source_digest = protocol_binary_artifact_digest(&source).expect("source identity");
     let target_digest = protocol_binary_artifact_digest(&target).expect("target identity");
     assert_eq!(source_digest, target_digest);
@@ -69,10 +81,20 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
         protocol_binary_artifact_digest(&target),
         Some(target_digest)
     );
-    install_protocol_binary_target(&source, &target, &artifact_root)
-        .expect("replace public target");
-    install_protocol_binary_target(&source, &secondary_target, &artifact_root)
-        .expect("replace secondary public target");
+    install_protocol_binary_target(
+        &source,
+        &target,
+        &artifact_root,
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .expect("replace public target");
+    install_protocol_binary_target(
+        &source,
+        &secondary_target,
+        &artifact_root,
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .expect("replace secondary public target");
     let second_artifact = std::fs::canonicalize(&target).expect("second artifact");
     assert_eq!(
         second_artifact,
@@ -140,7 +162,12 @@ fn concurrent_publish_uses_per_attempt_stage_paths() {
         let attempts = (0..8)
             .map(|_| {
                 scope.spawn(|| {
-                    super::install_protocol_binary_target(&source, &target, &artifact_root)
+                    super::install_protocol_binary_target(
+                        &source,
+                        &target,
+                        &artifact_root,
+                        &super::RuntimeBinaryIdentityV1::asp_bootstrap(),
+                    )
                 })
             })
             .collect::<Vec<_>>();

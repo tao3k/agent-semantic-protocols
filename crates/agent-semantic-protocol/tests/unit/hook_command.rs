@@ -28,8 +28,25 @@ const _: fn() -> protocol_binary::ProtocolBinaryShellProbe =
     protocol_binary::protocol_binary_in_codex_hook_shell;
 
 #[test]
+fn protocol_binary_capture_requires_the_real_asp_entrypoint() {
+    let result = protocol_binary::ProtocolBinaryInstallPlan::capture_for_target(
+        std::path::PathBuf::from("/tmp/asp/runtime/artifacts"),
+        std::path::PathBuf::from("/tmp/asp/runtime/bin/asp"),
+    );
+    let Err(error) = result else {
+        panic!("unit test binary must not impersonate the installed asp entrypoint");
+    };
+    assert!(
+        error.contains("must run through `asp`"),
+        "unexpected capture error: {error}"
+    );
+}
+
+#[test]
 fn protocol_binary_install_fields_are_contract_visible() {
     let install = protocol_binary::ProtocolBinaryInstall {
+        latest: std::path::PathBuf::from("/tmp/asp/runtime/artifacts/blake3-256/latest/asp"),
+        stable_entry: std::path::PathBuf::from("/tmp/asp/runtime/bin/asp"),
         path: std::path::PathBuf::from("asp"),
         status: "found",
         artifact_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -37,6 +54,14 @@ fn protocol_binary_install_fields_are_contract_visible() {
     };
 
     assert_eq!(install.path, std::path::PathBuf::from("asp"));
+    assert_eq!(
+        install.latest,
+        std::path::PathBuf::from("/tmp/asp/runtime/artifacts/blake3-256/latest/asp")
+    );
+    assert_eq!(
+        install.stable_entry,
+        std::path::PathBuf::from("/tmp/asp/runtime/bin/asp")
+    );
     assert_eq!(install.status, "found");
     assert_eq!(
         install.artifact_digest,
@@ -316,8 +341,13 @@ fn protocol_binary_install_replaces_existing_target_file() {
     #[cfg(unix)]
     let old_inode = target_inode(&target);
 
-    let install =
-        install_protocol_binary_target(&source, &target, &artifact_root).expect("install binary");
+    let install = install_protocol_binary_target(
+        &source,
+        &target,
+        &artifact_root,
+        &protocol_binary::RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .expect("install binary");
     let status = install.status;
 
     assert_eq!(status, "updated");

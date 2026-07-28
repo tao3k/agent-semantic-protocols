@@ -28,44 +28,45 @@ pub(super) fn match_registered_asp_command<'a>(
             if stage.words().len() < pattern.len() {
                 continue;
             }
-            let mut registered_language = None;
-            let matches =
-                stage
-                    .words()
-                    .iter()
-                    .zip(pattern)
-                    .enumerate()
-                    .all(|(index, (actual, expected))| {
-                        if expected == "<registered-language>" {
-                            if let Some(language_id) =
-                                registered_languages.iter().find(|language_id| {
-                                    language_id.as_str().eq_ignore_ascii_case(actual)
-                                })
-                            {
-                                registered_language = Some(language_id.clone());
-                                return true;
+            for candidate in stage.words().windows(pattern.len()) {
+                let mut registered_language = None;
+                let matches =
+                    candidate
+                        .iter()
+                        .zip(pattern)
+                        .enumerate()
+                        .all(|(index, (actual, expected))| {
+                            if expected == "<registered-language>" {
+                                if let Some(language_id) =
+                                    registered_languages.iter().find(|language_id| {
+                                        language_id.as_str().eq_ignore_ascii_case(actual)
+                                    })
+                                {
+                                    registered_language = Some(language_id.clone());
+                                    return true;
+                                }
+                                return false;
                             }
-                            return false;
-                        }
-                        actual.eq_ignore_ascii_case(expected)
-                            || (index == 0
-                                && actual
-                                    .rsplit(['/', '\\'])
-                                    .next()
-                                    .is_some_and(|name| name.eq_ignore_ascii_case(expected)))
-                    });
-            if !matches {
-                continue;
+                            actual.eq_ignore_ascii_case(expected)
+                                || (index == 0
+                                    && actual
+                                        .rsplit(['/', '\\'])
+                                        .next()
+                                        .is_some_and(|name| name.eq_ignore_ascii_case(expected)))
+                        });
+                if !matches {
+                    continue;
+                }
+                let language_id = registered_language?;
+                let provider = runtime
+                    .providers
+                    .iter()
+                    .find(|provider| provider.language_id == language_id);
+                return Some(RegisteredAspMatch {
+                    language_id,
+                    provider,
+                });
             }
-            let language_id = registered_language?;
-            let provider = runtime
-                .providers
-                .iter()
-                .find(|provider| provider.language_id == language_id);
-            return Some(RegisteredAspMatch {
-                language_id,
-                provider,
-            });
         }
     }
     None

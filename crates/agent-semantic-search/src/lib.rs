@@ -13,6 +13,7 @@ mod graph_candidate_sparsity;
 mod graph_evidence_projection;
 mod graph_node_projection;
 mod graph_owner_rank;
+pub mod graph_generation_authority;
 pub use graph_owner_rank::{
     GraphOwnerRankCandidate, GraphOwnerRankReport, GraphOwnerRankRequest, GraphOwnerRankScore,
     GraphOwnerRankedOwner, rank_graph_owner_report,
@@ -24,6 +25,7 @@ mod graph_topology_projection;
 mod lexical_overlay;
 pub mod memory_search;
 pub mod memory_search_fixture;
+pub mod memory_search_resident;
 pub mod memory_search_turso;
 pub use memory_search::{
     MemorySearchBackendV1, MemorySearchGenerationV1, MemorySearchIndexV1, MemorySearchItemV1,
@@ -33,6 +35,7 @@ pub use memory_search::{
 pub use memory_search_fixture::{
     MEMORY_SEARCH_FIXTURE_SCHEMA_ID, MEMORY_SEARCH_FIXTURE_SCHEMA_VERSION, MemorySearchFixtureV1,
 };
+pub use memory_search_resident::MemorySearchResidentV1;
 
 mod lexical_search_frame;
 #[cfg(test)]
@@ -336,3 +339,18 @@ extern crate self as agent_semantic_search;
 mod query_pack_fixture;
 pub use search_pipe_evidence::SearchPipeEvidenceLanguageId;
 pub use workspace_scope::WorkspaceScopeLanguageId;
+pub mod load_once_generation;
+pub use load_once_generation::LoadOnceGenerationV1;
+pub mod active_exact_selector_fixture;
+pub mod exact_selector_fixture_memory;
+pub use exact_selector_fixture_memory::{
+    ExactSelectorFixtureArtifactV1, ExactSelectorFixtureBackendV1,
+    ExactSelectorFixtureFileBackendV1, ExactSelectorFixtureProjectionV1,
+    ExactSelectorFixtureResidentV1, exact_selector_fixture_lookup_v1,
+    exact_selector_fixture_projection_range_v1, exact_selector_fixture_projection_v1,
+};
+pub mod exact_selector_fixture_publication;
+pub use exact_selector_fixture_publication::{
+    EXACT_SELECTOR_FIXTURE_ARTIFACT_KIND, ExactSelectorFixturePublicationReceiptV1,
+    build_exact_selector_fixture_from_projection_records_v1, publish_exact_selector_fixture_v1,
+};

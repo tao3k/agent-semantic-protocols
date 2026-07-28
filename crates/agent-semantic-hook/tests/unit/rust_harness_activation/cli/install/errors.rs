@@ -13,6 +13,8 @@ fn cli_install_refuses_protocol_bin_dir_outside_path() {
     sync_test_state(&root, &asp_state_home);
     let unrelated_bin_dir = root.join(".unrelated-bin");
     std::fs::create_dir_all(&unrelated_bin_dir).expect("create unrelated bin dir");
+    write_real_asp_launcher(&unrelated_bin_dir);
+    write_fake_codex_cli_in_dir(&unrelated_bin_dir);
     let protocol_bin_dir = root.join(".agent-bin");
     let output = protocol_command()
         .env("PATH", &unrelated_bin_dir)
@@ -39,6 +41,7 @@ fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
     sync_test_state(&root, &asp_state_home);
     let protocol_bin_dir = root.join(".agent-bin");
+    write_real_asp_launcher(&protocol_bin_dir);
     std::fs::create_dir_all(root.join(".codex")).expect("create .codex");
     let config_path = root.join(".codex/config.toml");
     std::fs::write(&config_path, "unified_exec = \"unterminated\n").expect("write invalid config");
@@ -63,3 +66,6 @@ fn cli_install_refuses_to_overwrite_invalid_codex_toml() {
     assert!(!config.contains("# BEGIN agent-semantic-protocol agent hooks"));
     let _ = std::fs::remove_dir_all(&root);
 }
+use crate::rust_harness_activation::cli::install::support::{
+    write_fake_codex_cli_in_dir, write_real_asp_launcher,
+};

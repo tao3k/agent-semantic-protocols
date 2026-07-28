@@ -21,6 +21,8 @@ fn packet() -> ExactSelectorProjectionPacketV1 {
         .into();
     agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
         agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
+            source_byte_start: 0,
+            source_byte_end: 16,
             language_id: &language_id,
             provider_id: &provider_id,
             canonical_item_selector: agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(

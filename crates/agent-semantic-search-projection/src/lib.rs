@@ -1,6 +1,10 @@
 //! Schema-backed search projection and rendering boundary.
 
 mod error;
+mod incremental_search_generation;
+pub use incremental_search_generation::{
+    IncrementalSearchGenerationValidationError, validate_incremental_search_generation_v1,
+};
 mod model;
 mod packet;
 mod renderer;

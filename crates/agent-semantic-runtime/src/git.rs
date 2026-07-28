@@ -178,7 +178,7 @@ fn common_git_dir_from_git_dir(git_dir: &Path) -> Option<PathBuf> {
     })
 }
 
-fn canonical_remote_url_from_repository(repository: &gix::Repository) -> Option<String> {
+pub(crate) fn canonical_remote_url_from_repository(repository: &gix::Repository) -> Option<String> {
     let config = repository.config_snapshot();
     let configured_remote = config
         .string("agent-semantic.canonicalRemote")

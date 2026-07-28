@@ -14,7 +14,7 @@ pub(crate) fn plan_pipe_lexical_search_frame(
         .filter(|source_index| {
             source_index.decision == SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay
         })
-        .map(|source_index| lexical_frame_candidates(&source_index.candidates))
+        .map(|source_index| lexical_frame_candidates(source_index.discovery_candidates()))
         .unwrap_or_default();
     let owner_source_candidates = source_index
         .filter(|source_index| source_index.decision == SearchPipeSourceIndexDecision::DeferBackend)
@@ -69,7 +69,7 @@ fn source_index_owner_candidates(
     source_index: &SearchPipeSourceIndexAcquisition,
 ) -> Vec<SearchPipeCandidate> {
     source_index
-        .candidates
+        .discovery_candidates()
         .iter()
         .filter(|candidate| {
             !matches!(

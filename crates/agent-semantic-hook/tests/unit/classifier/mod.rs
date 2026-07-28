@@ -20,6 +20,7 @@ pub(crate) fn command_with_stdin(argv: &[&str], stdin_mode: StdinMode) -> Comman
 
 pub(crate) fn registry() -> HookRuntime {
     HookRuntime {
+        rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: vec![typescript_provider()],
     }
@@ -27,6 +28,7 @@ pub(crate) fn registry() -> HookRuntime {
 
 pub(crate) fn registry_without_providers() -> HookRuntime {
     HookRuntime {
+        rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: Vec::new(),
     }
@@ -34,6 +36,7 @@ pub(crate) fn registry_without_providers() -> HookRuntime {
 
 pub(crate) fn rust_registry() -> HookRuntime {
     HookRuntime {
+        rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: vec![rust_provider()],
     }

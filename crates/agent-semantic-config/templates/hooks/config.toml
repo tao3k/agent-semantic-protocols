@@ -22,7 +22,7 @@ testing = [
   ["cargo", "check"],
   ["cargo", "build"],
   ["just", "test"],
-  ["rs-harness"],
+  ["rs-harness", "check"],
 ]
 review = [["cargo", "clippy"], ["cargo", "fmt", "--check"]]
 
@@ -155,7 +155,7 @@ event = "pre-tool"
 actionAny = ["execute"]
 effectAny = ["read"]
 subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
-authorityAny = ["raw-host-action", "raw-shell", "unknown"]
+authorityAny = ["raw-shell"]
 
 [[rules.match.effectRules]]
 argvPrefix = ["read"]
@@ -242,7 +242,7 @@ message = "Registered source read actions are derived from action and provider-o
 actionAny = ["read"]
 effectAny = ["read"]
 subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
-authorityAny = ["raw-host-action", "unknown"]
+authorityAny = ["raw-host-action"]
 
 [[rules]]
 id = "materialize-source-access-policy"
@@ -321,7 +321,7 @@ argvRegisteredSourceFile = true
 actionAny = ["execute"]
 effectAny = ["read"]
 subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
-authorityAny = ["raw-host-action", "raw-shell", "unknown"]
+authorityAny = ["raw-shell"]
 
 [[rules.match.effectRules]]
 argvPrefix = ["cat"]

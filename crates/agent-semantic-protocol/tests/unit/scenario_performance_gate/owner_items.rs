@@ -51,19 +51,16 @@ pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenari
     .expect("write source");
     fs::create_dir_all(&bin_dir).expect("create bin dir");
     let provider_path = bin_dir.join("rs-harness");
-    fs::write(
-        &provider_path,
-        format!(
-            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q=crate/src/lib.rs pkg=. selector=items alg=rust-harness-owner-items\\n'\nprintf 'O=owner:path(crate/src/lib.rs)!owner;I=item:symbol(dynamic_owner_item_index)@crate/src/lib.rs:1:1!syntax\\n'\n",
-            count = count_path.display()
-        ),
-    )
-    .expect("write provider");
-    let mut permissions = fs::metadata(&provider_path)
-        .expect("provider metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&provider_path, permissions).expect("chmod provider");
+    super::shared::write_owner_items_provider_fixture(super::shared::OwnerItemsProviderFixture {
+        binary_path: &provider_path,
+        count_path: &count_path,
+        language_id: "rust",
+        owner_path: "crate/src/lib.rs",
+        query: "dynamic_owner_item_index",
+        item_symbol: "dynamic_owner_item_index",
+        algorithm: "rust-harness-owner-items",
+        source_byte_end: "pub async fn dynamic_owner_item_index() {}\n".len(),
+    });
     install_state_home_provider(&root, "rust", &provider_path);
     write_activation(&root, &[provider_with_owner_items("rust", Vec::new())]);
     let command_args = [
@@ -105,10 +102,9 @@ pub(in super::super) fn asp_rust_owner_items_cache_hot_path_stays_inside_scenari
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(stdout.contains("alg=rust-harness-owner-items"), "{stdout}");
     assert!(
-        stdout.contains("item:symbol(dynamic_owner_item_index)"),
-        "{stdout}"
+        stdout.contains("selector=rust://crate/src/lib.rs#item/function/dynamic_owner_item_index"),
+        "native owner cache hit must preserve canonical selector: {stdout}"
     );
     assert!(
         !stdout.contains("read=crate/src/lib.rs:1:1"),
@@ -335,22 +331,16 @@ pub(super) fn assert_owner_items_cold_functional_path(spec: OwnerItemsColdFuncti
     fs::write(&owner, spec.source_text).expect("write source");
     fs::create_dir_all(&bin_dir).expect("create bin dir");
     let provider_path = bin_dir.join(spec.binary);
-    fs::write(
-        &provider_path,
-        format!(
-            "#!/bin/sh\ncount=0\nif [ -f '{count}' ]; then count=$(cat '{count}'); fi\ncount=$((count + 1))\nprintf '%s' \"$count\" > '{count}'\nprintf '[search-owner] q={owner_path} pkg=. selector=items alg={alg}\\n'\nprintf 'O=owner:path({owner_path})!owner;I=item:symbol({item_symbol})@{owner_path}:1:1!syntax\\n'\n",
-            count = count_path.display(),
-            owner_path = spec.owner_path,
-            alg = spec.alg,
-            item_symbol = spec.item_symbol,
-        ),
-    )
-    .expect("write provider");
-    let mut permissions = fs::metadata(&provider_path)
-        .expect("provider metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&provider_path, permissions).expect("chmod provider");
+    super::shared::write_owner_items_provider_fixture(super::shared::OwnerItemsProviderFixture {
+        binary_path: &provider_path,
+        count_path: &count_path,
+        language_id: spec.language_id,
+        owner_path: spec.owner_path,
+        query: spec.query,
+        item_symbol: spec.item_symbol,
+        algorithm: spec.alg,
+        source_byte_end: spec.source_text.len(),
+    });
     install_state_home_provider(&root, spec.language_id, &provider_path);
     write_activation(
         &root,
@@ -384,14 +374,24 @@ pub(super) fn assert_owner_items_cold_functional_path(spec: OwnerItemsColdFuncti
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
-    assert!(
-        stdout.contains(&format!("alg={}", spec.alg)),
-        "stdout={stdout}"
-    );
-    assert!(
-        stdout.contains(&format!("item:symbol({})", spec.item_symbol)),
-        "stdout={stdout}"
-    );
+    if super::shared::owner_items_fixture_uses_native_transport(spec.language_id) {
+        assert!(
+            stdout.contains(&format!(
+                "selector={}://{}#item/function/{}",
+                spec.language_id, spec.owner_path, spec.item_symbol
+            )),
+            "native owner projection must expose canonical selector: stdout={stdout}"
+        );
+    } else {
+        assert!(
+            stdout.contains(&format!("alg={}", spec.alg)),
+            "stdout={stdout}"
+        );
+        assert!(
+            stdout.contains(&format!("item:symbol({})", spec.item_symbol)),
+            "stdout={stdout}"
+        );
+    }
     assert!(
         !stdout.contains(&format!("read={}:1:1", spec.owner_path)),
         "owner-items cold path must not expose executable line-range selectors: {stdout}"
@@ -402,6 +402,14 @@ pub(super) fn assert_owner_items_cold_functional_path(spec: OwnerItemsColdFuncti
         "cold path must spawn exactly one language harness provider"
     );
     let observed_ms = elapsed.as_millis().min(u128::from(u64::MAX));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    assert!(
+        observed_ms <= max_total_ms,
+        "{} exceeded benchmark max_total={} observed={}ms stdout={stdout}",
+        spec.scenario_id,
+        benchmark.max_total,
+        observed_ms
+    );
     let max_stdout_bytes = benchmark.max_stdout_bytes.unwrap_or(4096);
     assert!(
         stdout.len() <= max_stdout_bytes as usize,
@@ -444,6 +452,7 @@ pub(super) fn assert_owner_items_cold_functional_path(spec: OwnerItemsColdFuncti
     assert_eq!(performance_gate["observed"]["providerProcessCount"], 1);
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    println!("[scenario-performance-gate] {performance_gate}");
     let _ = fs::remove_dir_all(root);
 }
 
@@ -761,6 +770,7 @@ pub(in super::super) fn asp_typescript_owner_items_cache_hot_path_stays_inside_s
     assert_eq!(performance_gate["observed"]["providerProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["stdoutBytes"], stdout.len());
+    println!("[scenario-performance-gate] {performance_gate}");
     let _ = fs::remove_dir_all(root);
 }
 

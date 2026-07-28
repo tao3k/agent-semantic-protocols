@@ -103,6 +103,8 @@ pub enum ExactSelectorProjectionEncodingV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExactSelectorProjectionPacketV1 {
+    pub source_byte_start: u64,
+    pub source_byte_end: u64,
     pub schema_id: String,
     pub schema_version: String,
     pub digest_algorithm: String,
@@ -122,6 +124,8 @@ pub struct ExactSelectorProjectionPacketV1 {
 
 /// Typed inputs for constructing one exact-selector projection packet.
 pub struct ExactSelectorProjectionPacketV1Input<'a> {
+    pub source_byte_start: u64,
+    pub source_byte_end: u64,
     /// Language that owns the projection.
     pub language_id: &'a ProjectionPacketLanguageIdV1,
     /// Provider that produced the projection.
@@ -151,6 +155,8 @@ pub fn build_exact_selector_projection_packet_v1(
     input: ExactSelectorProjectionPacketV1Input<'_>,
 ) -> ExactSelectorProjectionPacketV1 {
     let ExactSelectorProjectionPacketV1Input {
+        source_byte_start,
+        source_byte_end,
         language_id,
         provider_id,
         canonical_item_selector,
@@ -175,6 +181,8 @@ pub fn build_exact_selector_projection_packet_v1(
         ],
     );
     ExactSelectorProjectionPacketV1 {
+        source_byte_start,
+        source_byte_end,
         schema_id: EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_ID.to_owned(),
         schema_version: EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_VERSION.to_owned(),
         digest_algorithm: EXACT_SELECTOR_PROJECTION_PACKET_DIGEST_ALGORITHM.to_owned(),
@@ -305,6 +313,7 @@ impl ExactSelectorProjectionPacketV1 {
             &projection_payload,
         );
         Ok(ExactSelectorProjectionRecordV1 {
+            source_byte_range: self.source_byte_start..self.source_byte_end,
             proof: ExactSelectorMerkleProofV1::from_input(
                 crate::exact_selector_merkle::ExactSelectorMerkleProofInputV1 {
                     language_id: self.language_id.as_str().into(),

@@ -67,6 +67,7 @@
           "enum": [
             "asp-binary",
             "activation",
+            "exact-selector-generation-fixture",
             "provider-binary",
             "provider-registry",
             "runtime-config"

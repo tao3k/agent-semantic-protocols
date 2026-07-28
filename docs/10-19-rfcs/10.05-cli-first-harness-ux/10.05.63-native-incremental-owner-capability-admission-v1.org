@@ -1,0 +1,87 @@
+#+title: 10.05.63 Native Incremental Owner Capability Admission v1
+#+options: toc:2
+
+* Status
+
+Proposed for immediate P0 implementation.
+
+* Problem
+
+The provider-facing =ownerItems= capability states that a provider owns an
+owner-items search surface.  It does not prove that the provider implements the
+ASP-native incremental transport command =owner-search-stdin=.
+
+Treating =ownerItems= as transport admission causes ASP to send a private Rust
+harness command to unrelated providers.  For example, Org search fails with
+=orgize: unknown command 'owner-search-stdin'=.  Retrying, warning, or falling
+back after the failed process is not an admissible repair.
+
+* v1 Contract
+
+Every activated provider search-capability record MUST explicitly carry
+=nativeIncrementalOwner=.  The field has no implicit default.
+
+- =false= means the provider owns its normal registered owner-items surface,
+  but ASP MUST NOT send =owner-search-stdin=.
+- =true= means the provider implements the shared v1 native incremental owner
+  request and response schemas and the =owner-search-stdin= transport command.
+
+The shared transport uses:
+
+- request schema =agent.semantic-protocols.provider-native-owner-search-request=
+  version =1=
+- response schema
+  =agent.semantic-protocols.provider-native-owner-search-response= version =1=
+- complete-owner projection semantics
+- canonical language-owned structural selectors
+- one provider parse and one atomic generation commit on refresh
+
+* Router Admission
+
+ASP MUST branch before process invocation.
+
+1. If =nativeIncrementalOwner=true=, ASP may enter the incremental owner state
+   machine.  A warm fingerprint hit performs zero source-byte reads, zero
+   provider invocations, zero provider parses, and zero writes.
+2. If =nativeIncrementalOwner=false=, ASP invokes the provider's registered
+   owner-items command surface directly.  It MUST NOT probe
+   =owner-search-stdin= and MUST NOT recover from an unknown-command failure.
+3. A missing field, malformed activation, or capability/command drift is a
+   typed activation error.  There is no compatibility default.
+
+Provider identity, capability admission, request identity, response identity,
+and committed generation identity MUST refer to the same activated provider.
+
+* Registry Alignment
+
+All registered language providers MUST declare the field.
+
+- Rust declares =nativeIncrementalOwner=true= only after its harness ships the
+  shared v1 transport and passes request, response, completeness, selector,
+  cold, warm, and concurrency gates.
+- Org, Markdown, TypeScript, Python, Julia, and Gerbil Scheme declare =false=
+  until their own provider implements the same shared contract.
+
+Adding a language provider without an explicit declaration MUST fail the
+provider-manifest and activation gates.
+
+* Performance Gates
+
+The fixture suite MUST preserve:
+
+- warm owner lookup: provider invocations =0= and source-byte reads =0=
+- refresh: provider parses =1= and complete-owner commits =1=
+- concurrent refresh: a single winning generation publication, with readers
+  observing either the previous complete generation or the new complete
+  generation
+- unsupported provider: =owner-search-stdin= invocations =0=
+
+Installed-artifact cold and warm receipts MUST report router admission,
+provider invocation count, parse count, database operations, generation
+identity, and elapsed time.  Increasing a timeout is not a performance repair.
+
+* Removal Rule
+
+Any code that speculatively invokes =owner-search-stdin= and then interprets an
+unknown-command error is Legacy and MUST be deleted rather than retained as a
+fallback.

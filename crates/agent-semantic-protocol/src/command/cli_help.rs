@@ -17,6 +17,10 @@ const ROOT_COMMANDS: &[(&str, &str)] = &[
     ("paths", "Resolve ASP state and artifact paths"),
     ("healthcheck", "Check ASP runtime health"),
     (
+        "live-corpus",
+        "Qualify and publish provider live-corpus artifacts",
+    ),
+    (
         "source-access",
         "Inspect hook-owned source egress decisions",
     ),
@@ -404,6 +408,54 @@ fn healthcheck_command() -> Command {
         .arg(project_root_arg())
 }
 
+fn live_corpus_command() -> Command {
+    Command::new("live-corpus")
+        .bin_name("asp live-corpus")
+        .about("Qualify and publish provider live-corpus artifacts")
+        .subcommand(
+            Command::new("path")
+                .about("Resolve the gix-derived canonical State Home checkout path")
+                .arg(
+                    Arg::new("resource")
+                        .long("resource")
+                        .value_name("RESOURCE_ID")
+                        .required(true),
+                )
+                .arg(Arg::new("lock").long("lock").value_name("LOCK_JSON"))
+                .arg(Arg::new("json").long("json").action(ArgAction::SetTrue)),
+        )
+        .subcommand(
+            Command::new("sync")
+                .about("Explicitly acquire and publish a pinned checkout through gix")
+                .arg(
+                    Arg::new("resource")
+                        .long("resource")
+                        .value_name("RESOURCE_ID")
+                        .required(true),
+                )
+                .arg(Arg::new("lock").long("lock").value_name("LOCK_JSON"))
+                .arg(Arg::new("json").long("json").action(ArgAction::SetTrue)),
+        )
+        .subcommand(
+            Command::new("materialize")
+                .about("Qualify a canonical State Home checkout and publish its artifact")
+                .arg(
+                    Arg::new("resource")
+                        .long("resource")
+                        .value_name("RESOURCE_ID")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("source")
+                        .long("source")
+                        .value_name("CHECKOUT")
+                        .required(true),
+                )
+                .arg(Arg::new("lock").long("lock").value_name("LOCK_JSON"))
+                .arg(Arg::new("json").long("json").action(ArgAction::SetTrue)),
+        )
+}
+
 fn source_access_command() -> Command {
     Command::new("source-access")
         .bin_name("asp source-access")
@@ -691,6 +743,7 @@ fn selected_command_legacy(args: &[String]) -> Command {
         (Some("sync"), _) => sync_command(),
         (Some("paths"), _) => paths_command(),
         (Some("healthcheck"), _) => healthcheck_command(),
+        (Some("live-corpus"), _) => live_corpus_command(),
         (Some("source-access"), _) => source_access_command(),
         (Some("ast-patch"), _) => ast_patch_command(),
         (Some("graph"), _) => graph_command(),

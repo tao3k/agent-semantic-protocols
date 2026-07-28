@@ -1,0 +1,156 @@
+#+title: Active Generation Memory Search V1
+
+* Status
+
+Normative v1 search-runtime contract.
+
+* Problem
+
+Immutable workspace generations and =ExactSelectorGenerationMemorySearchV1=
+already exist, but an installed exact query has no canonical active-generation
+receipt to consume.  The current query path therefore recollects workspace
+files, rereads source bytes, and reconstructs the Merkle tree before it can
+attempt a cache lookup.  This makes the nominal warm path a cold
+materialization path.
+
+Increasing timeouts, retaining a second receipt directory, copying lock files,
+or adding an unvalidated process-local map does not solve this ownership gap.
+
+* V1 Contract
+
+Generation publication MUST atomically commit one active-generation receipt
+after the immutable generation directory is durable.  The receipt binds:
+
+- language and provider identity;
+- workspace identity digest;
+- workspace root digest and root depth;
+- generation digest and fixture digest;
+- immutable generation directory;
+- provider source-envelope path;
+- exact-selector Memory Search fixture path;
+- owner, leaf, and selector coverage;
+- parser identity and query-pack identity.
+
+All paths are relative to the canonical artifact root.  A receipt containing an
+absolute path, a parent traversal, or an artifact outside its immutable
+generation is invalid.
+
+The active receipt is replaced atomically.  It never points at a staging
+directory and is never repaired by scanning for the newest generation.
+
+* Installed Consumption
+
+The installed exact-query path is:
+
+#+begin_example
+activation receipt
+  -> active workspace generation receipt
+  -> validate workspace/provider/parser/query-pack identity
+  -> load-once immutable Memory Search fixture
+  -> selector lookup and proof validation
+  -> exact projection
+#+end_example
+
+On a validated active-generation hit, query execution MUST NOT:
+
+- collect workspace files;
+- reconstruct a workspace snapshot or Merkle tree;
+- open the client database;
+- spawn a provider;
+- read source files;
+- write a manifest.
+
+Missing, stale, incomplete, or identity-mismatched active-generation evidence
+fails closed with a typed generation-state error.  It routes to an explicit
+generation publication command; it does not silently fall back to live
+workspace materialization.
+
+* Performance Receipt
+
+The v1 Memory Search receipt is the performance gate.  A warm installed exact
+query MUST report:
+
+#+begin_example
+subprocesses=0
+dbOpens=0
+sourceFilesRead=0
+sourceBytesRead=0
+manifestWrites=0
+#+end_example
+
+Fixture attach, selector resolve, proof validation, rendering, and total
+latency remain separately observable in microseconds.  Cold publication has a
+separate receipt and owns all filesystem collection and parser work.
+
+* Atomicity And Concurrency
+
+Immutable generation publication, provider envelope publication, selector
+fixture publication, and active receipt replacement form one logical
+transaction.  Concurrent publishers may converge on the same content-addressed
+generation.  A publisher may adopt an existing generation only after validating
+the complete envelope, fixture, coverage, and identity tuple.
+
+Readers open the active receipt once and pin its generation for the request.
+They never observe a mixture of two generations and never take the Turso writer
+lock on the Memory Search path.
+
+* Typed Ranker Artifact
+
+Graph ranking is an installed runtime capability, not a source-checkout
+fallback.  Activation MUST bind each ranker by ranker ID, capability ID,
+entrypoint, content digest, artifact-metadata digest, and protocol version.
+
+The =graph-turbo= capability is provided by the standalone
+=asp-graph-turbo= artifact.  Installed search MUST execute only the activated
+artifact.  It MUST NOT invoke =uv=, a Python module, a package-manager
+environment, or a repository checkout.
+
+If the artifact or its receipt is missing, stale, or digest-mismatched, search
+fails closed with =ranker-unavailable=.  It does not downgrade to a wrapper,
+run an installer during the request, or select an untyped ranker.
+
+The installed-search performance gate rejects any process tree containing
+=uv= and requires the ranker receipt to identify the same bytes selected by
+activation.
+
+* Async Hook Activation Recovery
+
+PreToolUse is a bounded read-only decision path.  It MUST NOT synchronously
+rebuild activation, enumerate provider receipts, hash artifacts, acquire a
+writer lock, spawn an installer, or wait for reconciliation.
+
+Command classification runs before activation loading.  A strictly parsed
+canonical Global repair command receives =bootstrap-repair= authority that is
+independent of project activation.  This authority is limited to:
+
+- recording an already installed Global artifact receipt;
+- reconciling the single Global plugin activation;
+- inspecting health and canonical paths.
+
+It does not authorize arbitrary shell execution, project installation, source
+builds, compatibility activation, or receipt copying.
+
+For normal commands the hook reads one atomically published last-known-good
+activation snapshot.  If the current desired activation is stale or invalid,
+the hook schedules one singleflight background reconciliation and immediately
+returns a typed recovery receipt.  Commands whose semantic decision is covered
+by the validated snapshot continue from that pinned snapshot.  Commands that
+require missing or invalid capabilities fail closed without waiting.
+
+The reconciler publishes a complete activation generation atomically.  Readers
+never observe a partially rewritten activation and never walk from one missing
+provider receipt to the next inside PreToolUse.  Repeated hook events coalesce
+onto the same generation identity rather than launching repeated refreshes.
+
+The hook performance receipt MUST expose activation snapshot load time,
+classification time, reconciliation scheduling time, lock attempts,
+subprocesses, file reads, and whether the decision used the current or
+last-known-good generation.  The synchronous path has zero subprocesses, zero
+manifest writes, and zero lock waits.
+
+* Language Boundary
+
+The receipt and Memory Search consumption contract are language-neutral.
+Language harnesses produce parser-owned canonical item identities and
+generation materialization proofs.  They do not depend on ASP crates and do not
+own active receipt layout, runtime caching, or query routing.

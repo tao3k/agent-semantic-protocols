@@ -3,12 +3,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use agent_semantic_config::{ProjectRuntimeLayout, project_cache_root, project_runtime_layout};
-
-/// Read-only ASP state paths derived from the config-owned project layout.
+/// Read-only ASP state paths derived from State Core.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectStatePaths {
-    pub layout: ProjectRuntimeLayout,
     pub repo_id: crate::state_core::RepoId,
     pub workspace_id: crate::state_core::WorkspaceId,
     pub identity_basis: String,
@@ -28,10 +25,9 @@ pub struct ProjectStatePaths {
     pub provider_lock_dir: PathBuf,
 }
 
-/// Materialized project runtime state derived from the config-owned layout.
+/// Materialized runtime state derived from State Core.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectRuntimeState {
-    pub layout: ProjectRuntimeLayout,
     pub protocol_home: PathBuf,
     pub hook_cache_dir: PathBuf,
     pub hook_state_dir: PathBuf,
@@ -44,11 +40,22 @@ pub struct ProjectRuntimeState {
     pub provider_lock_dir: PathBuf,
 }
 
+pub fn provider_state_root(protocol_home: impl AsRef<Path>) -> PathBuf {
+    protocol_home.as_ref().join("runtime").join("providers")
+}
+
+pub fn provider_receipt_dir(protocol_home: impl AsRef<Path>) -> PathBuf {
+    provider_state_root(protocol_home).join("receipts")
+}
+
+pub fn provider_package_dir(protocol_home: impl AsRef<Path>) -> PathBuf {
+    provider_state_root(protocol_home).join("packages")
+}
+
 /// Resolve the ASP runtime state paths for a project without creating files.
 pub fn project_state_paths(project_root: impl AsRef<Path>) -> Result<ProjectStatePaths, String> {
-    let layout = project_runtime_layout(project_root);
-    let resolved = crate::state_core::ResolvedState::resolve(&layout.requested_root)?;
-    Ok(project_state_paths_from_resolved(layout, resolved))
+    let resolved = crate::state_core::ResolvedState::resolve(project_root)?;
+    Ok(project_state_paths_from_resolved(resolved))
 }
 
 /// Resolve ASP runtime paths against an explicit State Home without creating files.
@@ -59,16 +66,12 @@ pub fn project_state_paths_with_state_home(
     project_root: impl AsRef<Path>,
     state_home: impl AsRef<Path>,
 ) -> Result<ProjectStatePaths, String> {
-    let layout = project_runtime_layout(project_root);
-    let resolved = crate::state_core::ResolvedState::resolve_with_state_home(
-        &layout.requested_root,
-        state_home,
-    )?;
-    Ok(project_state_paths_from_resolved(layout, resolved))
+    let resolved =
+        crate::state_core::ResolvedState::resolve_with_state_home(project_root, state_home)?;
+    Ok(project_state_paths_from_resolved(resolved))
 }
 
 fn project_state_paths_from_resolved(
-    layout: ProjectRuntimeLayout,
     resolved: crate::state_core::ResolvedState,
 ) -> ProjectStatePaths {
     let protocol_home = resolved.state_home.clone();
@@ -82,10 +85,9 @@ fn project_state_paths_from_resolved(
     let artifacts_dir = resolved.paths.artifacts_dir.clone();
     let runtime_home = protocol_home.join("runtime");
     let runtime_bin_dir = runtime_home.join("bin");
-    let provider_lock_dir = runtime_home.join("provider-locks");
+    let provider_lock_dir = provider_receipt_dir(&protocol_home);
 
     ProjectStatePaths {
-        layout,
         repo_id: resolved.repo.repo_id.clone(),
         workspace_id: resolved.workspace.workspace_id.clone(),
         identity_basis: resolved.repo.identity_basis.clone(),
@@ -110,10 +112,9 @@ fn project_state_paths_from_resolved(
 pub fn project_runtime_state(
     project_root: impl AsRef<Path>,
 ) -> Result<ProjectRuntimeState, String> {
-    let layout = project_runtime_layout(project_root);
-    let resolved = crate::state_core::ResolvedState::resolve(&layout.requested_root)?;
+    let resolved = crate::state_core::ResolvedState::resolve(project_root)?;
     resolved.ensure_minimal_layout()?;
-    let paths = project_state_paths_from_resolved(layout, resolved);
+    let paths = project_state_paths_from_resolved(resolved);
     materialize_project_runtime_state(paths)
 }
 
@@ -122,13 +123,10 @@ pub fn project_runtime_state_with_state_home(
     project_root: impl AsRef<Path>,
     state_home: impl AsRef<Path>,
 ) -> Result<ProjectRuntimeState, String> {
-    let layout = project_runtime_layout(project_root);
-    let resolved = crate::state_core::ResolvedState::resolve_with_state_home(
-        &layout.requested_root,
-        state_home,
-    )?;
+    let resolved =
+        crate::state_core::ResolvedState::resolve_with_state_home(project_root, state_home)?;
     resolved.ensure_minimal_layout()?;
-    let paths = project_state_paths_from_resolved(layout, resolved);
+    let paths = project_state_paths_from_resolved(resolved);
     materialize_project_runtime_state(paths)
 }
 
@@ -145,7 +143,6 @@ fn materialize_project_runtime_state(
     let provider_lock_dir = ensure_dir(paths.provider_lock_dir)?;
 
     Ok(ProjectRuntimeState {
-        layout: paths.layout,
         protocol_home,
         hook_cache_dir,
         hook_state_dir,
@@ -159,7 +156,7 @@ fn materialize_project_runtime_state(
     })
 }
 
-/// Resolve the project-local ASP protocol home.
+/// Resolve the State Core home used by this project identity.
 pub fn project_protocol_home_path(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
     Ok(project_state_paths(project_root)?.protocol_home)
 }
@@ -211,36 +208,6 @@ fn project_root_for_state_activation_path(path: &Path) -> Option<PathBuf> {
     Some(PathBuf::from(root))
 }
 
-/// Return the runtime bin directory below an already-resolved cache home.
-#[must_use]
-pub fn runtime_bin_dir_for_cache_home(cache_home: impl AsRef<Path>) -> PathBuf {
-    cache_home
-        .as_ref()
-        .join("agent-semantic-protocol")
-        .join("runtime")
-        .join("bin")
-}
-
-/// Resolve the cache root used by a project.
-pub fn project_cache_home(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
-    project_cache_root(project_root)
-}
-
-/// Resolve cache home for provider execution with activation-root fallback.
-pub fn project_cache_home_for_roots(
-    activation_root: &Path,
-    project_root: &Path,
-) -> Result<PathBuf, String> {
-    project_cache_home(project_root).or_else(|project_error| {
-        project_cache_home(activation_root).map_err(|activation_error| {
-            format!(
-                "{project_error}; failed to resolve activation-root cache home for {}: {activation_error}",
-                activation_root.display()
-            )
-        })
-    })
-}
-
 /// Resolve and create the managed hook activation directory.
 pub fn ensure_project_hook_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
     ensure_dir(project_state_paths(project_root)?.hook_cache_dir)
@@ -253,17 +220,17 @@ pub fn ensure_project_hook_state_dir(project_root: impl AsRef<Path>) -> Result<P
 
 /// Resolve and create the client cache directory.
 pub fn ensure_project_client_cache_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
+    let project_root = project_root.as_ref();
     let paths = project_state_paths(project_root)?;
-    crate::state_core::ResolvedState::resolve(&paths.layout.requested_root)?
-        .ensure_minimal_layout()?;
+    crate::state_core::ResolvedState::resolve(project_root)?.ensure_minimal_layout()?;
     ensure_dir(paths.client_cache_dir)
 }
 
 /// Resolve and create the artifacts directory.
 pub fn ensure_project_artifacts_dir(project_root: impl AsRef<Path>) -> Result<PathBuf, String> {
+    let project_root = project_root.as_ref();
     let paths = project_state_paths(project_root)?;
-    crate::state_core::ResolvedState::resolve(&paths.layout.requested_root)?
-        .ensure_minimal_layout()?;
+    crate::state_core::ResolvedState::resolve(project_root)?.ensure_minimal_layout()?;
     ensure_dir(paths.artifacts_dir)
 }
 

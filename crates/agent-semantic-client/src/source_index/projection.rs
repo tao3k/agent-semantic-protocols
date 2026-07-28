@@ -36,6 +36,13 @@ pub fn import_language_projection(
     project_root: &Path,
     projection: ClientDbLanguageProjection,
 ) -> Result<LanguageProjectionImportReport, String> {
+    import_language_projection_inner(project_root, projection)
+}
+
+fn import_language_projection_inner(
+    project_root: &Path,
+    projection: ClientDbLanguageProjection,
+) -> Result<LanguageProjectionImportReport, String> {
     projection.validate()?;
     let db_engine = ClientDbEngine::resolve(project_root)?;
     let client_dir = db_engine.client_dir().to_path_buf();

@@ -43,14 +43,14 @@ pub(crate) fn source_index_trace(
     SearchPipeSourceAcquisitionTrace {
         source: ("sourceIndex".to_string()).into(),
         status: (status.to_string()).into(),
-        matched: acquisition.candidates.len(),
+        matched: acquisition.discovery_candidates().len(),
         missing: acquisition
-            .candidates
+            .discovery_candidates()
             .iter()
             .filter(|candidate| candidate.confidence == "stale-index")
             .count(),
         normalized: acquisition
-            .candidates
+            .discovery_candidates()
             .iter()
             .filter(|candidate| source_index_candidate_ready(candidate))
             .count(),

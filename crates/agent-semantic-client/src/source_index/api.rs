@@ -22,12 +22,34 @@ use super::config::{
     SOURCE_INDEX_SCHEMA_ID, SOURCE_INDEX_SCHEMA_VERSION,
 };
 use super::model::{SourceIndexRefreshReport, SourceIndexScopeFile};
+use super::provider_envelope::{
+    ProviderSourceEnvelopeLookupRequestV1,
+    current_provider_source_index_snapshot_at_artifact_root_with_registry,
+};
 
 /// Refresh the DB Engine source index from the complete provider-owned source scope.
 pub fn refresh_source_index(
     project_root: &Path,
 ) -> Result<Option<SourceIndexRefreshReport>, String> {
     let trace_started = Instant::now();
+    let Some((mut context, previous_file_hashes)) =
+        source_index_refresh_context(project_root, trace_started)?
+    else {
+        return Ok(None);
+    };
+    let report = refresh_complete_source_index_generation(
+        project_root,
+        &mut context,
+        previous_file_hashes.as_slice(),
+        trace_started,
+    )?;
+    Ok(Some(report))
+}
+
+fn source_index_refresh_context(
+    project_root: &Path,
+    trace_started: Instant,
+) -> Result<Option<(SourceIndexRefreshContext, Vec<ClientCacheFileHash>)>, String> {
     let cache_report =
         agent_semantic_client_core::ClientCacheManifest::inspect_project(project_root);
     source_index_trace("cache-inspected", trace_started);
@@ -41,27 +63,39 @@ pub fn refresh_source_index(
         source_index_trace("db-absent-warm-check", trace_started);
         return Ok(None);
     }
-    let mut context = SourceIndexRefreshContext::resolve(project_root)?;
+    let context = SourceIndexRefreshContext::resolve(project_root)?;
     source_index_trace("context-resolved", trace_started);
-    let previous_file_hashes = context.latest_file_hashes(project_root)?;
-    source_index_trace("previous-file-hashes-loaded", trace_started);
-    if previous_file_hashes.is_none() {
+    let Some(previous_file_hashes) = context.latest_file_hashes(project_root)? else {
         source_index_trace("generation-absent-warm-check", trace_started);
         return Ok(None);
-    }
+    };
+    source_index_trace("previous-file-hashes-loaded", trace_started);
+    Ok(Some((context, previous_file_hashes)))
+}
+
+fn refresh_complete_source_index_generation(
+    project_root: &Path,
+    context: &mut SourceIndexRefreshContext,
+    previous_file_hashes: &[ClientCacheFileHash],
+    trace_started: Instant,
+) -> Result<SourceIndexRefreshReport, String> {
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
     source_index_trace("provider-registry-loaded", trace_started);
     let registry = snapshot.evidence(project_root);
-    let files = collect_source_index_files(project_root, &snapshot)?;
+    let files = collect_source_index_files(
+        project_root,
+        &snapshot,
+        &super::collect::SourceIndexCollectionScopeV1::CompleteGeneration,
+    )?;
     source_index_trace("scope-files-collected", trace_started);
     let report = context.refresh_generation(SourceIndexGenerationRefresh {
         index_root: project_root,
         files: &files,
-        previous_file_hashes: previous_file_hashes.as_deref(),
+        previous_file_hashes: Some(previous_file_hashes),
         registry: &registry,
     })?;
     source_index_trace("generation-refreshed", trace_started);
-    Ok(Some(report))
+    Ok(report)
 }
 
 fn source_index_snapshot_from_files(
@@ -133,13 +167,13 @@ fn source_index_snapshot_from_files(
 pub struct CurrentSourceIndexSnapshot {
     pub workspace_snapshot: agent_semantic_artifacts::WorkspaceSnapshot,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    /// Complete generation identity validated once when the snapshot is
+    /// published or loaded.
+    pub workspace_generation:
+        agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1,
     /// Owner bytes captured in the same read pass that produced the Merkle root.
     pub source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/provider_source_snapshot_envelope_generation.rs"]
-mod provider_source_snapshot_envelope_generation_tests;
 
 /// Canonical workspace-relative owner path used by source-index acquisition.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -164,209 +198,6 @@ impl From<&str> for SourceIndexOwnerPath {
     }
 }
 
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderSourceSnapshotEnvelopeV1<'a> {
-    schema_id: &'static str,
-    schema_version: &'static str,
-    provider_id: &'a str,
-    source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
-    root_depth: usize,
-    materialization_state: &'static str,
-    owner_coverage: &'static str,
-    cas_root: &'a Path,
-    owners: Vec<ProviderSourceSnapshotOwnerV1>,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderSourceSnapshotOwnerV1 {
-    path: String,
-    snapshot_leaf_digest: String,
-    blob_digest: String,
-    source_content_digest: String,
-    cas_path: String,
-}
-
-/// Publish one provider-scoped, root-bound source envelope backed by ASP-owned CAS bytes.
-/// Typed inputs for publishing one provider-scoped source snapshot envelope.
-pub struct ProviderSourceSnapshotEnvelopePublicationV1<'a> {
-    pub snapshot: &'a CurrentSourceIndexSnapshot,
-    pub provider_id: &'a str,
-    pub source_extensions: &'a [String],
-    pub cache_home: &'a Path,
-    pub expected_workspace_root_digest: &'a [u8; 32],
-}
-
-/// Publish one provider-scoped, root-bound source envelope backed by ASP-owned CAS bytes.
-pub fn publish_provider_source_snapshot_envelope(
-    request: ProviderSourceSnapshotEnvelopePublicationV1<'_>,
-) -> Result<std::path::PathBuf, String> {
-    fn merkle_root_depth(leaf_count: usize) -> usize {
-        if leaf_count <= 1 {
-            0
-        } else {
-            usize::BITS as usize - (leaf_count - 1).leading_zeros() as usize
-        }
-    }
-
-    let ProviderSourceSnapshotEnvelopePublicationV1 {
-        snapshot,
-        provider_id,
-        source_extensions,
-        cache_home,
-        expected_workspace_root_digest,
-    } = request;
-    let provider_id = ProviderId::from(provider_id);
-    let cas_root = cache_home.join("source-blob-cas").join("v1");
-    let cas = agent_semantic_content_identity::ContentAddressedStore::new(&cas_root);
-    let normalized_extensions = source_extensions
-        .iter()
-        .map(|extension| extension.trim_start_matches('.').to_ascii_lowercase())
-        .collect::<std::collections::BTreeSet<_>>();
-    let mut owners = Vec::new();
-    for (path, bytes) in snapshot.source_blobs.iter() {
-        let extension = Path::new(path)
-            .extension()
-            .map(|extension| extension.to_string_lossy().to_ascii_lowercase());
-        if !normalized_extensions.is_empty()
-            && extension
-                .as_ref()
-                .is_none_or(|extension| !normalized_extensions.contains(extension))
-        {
-            continue;
-        }
-        let snapshot_leaf_digest = snapshot.workspace_snapshot.file_digest(path).ok_or_else(|| {
-            format!(
-                "provider source blob is not committed by snapshot root: path={path} rootDigest={}",
-                snapshot.source_snapshot.root_digest
-            )
-        })?;
-        let blob_digest = agent_semantic_content_identity::hash_blob(bytes).value;
-        let source_content_digest =
-            agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(bytes)
-                .as_str()
-                .to_owned();
-        let blob_path = cas.write(&blob_digest, bytes).map_err(|error| {
-            format!(
-                "failed to publish provider source blob to ASP content store: path={path} blobDigest={blob_digest} error={error}"
-            )
-        })?;
-        let cas_path = blob_path
-            .strip_prefix(&cas_root)
-            .map_err(|error| {
-                format!(
-                    "provider source blob escaped ASP content store: path={} casRoot={} error={error}",
-                    blob_path.display(),
-                    cas_root.display()
-                )
-            })?
-            .to_string_lossy()
-            .replace('\\', "/");
-        owners.push(ProviderSourceSnapshotOwnerV1 {
-            path: path.to_string(),
-            snapshot_leaf_digest: snapshot_leaf_digest.to_string(),
-            blob_digest,
-            source_content_digest,
-            cas_path,
-        });
-    }
-    owners.sort_by(|left, right| left.path.cmp(&right.path));
-    let provider_workspace_snapshot = agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(
-        owners
-            .iter()
-            .map(|owner| (owner.path.clone(), owner.source_content_digest.clone())),
-    );
-    let provider_source_snapshot = provider_workspace_snapshot.evidence(
-        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
-        snapshot.source_snapshot.provider_digest.clone(),
-    );
-    if provider_source_snapshot.leaf_count != owners.len() {
-        return Err(format!(
-            "provider source envelope generation is incomplete: providerId={} leafCount={} ownerCount={}",
-            provider_id.as_str(),
-            provider_source_snapshot.leaf_count,
-            owners.len()
-        ));
-    }
-    let expected_workspace_root_digest = expected_workspace_root_digest
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    if provider_source_snapshot.root_digest != expected_workspace_root_digest {
-        return Err(format!(
-            "provider source envelope root does not match admitted workspace identity: providerId={} envelopeRootDigest={} workspaceRootDigest={}",
-            provider_id.as_str(),
-            provider_source_snapshot.root_digest,
-            expected_workspace_root_digest
-        ));
-    }
-    let envelope_dir = cache_home
-        .join("source-snapshot-envelopes")
-        .join("v1")
-        .join(&provider_source_snapshot.root_digest);
-    std::fs::create_dir_all(&envelope_dir).map_err(|error| {
-        format!(
-            "failed to create provider source envelope directory {}: {error}",
-            envelope_dir.display()
-        )
-    })?;
-    let envelope_file_name = source_snapshot_envelope_file_name(
-        provider_id.as_str(),
-        &snapshot.source_snapshot.provider_digest,
-    );
-    let envelope_path = envelope_dir.join(&envelope_file_name);
-    let envelope = ProviderSourceSnapshotEnvelopeV1 {
-        schema_id: "asp.exact-source-snapshot-envelope.v1",
-        schema_version: "1",
-        provider_id: provider_id.as_str(),
-        source_snapshot: &provider_source_snapshot,
-        root_depth: merkle_root_depth(provider_source_snapshot.leaf_count),
-        materialization_state: "artifact-complete",
-        owner_coverage: "complete",
-        cas_root: &cas_root,
-        owners,
-    };
-    let bytes = serde_json::to_vec_pretty(&envelope)
-        .map_err(|error| format!("failed to encode provider source snapshot envelope: {error}"))?;
-    let temporary = envelope_dir.join(format!(".{envelope_file_name}.tmp-{}", std::process::id()));
-    std::fs::write(&temporary, bytes).map_err(|error| {
-        format!(
-            "failed to write provider source snapshot envelope {}: {error}",
-            temporary.display()
-        )
-    })?;
-    std::fs::rename(&temporary, &envelope_path).map_err(|error| {
-        let _ = std::fs::remove_file(&temporary);
-        format!(
-            "failed to publish provider source snapshot envelope {}: {error}",
-            envelope_path.display()
-        )
-    })?;
-    Ok(envelope_path)
-}
-
-fn source_snapshot_envelope_file_name(provider_id: &str, provider_digest: &str) -> String {
-    format!(
-        "{}--{}.json",
-        source_snapshot_envelope_component(provider_id),
-        source_snapshot_envelope_component(provider_digest)
-    )
-}
-
-fn source_snapshot_envelope_component(value: &str) -> String {
-    value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
-
 /// Capture the current content-authoritative source snapshot used by both
 /// source-index rebuild and lookup.
 pub fn current_source_index_snapshot(
@@ -388,46 +219,216 @@ pub fn current_workspace_search_source_index_snapshot(
     let files = super::collect::collect_workspace_search_source_index_files(
         project_root,
         &provider_registry,
+        &super::collect::SourceIndexCollectionScopeV1::CompleteGeneration,
     )?;
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
         source_index_snapshot_from_files(project_root, &files, &registry)?;
+    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
+}
+
+pub fn current_provider_source_index_snapshot_with_registry(
+    project_root: &Path,
+    language_id: &agent_semantic_client_core::LanguageId,
+    provider_id: &agent_semantic_client_core::ProviderId,
+    provider_registry: &ProviderRegistrySnapshot,
+) -> Result<CurrentSourceIndexSnapshot, String> {
+    let project_context = ProjectContext::resolve(project_root)?;
+    current_provider_source_index_snapshot_at_artifact_root_with_registry(
+        ProviderSourceEnvelopeLookupRequestV1 {
+            project_root,
+            artifact_root: project_context.state_layout().artifacts_dir(),
+            language_id,
+            provider_id,
+            provider_registry,
+        },
+    )
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PublishedProviderSourceEnvelope {
+    schema_id: String,
+    schema_version: String,
+    provider_id: String,
+    provider_workspace_root: String,
+    provider_workspace_identity_digest: String,
+    source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    materialization_state: String,
+    owner_coverage: String,
+    cas_root: PathBuf,
+    owners: Vec<PublishedProviderSourceOwner>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PublishedProviderSourceOwner {
+    path: String,
+    snapshot_leaf_digest: String,
+    blob_digest: String,
+    source_content_digest: String,
+    cas_path: String,
+}
+
+pub(super) fn load_provider_source_index_snapshot_envelope(
+    artifact_root: &Path,
+    requested_provider_id: &str,
+    expected_provider_digest: &str,
+    expected_provider_workspace_identity: &super::provider_envelope::ProviderWorkspaceIdentityV1,
+    envelope_path: &Path,
+) -> Result<CurrentSourceIndexSnapshot, String> {
+    let bytes = std::fs::read(envelope_path).map_err(|error| {
+        format!(
+            "failed to read requested provider source envelope {}: {error}",
+            envelope_path.display()
+        )
+    })?;
+    let envelope: PublishedProviderSourceEnvelope =
+        serde_json::from_slice(&bytes).map_err(|error| {
+            format!(
+                "invalid requested provider source envelope {}: {error}",
+                envelope_path.display()
+            )
+        })?;
+    let invalid_reason = if envelope.schema_id != "asp.exact-source-snapshot-envelope.v1" {
+        Some("schema-id")
+    } else if envelope.schema_version != "1" {
+        Some("schema-version")
+    } else if envelope.provider_id != requested_provider_id {
+        Some("provider-id")
+    } else if envelope.provider_workspace_root != expected_provider_workspace_identity.root {
+        Some("provider-workspace-root")
+    } else if envelope.provider_workspace_identity_digest
+        != expected_provider_workspace_identity.digest
+    {
+        Some("provider-workspace-identity-digest")
+    } else if envelope.source_snapshot.provider_digest != expected_provider_digest {
+        Some("provider-digest")
+    } else if envelope.materialization_state != "artifact-complete" {
+        Some("materialization-state")
+    } else if envelope.owner_coverage != "complete" {
+        Some("owner-coverage")
+    } else if envelope.owners.is_empty() {
+        Some("owners-empty")
+    } else {
+        None
+    };
+    if let Some(reason) = invalid_reason {
+        return Err(provider_envelope_contract_error(
+            requested_provider_id,
+            reason,
+        ));
+    }
+    let cas_root = artifact_root.join("source-blob-cas").join("v1");
+    if envelope.cas_root != cas_root {
+        return Err(provider_envelope_contract_error(
+            requested_provider_id,
+            "cas-root",
+        ));
+    }
+    let mut workspace_hashes = Vec::with_capacity(envelope.owners.len());
+    let mut source_blobs = Vec::with_capacity(envelope.owners.len());
+    for owner in &envelope.owners {
+        let relative_cas_path = normalized_envelope_relative_path(&owner.cas_path)?;
+        let blob_path = cas_root.join(&relative_cas_path);
+        let owner_bytes = std::fs::read(&blob_path).map_err(|error| {
+            format!(
+                "requested provider source envelope blob is missing: providerId={requested_provider_id} path={} error={error}",
+                owner.path
+            )
+        })?;
+        if agent_semantic_content_identity::hash_blob(&owner_bytes).value != owner.blob_digest
+            || agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                &owner_bytes,
+            )
+            .as_str()
+                != owner.source_content_digest
+        {
+            return Err(format!(
+                "requested provider source envelope blob digest is invalid: providerId={requested_provider_id} path={}",
+                owner.path
+            ));
+        }
+        workspace_hashes.push((owner.path.as_str(), owner.snapshot_leaf_digest.as_str()));
+        source_blobs.push((
+            agent_semantic_client_db::ClientDbSourceIndexPath::new(owner.path.clone()),
+            owner_bytes,
+        ));
+    }
+    let workspace_snapshot =
+        agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(workspace_hashes);
+    let source_snapshot = workspace_snapshot.evidence(
+        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
+        expected_provider_digest.to_owned(),
+    );
+    if source_snapshot.root_digest != envelope.source_snapshot.root_digest
+        || source_snapshot.leaf_count != envelope.source_snapshot.leaf_count
+    {
+        return Err(format!(
+            "requested provider source envelope snapshot is invalid: providerId={requested_provider_id}"
+        ));
+    }
     Ok(CurrentSourceIndexSnapshot {
+        workspace_generation: materialized_workspace_generation(
+            &source_snapshot,
+            source_blobs.len(),
+        )?,
         workspace_snapshot,
         source_snapshot,
-        source_blobs,
+        source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+            source_blobs,
+        ),
     })
 }
 
-/// Capture and atomically publish one complete provider generation.
-///
-/// Every owner, selector, source projection, and Merkle proof must come from
-/// the same admitted workspace identity. Partial provider coverage is rejected
-/// before a live generation directory becomes visible.
-pub fn publish_current_workspace_search_source_index_generation_v1(
+fn provider_envelope_contract_error(provider_id: &str, reason: &str) -> String {
+    format!(
+        "requested provider source envelope contract is invalid: providerId={provider_id} reason={reason}"
+    )
+}
+
+fn normalized_envelope_relative_path(path: &str) -> Result<PathBuf, String> {
+    let mut normalized = PathBuf::new();
+    for component in Path::new(path).components() {
+        match component {
+            std::path::Component::Normal(component) => normalized.push(component),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(format!(
+                    "provider source envelope CAS path escaped artifact root: path={path}"
+                ));
+            }
+        }
+    }
+    if normalized.as_os_str().is_empty() {
+        return Err("provider source envelope CAS path is empty".to_owned());
+    }
+    Ok(normalized)
+}
+
+pub(super) fn fresh_target_provider_source_index_snapshot_with_registry(
     project_root: &Path,
-    publication: super::CompleteSourceIndexGenerationPublicationV1<'_>,
-) -> Result<super::PublishedSourceIndexGenerationV1, String> {
-    if publication.project_root != project_root {
+    language_id: &agent_semantic_client_core::LanguageId,
+    provider_id: &agent_semantic_client_core::ProviderId,
+    collection_scope: &super::collect::SourceIndexCollectionScopeV1,
+    provider_registry: &ProviderRegistrySnapshot,
+) -> Result<CurrentSourceIndexSnapshot, String> {
+    let registry = provider_registry.evidence(project_root);
+    let files = collect_source_index_files(project_root, provider_registry, collection_scope)?;
+    if files.is_empty()
+        || files
+            .iter()
+            .any(|file| &file.language_id != language_id || &file.provider_id != provider_id)
+    {
         return Err(format!(
-            "source-index generation project root drift: requested={} publication={}",
-            project_root.display(),
-            publication.project_root.display()
+            "target provider source-scope output is incomplete: languageId={} providerId={}",
+            language_id, provider_id
         ));
     }
-    let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
-    let registry = provider_registry.evidence(project_root);
-    let files = super::collect::collect_workspace_search_source_index_files(
-        project_root,
-        &provider_registry,
-    )?;
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
         source_index_snapshot_from_files(project_root, &files, &registry)?;
-    let snapshot = CurrentSourceIndexSnapshot {
-        workspace_snapshot,
-        source_snapshot,
-        source_blobs,
-    };
-    super::generation::publish_complete_source_index_generation_v1(&snapshot, &files, publication)
+    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
 }
 
 /// Capture a content-authoritative, one-owner snapshot for an exact query.
@@ -471,11 +472,7 @@ fn current_source_index_snapshot_for_owner_with_registry(
     }];
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
         source_index_snapshot_from_files(project_root, &files, &registry)?;
-    Ok(CurrentSourceIndexSnapshot {
-        workspace_snapshot,
-        source_snapshot,
-        source_blobs,
-    })
+    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
 }
 
 fn explicit_snapshot_owner_path(project_root: &Path, owner_path: &str) -> Result<PathBuf, String> {
@@ -531,14 +528,14 @@ pub(crate) fn current_source_index_snapshot_with_registry(
     provider_registry: &ProviderRegistrySnapshot,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let registry = provider_registry.evidence(project_root);
-    let files = collect_source_index_files(project_root, provider_registry)?;
+    let files = collect_source_index_files(
+        project_root,
+        provider_registry,
+        &super::collect::SourceIndexCollectionScopeV1::CompleteGeneration,
+    )?;
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
         source_index_snapshot_from_files(project_root, &files, &registry)?;
-    Ok(CurrentSourceIndexSnapshot {
-        workspace_snapshot,
-        source_snapshot,
-        source_blobs,
-    })
+    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
 }
 
 /// Capture the current content-authoritative snapshot for an ASP-managed
@@ -589,11 +586,7 @@ pub(crate) fn current_runtime_source_index_snapshot(
     };
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
         source_index_snapshot_from_files(&runtime_context.checkout_root, &files, &registry)?;
-    Ok(CurrentSourceIndexSnapshot {
-        workspace_snapshot,
-        source_snapshot,
-        source_blobs,
-    })
+    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
 }
 
 /// Rebuild the DB Engine source index for a project without storing raw source.
@@ -604,14 +597,17 @@ pub fn rebuild_source_index(project_root: &Path) -> Result<SourceIndexRefreshRep
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
     source_index_trace("provider-registry-loaded", trace_started);
     let registry = snapshot.evidence(project_root);
-    let previous_file_hashes = context.latest_file_hashes(project_root)?;
-    source_index_trace("previous-file-hashes-loaded", trace_started);
-    let files = collect_source_index_files(project_root, &snapshot)?;
+    source_index_trace("rebuild-mode-selected", trace_started);
+    let files = collect_source_index_files(
+        project_root,
+        &snapshot,
+        &super::collect::SourceIndexCollectionScopeV1::CompleteGeneration,
+    )?;
     source_index_trace("scope-files-collected", trace_started);
     context.refresh_generation(SourceIndexGenerationRefresh {
         index_root: project_root,
         files: &files,
-        previous_file_hashes: previous_file_hashes.as_deref(),
+        previous_file_hashes: None,
         registry: &registry,
     })
 }
@@ -720,31 +716,23 @@ impl SourceIndexRefreshContext {
         let (file_hashes, workspace_snapshot, mut source_snapshot, source_blobs) =
             source_index_snapshot_from_files(request.index_root, request.files, request.registry)?;
         source_index_trace("generation-file-hashes-built", trace_started);
-        let reusable_stats = self.db_session.reusable_source_index_generation(
-            request.index_root,
-            &self.schema_id,
-            &self.schema_version,
-            &file_hashes,
-        )?;
-        source_index_trace("generation-reuse-checked", trace_started);
-        if let Some(stats) = reusable_stats {
-            return Ok(source_index_refresh_report(
-                &self.db_path,
-                stats,
-                request.files.len(),
-                true,
-            ));
-        }
-        let previous_stats = self.db_session.latest_source_index_stats(
-            request.index_root,
-            &self.schema_id,
-            &self.schema_version,
-        )?;
-        let previous_scope_files = self.db_session.latest_source_index_scope_files(
-            request.index_root,
-            &self.schema_id,
-            &self.schema_version,
-        )?;
+        source_index_trace("generation-evidence-built", trace_started);
+        let (previous_stats, previous_scope_files) = if request.previous_file_hashes.is_some() {
+            (
+                self.db_session.latest_source_index_stats(
+                    request.index_root,
+                    &self.schema_id,
+                    &self.schema_version,
+                )?,
+                self.db_session.latest_source_index_scope_files(
+                    request.index_root,
+                    &self.schema_id,
+                    &self.schema_version,
+                )?,
+            )
+        } else {
+            (None, None)
+        };
         let generation_id =
             agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
                 &source_snapshot,
@@ -862,29 +850,6 @@ struct SourceIndexGenerationRefresh<'a> {
     registry: &'a ProviderRegistryEvidence,
 }
 
-fn source_index_refresh_report(
-    db_path: &Path,
-    stats: agent_semantic_client_db::ClientDbSourceIndexStats,
-    file_count: usize,
-    reused_generation: bool,
-) -> SourceIndexRefreshReport {
-    let source_snapshot = stats.source_snapshot.clone();
-    SourceIndexRefreshReport::from_report(
-        db_path.to_path_buf(),
-        agent_semantic_client_db::ClientDbSourceIndexRefreshReport {
-            generation_id: stats.generation_id,
-            reused_generation,
-            file_count: client_db_source_index_file_count(file_count),
-            owner_count: stats.owner_count,
-            selector_count: stats.selector_count,
-            changed_owner_count: 0,
-            removed_owner_count: 0,
-            posting_write_count: 0,
-        },
-        source_snapshot,
-    )
-}
-
 #[path = "activation_snapshot.rs"]
 mod activation_snapshot;
 #[cfg(test)]
@@ -892,6 +857,41 @@ mod activation_snapshot;
 mod tests;
 pub use activation_snapshot::{
     CurrentSourceIndexOwnerFromActivationRequest,
+    current_provider_source_index_snapshot_from_activation,
     current_source_index_snapshot_for_owner_from_activation,
     current_source_index_snapshot_from_activation,
+    ensure_provider_source_index_snapshot_from_activation,
+    provider_source_snapshot_envelope_path_from_activation,
 };
+pub(crate) fn materialized_current_source_index_snapshot(
+    workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
+    source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
+) -> Result<CurrentSourceIndexSnapshot, String> {
+    let workspace_generation =
+        materialized_workspace_generation(&source_snapshot, source_blobs.len())?;
+    Ok(CurrentSourceIndexSnapshot {
+        workspace_snapshot,
+        source_snapshot,
+        workspace_generation,
+        source_blobs,
+    })
+}
+
+fn materialized_workspace_generation(
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+    owner_count: usize,
+) -> Result<
+    agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1,
+    String,
+> {
+    agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1::new(
+        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
+            root_digest: source_snapshot.root_digest.clone(),
+            root_depth: 1,
+            leaf_count: source_snapshot.leaf_count as u64,
+            owner_count: owner_count as u64,
+        },
+    )
+    .map_err(|error| error.to_string())
+}

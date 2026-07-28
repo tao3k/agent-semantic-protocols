@@ -17,6 +17,8 @@
     "sourceBlobDigest",
     "parserFactDigest",
     "structuralSelector",
+    "sourceByteStart",
+    "sourceByteEnd",
     "projectionMode",
     "projectionEncoding",
     "projectionPayloadBase64"
@@ -62,6 +64,14 @@
     "structuralSelector": {
       "type": "string",
       "minLength": 1
+    },
+    "sourceByteStart": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sourceByteEnd": {
+      "type": "integer",
+      "minimum": 1
     },
     "projectionMode": {
       "enum": ["code", "skeleton", "names", "verbatim"]

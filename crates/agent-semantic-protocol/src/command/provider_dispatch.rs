@@ -9,6 +9,7 @@ use agent_semantic_hook::runtime_profiles_for_runtime;
 use agent_semantic_runtime::project_state_paths;
 use std::env;
 use std::path::Path;
+use std::time::Instant;
 
 use super::client_backend_worker::run_client_backend_on_worker;
 use super::gerbil_check_cache::try_replay_gerbil_check_cache;
@@ -23,7 +24,7 @@ use super::provider_process::{
     provider_invocation_with_profile, provider_invocations, run_guide_command, run_provider_command,
 };
 use super::provider_roots::{
-    activation_project_root, client_backend_cache_home, effective_project_root_and_args,
+    activation_project_root, client_backend_state_dir, effective_project_root_and_args,
     validate_explicit_workspace_project_root,
 };
 pub(crate) use super::provider_selector::{
@@ -53,22 +54,50 @@ macro_rules! restore_env_var {
     };
 }
 
-pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ProviderNativeExactProjectionV1 {
-        schema_id: String,
-        schema_version: String,
-        language_id: String,
-        provider_id: String,
-        owner_path: String,
-        structural_selector: String,
-        projection_mode:
-            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1,
-        normalized_parser_facts: serde_json::Value,
-        projection_text: String,
+fn exact_query_trace(stage: &str, started: Instant) {
+    if env::var_os("ASP_EXACT_QUERY_TRACE").is_some() {
+        eprintln!(
+            "[exact-query-trace] stage={stage} elapsedMicros={}",
+            started.elapsed().as_micros()
+        );
     }
+}
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OwnerItemsExecutionRoute {
+    NativeIncremental,
+    RegisteredProviderSurface,
+}
+
+fn owner_items_execution_route(
+    native_incremental_owner: bool,
+    provider_resolves_to_asp: bool,
+    language_id: &str,
+    provider_id: &str,
+) -> Result<OwnerItemsExecutionRoute, String> {
+    if provider_resolves_to_asp {
+        let reason_kind = if native_incremental_owner {
+            "native-owner-provider-resolves-to-asp"
+        } else {
+            "provider-owner-surface-resolves-to-asp"
+        };
+        return Err(format!(
+            "owner-items route is recursive: reasonKind={reason_kind} languageId={language_id} providerId={provider_id}"
+        ));
+    }
+    Ok(if native_incremental_owner {
+        OwnerItemsExecutionRoute::NativeIncremental
+    } else {
+        OwnerItemsExecutionRoute::RegisteredProviderSurface
+    })
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/provider_dispatch.rs"]
+mod provider_dispatch_tests;
+
+pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
+    let exact_query_started = Instant::now();
     fn uses_client_backend(args: &[String]) -> bool {
         (args.first().is_some_and(|command| command == "search")
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
@@ -100,7 +129,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         args: &[String],
         project_root: &Path,
         activation_path: &Path,
-        cache_home: &Path,
         frontier_receipt: Option<&GraphTurboReceiptRequest>,
     ) -> Result<(), String> {
         let mut client_args = args.to_vec();
@@ -116,7 +144,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 receipt.out_path.display().to_string(),
             ]);
         }
-        let previous_prj_cache_home = env::var_os("PRJ_CACHE_HOME");
         let previous_activation_path = env::var_os("ASP_PROVIDER_ACTIVATION_PATH");
         let previous_activation_refresh = env::var_os("ASP_PROVIDER_ACTIVATION_REFRESH");
         let previous_runtime_bin = env::var_os("ASP_RUNTIME_BIN_DIR");
@@ -131,7 +158,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         }
         let runtime_path = env::join_paths(path_entries).ok();
         unsafe {
-            env::set_var("PRJ_CACHE_HOME", cache_home);
             env::set_var("ASP_PROVIDER_ACTIVATION_PATH", activation_path);
             env::set_var("ASP_PROVIDER_ACTIVATION_REFRESH", "0");
             env::set_var("ASP_RUNTIME_BIN_DIR", &runtime_bin);
@@ -142,7 +168,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         }
         let result =
             run_client_backend_on_worker(language_id, client_args, project_root.to_path_buf());
-        restore_env_var!("PRJ_CACHE_HOME", previous_prj_cache_home);
         restore_env_var!("ASP_PROVIDER_ACTIVATION_PATH", previous_activation_path);
         restore_env_var!(
             "ASP_PROVIDER_ACTIVATION_REFRESH",
@@ -201,8 +226,44 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     reject_search_file_workspace(&command_args, &invocation_root)?;
     validate_explicit_workspace_project_root(language_id, &command_args, &invocation_root)?;
     reject_manifest_source_selector_query_code(language_id, &command_args)?;
-    let activation_path = provider_activation_path(&invocation_root);
-    let runtime = load_activation(&activation_path, &invocation_root)?;
+    if is_provider_owned_structural_selector_query(language_id, &command_args) {
+        let (exact_project_root, exact_provider_args) =
+            super::provider_roots::explicit_workspace_project_root(
+                language_id,
+                &command_args,
+                &invocation_root,
+            )?
+            .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
+        let exact_activation_path = provider_activation_path(&exact_project_root);
+        if super::provider_direct_exact::try_run_active_fixture_exact_query(
+            language_id,
+            &exact_provider_args,
+            &exact_project_root,
+            &exact_activation_path,
+            exact_query_started,
+        )? {
+            return Ok(());
+        }
+        return super::provider_direct_exact::run_catalog_direct_exact_query(
+            language_id,
+            &exact_provider_args,
+            &exact_project_root,
+            exact_query_started,
+        );
+    }
+    let canonical_activation_path = provider_activation_path(&invocation_root);
+    let activation_path = canonical_activation_path.clone();
+    let runtime = super::provider_activation::load_activation_for_language(
+        &activation_path,
+        &invocation_root,
+        language_id,
+    )?;
+    exact_query_trace("activation-loaded", exact_query_started);
+    let activation_path = super::provider_activation::activation_path_for_language(
+        &canonical_activation_path,
+        &invocation_root,
+        language_id,
+    );
     let activation_root = activation_project_root(&activation_path, &runtime.project_root);
     let config = AspConfig::load(&invocation_root, &activation_root);
     let has_explicit_workspace = command_args
@@ -214,6 +275,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         &invocation_root,
         &activation_root,
     )?;
+    exact_query_trace("workspace-resolved", exact_query_started);
     let search_locator_root = if has_explicit_workspace {
         project_root.as_path()
     } else {
@@ -252,18 +314,22 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         &provider.source_extensions,
         &runtime,
     )?;
-    reject_registered_source_selector_query(language_id, &command_args, provider)?;
+    exact_query_trace("owner-preflight-complete", exact_query_started);
 
-    if super::workspace_tree_sitter_query::try_run_workspace_tree_sitter_query(
-        language_id,
-        &provider_args,
-        &project_root,
-        provider,
-    )? {
+    let tree_sitter_runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
+    if !is_provider_owned_structural_selector_query(language_id, &provider_args)
+        && super::workspace_tree_sitter_query::try_run_workspace_tree_sitter_query(
+            language_id,
+            &provider_args,
+            &project_root,
+            provider,
+            &tree_sitter_runtime_profiles,
+        )?
+    {
         return Ok(());
     }
 
-    let cache_home = client_backend_cache_home(&activation_root, &project_root)?;
+    let cache_home = client_backend_state_dir(&project_root)?;
     if let Some(request) =
         super::language_projection_import::LanguageProjectionImportRequest::parse(&provider_args)?
     {
@@ -278,7 +344,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             provider,
             &invocation,
             &project_root,
-            &cache_home,
             Vec::new(),
         )?;
         if !output.status.success() {
@@ -311,14 +376,134 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         );
     }
     if is_asp_fast_search(&provider_args) {
+        if super::search_pipe::is_search_owner_items_query(&provider_args) {
+            match owner_items_execution_route(
+                agent_semantic_hook::registered_provider_method_invocation_v1(
+                    language_id,
+                    provider.provider_id.as_str(),
+                    "search/owner-native-v1",
+                )?
+                .is_some(),
+                provider_invokes_asp_facade(language_id, provider, &config),
+                language_id,
+                provider.provider_id.as_str(),
+            )? {
+                OwnerItemsExecutionRoute::RegisteredProviderSurface => {
+                    exact_query_trace("owner-provider-surface-admitted", exact_query_started);
+                    let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
+                    let provider_argv = provider_process_args(&provider_args);
+                    for invocation in provider_invocations(
+                        provider,
+                        &provider_argv,
+                        &project_root,
+                        &runtime_profiles,
+                    )? {
+                        run_provider_command(
+                            language_id,
+                            provider,
+                            &invocation,
+                            &project_root,
+                            false,
+                        )?;
+                    }
+                    return Ok(());
+                }
+                OwnerItemsExecutionRoute::NativeIncremental => {}
+            }
+            exact_query_trace("owner-native-incremental-admitted", exact_query_started);
+            let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
+            let provider_context = ProviderGraphFactsContext {
+                provider,
+                profiles: &runtime_profiles,
+                cache_home: &cache_home,
+            };
+            return super::search_pipe::run_asp_incremental_owner_search_command(
+                &provider_args,
+                super::search_pipe::IncrementalOwnerSearchContext {
+                    language_id,
+                    project_root: &project_root,
+                    locator_root: search_locator_root,
+                    provider_context: Some(&provider_context),
+                    frontier_receipt: frontier_receipt.as_ref(),
+                },
+            );
+        }
+        let ranker = runtime
+            .rankers
+            .iter()
+            .find(|ranker| {
+                ranker.ranker_id == "asp-graph-turbo" && ranker.capability_id == "graph-turbo"
+            })
+            .ok_or_else(|| {
+                "ranker-unavailable reasonKind=typed-ranker-not-activated rankerId=asp-graph-turbo"
+                    .to_string()
+            })?;
+        if ranker.schema_id != "asp.activated-ranker.v1"
+            || ranker.protocol_version != "1"
+            || ranker.argv_prefix.len() != 2
+            || ranker.argv_prefix[0] != "graph"
+            || ranker.argv_prefix[1] != "render"
+        {
+            return Err(
+                "ranker-unavailable reasonKind=typed-ranker-contract-mismatch rankerId=asp-graph-turbo"
+                    .to_string(),
+            );
+        }
+        let current_binary = env::current_exe()
+            .and_then(|path| path.canonicalize())
+            .map_err(|error| {
+                format!(
+                    "ranker-unavailable reasonKind=current-asp-unresolved rankerId=asp-graph-turbo error={error}"
+                )
+            })?;
+        let ranker_binary = Path::new(&ranker.binary).canonicalize().map_err(|error| {
+            format!(
+                "ranker-unavailable reasonKind=ranker-artifact-missing rankerId=asp-graph-turbo path={} error={error}",
+                ranker.binary
+            )
+        })?;
+        if ranker_binary != current_binary {
+            return Err(format!(
+                "ranker-unavailable reasonKind=ranker-artifact-not-active-asp rankerId=asp-graph-turbo expected={} actual={}",
+                current_binary.display(),
+                ranker_binary.display()
+            ));
+        }
+        let ranker_content_digest =
+            agent_semantic_content_identity::file_content_digest_v1(&ranker_binary)?.to_string();
+        let ranker_metadata_digest =
+            agent_semantic_content_identity::file_artifact_metadata_digest_v1(&ranker_binary)?
+                .to_string();
+        if ranker.content_digest != ranker_content_digest
+            || ranker.artifact_metadata_digest != ranker_metadata_digest
+        {
+            return Err(
+                "ranker-unavailable reasonKind=ranker-artifact-digest-drift rankerId=asp-graph-turbo"
+                    .to_string(),
+            );
+        }
+        exact_query_trace("ranker-admitted", exact_query_started);
+        let search_language_id = language_id.into();
+        let search_provider_id = provider.provider_id.as_str().into();
         let current_snapshot =
-            agent_semantic_client::source_index::current_workspace_search_source_index_snapshot(
-                &project_root,
-            )?;
+            super::search_pipe::fast_search_requires_source_index_snapshot(&provider_args)
+                .then(|| {
+                    agent_semantic_client::source_index::current_provider_source_index_snapshot_from_activation(
+                        &project_root,
+                        &activation_path,
+                        &runtime,
+                        &search_language_id,
+                        &search_provider_id,
+                    )
+                })
+                .transpose()?;
         let provider_context_allowed = !document_owner_items_search
             || !provider_invokes_asp_facade(language_id, provider, &config);
-        if provider_context_allowed && fast_search_needs_provider_context(&provider_args, provider)?
-        {
+        let provider_context_required = provider_context_allowed
+            && fast_search_needs_provider_context(&provider_args, provider)?;
+        exact_query_trace("provider-context-classified", exact_query_started);
+        if provider_context_required {
+            exact_query_trace("provider-context-required", exact_query_started);
             let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
             let provider_context = ProviderGraphFactsContext {
                 provider,
@@ -335,10 +520,11 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                     config: &config,
                     provider_context: Some(&provider_context),
                     frontier_receipt: frontier_receipt.as_ref(),
-                    source_index_snapshot: &current_snapshot,
+                    source_index_snapshot: current_snapshot.as_ref(),
                 },
             );
         }
+        exact_query_trace("provider-context-not-required", exact_query_started);
         return run_asp_fast_search_command(
             &provider_args,
             FastSearchContext {
@@ -349,7 +535,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 config: &config,
                 provider_context: None,
                 frontier_receipt: frontier_receipt.as_ref(),
-                source_index_snapshot: &current_snapshot,
+                source_index_snapshot: current_snapshot.as_ref(),
             },
         );
     }
@@ -370,7 +556,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             &provider_args,
             &project_root,
             &activation_path,
-            &cache_home,
             frontier_receipt.as_ref(),
         );
     }
@@ -380,359 +565,28 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         let guide_args = provider_guide_args(language_id, &provider_args);
         let invocation =
             provider_invocation_with_profile(&runtime_profiles, provider, &guide_args)?;
-        return run_guide_command(
-            language_id,
-            provider,
-            &invocation,
-            &project_root,
-            &cache_home,
-        );
+        return run_guide_command(language_id, provider, &invocation, &project_root);
     }
-    let mut provider_argv = provider_process_args(&provider_args);
+    let provider_argv = provider_process_args(&provider_args);
     if is_provider_owned_structural_selector_query(language_id, &provider_args) {
-        let parser_identity_digest = agent_semantic_content_identity::exact_selector_projection_packet::derive_parser_identity_digest_v1(
-            &provider.provider_id.as_str().into(),
-            &provider.execution_command_digest.as_str().into(),
-            &provider.semantic_registry_digest.as_str().into(),
-        );
-        let canonical_query_pack =
-            serde_json::to_vec(&provider.query_pack_descriptor).map_err(|error| {
-                format!("failed to encode activated query-pack descriptor: {error}")
-            })?;
-        let query_pack_digest = agent_semantic_content_identity::exact_selector_projection_packet::derive_query_pack_identity_digest_v1(
-            &canonical_query_pack,
-        );
-        let owner_path = super::provider_selector::provider_owned_structural_owner_path(
+        if agent_semantic_hook::registered_provider_method_invocation_v1(
             language_id,
-            &provider_args,
-        )
-        .ok_or_else(|| {
-            "provider-owned structural query is missing an exact owner path".to_string()
-        })?;
-        let structural_selector = super::provider_selector::provider_owned_structural_selector(
-            language_id,
-            &provider_args,
-        )
-        .ok_or_else(|| {
-            "provider-owned structural query is missing an exact selector".to_string()
-        })?;
-        let snapshot =
-            agent_semantic_client::source_index::current_source_index_snapshot_from_activation(
-                project_root.as_path(),
-                activation_path.as_path(),
-                &runtime,
-            )?;
-        let source = snapshot
-            .source_blobs
-            .get(&owner_path.into())
-            .ok_or_else(|| {
-                format!("current source snapshot omitted exact-selector owner bytes: {owner_path}")
-            })?;
-        let source_blob_digest =
-            agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
-                source,
-            );
-        let projection_mode = if provider_args.iter().any(|arg| arg == "--code") {
-            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code
-        } else if provider_args.iter().any(|arg| arg == "--names-only") {
-            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Names
-        } else if provider_args.iter().any(|arg| arg == "--verbatim") {
-            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Verbatim
-        } else {
-            agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code
-        };
-        let normalized_source_extensions = provider
-            .source_extensions
-            .iter()
-            .map(|extension| extension.trim_start_matches('.').to_ascii_lowercase())
-            .collect::<std::collections::BTreeSet<_>>();
-        let workspace_tree =
-            agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests(
-                snapshot.source_blobs.iter().filter_map(|(path, bytes)| {
-                    let extension = Path::new(path)
-                        .extension()
-                        .map(|extension| extension.to_string_lossy().to_ascii_lowercase());
-                    if !normalized_source_extensions.is_empty()
-                        && extension
-                            .as_ref()
-                            .is_none_or(|extension| {
-                                !normalized_source_extensions.contains(extension)
-                            })
-                    {
-                        return None;
-                    }
-                    Some((
-                        path.to_string(),
-                        agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(bytes),
-                    ))
-                }),
-            )
-            .map_err(|error| format!("failed to construct exact-selector workspace Merkle tree: {error:?}"))?;
-        let owner_subtree_digest =
-            workspace_tree
-                .owner_subtree_digest(owner_path)
-                .ok_or_else(|| {
-                    format!(
-                        "exact-selector owner is absent from workspace Merkle tree: {owner_path}"
-                    )
-                })?;
-        let lookup_key =
-            agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1 {
-                language_id,
-                workspace_root_digest: workspace_tree.root_digest(),
-                owner_path,
-                owner_subtree_digest,
-                source_blob_digest: &source_blob_digest,
-                parser_identity_digest: &parser_identity_digest,
-                query_pack_digest: &query_pack_digest,
-                structural_selector,
-                projection_mode,
-            };
-        if let Some(validated) =
-            agent_semantic_client_db::ClientDbEngine::lookup_exact_selector_projection_v1_from_client_dir(
-                &cache_home,
-                &lookup_key,
-            )?
+            provider.provider_id.as_str(),
+            "query/exact-selector-native-v1",
+        )?
+        .is_some()
         {
-            let hit = validated
-                .validate_warm_hit(&lookup_key)
-                .map_err(|miss| format!("validated exact-selector cache entry missed: {miss:?}"))?;
-            std::io::Write::write_all(
-                &mut std::io::stdout().lock(),
-                hit.projection_payload,
-            )
-            .map_err(|error| format!("failed to write exact-selector warm projection: {error}"))?;
-            return Ok(());
-        }
-        let envelope =
-            agent_semantic_client::source_index::publish_provider_source_snapshot_envelope(
-                agent_semantic_client::source_index::ProviderSourceSnapshotEnvelopePublicationV1 {
-                    snapshot: &snapshot,
-                    provider_id: provider.provider_id.as_str(),
-                    source_extensions: &provider.source_extensions,
-                    cache_home: &cache_home,
-                    expected_workspace_root_digest: workspace_tree.root_digest(),
+            return super::provider_direct_exact::run_direct_exact_query(
+                super::provider_direct_exact::DirectExactQueryContextV1 {
+                    language_id,
+                    provider_args: &provider_args,
+                    project_root: &project_root,
+                    provider,
+                    runtime_profiles: &runtime_profiles,
+                    started: exact_query_started,
                 },
-            )?;
-        provider_argv.extend([
-            "--json".to_string(),
-            "--asp-provider-id".to_string(),
-            provider.provider_id.to_string(),
-            "--asp-parser-identity-digest".to_string(),
-            parser_identity_digest.as_str().to_string(),
-            "--asp-query-pack-digest".to_string(),
-            query_pack_digest.as_str().to_string(),
-            "--source-snapshot-envelope".to_string(),
-            envelope.display().to_string(),
-        ]);
-        let invocations =
-            provider_invocations(provider, &provider_argv, &project_root, &runtime_profiles)?;
-        let [invocation] = invocations.as_slice() else {
-            return Err(format!(
-                "exact-selector typed projection requires one provider invocation; invocations={}",
-                invocations.len()
-            ));
-        };
-        let output = super::provider_process::run_provider_command_with_stdin(
-            language_id,
-            provider,
-            invocation,
-            &project_root,
-            &cache_home,
-            Vec::new(),
-        )?;
-        if !output.status.success() {
-            return Err(format!(
-                "exact-selector provider failed: status={:?} stderr={}",
-                output.status.code(),
-                String::from_utf8_lossy(output.stderr.as_ref())
-            ));
-        }
-        let packet: agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1 =
-            match serde_json::from_slice(output.stdout.as_ref()) {
-                Ok(packet) => packet,
-                Err(exact_packet_error) => {
-                    let native: ProviderNativeExactProjectionV1 =
-                        serde_json::from_slice(output.stdout.as_ref()).map_err(|native_error| {
-                            format!(
-                                "failed to decode exact-selector provider output as either a final packet or a provider-native projection: finalPacketError={exact_packet_error} nativeProjectionError={native_error}"
-                            )
-                        })?;
-                    if native.schema_id
-                        != "agent.semantic-protocols.provider-native-exact-projection"
-                        || native.schema_version != "1"
-                    {
-                        return Err(format!(
-                            "provider-native exact projection contract mismatch: schemaId={} schemaVersion={}",
-                            native.schema_id, native.schema_version
-                        ));
-                    }
-                    if native.language_id != language_id
-                        || native.provider_id != provider.provider_id.as_str()
-                        || native.owner_path != owner_path
-                        || native.structural_selector != structural_selector
-                        || native.projection_mode != projection_mode
-                    {
-                        return Err(
-                            "provider-native exact projection identity does not match activated request"
-                                .to_string(),
-                        );
-                    }
-                    let canonical_item_selector =
-                        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::parse(
-                            structural_selector,
-                        )
-                        .map_err(|error| {
-                            format!(
-                                "failed to derive canonical item identity from provider-native projection: {error}"
-                            )
-                        })?;
-                    let normalized_parser_facts =
-                        serde_json::to_vec(&native.normalized_parser_facts).map_err(|error| {
-                            format!(
-                                "failed to canonicalize provider-native parser facts: {error}"
-                            )
-                        })?;
-                    let packet_language_id = language_id.into();
-                    let packet_provider_id = provider.provider_id.as_str().into();
-                    let packet_owner_path = owner_path.into();
-                    let packet_structural_selector = structural_selector.into();
-                    agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
-                        agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
-                            language_id: &packet_language_id,
-                            provider_id: &packet_provider_id,
-                            canonical_item_selector,
-                            parser_identity_digest: &parser_identity_digest,
-                            query_pack_digest: &query_pack_digest,
-                            owner_path: &packet_owner_path,
-                            structural_selector: &packet_structural_selector,
-                            projection_mode,
-                            source,
-                            normalized_parser_facts: &normalized_parser_facts,
-                            projection: native.projection_text.as_bytes(),
-                        },
-                    )
-                }
-            };
-        packet.validate_shape().map_err(|error| {
-            format!(
-                "exact-selector provider packet contract mismatch: error={error:?} schemaId={} expectedSchemaId={} schemaVersion={} expectedSchemaVersion={} digestAlgorithm={} expectedDigestAlgorithm={}",
-                packet.schema_id,
-                agent_semantic_content_identity::exact_selector_projection_packet::EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_ID,
-                packet.schema_version,
-                agent_semantic_content_identity::exact_selector_projection_packet::EXACT_SELECTOR_PROJECTION_PACKET_SCHEMA_VERSION,
-                packet.digest_algorithm,
-                agent_semantic_content_identity::exact_selector_projection_packet::EXACT_SELECTOR_PROJECTION_PACKET_DIGEST_ALGORITHM,
-            )
-        })?;
-        if packet.language_id != language_id.into()
-            || packet.provider_id != provider.provider_id.as_str().into()
-        {
-            return Err(
-                "exact-selector provider packet provider identity does not match activated request"
-                    .to_string(),
             );
         }
-        let requested_identity =
-            agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::parse(
-                structural_selector,
-            )
-            .map_err(|error| {
-                format!("failed to parse requested canonical item identity: {error}")
-            })?;
-        let resolved_identity =
-            agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::parse(
-                packet.structural_selector.as_str(),
-            )
-            .map_err(|error| {
-                format!("failed to parse resolved canonical item identity: {error}")
-            })?;
-        if requested_identity.language_id != resolved_identity.language_id
-            || requested_identity.kind != resolved_identity.kind
-            || requested_identity.symbol != resolved_identity.symbol
-            || requested_identity.scopes != resolved_identity.scopes
-        {
-            return Err(
-                "exact-selector provider relocation changed canonical item identity".to_string(),
-            );
-        }
-        let resolved_owner_path = packet.owner_path.as_str().to_owned();
-        let resolved_structural_selector = packet.structural_selector.as_str().to_owned();
-        let resolved_source = snapshot
-            .source_blobs
-            .get(&resolved_owner_path.as_str().into())
-            .ok_or_else(|| {
-                format!(
-                    "exact-selector provider relocated outside the pinned generation: ownerPath={resolved_owner_path}"
-                )
-            })?;
-        let resolved_source_blob_digest =
-            agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
-                resolved_source,
-            );
-        if packet.source_blob_digest != resolved_source_blob_digest {
-            return Err(format!(
-                "exact-selector provider source digest mismatch: provider={} expected={}",
-                packet.source_blob_digest.as_str(),
-                resolved_source_blob_digest.as_str(),
-            ));
-        }
-        if packet.parser_identity_digest != parser_identity_digest
-            || packet.query_pack_digest != query_pack_digest
-            || packet.projection_mode != projection_mode
-        {
-            return Err(format!(
-                "exact-selector provider proof identity mismatch: parserIdentity={} expectedParserIdentity={} queryPack={} expectedQueryPack={} projectionMode={:?} expectedProjectionMode={projection_mode:?}",
-                packet.parser_identity_digest.as_str(),
-                parser_identity_digest.as_str(),
-                packet.query_pack_digest.as_str(),
-                query_pack_digest.as_str(),
-                packet.projection_mode,
-            ));
-        }
-        let resolved_owner_subtree_digest = workspace_tree
-            .owner_subtree_digest(&resolved_owner_path)
-            .ok_or_else(|| {
-                format!(
-                    "exact-selector relocated owner is absent from workspace Merkle tree: {resolved_owner_path}"
-                )
-            })?;
-        let resolved_lookup_key =
-            agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1 {
-                language_id,
-                workspace_root_digest: workspace_tree.root_digest(),
-                owner_path: &resolved_owner_path,
-                owner_subtree_digest: resolved_owner_subtree_digest,
-                source_blob_digest: &resolved_source_blob_digest,
-                parser_identity_digest: &parser_identity_digest,
-                query_pack_digest: &query_pack_digest,
-                structural_selector: &resolved_structural_selector,
-                projection_mode,
-            };
-        let record = packet
-            .enrich_projection_record(&workspace_tree)
-            .map_err(|error| {
-                format!("failed to enrich exact-selector provider packet: {error:?}")
-            })?;
-        let validated =
-            agent_semantic_content_identity::exact_selector_cache::ValidatedExactSelectorProjectionV1::hydrate(
-                record,
-                &resolved_lookup_key,
-            )
-            .map_err(|miss| {
-                format!("exact-selector provider record failed Merkle validation: {miss:?}")
-            })?;
-        agent_semantic_client_db::ClientDbEngine::persist_exact_selector_projection_v1_from_client_dir(
-            &cache_home,
-            &resolved_lookup_key,
-            validated.record(),
-        )?;
-        let hit = validated
-            .validate_warm_hit(&resolved_lookup_key)
-            .map_err(|miss| format!("persisted exact-selector record missed: {miss:?}"))?;
-        std::io::Write::write_all(&mut std::io::stdout().lock(), hit.projection_payload)
-            .map_err(|error| format!("failed to write exact-selector cold projection: {error}"))?;
-        return Ok(());
     }
     for invocation in
         provider_invocations(provider, &provider_argv, &project_root, &runtime_profiles)?
@@ -742,7 +596,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             provider,
             &invocation,
             &project_root,
-            &cache_home,
             document_language_facade::is_document_language(language_id)
                 && command_args
                     .first()
@@ -774,11 +627,9 @@ fn is_guide_help(args: &[String]) -> bool {
             .skip(1)
             .any(|arg| arg == "--help" || arg == "-h")
 }
-use super::provider_activation::{
-    load_activation, load_activation_for_language_message, provider_activation_path,
-};
+use super::provider_activation::{load_activation_for_language_message, provider_activation_path};
 use super::provider_execution::provider_process_args;
 use super::provider_selector::{
     is_provider_owned_structural_selector_query, reject_manifest_source_selector_query_code,
-    reject_registered_source_selector_query, reject_search_file_workspace,
+    reject_search_file_workspace,
 };

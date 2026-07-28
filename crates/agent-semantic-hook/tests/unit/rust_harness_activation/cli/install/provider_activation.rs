@@ -217,6 +217,7 @@ enabled = false
 
     let asp_bin_dir = asp_bin_dir();
     let protocol_bin_dir = root.join(".agent-bin");
+    write_real_asp_launcher(&protocol_bin_dir);
     let path = env::join_paths([
         protocol_bin_dir.as_path(),
         empty_path.as_path(),
@@ -381,3 +382,4 @@ fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::
         }
     }
 }
+use crate::rust_harness_activation::cli::install::support::write_real_asp_launcher;

@@ -219,62 +219,6 @@ fn source_index_acquisition_keeps_existing_rows_inventory_only() {
 }
 
 #[test]
-fn source_index_acquisition_uses_bounded_payload_proof_as_selector_ready() {
-    let root = std::env::temp_dir().join(format!("asp-source-index-ready-{}", std::process::id()));
-    let source_dir = root.join("src");
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&source_dir).expect("create ready fixture source dir");
-    std::fs::write(source_dir.join("lib.rs"), "pub fn current_owner() {}\n")
-        .expect("write ready fixture source");
-    let snapshot = crate::source_snapshot_fixture::canonical_test_snapshot();
-    let index_artifact_digest =
-        agent_semantic_client_db::client_db_source_index_artifact_digest(&snapshot.evidence);
-    let lookup = SearchPipeSourceIndexLookup {
-        source_snapshot: Some(snapshot.evidence.clone()),
-        index_artifact_digest: Some((index_artifact_digest.clone()).into()),
-        state: ("hit".to_string()).into(),
-        candidates: vec![SearchPipeSourceIndexCandidate {
-            path: ("src/lib.rs".to_string()).into(),
-            language_id: Some(("rust".to_string()).into()),
-            provider_id: Some(("rs-harness".to_string()).into()),
-            source_kind: ("file".to_string()).into(),
-            line_count: Some(1),
-            query_keys: vec![("current_owner".to_string()).into()],
-            selector_proof: Some(SearchPipeSelectorPayloadProof {
-                structural_selector: ("rust://src/lib.rs#item/function/current_owner".to_string())
-                    .into(),
-                payload_kind: ("code".to_string()).into(),
-                bounded: true,
-            }),
-        }],
-    };
-
-    let acquisition =
-        collect_search_pipe_source_index_acquisition(SearchPipeSourceIndexAcquisitionRequest {
-            intent: "current_owner",
-            project_root: &root,
-            scopes: &[],
-            lookup: Some(&lookup),
-        })
-        .expect("hit with payload proof should produce source-index acquisition");
-
-    assert_eq!(
-        acquisition.decision,
-        SearchPipeSourceIndexDecision::UseAndSkipSearchOverlay
-    );
-    assert_eq!(acquisition.candidates.len(), 1);
-    let candidate = &acquisition.candidates[0];
-    assert_eq!(candidate.path, "src/lib.rs");
-    assert_eq!(candidate.source, "source-index");
-    assert_eq!(candidate.confidence, "selector-ready");
-    assert!(
-        candidate.text.contains("payloadProof=code"),
-        "{candidate:?}"
-    );
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
 fn failure_candidate_query_extracts_structural_terms_without_noise() {
     let query = failure_candidate_query(
         "expected left failure in foo_bar::inner-owner but observed file_hash mismatch",
@@ -292,4 +236,3 @@ fn temp_root(prefix: &str) -> std::path::PathBuf {
             .as_nanos()
     ))
 }
-use crate::SearchPipeSelectorPayloadProof;

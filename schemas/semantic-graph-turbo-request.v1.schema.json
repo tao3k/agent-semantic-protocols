@@ -13,6 +13,7 @@
     "packetKind",
     "surface",
     "sourceSnapshot",
+    "workspaceGeneration",
     "queryTerms",
     "profile",
     "algorithm",
@@ -144,6 +145,9 @@
     },
     "sourceSnapshot": {
       "$ref": "https://agent-semantic-protocols.dev/schemas/source-snapshot-evidence.v1.schema.json#/$defs/sourceSnapshot"
+    },
+    "workspaceGeneration": {
+      "$ref": "#/$defs/workspaceGenerationEvidence"
     },
     "candidateSources": {
       "type": "array",
@@ -319,6 +323,34 @@
     }
   },
   "$defs": {
+    "workspaceGenerationEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootDigest",
+        "rootDepth",
+        "leafCount",
+        "ownerCount"
+      ],
+      "properties": {
+        "rootDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootDepth": {
+          "type": "integer",
+          "enum": [0, 1]
+        },
+        "leafCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ownerCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
     "graph": {
       "type": "object",
       "additionalProperties": false,

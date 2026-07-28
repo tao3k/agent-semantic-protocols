@@ -1,4 +1,4 @@
-use super::{parse_codex_plugin_install_args, CodexPluginScope};
+use super::{CodexPluginScope, parse_codex_plugin_install_args};
 
 #[test]
 fn clap_rejects_global_and_project_scope_together() {

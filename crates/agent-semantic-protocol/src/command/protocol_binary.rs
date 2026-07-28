@@ -6,6 +6,38 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 const SEMANTIC_AGENT_PROTOCOL_BIN: &str = "asp";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RuntimeBinaryIdentityV1 {
+    name: std::ffi::OsString,
+}
+
+impl RuntimeBinaryIdentityV1 {
+    pub(crate) fn asp_bootstrap() -> Self {
+        Self {
+            name: SEMANTIC_AGENT_PROTOCOL_BIN.into(),
+        }
+    }
+
+    pub(crate) fn from_registered_provider(binary: &str) -> Result<Self, String> {
+        let name = Path::new(binary);
+        if binary.is_empty()
+            || name.components().count() != 1
+            || name.file_name().and_then(|value| value.to_str()) != Some(binary)
+        {
+            return Err(format!(
+                "ProviderRegistry binary must be one executable name, got `{binary}`"
+            ));
+        }
+        Ok(Self {
+            name: binary.into(),
+        })
+    }
+
+    fn name(&self) -> &std::ffi::OsStr {
+        &self.name
+    }
+}
 static PROTOCOL_BINARY_PUBLISH_SEQUENCE: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
@@ -13,10 +45,13 @@ fn next_protocol_binary_publish_sequence() -> u64 {
     PROTOCOL_BINARY_PUBLISH_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 const SEMANTIC_AGENT_BIN_DIR_ENV: &str = "SEMANTIC_AGENT_BIN_DIR";
+#[derive(Debug)]
 pub(crate) struct ProtocolBinaryInstall {
     pub(crate) path: PathBuf,
     pub(crate) status: &'static str,
     pub(crate) artifact_digest: String,
+    pub(crate) latest: PathBuf,
+    pub(crate) stable_entry: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,6 +74,7 @@ pub(crate) struct ProtocolBinaryInstallPlan {
     target: PathBuf,
     artifact_root: PathBuf,
     managed_path_aliases: Vec<PathBuf>,
+    binary_identity: RuntimeBinaryIdentityV1,
 }
 
 /// Process-wide guard for the mutable global binary pointer and its active
@@ -117,8 +153,8 @@ impl ProtocolBinaryInstallPlan {
         if let Some(bin_dir) = explicit_bin_dir.as_ref() {
             fs::create_dir_all(bin_dir)
                 .map_err(|error| format!("failed to create {}: {error}", bin_dir.display()))?;
-            require_path_contains_dir(bin_dir)?;
         }
+        require_configured_protocol_bin_dir_on_path()?;
         let path_dirs = path_dirs();
         let target =
             resolve_protocol_binary_install_target(explicit_bin_dir.as_deref(), &artifact_root)?;
@@ -129,6 +165,33 @@ impl ProtocolBinaryInstallPlan {
             target,
             artifact_root,
             managed_path_aliases,
+            binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
+        })
+    }
+
+    pub(crate) fn capture_for_target(
+        artifact_root: PathBuf,
+        target: PathBuf,
+    ) -> Result<Self, String> {
+        let current_exe = env::current_exe()
+            .map_err(|error| format!("failed to resolve current protocol binary: {error}"))?;
+        let current_name = current_exe
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        if current_name.trim_end_matches(".exe") != SEMANTIC_AGENT_PROTOCOL_BIN {
+            return Err(format!(
+                "semantic hook setup must run through `{SEMANTIC_AGENT_PROTOCOL_BIN}` so generated hooks can resolve the same binary on PATH"
+            ));
+        }
+        let managed_path_aliases =
+            managed_protocol_binary_path_aliases(&artifact_root, &target, &path_dirs())?;
+        Ok(Self {
+            current_exe,
+            target,
+            artifact_root,
+            managed_path_aliases,
+            binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),
         })
     }
 }
@@ -136,18 +199,38 @@ impl ProtocolBinaryInstallPlan {
 pub(crate) fn ensure_protocol_binary_installed(
     plan: &ProtocolBinaryInstallPlan,
 ) -> Result<ProtocolBinaryInstall, String> {
-    let install =
-        install_protocol_binary_target(&plan.current_exe, &plan.target, &plan.artifact_root)?;
     for alias in &plan.managed_path_aliases {
-        install_protocol_binary_alias(alias, &plan.target)?;
+        validate_protocol_entry_for_repair(alias, &plan.artifact_root)?;
+    }
+    let install = install_protocol_binary_target(
+        &plan.current_exe,
+        &plan.target,
+        &plan.artifact_root,
+        &plan.binary_identity,
+    )?;
+    for alias in &plan.managed_path_aliases {
+        install_protocol_binary_alias(alias, &plan.target, &plan.artifact_root)?;
     }
     Ok(install)
 }
 
-fn install_protocol_binary_alias(alias: &Path, canonical_target: &Path) -> Result<(), String> {
+fn install_protocol_binary_alias(
+    alias: &Path,
+    canonical_target: &Path,
+    artifact_root: &Path,
+) -> Result<(), String> {
+    let expected = resolve_protocol_binary_artifact_entry(canonical_target, artifact_root)?;
+    if protocol_binary_symlink_chain_loops(alias) {
+        return Err(format!(
+            "refusing to repair looping protocol binary alias {}",
+            alias.display()
+        ));
+    }
     if fs::read_link(alias)
         .ok()
         .is_some_and(|target| target == canonical_target)
+        && resolve_protocol_binary_artifact_entry(alias, artifact_root)
+            .is_ok_and(|identity| identity == expected)
     {
         return Ok(());
     }
@@ -156,12 +239,32 @@ fn install_protocol_binary_alias(alias: &Path, canonical_target: &Path) -> Resul
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
     let temp = temporary_protocol_binary_path(alias);
-    if temp.exists() {
+    if fs::symlink_metadata(&temp).is_ok() {
         fs::remove_file(&temp)
             .map_err(|error| format!("failed to remove stale {}: {error}", temp.display()))?;
     }
     stage_active_protocol_entry(canonical_target, &temp)?;
-    atomic_replace_protocol_entry(&temp, alias)
+    let staged = resolve_protocol_binary_artifact_entry(&temp, artifact_root)?;
+    if staged != expected {
+        let _ = fs::remove_file(&temp);
+        return Err(format!(
+            "staged protocol binary alias {} resolves to {}, expected {}",
+            temp.display(),
+            staged.display(),
+            expected.display()
+        ));
+    }
+    atomic_replace_protocol_entry(&temp, alias)?;
+    let installed = resolve_protocol_binary_artifact_entry(alias, artifact_root)?;
+    if installed != expected {
+        return Err(format!(
+            "protocol binary alias {} resolves to {}, expected {}",
+            alias.display(),
+            installed.display(),
+            expected.display()
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn protocol_binary_on_path() -> Option<PathBuf> {
@@ -420,10 +523,7 @@ fn is_digest_addressed_protocol_binary(
     else {
         return Ok(false);
     };
-    let Some(binary) = components
-        .next()
-        .and_then(|value| value.as_os_str().to_str())
-    else {
+    let Some(binary) = components.next().map(|value| value.as_os_str()) else {
         return Ok(false);
     };
     Ok(store == "blake3-256"
@@ -431,7 +531,7 @@ fn is_digest_addressed_protocol_binary(
         && digest
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        && binary == SEMANTIC_AGENT_PROTOCOL_BIN
+        && !binary.is_empty()
         && components.next().is_none())
 }
 
@@ -439,7 +539,17 @@ pub(crate) fn install_protocol_binary_target(
     source: &Path,
     target: &Path,
     artifact_root: &Path,
+    binary_identity: &RuntimeBinaryIdentityV1,
 ) -> Result<ProtocolBinaryInstall, String> {
+    validate_protocol_entry_for_repair(target, artifact_root)?;
+    let binary_name = binary_identity.name();
+    if target.file_name() != Some(binary_name) {
+        return Err(format!(
+            "runtime binary target {} does not match declared binary identity `{}`",
+            target.display(),
+            binary_name.to_string_lossy()
+        ));
+    }
     let path = target.to_path_buf();
     let artifact_digest = protocol_binary_artifact_digest(source).ok_or_else(|| {
         format!(
@@ -447,28 +557,45 @@ pub(crate) fn install_protocol_binary_target(
             source.display()
         )
     })?;
-    let artifact = digest_addressed_protocol_binary_path(artifact_root, &artifact_digest)?;
+    let artifact =
+        digest_addressed_protocol_binary_path(artifact_root, &artifact_digest, binary_name)?;
     stage_digest_addressed_protocol_binary(source, &artifact)?;
-    let status = install_protocol_binary_from_artifact(target, &artifact)?;
+    let latest =
+        publish_latest_protocol_binary(artifact_root, &artifact_digest, binary_name, &artifact)?;
+    let stable_entry = target.to_path_buf();
+    let status = install_protocol_binary_from_artifact(target, &latest, &artifact, artifact_root)?;
     Ok(ProtocolBinaryInstall {
         path,
         status,
         artifact_digest,
+        latest,
+        stable_entry,
     })
 }
 
 fn install_protocol_binary_from_artifact(
     target: &Path,
+    latest: &Path,
     artifact: &Path,
+    artifact_root: &Path,
 ) -> Result<&'static str, String> {
-    if fs::canonicalize(target)
-        .ok()
-        .zip(fs::canonicalize(artifact).ok())
-        .is_some_and(|(target, artifact)| target == artifact)
-    {
-        return Ok("already-present");
+    let expected = resolve_protocol_binary_artifact_entry(artifact, artifact_root)?;
+    let published = resolve_protocol_binary_artifact_entry(latest, artifact_root)?;
+    if published != expected {
+        return Err(format!(
+            "latest protocol binary {} resolves to {}, expected {}",
+            latest.display(),
+            published.display(),
+            expected.display()
+        ));
     }
-    let status = if target.is_file() {
+    if protocol_binary_symlink_chain_loops(target) {
+        return Err(format!(
+            "refusing to repair looping protocol binary entry {}",
+            target.display()
+        ));
+    }
+    let status = if fs::symlink_metadata(target).is_ok() {
         "updated"
     } else {
         "installed"
@@ -477,13 +604,41 @@ fn install_protocol_binary_from_artifact(
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
+    let canonical_target = stable_protocol_binary_link_target(target, artifact_root, latest)?;
+    if fs::read_link(target)
+        .ok()
+        .is_some_and(|link| link == canonical_target)
+        && resolve_protocol_binary_artifact_entry(target, artifact_root)
+            .is_ok_and(|identity| identity == expected)
+    {
+        return Ok("already-present");
+    }
     let temp = temporary_protocol_binary_path(target);
-    if temp.exists() {
+    if fs::symlink_metadata(&temp).is_ok() {
         fs::remove_file(&temp)
             .map_err(|error| format!("failed to remove stale {}: {error}", temp.display()))?;
     }
-    stage_active_protocol_entry(artifact, &temp)?;
+    stage_active_protocol_entry(&canonical_target, &temp)?;
+    let staged = resolve_protocol_binary_artifact_entry(&temp, artifact_root)?;
+    if staged != expected {
+        let _ = fs::remove_file(&temp);
+        return Err(format!(
+            "staged stable protocol entry {} resolves to {}, expected {}",
+            temp.display(),
+            staged.display(),
+            expected.display()
+        ));
+    }
     atomic_replace_protocol_entry(&temp, target)?;
+    let installed = resolve_protocol_binary_artifact_entry(target, artifact_root)?;
+    if installed != expected {
+        return Err(format!(
+            "stable protocol entry {} resolves to {}, expected {}",
+            target.display(),
+            installed.display(),
+            expected.display()
+        ));
+    }
     Ok(status)
 }
 
@@ -532,6 +687,7 @@ fn digest_addressed_protocol_binary_digest(path: &Path) -> Option<String> {
 fn digest_addressed_protocol_binary_path(
     artifact_root: &Path,
     digest: &str,
+    binary_name: &std::ffi::OsStr,
 ) -> Result<PathBuf, String> {
     if digest.len() != 64
         || !digest
@@ -543,8 +699,154 @@ fn digest_addressed_protocol_binary_path(
     Ok(artifact_root
         .join("blake3-256")
         .join(digest)
-        .join(SEMANTIC_AGENT_PROTOCOL_BIN))
+        .join(binary_name))
 }
+
+fn publish_latest_protocol_binary(
+    artifact_root: &Path,
+    digest: &str,
+    binary_name: &std::ffi::OsStr,
+    artifact: &Path,
+) -> Result<PathBuf, String> {
+    let expected = resolve_protocol_binary_artifact_entry(artifact, artifact_root)?;
+    let algorithm_root = artifact_root.join("blake3-256");
+    let latest_root = algorithm_root.join("latest");
+    match fs::symlink_metadata(&latest_root) {
+        Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
+        Ok(_) => {
+            return Err(format!(
+                "per-binary latest root must be a real directory: {}",
+                latest_root.display()
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir_all(&latest_root)
+                .map_err(|error| format!("failed to create {}: {error}", latest_root.display()))?;
+        }
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect per-binary latest root {}: {error}",
+                latest_root.display()
+            ));
+        }
+    }
+    let latest = latest_root.join(binary_name);
+    if protocol_binary_symlink_chain_loops(&latest) {
+        return Err(format!(
+            "refusing to replace looping latest protocol artifact link {}",
+            latest.display()
+        ));
+    }
+    if fs::read_link(&latest)
+        .ok()
+        .is_some_and(|target| target == Path::new("..").join(digest).join(binary_name))
+        && resolve_protocol_binary_artifact_entry(&latest, artifact_root)
+            .is_ok_and(|identity| identity == expected)
+    {
+        return Ok(latest);
+    }
+    let staged = temporary_protocol_binary_path(&latest);
+    if fs::symlink_metadata(&staged).is_ok() {
+        fs::remove_file(&staged)
+            .map_err(|error| format!("failed to remove stale {}: {error}", staged.display()))?;
+    }
+    let versioned_target = Path::new("..").join(digest).join(binary_name);
+    stage_active_protocol_entry(&versioned_target, &staged)?;
+    let staged_identity = resolve_protocol_binary_artifact_entry(&staged, artifact_root)?;
+    if staged_identity != expected {
+        let _ = fs::remove_file(&staged);
+        return Err(format!(
+            "staged latest protocol artifact {} resolves to {}, expected {}",
+            staged.display(),
+            staged_identity.display(),
+            expected.display()
+        ));
+    }
+    atomic_replace_protocol_entry(&staged, &latest)?;
+    let installed = resolve_protocol_binary_artifact_entry(&latest, artifact_root)?;
+    if installed != expected {
+        return Err(format!(
+            "latest protocol artifact {} resolves to {}, expected {}",
+            latest.display(),
+            installed.display(),
+            expected.display()
+        ));
+    }
+    Ok(latest)
+}
+
+fn stable_protocol_binary_link_target(
+    target: &Path,
+    artifact_root: &Path,
+    latest_artifact: &Path,
+) -> Result<PathBuf, String> {
+    let conventional_bin = artifact_root
+        .parent()
+        .map(|runtime_root| runtime_root.join("bin"));
+    if conventional_bin.as_deref() == target.parent() {
+        let binary_name = latest_artifact.file_name().ok_or_else(|| {
+            format!(
+                "latest protocol artifact has no binary name: {}",
+                latest_artifact.display()
+            )
+        })?;
+        return Ok(PathBuf::from("../artifacts/blake3-256/latest").join(binary_name));
+    }
+    Ok(latest_artifact.to_path_buf())
+}
+
+fn resolve_protocol_binary_artifact_entry(
+    entry: &Path,
+    artifact_root: &Path,
+) -> Result<PathBuf, String> {
+    if protocol_binary_symlink_chain_loops(entry) {
+        return Err(format!(
+            "protocol binary symlink chain loops at {}",
+            entry.display()
+        ));
+    }
+    let identity = fs::canonicalize(entry).map_err(|error| {
+        format!(
+            "failed to resolve protocol binary entry {}: {error}",
+            entry.display()
+        )
+    })?;
+    if !is_digest_addressed_protocol_binary(&identity, artifact_root)? {
+        return Err(format!(
+            "protocol binary entry {} escapes immutable artifact root {}",
+            entry.display(),
+            artifact_root.display()
+        ));
+    }
+    Ok(identity)
+}
+
+fn validate_protocol_entry_for_repair(entry: &Path, artifact_root: &Path) -> Result<(), String> {
+    if protocol_binary_symlink_chain_loops(entry) {
+        return Err(format!(
+            "protocol binary symlink chain loops at {}",
+            entry.display()
+        ));
+    }
+    let Ok(metadata) = fs::symlink_metadata(entry) else {
+        return Ok(());
+    };
+    if metadata.file_type().is_symlink() {
+        resolve_protocol_binary_artifact_entry(entry, artifact_root)?;
+        return Ok(());
+    }
+    if metadata.is_file() {
+        return Ok(());
+    }
+    Err(format!(
+        "refusing to replace non-file protocol binary entry {}",
+        entry.display()
+    ))
+}
+
+#[cfg(all(test, unix))]
+#[path = "../../tests/unit/protocol_binary_latest_publication.rs"]
+mod protocol_binary_latest_publication_tests;
 
 fn stage_digest_addressed_protocol_binary(source: &Path, artifact: &Path) -> Result<(), String> {
     if artifact.is_file() {
@@ -614,17 +916,6 @@ fn stage_active_protocol_entry(artifact: &Path, staged_entry: &Path) -> Result<(
 fn atomic_replace_protocol_entry(staged_entry: &Path, target: &Path) -> Result<(), String> {
     match fs::rename(staged_entry, target) {
         Ok(()) => Ok(()),
-        #[cfg(not(unix))]
-        Err(_) if target.exists() => {
-            fs::remove_file(target)
-                .map_err(|error| format!("failed to replace {}: {error}", target.display()))?;
-            fs::rename(staged_entry, target).map_err(|error| {
-                format!(
-                    "failed to install {SEMANTIC_AGENT_PROTOCOL_BIN} to {}: {error}",
-                    target.display()
-                )
-            })
-        }
         Err(error) => Err(format!(
             "failed to atomically install {SEMANTIC_AGENT_PROTOCOL_BIN} to {}: {error}",
             target.display()
@@ -653,6 +944,16 @@ fn require_path_contains_dir(dir: &Path) -> Result<(), String> {
             dir.display()
         ))
     }
+}
+
+pub(crate) fn require_configured_protocol_bin_dir_on_path() -> Result<(), String> {
+    if let Some(bin_dir) = env::var_os(SEMANTIC_AGENT_BIN_DIR_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    {
+        require_path_contains_dir(&bin_dir)?;
+    }
+    Ok(())
 }
 
 fn path_dirs() -> Vec<PathBuf> {

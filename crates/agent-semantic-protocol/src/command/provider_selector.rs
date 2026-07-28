@@ -109,6 +109,7 @@ pub(super) fn reject_search_file_workspace(
     Ok(())
 }
 
+
 pub(super) fn invalid_source_selector_query_message(
     language_id: &str,
     selector: &str,
@@ -132,20 +133,6 @@ pub(super) fn is_plain_file_selector_code_query(args: &[String]) -> bool {
         || args
             .iter()
             .any(|arg| arg == "--from-hook" || arg.starts_with("--from-hook="))
-    {
-        return false;
-    }
-    let Some(selector) = option_value(args, "--selector") else {
-        return false;
-    };
-    !selector.contains("://") && selector.split_once(':').is_none()
-}
-
-pub(super) fn is_file_selector_query(args: &[String]) -> bool {
-    if !matches!(args.first().map(String::as_str), Some("query"))
-        || args
-            .iter()
-            .any(|arg| arg == "--term" || arg == "--treesitter-query")
     {
         return false;
     }
@@ -195,41 +182,6 @@ pub(super) fn provider_owned_structural_selector<'a>(
         return None;
     }
     option_value(args, "--selector")
-}
-
-pub(super) fn reject_registered_source_selector_query(
-    language_id: &str,
-    args: &[String],
-    provider: &agent_semantic_hook::ActivatedProvider,
-) -> Result<(), String> {
-    if !is_file_selector_query(args) {
-        return Ok(());
-    }
-    let Some(selector) = option_value(args, "--selector") else {
-        return Ok(());
-    };
-    let selector_path = selector
-        .split_once(':')
-        .map_or(selector, |(path, _range)| path);
-    let Some(extension) = Path::new(selector_path)
-        .extension()
-        .and_then(|extension| extension.to_str())
-    else {
-        return Ok(());
-    };
-    let registered_source = provider.source_extensions.iter().any(|source| {
-        source
-            .trim_start_matches('.')
-            .eq_ignore_ascii_case(extension)
-    });
-    if !registered_source {
-        return Ok(());
-    }
-    Err(invalid_source_selector_query_message(
-        language_id,
-        selector,
-        args,
-    ))
 }
 
 pub(super) fn reject_manifest_source_selector_query_code(

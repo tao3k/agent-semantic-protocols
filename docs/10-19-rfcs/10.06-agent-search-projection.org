@@ -26,6 +26,58 @@ schema-owned semantic graph facts are projected into role-typed aliases,
 grouped relation edges, a legend-declared search root, algorithm-owned rank,
 inline next actions, exact locators, and explicit omission/avoidance facts.
 
+** Provider-scoped incremental generation projection
+
+Search projection consumes
+=agent.semantic-protocols.incremental-search-generation.v1=.  The receipt binds
+one provider-workspace generation, the requested search operation, its
+completeness, every owner acquisition decision, generation-root continuity,
+and mutation counters.  Graph admission MUST reject a projection whose
+=languageId=, =providerId=, or =providerWorkspaceIdentityDigest= differs from
+the selected route.
+
+The graph layer does not receive source blobs.  It receives indexed
+parser-fact projections containing owner path, content digest, structural
+selector, signature, item identity, capture name, and parser byte span.  The
+selected language provider owns canonical selector and signature production;
+ASP owns provider-scoped storage, incremental generation admission, graph
+ranking, and rendering.
+
+For an unchanged explicit owner, the receipt MUST report
+=decision=unchanged= and all mutation/process counters as zero.  For a changed
+or new owner it MUST report one source read, one provider parse, one owner
+upsert, one Merkle leaf write, and only the number of ancestor nodes actually
+updated.  =fullWorkspaceWalks= and =fullMerkleRebuilds= are always zero for
+ordinary search.
+
+Workspace Tree-sitter projection reads only the selected provider generation.
+If that generation is complete and has no dirty owners, it is a read-only
+Turso query with zero provider parses and zero generation writes.  Otherwise
+its packet is explicitly =partial= unless all dirty or unindexed owners were
+completed within the bounded incremental budget.  Partial evidence may close
+an identity or existential claim, but it cannot close enumeration or absence.
+The receipt reports =incrementalBudget=, =dirtyOwnerCount=,
+=processedOwnerCount=, and =remainingOwnerCount=.  Source reads, provider
+parses, owner writes, and Merkle leaf writes MUST NOT exceed either the
+incremental budget or the dirty-owner count.  The owner-items operation retains
+the stricter maximum of one for each counter.
+
+Tree-sitter capture projections are query-specific facts.  Their cache identity
+is the tuple of provider-workspace identity, query digest, owner path, and owner
+content digest.  A projection reports capture name and capture span together
+with the canonical selector, signature, and item span of the smallest
+containing complete-owner item.  Query-cache admission fails closed when the
+capture has no containing item projection after one bounded same-owner refresh.
+
+The projection packet distinguishes an =exact= provider owner inventory from a
+=known= inventory.  =remainingOwnerCount= is exact only for the former; for the
+latter it is a lower bound over known dirty or unindexed owners.  Therefore a
+partial packet backed by a known inventory cannot prove enumeration or absence,
+including when =remainingOwnerCount= is zero.  Continuation identity binds the
+provider workspace, query digest, current generation, inventory state, and the
+next owner cursor so another invocation cannot resume a different query or
+generation accidentally.
+
 * Problem
 
 The current compact search output started as line protocol:
@@ -77,6 +129,92 @@ compress repeated syntax, but it must not compress away relation labels,
 rank order, next actions, locators, or omission reasons.
 
 ** Materialized selectors and graph-only evidence
+*** Immutable exact-projection generation
+
+**** Active artifact handoff identity
+
+An installed exact-projection generation MUST preserve both identities across
+the activation boundary:
+
+- the artifact digest identifies the immutable fixture bytes;
+- the generation digest identifies the workspace/search generation that those
+  bytes are allowed to serve.
+
+The canonical logical locator is:
+
+#+begin_example
+exact-selector-generation/<generation-digest>/<artifact-digest>.fixture
+#+end_example
+
+The active artifact kind MUST be
+=exact-selector-generation-fixture=.  A resident consumer MUST validate the
+typed artifact kind, canonical locator, artifact digest, and generation digest
+before resolving a selector.  It MUST NOT open Turso to recover a missing
+generation identity, infer the identity from fixture contents, substitute the
+artifact digest for the generation digest, or fall back to a wrapper source
+snapshot.
+
+Publication is a cold durability operation.  Installed selector resolution is
+a load-once memory operation: after the active artifact is admitted, lookup
+MUST perform no database opens, provider subprocesses, manifest writes, source
+walks, or artifact byte reads beyond the single fixture load.
+
+The workspace-generation publication request MUST carry the complete typed
+exact-selector projection-record set alongside =generation_identity= and
+=artifact_root=.  A source snapshot by itself is insufficient because it does
+not preserve selector projection mode, parser-fact identity, or source byte
+range.
+
+The source-index generation and exact-selector fixture MAY be written in
+separate durability operations, but they MUST become visible through one active
+generation reconciliation.  A failed source-index transaction may leave an
+unreferenced content-addressed fixture; it MUST NOT leave an active receipt
+that exposes only one side of the generation.  The publication receipt MUST
+therefore carry the exact-selector active-artifact input into the same
+reconciliation that admits the source-index generation.
+
+An executable selector is complete only when the published search generation
+contains all three parts of the same identity:
+
+- the canonical item selector and owner identity;
+- the exact-query materialization proof, including the source blob digest,
+  inclusive byte bounds, and source-slice digest;
+- the exact-selector projection packet produced by the activated language
+  parser and query pack.
+
+These parts MUST be committed as one immutable generation.  A selector row
+without its materialization proof or projection packet is not a partial cache
+hit and MUST NOT be promoted to =readSelector=.  Graph-only facts remain
+discovery evidence and cannot acquire executable status from a path, symbol, or
+line-range heuristic.
+
+The active generation MUST publish a content-addressed Memory Search artifact
+that can be opened once and shared by exact-query consumers.  The artifact
+identity includes the workspace identity, root digest, language/provider
+identity, parser identity, query-pack digest, and projection payload digest.
+Changing any input creates a new generation; consumers invalidate by replacing
+the generation handle, never by mutating or repairing individual selector rows.
+
+After the generation handle is active, exact-selector lookup and projection
+MUST be read-only:
+
+- no provider process spawn;
+- no Turso open or query;
+- no source-envelope publication or manifest write;
+- no Merkle rebuild or filesystem source materialization;
+- no retry loop that hides a missing or incomplete generation.
+
+Cold load measures opening the already-published immutable artifact.  Warm load
+measures lookup through the resident generation handle.  Both are hard
+performance contracts with explicit receipts; a budget breach fails the gate.
+Concurrent callers MUST share one generation initialization and MUST receive the
+same deterministic hit or the same cached initialization failure.
+
+The command router only selects the generation and projection mode.  It does
+not reconstruct materialization from source paths and does not own a second
+selector cache.  Installed CLI and resident-agent paths consume the same
+published artifact and return the same projection packet.
+
 
 An EvidenceGraph node identity is not automatically an executable source
 selector. Providers may emit graph-only nodes for call sites, relations,
@@ -3344,6 +3482,95 @@ package-anchor discovery -> workspace membership -> provider admission -> eviden
 #+end_src
 Ranking a cross-workspace or cross-language candidate and filtering it later is
 invalid because its edges already distort graph topology and frontier choice.
+
+* Callable skeleton projection and structural descent
+
+The existing =projection=skeleton= action is an item-level frontier choice. It
+does not yet define the semantic payload for a large callable, and it does not
+make branches, arms, loops, closures, or other callable descendants executable
+exact-query targets. This RFC adds a language-neutral callable projection rather
+than a Rust-only function outline.
+
+The public projection kind is =callable-skeleton=. A provider receives one exact
+callable selector and returns
+=agent.semantic-protocols.callable-skeleton-projection= version =v1=. The root
+may be a function, method, constructor, closure, lambda, or another
+provider-owned callable kind. The shared contract owns node identity,
+queryability, relations, omission, and cost semantics. Provider-owned
+=languageFacts= carry syntax-specific facts and MUST NOT redefine those shared
+semantics.
+
+The projection is explicit. A client asks for =callable-skeleton= or for source;
+ASP MUST NOT silently choose between them from a hidden function-size heuristic.
+The existing =code= and =skeleton= strings in
+=exact-selector-projection-packet.v1= are historical packet vocabulary, not a
+requirement to preserve an old CLI. A new public query surface may replace old
+flags as a coordinated breaking change.
+
+** Shared callable node model
+
+A callable skeleton is a compact semantic graph. Its common node kinds are
+=callable=, =branch=, =arm=, =loop=, =exception=, =resource-scope=,
+=invocation=, =binding=, =exit=, =suspension=, =nested-declaration=, and
+=language-extension=. Relations retain parser order and semantic edges such as
+=contains=, =guards=, =calls=, =returns=, =throws=, =yields=, and =suspends=.
+The projection carries source bytes, projected bytes, and omitted bytes.
+Provider token estimates are optional and MUST name their estimator when
+present.
+
+Rust may map =match= arms, closures, =?=, =await=, and macro invocations into
+this graph. TypeScript maps functions, methods, arrows, switch arms, async
+boundaries, and provider-owned Effect facts through the =typescript= facade.
+Python maps =def=, =async def=, lambdas, context managers, exception handlers,
+and yields. Julia maps long and short function forms, =do= blocks, dispatch
+facts, and macros. Gerbil Scheme maps definitions, lambdas, =cond=, match,
+binding forms, continuations, and macro facts. C-family providers map functions,
+methods, lambdas, switch arms, templates, RAII scopes, and preprocessor
+boundaries. These mappings need not expose identical node sets.
+
+** Queryable child identity
+
+A skeleton node declares =queryable=true= only when the provider can mint an
+exact structural selector for that node. The selector is carried as
+=asp.exact-structural-selector.v1=. Version =v1= preserves the root canonical
+item selector, binds the active generation, parser identity, and query-pack
+digests, and adds opaque, parser-owned semantic descent segments. Segment
+identity MUST NOT be a line number, display range, or byte offset.
+
+=sourceLocatorHint= remains display-only. Clients MUST execute the returned
+exact selector instead of reconstructing one from a hint. A non-queryable node
+MUST omit =exactSelector=. A selector whose bound generation or parser identity
+is stale fails closed with an actionable stale-selector receipt; it MUST NOT
+relocate to a nearby sibling or fall back to source slicing.
+
+Exact query remains exact. It consumes a selector returned by the provider and
+does not search for a child. Discovery happens in the skeleton projection; the
+subsequent query only materializes the selected descendant.
+
+** Breaking-change and provider admission
+
+This design does not require old CLI compatibility. It requires an explicit
+version boundary and coordinated migration of schemas, provider descriptors,
+fixtures, sandtable scenarios, and installed artifacts. A provider declares
+callable-skeleton support only after it can satisfy the shared schema and
+round-trip every emitted queryable child through exact query. Declared support
+fails closed; it MUST NOT silently return the complete callable body or a
+line-based approximation.
+
+Rust is the first reference implementation, not the owner of the shared
+contract. Before Rust implementation admission, the repository MUST contain:
+
+- the versioned shared skeleton and structural-selector schemas;
+- shared valid and invalid fixtures;
+- provider mapping notes for every registered language, including explicit
+  unsupported node kinds;
+- round-trip, whitespace/comment stability, sibling insertion, stale-selector,
+  and token/byte reduction acceptance cases.
+
+The implementation order is RFC, shared schemas, cross-language mapping and
+fixtures, Rust reference implementation, other provider alignment, sandtable
+validation, and real-project token/latency evidence. Source edits, schema syntax
+checks, or a Rust-only passing suite do not close this work.
 
 * Frontier action identity and cycle rejection
 Typed frontier actions include workspace, language, kind, and normalized query

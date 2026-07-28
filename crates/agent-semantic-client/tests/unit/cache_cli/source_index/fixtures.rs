@@ -37,6 +37,7 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
     std::fs::create_dir_all(activation_path.parent().expect("activation parent"))
         .expect("create activation parent");
     let activation = agent_semantic_hook::HookActivation {
+        rankers: Vec::new(),
         schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
         schema_authority: agent_semantic_hook::CANONICAL_SCHEMA_AUTHORITY.to_string(),
@@ -123,6 +124,7 @@ pub(super) fn write_gerbil_activation_with_command_prefix(
     std::fs::create_dir_all(activation_path.parent().expect("activation parent"))
         .expect("create activation parent");
     let activation = agent_semantic_hook::HookActivation {
+        rankers: Vec::new(),
         schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
         schema_authority: agent_semantic_hook::CANONICAL_SCHEMA_AUTHORITY.to_string(),

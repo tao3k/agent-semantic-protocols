@@ -17,8 +17,8 @@ use agent_semantic_client_db::{
     ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexImportFile,
     ClientDbSourceIndexImportRequest, ClientDbSourceIndexLookupState, ClientDbSourceIndexPath,
     ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexScopeFile,
-    ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorPayloadProof,
-    ClientDbSourceIndexSource, build_source_index_import, source_index_import_with_file_hashes,
+    ClientDbSourceIndexSelector, ClientDbSourceIndexSource, build_source_index_import,
+    source_index_import_with_file_hashes,
 };
 
 #[path = "engine_source_index/exact_selector_projection.rs"]
@@ -60,7 +60,12 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_active_turso_fixture() {}\n".to_string(),
-            selectors: Vec::new(),
+            selectors: vec![rust_selector_fixture(
+                "src/source_index_active_turso.rs",
+                "rust://src/source_index_active_turso.rs#item/function/source_index_active_turso_fixture",
+                "source_index_active_turso_fixture",
+                b"pub fn source_index_active_turso_fixture() {}\n",
+            )],
         }],
     })
     .expect("build first Turso source-index import");
@@ -101,7 +106,12 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_active_turso_fixture() {}\n".to_string(),
-            selectors: Vec::new(),
+            selectors: vec![rust_selector_fixture(
+                "src/source_index_active_turso.rs",
+                "rust://src/source_index_active_turso.rs#item/function/source_index_active_turso_fixture",
+                "source_index_active_turso_fixture",
+                b"pub fn source_index_active_turso_fixture() {}\n",
+            )],
         }],
     })
     .expect("build second Turso source-index import");
@@ -152,7 +162,7 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let selector =
         "rust://src/source_index_payload_proof.rs#item/function/source_index_payload_proof_fixture";
-    let mut source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
+    let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
         generation_id: CacheGenerationId::from("source-index-payload-proof-turso"),
         project_root: project_root.clone(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -169,19 +179,16 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_payload_proof_fixture() {}\n".to_string(),
-            selectors: Vec::new(),
+            selectors: vec![rust_selector_fixture(
+                "src/source_index_payload_proof.rs",
+                selector,
+                "source_index_payload_proof_fixture",
+                b"pub fn source_index_payload_proof_fixture() {}\n",
+            )],
         }],
     })
     .expect("build Turso source-index payload proof import");
-    source_index_import.selectors[0].selector_id = selector.into();
-    source_index_import.selectors[0].symbol = Some("source_index_payload_proof_fixture".into());
-    source_index_import.selectors[0].kind = Some("function".into());
-    source_index_import.selectors[0].payload_proof =
-        Some(ClientDbSourceIndexSelectorPayloadProof {
-            structural_selector: selector.into(),
-            payload_kind: "code".into(),
-            bounded: true,
-        });
+    let source = b"pub fn source_index_payload_proof_fixture() {}\n";
 
     ClientDbEngine::refresh_source_index_import_from_client_dir(
         &client_dir,
@@ -214,8 +221,13 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
         .as_ref()
         .expect("candidate payload proof");
     assert_eq!(proof.structural_selector, selector);
-    assert_eq!(proof.payload_kind, "code");
-    assert!(proof.bounded);
+    assert_eq!(
+        proof.projection_mode,
+        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code
+    );
+    assert_eq!(proof.source_byte_start, 0);
+    assert_eq!(proof.source_byte_end, source.len() as u64);
+    assert_eq!(proof.projection, source);
 
     let other_language_id = LanguageId::from("gerbil-scheme");
     let other_language_lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
@@ -267,17 +279,25 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
                     selector_id: selector.into(),
                     symbol: Some("source_index_scope_payload_proof_fixture".into()),
                     kind: Some("function".into()),
-                    start_line: 1,
-                    end_line: 1,
                     source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
                     query_keys: vec![ClientDbSourceIndexQueryKey::from(
                         "source_index_scope_payload_proof_fixture",
                     )],
-                    payload_proof: Some(ClientDbSourceIndexSelectorPayloadProof {
-                        structural_selector: selector.into(),
-                        payload_kind: "code".into(),
-                        bounded: true,
-                    }),
+                    materialization_proof: crate::materialization_fixture::materialization_proof(
+                        crate::materialization_fixture::MaterializationFixtureInput {
+                            language_id: "rust",
+                            provider_id: "rs-harness",
+                            owner_path: "src/source_index_scope_payload_proof.rs",
+                            structural_selector: selector,
+                            item_kind: "function",
+                            item_name: "source_index_scope_payload_proof_fixture",
+                            source: b"pub fn source_index_scope_payload_proof_fixture() {}\n",
+                            source_byte_start: 0,
+                            source_byte_end:
+                                b"pub fn source_index_scope_payload_proof_fixture() {}\n".len()
+                                    as u64,
+                        },
+                    ),
                 }],
             }],
             source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
@@ -324,8 +344,15 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
         .and_then(|candidate| candidate.selector_proof.as_ref())
         .expect("scope payload proof candidate");
     assert_eq!(proof.structural_selector, selector);
-    assert_eq!(proof.payload_kind, "code");
-    assert!(proof.bounded);
+    assert_eq!(
+        proof.projection_mode,
+        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code
+    );
+    assert_eq!(proof.source_byte_start, 0);
+    assert_eq!(
+        proof.source_byte_end,
+        b"pub fn source_index_scope_payload_proof_fixture() {}\n".len() as u64
+    );
 
     let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);
@@ -444,7 +471,12 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
             provider_id: ProviderId::from("rs-harness"),
             text: "pub fn source_index_fts_fixture() { let camel_case_identifier = true; }\n"
                 .to_string(),
-            selectors: Vec::new(),
+            selectors: vec![rust_selector_fixture(
+                "src/source_index_fts.rs",
+                "rust://src/source_index_fts.rs#item/function/source_index_fts_fixture",
+                "source_index_fts_fixture",
+                b"pub fn source_index_fts_fixture() { let camel_case_identifier = true; }\n",
+            )],
         }],
     })
     .expect("build Turso source-index FTS import");
@@ -840,6 +872,35 @@ fn temp_root(label: &str) -> PathBuf {
     root.push(unique);
     fs::create_dir_all(&root).expect("create temp root");
     root
+}
+
+fn rust_selector_fixture(
+    owner_path: &str,
+    selector: &str,
+    symbol: &str,
+    source: &[u8],
+) -> ClientDbSourceIndexSelector {
+    ClientDbSourceIndexSelector {
+        owner_path: owner_path.into(),
+        selector_id: selector.into(),
+        symbol: Some(symbol.into()),
+        kind: Some("function".into()),
+        source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
+        query_keys: vec![symbol.into()],
+        materialization_proof: crate::materialization_fixture::materialization_proof(
+            crate::materialization_fixture::MaterializationFixtureInput {
+                language_id: "rust",
+                provider_id: "rs-harness",
+                owner_path,
+                structural_selector: selector,
+                item_kind: "function",
+                item_name: symbol,
+                source,
+                source_byte_start: 0,
+                source_byte_end: source.len() as u64,
+            },
+        ),
+    }
 }
 
 #[path = "engine_source_index/active_fact.rs"]

@@ -10,7 +10,6 @@ use serde_json::Value;
 
 use super::ResolvedState;
 
-const ACTIVITY_WRITE_INTERVAL_MS: u64 = 60 * 60 * 1_000;
 const LAST_SEEN_FILE: &str = ".last-seen-ms";
 
 /// Controls a project-registry garbage-collection pass.
@@ -195,21 +194,6 @@ fn recorded_identity_is_noncanonical(
 }
 
 impl ResolvedState {
-    /// Record bounded project/workspace activity without rewriting identity metadata.
-    pub(super) fn touch_registry_activity(&self) -> Result<(), String> {
-        let now_ms = now_ms()?;
-        touch_if_stale(
-            &self.paths.project_dir.join(LAST_SEEN_FILE),
-            now_ms,
-            ACTIVITY_WRITE_INTERVAL_MS,
-        )?;
-        touch_if_stale(
-            &self.paths.workspace_dir.join(LAST_SEEN_FILE),
-            now_ms,
-            ACTIVITY_WRITE_INTERVAL_MS,
-        )
-    }
-
     /// Scan or safely apply project-registry garbage collection.
     pub fn gc_project_registry(
         &self,
@@ -357,17 +341,6 @@ impl ResolvedState {
             candidates,
         })
     }
-}
-
-fn touch_if_stale(path: &Path, now_ms: u64, interval_ms: u64) -> Result<(), String> {
-    let previous = fs::read_to_string(path)
-        .ok()
-        .and_then(|value| value.trim().parse::<u64>().ok());
-    if previous.is_some_and(|value| now_ms.saturating_sub(value) < interval_ms) {
-        return Ok(());
-    }
-    fs::write(path, format!("{now_ms}\n"))
-        .map_err(|error| format!("failed to update activity {}: {error}", path.display()))
 }
 
 fn recorded_checkout_roots(project_dir: &Path) -> Vec<PathBuf> {

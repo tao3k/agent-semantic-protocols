@@ -26,11 +26,7 @@ fn generation(owner_paths: &[&str]) -> MemorySearchGenerationV1 {
     MemorySearchGenerationV1 {
         generation_id: "generation-1".to_owned(),
         root_digest,
-        root_depth: if item_count <= 1 {
-            0
-        } else {
-            usize::BITS as usize - (item_count - 1).leading_zeros() as usize
-        },
+        root_depth: 0,
         leaf_count: source_leaves.len(),
         owner_count: source_leaves.len(),
         selector_count: item_count,
@@ -253,12 +249,36 @@ fn turso_snapshot_materializes_the_shared_zero_io_backend() {
                         selector_id: "selector-1".to_owned(),
                         symbol: Some("include_deps".to_owned()),
                         kind: Some("function".to_owned()),
-                        start_line: 1,
-                        end_line: 1,
-                        structural_selector: "rust://src/live.rs#item/function/include_deps"
-                            .to_owned(),
-                        payload_kind: None,
-                        payload_bounded: true,
+                        materialization_proof:
+                            agent_semantic_content_identity::ExactSelectorMaterializationProofV1 {
+                                language_id: "rust".to_owned(),
+                                provider_id: "rs-harness".to_owned(),
+                                canonical_item_selector:
+                                    agent_semantic_content_identity::CanonicalItemSelectorV1::new(
+                                        agent_semantic_content_identity::CanonicalItemIdentityV1::new(
+                                            "rust",
+                                            "function",
+                                            "include_deps",
+                                        ),
+                                        "rust://src/live.rs#item/function/include_deps",
+                                    ),
+                                parser_identity_digest: [0xb; 32],
+                                query_pack_digest: [0xc; 32],
+                                workspace_root_digest: [0xe; 32],
+                                owner_path: "src/live.rs".to_owned(),
+                                owner_subtree_digest: [0xd; 32],
+                                owner_inclusion_proof: Vec::new(),
+                                source_blob_digest: [0xd; 32],
+                                normalized_parser_facts_digest: [0xf; 32],
+                                structural_selector:
+                                    "rust://src/live.rs#item/function/include_deps".to_owned(),
+                                projection_mode:
+                                    agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code,
+                                source_byte_start: 0,
+                                source_byte_end: 1,
+                                projection_digest: [0xa; 32],
+                                projection: b"x".to_vec(),
+                            },
                         query_keys: vec!["include_deps".to_owned()],
                     },
                 ],

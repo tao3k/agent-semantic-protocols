@@ -5,10 +5,10 @@ use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_FILE, state_core::ResolvedState,
 };
 use agent_semantic_runtime::{
-    project_activation_path, project_cache_home_for_roots, project_root_for_activation_path,
-    project_state_paths,
+    project_activation_path, project_root_for_activation_path, project_state_paths,
 };
 
+use super::provider_fast_path::search_owner_items_owner_path;
 use agent_semantic_search::language_file_spec;
 
 pub(super) fn activation_project_root(activation_path: &Path, project_root: &str) -> PathBuf {
@@ -21,13 +21,8 @@ pub(super) fn activation_project_root(activation_path: &Path, project_root: &str
     fs::canonicalize(&root).unwrap_or(root)
 }
 
-pub(super) fn client_backend_cache_home(
-    activation_root: &Path,
-    project_root: &Path,
-) -> Result<PathBuf, String> {
-    ResolvedState::resolve(project_root)
-        .map(|state| state.paths.client_dir)
-        .or_else(|_| project_cache_home_for_roots(activation_root, project_root))
+pub(super) fn client_backend_state_dir(project_root: &Path) -> Result<PathBuf, String> {
+    ResolvedState::resolve(project_root).map(|state| state.paths.client_dir)
 }
 
 pub(super) fn effective_project_root_and_args(
@@ -42,7 +37,9 @@ pub(super) fn effective_project_root_and_args(
     if let Some((workspace_root, normalized_args)) =
         explicit_workspace_project_root(language_id, &args, invocation_root)?
     {
-        return Ok(rebase_structural_selector_to_member_root(
+        let (workspace_root, normalized_args) =
+            rebase_structural_selector_to_member_root(language_id, workspace_root, normalized_args);
+        return Ok(rebase_search_owner_to_member_root(
             language_id,
             workspace_root,
             normalized_args,
@@ -79,6 +76,61 @@ pub(super) fn effective_project_root_and_args(
     }
 }
 
+fn rebase_search_owner_to_member_root(
+    language_id: &str,
+    workspace_root: PathBuf,
+    mut args: Vec<String>,
+) -> (PathBuf, Vec<String>) {
+    let Some(owner) = search_owner_items_owner_path(&args).map(str::to_owned) else {
+        return (workspace_root, args);
+    };
+    let owner_path = PathBuf::from(&owner);
+    let Some(member_root) =
+        provider_member_root_for_owner(language_id, &workspace_root, &owner_path)
+            .filter(|root| root != &workspace_root)
+    else {
+        return (workspace_root, args);
+    };
+    let absolute_owner = workspace_root.join(&owner_path);
+    let Ok(member_owner) = absolute_owner.strip_prefix(&member_root) else {
+        return (workspace_root, args);
+    };
+    let member_owner = member_owner.to_string_lossy().replace('\\', "/");
+    if let Some(owner_argument) = args.iter_mut().find(|argument| argument.as_str() == owner) {
+        *owner_argument = member_owner;
+    }
+    (member_root, args)
+}
+
+pub(super) fn provider_member_root_for_owner(
+    language_id: &str,
+    workspace_root: &Path,
+    owner: &Path,
+) -> Option<PathBuf> {
+    if owner.is_absolute()
+        || owner.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir
+                    | std::path::Component::RootDir
+                    | std::path::Component::Prefix(_)
+            )
+        })
+    {
+        return None;
+    }
+    let absolute_owner = workspace_root.join(owner);
+    let marker_start = if absolute_owner.is_dir() {
+        absolute_owner.as_path()
+    } else {
+        absolute_owner.parent().unwrap_or(workspace_root)
+    };
+    marker_start
+        .ancestors()
+        .take_while(|candidate| candidate.starts_with(workspace_root))
+        .find_map(|candidate| language_project_marker_root(language_id, candidate))
+}
+
 fn rebase_structural_selector_to_member_root(
     language_id: &str,
     workspace_root: PathBuf,
@@ -104,28 +156,8 @@ fn rebase_structural_selector_to_member_root(
         return (workspace_root, args);
     };
     let owner = PathBuf::from(owner);
-    if owner.is_absolute()
-        || owner.components().any(|component| {
-            matches!(
-                component,
-                std::path::Component::ParentDir
-                    | std::path::Component::RootDir
-                    | std::path::Component::Prefix(_)
-            )
-        })
-    {
-        return (workspace_root, args);
-    }
     let absolute_owner = workspace_root.join(&owner);
-    let marker_start = if absolute_owner.is_dir() {
-        absolute_owner.as_path()
-    } else {
-        absolute_owner.parent().unwrap_or(workspace_root.as_path())
-    };
-    let member_root = marker_start
-        .ancestors()
-        .take_while(|candidate| candidate.starts_with(&workspace_root))
-        .find_map(|candidate| language_project_marker_root(language_id, candidate));
+    let member_root = provider_member_root_for_owner(language_id, &workspace_root, &owner);
     let Some(member_root) = member_root.filter(|root| root != &workspace_root) else {
         return (workspace_root, args);
     };
@@ -213,7 +245,7 @@ fn validate_code_flag_boundary(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn explicit_workspace_project_root(
+pub(super) fn explicit_workspace_project_root(
     language_id: &str,
     args: &[String],
     invocation_root: &Path,

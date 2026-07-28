@@ -496,6 +496,7 @@ fn decision_has_warning(decision: &HookDecision) -> bool {
     decision
         .fields
         .contains_key("agentOrgArtifactsArchiveWarning")
+        || decision.fields.contains_key("bootstrapReceipt")
 }
 
 fn platform_decision_message(decision: &HookDecision) -> Cow<'_, str> {

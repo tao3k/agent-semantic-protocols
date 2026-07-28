@@ -54,7 +54,51 @@ pub(super) struct FastSearchContext<'a> {
     pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
     pub(super) source_index_snapshot:
-        &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+        Option<&'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot>,
+}
+
+impl FastSearchContext<'_> {
+    fn required_source_index_snapshot(
+        &self,
+    ) -> Result<&agent_semantic_client::source_index::CurrentSourceIndexSnapshot, String> {
+        self.source_index_snapshot
+            .ok_or_else(|| "search route requires an admitted source-index generation".to_owned())
+    }
+}
+
+pub(super) fn fast_search_requires_source_index_snapshot(args: &[String]) -> bool {
+    is_search_pipe(args) || is_search_ingest(args) || is_search_lexical(args)
+}
+
+pub(super) struct IncrementalOwnerSearchContext<'a> {
+    pub(super) language_id: &'a str,
+    pub(super) project_root: &'a Path,
+    pub(super) locator_root: &'a Path,
+    pub(super) provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
+    pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
+}
+
+pub(super) fn run_asp_incremental_owner_search_command(
+    args: &[String],
+    context: IncrementalOwnerSearchContext<'_>,
+) -> Result<(), String> {
+    if !is_search_owner_items_query(args) {
+        return Err("incremental owner search requires `search owner <path> items`".to_string());
+    }
+    match preflight_search_command_args(&context.language_id.into(), args, context.project_root) {
+        SearchCommandPreflightOutcome::Rejected(error) => return Err(error),
+        SearchCommandPreflightOutcome::Passed | SearchCommandPreflightOutcome::NotApplicable => {}
+    }
+    run_search_owner_items_query_command(
+        args,
+        SearchOwnerItemsFastContext {
+            language_id: context.language_id,
+            project_root: context.project_root,
+            locator_root: context.locator_root,
+            provider_context: context.provider_context,
+            frontier_receipt: context.frontier_receipt,
+        },
+    )
 }
 
 pub(super) fn is_asp_fast_search(args: &[String]) -> bool {
@@ -108,7 +152,6 @@ pub(super) fn run_asp_fast_search_command(
                 language_id: context.language_id,
                 project_root: context.project_root,
                 locator_root: context.locator_root,
-                cache_home: context.cache_home,
                 provider_context: context.provider_context,
                 frontier_receipt: context.frontier_receipt,
             },
@@ -161,6 +204,7 @@ fn is_search_ingest(args: &[String]) -> bool {
 
 fn is_search_lexical(args: &[String]) -> bool {
     matches!(args.first().map(String::as_str), Some("search"))
+        && matches!(args.get(1).map(String::as_str), Some("lexical"))
         && parse_lexical_args(args)
             .is_ok_and(|request| matches!(request.view.as_str(), "seeds" | "graph-turbo-request"))
 }
@@ -193,7 +237,7 @@ fn is_reasoning_owner_tests(args: &[String]) -> bool {
         && !args.iter().any(|arg| arg == "--json")
 }
 
-fn is_search_owner_items_query(args: &[String]) -> bool {
+pub(super) fn is_search_owner_items_query(args: &[String]) -> bool {
     matches!(args.first().map(String::as_str), Some("search"))
         && matches!(args.get(1).map(String::as_str), Some("owner"))
         && matches!(args.get(3).map(String::as_str), Some("items"))
@@ -277,7 +321,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         &project_root,
         context.provider_context,
     )?;
-    let current_snapshot = context.source_index_snapshot;
+    let current_snapshot = context.required_source_index_snapshot()?;
     let mut acquisition = collect_search_pipe_candidates(CollectSearchPipeCandidatesRequest {
         language_id: context.language_id,
         project_root: &project_root,
@@ -335,14 +379,22 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
     );
     let rendered_source = resolved_search_pipe_source(pipe_args.source, &acquisition);
     let surfaces = normalized_search_surfaces(&pipe_args.surfaces);
-    let source_snapshot = acquisition
-        .source_snapshot
-        .as_ref()
-        .unwrap_or(&current_snapshot.source_snapshot);
+    let source_snapshot = acquisition.source_snapshot.as_ref().ok_or_else(|| {
+        "state=cold-required reasonKind=active-workspace-generation-required field=sourceSnapshot"
+            .to_owned()
+    })?;
+    let generation =
+        agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1::admit(
+            source_snapshot,
+            &current_snapshot.workspace_generation,
+            &current_snapshot.workspace_generation,
+        )
+        .map_err(|error| format!("search graph generation admission failed: {error}"))?;
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: &project_root,
         source_snapshot,
+        generation: &generation,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
         surface: "search-pipe",
@@ -506,6 +558,10 @@ fn shell_arg(value: &str) -> String {
         format!("'{}'", value.replace('\'', "'\\''"))
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/search_pipe_source_generation_route.rs"]
+mod source_generation_route_tests;
 
 fn source_trace_with_provider_facts(
     source_trace: &[SearchPipeSourceTrace],
@@ -688,10 +744,18 @@ fn run_search_ingest_command(
         &candidates,
         context.provider_context,
     )?;
+    let generation =
+        agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1::admit(
+            &current_snapshot.source_snapshot,
+            &current_snapshot.workspace_generation,
+            &current_snapshot.workspace_generation,
+        )
+        .map_err(|error| format!("search graph generation admission failed: {error}"))?;
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: context.project_root,
         source_snapshot: &current_snapshot.source_snapshot,
+        generation: &generation,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
         surface: "search-ingest",
@@ -781,10 +845,18 @@ fn run_search_lexical_command(
         .first()
         .map(String::as_str)
         .unwrap_or("auto");
+    let generation =
+        agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1::admit(
+            &current_snapshot.source_snapshot,
+            &current_snapshot.workspace_generation,
+            &current_snapshot.workspace_generation,
+        )
+        .map_err(|error| format!("search graph generation admission failed: {error}"))?;
     print_search_pipe_view(SearchPipeViewRequest {
         language_id: context.language_id,
         project_root: &project_root,
         source_snapshot: &current_snapshot.source_snapshot,
+        generation: &generation,
         locator_root: context.locator_root,
         cache_home: context.cache_home,
         surface: "search-lexical",

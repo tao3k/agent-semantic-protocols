@@ -6,7 +6,7 @@ use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
-fn healthcheck_reports_git_cache_agents_and_activation_runtime() {
+fn healthcheck_reports_state_core_agents_and_activation_runtime() {
     let root = prepared_project("healthcheck-compact");
     let provider = write_executable(&root, "rs-harness");
     write_activation(&root, &provider);
@@ -19,8 +19,9 @@ fn healthcheck_reports_git_cache_agents_and_activation_runtime() {
     let activation_path = canonical_activation_path(&root);
     assert!(stdout.contains("[asp-healthcheck] status="));
     assert!(stdout.contains(&format!("gitToplevel={}", git_toplevel.display())));
-    assert!(stdout.contains("cacheSource=git-toplevel"));
-    assert!(stdout.contains("|env PRJ_CACHE_HOME=unset"));
+    assert!(stdout.contains(" stateHome="));
+    assert!(stdout.contains(" repoId=repo-"));
+    assert!(stdout.contains(" workspaceId=workspace-"));
     let plugin_skill = root.join(
         "codex-home/plugins/cache/asp-project/asp-codex-plugin/0.1.0/skills/agent-semantic-protocols/SKILL.org",
     );
@@ -38,7 +39,7 @@ fn healthcheck_reports_git_cache_agents_and_activation_runtime() {
 }
 
 #[test]
-fn healthcheck_json_reports_project_runtime_layout() {
+fn healthcheck_json_reports_state_core_layout() {
     let root = prepared_project("healthcheck-json");
     let provider = write_executable(&root, "rs-harness");
     write_activation(&root, &provider);
@@ -51,7 +52,17 @@ fn healthcheck_json_reports_project_runtime_layout() {
         value["schemaId"],
         json!("agent.semantic-protocols.healthcheck")
     );
-    assert_eq!(value["cacheSource"], json!("git-toplevel"));
+    assert!(value["stateHome"].as_str().is_some());
+    assert!(
+        value["repoId"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("repo-"))
+    );
+    assert!(
+        value["workspaceId"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("workspace-"))
+    );
     assert_eq!(value["paths"]["activation"]["status"], json!("ok"));
     assert_eq!(
         value["paths"]["activation"]["path"],
@@ -59,7 +70,6 @@ fn healthcheck_json_reports_project_runtime_layout() {
     );
     assert_eq!(value["activationRuntime"]["providerCount"], json!(1));
     assert_eq!(value["providers"][0]["languageId"], json!("rust"));
-    assert_eq!(value["env"]["PRJ_CACHE_HOME"], Value::Null);
     assert_eq!(value["skill"]["authority"], json!("plugin-installed"));
     assert_eq!(value["skill"]["status"], json!("ok"));
     assert_eq!(value["skill"]["error"], Value::Null);
@@ -154,9 +164,9 @@ fn healthcheck_json_reports_plugin_skill_resolver_error() {
         .current_dir(&root)
         .arg("healthcheck")
         .args(["--json", "."]);
-    command.env_remove("PRJ_CACHE_HOME");
     command.env_remove("CODEX_HOME");
     command.env_remove("HOME");
+    command.env("ASP_STATE_HOME", root.join("state-home"));
     command.env("ASP_NO_AGENT_PLATFORM", "1");
     let output = command
         .output()
@@ -178,58 +188,6 @@ fn healthcheck_json_reports_plugin_skill_resolver_error() {
                     == json!("missing CODEX_HOME and HOME; cannot locate Codex config")
         })
     }));
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
-}
-
-#[test]
-fn healthcheck_prefers_git_toplevel_over_prj_cache_home_when_set() {
-    let root = prepared_project("healthcheck-prj-cache-home");
-    let cache_home = root.join(".cache");
-
-    let output = run_healthcheck(
-        &root,
-        &["."],
-        &[(
-            "PRJ_CACHE_HOME",
-            cache_home.to_str().expect("utf8 temp path"),
-        )],
-    );
-
-    assert!(output.status.success(), "stderr: {}", stderr(&output));
-    let stdout = stdout(&output);
-    assert!(stdout.contains("cacheSource=git-toplevel"));
-    assert!(stdout.contains("PRJ_CACHE_HOME=set:"));
-    assert!(stdout.contains(&format!(
-        "|path activation={}",
-        canonical_activation_path(&root).display()
-    )));
-    std::fs::remove_dir_all(root).expect("cleanup temp project root");
-}
-
-#[test]
-fn healthcheck_rejects_prj_cache_home_outside_git_worktree() {
-    let root = temp_project_root("healthcheck-prj-cache-home-no-git");
-    let cache_home = root.join("cache-home");
-
-    let output = run_healthcheck(
-        &root,
-        &["."],
-        &[(
-            "PRJ_CACHE_HOME",
-            cache_home.to_str().expect("utf8 temp path"),
-        )],
-    );
-
-    assert!(!output.status.success(), "stdout: {}", stdout(&output));
-    let stderr = stderr(&output);
-    assert!(
-        stderr.contains("refusing to materialize ephemeral non-Git search root"),
-        "{stderr}"
-    );
-    assert!(
-        stderr.contains(root.to_str().expect("utf8 root")),
-        "{stderr}"
-    );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
 }
 
@@ -328,7 +286,6 @@ fn rust_manifest() -> agent_semantic_hook::ProviderManifest {
 fn run_healthcheck(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command.current_dir(root).arg("healthcheck").args(args);
-    command.env_remove("PRJ_CACHE_HOME");
     command.env("CODEX_HOME", root.join("codex-home"));
     for (key, value) in envs {
         command.env(key, value);

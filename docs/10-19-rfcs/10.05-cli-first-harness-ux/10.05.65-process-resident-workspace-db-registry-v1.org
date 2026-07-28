@@ -1,0 +1,91 @@
+#+title: Process-resident workspace database registry v1
+#+startup: overview
+
+* Status
+
+This RFC defines the database lifetime and concurrency contract used by
+provider-backed incremental search.  It replaces request-local database opens;
+it does not introduce a compatibility path, a global database, or a global
+database lock.
+
+* Canonical ownership
+
+The process owns a =WorkspaceDbRegistry=.  Its key is the canonical
+=WorkspaceIdentityV1= resolved from a project root.  Each entry owns resources
+for exactly one canonical workspace client database:
+
+- the resolved workspace identity and canonical client database path;
+- an opened Turso database and reusable connection resources;
+- schema-ready state;
+- a workspace-local concurrent read facility; and
+- one workspace-local writer lane using immediate transactions.
+
+The registry map is process-resident, but database state is not global.
+Different workspace entries have no shared database connection or global file
+lock and may make progress concurrently.
+
+A worktree is a distinct workspace identity.  Two worktrees therefore acquire
+different entries and cannot read or write each other's provider inventory,
+owner facts, query facts, or continuation state.
+
+* Session leases
+
+Each search command acquires a lightweight workspace session lease from the
+registry.  The acquisition input is the project root and the typed provider
+incremental scope.  Before a lock, database open, or schema bootstrap, the
+registry MUST:
+
+1. resolve the project root through canonical state resolution;
+2. derive its canonical workspace identity and client database path;
+3. require the resolved workspace identity to equal the scope workspace
+   identity; and
+4. require the registry key and entry path to equal those resolved values.
+
+An identity or path mismatch fails closed before opening a database.  Callers
+cannot supply an arbitrary database path.
+
+Inventory reads, batched owner probes, query reads, inventory publication,
+owner-result publication, and final reads operate through the same lease.
+Those operations do not open databases and do not accept database paths.
+
+* Lifetime and concurrency receipts
+
+Registry and lease receipts expose at least:
+
+- =databaseOpenCount=;
+- =schemaBootstrapCount=;
+- =registryHitCount=;
+- =workspaceLockRetryCount=; and
+- =writerTransactionCount=.
+
+For one process and one workspace, 100 concurrent lease acquisitions MUST
+produce exactly one database open and one schema bootstrap.  A subsequent warm
+lease reports zero opens and zero schema bootstraps.  This is a process-lifetime
+contract, not merely a single-command optimization.
+
+Reads use Turso 0.7 concurrent-safe connection resources or a fixed small read
+pool, selected by the implementation according to the library's supported
+concurrency model.  Writes are serialized only within the workspace entry and
+use immediate transactions on entry-owned connection resources.  Different
+workspace writer lanes do not block one another.
+
+Registry entry activity or LRU eviction may be specified later.  Eviction must
+never fall back to legacy cache-home paths, SQLite compatibility storage,
+request-local database opens, or a global singleton connection.
+
+* Required evidence
+
+The implementation gate includes:
+
+- wrong project-root/scope identity fails before database open;
+- 100 concurrent leases for one workspace yield
+  =databaseOpenCount=1=, =schemaBootstrapCount=1=, and no file-lock retries;
+- repeated warm commands yield =databaseOpenCount=0=;
+- two worktrees cannot cross-read and make progress without a shared lock;
+- writes are serialized per workspace through immediate transactions; and
+- a 1000-owner inventory probe reuses the entry and performs no additional
+  database open.
+
+Provider subprocesses, registered source reads, and Tree-sitter evaluation stay
+outside the database ownership contract.  They consume and publish typed facts
+through the workspace session lease.

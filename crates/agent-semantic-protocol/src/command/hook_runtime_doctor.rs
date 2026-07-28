@@ -155,7 +155,8 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     } else {
         None
     };
-    let (classifier_probe, classifier_reason) = if client == "codex" {
+    let match_policy_rule_count = hook_config.rule_count();
+    let (classifier_probe, classifier_reason, classifier_rule_id) = if client == "codex" {
         let probe_payload = serde_json::json!({
             "tool_name": "functions.exec_command",
             "tool_input": {
@@ -172,9 +173,24 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         (
             decision_kind_label(decision.decision),
             reason_kind_label(decision.reason_kind),
+            decision
+                .fields
+                .get("configRuleId")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .unwrap_or_else(|| "none".to_owned()),
         )
     } else {
-        ("not-applicable", "non-codex-client")
+        ("not-applicable", "non-codex-client", "none".to_owned())
+    };
+    let match_policy_probe_count = usize::from(client == "codex");
+    let match_policy_covered_rule_count = usize::from(classifier_rule_id != "none");
+    let match_policy_status = if client != "codex" {
+        "not-applicable"
+    } else if match_policy_rule_count == match_policy_covered_rule_count {
+        "complete"
+    } else {
+        "partial"
     };
     let trust_status = if client == "codex" {
         codex_user_trust_state_status(&config_path).ok()
@@ -277,7 +293,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         "not-applicable"
     };
     println!(
-        "[agent-doctor] status={doctor_status} client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} configContractStatus={} configuredContractFingerprint={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} binaryPathStatus={} binaryContractStatus={} binaryContractFingerprint={} activeContractFingerprint={} aspPathStatus={} aspPath={} hookShell={} hookShellMode=non-login hookShellBinaryStatus={} hookShellBinaryPath={} eventState={} eventStatePath={} eventStateBytes={} eventStateAgeMs={} classifierProbe={} classifierReason={} enforcement={} enforcementProbe={} enforcementReason={} backgroundThreadHook={} protocol={}",
+        "[agent-doctor] status={doctor_status} client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} configContractStatus={} configuredContractFingerprint={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} binaryPathStatus={} binaryContractStatus={} binaryContractFingerprint={} activeContractFingerprint={} aspPathStatus={} aspPath={} hookShell={} hookShellMode=non-login hookShellBinaryStatus={} hookShellBinaryPath={} eventState={} eventStatePath={} eventStateBytes={} eventStateAgeMs={} classifierProbe={} classifierReason={} classifierRule={} matchPolicyStatus={} matchPolicyRules={} matchPolicyCases={} matchPolicyCovered={} enforcement={} enforcementProbe={} enforcementReason={} backgroundThreadHook={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
         config_path.is_file(),
@@ -313,6 +329,11 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         event_state_age_ms,
         classifier_probe,
         classifier_reason,
+        classifier_rule_id,
+        match_policy_status,
+        match_policy_rule_count,
+        match_policy_probe_count,
+        match_policy_covered_rule_count,
         enforcement_status,
         enforcement
             .as_ref()

@@ -20,6 +20,7 @@ pub struct ExactSelectorMerkleLookupKeyV1<'a> {
 #[serde(rename_all = "camelCase")]
 pub struct ExactSelectorProjectionRecordV1 {
     pub proof: ExactSelectorMerkleProofV1,
+    pub source_byte_range: std::ops::Range<u64>,
     pub projection_payload: Vec<u8>,
 }
 

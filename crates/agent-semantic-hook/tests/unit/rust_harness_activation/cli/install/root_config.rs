@@ -12,6 +12,7 @@ fn cli_install_removes_legacy_project_marketplace_source() {
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
+    write_real_asp_launcher(&protocol_bin_dir);
     write_legacy_project_codex_marketplace_source_dot(&root);
 
     let output = protocol_command()
@@ -70,6 +71,7 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
+    write_real_asp_launcher(&protocol_bin_dir);
 
     let output = protocol_command()
         .env("PATH", &protocol_bin_dir)
@@ -258,3 +260,4 @@ fn assert_asp_explorer_instructions(instructions: &str) {
     assert!(instructions.contains("asp.search.playbook-receipt"));
     assert!(instructions.contains("executable next command or typed terminal failure"));
 }
+use crate::rust_harness_activation::cli::install::support::write_real_asp_launcher;

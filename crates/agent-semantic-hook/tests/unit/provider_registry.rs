@@ -18,13 +18,38 @@ fn registry_is_singleton_and_all_language_routes_materialize_in_milliseconds() {
     }
     let elapsed = started.elapsed();
     println!(
-        "[provider-registry-perf] languages={} elapsedMicros={} budgetMicros=250000",
+        "[provider-registry-perf] scope=install-time-full-registry languages={} elapsedMicros={} budgetMicros=10000",
         manifests.len(),
         elapsed.as_micros()
     );
     assert!(
-        elapsed < Duration::from_millis(250),
-        "registry and all provider routes must materialize in milliseconds, elapsed={elapsed:?}"
+        elapsed < Duration::from_millis(10),
+        "install-time registry and all provider routes must materialize within 10ms, elapsed={elapsed:?}"
+    );
+}
+
+#[test]
+fn selected_registry_method_lookup_is_lazy_and_sub_millisecond_warm() {
+    let _ = schema_registry();
+    let started = Instant::now();
+    for _ in 0..100 {
+        let invocation = crate::registered_provider_method_invocation_v1(
+            "rust",
+            "rs-harness",
+            "search/owner-native-v1",
+        )
+        .expect("resolve selected provider method")
+        .expect("selected provider method");
+        assert_eq!(invocation.argv[0], "rs-harness");
+    }
+    let elapsed = started.elapsed();
+    println!(
+        "[provider-registry-perf] scope=query-time-selected-method lookups=100 elapsedMicros={} budgetMicros=1000",
+        elapsed.as_micros()
+    );
+    assert!(
+        elapsed < Duration::from_millis(1),
+        "100 warm selected-method lookups must remain sub-millisecond, elapsed={elapsed:?}"
     );
 }
 
@@ -59,4 +84,82 @@ fn dependency_topology_routes_are_registered_for_capable_languages() {
             "dependency topology invocation must use the registered binary"
         );
     }
+}
+#[test]
+fn registry_method_inventory_is_explicit() {
+    let rust_native_owner = crate::registered_provider_method_invocation_v1(
+        "rust",
+        "rs-harness",
+        "search/owner-native-v1",
+    )
+    .expect("resolve Rust native owner transport")
+    .expect("Rust native owner transport must be registered");
+    assert_eq!(
+        rust_native_owner.argv,
+        [
+            "rs-harness",
+            "owner-search-stdin",
+            "--asp-provider-id",
+            "rs-harness",
+        ]
+    );
+
+    let registry = super::schema_registry();
+    for language in registry
+        .languages
+        .iter()
+        .filter(|language| language.language_id != "rust")
+    {
+        assert!(
+            crate::registered_provider_method_invocation_v1(
+                language.language_id.as_str(),
+                language.provider_id.as_str(),
+                "search/owner-native-v1",
+            )
+            .expect("resolve native owner transport")
+            .is_none(),
+            "{} must not inherit Rust's native owner transport",
+            language.language_id
+        );
+    }
+
+    let rust_native_exact = crate::registered_provider_method_invocation_v1(
+        "rust",
+        "rs-harness",
+        "query/exact-selector-native-v1",
+    )
+    .expect("resolve Rust native exact transport")
+    .expect("Rust native exact transport must be registered");
+    assert_eq!(
+        rust_native_exact.argv,
+        ["rs-harness", "query", "--asp-exact-request-stdin"]
+    );
+
+    for language in registry
+        .languages
+        .iter()
+        .filter(|language| language.language_id != "rust")
+    {
+        assert!(
+            crate::registered_provider_method_invocation_v1(
+                language.language_id.as_str(),
+                language.provider_id.as_str(),
+                "query/exact-selector-native-v1",
+            )
+            .expect("resolve native exact transport")
+            .is_none(),
+            "{} must not advertise an unimplemented native exact transport",
+            language.language_id
+        );
+    }
+
+    assert!(
+        crate::registered_provider_method_invocation_v1(
+            "rust",
+            "not-rs-harness",
+            "search/owner-native-v1",
+        )
+        .expect_err("provider identity drift must fail closed")
+        .contains("provider drift")
+    );
 }

@@ -22,4 +22,4 @@ pub use layout::{
 pub use registry_gc::{
     ProjectRegistryGcCandidate, ProjectRegistryGcOptions, ProjectRegistryGcReport,
 };
-pub use resolution::{ProjectLocalCacheEvidence, ResolvedState, StateLocateReport, locate_state};
+pub use resolution::{ResolvedState, StateLocateReport, locate_state};

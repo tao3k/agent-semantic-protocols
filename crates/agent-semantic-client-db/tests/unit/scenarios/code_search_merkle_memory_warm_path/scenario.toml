@@ -1,0 +1,17 @@
+id = "code-search-merkle-memory-warm-path"
+policy = "SEARCH-AGENT-ASP-CODE-SEARCH-MEMORY-PERF-001"
+phase = "warm"
+route = "merkle-memory-source-index"
+engine = "turso-0.7"
+merkle_algorithm = "blake3-merkle-v1"
+fixture = "live_source_index_hit_does_not_create_or_open_client_db"
+
+[expected]
+require_memory_hit = true
+require_exact_snapshot_identity = true
+forbid_turso_db_open = true
+forbid_provider_process = true
+forbid_native_finder = true
+forbid_source_blob_read = true
+forbid_source_rehash = true
+forbid_fallback = true

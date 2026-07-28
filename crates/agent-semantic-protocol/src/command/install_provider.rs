@@ -10,8 +10,7 @@ use std::path::{Path, PathBuf};
 use super::hook_runtime::{run_codex_plugin_install_args, run_hook_runtime_args};
 use super::install_provider_archive::{
     asset_name, binary_file_name, checksum_for_archive, download_release_archive,
-    install_archive_binary, install_executable_entrypoint, path_segment, release_asset_url,
-    sha256_file,
+    install_archive_binary, path_segment, release_asset_url, sha256_file,
 };
 use super::install_provider_release::ProviderReleaseSpec;
 use super::install_provider_target::resolve_provider_binary_install_target;
@@ -75,6 +74,105 @@ pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RegisteredProviderBinaryReconciliationV1 {
+    registration_count: usize,
+    binary_identity_count: usize,
+    reconciled_count: usize,
+    changed_count: usize,
+    missing_count: usize,
+    receipt_reconciled_count: usize,
+    receipt_changed_count: usize,
+    receipt_missing_count: usize,
+}
+
+fn reconcile_registered_provider_runtime_binaries(
+    runtime_bin_dir: &Path,
+    artifact_root: &Path,
+    provider_lock_dir: &Path,
+) -> Result<RegisteredProviderBinaryReconciliationV1, String> {
+    let registrations = agent_semantic_hook::registered_provider_binaries_v1();
+    let binary_names = registrations
+        .iter()
+        .map(|registration| registration.binary().to_string())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut reconciled_count = 0;
+    let mut changed_count = 0;
+    let mut missing_count = 0;
+    let mut receipt_reconciled_count = 0;
+    let mut receipt_changed_count = 0;
+    let mut receipt_missing_count = 0;
+    for binary_name in &binary_names {
+        let target = runtime_bin_dir.join(binary_name);
+        match std::fs::symlink_metadata(&target) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                missing_count += 1;
+                continue;
+            }
+            Err(error) => {
+                return Err(format!(
+                    "failed to inspect registered provider binary {}: {error}",
+                    target.display()
+                ));
+            }
+        }
+        let binary_identity =
+            super::protocol_binary::RuntimeBinaryIdentityV1::from_registered_provider(binary_name)?;
+        let install = super::protocol_binary::install_protocol_binary_target(
+            &target,
+            &target,
+            artifact_root,
+            &binary_identity,
+        )?;
+        reconciled_count += 1;
+        if install.status != "already-present" {
+            changed_count += 1;
+        }
+    }
+    for registration in &registrations {
+        let binary_path = runtime_bin_dir.join(registration.binary());
+        if std::fs::symlink_metadata(&binary_path).is_err() {
+            continue;
+        }
+        let lock_path =
+            provider_lock_dir.join(format!("{}.lock.toml", registration.language_id().as_str()));
+        match std::fs::symlink_metadata(&lock_path) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                receipt_missing_count += 1;
+                continue;
+            }
+            Err(error) => {
+                return Err(format!(
+                    "failed to inspect provider install receipt {}: {error}",
+                    lock_path.display()
+                ));
+            }
+        }
+        let changed =
+            super::install_provider_reconcile::reconcile_provider_install_receipt_in_lock_dir(
+                registration.language_id().as_str(),
+                provider_lock_dir,
+                false,
+            )?;
+        receipt_reconciled_count += 1;
+        if changed {
+            receipt_changed_count += 1;
+        }
+    }
+    Ok(RegisteredProviderBinaryReconciliationV1 {
+        registration_count: registrations.len(),
+        binary_identity_count: binary_names.len(),
+        reconciled_count,
+        changed_count,
+        missing_count,
+        receipt_reconciled_count,
+        receipt_changed_count,
+        receipt_missing_count,
+    })
+}
+
 fn run_install_binary(args: &[String]) -> Result<(), String> {
     let mut target = None;
     let mut index = 0;
@@ -97,8 +195,6 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
         }
     }
     let target = target.ok_or_else(usage)?;
-    let source = env::current_exe()
-        .map_err(|error| format!("failed to resolve current ASP binary: {error}"))?;
     let project_root = env::current_dir()
         .map_err(|error| format!("failed to resolve current project root: {error}"))?;
     let runtime_state = agent_semantic_runtime::project_runtime_state(&project_root)?;
@@ -106,16 +202,44 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
         &runtime_state.protocol_home,
     )?;
     let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
-    let installed =
-        super::protocol_binary::install_protocol_binary_target(&source, &target, &artifact_root)?;
+    let plan = super::protocol_binary::ProtocolBinaryInstallPlan::capture_for_target(
+        artifact_root.clone(),
+        target,
+    )?;
+    let installed = super::protocol_binary::ensure_protocol_binary_installed(&plan)?;
+    let provider_binaries = reconcile_registered_provider_runtime_binaries(
+        &runtime_state.runtime_bin_dir,
+        &artifact_root,
+        &runtime_state.provider_lock_dir,
+    )?;
+    let active_artifact_receipt = agent_semantic_hook::rebind_active_asp_binary_receipt_if_present(
+        &installed.path,
+        &installed.artifact_digest,
+        &runtime_state.activation_path,
+    )?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binarySwitch=atomic",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryLatest={} binaryStableEntry={} binarySwitch=atomic providerRegistrations={} providerBinaryIdentities={} providerBinariesReconciled={} providerBinariesChanged={} providerBinariesMissing={} providerReceiptsReconciled={} providerReceiptsChanged={} providerReceiptsMissing={} activeArtifactReceipt={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
+        installed.latest.display(),
+        installed.stable_entry.display(),
+        provider_binaries.registration_count,
+        provider_binaries.binary_identity_count,
+        provider_binaries.reconciled_count,
+        provider_binaries.changed_count,
+        provider_binaries.missing_count,
+        provider_binaries.receipt_reconciled_count,
+        provider_binaries.receipt_changed_count,
+        provider_binaries.receipt_missing_count,
+        active_artifact_receipt.as_str(),
     );
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/provider_runtime_publication.rs"]
+mod provider_runtime_publication_tests;
 
 fn run_install_hook(args: &[String]) -> Result<(), String> {
     if args.is_empty() || has_help_flag(args) {
@@ -176,23 +300,57 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         );
     }
     let spec = provider_release(language_id)?;
+    let registered_binary = agent_semantic_hook::registered_provider_binary_v1(language_id)?;
+    if registered_binary.provider_id().as_str() != spec.provider_id {
+        return Err(format!(
+            "ProviderRegistry provider drift for language `{language_id}`: registry={} release={}",
+            registered_binary.provider_id().as_str(),
+            spec.provider_id
+        ));
+    }
+    if registered_binary.binary() != spec.binary {
+        return Err(format!(
+            "ProviderRegistry binary drift for language `{language_id}`: registry={} release={}",
+            registered_binary.binary(),
+            spec.binary
+        ));
+    }
     let rev = spec.release_version.as_str();
     validate_target(&spec, &target)?;
-    if let Some(installed_path) = install_args.record_installed_receipt {
-        let installed_path = if installed_path.is_absolute() {
-            installed_path
+    let provider_binary = binary_file_name(registered_binary.binary(), &target);
+    let runtime_binary_identity =
+        super::protocol_binary::RuntimeBinaryIdentityV1::from_registered_provider(
+            &provider_binary,
+        )?;
+    let install_target =
+        resolve_provider_binary_install_target(&spec.language_id, &provider_binary)?;
+    if let Some(source_path) = install_args.record_installed_receipt {
+        let source_path = if source_path.is_absolute() {
+            source_path
         } else {
-            invocation_root.join(installed_path)
+            invocation_root.join(source_path)
         };
-        let expected_binary = binary_file_name(&spec.binary, &target);
-        if installed_path.file_name().and_then(|name| name.to_str())
-            != Some(expected_binary.as_str())
+        let expected_binary = binary_file_name(registered_binary.binary(), &target);
+        if source_path.file_name().and_then(|name| name.to_str()) != Some(expected_binary.as_str())
         {
             return Err(format!(
                 "installed provider binary mismatch for language {language_id}: expected {expected_binary}, got {}",
-                installed_path.display()
+                source_path.display()
             ));
         }
+        let runtime_state = project_runtime_state(project_root.unwrap_or(&invocation_root))?;
+        let stable_entry = project_root.map_or_else(
+            || install_target.path.clone(),
+            |_| runtime_state.runtime_bin_dir.join(&provider_binary),
+        );
+        let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
+        let published = super::protocol_binary::install_protocol_binary_target(
+            &source_path,
+            &stable_entry,
+            &artifact_root,
+            &runtime_binary_identity,
+        )?;
+        let installed_path = published.path;
         let package_path = installed_path.parent().ok_or_else(|| {
             format!(
                 "installed provider binary has no parent directory: {}",
@@ -227,13 +385,13 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
                 repo: None,
                 rev: None,
                 target: &target,
-                binary: &spec.binary,
+                binary: registered_binary.binary(),
                 installed_path: &installed_path,
                 package_path,
                 sha256: &installed_sha256,
                 source: project_root
                     .map(|root| root.display().to_string())
-                    .unwrap_or_else(|| installed_path.display().to_string()),
+                    .unwrap_or_else(|| source_path.display().to_string()),
                 source_snapshot_root: None,
                 source_snapshot_algorithm: None,
                 source_leaf_count: None,
@@ -254,16 +412,13 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             spec.language_id,
             scope,
             target,
-            spec.binary,
+            registered_binary.binary(),
             installed_sha256,
             installed_path.display(),
             lock_path.display(),
         );
         return Ok(());
     }
-    let provider_binary = binary_file_name(&spec.binary, &target);
-    let install_target =
-        resolve_provider_binary_install_target(&spec.language_id, &provider_binary)?;
     let (scope, provider_lock_dir, provider_package_root, scope_root) = match &install_args.scope {
         InstallScope::Global => {
             let state_root = canonical_global_provider_state_root()?;
@@ -321,25 +476,28 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         &install_target.path,
         &provider_package_dir,
     )?;
-    let (installed, runtime_bin_dir) = match project_root {
-        Some(project_root) => {
-            let state = project_runtime_state(project_root)?;
-            let runtime_artifact = state.runtime_bin_dir.join(&spec.binary);
-            if installed_entrypoint != runtime_artifact {
-                install_executable_entrypoint(&installed_entrypoint, &runtime_artifact)?;
-            }
-            (runtime_artifact, state.runtime_bin_dir)
-        }
-        None => {
-            let runtime_bin_dir = install_target.path.parent().ok_or_else(|| {
-                format!(
-                    "global provider install target has no parent: {}",
-                    install_target.path.display()
-                )
-            })?;
-            (installed_entrypoint, runtime_bin_dir.to_path_buf())
-        }
-    };
+    let runtime_state = project_runtime_state(project_root.unwrap_or(&invocation_root))?;
+    let stable_entry = project_root.map_or_else(
+        || install_target.path.clone(),
+        |_| runtime_state.runtime_bin_dir.join(&provider_binary),
+    );
+    let artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
+    let published = super::protocol_binary::install_protocol_binary_target(
+        &installed_entrypoint,
+        &stable_entry,
+        &artifact_root,
+        &runtime_binary_identity,
+    )?;
+    let installed = published.path.clone();
+    let runtime_bin_dir = stable_entry
+        .parent()
+        .ok_or_else(|| {
+            format!(
+                "provider runtime binary has no parent directory: {}",
+                stable_entry.display()
+            )
+        })?
+        .to_path_buf();
     let installed_entrypoint_digest =
         agent_semantic_content_identity::file_content_digest_v1(&installed)?;
     let installed_entrypoint_metadata_digest =
@@ -356,7 +514,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             repo: Some(&spec.repo),
             rev: Some(rev),
             target: &target,
-            binary: &spec.binary,
+            binary: registered_binary.binary(),
             installed_path: &installed,
             package_path: &provider_package_dir,
             sha256: &actual_sha256,
@@ -380,19 +538,21 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         None => "not-applicable",
     };
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} orgState={} orgStateSync={}",
+        "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} binaryLatest={} binaryStableEntry={} binarySwitch=atomic orgState={} orgStateSync={}",
         spec.provider_id,
         spec.language_id,
         scope,
         rev,
         target,
-        spec.binary,
+        registered_binary.binary(),
         actual_sha256,
         checksum_authority,
         installed.display(),
         install_target.source,
         lock_path.display(),
         runtime_bin_dir.display(),
+        published.latest.display(),
+        published.stable_entry.display(),
         project_root
             .map(|root| root
                 .join(".agent-semantic-protocols/org")
@@ -480,7 +640,7 @@ fn canonical_global_provider_state_root() -> Result<PathBuf, String> {
 }
 
 fn canonical_global_provider_state_root_from(state_home: &Path) -> Result<PathBuf, String> {
-    let provider_root = state_home.join("runtime").join("providers");
+    let provider_root = agent_semantic_runtime::provider_state_root(state_home);
     fs::create_dir_all(&provider_root).map_err(|error| {
         format!(
             "failed to create global provider state root {}: {error}",

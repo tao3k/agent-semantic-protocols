@@ -3,14 +3,18 @@
 use crate::protocol_activation::protocol_activation_manifest::{HookActivation, HookRuntime};
 use crate::protocol_activation::protocol_activation_runtime::parse_activation;
 use crate::provider_manifest::{
-    ProviderCommandSelection, build_default_activation, provider_command_selections,
-    provider_manifests,
+    DefaultActivationSelections, ProviderCommandSelection, ProviderCommandSelectionScopeV1,
+    build_default_activation, build_default_activation_from_selections,
+    default_activation_selections, default_activation_selections_for_scope, provider_manifests,
 };
 use agent_semantic_runtime::project_activation_path;
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
+
+static ACTIVATION_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Load and validate a project hook activation from `activation.json`.
 pub fn load_activation(path: &Path) -> Result<HookRuntime, String> {
@@ -28,8 +32,9 @@ pub fn load_or_sync_activation(
     if is_generated_activation_path_for_project(activation_path, project_root) {
         if let Ok(current_exe) = std::env::current_exe()
             && crate::verify_active_asp_artifact_receipt(activation_path, &[&current_exe]).is_ok()
+            && let Ok(runtime) = load_activation(activation_path)
         {
-            return load_activation(activation_path);
+            return Ok(runtime);
         }
         return match sync_activation(project_root, activation_path) {
             Ok(runtime) => {
@@ -55,6 +60,67 @@ pub fn load_or_sync_activation(
     load_activation(activation_path)
 }
 
+/// Build a generated activation for one requested language without validating
+/// or materializing unrelated provider receipts.
+pub fn load_or_sync_activation_for_language(
+    activation_path: &Path,
+    project_root: &Path,
+    language_id: &str,
+) -> Result<HookRuntime, String> {
+    if !is_generated_activation_path_for_project(activation_path, project_root) {
+        return load_activation(activation_path);
+    }
+    let scoped_activation_path =
+        generated_language_activation_path(activation_path, project_root, language_id);
+    let scope = ProviderCommandSelectionScopeV1::TargetLanguage(language_id.into());
+    let selections = default_activation_selections_for_scope(
+        project_root,
+        &scope,
+        Some(&scoped_activation_path),
+    )?;
+    if let Some(activation) = reusable_activation(
+        &scoped_activation_path,
+        project_root,
+        selections.providers(),
+    )? {
+        materialize_activation_receipt(&scoped_activation_path, project_root, &selections)?;
+        return activation_to_runtime(&activation);
+    }
+    let activation = build_default_activation_from_selections(project_root, &selections)?;
+    write_activation(&scoped_activation_path, &activation)?;
+    materialize_activation_receipt(&scoped_activation_path, project_root, &selections)?;
+    activation_to_runtime(&activation)
+}
+
+/// Resolve the activation artifact consumed by one language-scoped command.
+pub fn language_activation_path(
+    activation_path: &Path,
+    project_root: &Path,
+    language_id: &str,
+) -> PathBuf {
+    if !is_generated_activation_path_for_project(activation_path, project_root) {
+        return activation_path.to_path_buf();
+    }
+    generated_language_activation_path(activation_path, project_root, language_id)
+}
+
+fn generated_language_activation_path(
+    activation_path: &Path,
+    project_root: &Path,
+    language_id: &str,
+) -> PathBuf {
+    debug_assert!(is_generated_activation_path_for_project(
+        activation_path,
+        project_root
+    ));
+    activation_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("languages")
+        .join(language_id)
+        .join("activation.json")
+}
+
 /// Result of syncing the generated default activation during install.
 pub struct DefaultActivationSync {
     pub activation: HookActivation,
@@ -68,12 +134,15 @@ pub fn load_or_refresh_default_activation(
     project_root: &Path,
 ) -> Result<DefaultActivationSync, String> {
     let started = std::time::Instant::now();
-    let current_selections = provider_command_selections(project_root)?;
+    let current_selections = default_activation_selections(project_root)?;
     emit_activation_timing("provider-selections", started);
     let reusable_started = std::time::Instant::now();
-    if let Some(activation) =
-        reusable_activation(activation_path, project_root, &current_selections)?
-    {
+    if let Some(activation) = reusable_activation(
+        activation_path,
+        project_root,
+        current_selections.providers(),
+    )? {
+        materialize_activation_receipt(activation_path, project_root, &current_selections)?;
         emit_activation_timing("reusable-activation", reusable_started);
         return Ok(DefaultActivationSync {
             activation,
@@ -89,11 +158,46 @@ pub fn load_or_refresh_default_activation(
     emit_activation_timing("build-activation", build_started);
     let write_started = std::time::Instant::now();
     write_activation(activation_path, &activation)?;
+    materialize_activation_receipt(activation_path, project_root, &current_selections)?;
     emit_activation_timing("write-activation", write_started);
     Ok(DefaultActivationSync {
         activation,
         status: if existed { "refreshed" } else { "created" },
     })
+}
+
+fn materialize_activation_receipt(
+    activation_path: &Path,
+    project_root: &Path,
+    selections: &DefaultActivationSelections,
+) -> Result<(), String> {
+    let provider_artifacts = selections
+        .providers()
+        .iter()
+        .map(|selection| {
+            let executable = selection.provider_command_prefix().first().ok_or_else(|| {
+                format!(
+                    "provider selection has no executable command: language={} provider={}",
+                    selection.language_id(),
+                    selection.provider_id()
+                )
+            })?;
+            crate::active_provider_artifact_input(
+                project_root,
+                selection.language_id(),
+                selection.provider_id(),
+                PathBuf::from(executable),
+            )
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let graph_turbo = selections.graph_turbo();
+    crate::materialize_active_asp_artifact_receipt(
+        Path::new(graph_turbo.binary()),
+        graph_turbo.content_digest(),
+        activation_path,
+        &provider_artifacts,
+    )?;
+    Ok(())
 }
 
 fn emit_activation_timing(step: &str, started: std::time::Instant) {
@@ -145,31 +249,33 @@ fn activation_matches_provider_command_selections(
     let current_registry_digest = crate::provider_registry::semantic_registry_digest();
     let manifests = provider_manifests();
     activation.providers.len() == current_selections.len()
-        && activation
-            .providers
-            .iter()
-            .zip(current_selections)
-            .all(|(provider, selection)| {
-                provider.manifest_id == selection.manifest_id
-                    && provider.manifest_digest == selection.manifest_digest
-                    && provider.language_id == selection.language_id
-                    && provider.provider_id == selection.provider_id
-                    && provider.binary == selection.binary
-                    && provider.execution == selection.execution
-                    && provider.provider_command_prefix == selection.provider_command_prefix
-                    && provider.semantic_registry_digest == current_registry_digest
-                    && manifests
-                        .iter()
-                        .find(|manifest| {
-                            manifest.manifest_id == provider.manifest_id
-                                && manifest.language_id == provider.language_id
-                                && manifest.provider_id == provider.provider_id
-                        })
-                        .and_then(|manifest| {
-                            crate::provider_registry::materialize_provider_routes(manifest).ok()
-                        })
-                        .is_some_and(|routes| routes == provider.routes)
-            })
+        && activation.providers.iter().all(|provider| {
+            current_selections
+                .iter()
+                .find(|selection| {
+                    selection.manifest_id == provider.manifest_id
+                        && selection.language_id == provider.language_id
+                        && selection.provider_id == provider.provider_id
+                })
+                .is_some_and(|selection| {
+                    provider.manifest_digest == selection.manifest_digest
+                        && provider.binary == selection.binary
+                        && provider.execution == selection.execution
+                        && provider.provider_command_prefix == selection.provider_command_prefix
+                        && provider.semantic_registry_digest == current_registry_digest
+                        && manifests
+                            .iter()
+                            .find(|manifest| {
+                                manifest.manifest_id == provider.manifest_id
+                                    && manifest.language_id == provider.language_id
+                                    && manifest.provider_id == provider.provider_id
+                            })
+                            .and_then(|manifest| {
+                                crate::provider_registry::materialize_provider_routes(manifest).ok()
+                            })
+                            .is_some_and(|routes| routes == provider.routes)
+                })
+        })
 }
 
 fn activation_matches_current_manifest_coverage(activation: &HookActivation) -> bool {
@@ -206,14 +312,31 @@ fn activation_to_runtime(activation: &HookActivation) -> Result<HookRuntime, Str
 
 /// Write a pretty JSON project hook activation.
 pub fn write_activation(path: &Path, activation: &HookActivation) -> Result<(), String> {
+    let output = serde_json::to_string_pretty(activation)
+        .map_err(|error| format!("failed to serialize activation: {error}"))?;
+    let output = format!("{}\n", output.trim_end());
+    if fs::read(path).is_ok_and(|current| current == output.as_bytes()) {
+        return Ok(());
+    }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
     }
-    let output = serde_json::to_string_pretty(activation)
-        .map_err(|error| format!("failed to serialize activation: {error}"))?;
-    fs::write(path, format!("{}\n", output.trim_end()))
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))
+    let temporary = path.with_extension(format!(
+        "json.tmp-{}-{}",
+        std::process::id(),
+        ACTIVATION_WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::write(&temporary, output)
+        .map_err(|error| format!("failed to write {}: {error}", temporary.display()))?;
+    fs::rename(&temporary, path).map_err(|error| {
+        let _ = fs::remove_file(&temporary);
+        format!(
+            "failed to atomically replace activation {}: {error}",
+            path.display()
+        )
+    })?;
+    Ok(())
 }
 
 /// Return the managed cache path for a project's hook activation.

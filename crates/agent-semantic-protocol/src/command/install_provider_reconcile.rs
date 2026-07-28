@@ -7,6 +7,15 @@ pub(super) fn reconcile_provider_install_receipt(
 ) -> Result<(), String> {
     let provider_lock_dir =
         agent_semantic_runtime::project_state_paths(project_root)?.provider_lock_dir;
+    reconcile_provider_install_receipt_in_lock_dir(language_id, &provider_lock_dir, true)?;
+    Ok(())
+}
+
+pub(super) fn reconcile_provider_install_receipt_in_lock_dir(
+    language_id: &str,
+    provider_lock_dir: &Path,
+    emit_receipt: bool,
+) -> Result<bool, String> {
     let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
     let contents = fs::read_to_string(&lock_path)
         .map_err(|error| format!("failed to read {}: {error}", lock_path.display()))?;
@@ -57,6 +66,14 @@ pub(super) fn reconcile_provider_install_receipt(
             )
         })?
         .len();
+    let changed = table
+        .get("installedEntrypointDigest")
+        .and_then(toml::Value::as_str)
+        != Some(installed_entrypoint_digest.as_str())
+        || table
+            .get("installedEntrypointMetadataDigest")
+            .and_then(toml::Value::as_str)
+            != Some(installed_entrypoint_metadata_digest.as_str());
     table.insert(
         "installedEntrypointDigest".to_string(),
         toml::Value::String(installed_entrypoint_digest.clone()),
@@ -65,20 +82,25 @@ pub(super) fn reconcile_provider_install_receipt(
         "installedEntrypointMetadataDigest".to_string(),
         toml::Value::String(installed_entrypoint_metadata_digest.clone()),
     );
-    let reconciled = toml::to_string_pretty(&lock)
-        .map_err(|error| format!("failed to encode {}: {error}", lock_path.display()))?;
-    atomic_write_provider_lock(&lock_path, reconciled.as_bytes())?;
-    println!(
-        "[asp-install] provider={} language={} installMode=reconcile-receipt installedPath={} installedEntrypointDigest={} installedEntrypointMetadataDigest={} contentBytesRead={} lock={} switch=atomic",
-        provider_id,
-        language_id,
-        installed_path.display(),
-        installed_entrypoint_digest,
-        installed_entrypoint_metadata_digest,
-        installed_size_bytes,
-        lock_path.display(),
-    );
-    Ok(())
+    if changed {
+        let reconciled = toml::to_string_pretty(&lock)
+            .map_err(|error| format!("failed to encode {}: {error}", lock_path.display()))?;
+        atomic_write_provider_lock(&lock_path, reconciled.as_bytes())?;
+    }
+    if emit_receipt {
+        println!(
+            "[asp-install] provider={} language={} installMode=reconcile-receipt receiptStatus={} installedPath={} installedEntrypointDigest={} installedEntrypointMetadataDigest={} contentBytesRead={} lock={} switch=atomic",
+            provider_id,
+            language_id,
+            if changed { "updated" } else { "current" },
+            installed_path.display(),
+            installed_entrypoint_digest,
+            installed_entrypoint_metadata_digest,
+            installed_size_bytes,
+            lock_path.display(),
+        );
+    }
+    Ok(changed)
 }
 
 pub(super) fn atomic_write_provider_lock(path: &Path, contents: &[u8]) -> Result<(), String> {
@@ -106,3 +128,7 @@ pub(super) fn atomic_write_provider_lock(path: &Path, contents: &[u8]) -> Result
         )
     })
 }
+
+#[cfg(all(test, unix))]
+#[path = "../../tests/unit/provider_install_receipt_reconciliation.rs"]
+mod provider_install_receipt_reconciliation_tests;

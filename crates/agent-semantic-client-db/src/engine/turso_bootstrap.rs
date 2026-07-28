@@ -56,6 +56,7 @@ pub async fn bootstrap_turso_source_index_db(
     let turso_path = prepare_turso_client_db_path(db_path)?;
     let mut connection = connect_turso_client_db(&turso_path).await?;
     bootstrap_turso_schema_version(&mut connection).await?;
+    super::turso::write_turso_0_7_format_receipt(&turso_path)?;
     Ok(turso_bootstrap_report(db_path))
 }
 

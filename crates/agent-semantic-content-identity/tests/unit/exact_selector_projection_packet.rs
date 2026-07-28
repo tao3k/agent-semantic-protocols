@@ -24,6 +24,8 @@ fn builder_binds_source_parser_facts_and_projection_bytes() {
     );
     let packet = build_exact_selector_projection_packet_v1(
         crate::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
+            source_byte_start: 0,
+            source_byte_end: 16,
             language_id: &language_id,
             provider_id: &provider_id,
             canonical_item_selector: canonical_item_selector.clone(),
@@ -45,6 +47,8 @@ fn builder_binds_source_parser_facts_and_projection_bytes() {
 
     let changed = build_exact_selector_projection_packet_v1(
         crate::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
+            source_byte_start: 0,
+            source_byte_end: 16,
             language_id: &language_id,
             provider_id: &provider_id,
             canonical_item_selector,

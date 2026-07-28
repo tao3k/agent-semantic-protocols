@@ -4,6 +4,7 @@ use crate::HookRuntime;
 #[test]
 fn shell_subject_projection_fades_flags_and_non_file_operands() {
     let registry = HookRuntime {
+        rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: Vec::new(),
     };

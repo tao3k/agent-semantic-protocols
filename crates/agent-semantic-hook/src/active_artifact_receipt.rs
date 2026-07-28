@@ -213,6 +213,190 @@ pub fn active_asp_artifact_receipt_path(activation_path: &Path) -> Result<PathBu
     Ok(parent.join(ACTIVE_ASP_ARTIFACT_RECEIPT_FILE))
 }
 
+pub fn reconcile_active_asp_artifact_receipt_from_materialized_set(
+    activation_path: &Path,
+) -> Result<bool, String> {
+    let receipt_path = active_asp_artifact_receipt_path(activation_path)?;
+    let receipt_bytes = fs::read(&receipt_path).map_err(|error| {
+        format!(
+            "failed to read active ASP artifact receipt {}: {error}",
+            receipt_path.display()
+        )
+    })?;
+    let previous_receipt: ActiveAspArtifactReceiptV1 = serde_json::from_slice(&receipt_bytes)
+        .map_err(|error| {
+            format!(
+                "failed to parse active ASP artifact receipt {}: {error}",
+                receipt_path.display()
+            )
+        })?;
+    previous_receipt.validate().map_err(|error| {
+        format!(
+            "invalid active ASP artifact receipt {}: {error:?}",
+            receipt_path.display()
+        )
+    })?;
+
+    let mut leaves = Vec::with_capacity(previous_receipt.leaves().len());
+    for leaf in previous_receipt.leaves() {
+        let materialized_path = if leaf.artifact_kind() == ActiveArtifactKindV1::Activation {
+            activation_path
+        } else {
+            Path::new(leaf.materialized_path())
+        };
+        let canonical =
+            canonical_regular_file(materialized_path, leaf.artifact_kind().canonical_name())?;
+        let metadata = fs::metadata(&canonical)
+            .map_err(|error| format!("failed to inspect {}: {error}", canonical.display()))?;
+        let size_bytes = metadata.len();
+        let expected_modified_unix_nanos = modified_unix_nanos(&metadata)?;
+        let expected_change_time_unix_nanos = change_time_unix_nanos(&metadata);
+        if canonical == Path::new(leaf.materialized_path())
+            && size_bytes == leaf.size_bytes()
+            && expected_modified_unix_nanos == leaf.modified_unix_nanos()
+            && expected_change_time_unix_nanos == leaf.change_time_unix_nanos()
+        {
+            leaves.push(leaf.clone());
+            continue;
+        }
+        let bytes = fs::read(&canonical)
+            .map_err(|error| format!("failed to read {}: {error}", canonical.display()))?;
+        let verified_metadata = fs::metadata(&canonical)
+            .map_err(|error| format!("failed to re-inspect {}: {error}", canonical.display()))?;
+        let verified_size_bytes = verified_metadata.len();
+        let verified_modified_unix_nanos = modified_unix_nanos(&verified_metadata)?;
+        let verified_change_time_unix_nanos = change_time_unix_nanos(&verified_metadata);
+        if verified_size_bytes != size_bytes
+            || verified_modified_unix_nanos != expected_modified_unix_nanos
+            || verified_change_time_unix_nanos != expected_change_time_unix_nanos
+        {
+            return Err(format!(
+                "active artifact changed during reconciliation: {}",
+                canonical.display()
+            ));
+        }
+        leaves.push(ActiveArtifactLeafV1::new(
+            leaf.logical_path().to_string(),
+            utf8_path(&canonical, leaf.artifact_kind().canonical_name())?,
+            leaf.artifact_kind(),
+            blake3_content_digest_v1(&bytes),
+            verified_size_bytes,
+            verified_modified_unix_nanos,
+            verified_change_time_unix_nanos,
+        )?);
+    }
+
+    let receipt = ActiveAspArtifactReceiptV1::build(ACTIVE_ASP_ARTIFACT_SET_ID, leaves)
+        .map_err(|error| format!("failed to build active ASP artifact receipt: {error:?}"))?;
+    verify_active_provider_artifact_closure(activation_path, &receipt)?;
+    if receipt == previous_receipt {
+        return Ok(false);
+    }
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|error| format!("failed to encode active ASP artifact receipt: {error}"))?;
+    atomic_write(&receipt_path, &bytes)?;
+    Ok(true)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ActiveAspArtifactReconciliationV1 {
+    NotMaterialized,
+    Current,
+    Updated,
+}
+
+impl ActiveAspArtifactReconciliationV1 {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotMaterialized => "not-materialized",
+            Self::Current => "current",
+            Self::Updated => "updated",
+        }
+    }
+}
+
+pub fn reconcile_active_asp_artifact_receipt_if_present(
+    activation_path: &Path,
+) -> Result<ActiveAspArtifactReconciliationV1, String> {
+    let receipt_path = active_asp_artifact_receipt_path(activation_path)?;
+    if !receipt_path
+        .try_exists()
+        .map_err(|error| format!("failed to inspect {}: {error}", receipt_path.display()))?
+    {
+        return Ok(ActiveAspArtifactReconciliationV1::NotMaterialized);
+    }
+    if reconcile_active_asp_artifact_receipt_from_materialized_set(activation_path)? {
+        Ok(ActiveAspArtifactReconciliationV1::Updated)
+    } else {
+        Ok(ActiveAspArtifactReconciliationV1::Current)
+    }
+}
+
+pub fn rebind_active_asp_binary_receipt_if_present(
+    binary_path: &Path,
+    binary_digest: &str,
+    activation_path: &Path,
+) -> Result<ActiveAspArtifactReconciliationV1, String> {
+    let receipt_path = active_asp_artifact_receipt_path(activation_path)?;
+    if !receipt_path
+        .try_exists()
+        .map_err(|error| format!("failed to inspect {}: {error}", receipt_path.display()))?
+    {
+        return Ok(ActiveAspArtifactReconciliationV1::NotMaterialized);
+    }
+    let receipt_bytes = fs::read(&receipt_path).map_err(|error| {
+        format!(
+            "failed to read active ASP artifact receipt {}: {error}",
+            receipt_path.display()
+        )
+    })?;
+    let previous_receipt: ActiveAspArtifactReceiptV1 = serde_json::from_slice(&receipt_bytes)
+        .map_err(|error| {
+            format!(
+                "failed to parse active ASP artifact receipt {}: {error}",
+                receipt_path.display()
+            )
+        })?;
+    previous_receipt.validate().map_err(|error| {
+        format!(
+            "invalid active ASP artifact receipt {}: {error:?}",
+            receipt_path.display()
+        )
+    })?;
+    let additional_artifacts = previous_receipt
+        .leaves()
+        .iter()
+        .filter(|leaf| {
+            !matches!(
+                leaf.artifact_kind(),
+                ActiveArtifactKindV1::AspBinary | ActiveArtifactKindV1::Activation
+            )
+        })
+        .map(|leaf| ActiveAspArtifactInput {
+            logical_path: leaf.logical_path().to_string(),
+            artifact_kind: leaf.artifact_kind(),
+            materialized_path: PathBuf::from(leaf.materialized_path()),
+            artifact_digest: leaf.artifact_digest().as_str().to_string(),
+        })
+        .collect::<Vec<_>>();
+    let materialization = materialize_active_asp_artifact_receipt(
+        binary_path,
+        binary_digest,
+        activation_path,
+        &additional_artifacts,
+    )?;
+    if materialization.receipt_writes == 0 {
+        Ok(ActiveAspArtifactReconciliationV1::Current)
+    } else {
+        Ok(ActiveAspArtifactReconciliationV1::Updated)
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/active_artifact_receipt_reconciliation.rs"]
+mod active_artifact_receipt_reconciliation_tests;
+
 pub fn materialize_active_asp_artifact_receipt(
     binary_path: &Path,
     binary_digest: &str,
@@ -342,12 +526,23 @@ pub fn materialize_active_asp_artifact_receipt_for_current_process(
     activation_path: &Path,
     activation: &crate::HookRuntime,
 ) -> Result<bool, String> {
-    let current_exe = std::env::current_exe()
-        .map_err(|error| format!("failed to resolve current ASP binary: {error}"))?;
-    let canonical = canonical_regular_file(&current_exe, "ASP binary")?;
-    let Some(digest) = digest_addressed_binary_digest(&canonical) else {
-        return Ok(false);
-    };
+    let ranker = activation
+        .rankers
+        .iter()
+        .find(|ranker| ranker.ranker_id == "asp-graph-turbo")
+        .ok_or_else(|| {
+            "activation has no producer-owned ASP graph-turbo binary identity".to_string()
+        })?;
+    let canonical = canonical_regular_file(Path::new(&ranker.binary), "ASP binary")?;
+    let current_metadata =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&canonical)?.to_string();
+    if current_metadata != ranker.artifact_metadata_digest {
+        return Err(format!(
+            "ASP graph-turbo binary metadata drift: binary={} expected={} actual={current_metadata}",
+            canonical.display(),
+            ranker.artifact_metadata_digest
+        ));
+    }
     let project_root = Path::new(&activation.project_root);
     let runtime_profiles = crate::runtime_profiles_for_runtime(project_root, activation);
     let mut provider_artifacts = activation
@@ -394,7 +589,7 @@ pub fn materialize_active_asp_artifact_receipt_for_current_process(
     }
     materialize_active_asp_artifact_receipt(
         &canonical,
-        digest,
+        &ranker.content_digest,
         activation_path,
         &provider_artifacts,
     )?;
@@ -679,19 +874,6 @@ fn change_time_unix_nanos(metadata: &fs::Metadata) -> Option<i64> {
 #[cfg(not(unix))]
 fn change_time_unix_nanos(_metadata: &fs::Metadata) -> Option<i64> {
     None
-}
-
-fn digest_addressed_binary_digest(path: &Path) -> Option<&str> {
-    let digest = path.parent()?.file_name()?.to_str()?;
-    let algorithm = path.parent()?.parent()?.file_name()?.to_str()?;
-    let artifacts = path.parent()?.parent()?.parent()?.file_name()?.to_str()?;
-    (artifacts == ".asp-artifacts"
-        && algorithm == "blake3-256"
-        && digest.len() == 64
-        && digest
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
-    .then_some(digest)
 }
 
 fn canonical_regular_file(path: &Path, label: &str) -> Result<PathBuf, String> {

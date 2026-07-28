@@ -337,6 +337,11 @@ pub(super) fn parse_ingest_args(args: &[String]) -> Result<IngestArgs, String> {
 }
 
 pub(super) fn parse_lexical_args(args: &[String]) -> Result<SearchLexicalArgs, String> {
+    if !matches!(args.first().map(String::as_str), Some("search"))
+        || !matches!(args.get(1).map(String::as_str), Some("lexical"))
+    {
+        return Err("expected `search lexical`".to_owned());
+    }
     let mut raw_queries = Vec::new();
     let mut pipes = Vec::new();
     let mut owners = Vec::new();

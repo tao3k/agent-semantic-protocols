@@ -6,6 +6,8 @@ mod hook_runtime_activation_failure;
 mod hook_runtime_agent_session;
 #[path = "hook_runtime_agent_session_dispatch.rs"]
 mod hook_runtime_agent_session_dispatch;
+#[path = "hook_runtime_bootstrap.rs"]
+mod hook_runtime_bootstrap;
 #[path = "hook_runtime_cli_args.rs"]
 mod hook_runtime_cli_args;
 #[path = "hook_runtime_codex_plugin.rs"]
@@ -123,6 +125,23 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             return Ok(());
         }
     };
+    let payload = match parse_payload(&stdin) {
+        Ok(payload) => payload,
+        Err(error) => {
+            emit_hook_runtime_failure(
+                client,
+                event,
+                emit,
+                &format!("invalid hook payload JSON: {error:?}"),
+            )?;
+            return Ok(());
+        }
+    };
+    if hook_runtime_bootstrap::emit_asp_no_agent_receipt_if_requested(
+        client, event, emit, &payload,
+    )? {
+        return Ok(());
+    }
     let mut activation_auto_refresh = None;
     let mut runtime = match load_activation(&activation_path) {
         Ok(registry) => registry,
@@ -157,18 +176,6 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let config_path = flag_value(args, "--config")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
-    let payload = match parse_payload(&stdin) {
-        Ok(payload) => payload,
-        Err(error) => {
-            emit_hook_runtime_failure(
-                client,
-                event,
-                emit,
-                &format!("invalid hook payload JSON: {error:?}"),
-            )?;
-            return Ok(());
-        }
-    };
     let mut hook_config_result = load_client_config_for_project(&config_path, &project_root);
     let mut asp_session_policy_result = load_asp_session_policy(&config_path, &project_root);
     let mut hook_config_repair_reasons = Vec::new();

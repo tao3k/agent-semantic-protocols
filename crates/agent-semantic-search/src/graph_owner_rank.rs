@@ -16,7 +16,26 @@ pub struct GraphOwnerRankRequest {
     /// Workspace submodule or package-root paths used as topology evidence.
     pub submodule_paths: Vec<String>,
     /// Merkle source authority from which graph candidates were derived.
-    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
+}
+
+impl GraphOwnerRankRequest {
+    /// Build a rank request only from a previously admitted graph generation.
+    pub fn from_admitted_generation(
+        candidates: Vec<GraphOwnerRankCandidate>,
+        query_terms: Vec<String>,
+        submodule_paths: Vec<String>,
+        generation: &crate::graph_generation_authority::AdmittedGraphGenerationV1<'_>,
+    ) -> Self {
+        Self {
+            candidates,
+            query_terms,
+            submodule_paths,
+            source_snapshot: generation.source_snapshot().clone(),
+            workspace_generation: generation.generation().clone(),
+        }
+    }
 }
 
 /// Public candidate shape for graph-owner ranking reports.
@@ -75,6 +94,9 @@ pub struct GraphOwnerRankReport {
     pub ranked_owners: Vec<GraphOwnerRankedOwner>,
     /// Merkle source authority used for this graph projection.
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    /// Complete active generation admitted before graph ranking.
+    pub workspace_generation:
+        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
     /// Content address for this disposable graph/rank artifact.
     pub graph_artifact_digest: String,
 }
@@ -148,7 +170,7 @@ pub fn ranked_graph_owner_paths_with_topology(
     candidates: &[GraphProjectionCandidate],
     query_terms: &[String],
     workspace_root: Option<&Path>,
-    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+    generation: &crate::graph_generation_authority::AdmittedGraphGenerationV1<'_>,
 ) -> Vec<String> {
     let submodule_paths = workspace_root
         .map(graph_project_submodule_paths)
@@ -157,7 +179,7 @@ pub fn ranked_graph_owner_paths_with_topology(
         candidates,
         query_terms,
         &submodule_paths,
-        source_snapshot,
+        generation,
     )
 }
 
@@ -238,6 +260,7 @@ pub fn rank_graph_owner_report(request: GraphOwnerRankRequest) -> GraphOwnerRank
         query_axes,
         ranked_owners: ranks.into_iter().map(graph_owner_ranked_owner).collect(),
         source_snapshot: request.source_snapshot,
+        workspace_generation: request.workspace_generation,
         graph_artifact_digest,
     }
 }
@@ -246,17 +269,17 @@ pub fn ranked_graph_owner_paths_for_submodule_paths(
     candidates: &[GraphProjectionCandidate],
     query_terms: &[String],
     submodule_paths: &[String],
-    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+    generation: &crate::graph_generation_authority::AdmittedGraphGenerationV1<'_>,
 ) -> Vec<String> {
-    rank_graph_owner_report(GraphOwnerRankRequest {
-        candidates: candidates
+    rank_graph_owner_report(GraphOwnerRankRequest::from_admitted_generation(
+        candidates
             .iter()
             .map(GraphOwnerRankCandidate::from)
             .collect(),
-        query_terms: query_terms.to_vec(),
-        submodule_paths: submodule_paths.to_vec(),
-        source_snapshot: source_snapshot.clone(),
-    })
+        query_terms.to_vec(),
+        submodule_paths.to_vec(),
+        generation,
+    ))
     .ranked_owners
     .into_iter()
     .map(|owner| owner.path)

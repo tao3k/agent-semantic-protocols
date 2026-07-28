@@ -12,6 +12,16 @@ pub(super) fn git_project_root(name: &str) -> PathBuf {
     root
 }
 
+pub(super) fn write_real_asp_launcher(bin_dir: &Path) {
+    let command = protocol_command();
+    let binary = std::fs::canonicalize(command.get_program()).expect("resolve test ASP binary");
+    std::fs::create_dir_all(bin_dir).expect("create test agent bin dir");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&binary, bin_dir.join("asp")).expect("link test ASP launcher");
+    #[cfg(not(unix))]
+    std::fs::copy(&binary, bin_dir.join("asp.exe")).expect("copy test ASP launcher");
+}
+
 pub(super) fn protocol_command() -> Command {
     let org_repo = local_test_org_repo();
     let state_home = isolated_asp_state_home();
@@ -161,6 +171,10 @@ fn run_git(root: &Path, args: &[&str]) {
 
 fn write_fake_codex_cli(root: &Path) {
     let bin_dir = root.join(".agent-bin");
+    write_fake_codex_cli_in_dir(&bin_dir);
+}
+
+pub(super) fn write_fake_codex_cli_in_dir(bin_dir: &Path) {
     std::fs::create_dir_all(&bin_dir).expect("create fake Codex bin dir");
     let path = bin_dir.join("codex");
     std::fs::write(

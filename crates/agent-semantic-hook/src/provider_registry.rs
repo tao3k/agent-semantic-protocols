@@ -76,9 +76,48 @@ pub(crate) fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
                 "registry queryPackDescriptor drift for language `{}` provider `{}`",
                 language.language_id, language.provider_id
             );
+            assert_eq!(
+                language.binary, manifest.binary,
+                "registry binary drift for language `{}` provider `{}`",
+                language.language_id, language.provider_id
+            );
             manifest
         })
         .collect()
+}
+
+pub fn registered_provider_method_invocation_v1(
+    language_id: &str,
+    provider_id: &str,
+    method: &str,
+) -> Result<Option<crate::protocol::CommandTemplate>, String> {
+    let registry = schema_registry();
+    let Some(language) = registry
+        .languages
+        .iter()
+        .find(|language| language.language_id == language_id)
+    else {
+        return Ok(None);
+    };
+    if language.provider_id != provider_id {
+        return Err(format!(
+            "ProviderRegistry provider drift for language `{language_id}`: expected {}, got {provider_id}",
+            language.provider_id
+        ));
+    }
+    Ok(language
+        .method_descriptors
+        .iter()
+        .find(|descriptor| descriptor.method == method)
+        .map(|descriptor| descriptor.invocation.clone()))
+}
+
+pub fn registered_provider_id_v1(language_id: &str) -> Option<String> {
+    schema_registry()
+        .languages
+        .iter()
+        .find(|language| language.language_id == language_id)
+        .map(|language| language.provider_id.clone())
 }
 
 fn resolve_route_invocation(
@@ -166,15 +205,18 @@ fn language_provider_manifests() -> Vec<ProviderManifest> {
         .collect()
 }
 
-/// Return registered ASP language ids from the embedded provider manifests.
+/// Return registered ASP language ids from the provider registry schema.
 pub fn registered_language_ids() -> Vec<agent_semantic_config::LanguageId> {
     static REGISTERED_LANGUAGE_IDS: std::sync::OnceLock<Vec<agent_semantic_config::LanguageId>> =
         std::sync::OnceLock::new();
     REGISTERED_LANGUAGE_IDS
         .get_or_init(|| {
-            let mut language_ids = language_provider_manifests()
-                .into_iter()
-                .map(|manifest| manifest.language_id)
+            let mut language_ids = schema_registry()
+                .languages
+                .iter()
+                .map(|registration| {
+                    agent_semantic_config::LanguageId::new(registration.language_id.clone())
+                })
                 .collect::<Vec<_>>();
             language_ids.sort();
             language_ids.dedup();
@@ -209,9 +251,58 @@ fn normalize_source_defaults(source: &mut ManifestSourceDefaults) {
 fn schema_registry() -> &'static SemanticLanguageRegistry {
     static REGISTRY: std::sync::OnceLock<SemanticLanguageRegistry> = std::sync::OnceLock::new();
     REGISTRY.get_or_init(|| {
-        serde_json::from_str(SCHEMA_REGISTRY_JSON)
-            .expect("embedded semantic language registry must be valid JSON")
+        let registry: SemanticLanguageRegistry = serde_json::from_str(SCHEMA_REGISTRY_JSON)
+            .expect("embedded semantic language registry must be valid JSON");
+        validate_schema_registry_v1(&registry)
+            .expect("embedded semantic language registry must be internally consistent");
+        registry
     })
+}
+
+fn validate_schema_registry_v1(registry: &SemanticLanguageRegistry) -> Result<(), String> {
+    let mut language_ids = std::collections::BTreeSet::new();
+    for language in &registry.languages {
+        if !language_ids.insert(language.language_id.as_str()) {
+            return Err(format!(
+                "duplicate ProviderRegistry languageId `{}`",
+                language.language_id
+            ));
+        }
+
+        let descriptor_methods = language
+            .method_descriptors
+            .iter()
+            .map(|descriptor| descriptor.method.as_str())
+            .collect::<Vec<_>>();
+        let declared_methods = language
+            .methods
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let descriptor_method_set = descriptor_methods
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        let declared_method_set = declared_methods
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        if descriptor_method_set != declared_method_set {
+            return Err(format!(
+                "ProviderRegistry method inventory drift for language `{}`: methods={declared_methods:?} descriptors={descriptor_methods:?}",
+                language.language_id
+            ));
+        }
+        if descriptor_method_set.len() != descriptor_methods.len()
+            || declared_method_set.len() != declared_methods.len()
+        {
+            return Err(format!(
+                "duplicate ProviderRegistry method for language `{}`",
+                language.language_id
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -226,9 +317,68 @@ struct LanguageRegistration {
     language_id: String,
     provider_id: String,
     binary: String,
+    methods: Vec<String>,
     method_descriptors: Vec<SemanticMethodDescriptor>,
     query_pack_descriptor: crate::ProviderQueryPackDescriptor,
 }
+
+/// Binary identity declared by one v1 ProviderRegistry registration.
+///
+/// Runtime publication must consume this identity instead of inferring an
+/// executable name from an install target or release archive.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RegisteredProviderBinaryV1 {
+    language_id: agent_semantic_config::LanguageId,
+    provider_id: agent_semantic_config::ProviderId,
+    binary: String,
+}
+
+impl RegisteredProviderBinaryV1 {
+    #[must_use]
+    pub fn language_id(&self) -> &agent_semantic_config::LanguageId {
+        &self.language_id
+    }
+
+    #[must_use]
+    pub fn provider_id(&self) -> &agent_semantic_config::ProviderId {
+        &self.provider_id
+    }
+
+    #[must_use]
+    pub fn binary(&self) -> &str {
+        &self.binary
+    }
+}
+
+#[must_use]
+pub fn registered_provider_binaries_v1() -> Vec<RegisteredProviderBinaryV1> {
+    schema_registry()
+        .languages
+        .iter()
+        .map(|registration| RegisteredProviderBinaryV1 {
+            language_id: agent_semantic_config::LanguageId::new(registration.language_id.clone()),
+            provider_id: agent_semantic_config::ProviderId::new(registration.provider_id.clone()),
+            binary: registration.binary.clone(),
+        })
+        .collect()
+}
+
+pub fn registered_provider_binary_v1(
+    language_id: &str,
+) -> Result<RegisteredProviderBinaryV1, String> {
+    registered_provider_binaries_v1()
+        .into_iter()
+        .find(|registration| registration.language_id.as_str() == language_id)
+        .ok_or_else(|| {
+            format!(
+                "language `{language_id}` is not registered in semantic-language-registry.providers.v1"
+            )
+        })
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/provider_registry_binary_identity.rs"]
+mod provider_registry_binary_identity_tests;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

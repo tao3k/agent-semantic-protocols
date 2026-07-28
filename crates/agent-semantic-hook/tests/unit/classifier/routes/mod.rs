@@ -13,6 +13,7 @@ mod wrappers;
 
 fn registry_with_python() -> HookRuntime {
     HookRuntime {
+        rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: vec![typescript_provider(), python_provider()],
     }
@@ -36,6 +37,7 @@ fn document_provider(language_id: &str, extension: &str) -> ActivatedProvider {
 
 fn registry_with_documents() -> HookRuntime {
     HookRuntime {
+        rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: vec![
             document_provider("org", ".org"),
@@ -46,6 +48,7 @@ fn registry_with_documents() -> HookRuntime {
 
 fn registry_with_rust_and_python() -> HookRuntime {
     HookRuntime {
+        rankers: Vec::new(),
         project_root: ".".to_string(),
         providers: vec![typescript_provider(), rust_provider(), python_provider()],
     }

@@ -179,10 +179,7 @@ fn is_action_detail_row(line: &str) -> bool {
 
 pub(super) fn write_rust_owner_frontier_provider(root: &Path) {
     let bin_dir = root.join(".bin");
-    write_stdout_stderr_provider(
-        &bin_dir,
-        "rs-harness",
-        "[search-owner] q=src/core.rs pkg=. selector=items alg=item-frontier\n\
+    let legacy_stdout = "[search-owner] q=src/core.rs pkg=. selector=items alg=item-frontier\n\
 legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next\n\
 aliases: graph:{G=search,O=owner,I=item}\n\
 O=owner:path(src/core.rs)!owner;I=item:symbol(QueryExpr)@src/core.rs:1:1!syntax;I2=item:symbol(parse_query_expr)@src/core.rs:3:3!syntax\n\
@@ -192,8 +189,25 @@ G>{O:selects}\n\
 O>{I:contains,I2:contains}\n\
 rank=I,I2,O frontier=I.syntax,I2.syntax\n\
 omit=code,projection-nodes,large-item-text\n\
-avoid=inline-code-in-search,raw-read,repeat-owner\n",
-        "",
+avoid=inline-code-in-search,raw-read,repeat-owner\n";
+    write_provider_script(
+        &bin_dir,
+        "rs-harness",
+        &format!(
+            "#!/bin/sh\n\
+native_owner=0\n\
+for arg in \"$@\"; do\n\
+  if [ \"$arg\" = 'owner-search-stdin' ]; then native_owner=1; fi\n\
+done\n\
+if [ \"$native_owner\" = '1' ]; then\n\
+  request=$(cat)\n\
+  digest=$(printf '%s' \"$request\" | sed -n 's/.*\"contentDigest\":\"\\([0-9a-f]*\\)\".*/\\1/p')\n\
+  printf '%s\\n' \"{{\\\"schemaId\\\":\\\"agent.semantic-protocols.provider-native-owner-search-response\\\",\\\"schemaVersion\\\":\\\"1\\\",\\\"languageId\\\":\\\"rust\\\",\\\"providerId\\\":\\\"rs-harness\\\",\\\"requestedOwnerPath\\\":\\\"src/core.rs\\\",\\\"requestedQuery\\\":\\\"QueryExpr\\\",\\\"sourceContentDigest\\\":\\\"$digest\\\",\\\"parsedOwnerCount\\\":1,\\\"projectionCompleteness\\\":\\\"complete-owner\\\",\\\"projections\\\":[{{\\\"structuralSelector\\\":\\\"rust://src/core.rs#item/struct/QueryExpr\\\",\\\"itemKind\\\":\\\"struct\\\",\\\"itemName\\\":\\\"QueryExpr\\\",\\\"captureName\\\":\\\"type.name\\\",\\\"signature\\\":\\\"struct QueryExpr\\\",\\\"sourceByteStart\\\":0,\\\"sourceByteEnd\\\":16}},{{\\\"structuralSelector\\\":\\\"rust://src/core.rs#item/function/parse_query_expr\\\",\\\"itemKind\\\":\\\"function\\\",\\\"itemName\\\":\\\"parse_query_expr\\\",\\\"captureName\\\":\\\"function.name\\\",\\\"signature\\\":\\\"fn parse_query_expr\\\",\\\"sourceByteStart\\\":17,\\\"sourceByteEnd\\\":36}}]}}\"\n\
+  exit 0\n\
+fi\n\
+printf '%s' {}\n",
+            shell_single_quote(legacy_stdout)
+        ),
     );
     install_state_home_provider(root, "rust", &bin_dir.join("rs-harness"));
 }
@@ -550,7 +564,7 @@ pub(super) fn make_executable(path: &Path) {
 fn write_provider_install_receipts(root: &Path) {
     let state_home = state_home(root);
     let runtime_bin = state_home.join("runtime/bin");
-    let provider_lock_dir = state_home.join("runtime/provider-locks");
+    let provider_lock_dir = agent_semantic_runtime::provider_receipt_dir(&state_home);
     std::fs::create_dir_all(&provider_lock_dir).expect("create provider lock registry");
     for manifest in builtin_provider_manifests() {
         let installed = runtime_bin.join(manifest.binary());

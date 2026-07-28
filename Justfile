@@ -8,13 +8,15 @@ julia_harness_project := "languages/JuliaLangProjectHarness.jl"
 julia_harness := "julia --project=languages/JuliaLangProjectHarness.jl languages/JuliaLangProjectHarness.jl/bin/julia-project-harness.jl"
 julia_compiled_harness := "languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness"
 gerbil_harness_project := "languages/gerbil-scheme-language-project-harness"
+asp_state_home := env_var_or_default("ASP_STATE_HOME", home_directory() / ".agent-semantic-protocols")
+asp_runtime_bin := asp_state_home / "runtime" / "bin"
 
 default:
 	@just --list
 
 _agent-tools-run-asp bin_dir +args:
     @bin_dir="{{bin_dir}}"; \
-    if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+    if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
     case ":$PATH:" in *":${bin_dir}:"*) ;; *) PATH="${bin_dir}:$PATH"; export PATH ;; esac; \
     protocol_bin="${ASP_BIN:-${bin_dir}/asp}"; \
     if [ -x "${protocol_bin}" ]; then \
@@ -50,10 +52,10 @@ agent-tools-ensure-local-bin-path:
 	    echo "[agent-tools-ensure-local-bin-path] ~/.bashrc already contains $HOME/.local/bin"; \
 	  fi
 
-# Install all agent tools, including asp-graph-turbo, and Codex hook config. Optional: just agent-hooks-install ~/.local/bin
+# Install the ASP runtime, language providers, and Codex hook config under ASP State Home.
 agent-hooks-install bin_dir="":
 	@bin_dir="{{bin_dir}}"; \
-	if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+	if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
 	just agent-tools-install-global "${bin_dir}"; \
 	just _agent-hooks-install-codex "${bin_dir}"; \
 	just agent-hooks-doctor "${bin_dir}"
@@ -98,11 +100,11 @@ agent-hooks-smoke-codex:
 # Develop mode: build and install asp plus all providers from this checkout.
 agent-tools-install-global bin_dir="":
     @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+    if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
       just agent-tools-install-protocol "${bin_dir}"; \
-      just agent-tools-install-asp-graph-turbo "${bin_dir}"; \
+      rm -f "${bin_dir}/asp-graph-turbo" "${bin_dir}/graph-turbo"; \
       just agent-tools-install-languages "${bin_dir}"; \
-      echo "[agent-tools-install-global] installed asp, asp-graph-turbo, and all language provider harnesses into ${bin_dir}"
+      echo "[agent-tools-install-global] installed asp with built-in graph-turbo ranker and all language provider harnesses into ${bin_dir}"
 
 # Develop mode: build and install the Orgize provider from this checkout.
 agent-tools-install-orgize bin_dir="":
@@ -111,7 +113,7 @@ agent-tools-install-orgize bin_dir="":
 # Develop mode: build and install all language providers from this checkout.
 agent-tools-install-languages bin_dir="":
     @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+    if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
       just agent-tools-install-rs "${bin_dir}"; \
       just agent-tools-install-ts "${bin_dir}"; \
       just agent-tools-install-py "${bin_dir}"; \
@@ -137,7 +139,7 @@ agent-tools-install-protocol bin_dir="":
       elif [ -n "${SEMANTIC_AGENT_BIN_DIR:-}" ]; then \
         destination="${SEMANTIC_AGENT_BIN_DIR}/asp"; \
       else \
-        destination="$HOME/.local/bin/asp"; \
+        destination="{{asp_runtime_bin}}/asp"; \
       fi; \
       target/release/asp install binary --target "${destination}"; \
       rm -f "$(dirname "${destination}")/semantic-agent-protocol"; \
@@ -166,7 +168,7 @@ agent-tools-install-language language bin_dir="" target="" scope="global" projec
     #!/usr/bin/env bash
     set -euo pipefail
     repo_root="$(pwd -P)"
-    state_home="${ASP_STATE_HOME:-${HOME}/.agent-semantic-protocols}"
+    state_home="{{asp_state_home}}"
     bin_dir="{{ bin_dir }}"
     target="{{ target }}"
     scope="{{ scope }}"
@@ -278,19 +280,6 @@ agent-tools-install-language language bin_dir="" target="" scope="global" projec
     "${protocol_bin}" "${install_args[@]}"
     echo "[agent-tools-install] provider=${provider} language={{ language }} installMode=develop-workspace source=root-justfile binary=${binary} installedPath=${bin_dir}/${binary} receipt=recorded"
 
-# Install only the core asp-graph-turbo ranking binary.
-# Keep this entry repo-owned; uv tool install moves the same tool executable between bin dirs.
-agent-tools-install-asp-graph-turbo bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
-      mkdir -p "${bin_dir}"; \
-      rm -f "${bin_dir}/asp-graph-turbo"; \
-      printf '#!/usr/bin/env bash\nexec uv run --project "%s/packages/python/asp_graph_turbo" asp-graph-turbo "$@"\n' "$PWD" > "${bin_dir}/asp-graph-turbo"; \
-      chmod 755 "${bin_dir}/asp-graph-turbo"; \
-      rm -f "${bin_dir}/graph-turbo"; \
-      test -x "${bin_dir}/asp-graph-turbo"; \
-      "${bin_dir}/asp-graph-turbo" --help >/dev/null
-
 # Develop mode: build and install the Rust provider from this checkout.
 agent-tools-install-rust bin_dir="":
     @just agent-tools-install-rs "{{bin_dir}}"
@@ -327,19 +316,19 @@ agent-tools-build-gerbil bin_dir="":
     @set -e; \
       repo_root="$PWD"; \
       bin_dir="{{bin_dir}}"; \
-      if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-$HOME/.local/bin}"; fi; \
+    if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
       package_dir="${repo_root}/{{gerbil_harness_project}}"; \
       root_bin="${repo_root}/.bin"; \
       cd "${package_dir}"; \
       if [ "$(uname -s)" = "Darwin" ]; then \
-        env SDKROOT= CC="$(xcrun --find clang)" gxi \
+        env SDKROOT= CC="$(xcrun --find clang)" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
           -e '(import :gslph/src/build-api/native-build)' \
-          -e '(install-target #f #f #f #f #f #t)'; \
+          -e '(install-target #f #f #f #f #f #t (quote asp))'; \
       else \
-        gxi -e '(import :gslph/src/build-api/native-build)' \
-          -e '(install-target #f #f #f #f #f #t)'; \
+        env SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi -e '(import :gslph/src/build-api/native-build)' \
+          -e '(install-target #f #f #f #f #f #t (quote asp))'; \
       fi; \
-      launcher="$HOME/.local/bin/gslph"; \
+    launcher="${bin_dir}/gslph"; \
       test -x "${launcher}"; \
       mkdir -p "${root_bin}" "${bin_dir}"; \
       if [ ! "${launcher}" -ef "${root_bin}/gslph" ]; then install -m 755 "${launcher}" "${root_bin}/gslph"; fi; \
@@ -370,10 +359,10 @@ check-sandtables:
     uv run --project packages/python python -m tools sandtable
 
 benchmark-large-library-search-runtime:
-    direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable --repo-root . --large-library-runtime-benchmark --large-library-runtime-asp-bin target/release/asp --large-library-runtime-corpus-root .data
+    test -n "${ASP_STATE_HOME:-}"; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable --repo-root . --large-library-runtime-benchmark --large-library-runtime-asp-bin target/release/asp --large-library-runtime-state-home "$ASP_STATE_HOME"
 
 benchmark-large-library-search-runtime-baseline:
-    receipt="$PWD/.cache/large-library-runtime-search.v1.receipt.json"; mkdir -p "$(dirname "$receipt")"; set +e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable --repo-root . --json --large-library-runtime-benchmark --large-library-runtime-asp-bin target/release/asp --large-library-runtime-corpus-root .data > "$receipt"; runtime_status=$?; set -e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable.large_library_runtime_baseline --baseline benchmarks/large-library-runtime-search.v1.baseline.json --receipt "$receipt"; baseline_status=$?; test "$runtime_status" -eq 0; test "$baseline_status" -eq 0
+    test -n "${ASP_STATE_HOME:-}"; receipt="$PWD/.cache/large-library-runtime-search.v1.receipt.json"; mkdir -p "$(dirname "$receipt")"; set +e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable --repo-root . --json --large-library-runtime-benchmark --large-library-runtime-asp-bin target/release/asp --large-library-runtime-state-home "$ASP_STATE_HOME" > "$receipt"; runtime_status=$?; set -e; direnv exec . env ASP_BENCHMARK_BIN="$PWD/target/release/asp" uv run --project packages/python --frozen python -m tools.semantic_sandtable.large_library_runtime_baseline --baseline benchmarks/large-library-runtime-search.v1.baseline.json --receipt "$receipt"; baseline_status=$?; test "$runtime_status" -eq 0; test "$baseline_status" -eq 0
 
 check-graph-turbo-focused:
     uv run --project packages/python/asp_graph_turbo --frozen pytest \

@@ -20,8 +20,14 @@ mod db_gerbil_dependency_index;
 mod env;
 #[path = "unit/db/live_source_index_memory.rs"]
 mod live_source_index_memory;
+#[path = "unit/materialization_fixture.rs"]
+mod materialization_fixture;
 #[path = "unit/db/project_scoped_turso_performance.rs"]
 mod project_scoped_turso_performance;
+#[path = "unit/provider_incremental_probe_batch.rs"]
+mod provider_incremental_probe_batch;
+#[path = "unit/provider_treesitter_read.rs"]
+mod provider_treesitter_read;
 #[path = "unit/selector_generation_evidence.rs"]
 mod selector_generation_evidence;
 #[path = "unit/db/snapshot_fixture.rs"]
@@ -32,3 +38,5 @@ mod source_index_refresh_perf;
 mod turso_mvcc_benchmark;
 #[path = "unit/turso_mvcc_partition.rs"]
 mod turso_mvcc_partition;
+#[path = "unit/workspace_db_registry.rs"]
+mod workspace_db_registry;

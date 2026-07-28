@@ -53,6 +53,8 @@ fn turso_round_trip_returns_only_a_validated_merkle_projection() {
                 selector,
             ),
             projection_mode: ExactProjectionModeV1::Code,
+            source_byte_start: 0,
+            source_byte_end: source.len() as u64,
             source,
             normalized_parser_facts: br#"{"kind":"fn","name":"example"}"#,
             projection: source,

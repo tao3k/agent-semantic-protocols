@@ -19,6 +19,10 @@ pub(super) struct AgentActionMatch {
     authority_exclude_any: Vec<HookClientActionAuthority>,
 }
 
+#[cfg(test)]
+#[path = "../../../../tests/unit/match_policy_contract/production_derivation_contract.rs"]
+mod production_derivation_contract;
+
 #[derive(Default)]
 pub(super) struct AgentActionMatchConfig {
     pub(super) authority_rules: Vec<AgentActionAuthorityRule>,

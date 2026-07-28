@@ -223,7 +223,7 @@ pub(crate) fn install_state_home_provider(
     let metadata_digest =
         agent_semantic_content_identity::file_artifact_metadata_digest_v1(&provider_bin)
             .expect("provider metadata digest");
-    let lock_dir = state_home.join("runtime").join("provider-locks");
+    let lock_dir = agent_semantic_runtime::provider_receipt_dir(&state_home);
     fs::create_dir_all(&lock_dir).expect("create provider lock dir");
     fs::write(
         lock_dir.join(format!("{language_id}.lock.toml")),

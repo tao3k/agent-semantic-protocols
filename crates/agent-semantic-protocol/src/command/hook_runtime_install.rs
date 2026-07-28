@@ -1,18 +1,18 @@
 //! Installation owner for hook runtime and Codex plugin surfaces.
 
 use super::hook_runtime_codex_plugin::{
-    codex_project_plugin_cache_skill_path, install_codex_plugin_hooks,
-    sync_codex_project_plugin_cache, CodexPluginScope,
+    CodexPluginScope, codex_project_plugin_cache_skill_path, install_codex_plugin_hooks,
+    sync_codex_project_plugin_cache,
 };
 use super::hook_runtime_skill::{
-    install_agent_semantic_protocols_agent_config, install_agent_semantic_protocols_plugin_skill,
-    install_agent_semantic_protocols_skill, PluginSkillScope,
+    PluginSkillScope, install_agent_semantic_protocols_agent_config,
+    install_agent_semantic_protocols_plugin_skill, install_agent_semantic_protocols_skill,
 };
 use super::hook_runtime_subagent::{install_claude_resident_agents, subagent_model_arg};
 use super::{
     display_path, ensure_supported_client, flag_value, optional_flag_value, project_root_arg,
 };
-use crate::command::{ensure_protocol_binary_installed, ProtocolBinaryInstallPlan};
+use crate::command::{ProtocolBinaryInstallPlan, ensure_protocol_binary_installed};
 use agent_semantic_hook::{
     claude_hook_block, default_claude_settings_path, load_or_refresh_default_activation,
     merge_claude_settings, remove_incompatible_hook_event_state, runtime_profiles_for_activation,
@@ -88,8 +88,15 @@ fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstall
 
 pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
     let request = parse_codex_plugin_install_args(args)?;
+    let runtime_state = project_runtime_state(&request.project_root)?;
+    crate::command::protocol_binary::require_configured_protocol_bin_dir_on_path()?;
     let asp_binary_path = std::env::current_exe()
         .map_err(|error| format!("failed to resolve current ASP executable: {error}"))?;
+    let client_config_path = runtime_state
+        .protocol_home
+        .join("hooks")
+        .join("config.toml");
+    let user_config_status = crate::command::managed_hook_config::materialize(&client_config_path)?;
     let (config_path, plugin_receipt) = install_codex_plugin_hooks(
         &request.project_root,
         request.scope,
@@ -97,10 +104,12 @@ pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Resu
         &asp_binary_path,
     )?;
     println!(
-        "[plugin-install] client=codex sourceRoot={} config={}{} mode=ensured",
+        "[plugin-install] client=codex sourceRoot={} config={}{} userConfig={} userConfigStatus={} mode=ensured",
         display_path(&request.project_root, &request.project_root),
         display_path(&request.project_root, &config_path),
         plugin_receipt,
+        display_path(&request.project_root, &client_config_path),
+        user_config_status.as_str(),
     );
     Ok(())
 }
@@ -187,6 +196,17 @@ fn run_install_for_client(
         materialized_path: client_config_path.clone(),
         artifact_digest: client_config_digest,
     });
+    let global_provider_catalog_generation =
+        if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Global) {
+            Some(
+                crate::command::global_provider_catalog::publish_global_provider_catalog_v1(
+                    &activation,
+                    &provider_artifacts,
+                )?,
+            )
+        } else {
+            None
+        };
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
     let (config_path, extra_config_receipt) = match client {
@@ -269,11 +289,16 @@ fn run_install_for_client(
         display_path(&project_root, &client_config_path),
         user_config_status.as_str()
     );
+    let global_provider_catalog_receipt = global_provider_catalog_generation
+        .as_deref()
+        .map(|generation| format!(" globalProviderCatalog={generation}"))
+        .unwrap_or_default();
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} clientDbMigration={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} clientDbMigration={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
+        global_provider_catalog_receipt,
         display_path(&project_root, &active_artifact.receipt_path),
         active_artifact.receipt.artifact_root_digest().as_str(),
         active_artifact.artifact_byte_reads,

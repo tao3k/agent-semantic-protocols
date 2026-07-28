@@ -244,6 +244,8 @@ async fn exact_selector_projection_round_trip_hydrates_a_validated_merkle_record
             owner_path: &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketOwnerPathV1::from(owner_path),
             structural_selector: &agent_semantic_content_identity::exact_selector_projection_packet::ProjectionPacketStructuralSelectorV1::from(selector),
             projection_mode: agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1::Code,
+            source_byte_start: 0,
+            source_byte_end: source.len() as u64,
             source,
             normalized_parser_facts: br#"{"kind":"fn","name":"cached_symbol"}"#,
             projection: source,

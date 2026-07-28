@@ -16,6 +16,7 @@ use super::graph::run_graph_command;
 use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
 use super::install_provider::run_install_command;
+use super::live_corpus::run_live_corpus_command;
 use super::paths::run_paths_command;
 use super::provider_dispatch::run_language_command;
 use super::root_language_facade::run_root_language_facade;
@@ -60,6 +61,7 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
         Some("sync") => run_sync_command(&args[1..]),
         Some("paths") => run_paths_command(&args[1..]),
         Some("healthcheck") => run_healthcheck_command(&args[1..]),
+        Some("live-corpus") => run_live_corpus_command(&args[1..]),
         Some("source-access") => run_source_access_command(&args[1..]),
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
         Some("graph") => run_graph_command(&args[1..]),
@@ -200,7 +202,7 @@ fn option_is_present(args: &[String], option: &str) -> bool {
 }
 
 fn usage() -> String {
-    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|sync|paths|healthcheck|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|sync|paths|healthcheck|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 fn run_client_command(args: Vec<String>) -> Result<(), String> {

@@ -40,6 +40,7 @@ impl From<&str> for ActiveArtifactSetIdV1 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ActiveArtifactKindV1 {
+    ExactSelectorGenerationFixture,
     AspBinary,
     Activation,
     ProviderBinary,
@@ -55,6 +56,7 @@ impl ActiveArtifactKindV1 {
             Self::ProviderBinary => "provider-binary",
             Self::ProviderRegistry => "provider-registry",
             Self::RuntimeConfig => "runtime-config",
+            Self::ExactSelectorGenerationFixture => "exact-selector-generation-fixture",
         }
     }
 }

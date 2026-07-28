@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-hook-match-config-test.v1.schema.json",
+  "title": "Semantic hook match config test v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "productionConfig",
+    "wrapperTemplates",
+    "performance",
+    "rules"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.hook-match-config-test"
+    },
+    "schemaVersion": {
+      "const": "v1"
+    },
+    "productionConfig": {
+      "type": "string",
+      "minLength": 1
+    },
+    "wrapperTemplates": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "\\{command\\}"
+      }
+    },
+    "performance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxMatcherMicros"],
+      "properties": {
+        "maxMatcherMicros": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    }
+  },
+  "$defs": {
+    "toolCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "type": "object"
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "positiveCommands": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "negativeCommands": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "positiveTools": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/toolCase"
+          }
+        },
+        "negativeTools": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/toolCase"
+          }
+        },
+        "wrapperExemption": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "anyOf": [
+        {
+          "required": ["positiveCommands", "negativeCommands"]
+        },
+        {
+          "required": ["positiveTools", "negativeTools", "wrapperExemption"]
+        }
+      ]
+    }
+  }
+}

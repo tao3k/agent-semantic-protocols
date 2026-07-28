@@ -7,6 +7,55 @@
       "languageId": "rust",
       "methodDescriptors": [
         {
+          "acceptsStdin": true,
+          "command": "owner-search-stdin",
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "owner-search-stdin",
+              "--asp-provider-id",
+              "rs-harness"
+            ]
+          },
+          "method": "search/owner-native-v1",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.provider-native-owner-search-response"
+          ],
+          "packetSchemas": [
+            "provider-native-owner-search-request.v1",
+            "provider-native-owner-search-response.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": false,
+          "supportsJson": true,
+          "supportsPackageScope": false,
+          "view": "owner-items"
+        },
+        {
+          "acceptsStdin": true,
+          "command": "query",
+          "invocation": {
+            "argv": [
+              "rs-harness",
+              "query",
+              "--asp-exact-request-stdin"
+            ]
+          },
+          "method": "query/exact-selector-native-v1",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.provider-native-exact-projection"
+          ],
+          "packetSchemas": [
+            "provider-native-exact-request.v1",
+            "provider-native-exact-response.v1"
+          ],
+          "requiresQuery": true,
+          "supportsCompact": false,
+          "supportsJson": true,
+          "supportsPackageScope": false,
+          "view": "exact-selector"
+        },
+        {
           "acceptsStdin": false,
           "command": "search",
           "method": "search/prime",
@@ -265,6 +314,8 @@
         }
       ],
       "methods": [
+        "search/owner-native-v1",
+        "query/exact-selector-native-v1",
         "search/prime",
         "search/owner",
         "search/lexical",
@@ -648,6 +699,7 @@
         }
       ],
       "methods": [
+        "search/dependency-topology",
         "search/prime",
         "search/owner",
         "search/lexical",
@@ -1049,6 +1101,7 @@
         }
       ],
       "methods": [
+        "search/dependency-topology",
         "search/prime",
         "search/owner",
         "search/lexical",
@@ -1421,11 +1474,12 @@
         }
       ],
       "methods": [
+        "search/dependency-topology",
         "search/prime",
         "search/owner",
         "search/lexical",
         "search/ingest",
-        "search/query",
+        "query/exact-selector",
         "search/semantic-facts",
         "check/changed",
         "guide"
@@ -1917,6 +1971,7 @@
         }
       ],
       "methods": [
+        "search/dependency-topology",
         "search/prime",
         "search/owner",
         "search/lexical",

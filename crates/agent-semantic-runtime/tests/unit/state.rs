@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 
 use super::{
     ensure_dir, project_root_for_activation_path, project_runtime_state_with_state_home,
-    project_state_paths_with_state_home,
+    project_state_paths_with_state_home, provider_receipt_dir,
 };
 
 #[test]
-fn runtime_state_materializes_config_layout_under_git_toplevel() {
+fn runtime_state_materializes_state_core_layout() {
     let root = temp_root("runtime-state-git");
     let state_home = temp_root("runtime-state-home");
     let package_root = root.join("crates/example");
@@ -20,7 +20,7 @@ fn runtime_state_materializes_config_layout_under_git_toplevel() {
         crate::state_core::ResolvedState::resolve_with_state_home(&package_root, &state_home)
             .expect("resolved state layout");
 
-    assert_eq!(state.layout.git_toplevel.as_deref(), Some(root.as_path()));
+    assert_eq!(resolved.repo.git_toplevel.as_deref(), Some(root.as_path()));
     assert_eq!(state.protocol_home, state_home);
     assert_eq!(state.hook_cache_dir, resolved.paths.hooks_dir.join("cache"));
     assert_eq!(state.hook_state_dir, resolved.paths.hooks_dir.join("state"));
@@ -44,10 +44,7 @@ fn runtime_state_materializes_config_layout_under_git_toplevel() {
     assert_eq!(state.runtime_home, state_home.join("runtime"));
     assert_eq!(state.provider_bin_dir, state_home.join("runtime/bin"));
     assert_eq!(state.runtime_bin_dir, state_home.join("runtime/bin"));
-    assert_eq!(
-        state.provider_lock_dir,
-        state_home.join("runtime/provider-locks")
-    );
+    assert_eq!(state.provider_lock_dir, provider_receipt_dir(&state_home));
     assert!(state.hook_cache_dir.is_dir());
     assert!(state.hook_state_dir.is_dir());
     assert!(state.client_cache_dir.is_dir());

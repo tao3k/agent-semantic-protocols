@@ -89,14 +89,6 @@ fn run_state_command(args: Vec<OsString>) -> Result<(), String> {
             "generationManifestPath: {}",
             report.generation_manifest_path.display()
         );
-        match &report.project_local_cache {
-            Some(cache) => println!(
-                "projectLocalCache: {} exists={}",
-                cache.path.display(),
-                cache.exists
-            ),
-            None => println!("projectLocalCache: none"),
-        }
     }
 
     Ok(())

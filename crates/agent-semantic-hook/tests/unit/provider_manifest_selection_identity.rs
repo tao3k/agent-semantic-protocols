@@ -1,6 +1,72 @@
 use super::{
-    ProviderCommandSelection, build_default_activation_from_selections, provider_manifests,
+    DefaultActivationSelections, ProviderCommandSelection, RuntimeBinarySelectionV1,
+    build_default_activation_from_selections, provider_manifests,
+    reuse_asp_binary_selection_from_active_receipt,
 };
+
+fn test_graph_turbo_selection() -> RuntimeBinarySelectionV1 {
+    RuntimeBinarySelectionV1::new(
+        "/producer-owned/runtime/bin/asp".to_string(),
+        "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+        "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+    )
+    .expect("valid producer-owned ASP binary identity")
+}
+
+#[test]
+fn runtime_binary_identity_reuses_active_receipt_and_fails_closed_on_drift() {
+    let root = std::env::temp_dir().join(format!(
+        "asp-runtime-binary-receipt-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).expect("create receipt fixture");
+    let binary = root.join("asp");
+    let activation = root.join("activation.json");
+    std::fs::write(&binary, b"asp-runtime-v1").expect("write runtime binary");
+    std::fs::write(
+        &activation,
+        serde_json::to_vec(&serde_json::json!({
+            "schemaId": "asp.hook-activation.v1",
+            "schemaVersion": "1",
+            "schemaAuthority": "test",
+            "protocolId": "agent.semantic-protocols.hook",
+            "protocolVersion": "1",
+            "projectRoot": root.display().to_string(),
+            "generatedBy": {"runtime": "test", "version": "1"},
+            "rankers": [],
+            "providers": []
+        }))
+        .expect("encode activation"),
+    )
+    .expect("write activation");
+    let digest = agent_semantic_content_identity::file_content_digest_v1(&binary)
+        .expect("runtime binary digest");
+    crate::materialize_active_asp_artifact_receipt(&binary, &digest, &activation, &[])
+        .expect("materialize active artifact receipt");
+    crate::verify_active_asp_artifact_receipt(&activation, &[&binary])
+        .expect("verify active artifact receipt fixture");
+
+    let started = std::time::Instant::now();
+    let selection = reuse_asp_binary_selection_from_active_receipt(&binary, &activation)
+        .expect("reuse verified active artifact receipt");
+    let elapsed = started.elapsed();
+    assert_eq!(selection.content_digest(), digest);
+    assert!(
+        elapsed < std::time::Duration::from_millis(25),
+        "receipt-backed runtime identity exceeded the 25ms gate: {elapsed:?}"
+    );
+
+    std::fs::write(&binary, b"asp-runtime-v2").expect("drift runtime binary");
+    assert!(
+        reuse_asp_binary_selection_from_active_receipt(&binary, &activation).is_none(),
+        "drifted runtime binary must not reuse the published content identity"
+    );
+    std::fs::remove_dir_all(root).expect("remove receipt fixture");
+}
 
 #[test]
 fn activation_reuses_selection_manifest_identity_in_milliseconds() {
@@ -8,7 +74,7 @@ fn activation_reuses_selection_manifest_identity_in_milliseconds() {
         .expect("resolve current test executable")
         .display()
         .to_string();
-    let selections = provider_manifests()
+    let providers = provider_manifests()
         .into_iter()
         .enumerate()
         .map(|(index, manifest)| ProviderCommandSelection {
@@ -26,6 +92,8 @@ fn activation_reuses_selection_manifest_identity_in_milliseconds() {
             provider_command_prefix: vec![executable.clone()],
         })
         .collect::<Vec<_>>();
+    let graph_turbo = test_graph_turbo_selection();
+    let selections = DefaultActivationSelections::new(providers, graph_turbo.clone());
 
     let started = std::time::Instant::now();
     let activation = build_default_activation_from_selections(
@@ -37,6 +105,7 @@ fn activation_reuses_selection_manifest_identity_in_milliseconds() {
 
     for provider in &activation.providers {
         let selection = selections
+            .providers()
             .iter()
             .find(|selection| selection.manifest_id == provider.manifest_id)
             .expect("activated provider retains its typed selection");
@@ -53,6 +122,16 @@ fn activation_reuses_selection_manifest_identity_in_milliseconds() {
             "activation must preserve the selected logical provider basename"
         );
     }
+    let ranker = activation
+        .rankers
+        .first()
+        .expect("built-in graph-turbo ranker");
+    assert_eq!(ranker.binary, graph_turbo.binary());
+    assert_eq!(ranker.content_digest, graph_turbo.content_digest());
+    assert_eq!(
+        ranker.artifact_metadata_digest,
+        graph_turbo.artifact_metadata_digest()
+    );
     assert!(
         elapsed < std::time::Duration::from_millis(250),
         "typed activation materialization exceeded the 250ms gate: {elapsed:?}"
@@ -84,9 +163,11 @@ fn activation_parser_preserves_configured_logical_basename() {
                 .to_string(),
         ],
     };
+    let selections =
+        DefaultActivationSelections::new(vec![selection], test_graph_turbo_selection());
     let activation = build_default_activation_from_selections(
         std::path::Path::new("/activation-selected-basename-gate"),
-        &[selection],
+        &selections,
     )
     .expect("build activation with configured logical basename");
     let serialized = serde_json::to_string(&activation).expect("serialize activation");

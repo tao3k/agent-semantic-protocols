@@ -1,0 +1,462 @@
+#+TITLE: 10.05.62 Provider-Scoped Lazy Activation and Runtime Publication
+#+OPTIONS: toc:3 num:nil
+
+* Status
+
+This document defines the v1 activation and runtime-publication redesign.
+It replaces aggregate project activation as a runtime authority. It does not
+introduce a v2 schema family.
+
+* Problem
+
+The current aggregate activation combines four independent responsibilities:
+
+1. bootstrap and emergency control-plane routing;
+2. legacy configuration migration;
+3. provider selection and language coverage;
+4. runtime evidence and installed-artifact qualification.
+
+That coupling creates circular failure modes:
+
+- a generated activation with a newer field can prevent the older hook from
+  reaching the code that atomically regenerates it;
+- a command for one language can be blocked by an unrelated provider receipt
+  or source envelope;
+- a provider source envelope can be required before the provider is allowed
+  to publish that envelope;
+- changing one provider invalidates a project-wide activation;
+- installing a new ASP artifact can require a manual symlink repair.
+
+* v1 Invariants
+
+** ProviderRegistry is the declarative authority
+
+ProviderRegistry is the unified provider interface and lazy-dispatch index. It
+is not a second activation artifact.
+
+Each =ProviderDescriptorV1= owns:
+
+- provider ID and supported language IDs;
+- normalized extension triggers and harness-owned workspace anchors;
+- capabilities, query-pack descriptor, semantic-facts descriptor, and routes;
+- provider activation materializer identity;
+- immutable executable artifact contract;
+- provider-local policy and ranker descriptors.
+
+The registry stores descriptors, digests, and typed handles only. It MUST NOT
+embed:
+
+- mutable provider activation payloads;
+- installed receipt contents;
+- provider source envelopes or CAS blobs;
+- aggregate provider health;
+- another provider's runtime state.
+
+Registry publication builds compact indexes for:
+
+- =languageId -> providerId=;
+- =normalizedExtension -> candidate providerIds=;
+- =workspaceAnchorKind -> candidate providerIds=;
+- =providerId -> ProviderDescriptorV1=.
+
+The router reads those indexes and materializes only the selected provider.
+Ambiguous extension candidates are resolved by harness-owned workspace-anchor
+facts. Registry lookup MUST NOT activate candidates while resolving them.
+
+** Bootstrap precedes activation
+
+The hook MUST resolve bootstrap control-plane intent before loading any
+activation artifact.
+
+=ASP_NO_AGENT=1= MUST be recognized from both:
+
+- the inherited PreToolUse process environment; and
+- a command-wrapper environment assignment parsed before shell execution.
+
+The override disables agent dispatch and activation-dependent routing for the
+current command. It MUST emit a compact typed bootstrap receipt. It MUST NOT
+silently mutate project configuration.
+
+Health, install, and runtime-repair commands MUST remain reachable when a
+generated activation cannot be parsed.
+
+** Legacy configuration is migration input only
+
+Legacy configuration fallback belongs exclusively to the activation
+materializer.
+
+The materializer MAY read a recognized legacy config shape, but it MUST:
+
+1. validate it with its owned legacy input schema;
+2. translate it into the current v1 typed model;
+3. atomically publish the v1 artifact;
+4. execute only from the v1 model.
+
+Runtime routing MUST NOT branch on legacy fields. Generated activation parse
+failure MUST trigger atomic regeneration. User-authored or project-pinned
+activation parse failure MUST remain fail-closed.
+
+** Provider activation is independent
+
+The durable runtime unit is one provider activation, not one aggregate project
+activation.
+
+Canonical state:
+
+#+begin_example
+hooks/state/activations/v1/index.json
+hooks/state/activations/v1/providers/<provider-id>.json
+#+end_example
+
+The index contains only registry identity, schema identity, and atomic
+publication metadata. It MUST NOT duplicate provider runtime payloads.
+
+Each provider artifact contains:
+
+- provider and language identity;
+- validated manifest digest;
+- installed executable identity and receipt;
+- query-pack and semantic-registry identity;
+- manifest-derived source extensions and source policy;
+- provider-owned source-snapshot evidence references;
+- provider-local ranker and route configuration.
+
+Changing one provider MUST NOT invalidate or load unrelated provider
+activations.
+
+** Language routing is manifest-derived and lazy
+
+A provider activation is materialized only when at least one typed trigger
+selects it:
+
+1. an explicit =asp <language> ...= command;
+2. an explicit provider ID;
+3. a parsed file owner whose normalized extension maps to a registered
+   language manifest;
+4. an explicit CompleteGeneration operation.
+
+Extension matching MUST normalize manifest values such as =.ss= and filesystem
+values such as =ss= at the schema boundary. The router MUST NOT hardcode a
+language or extension table in Rust command code.
+
+When an extension maps to several languages, workspace anchors from the
+language harness resolve the ambiguity. The router MUST NOT load every matching
+provider speculatively.
+
+A missing requested provider remains fail-closed. An unrelated missing
+provider MUST NOT block an ordinary search or exact query.
+
+When the selected provider is valid but its current-digest source envelope is
+absent, the ordinary search path MUST invoke the TargetProvider envelope
+materializer exactly once and then load that published envelope. This recovery
+MUST NOT widen to CompleteGeneration, load unrelated providers, or accept a
+stale envelope from a previous provider digest.
+
+** CompleteGeneration is the only implicit fan-in
+
+Complete workspace generation, Merkle qualification, and explicit global
+health qualification MAY enumerate every enabled provider.
+
+No ordinary search, query, hook match, or provider-specific health path may
+silently widen TargetProvider or TargetProviderId into CompleteGeneration.
+
+** Live corpus resources are locked upstream projects
+
+Every registered language-provider route MUST be exercised against at least one
+real upstream project whose Git identity is fixed by the shared v1 live-corpus
+lock. A repository-local =.data= checkout, Cargo registry cache, developer home
+path, or performance baseline is not a resource authority.
+
+Each locked resource owns:
+
+- stable resource ID, provider ID, and language ID;
+- canonical Git remote URL and immutable forty-hex commit;
+- sandtable scenario ID and provider-owned owner/query/dependency anchors;
+- artifact identity and optional sandbox import metadata.
+
+The performance baseline records observed latency and command budgets only. It
+MUST NOT own or override a corpus remote, commit, or provider mapping.
+
+Corpus admission is language-surface admission, not ecosystem or implementation
+affinity. The materializer MUST obtain =sourceExtensions= from the selected
+activated =ProviderDescriptorV1=. Those extensions are materialized from the
+provider/harness workspace-scope contract; the materializer MUST NOT invoke an
+ad hoc provider view or maintain another extension table. It counts Git-indexed
+files whose suffix matches that descriptor. The lock may declare minimum
+matching-file count and ratio, but MUST NOT duplicate the extension list.
+Qualification binds the provider-issued extension set and the observed counts.
+The ratio denominator is the set of Git-indexed files matched by the published
+ProviderRegistry extension index, not every tracked file; images, fonts,
+archives, and other document attachments are not language candidates.
+
+For document languages such as =md= and =org=, the resource MUST be a document
+collection dominated by the registered document extensions. A JavaScript
+Markdown processor, an Emacs Lisp Org implementation, or a source repository
+that merely contains a README does not qualify. Failure to meet the locked
+extension count or ratio prevents publication of the =current= artifact.
+
+Developer and sandbox execution share the same lock but have different
+materialization authorities:
+
+- developer materialization uses =gix= to parse and normalize the declared
+  remote; the repository authority is
+  =$ASP_STATE_HOME/git/repo/blake3-256/<normalized-remote-digest>=;
+- a GHQ-style =git/by-remote/<host>/<owner>/<repository>= path MAY be
+  published as a readable alias, but it is never the repository identity;
+- developer tests and benchmarks MUST NOT fetch implicitly; they consume a
+  qualified live-corpus artifact already published from that repository;
+- Nix and Bazel MUST explicitly fetch or vendor the locked commit and pass that
+  source tree to the same artifact builder;
+- sandbox execution has no network fallback and fails closed when a declared
+  resource was not introduced.
+
+Network acquisition is an explicit developer/CI setup operation:
+=asp live-corpus sync --resource <resource-id>=. The sync implementation owns
+clone, fetch, pinned-revision checkout, and atomic publication through =gix=.
+Workflow shell, Python sandtable code, and provider harnesses MUST NOT invoke
+=git clone=, =git fetch=, or =git worktree= to construct this store. Sync writes
+first to an operation-scoped temporary checkout beneath the same normalized
+remote directory, verifies the requested commit, and only then publishes
+=checkouts/<revision>=. An existing checkout is reused only after the same
+remote, revision, and clean-worktree qualification succeeds. Search, query,
+benchmark, and ordinary test commands never invoke sync implicitly.
+
+Materialization publishes a dedicated global artifact, not a project =.data=
+directory and not a normal project search artifact:
+
+#+begin_example
+$ASP_STATE_HOME/artifacts/live-corpus/v1/blake3-256/<artifact-digest>/
+  manifest.json
+  qualification.json
+$ASP_STATE_HOME/artifacts/live-corpus/v1/by-resource/<resource-id>/current
+#+end_example
+
+The immutable manifest binds the lock digest, remote, commit, Git tree,
+provider ID, language ID, source Merkle root, builder identity, and source
+checkout receipt. Large source trees are not copied into the artifact. In
+developer mode the immutable checkout is
+=$ASP_STATE_HOME/git/repo/blake3-256/<normalized-remote-digest>/checkouts/<commit>=;
+Nix/Bazel may supply another immutable store path. The location is receipt
+metadata and does not participate in artifact identity. The =current= pointer
+switches atomically only after qualification. Changing any bound identity value
+produces another artifact digest.
+
+The repository digest is
+=blake3-256(gix-normalized-remote-identity)=. A user-authored resource ID never
+owns a filesystem path. Different remotes with the same display name cannot
+collide, while SSH and HTTPS spellings normalized by =gix= converge on the
+same repository identity. The locked commit participates in the live-corpus
+artifact digest, not the shared Git object-store digest.
+
+An explicit developer Cargo profile may run provider live tests and concurrent
+search pressure against these artifacts. Ordinary =cargo test= remains
+hermetic: it neither clones repositories nor mutates corpus locks. The
+developer run writes a typed receipt containing the corpus artifact digest,
+provider/runtime digests, Turso version, concurrency, sample count, p95, max,
+and failure count. Promoting new observations into the Git-tracked performance
+baseline is a separate reviewed operation.
+
+* Activation Flow
+
+#+begin_example
+PreToolUse
+  -> bootstrap intent / ASP_NO_AGENT
+  -> typed command and owner-path parsing
+  -> ProviderRegistry language/extension resolution
+  -> provider ID selection
+  -> load-or-materialize one provider activation
+  -> validate one installed provider receipt
+  -> execute provider route
+  -> publish provider-local evidence
+#+end_example
+
+The provider activation materializer uses the currently validated provider
+manifest as the authority for source defaults. Project-specific package roots
+and explicit project exclusions remain project activation input.
+
+* Runtime Binary Publication
+
+ASP binaries are immutable content-addressed artifacts.
+
+Binary identity is declaration-owned:
+
+- ASP uses one explicit bootstrap descriptor whose binary name is =asp=;
+- every provider binary name comes from the =binary= field of its
+  =LanguageRegistration= in
+  =semantic-language-registry.providers.v1.json=;
+- the runtime publisher accepts that typed binary identity as input and MUST
+  NOT infer it from an install target, archive filename, or existing symlink;
+- a registry may contain several language registrations for one provider
+  binary; publication planning deduplicates by declared binary identity without
+  losing the language-to-provider registrations.
+
+#+begin_example
+runtime/artifacts/blake3-256/<digest>/asp
+runtime/artifacts/blake3-256/latest/asp -> ../<digest>/asp
+runtime/bin/asp -> ../artifacts/blake3-256/latest/asp
+#+end_example
+
+Rules:
+
+- =<digest>/asp= is immutable;
+- =latest/<binary-name>= is the only pointer switched on an upgrade;
+- switching one =latest/<binary-name>= is atomic and cannot move another
+  binary's pointer;
+- =runtime/bin/asp= is a stable entrypoint established once;
+- installation MUST NOT require a user-authored =ln -sfn= command;
+- installation receipts bind the selected digest, the =latest= pointer, and
+  the stable entrypoint;
+- binary publication and active-artifact-receipt reconciliation execute under
+  the same reconciliation guard whenever an active receipt already exists;
+- a broken, looping, or escaping symlink chain fails closed before switch;
+- previous immutable artifacts remain available for receipt-backed rollback,
+  but stale artifacts never participate in current selection.
+
+The same topology applies independently to provider harnesses:
+
+#+begin_example
+runtime/artifacts/blake3-256/<rust-digest>/rs-harness
+runtime/artifacts/blake3-256/<gerbil-digest>/gslph
+runtime/artifacts/blake3-256/latest/rs-harness -> ../<rust-digest>/rs-harness
+runtime/artifacts/blake3-256/latest/gslph -> ../<gerbil-digest>/gslph
+runtime/bin/rs-harness -> ../artifacts/blake3-256/latest/rs-harness
+runtime/bin/gslph -> ../artifacts/blake3-256/latest/gslph
+#+end_example
+
+There is no global =latest= pointer shared by all binaries.
+
+* Typed v1 Contracts
+
+The shared v1 schema family MUST own:
+
+- bootstrap override receipt;
+- activation index;
+- provider activation;
+- legacy-config migration receipt;
+- language-extension trigger;
+- atomic runtime publication receipt.
+- live-corpus Git lock and live-corpus artifact receipt.
+
+All provider and language fields are sourced from the registered provider and
+language manifests. No v2, v3, or v4 schema is introduced for this redesign.
+The v1 registry =binary= field is the sole provider runtime binary-name
+authority; release metadata may describe packaging but MUST match the registry
+before installation.
+
+* Required Scenarios
+
+** Bootstrap
+
+- =ASP_NO_AGENT=1= works before activation parsing.
+- Inline wrapper assignment and inherited environment have identical meaning.
+- A malformed generated activation cannot block health/install/self-repair.
+- A malformed user-authored activation remains fail-closed.
+
+** Lazy provider activation
+
+- Rust query loads only =rs-harness=.
+- Gerbil Scheme query loads only =gerbil-scheme-harness=.
+- Provider-ID-only query loads exactly that provider.
+- A =.ss= owner triggers the registered Gerbil provider without a hardcoded
+  language branch.
+- An unrelated missing TypeScript receipt does not block Rust or Gerbil.
+- A missing requested provider fails closed.
+- CompleteGeneration requires all selected providers.
+
+** Evidence
+
+- Provider publication uses fresh TargetProvider collection.
+- Provider consumption reads the exact current provider-digest envelope.
+- A missing current-digest envelope triggers one TargetProvider publication
+  before consumption; it never triggers CompleteGeneration.
+- Missing, tampered, or stale current evidence fails closed.
+- Stale envelopes for another digest are ignored.
+
+** Binary publication
+
+- the registered-provider count and binary identities are enumerated from the
+  v1 ProviderRegistry schema rather than a Rust hardcoded list;
+- a target filename that differs from the declared binary identity is rejected;
+- installation writes one immutable digest artifact;
+- =latest/<binary-name>= switches atomically;
+- =runtime/bin/asp= remains a stable symlink;
+- switching ASP does not change a harness pointer, and switching one harness
+  does not change ASP or another harness;
+- every supported global alias resolves to the same immutable artifact;
+- interrupted publication leaves the previous =latest= runnable;
+- an existing active-artifact receipt is updated in the same guarded install
+  transaction, while a genuinely absent receipt remains a typed
+  =not-materialized= bootstrap state;
+- no manual relink is required.
+
+** Live corpus artifacts
+
+- every registered language route has at least one locked real upstream
+  project;
+- every corpus lock entry names the registered provider ID and language ID;
+- a missing or non-forty-hex revision is rejected before materialization;
+- the checked-out =HEAD= and canonical remote must match the lock;
+- explicit developer/CI sync uses =gix= and publishes the pinned checkout
+  atomically; no workflow-owned Git subprocess constructs the store;
+- developer materialization writes only beneath
+  =$ASP_STATE_HOME/git/repo/blake3-256= and
+  =$ASP_STATE_HOME/artifacts/live-corpus/v1=;
+- developer Cargo live tests consume a qualified artifact and never clone;
+- Nix/Bazel injected trees produce the same artifact identity as developer
+  materialization;
+- missing sandbox resources fail closed with the exact resource ID;
+- performance baselines cannot change resource identity.
+
+* Performance Gates
+
+- bootstrap override classification: no activation IO;
+- warm provider selection: one index read and at most one provider activation
+  read;
+- unrelated provider artifacts: zero reads;
+- warm hook match and provider dispatch remain millisecond operations;
+- a warm search or exact query whose provider digest and source-envelope
+  Merkle identity are unchanged reads the provider's persistent structural
+  index directly;
+- a warm search or exact query MUST NOT reread and rehash every source blob,
+  rebuild the workspace Merkle tree, or start the provider harness merely to
+  prove an already-qualified identity again;
+- the provider harness is started only when the provider digest, source
+  envelope identity, or requested structural-index capability is not already
+  materialized;
+- provider materialization publishes the structural index and its qualification
+  receipt before atomically switching the current provider-index pointer;
+- an envelope verification cache without a persistent structural index is not a
+  conforming performance fix, because source loading and provider startup would
+  remain on the warm path;
+- the Merkle-qualified live-memory code-search fixture runs at least 128
+  samples, requires p95 at or below =1ms= and every sample at or below =5ms=,
+  and forbids best-of sampling;
+- that live-memory fixture requires zero Turso opens, provider processes,
+  native finder processes, source-blob reads, source rehashes, and fallbacks;
+- a separate resident-session fixture covers a live-memory miss against an
+  already-open Turso 0.7 connection; it requires p95 at or below =5ms=, every
+  sample at or below =10ms=, and zero additional connection opens;
+- Merkle identity drift never reuses live memory or a resident Turso read
+  model: it returns an explicit cold-required state before projecting code;
+- install switch cost is independent of artifact size after immutable artifact
+  publication.
+- the concurrent developer live-corpus gate records every sample, uses no
+  best-of selection, and binds its receipt to the exact corpus artifact digest;
+- warm live-corpus search has zero Git operations, zero corpus
+  materializations, and zero source-tree rehashes after artifact qualification.
+
+* Migration
+
+The aggregate generated activation is migration input, not a second runtime
+authority.
+
+On first access:
+
+1. parse a recognized aggregate/legacy activation;
+2. publish provider-scoped v1 artifacts;
+3. publish the v1 activation index last;
+4. record a migration receipt;
+5. route only through provider-scoped artifacts.
+
+After successful migration, no production code reads aggregate activation
+fields. Compatibility ends at the materializer boundary.

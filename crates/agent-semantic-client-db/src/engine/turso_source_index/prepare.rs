@@ -186,7 +186,7 @@ pub(super) async fn prepare_turso_source_index_rows(
             .is_some_and(|(generation_id, fingerprint)| {
                 generation_id == &physical_generation_id && fingerprint == &selector_fingerprint
             });
-    let use_membership_frontier = reuse_active_generation || selector_projection_unchanged;
+    let use_membership_frontier = reuse_active_generation && selector_projection_unchanged;
     let row_owner_paths = if use_membership_frontier {
         membership_changed_owner_paths
             .iter()

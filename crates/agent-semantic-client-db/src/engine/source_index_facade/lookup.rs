@@ -1,12 +1,18 @@
 //! Read-only source-index and graph-owner lookup methods.
 
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use agent_semantic_client_core::project_client_cache_dir_read_only;
 
 use agent_semantic_client_core::{LanguageId, state_core::TURSO_BACKEND};
 
-use crate::engine::facade::{ClientDbEngine, block_on_db_engine_async};
+use crate::engine::facade::{
+    ClientDbEngine, ClientDbEngineReadSession, ClientDbEngineSourceIndexQueryCacheKey,
+    block_on_db_engine_async,
+};
 use crate::engine::source_index_candidate_selection::{
     query_turso_source_index_candidates_with_connection,
     query_turso_source_index_snapshot_candidates_for_scope_with_connection,
@@ -96,6 +102,8 @@ impl ClientDbEngine {
                 limit,
                 expected_snapshot_root.as_str(),
                 expected_index_artifact_digest.as_str(),
+                None,
+                None,
             )
             .await
         })
@@ -135,6 +143,8 @@ impl ClientDbEngine {
             limit,
             &source_snapshot.root_digest,
             &expected_index_artifact_digest,
+            None,
+            None,
         )
         .await
     }
@@ -166,8 +176,76 @@ impl ClientDbEngine {
             limit,
             &source_snapshot.root_digest,
             &expected_index_artifact_digest,
+            None,
+            None,
         )
         .await
+    }
+}
+
+impl ClientDbEngineReadSession {
+    /// Lookup source-index candidates through this already-open Turso 0.7 read session.
+    pub async fn lookup_source_index_read_model(
+        &self,
+        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+        query: &str,
+        language_id: Option<&LanguageId>,
+        limit: u32,
+    ) -> Result<ClientDbSourceIndexLookupResult, String> {
+        let expected_index_artifact_digest =
+            agent_semantic_content_identity::hash_derived_artifact_key(
+                agent_semantic_content_identity::DerivedArtifactKeyInput {
+                    artifact_kind: "source-index",
+                    schema_id: "asp.source-index-artifact.v1",
+                    snapshot_root: &source_snapshot.root_digest,
+                    provider_digest: &source_snapshot.provider_digest,
+                    parameters: &[],
+                },
+            )
+            .value;
+        let cache_key = ClientDbEngineSourceIndexQueryCacheKey {
+            snapshot_root: source_snapshot.root_digest.clone(),
+            artifact_digest: expected_index_artifact_digest.clone(),
+            query: query.to_string(),
+            language_id: language_id.map(|language_id| language_id.as_str().to_string()),
+            limit,
+        };
+        let mut cache_hasher = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&cache_key, &mut cache_hasher);
+        let cache_shard_index =
+            std::hash::Hasher::finish(&cache_hasher) as usize % self.source_index_query_cache.len();
+        if let Some(result) = self.source_index_query_cache[cache_shard_index]
+            .lock()
+            .get(&cache_key)
+            .cloned()
+        {
+            return Ok(result);
+        }
+        let result = lookup_source_index_read_model_at_path(
+            self.turso_db_path.clone(),
+            None,
+            query,
+            language_id,
+            limit,
+            &source_snapshot.root_digest,
+            &expected_index_artifact_digest,
+            Some(self.turso_connection.clone()),
+            Some(self.source_index_scope_cache.as_ref()),
+        )
+        .await?;
+        if matches!(
+            result.state,
+            ClientDbSourceIndexLookupState::Hit
+                | ClientDbSourceIndexLookupState::Miss
+                | ClientDbSourceIndexLookupState::EmptyIndex
+        ) {
+            let mut shard = self.source_index_query_cache[cache_shard_index].lock();
+            if shard.len() >= 64 {
+                shard.clear();
+            }
+            shard.insert(cache_key, result.clone());
+        }
+        Ok(result)
     }
 }
 
@@ -302,6 +380,17 @@ async fn lookup_source_index_read_model_at_path(
     limit: u32,
     expected_snapshot_root: &str,
     expected_index_artifact_digest: &str,
+    resident_connection: Option<Arc<turso::Connection>>,
+    resident_scope_cache: Option<
+        &tokio::sync::RwLock<
+            Option<(
+                String,
+                String,
+                TursoSourceIndexLookupScope,
+                agent_semantic_content_identity::SourceSnapshotEvidence,
+            )>,
+        >,
+    >,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
     if limit == 0 {
         return Ok(source_index_lookup_result(
@@ -322,16 +411,19 @@ async fn lookup_source_index_read_model_at_path(
         crate::engine::turso_source_index::turso_source_index_access_lock(&db_path)
             .read_owned()
             .await;
-    let connection = match connect_turso_client_db_read_only(&db_path).await {
-        Ok(connection) => connection,
-        Err(error) if error.to_ascii_lowercase().contains("entity not found") => {
-            return Ok(source_index_lookup_result(
-                db_path,
-                ClientDbSourceIndexLookupState::MissingDb,
-                Vec::new(),
-            ));
-        }
-        Err(error) => return Err(error),
+    let connection = match resident_connection {
+        Some(connection) => connection,
+        None => match connect_turso_client_db_read_only(&db_path).await {
+            Ok(connection) => Arc::new(connection),
+            Err(error) if error.to_ascii_lowercase().contains("entity not found") => {
+                return Ok(source_index_lookup_result(
+                    db_path,
+                    ClientDbSourceIndexLookupState::MissingDb,
+                    Vec::new(),
+                ));
+            }
+            Err(error) => return Err(error),
+        },
     };
     let requested_scope_candidates = if let Some(requested_scope) = requested_scope.as_ref() {
         let candidates =
@@ -353,9 +445,25 @@ async fn lookup_source_index_read_model_at_path(
     } else {
         None
     };
-    let scope =
-        match resolve_turso_source_index_lookup_scope(&connection, requested_scope.clone()).await {
-            Ok(Some(scope)) => scope,
+    let cached_scope = match resident_scope_cache {
+        Some(cache) => cache
+            .read()
+            .await
+            .as_ref()
+            .filter(|(snapshot_root, artifact_digest, _, _)| {
+                snapshot_root == expected_snapshot_root
+                    && artifact_digest == expected_index_artifact_digest
+            })
+            .map(|(_, _, scope, snapshot)| (scope.clone(), snapshot.clone())),
+        None => None,
+    };
+    let scope_was_cached = cached_scope.is_some();
+    let (scope, cached_snapshot) = match cached_scope {
+        Some((scope, snapshot)) => (scope, Some(snapshot)),
+        None => match resolve_turso_source_index_lookup_scope(&connection, requested_scope.clone())
+            .await
+        {
+            Ok(Some(scope)) => (scope, None),
             Ok(None) => {
                 let state = match turso_source_index_lookup_schema_current(
                     &connection,
@@ -378,38 +486,53 @@ async fn lookup_source_index_read_model_at_path(
                 return Ok(source_index_lookup_result(db_path, state, Vec::new()));
             }
             Err(error) => return Err(error),
-        };
-    let persisted_snapshot = match serde_json::from_str::<
-        agent_semantic_content_identity::SourceSnapshotEvidence,
-    >(&scope.source_snapshot_json)
-    {
-        Ok(snapshot) => snapshot,
-        Err(_) => {
-            return Ok(source_index_lookup_result(
-                db_path,
-                ClientDbSourceIndexLookupState::ColdRequired,
-                Vec::new(),
-            ));
+        },
+    };
+    let persisted_snapshot = match cached_snapshot {
+        Some(snapshot) => snapshot,
+        None => {
+            let snapshot = match serde_json::from_str::<
+                agent_semantic_content_identity::SourceSnapshotEvidence,
+            >(&scope.source_snapshot_json)
+            {
+                Ok(snapshot) => snapshot,
+                Err(_) => {
+                    return Ok(source_index_lookup_result(
+                        db_path,
+                        ClientDbSourceIndexLookupState::ColdRequired,
+                        Vec::new(),
+                    ));
+                }
+            };
+            let persisted_index_artifact_digest =
+                agent_semantic_content_identity::hash_derived_artifact_key(
+                    agent_semantic_content_identity::DerivedArtifactKeyInput {
+                        artifact_kind: "source-index",
+                        schema_id: "asp.source-index-artifact.v1",
+                        snapshot_root: &snapshot.root_digest,
+                        provider_digest: &snapshot.provider_digest,
+                        parameters: &[],
+                    },
+                )
+                .value;
+            if snapshot.root_digest != expected_snapshot_root
+                || persisted_index_artifact_digest != expected_index_artifact_digest
+            {
+                return Ok(source_index_lookup_result(
+                    db_path,
+                    ClientDbSourceIndexLookupState::ColdRequired,
+                    Vec::new(),
+                ));
+            }
+            snapshot
         }
     };
-    let persisted_index_artifact_digest =
-        agent_semantic_content_identity::hash_derived_artifact_key(
-            agent_semantic_content_identity::DerivedArtifactKeyInput {
-                artifact_kind: "source-index",
-                schema_id: "asp.source-index-artifact.v1",
-                snapshot_root: &persisted_snapshot.root_digest,
-                provider_digest: &persisted_snapshot.provider_digest,
-                parameters: &[],
-            },
-        )
-        .value;
-    if persisted_snapshot.root_digest != expected_snapshot_root
-        || persisted_index_artifact_digest != expected_index_artifact_digest
-    {
-        return Ok(source_index_lookup_result(
-            db_path,
-            ClientDbSourceIndexLookupState::ColdRequired,
-            Vec::new(),
+    if !scope_was_cached && let Some(cache) = resident_scope_cache {
+        *cache.write().await = Some((
+            expected_snapshot_root.to_string(),
+            expected_index_artifact_digest.to_string(),
+            scope.clone(),
+            persisted_snapshot.clone(),
         ));
     }
     let candidates = match requested_scope_candidates {
@@ -428,17 +551,20 @@ async fn lookup_source_index_read_model_at_path(
             Err(error) => return Err(error),
         },
     };
-    let owner_rows_exist = match turso_source_index_owner_rows_exist(&connection, &scope).await {
-        Ok(owner_rows_exist) => owner_rows_exist,
-        Err(error) => return Err(error),
-    };
-    if candidates.is_empty() && !owner_rows_exist {
-        return Ok(source_index_lookup_result_for_snapshot(
-            db_path,
-            ClientDbSourceIndexLookupState::EmptyIndex,
-            Vec::new(),
-            persisted_snapshot,
-        ));
+    if candidates.is_empty() {
+        let owner_rows_exist = match turso_source_index_owner_rows_exist(&connection, &scope).await
+        {
+            Ok(owner_rows_exist) => owner_rows_exist,
+            Err(error) => return Err(error),
+        };
+        if !owner_rows_exist {
+            return Ok(source_index_lookup_result_for_snapshot(
+                db_path,
+                ClientDbSourceIndexLookupState::EmptyIndex,
+                Vec::new(),
+                persisted_snapshot,
+            ));
+        }
     }
     let state = if candidates.is_empty() {
         ClientDbSourceIndexLookupState::Miss

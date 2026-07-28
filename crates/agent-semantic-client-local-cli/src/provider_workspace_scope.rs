@@ -83,6 +83,84 @@ pub fn collect_provider_source_scope_files(
     Ok(files.into_values().take(limit).collect())
 }
 
+/// Collect the source-scope facts owned by one typed provider target.
+///
+/// This preserves the original registry snapshot as the admission evidence and
+/// derives a required-provider view from it. Query/materialization callers must
+/// not be blocked by unrelated providers in the same registry snapshot.
+pub fn collect_target_provider_source_scope_files(
+    project_root: &Path,
+    snapshot: &ProviderRegistrySnapshot,
+    language_id: &agent_semantic_client_core::LanguageId,
+    provider_id: &agent_semantic_client_core::ProviderId,
+    limit: usize,
+) -> Result<Vec<ProviderWorkspaceScopePathFile>, String> {
+    let provider = target_provider_by_id(snapshot, provider_id)?;
+    if &provider.language_id != language_id {
+        return Err(format!(
+            "target provider is not present in registry evidence: languageId={} providerId={}",
+            language_id.as_str(),
+            provider_id.as_str()
+        ));
+    }
+    collect_source_scope_files_for_target_provider(project_root, provider, limit)
+}
+
+/// Collect source-scope facts for one globally unique provider id.
+///
+/// Provider-id routing is intentionally independent of unrelated providers,
+/// while a missing or ambiguous requested provider still fails closed.
+pub fn collect_target_provider_source_scope_files_by_provider_id(
+    project_root: &Path,
+    snapshot: &ProviderRegistrySnapshot,
+    provider_id: &agent_semantic_client_core::ProviderId,
+    limit: usize,
+) -> Result<Vec<ProviderWorkspaceScopePathFile>, String> {
+    let provider = target_provider_by_id(snapshot, provider_id)?;
+    collect_source_scope_files_for_target_provider(project_root, provider, limit)
+}
+
+fn target_provider_by_id<'a>(
+    snapshot: &'a ProviderRegistrySnapshot,
+    provider_id: &agent_semantic_client_core::ProviderId,
+) -> Result<&'a agent_semantic_client_core::ResolvedProvider, String> {
+    let mut providers = snapshot
+        .providers
+        .iter()
+        .filter(|provider| &provider.provider_id == provider_id);
+    let provider = providers.next().ok_or_else(|| {
+        format!(
+            "target provider is not present in registry evidence: providerId={}",
+            provider_id.as_str()
+        )
+    })?;
+    if providers.next().is_some() {
+        return Err(format!(
+            "target provider identity is ambiguous in registry evidence: providerId={}",
+            provider_id.as_str()
+        ));
+    }
+    Ok(provider)
+}
+
+fn collect_source_scope_files_for_target_provider(
+    project_root: &Path,
+    provider: &agent_semantic_client_core::ResolvedProvider,
+    limit: usize,
+) -> Result<Vec<ProviderWorkspaceScopePathFile>, String> {
+    let mut files = BTreeMap::new();
+    collect_provider_source_scope_files_for_provider(project_root, provider, limit, &mut files)?;
+    if files.is_empty() {
+        return Err(format!(
+            "target provider exposed no source-scope facts: languageId={} providerId={} projectRoot={}",
+            provider.language_id.as_str(),
+            provider.provider_id.as_str(),
+            project_root.display()
+        ));
+    }
+    Ok(files.into_values().take(limit).collect())
+}
+
 pub fn provider_workspace_scope(
     project_root: &Path,
     provider: &ResolvedProvider,
@@ -422,3 +500,6 @@ struct RawProviderWorkspaceScopeFile {
 #[cfg(test)]
 #[path = "../tests/unit/provider_workspace_scope.rs"]
 mod provider_workspace_scope_tests;
+#[cfg(test)]
+#[path = "../tests/unit/provider_workspace_scope.rs"]
+mod tests;

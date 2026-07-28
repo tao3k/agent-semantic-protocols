@@ -88,6 +88,7 @@ fn global_reconciliation_atomically_updates_every_managed_path_alias() {
 
     let started = std::time::Instant::now();
     super::ensure_protocol_binary_installed(&super::ProtocolBinaryInstallPlan {
+        binary_identity: super::RuntimeBinaryIdentityV1::asp_bootstrap(),
         current_exe: source,
         target: primary_target.clone(),
         artifact_root: artifact_root.clone(),

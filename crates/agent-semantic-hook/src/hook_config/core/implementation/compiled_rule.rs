@@ -429,22 +429,12 @@ impl RuleMatch {
                     if tokens.len() > agent_semantic_command_match::MAX_STAGE_TOKENS {
                         agent_semantic_command_match::PrefixMatch::BudgetExceeded
                     } else {
-                        let wrapper = tokens
-                            .iter()
-                            .find(|token| !token.contains('='))
-                            .is_some_and(|token| {
-                                matches!(
-                                    token.as_str(),
-                                    "direnv" | "env" | "bash" | "sh" | "zsh" | "rtk"
+                        if prefix.is_empty()
+                            || tokens.windows(prefix.len()).any(|candidate| {
+                                agent_semantic_command_match::candidate_matches_prefix(
+                                    candidate, prefix,
                                 )
-                            });
-                        if agent_semantic_command_match::candidate_matches_prefix(tokens, prefix)
-                            || ((wrapper || prefix.len() > 1)
-                                && tokens.windows(prefix.len()).any(|candidate| {
-                                    agent_semantic_command_match::candidate_matches_prefix(
-                                        candidate, prefix,
-                                    )
-                                }))
+                            })
                         {
                             agent_semantic_command_match::PrefixMatch::Matched
                         } else {

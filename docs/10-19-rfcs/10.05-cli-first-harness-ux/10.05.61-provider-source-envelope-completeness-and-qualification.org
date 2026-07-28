@@ -1,0 +1,118 @@
+* 10.05.61 Provider Source Envelope Completeness and Qualification
+:PROPERTIES:
+:RFC_ID: 10.05.61
+:STATUS: ACTIVE
+:SCHEMA_VERSION: v1
+:END:
+
+** Problem
+
+Search discovery, exact query materialization, and complete workspace
+qualification currently share source-index state without sharing one explicit
+scope contract.  This permits three invalid outcomes:
+
+- a target-language search can be blocked by an unrelated provider;
+- a successful search can hand an exact query a stale provider source envelope;
+- a complete workspace generation can publish without executing and qualifying
+  every activated provider.
+
+The Rust language harness is an independent provider package.  It must not
+depend on the ASP protocol crate in its normal dependency graph.
+
+** Scope Contract
+
+The v1 source-index request has exactly three scope modes:
+
+*** TargetProviderId
+
+The caller supplies a provider id.  ASP resolves exactly one activated provider
+with that id and collects only that provider's typed source-scope packet.
+
+- an unrelated provider gap cannot block the request;
+- a missing or ambiguous requested provider fails closed;
+- the request does not authorize workspace generation.
+
+*** TargetLanguageProvider
+
+The caller supplies both language id and provider id.  ASP resolves exactly the
+matching activated provider and rejects a provider whose registered language
+does not match.
+
+- ordinary =asp gerbil-scheme search/query= requires only
+  =gerbil-scheme-harness=;
+- ordinary Rust search/query requires only =rs-harness=;
+- unrelated providers are neither started nor qualified;
+- a missing requested language or provider fails closed.
+
+*** CompleteGeneration
+
+Complete workspace generation, Merkle qualification, and global publication
+use =CompleteGeneration=.
+
+- every activated provider is required;
+- every provider command must return a typed source-scope packet;
+- provider commands, owners, selectors, query-pack identity, parser identity,
+  source snapshot, and provider digest are fan-in qualification evidence;
+- publication fails closed when any required provider or packet is missing.
+
+** Search to Exact Query Flow
+
+Target-provider search and exact query consume one provider-scoped generation:
+
+1. resolve the requested provider from the activated registry;
+2. lazy-load it only when its declared binary exists;
+3. collect its typed source-scope packet;
+4. derive the provider source snapshot and selector facts from that packet;
+5. publish the provider envelope and search receipt atomically;
+6. hand the exact structural selector and the same generation identity to
+   =query=;
+7. materialize only when provider id, language id, parser identity, query-pack
+   identity, workspace root, owner subtree, and source blob evidence all match.
+
+A snapshot mismatch is a target-provider refresh requirement.  It must not
+route to =CompleteGeneration= and must not be repaired by loading unrelated
+providers.
+
+** Freshness Authority
+
+DB Engine is the only reusable-generation authority.
+
+- selector fingerprint v1 is domain separated;
+- the fingerprint binds every exact-selector materialization proof field;
+- rebuild never overlays or reuses a previous generation;
+- refresh may reuse a membership frontier only when both generation identity
+  and selector projection fingerprint match;
+- a selector decode or proof failure makes the candidate generation unusable
+  and routes to a scoped rebuild.
+
+Client code must not maintain a second schema-and-file-hash-only reuse path.
+
+** Provider Packet Requirements
+
+Every target or complete-generation provider packet carries:
+
+- language id and provider id;
+- provider binary and query-pack identity;
+- parser identity;
+- source-scope files with provider-owned language attribution;
+- source snapshot evidence;
+- exact selector materialization proofs when selectors are emitted.
+
+Package-manager anchors and ignored paths come from the language harness
+packet.  ASP must not hard-code language extensions, manifest kinds, or package
+manager rules.
+
+** Acceptance
+
+- provider-id-only scope succeeds with only that provider present;
+- provider-id-only scope ignores unrelated provider gaps;
+- language-plus-provider scope ignores unrelated provider gaps;
+- missing requested provider and missing requested language fail closed;
+- Rust search and exact query succeed with only =rs-harness=;
+- Gerbil Scheme search and exact query succeed with only
+  =gerbil-scheme-harness=;
+- CompleteGeneration fails when any activated provider is unavailable;
+- a successful CompleteGeneration receipt reports non-zero provider commands
+  and, for a workspace containing structural items, non-zero selectors;
+- search and exact query report the same provider generation and source root;
+- the Rust harness normal dependency graph contains no ASP protocol crate.

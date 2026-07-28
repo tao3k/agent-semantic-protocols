@@ -17,6 +17,8 @@ jobs:
     name: V1 Search Runtime Matrix
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      ASP_STATE_HOME: ${{ runner.temp }}/asp-state-home
 
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +31,9 @@ jobs:
             languages/rust-lang-project-harness \
             languages/typescript-lang-project-harness \
             languages/python-lang-project-harness \
-            languages/JuliaLangProjectHarness.jl
+            languages/JuliaLangProjectHarness.jl \
+            languages/gerbil-scheme-language-project-harness \
+            languages/orgize
 
       - name: Install Nix for the project direnv environment
         uses: cachix/install-nix-action@v31
@@ -67,20 +71,12 @@ jobs:
         with:
           version: "1.12"
 
-      - name: Build V1 provider artifacts through direnv
+      - name: Build, publish, and activate every registered corpus provider
         shell: bash
         run: |
           set -euo pipefail
-          direnv exec . cargo build --release --bin asp
-          direnv exec . cargo build --manifest-path languages/rust-lang-project-harness/Cargo.toml --release --features cli --bin rs-harness
-          direnv exec . npm --prefix languages/typescript-lang-project-harness ci
-          direnv exec . npm --prefix languages/typescript-lang-project-harness run build
-          direnv exec . uv sync --project languages/python-lang-project-harness --frozen
-          direnv exec . env \
-            JULIA_DEPOT_PATH="$PWD/.cache/julia-depot:$HOME/.julia" \
-            ASP_JULIA_BUILD_DIR="$PWD/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local" \
-            ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 \
-            languages/JuliaLangProjectHarness.jl/juliac/build_provider.sh
+          direnv exec . just agent-tools-install-global \
+            "$ASP_STATE_HOME/runtime/bin"
 
       - name: Enforce V1 1193-owner Turso cold-write gate
         shell: bash
@@ -95,15 +91,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .data
-          jq -r '.corpora[] | [.repository, .revision, .directory] | @tsv' \
-            benchmarks/large-library-runtime-search.v1.baseline.json | \
-            while IFS=$'\t' read -r repository revision directory; do
-              git clone --filter=blob:none "https://github.com/${repository}.git" ".data/${directory}"
-              git -C ".data/${directory}" checkout --detach "$revision"
+          jq -r '.corpora[].resourceId' \
+            benchmarks/large-library-runtime-corpora.v1.json | \
+            while IFS= read -r resource_id; do
+              sync_receipt="$(
+                "$ASP_STATE_HOME/runtime/bin/asp" live-corpus sync \
+                  --resource "$resource_id" \
+                  --lock benchmarks/large-library-runtime-corpora.v1.json \
+                  --json
+              )"
+              checkout_path="$(jq -r '.checkoutPath' <<<"$sync_receipt")"
+              "$ASP_STATE_HOME/runtime/bin/asp" live-corpus materialize \
+                --resource "$resource_id" \
+                --source "$checkout_path" \
+                --lock benchmarks/large-library-runtime-corpora.v1.json
             done
 
-      - name: Run V1 14-corpus search command matrix
+      - name: Run V1 registered-corpus search command matrix
         shell: bash
         run: |
           set -euo pipefail

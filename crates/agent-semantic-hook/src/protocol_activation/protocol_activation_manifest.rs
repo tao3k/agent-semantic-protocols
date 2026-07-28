@@ -17,7 +17,21 @@ pub struct HookActivation {
     pub generated_by: ActivationGeneratedBy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generated_at: Option<String>,
+    pub rankers: Vec<ActivatedRankerConfig>,
     pub providers: Vec<ActivatedProviderConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivatedRankerConfig {
+    pub schema_id: String,
+    pub ranker_id: String,
+    pub capability_id: String,
+    pub protocol_version: String,
+    pub binary: String,
+    pub argv_prefix: Vec<String>,
+    pub content_digest: String,
+    pub artifact_metadata_digest: String,
 }
 
 /// Runtime and version that generated a project activation.
@@ -476,6 +490,7 @@ pub struct ManifestSourceDefaults {
 /// In-memory runtime resolved from activation plus static provider manifests.
 pub struct HookRuntime {
     pub project_root: String,
+    pub rankers: Vec<ActivatedRankerConfig>,
     pub providers: Vec<ActivatedProvider>,
 }
 

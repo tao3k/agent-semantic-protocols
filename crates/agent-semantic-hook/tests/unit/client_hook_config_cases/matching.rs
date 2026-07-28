@@ -305,6 +305,240 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
 }
 
 #[test]
+fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
+    let root = temp_root("config-driven-match-engine-contract");
+    let config = ClientHookConfig::default();
+    let registry = registry();
+    let production = toml::from_str::<toml::Value>(include_str!(
+        "../../../../agent-semantic-config/templates/hooks/config.toml"
+    ))
+    .expect("production hook config");
+    let matrix = toml::from_str::<toml::Value>(include_str!(
+        "../../../../agent-semantic-config/templates/hooks/config-test.toml"
+    ))
+    .expect("hook match config test");
+    let matrix_schema = serde_json::from_str::<serde_json::Value>(include_str!(
+        "../../../../../schemas/semantic-hook-match-config-test.v1.schema.json"
+    ))
+    .expect("hook match config-test schema");
+    let matrix_json = serde_json::to_value(&matrix).expect("config-test JSON projection");
+    assert!(
+        jsonschema::validator_for(&matrix_schema)
+            .expect("hook match config-test validator")
+            .is_valid(&matrix_json),
+        "{matrix_json}"
+    );
+    let max_matcher_micros = matrix["performance"]["maxMatcherMicros"]
+        .as_integer()
+        .expect("matcher latency gate") as u128;
+
+    let production_rules = production["rules"].as_array().expect("production rules");
+    let matrix_rules = matrix["rules"].as_array().expect("config-test rules");
+    let production_rule_ids = production_rules
+        .iter()
+        .map(|rule| rule["id"].as_str().expect("production rule id"))
+        .collect::<std::collections::BTreeSet<_>>();
+    let matrix_rule_ids = matrix_rules
+        .iter()
+        .map(|rule| rule["id"].as_str().expect("config-test rule id"))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        matrix_rule_ids, production_rule_ids,
+        "config-test.toml must cover every production rule exactly once"
+    );
+    assert_eq!(
+        matrix_rule_ids.len(),
+        matrix_rules.len(),
+        "config-test.toml contains duplicate rule ids"
+    );
+    let wrapper_templates = matrix["wrapperTemplates"]
+        .as_array()
+        .expect("wrapper templates");
+    let run_case = |tool_name: &str, tool_input: serde_json::Value, case_id: &str| {
+        let payload = json!({
+            "session_id": "config-driven-match-engine-contract",
+            "tool_name": tool_name,
+            "tool_input": tool_input
+        });
+        let started = std::time::Instant::now();
+        let decision = classify_hook_with_config(HookClassificationRequest {
+            registry: &registry,
+            config: &config,
+            platform: "codex",
+            event: "pre-tool",
+            payload: &payload,
+        });
+        let elapsed_micros = started.elapsed().as_micros();
+        assert!(
+            elapsed_micros <= max_matcher_micros,
+            "matcher exceeded config-test.toml gate: case={case_id} elapsedMicros={elapsed_micros} maxMatcherMicros={max_matcher_micros}"
+        );
+        decision
+    };
+
+    for rule in matrix_rules {
+        let rule_id = rule["id"].as_str().expect("config-test rule id");
+        let production_rule = production_rules
+            .iter()
+            .find(|candidate| candidate["id"].as_str() == Some(rule_id))
+            .expect("covered production rule");
+        let expected_decision = production_rule["decision"]
+            .as_str()
+            .expect("production decision");
+        let expected_reason = production_rule
+            .get("reasonKind")
+            .and_then(toml::Value::as_str);
+        let positive_commands = rule.get("positiveCommands").and_then(toml::Value::as_array);
+        let negative_commands = rule.get("negativeCommands").and_then(toml::Value::as_array);
+        let positive_tools = rule.get("positiveTools").and_then(toml::Value::as_array);
+        let negative_tools = rule.get("negativeTools").and_then(toml::Value::as_array);
+        assert!(
+            positive_commands.is_some() || positive_tools.is_some(),
+            "{rule_id} has no positive cases"
+        );
+        assert!(
+            negative_commands.is_some() || negative_tools.is_some(),
+            "{rule_id} has no negative cases"
+        );
+
+        macro_rules! assert_positive {
+            ($decision:expr, $case_id:expr, $expected_command:expr) => {{
+                let decision = $decision;
+                let case_id = $case_id;
+                let expected_command: Option<&str> = $expected_command;
+                let decision_json =
+                    serde_json::to_value(decision).expect("serialize hook decision");
+                assert_eq!(
+                    decision_json["fields"]["configRuleId"].as_str(),
+                    Some(rule_id),
+                    "positive case selected the wrong rule: {case_id}"
+                );
+                assert_eq!(
+                    decision_json["decision"]
+                        .as_str()
+                        .map(str::to_ascii_lowercase)
+                        .as_deref(),
+                    Some(expected_decision),
+                    "positive case selected the wrong decision: {case_id}"
+                );
+                if let Some(expected_reason) = expected_reason {
+                    assert_eq!(
+                        decision_json["reasonKind"].as_str(),
+                        Some(expected_reason),
+                        "positive case selected the wrong reason: {case_id}"
+                    );
+                }
+                if let Some(dispatch) = production_rule.get("dispatch") {
+                    assert_eq!(
+                        decision_json["fields"]["receiptKind"].as_str(),
+                        dispatch["receiptKind"].as_str(),
+                        "positive case selected the wrong receipt: {case_id}"
+                    );
+                    assert!(
+                        decision_json["fields"]["residentName"].is_string(),
+                        "positive case lost resident dispatch: {case_id}"
+                    );
+                }
+                if let Some(expected_command) = expected_command
+                    && let Some(interactive_argv) =
+                        decision_json["interactiveCommand"]["argv"].as_array()
+                    && let Some(index) = interactive_argv
+                        .iter()
+                        .position(|argument| argument.as_str() == Some("--command-json"))
+                {
+                    let dispatched = serde_json::from_str::<Vec<String>>(
+                        interactive_argv[index + 1]
+                            .as_str()
+                            .expect("typed command-json"),
+                    )
+                    .expect("decode command-json");
+                    assert_eq!(
+                        dispatched,
+                        ["/bin/sh", "-c", expected_command],
+                        "interactive dispatch changed the command: {case_id}"
+                    );
+                }
+            }};
+        }
+
+        for command in positive_commands
+            .into_iter()
+            .flatten()
+            .map(|value| value.as_str().expect("positive command"))
+        {
+            let decision = run_case(
+                "Bash",
+                json!({"command": command}),
+                &format!("{rule_id}:positive"),
+            );
+            assert_positive!(&decision, command, Some(command));
+            for wrapper in wrapper_templates {
+                let wrapped = wrapper
+                    .as_str()
+                    .expect("wrapper template")
+                    .replace("{command}", command);
+                let decision = run_case(
+                    "Bash",
+                    json!({"command": wrapped}),
+                    &format!("{rule_id}:wrapper:{wrapped}"),
+                );
+                assert_positive!(&decision, &wrapped, Some(&wrapped));
+            }
+        }
+        if positive_commands.is_none() {
+            assert!(
+                rule.get("wrapperExemption")
+                    .and_then(toml::Value::as_str)
+                    .is_some(),
+                "{rule_id} must explain why wrappers do not apply"
+            );
+        }
+        for command in negative_commands
+            .into_iter()
+            .flatten()
+            .map(|value| value.as_str().expect("negative command"))
+        {
+            let decision = run_case(
+                "Bash",
+                json!({"command": command}),
+                &format!("{rule_id}:negative"),
+            );
+            assert_ne!(
+                decision
+                    .fields
+                    .get("configRuleId")
+                    .and_then(serde_json::Value::as_str),
+                Some(rule_id),
+                "negative case unexpectedly selected {rule_id}: {command}"
+            );
+        }
+        for tool_case in positive_tools.into_iter().flatten() {
+            let tool_name = tool_case["name"].as_str().expect("positive tool name");
+            let tool_input =
+                serde_json::to_value(&tool_case["input"]).expect("positive tool input");
+            let decision = run_case(tool_name, tool_input, &format!("{rule_id}:positive-tool"));
+            assert_positive!(&decision, tool_name, None);
+        }
+        for tool_case in negative_tools.into_iter().flatten() {
+            let tool_name = tool_case["name"].as_str().expect("negative tool name");
+            let tool_input =
+                serde_json::to_value(&tool_case["input"]).expect("negative tool input");
+            let decision = run_case(tool_name, tool_input, &format!("{rule_id}:negative-tool"));
+            assert_ne!(
+                decision
+                    .fields
+                    .get("configRuleId")
+                    .and_then(serde_json::Value::as_str),
+                Some(rule_id),
+                "negative tool case unexpectedly selected {rule_id}: {tool_name}"
+            );
+        }
+    }
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn builtin_materialization_rule_is_permanent_and_source_scoped() {
     let config = ClientHookConfig::default();
     let registry = crate::classifier::rust_registry();
@@ -462,7 +696,7 @@ fn registered_source_read_action_matches_real_payload_field_variants() {
     let config = ClientHookConfig::default();
     let registry = crate::classifier::rust_registry();
 
-    for (label, payload) in [
+    let cases = [
         (
             "codex-snake-case",
             json!({
@@ -486,7 +720,9 @@ fn registered_source_read_action_matches_real_payload_field_variants() {
                 "arguments": {"path": "*.rs"}
             }),
         ),
-    ] {
+    ];
+
+    for (label, payload) in cases {
         let decision = classify_hook_with_config(HookClassificationRequest {
             registry: &registry,
             config: &config,
@@ -502,19 +738,19 @@ fn registered_source_read_action_matches_real_payload_field_variants() {
         );
         assert_eq!(
             decision.fields["configRuleId"], "materialize-registered-source-read-action",
-            "{label}"
+            "{label}: payload={payload}"
         );
-        assert_eq!(decision.fields["agentAction"]["action"], "read", "{label}");
-        assert_eq!(decision.fields["agentAction"]["effect"], "read", "{label}");
+        assert_eq!(decision.fields["agentAction"]["action"], "read", "{label}: payload={payload}");
+        assert_eq!(decision.fields["agentAction"]["effect"], "read", "{label}: payload={payload}");
         assert_eq!(
             decision.fields["normalizedActions"][0]["operationIntent"], "direct-read",
-            "{label}"
+            "{label}: payload={payload}"
         );
         assert!(
             decision.fields["normalizedActions"][0]["paths"]
                 .as_array()
                 .is_some_and(|paths| !paths.is_empty()),
-            "{label}: {decision:?}"
+            "{label}: payload={payload}: {decision:?}"
         );
     }
 }

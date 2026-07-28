@@ -26,13 +26,12 @@ pub struct MemorySearchGenerationV1 {
 }
 
 impl MemorySearchGenerationV1 {
-    /// Return the canonical binary Merkle depth for a complete leaf set.
-    pub fn expected_root_depth(leaf_count: usize) -> usize {
-        if leaf_count <= 1 {
-            0
-        } else {
-            usize::BITS as usize - (leaf_count - 1).leading_zeros() as usize
-        }
+    /// Memory Search is the resident, high-change projection of an active generation.
+    ///
+    /// `rootDepth` identifies the projection mode, not the physical height of a
+    /// Merkle tree. Resident Memory Search is therefore always depth zero.
+    pub fn expected_root_depth(_leaf_count: usize) -> usize {
+        0
     }
 }
 

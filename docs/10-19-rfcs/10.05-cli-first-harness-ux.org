@@ -52,6 +52,86 @@ materialize activation or persistent State for that path.
 
 - [[file:10.05-cli-first-harness-ux/10.05.00-overview.org][Overview And Non-Goals]] :: One-sentence summary through What NOT to build: the anti-patterns.
 - [[file:10.05-cli-first-harness-ux/10.05.10-search-query-surface.org][Search Query Surface]] :: CLI is the protocol: search plus query surface.
+Exact =query --selector= is a direct parser operation because its canonical selector already names both the grammar and one owner path. The exact path MUST validate that the owner is contained by the requested provider workspace, read exactly that one live file, and ask the provider parser to project the selected item from those in-memory bytes. It returns parser-owned byte spans, the requested code projection, and the live file digest without opening Turso, CAS, a source envelope, a workspace Merkle tree, or requiring =asp sync .=. The provider-native v1 response MUST echo the request selector byte-for-byte as =requestedStructuralSelector= and MUST report its parser-resolved identity separately as =structuralSelector=. ASP validates the request echo, owner, source digest, byte span, and projected bytes exactly; it MUST NOT infer provider canonicalization through prefix or substring matching. Source envelopes and incremental generation belong only to reasoning =search=: an unchanged owner reads its published index, while a missing or changed owner updates only that owner and the minimum dependency closure rather than scanning or materializing the full crate. A complete =asp sync .= remains the explicit full-generation and recovery boundary for search. The v1 search envelope requires =providerWorkspaceRoot= and =providerWorkspaceIdentityDigest= so one provider can publish several semantic workspaces without last-writer-wins aliasing; this is a v1 contract completion, not a compatibility v2.
+
+* Incremental reasoning-search source authority
+
+Ordinary =search= MUST NOT require a complete source envelope before it can
+route an owner or Tree-sitter request.  Its command context carries only the
+target =languageId=, =providerId=, provider-workspace identity, a persisted
+generation handle, and an optional explicit owner intent.  It MUST NOT carry a
+materialized =CurrentSourceIndexSnapshot= or source-blob collection.
+
+The v1 owner acquisition decision is metadata-first:
+
+1. Canonicalize the explicit owner inside the selected provider workspace.
+2. Read the persisted owner fingerprint from the project Turso 0.7 database.
+3. Stat the live owner.  The fingerprint binds file identity, byte length,
+   modification time, change time, and the last admitted content digest.
+4. If file identity, byte length, modification time, and change time are
+   unchanged, reuse the indexed parser facts and content digest.  This path
+   performs zero source byte reads, zero provider parses, zero CAS writes, zero
+   index writes, and zero Merkle writes.  Change time is required so a
+   same-length replacement that restores modification time cannot be admitted
+   as unchanged.
+5. If the owner is changed or new, read and hash exactly that owner, invoke the
+   selected provider parser exactly once, and atomically upsert its fingerprint,
+   parser facts, structural selectors, byte spans, Merkle leaf, and only the
+   affected ancestor path nodes.
+
+The transaction is owner-scoped and fail-closed.  It either publishes the new
+owner facts and generation root together or leaves the preceding generation
+visible.  It MUST NOT rebuild the full Merkle tree, materialize a provider
+source envelope, write CAS source bytes, open another provider, or retain an
+SQLite/legacy compatibility path.
+
+=asp <language> search --treesitter-query= is a reasoning-search operation.
+It compiles the target language grammar, queries the selected provider's
+persisted parser facts, and returns capture signatures plus parser-owned
+structural selectors.  A complete unchanged generation is index-only.  Dirty
+owners are refreshed through the same bounded owner transaction before their
+facts are admitted.  Rust search is not blocked by incomplete TypeScript,
+Python, Julia, or other provider generations.
+
+When a workspace-wide request has no complete provider generation, ASP returns
+typed =partial= completeness with the indexed owner count, remaining dirty or
+unindexed owner count, the bounded work performed in this invocation, and the
+next incremental continuation.  It MUST NOT silently walk, parse, envelope, or
+Merkle-materialize the full workspace.  =asp sync .= remains an explicit
+full-generation recovery operation for callers that require complete
+enumeration or negative proof.
+
+Search routing may open the project Turso 0.7 database.  It MUST NOT create or
+depend on =hooks/state/languages/<language>=, hook event state, or another
+client-specific lifecycle directory.
+
+Workspace Tree-sitter persistence is query-specific.  An arbitrary compiled
+Tree-sitter query cannot be answered from the complete-owner item projection
+alone.  ASP keys each persisted query-owner result by
+=providerWorkspaceIdentityDigest=, =queryDigest=, =ownerPath=, and
+=ownerContentDigest=.  The record binds the processed state and the complete
+capture projections produced for that query and owner.  Repeating the same
+query against the same owner digest is index-only and performs zero source
+reads and zero parser invocations.  A new query or dirty owner consumes the
+bounded incremental budget, reads only the selected owner, runs the selected
+provider grammar once, and atomically publishes the query-owner result.
+
+Each capture projection MUST report its capture name and parser byte span.  ASP
+derives the canonical structural selector and signature by finding the
+smallest complete-owner item projection whose byte span contains the capture
+span.  A missing or stale complete-owner projection triggers at most one
+same-owner refresh before the query-owner record is admitted.  ASP MUST NOT
+guess item identity from capture text, selector prefixes, or substring
+matching.
+
+Provider-scoped owner inventory is a separate persisted authority.  Its
+completeness is explicitly =exact= or =known=.  An exact inventory permits an
+exact remaining-owner count and may close enumeration after the count reaches
+zero.  A known inventory reports only the known pending lower bound and cannot
+close enumeration or absence, even when that lower bound reaches zero.  Neither
+inventory nor query-specific cache stores source blobs or writes source bytes
+to CAS.
+
 - [[file:10.05-cli-first-harness-ux/10.05.12-search-query-semantic-abi.org][Search Query Semantic ABI]] :: Hard-cut v1 command classes, interactive execution plans, semantic hook classification, and exact-query handoff.
 - [[file:10.05-cli-first-harness-ux/10.05.15-tool-health-and-search-history.org][Tool Health And Search History]] :: Required external tool health plus artifact-backed search command feedback.
 - [[file:10.05-cli-first-harness-ux/10.05.20-prime-search-flow.org][Prime Search Flow]] :: The two-phase search model: deep prime → multi-pipe through graph-first projection controls.
@@ -70,6 +150,48 @@ materialize activation or persistent State for that path.
 - [[file:10.05-cli-first-harness-ux/10.05.90-gerbil-scheme-style-conventions.org][Gerbil Scheme Style Conventions]] :: Gerbil-specific source, t/ test, naming, and control-flow policy.
 - [[file:10.05-cli-first-harness-ux/10.05.93-search-runtime-performance-native-acceleration.org][Search Runtime Performance And Native Acceleration]] :: Shared search hot-path ownership, language adapter levels, performance receipts, and the admission gate for Native/C FFI acceleration.
 - [[file:10.05-cli-first-harness-ux/10.05.90-readiness-history.org][Readiness History And Bottom Line]] :: MVP order: M1–M7 through The bottom line.
+
+* Exact query projection contract
+
+Exact query has one explicit projection axis:
+
+#+begin_src shell
+asp <language-id> query \
+  --selector '<exact-structural-selector>' \
+  --projection <source|callable-skeleton> \
+  --workspace <workspace-root>
+#+end_src
+
+=query= never searches. The selector MUST already be parser-owned and exact.
+=projection= selects only the representation of that identity. =source=
+materializes the exact selected node bytes. =callable-skeleton= returns
+=agent.semantic-protocols.callable-skeleton-projection= =v1= and is valid only
+for a provider-owned callable selector.
+
+The projection request is mandatory. The public contract does not infer source
+versus skeleton from callable size, output TTY, model context, or provider
+defaults. The legacy =--code= and =--names-only= flags are not part of this hard
+cut. Clients, provider request packets, provider responses, and tests migrate
+together rather than keeping flag aliases that make the requested projection
+ambiguous.
+
+The provider-native request carries =projectionKind= byte-for-byte together
+with =generationIdentityDigest=, =parserIdentityDigest=, and =queryPackDigest=.
+The provider-native response echoes the requested mode as =projectionMode=.
+ASP rejects a response whose mode differs from the request. =source= carries =projectionText=.
+=callable-skeleton= carries a typed =projectionPayload= conforming to
+=callable-skeleton-projection.v1.schema.json=; a skeleton response without that
+payload fails closed and MUST NOT substitute the complete callable body.
+
+Every queryable skeleton child carries
+=asp.exact-structural-selector.v1=. A later exact query executes that returned
+selector with a new explicit projection. It does not use display ranges, byte
+offsets, labels, or sibling ordinals to rediscover the child.
+
+The Rust provider is the reference implementation, but the CLI and request
+shape are shared across language facades. A provider declares
+=callable-skeleton= only after every emitted queryable child round-trips through
+exact query and stale generation/parser/query-pack bindings fail closed.
 
 * Include order
 
@@ -163,3 +285,9 @@ global plugin cache, install reuses that native state and MUST NOT invoke
 =codex plugin marketplace add= or =codex plugin add=. If either proof is
 absent, the CLI-owned marketplace/add path remains required and failure is
 reported without pretending the plugin is installed.
+* Incremental workspace database ownership
+
+The process-resident workspace registry, canonical identity validation,
+session-lease lifetime, concurrency, and database-open receipt contract are
+owned by
+[[file:10.05-cli-first-harness-ux/10.05.65-process-resident-workspace-db-registry-v1.org][10.05.65 Process-resident workspace database registry v1]].

@@ -1,0 +1,57 @@
+{
+  "id": "gerbil-scheme.gerbil-intent-matrix",
+  "language": "gerbil-scheme",
+  "title": "Gerbil compiler and runtime live-corpus intent matrix",
+  "coverage": ["search-flow", "performance", "large-library"],
+  "tags": ["large-library", "gerbil", "intent-matrix"],
+  "evidence": {
+    "source": "handwritten",
+    "fixtureTier": "large-library",
+    "targetLibrary": {
+      "language": "gerbil-scheme",
+      "name": "Gerbil",
+      "package": "gerbil",
+      "repository": "mighty-gerbils/gerbil",
+      "workdirKind": "registry"
+    },
+    "intentCases": [
+      {
+        "intentKind": "feature-implementation",
+        "intent": "Locate the compiler and runtime owner frontier without opening large Scheme modules directly",
+        "stepIds": ["live-provider-query"],
+        "queryTerms": ["compiler", "runtime", "main"]
+      },
+      {
+        "intentKind": "api-usage",
+        "intent": "Find how Gerbil exposes module and package APIs through provider-owned search",
+        "stepIds": ["live-provider-query"],
+        "queryTerms": ["module", "package", "import"]
+      },
+      {
+        "intentKind": "implementation-principle",
+        "intent": "Trace macro expansion and runtime ownership from compact graph facts",
+        "stepIds": ["live-provider-query"],
+        "queryTerms": ["macro", "expand", "runtime"]
+      }
+    ]
+  },
+  "workdir": {"env": "SANDTABLE_GERBIL_SCHEME_GERBIL_ROOT"},
+  "steps": [
+    {
+      "id": "live-provider-query",
+      "command": [
+        "asp",
+        "gerbil-scheme",
+        "search",
+        "lexical",
+        "--query",
+        "compiler",
+        "--workspace",
+        ".",
+        "--view",
+        "seeds"
+      ],
+      "expect": {"lineProtocol": true}
+    }
+  ]
+}

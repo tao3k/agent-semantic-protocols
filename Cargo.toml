@@ -36,6 +36,7 @@ aho-corasick = "1.1.4"
 agent-semantic-content-identity = { path = "crates/agent-semantic-content-identity" }
 agent-semantic-artifacts = { path = "crates/agent-semantic-artifacts" }
 tokio = { version = "1", features = ["io-std", "io-util", "macros", "net", "process", "rt", "time"] }
+parking_lot = "0.12.5"
 
 blake3 = "1"
 bstr = "1"

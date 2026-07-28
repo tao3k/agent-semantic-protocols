@@ -19,6 +19,7 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 fs2 = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
+parking_lot.workspace = true
 turso.workspace = true
 turso_sdk_kit.workspace = true
 agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }

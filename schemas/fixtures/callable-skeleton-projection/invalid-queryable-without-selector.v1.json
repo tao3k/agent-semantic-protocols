@@ -1,0 +1,48 @@
+{
+  "schemaId": "agent.semantic-protocols.callable-skeleton-projection",
+  "schemaVersion": "v1",
+  "projectionKind": "callable-skeleton",
+  "languageId": "python",
+  "providerId": "py-harness",
+  "rootSelector": {
+    "schemaId": "asp.exact-structural-selector.v1",
+    "schemaVersion": "v1",
+    "languageId": "python",
+    "ownerPath": "src/dispatch.py",
+    "selector": "python://src/dispatch.py#node/function/run/identity=root",
+    "generationIdentityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "parserIdentityDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "queryPackDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "rootItemSelector": {
+      "schemaId": "asp.canonical-item-selector.v1",
+      "schemaVersion": "v1",
+      "languageId": "python",
+      "kind": "function",
+      "symbol": "run",
+      "scopes": [],
+      "structuralSelector": "python://src/dispatch.py#item/function/run"
+    },
+    "segments": []
+  },
+  "rootNodeId": "callable:run",
+  "callable": {
+    "kind": "function",
+    "displayName": "run",
+    "signature": "def run(command):"
+  },
+  "nodes": [
+    {
+      "nodeId": "callable:run",
+      "kind": "callable",
+      "label": "run",
+      "order": 0,
+      "queryable": true
+    }
+  ],
+  "relations": [],
+  "cost": {
+    "sourceBytes": 100,
+    "projectedBytes": 40,
+    "omittedBytes": 60
+  }
+}

@@ -13,7 +13,8 @@ fn state_home_provider_fixture_writes_lock_for_runtime_binary() {
     let _command = asp_command(&root);
 
     let provider_path = state_runtime_bin(&root).join("rs-harness");
-    let lock_path = state_home(&root).join("runtime/provider-locks/rust.lock.toml");
+    let lock_path =
+        agent_semantic_runtime::provider_receipt_dir(state_home(&root)).join("rust.lock.toml");
     let lock = std::fs::read_to_string(&lock_path).expect("read provider install lock");
     assert!(
         lock.contains("schemaId = \"asp.provider-install-lock.v1\""),

@@ -1,0 +1,104 @@
+{
+  "schemaId": "agent.semantic-protocols.callable-skeleton-projection",
+  "schemaVersion": "v1",
+  "projectionKind": "callable-skeleton",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "rootSelector": {
+    "schemaId": "asp.exact-structural-selector.v1",
+    "schemaVersion": "v1",
+    "languageId": "rust",
+    "ownerPath": "crates/example/src/dispatch.rs",
+    "selector": "rust://crates/example/src/dispatch.rs#node/function/run/identity=root",
+    "generationIdentityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "parserIdentityDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "queryPackDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "rootItemSelector": {
+      "schemaId": "asp.canonical-item-selector.v1",
+      "schemaVersion": "v1",
+      "languageId": "rust",
+      "kind": "function",
+      "symbol": "run",
+      "scopes": [],
+      "structuralSelector": "rust://crates/example/src/dispatch.rs#item/function/run"
+    },
+    "segments": []
+  },
+  "rootNodeId": "callable:run",
+  "callable": {
+    "kind": "function",
+    "displayName": "run",
+    "signature": "fn run(command: Command) -> Result<Receipt>"
+  },
+  "nodes": [
+    {
+      "nodeId": "callable:run",
+      "kind": "callable",
+      "label": "run",
+      "order": 0,
+      "queryable": false
+    },
+    {
+      "nodeId": "arm:rust",
+      "kind": "arm",
+      "label": "Command::Rust",
+      "order": 1,
+      "queryable": true,
+      "exactSelector": {
+        "schemaId": "asp.exact-structural-selector.v1",
+        "schemaVersion": "v1",
+        "languageId": "rust",
+        "ownerPath": "crates/example/src/dispatch.rs",
+        "selector": "rust://crates/example/src/dispatch.rs#node/function/run/arm/identity=pattern-command-rust",
+        "generationIdentityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "parserIdentityDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "queryPackDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "rootItemSelector": {
+          "schemaId": "asp.canonical-item-selector.v1",
+          "schemaVersion": "v1",
+          "languageId": "rust",
+          "kind": "function",
+          "symbol": "run",
+          "scopes": [],
+          "structuralSelector": "rust://crates/example/src/dispatch.rs#item/function/run"
+        },
+        "segments": [
+          {
+            "relation": "contains",
+            "kind": "arm",
+            "identity": "pattern-command-rust",
+            "label": "Command::Rust"
+          }
+        ]
+      },
+      "sourceLocatorHint": {
+        "displayLineStart": 20,
+        "displayLineEnd": 28
+      },
+      "languageFacts": {
+        "patternKind": "enum-variant"
+      }
+    }
+  ],
+  "relations": [
+    {
+      "fromNodeId": "callable:run",
+      "toNodeId": "arm:rust",
+      "kind": "contains"
+    }
+  ],
+  "cost": {
+    "sourceBytes": 4096,
+    "projectedBytes": 640,
+    "omittedBytes": 3456,
+    "estimatedSourceTokens": 1024,
+    "estimatedProjectedTokens": 160,
+    "tokenEstimator": "fixture-estimator.v1"
+  },
+  "omissionReasons": [
+    "callable bodies omitted until exact child query"
+  ],
+  "languageFacts": {
+    "edition": "2024"
+  }
+}

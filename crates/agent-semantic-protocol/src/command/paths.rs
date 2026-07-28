@@ -104,7 +104,7 @@ impl ProjectPaths {
         let artifacts_dir = project_state_paths.artifacts_dir;
         let runtime_home = state_root.join("runtime");
         let runtime_bin_dir = runtime_home.join("bin");
-        let provider_lock_dir = runtime_home.join("provider-locks");
+        let provider_lock_dir = project_state_paths.provider_lock_dir;
         let org_state_root = protocol_home.join("org");
         let org_state_skill = org_state_root.join("templates").join("ASP_ORG_SKILL.org");
         let org_artifacts = artifacts_dir.join("org");

@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Fully resolved State Core identity, paths, and cache evidence.
+/// Fully resolved State Core identity and paths.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedState {
@@ -23,7 +23,6 @@ pub struct ResolvedState {
     pub workspace: WorkspaceIdentity,
     pub scope_id: ScopeId,
     pub paths: StatePaths,
-    pub project_local_cache: Option<ProjectLocalCacheEvidence>,
 }
 
 impl ResolvedState {
@@ -31,23 +30,7 @@ impl ResolvedState {
     pub fn resolve(cwd: impl AsRef<Path>) -> Result<Self, String> {
         let cwd = canonicalize_if_possible(cwd.as_ref());
         let explicit_state_home = env::var_os(ASP_STATE_HOME_ENV);
-        let git = GitIdentity::discover(&cwd);
-        let checkout_local_root = git.toplevel.as_deref().unwrap_or(&cwd);
-        let state_home = if explicit_state_home.is_none()
-            && (git
-                .remote_url
-                .as_ref()
-                .and_then(RemoteUrl::canonical_identity)
-                .is_none()
-                || cwd.starts_with(canonicalize_if_possible(&env::temp_dir())))
-        {
-            checkout_local_root
-                .join(".cache")
-                .join("agent-semantic-protocols")
-                .join("state")
-        } else {
-            resolve_state_home_from(explicit_state_home, env::var_os("HOME"))?
-        };
+        let state_home = resolve_state_home_from(explicit_state_home, env::var_os("HOME"))?;
         Self::resolve_with_state_home(cwd, state_home)
     }
 
@@ -63,22 +46,12 @@ impl ResolvedState {
         let repo = RepoIdentity::from_checkout(&git, &checkout);
         let workspace = WorkspaceIdentity::from_checkout(&git, &checkout, &repo.repo_id);
         let paths = StatePaths::new(&state_home, &repo.repo_id, &workspace.workspace_id);
-        let project_local_cache = git
-            .toplevel
-            .as_deref()
-            .map(|root| root.join(".cache").join("agent-semantic-protocol"))
-            .map(|path| ProjectLocalCacheEvidence {
-                path: path.clone(),
-                exists: path.exists(),
-            });
-
         Ok(Self {
             state_home,
             repo,
             workspace,
             scope_id: ScopeId(DEFAULT_SCOPE_ID.to_string()),
             paths,
-            project_local_cache,
         })
     }
 
@@ -102,17 +75,8 @@ impl ResolvedState {
             manifest_path: self.paths.client_manifest_json.clone(),
             generation_manifest_path: self.paths.client_cache_manifest_path.clone(),
             backend: TURSO_BACKEND.to_string(),
-            project_local_cache: self.project_local_cache.clone(),
         }
     }
-}
-
-/// Evidence that a project-local v1 cache exists without using it as fallback.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProjectLocalCacheEvidence {
-    pub path: PathBuf,
-    pub exists: bool,
 }
 
 /// JSON-compatible diagnostic report for `asp state locate`.
@@ -136,7 +100,6 @@ pub struct StateLocateReport {
     pub manifest_path: PathBuf,
     pub generation_manifest_path: PathBuf,
     pub backend: String,
-    pub project_local_cache: Option<ProjectLocalCacheEvidence>,
 }
 
 /// Resolve state identity and optionally create the minimal v2 layout.

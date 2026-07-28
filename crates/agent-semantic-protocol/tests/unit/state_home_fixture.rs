@@ -116,6 +116,7 @@ pub(crate) fn write_activation(root: &Path, state_home: &Path, language_ids: &[&
         })
         .collect();
     let activation = HookActivation {
+        rankers: Vec::new(),
         schema_id: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
         schema_authority: agent_semantic_hook::CANONICAL_SCHEMA_AUTHORITY.to_string(),
@@ -162,7 +163,7 @@ fn write_provider_lock(
     let metadata_digest =
         agent_semantic_content_identity::file_artifact_metadata_digest_v1(provider_path)
             .expect("installed provider metadata digest");
-    let lock_dir = state_home.join("runtime/provider-locks");
+    let lock_dir = agent_semantic_runtime::provider_receipt_dir(&state_home);
     std::fs::create_dir_all(&lock_dir).expect("create State Home provider lock registry");
     std::fs::write(
         lock_dir.join(format!("{}.lock.toml", manifest.language_id())),

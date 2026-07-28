@@ -30,7 +30,8 @@ pub(super) struct GraphTurboSearchPipeRequest<'a> {
     pub(super) surface: &'a str,
     pub(super) language_id: &'a str,
     pub(super) dependency_root: &'a Path,
-    pub(super) source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub(super) generation:
+        &'a agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1<'a>,
     pub(super) cache_home: &'a Path,
     pub(super) query: Option<&'a str>,
     pub(super) query_clauses: &'a [String],
@@ -62,7 +63,8 @@ pub(super) fn graph_turbo_request(
 ) -> Result<Value, String> {
     let language_id = request.language_id;
     let dependency_root = request.dependency_root;
-    let source_snapshot = request.source_snapshot;
+    let generation = request.generation;
+    let source_snapshot = generation.source_snapshot();
     let cache_home = request.cache_home;
     let surface = request.surface;
     let query = request.query;
@@ -112,7 +114,7 @@ pub(super) fn graph_turbo_request(
         &graph_candidates,
         &query_terms,
         topology_membership_enabled.then_some(dependency_root),
-        source_snapshot,
+        generation,
     );
     let owners = owner_rank_report
         .ranked_owners
@@ -276,6 +278,7 @@ pub(super) fn graph_turbo_request(
         "surfaces": surfaces,
         "source": source,
         "sourceSnapshot": source_snapshot,
+        "workspaceGeneration": owner_rank_report.workspace_generation,
         "candidateSources": candidate_sources,
         "sourceTrace": graph_source_trace,
         "seedIds": seed_ids,

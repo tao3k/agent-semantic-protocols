@@ -112,7 +112,6 @@ fn collect_provider_dependency_topology_facts(
         context.provider,
         &invocation,
         project_root,
-        cache_home,
         Vec::new(),
     )
     .map_err(|error| {
@@ -168,7 +167,6 @@ fn provider_dependency_topology_metadata_fingerprint(
         context.provider,
         &invocation,
         project_root,
-        context.cache_home,
         Vec::new(),
     )
     .ok()?;

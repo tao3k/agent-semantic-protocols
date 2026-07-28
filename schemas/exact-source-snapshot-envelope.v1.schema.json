@@ -8,6 +8,8 @@
     "schemaId",
     "schemaVersion",
     "providerId",
+    "providerWorkspaceRoot",
+    "providerWorkspaceIdentityDigest",
     "sourceSnapshot",
     "casRoot",
     "owners"
@@ -22,6 +24,13 @@
     "providerId": {
       "type": "string",
       "minLength": 1
+    },
+    "providerWorkspaceRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerWorkspaceIdentityDigest": {
+      "$ref": "#/$defs/digest"
     },
     "sourceSnapshot": {
       "type": "object",

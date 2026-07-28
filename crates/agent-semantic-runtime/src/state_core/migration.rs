@@ -1,6 +1,6 @@
 //! State layout materialization and legacy-tree migration.
 
-use super::identity::{stable_id, RepoId, WorkspaceId};
+use super::identity::{RepoId, WorkspaceId, stable_id};
 use super::layout::{STATE_LAYOUT_VERSION, TURSO_BACKEND};
 use super::resolution::ResolvedState;
 use crate::git::path_identity;
@@ -85,8 +85,6 @@ impl ResolvedState {
                 "generationManifestPath": self.paths.client_cache_manifest_path,
             }),
         )?;
-        self.touch_registry_activity()?;
-
         Ok(())
     }
 

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/provider-native-exact-response.v1.schema.json",
+  "title": "ASP Provider Native Exact Response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "ownerPath",
+    "requestedStructuralSelector",
+    "structuralSelector",
+    "projectionMode",
+    "normalizedParserFacts",
+    "sourceContentDigest",
+    "sourceByteStart",
+    "sourceByteEnd"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-native-exact-projection"
+    },
+    "schemaVersion": {
+      "const": "v1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ownerPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestedStructuralSelector": {
+      "type": "string",
+      "minLength": 1
+    },
+    "structuralSelector": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectionMode": {
+      "enum": [
+        "source",
+        "callable-skeleton"
+      ]
+    },
+    "normalizedParserFacts": {
+      "type": "object"
+    },
+    "projectionText": {
+      "type": "string"
+    },
+    "projectionPayload": {
+      "$ref": "https://agent-semantic-protocols.dev/schemas/callable-skeleton-projection.v1.schema.json"
+    },
+    "sourceContentDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sourceByteStart": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sourceByteEnd": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "projectionMode": {
+            "const": "source"
+          }
+        },
+        "required": [
+          "projectionMode"
+        ]
+      },
+      "then": {
+        "required": [
+          "projectionText"
+        ],
+        "not": {
+          "required": [
+            "projectionPayload"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "projectionMode": {
+            "const": "callable-skeleton"
+          }
+        },
+        "required": [
+          "projectionMode"
+        ]
+      },
+      "then": {
+        "required": [
+          "projectionPayload"
+        ],
+        "not": {
+          "required": [
+            "projectionText"
+          ]
+        }
+      }
+    }
+  ]
+}

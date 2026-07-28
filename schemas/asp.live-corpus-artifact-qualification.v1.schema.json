@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp.live-corpus-artifact-qualification.v1.schema.json",
+  "title": "ASP live corpus artifact qualification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "artifactDigest",
+    "materializationAuthority",
+    "sourcePath",
+    "headRevision",
+    "gitTree",
+    "sourceMerkleRoot",
+    "languageExtensionEvidence",
+    "clean",
+    "status"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.live-corpus-artifact-qualification"
+    },
+    "schemaVersion": { "const": "1" },
+    "artifactDigest": { "$ref": "#/$defs/blake3Digest" },
+    "materializationAuthority": {
+      "enum": ["developer-gix", "nix-store", "bazel-repository"]
+    },
+    "sourcePath": { "type": "string", "minLength": 1 },
+    "headRevision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "gitTree": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
+    "sourceMerkleRoot": { "$ref": "#/$defs/blake3Digest" },
+    "languageExtensionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "candidateSetAuthority",
+        "sourceExtensions",
+        "matchingFileCount",
+        "candidateLanguageFileCount"
+      ],
+      "properties": {
+        "authority": { "const": "provider-workspace-scope" },
+        "candidateSetAuthority": {
+          "const": "provider-registry-extension-index"
+        },
+        "sourceExtensions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^\\.[A-Za-z0-9][A-Za-z0-9._+-]*$"
+          }
+        },
+        "matchingFileCount": { "type": "integer", "minimum": 1 },
+        "candidateLanguageFileCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "clean": { "const": true },
+    "status": { "const": "qualified" }
+  },
+  "$defs": {
+    "blake3Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

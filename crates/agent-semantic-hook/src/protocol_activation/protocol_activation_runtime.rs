@@ -132,7 +132,7 @@ fn resolve_activation(
             execution_command_digest: activated.execution_command_digest.clone(),
             namespace: manifest.namespace.clone(),
             package_roots: activated.coverage.package_roots.clone(),
-            source_extensions: activated.coverage.source_extensions.clone(),
+            source_extensions: manifest.source.default_extensions.clone(),
             config_files: activated.coverage.config_files.clone(),
             source_roots: activated.coverage.source_roots.clone(),
             ignored_path_prefixes: activated.coverage.ignored_path_prefixes.clone(),
@@ -146,6 +146,7 @@ fn resolve_activation(
     }
     Ok(HookRuntime {
         project_root: activation.project_root.clone(),
+        rankers: activation.rankers.clone(),
         providers,
     })
 }

@@ -15,8 +15,7 @@ async fn harness_projection_imports_without_source_text_projection() {
     let source_path = project_root.join("src/projection.ss");
     fs::create_dir_all(source_path.parent().expect("source parent")).expect("create source dir");
     fs::write(&source_path, "(def (run) 1)\n").expect("write source fixture");
-    let projection = ClientDbLanguageProjection::from_json(
-        r#"{
+    let projection_json = r#"{
           "schemaId":"agent.semantic-protocols.semantic-language-projection",
           "schemaVersion":"1",
           "protocolId":"agent.semantic-protocols.language-projection",
@@ -30,9 +29,29 @@ async fn harness_projection_imports_without_source_text_projection() {
             {"from":{"kind":"source","id":"source:src/projection.ss"},"kind":"contains","to":{"kind":"owner","id":"owner:src/projection.ss"}},
             {"from":{"kind":"owner","id":"owner:src/projection.ss"},"kind":"contains","to":{"kind":"item","id":"item:run"}}
           ]
-        }"#,
-    )
-    .expect("decode language projection");
+        }"#;
+    let mut projection_value: serde_json::Value =
+        serde_json::from_str(projection_json).expect("decode projection fixture JSON");
+    let source = b"(def (run) 1)\n";
+    projection_value["items"][0]["materializationProof"] =
+        serde_json::to_value(crate::materialization_fixture::materialization_proof(
+            crate::materialization_fixture::MaterializationFixtureInput {
+                language_id: "gerbil-scheme",
+                provider_id: "gerbil-scheme-language-project-harness",
+                owner_path: "src/projection.ss",
+                structural_selector: "gerbil-scheme://src/projection.ss#item/function/run",
+                item_kind: "function",
+                item_name: "run",
+                source,
+                source_byte_start: 0,
+                source_byte_end: source.len() as u64,
+            },
+        ))
+        .expect("encode projection materialization proof");
+    let projection_text =
+        serde_json::to_string(&projection_value).expect("encode projection fixture");
+    let projection = ClientDbLanguageProjection::from_json(&projection_text)
+        .expect("decode language projection");
     let import =
         source_index_import_from_language_projection(ClientDbLanguageProjectionImportRequest {
             project_root: project_root.clone(),
@@ -73,8 +92,18 @@ async fn harness_projection_imports_without_source_text_projection() {
         1,
         "language projection source-index counts={import_counts:?}"
     );
-    assert_eq!(import.source_index.selectors[0].start_line, 0);
-    assert_eq!(import.source_index.selectors[0].end_line, 0);
+    assert_eq!(
+        import.source_index.selectors[0]
+            .materialization_proof
+            .source_byte_start,
+        0
+    );
+    assert_eq!(
+        import.source_index.selectors[0]
+            .materialization_proof
+            .source_byte_end,
+        b"(def (run) 1)\n".len() as u64
+    );
     assert_eq!(
         import.source_index.owners[0]
             .provider_id
@@ -113,7 +142,9 @@ async fn harness_projection_imports_without_source_text_projection() {
         proof.structural_selector,
         "gerbil-scheme://src/projection.ss#item/function/run"
     );
-    assert!(proof.bounded);
+    assert_eq!(proof.source_byte_start, 0);
+    assert_eq!(proof.source_byte_end, b"(def (run) 1)\n".len() as u64);
+    assert_eq!(proof.projection, b"(def (run) 1)\n");
     let candidate = lookup
         .candidates
         .iter()

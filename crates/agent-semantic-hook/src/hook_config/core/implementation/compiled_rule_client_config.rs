@@ -40,6 +40,20 @@ impl ClientHookConfig {
         self.contract_fingerprint.as_deref()
     }
 
+    /// Returns the configured rule identifiers in classification order.
+    ///
+    /// This is intentionally read-only: contract tests and diagnostics can
+    /// prove that every production rule has an executable match-policy case
+    /// without exposing or duplicating the compiled matcher implementation.
+    pub fn rule_ids(&self) -> impl ExactSizeIterator<Item = &str> {
+        self.rules.iter().map(|rule| rule.id.as_str())
+    }
+
+    /// Returns the number of compiled match-policy rules.
+    pub fn rule_count(&self) -> usize {
+        self.rules.len()
+    }
+
     pub(crate) fn semantic_ast_patch_enabled(&self) -> bool {
         !self.semantic_ast_patch_disabled
     }

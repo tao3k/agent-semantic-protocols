@@ -26,17 +26,6 @@ def test_runtime_baseline_rejects_coverage_and_scenario_regression() -> None:
     assert "scenario-budget-python.pandas" in report["errors"]
 
 
-def test_runtime_baseline_rejects_corpus_identity_drift() -> None:
-    baseline = baseline_fixture()
-    receipt = receipt_fixture(elapsed_ms=6_000)
-    receipt["corpora"][0]["revision"] = "different"
-
-    report = validate_runtime_baseline(baseline, receipt)
-
-    assert report["status"] == "fail"
-    assert "corpus-identity-python.pandas" in report["errors"]
-
-
 def baseline_fixture() -> dict[str, object]:
     return {
         "schemaId": BASELINE_SCHEMA_ID,
@@ -48,15 +37,6 @@ def baseline_fixture() -> dict[str, object]:
             "targetSearchCommandCount": 1,
         },
         "workspaceDeployments": [{"language": "python", "elapsedMs": 1}],
-        "corpora": [
-            {
-                "scenarioId": "python.pandas",
-                "language": "python",
-                "repository": "pandas-dev/pandas",
-                "revision": "abc123",
-                "directory": "python-pandas",
-            }
-        ],
         "scenarios": [
             {
                 "id": "python.pandas",

@@ -31,6 +31,10 @@ jsonschema = { workspace = true }
 criterion = { workspace = true }
 asp-rust-project-harness-policy.workspace = true
 
+[[test]]
+name = "source_index_generation"
+path = "tests/integration/source_index_generation.rs"
+
 [[bench]]
 name = "client_microbench"
 harness = false

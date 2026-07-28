@@ -113,6 +113,7 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
         )
         .await?;
     }
+    super::provider_incremental_schema::bootstrap_provider_incremental_schema(connection).await?;
     Ok(())
 }
 
@@ -512,6 +513,7 @@ pub(super) fn turso_source_index_selector_fingerprint(
     }
 
     let mut hasher = Sha256::new();
+    hasher.update(b"asp.source-index-selector-fingerprint.v1\0");
     hasher.update((import.selectors.len() as u64).to_be_bytes());
     for selector in &import.selectors {
         update_text(&mut hasher, selector.owner_path.as_str());
@@ -708,7 +710,10 @@ pub(in crate::engine) fn turso_source_index_access_lock(
 ) -> std::sync::Arc<tokio::sync::RwLock<()>> {
     type LockRegistry =
         std::collections::HashMap<std::path::PathBuf, std::sync::Weak<tokio::sync::RwLock<()>>>;
-    static LOCKS: std::sync::OnceLock<std::sync::Mutex<LockRegistry>> = std::sync::OnceLock::new();
+    const LOCK_REGISTRY_SHARDS: usize = 64;
+    const STALE_ENTRY_CLEANUP_THRESHOLD: usize = 256;
+    static LOCKS: std::sync::OnceLock<Box<[parking_lot::Mutex<LockRegistry>]>> =
+        std::sync::OnceLock::new();
     let lock_path = std::fs::canonicalize(db_path).unwrap_or_else(|_| {
         db_path
             .parent()
@@ -716,16 +721,24 @@ pub(in crate::engine) fn turso_source_index_access_lock(
             .and_then(|parent| db_path.file_name().map(|name| parent.join(name)))
             .unwrap_or_else(|| db_path.to_path_buf())
     });
-    let locks = LOCKS.get_or_init(|| std::sync::Mutex::new(LockRegistry::new()));
-    let mut locks = locks
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    locks.retain(|_, lock| lock.strong_count() > 0);
-    if let Some(lock) = locks.get(&lock_path).and_then(std::sync::Weak::upgrade) {
+    let shards = LOCKS.get_or_init(|| {
+        (0..LOCK_REGISTRY_SHARDS)
+            .map(|_| parking_lot::Mutex::new(LockRegistry::new()))
+            .collect::<Vec<_>>()
+            .into_boxed_slice()
+    });
+    let mut path_hasher = std::collections::hash_map::DefaultHasher::new();
+    std::hash::Hash::hash(&lock_path, &mut path_hasher);
+    let shard_index = std::hash::Hasher::finish(&path_hasher) as usize % shards.len();
+    let mut shard = shards[shard_index].lock();
+    if let Some(lock) = shard.get(&lock_path).and_then(std::sync::Weak::upgrade) {
         return lock;
     }
+    if shard.len() >= STALE_ENTRY_CLEANUP_THRESHOLD {
+        shard.retain(|_, lock| lock.strong_count() > 0);
+    }
     let lock = std::sync::Arc::new(tokio::sync::RwLock::new(()));
-    locks.insert(lock_path, std::sync::Arc::downgrade(&lock));
+    shard.insert(lock_path, std::sync::Arc::downgrade(&lock));
     lock
 }
 

@@ -4,14 +4,14 @@ use std::{
 };
 
 use super::{
+    ASP_CODEX_PLUGIN_MARKETPLACE_NAME, ASP_CODEX_PLUGIN_NAME, CodexPluginScope,
     codex_plugin_hook_key_source, codex_plugin_installed_path, codex_plugin_source_root,
     display_codex_plugin_source_root, ensure_codex_global_plugin_cache_static_files,
     ensure_codex_plugin_cache_static_files, ensure_codex_plugin_marketplace_registered,
     ensure_codex_project_plugin_cache_static_files, ensure_codex_project_plugin_enabled,
     global_codex_config_path, install_codex_project_plugin_config, install_codex_resident_agents,
     plugin_path, remove_codex_project_marketplace_source, remove_codex_project_plugin_config,
-    remove_codex_user_managed_hook_config, run_codex_plugin_command, CodexPluginScope,
-    ASP_CODEX_PLUGIN_MARKETPLACE_NAME, ASP_CODEX_PLUGIN_NAME,
+    remove_codex_user_managed_hook_config, run_codex_plugin_command,
 };
 use crate::command::hook_runtime::display_path;
 

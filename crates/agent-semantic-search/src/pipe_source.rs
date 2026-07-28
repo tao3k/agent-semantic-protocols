@@ -64,6 +64,7 @@ pub fn collect_search_pipe_auto_acquisition(
 ) -> Result<SearchPipeSourceAcquisition, String> {
     let source_index = search_pipe_source_index_query_gate(request.query_terms)
         .map(|gate| SearchPipeSourceIndexAcquisition {
+            workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationAuthorityV1::cold_required(),
             decision: SearchPipeSourceIndexDecision::QueryGate,
             gate: Some(gate),
             candidates: Vec::new(),
@@ -91,7 +92,9 @@ pub fn collect_search_pipe_auto_acquisition(
     let lexical_candidates = source_index
         .as_ref()
         .and_then(|source_index| match frame_route.acquisition_route {
-            crate::LexicalAcquisitionRoute::WarmOverlay => Some(source_index.candidates.clone()),
+            crate::LexicalAcquisitionRoute::WarmOverlay => {
+                Some(source_index.discovery_candidates().to_vec())
+            }
             crate::LexicalAcquisitionRoute::SourceIndexOwnerEvidence => Some(
                 crate::pipe_source_lexical_frame::source_index_owner_evidence_candidates(
                     source_index,

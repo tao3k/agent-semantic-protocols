@@ -59,6 +59,10 @@ def schema_profile_contract_errors(
 
 
 _CORE_QUERY_SCHEMAS = (
+    "callable-skeleton-projection.v1.schema.json",
+    "exact-structural-selector.v1.schema.json",
+    "provider-native-exact-request.v1.schema.json",
+    "provider-native-exact-response.v1.schema.json",
     "semantic-search-packet.v1.schema.json",
     "semantic-query-packet.v1.schema.json",
     "semantic-exact-selector-receipt.v1.schema.json",
@@ -157,8 +161,12 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
             "semantic-language-evidence.v1.schema.json",
             "semantic-language-registry.v1.schema.json",
             "semantic-language-projection.v1.schema.json",
-        "semantic-native-syntax-fact-index.v1.schema.json",
-        "semantic-query-packet.v1.schema.json",
+            "semantic-native-syntax-fact-index.v1.schema.json",
+            "callable-skeleton-projection.v1.schema.json",
+            "exact-structural-selector.v1.schema.json",
+            "provider-native-exact-request.v1.schema.json",
+            "provider-native-exact-response.v1.schema.json",
+            "semantic-query-packet.v1.schema.json",
         "semantic-exact-selector-receipt.v1.schema.json",
         "semantic-read-packet.v1.schema.json",
             "semantic-runtime-source-acquisition.v1.schema.json",

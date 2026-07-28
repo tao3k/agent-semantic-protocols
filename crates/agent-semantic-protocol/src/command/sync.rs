@@ -42,7 +42,6 @@ pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
         agent_semantic_client_db::AgentSessionRegistry::open_or_create_project(&project_root)?;
     let sync = run_org_state_sync(&project_root)?;
     let agent_configs = sync_agent_configuration_for_project(&project_root)?;
-    sync_codex_plugin_activation_cache(&project_root)?;
     let org_state = agent_semantic_runtime::project_state_paths(&project_root)?
         .protocol_home
         .join("org");
@@ -551,29 +550,6 @@ fn codex_managed_registry_range(config: &str) -> Result<Option<Range<usize>>, St
                 .to_string(),
         ),
     }
-}
-
-fn sync_codex_plugin_activation_cache(project_root: &Path) -> Result<(), String> {
-    let source = agent_semantic_runtime::project_state_paths(project_root)?.activation_path;
-    if !source.is_file() {
-        return Ok(());
-    }
-    let target = codex_home()
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("hooks")
-        .join("activation.json");
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    fs::copy(&source, &target).map(|_| ()).map_err(|error| {
-        format!(
-            "failed to copy {} to {}: {error}",
-            source.display(),
-            target.display()
-        )
-    })
 }
 
 pub(super) fn codex_home() -> PathBuf {

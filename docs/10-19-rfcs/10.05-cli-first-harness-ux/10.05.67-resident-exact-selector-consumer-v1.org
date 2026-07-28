@@ -1,0 +1,123 @@
+#+title: 10.05.67 Resident Exact Selector Consumer v1
+#+author: ASP Maintainers
+#+language: en
+#+options: toc:2 num:nil
+
+* Status
+
+Proposed.
+
+* Objective
+
+An exact selector query consumes an installed Global provider catalog and an
+active exact-selector generation.  Query execution never creates, refreshes,
+or writes activation state.
+
+* Route
+
+#+begin_example
+exact structural selector
+  -> canonical workspace and owner
+  -> current live owner digest
+  -> resident exact-selector generation lookup
+     -> selector + owner path + source digest match: return projection
+     -> missing or digest mismatch: live-owner overlay
+        -> resident provider parser
+        -> return projection
+        -> enqueue generation publication after the result
+#+end_example
+
+Fixture existence alone is not a cache hit.  A hit requires equality of:
+
+- structural selector;
+- canonical owner path;
+- current live source-blob digest;
+- projection mode;
+- active generation identity.
+
+The fixture projection API therefore exposes its owner path, source-blob
+digest, owner-subtree digest, normalized parser-facts digest, and projection
+mode together with the zero-copy projection bytes.
+
+* Provider authority
+
+The Global provider catalog is an immutable installed artifact.  It resolves a
+language and provider identity to one verified content-addressed provider
+binary and invocation contract.  A workspace session references the active
+catalog generation; it does not contain or generate a provider binary
+selection.
+
+The exact consumer must not call:
+
+- =load_or_sync_activation_for_language=;
+- =load_or_refresh_default_activation=;
+- provider installation or build logic;
+- =asp sync=;
+- a direct Turso open.
+
+Missing catalog identity fails closed with a Global reconciliation receipt.
+
+* Resident lifetime
+
+The resident authority owns one load-once fixture instance per active
+generation digest.  Repeated exact lookups do not reread or reparse the
+fixture.  A catalog or fixture generation change publishes a new immutable
+instance and atomically swaps the workspace reference; in-flight readers retain
+their previous =Arc=.
+
+The live-owner overlay is keyed by:
+
+#+begin_example
+workspace identity
++ language id
++ provider id
++ owner path
++ live source digest
+#+end_example
+
+It contains parser facts and projections for the current owner only.  It is
+never populated under an older source digest.
+
+* Performance contract
+
+Installed receipts must separately report:
+
+- catalog lookup;
+- live-owner digest;
+- fixture lookup;
+- overlay lookup;
+- provider parse;
+- publication enqueue;
+- total latency;
+- provider process starts;
+- activation reads and writes;
+- database opens and writes.
+
+Warm fixture and warm live-overlay hits require:
+
+#+begin_example
+providerProcessStarts=0
+activationReads=0
+activationWrites=0
+dbOpens=0
+dbWrites=0
+#+end_example
+
+The warm in-process fixture lookup budget is below one millisecond.  Cold
+artifact verification and live parsing have separate budgets; a larger timeout
+must not be used to make either gate pass.
+
+* Required gates
+
+1. Publish a fixture, load it once, and perform at least 1,000 exact lookups.
+   The backend load count remains one and every warm lookup stays below the
+   declared sub-millisecond budget.
+2. Modify an owner without sync.  Its old fixture source digest must be
+   rejected and the returned projection must contain the new owner bytes.
+3. Move an owner without sync.  The old selector must miss and the new selector
+   must resolve through the live overlay.
+4. Change the active fixture generation while readers are running.  Existing
+   readers finish on the old immutable generation and new readers use the new
+   generation without a global lock.
+5. Remove the provider catalog or change its digest.  Exact query fails closed
+   without activation refresh, provider build, database access, or sync.

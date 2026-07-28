@@ -1,0 +1,16 @@
+id = "code-search-turso-resident-session-warm-path"
+policy = "SEARCH-AGENT-ASP-CODE-SEARCH-TURSO-PERF-001"
+phase = "warm"
+route = "merkle-turso-resident-session"
+engine = "turso-0.7"
+merkle_algorithm = "blake3-merkle-v1"
+fixture = "code_search_turso_resident_session_warm_path_is_a_strong_gate"
+
+[expected]
+require_resident_connection = true
+require_exact_snapshot_identity = true
+forbid_additional_turso_db_open = true
+forbid_provider_process = true
+forbid_source_blob_read = true
+forbid_source_rehash = true
+forbid_fallback = true

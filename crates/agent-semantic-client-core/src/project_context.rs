@@ -2,15 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
-use agent_semantic_config::{ProjectEnvStatus, ProjectRuntimeLayout, project_runtime_layout};
-
 /// Resolved project identity and state-layout roots for client-owned storage.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectContext {
     cwd: PathBuf,
     git_toplevel: Option<PathBuf>,
     project_home: Option<PathBuf>,
-    project_env: ProjectEnvStatus,
     state_layout: StateLayout,
 }
 
@@ -26,17 +23,15 @@ pub struct StateLayout {
 impl ProjectContext {
     pub fn resolve(cwd: impl AsRef<Path>) -> Result<Self, String> {
         let cwd = canonicalize_if_possible(cwd.as_ref());
-        let runtime_layout = project_runtime_layout(&cwd);
-        let git_toplevel = runtime_layout.git_toplevel.clone();
-        let project_home = runtime_layout.project_home.clone();
-        let project_env = runtime_layout.project_env.clone();
-        let state_layout = StateLayout::from_runtime_layout(&runtime_layout)?;
+        let resolved = crate::state_core::ResolvedState::resolve(&cwd)?;
+        let git_toplevel = resolved.repo.git_toplevel.clone();
+        let project_home = git_toplevel.clone();
+        let state_layout = StateLayout::from_resolved_state(resolved)?;
 
         Ok(Self {
             cwd,
             git_toplevel,
             project_home,
-            project_env,
             state_layout,
         })
     }
@@ -51,17 +46,6 @@ impl ProjectContext {
 
     pub fn project_home(&self) -> Option<&Path> {
         self.project_home.as_deref()
-    }
-
-    pub fn project_env(&self) -> &ProjectEnvStatus {
-        &self.project_env
-    }
-
-    pub fn prj_env_vars_available(&self) -> bool {
-        matches!(
-            self.project_env,
-            ProjectEnvStatus::DirenvAtGitToplevel { .. }
-        )
     }
 
     pub fn state_layout(&self) -> &StateLayout {
@@ -90,11 +74,10 @@ impl ProjectContext {
 
 impl StateLayout {
     pub fn resolve(project_root: impl AsRef<Path>) -> Result<Self, String> {
-        Self::from_runtime_layout(&project_runtime_layout(project_root))
+        Self::from_resolved_state(crate::state_core::ResolvedState::resolve(project_root)?)
     }
 
-    fn from_runtime_layout(layout: &ProjectRuntimeLayout) -> Result<Self, String> {
-        let resolved = crate::state_core::ResolvedState::resolve(&layout.requested_root)?;
+    fn from_resolved_state(resolved: crate::state_core::ResolvedState) -> Result<Self, String> {
         resolved.ensure_minimal_layout()?;
         let state_root = resolved.state_home.clone();
         let client_cache_dir = resolved.paths.client_dir.clone();

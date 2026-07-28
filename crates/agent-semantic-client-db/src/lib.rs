@@ -54,6 +54,18 @@ pub use dependency_index::{
 pub use engine::{
     ClientDbBackend, ClientDbEngine, ClientDbEngineDurability, ClientDbEngineFeatures,
     ClientDbEngineReadSession, ClientDbEngineReport, ClientDbEngineWriteSession,
+    ProviderIncrementalOwnerWriteV1, ProviderIncrementalScopeV1, ProviderIncrementalWriteReceiptV1,
+    ProviderOwnerBatchProbeReceiptV1, ProviderOwnerBatchProbeRequestV1,
+    ProviderOwnerBatchProbeResultV1, ProviderOwnerDecisionV1, ProviderOwnerFingerprintV1,
+    ProviderOwnerInventoryEntryStateV1, ProviderOwnerInventoryEntryV1,
+    ProviderOwnerInventoryStateV1, ProviderOwnerInventoryV1, ProviderOwnerInventoryWriteReceiptV1,
+    ProviderOwnerInventoryWriteV1, ProviderOwnerMetadataV1, ProviderOwnerProbeV1,
+    ProviderRemainingOwnerCountKindV1, ProviderSelectorProjectionV1,
+    ProviderTreeSitterCaptureProjectionV1, ProviderTreeSitterContinuationV1,
+    ProviderTreeSitterOwnerResultStateV1, ProviderTreeSitterOwnerResultV1,
+    ProviderTreeSitterOwnerWriteReceiptV1, ProviderTreeSitterQueryCountersV1,
+    ProviderTreeSitterQueryIdentityV1, ProviderTreeSitterQueryReadStateV1,
+    ProviderTreeSitterQueryReadV1, ProviderTreeSitterQueryReceiptV1,
 };
 pub use engine::{
     ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
@@ -112,3 +124,6 @@ pub use types::{
     ClientDbSyntaxQueryReplay,
 };
 extern crate self as agent_semantic_client_db;
+pub use engine::{
+    ProviderSearchWorkspaceSessionV1, WorkspaceDbRegistry, WorkspaceDbRegistryCountersV1,
+};

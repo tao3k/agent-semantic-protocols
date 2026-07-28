@@ -1,10 +1,19 @@
+//! Resolves current source-index snapshots from an activated provider runtime.
+
 use std::path::Path;
 
 use super::{
     CurrentSourceIndexSnapshot, LanguageId, ProviderId, ProviderRegistrySnapshot,
-    SourceIndexOwnerPath, current_source_index_snapshot_for_owner_with_registry,
+    SourceIndexOwnerPath, current_provider_source_index_snapshot_with_registry,
+    current_source_index_snapshot_for_owner_with_registry,
     current_source_index_snapshot_with_registry,
 };
+use crate::source_index::{
+    ProviderSourceEnvelopeLookupRequestV1,
+    ensure_provider_source_index_snapshot_at_artifact_root_with_registry,
+    provider_source_snapshot_envelope_path_at_artifact_root_with_registry,
+};
+use agent_semantic_client_core::ProjectContext;
 
 /// Inputs for capturing one exact owner from an already-loaded activation.
 #[non_exhaustive]
@@ -57,6 +66,66 @@ pub fn current_source_index_snapshot_from_activation(
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
     current_source_index_snapshot_with_registry(project_root, &provider_registry)
+}
+
+/// Capture the complete source scope for one provider from an activation that
+/// the command boundary already loaded.
+pub fn current_provider_source_index_snapshot_from_activation(
+    project_root: &Path,
+    activation_path: &Path,
+    activation: &agent_semantic_hook::HookRuntime,
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+) -> Result<CurrentSourceIndexSnapshot, String> {
+    let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
+    current_provider_source_index_snapshot_with_registry(
+        project_root,
+        language_id,
+        provider_id,
+        &provider_registry,
+    )
+}
+
+/// Refresh and publish one provider workspace envelope from an activation.
+pub fn ensure_provider_source_index_snapshot_from_activation(
+    project_root: &Path,
+    activation_path: &Path,
+    activation: &agent_semantic_hook::HookRuntime,
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+) -> Result<CurrentSourceIndexSnapshot, String> {
+    let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
+    let project_context = ProjectContext::resolve(project_root)?;
+    ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
+        ProviderSourceEnvelopeLookupRequestV1 {
+            project_root,
+            artifact_root: project_context.state_layout().artifacts_dir(),
+            language_id,
+            provider_id,
+            provider_registry: &provider_registry,
+        },
+    )
+}
+
+/// Resolve the canonical pre-published envelope path from an activation.
+pub fn provider_source_snapshot_envelope_path_from_activation(
+    project_root: &Path,
+    activation_path: &Path,
+    activation: &agent_semantic_hook::HookRuntime,
+    language_id: &LanguageId,
+    provider_id: &ProviderId,
+) -> Result<std::path::PathBuf, String> {
+    let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
+    let project_context = ProjectContext::resolve(project_root)?;
+    provider_source_snapshot_envelope_path_at_artifact_root_with_registry(
+        ProviderSourceEnvelopeLookupRequestV1 {
+            project_root,
+            artifact_root: project_context.state_layout().artifacts_dir(),
+            language_id,
+            provider_id,
+            provider_registry: &provider_registry,
+        },
+    )
 }
 
 /// Capture one exact owner from an activation that the caller already loaded.

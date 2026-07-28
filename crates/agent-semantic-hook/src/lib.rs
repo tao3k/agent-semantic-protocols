@@ -4,6 +4,10 @@
 
 mod activation_store;
 mod active_artifact_receipt;
+pub use active_artifact_receipt::{
+    ActiveAspArtifactReconciliationV1, rebind_active_asp_binary_receipt_if_present,
+    reconcile_active_asp_artifact_receipt_if_present,
+};
 mod classifier;
 mod codex_config;
 mod codex_plugin_trust;
@@ -38,6 +42,9 @@ pub use protocol_activation::digest::provider_execution_command_digest;
 mod provider_manifest;
 mod provider_registry;
 pub use provider_registry::registered_language_ids;
+pub use provider_registry::{
+    RegisteredProviderBinaryV1, registered_provider_binaries_v1, registered_provider_binary_v1,
+};
 pub use provider_registry::{materialize_provider_routes, semantic_registry_digest};
 mod runtime_profile;
 pub mod source_access;
@@ -48,8 +55,9 @@ mod test_process_env;
 mod tool_action;
 
 pub use crate::activation_store::{
-    DefaultActivationSync, default_activation_path, discover_activation_path, load_activation,
-    load_or_refresh_default_activation, load_or_sync_activation, parse_hook_activation,
+    DefaultActivationSync, default_activation_path, discover_activation_path,
+    language_activation_path, load_activation, load_or_refresh_default_activation,
+    load_or_sync_activation, load_or_sync_activation_for_language, parse_hook_activation,
     write_activation,
 };
 pub use crate::active_artifact_receipt::{
@@ -57,6 +65,7 @@ pub use crate::active_artifact_receipt::{
     active_provider_artifact_input, active_provider_artifact_input_with_state_home,
     materialize_active_asp_artifact_receipt,
     materialize_active_asp_artifact_receipt_for_current_process,
+    reconcile_active_asp_artifact_receipt_from_materialized_set,
     verify_active_asp_artifact_receipt,
 };
 pub use classifier::{
@@ -109,8 +118,9 @@ pub use protocol_activation::protocol_activation_manifest::{
 };
 pub use protocol_activation::protocol_activation_runtime::parse_activation;
 pub use provider_manifest::{
-    ProviderCommandSelection, build_default_activation, build_default_activation_from_selections,
-    builtin_provider_manifests, project_agent_config_path, provider_command_selections,
+    ProviderCommandSelection, ProviderCommandSelectionScopeV1, build_default_activation,
+    build_default_activation_from_selections, builtin_provider_manifests,
+    project_agent_config_path, provider_command_selections, provider_command_selections_for_scope,
     validate_provider_manifest_contract,
 };
 pub use runtime_profile::{
@@ -136,6 +146,9 @@ pub use read_only_subagent::{
 };
 #[cfg(test)]
 extern crate self as agent_semantic_hook;
+pub use crate::provider_registry::{
+    registered_provider_id_v1, registered_provider_method_invocation_v1,
+};
 #[doc(hidden)]
 pub use agent_semantic_command_match as command_match;
 #[doc(hidden)]

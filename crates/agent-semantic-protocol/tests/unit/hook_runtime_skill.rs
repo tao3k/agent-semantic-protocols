@@ -64,6 +64,7 @@ fn activation_provider(
 
 fn test_activation() -> HookActivation {
     HookActivation {
+        rankers: Vec::new(),
         schema_id: "agent.semantic-protocols.hook.activation".to_string(),
         schema_version: "1".to_string(),
         schema_authority: "https://tao3k.github.io/agent-semantic-protocols/schemas/".to_string(),

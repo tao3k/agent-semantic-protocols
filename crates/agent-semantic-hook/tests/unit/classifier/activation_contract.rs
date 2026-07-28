@@ -130,6 +130,16 @@ fn activation_value(manifest: &ProviderManifest, manifest_digest: &str) -> Value
             "runtime": "agent-semantic-hook",
             "version": "0.1.0"
         },
+        "rankers": [{
+            "schemaId": "asp.activated-ranker.v1",
+            "rankerId": "asp-graph-turbo",
+            "capabilityId": "graph-turbo",
+            "protocolVersion": "1",
+            "binary": "/runtime/bin/asp",
+            "argvPrefix": ["graph", "render"],
+            "contentDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "artifactMetadataDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }],
         "providers": [provider]
     })
 }

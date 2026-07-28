@@ -8,16 +8,31 @@ use agent_semantic_client_db::{
 };
 
 fn selector(selector_id: &str) -> ClientDbSourceIndexSelector {
+    let (item_kind, source): (&str, &[u8]) = if selector_id.contains("#item/method/") {
+        ("method", b"impl Owner { fn target(&self) {} }\n")
+    } else {
+        ("function", b"pub fn target() {}\n")
+    };
     ClientDbSourceIndexSelector {
         owner_path: "src/lib.rs".into(),
         selector_id: ClientDbSourceIndexSelectorId::from(selector_id),
         symbol: Some(ClientDbSourceIndexSelectorSymbol::from("target")),
-        kind: Some(ClientDbSourceIndexSelectorKind::from("function")),
-        start_line: 1,
-        end_line: 1,
+        kind: Some(ClientDbSourceIndexSelectorKind::from(item_kind)),
         source: ClientDbSourceIndexSource::from("parser"),
         query_keys: vec![ClientDbSourceIndexQueryKey::from("target")],
-        payload_proof: None,
+        materialization_proof: crate::materialization_fixture::materialization_proof(
+            crate::materialization_fixture::MaterializationFixtureInput {
+                language_id: "rust",
+                provider_id: "parser",
+                owner_path: "src/lib.rs",
+                structural_selector: selector_id,
+                item_kind,
+                item_name: "target",
+                source,
+                source_byte_start: 0,
+                source_byte_end: source.len() as u64,
+            },
+        ),
     }
 }
 

@@ -68,6 +68,7 @@ fn runtime_profiles_for_activation_rejects_persisted_command_prefix() {
         "rs-harness".to_string(),
     ]);
     let activation = HookActivation {
+        rankers: Vec::new(),
         schema_id: crate::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: crate::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
         schema_authority: crate::protocol::CANONICAL_SCHEMA_AUTHORITY.to_string(),
@@ -122,6 +123,7 @@ fn runtime_profiles_for_runtime_uses_activation_command_prefix() {
         "gerbil-scheme".to_string(),
     ]);
     let runtime = HookRuntime {
+        rankers: Vec::new(),
         project_root: root.display().to_string(),
         providers: vec![provider],
     };
@@ -157,6 +159,7 @@ fn runtime_profiles_for_runtime_fails_closed_when_activation_executable_is_missi
         "rs-harness".to_string(),
     ]);
     let runtime = HookRuntime {
+        rankers: Vec::new(),
         project_root: root.display().to_string(),
         providers: vec![provider],
     };

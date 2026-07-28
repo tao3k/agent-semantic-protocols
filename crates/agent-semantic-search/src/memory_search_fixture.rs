@@ -1,119 +1,20 @@
-use crate::{
-    MemorySearchBackendV1, MemorySearchGenerationV1, MemorySearchIndexV1, MemorySearchItemV1,
+use crate::memory_search::{
+    MemorySearchGenerationV1, MemorySearchIndexV1, MemorySearchItemV1,
+    MemorySearchPerformanceReceiptV1,
 };
+use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub const MEMORY_SEARCH_FIXTURE_SCHEMA_ID: &str = "agent.semantic-protocols.memory-search-fixture";
 pub const MEMORY_SEARCH_FIXTURE_SCHEMA_VERSION: &str = "1";
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemorySearchFixtureV1 {
     pub schema_id: String,
     pub schema_version: String,
     pub generation: MemorySearchGenerationV1,
     pub items: Vec<MemorySearchItemV1>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct MemorySearchScenarioContractV1 {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub scenario_id: String,
-    pub backend: String,
-    pub reader_count: usize,
-}
-
-impl MemorySearchScenarioContractV1 {
-    pub fn from_toml(source: &str) -> Result<Self, String> {
-        let contract = toml::from_str::<Self>(source)
-            .map_err(|error| format!("invalid memory-search scenario contract: {error}"))?;
-        if contract.schema_id != "memory-search-fixture-v1"
-            || contract.schema_version != MEMORY_SEARCH_FIXTURE_SCHEMA_VERSION
-            || contract.scenario_id.is_empty()
-            || contract.backend != "memory"
-            || contract.reader_count == 0
-        {
-            return Err("invalid memory-search scenario evidence".to_string());
-        }
-        Ok(contract)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct MemorySearchBenchmarkContractV1 {
-    pub max_cold_lookup_micros: u64,
-    pub max_warm_lookup_micros: u64,
-    pub max_provider_process_count: usize,
-    pub max_source_bytes_materialized: usize,
-    pub max_db_opens: usize,
-    pub max_db_queries: usize,
-    pub max_cache_writes: usize,
-}
-
-impl MemorySearchBenchmarkContractV1 {
-    pub fn from_toml(source: &str) -> Result<Self, String> {
-        let contract = toml::from_str::<Self>(source)
-            .map_err(|error| format!("invalid memory-search benchmark contract: {error}"))?;
-        if contract.max_cold_lookup_micros == 0
-            || contract.max_warm_lookup_micros == 0
-            || contract.max_warm_lookup_micros > contract.max_cold_lookup_micros
-        {
-            return Err("invalid memory-search benchmark thresholds".to_string());
-        }
-        Ok(contract)
-    }
-
-    pub fn validate_receipt(
-        &self,
-        receipt: &crate::memory_search::MemorySearchPerformanceReceiptV1,
-    ) -> Result<(), String> {
-        let limits = [
-            (
-                "generation_load_micros",
-                receipt.generation_load_micros,
-                u128::from(self.max_cold_lookup_micros),
-            ),
-            (
-                "index_lookup_micros",
-                receipt.index_lookup_micros,
-                u128::from(self.max_warm_lookup_micros),
-            ),
-            (
-                "provider_subprocesses",
-                receipt.provider_subprocesses as u128,
-                self.max_provider_process_count as u128,
-            ),
-            (
-                "source_bytes_materialized",
-                receipt.source_bytes_materialized as u128,
-                self.max_source_bytes_materialized as u128,
-            ),
-            (
-                "db_opens",
-                receipt.db_opens as u128,
-                self.max_db_opens as u128,
-            ),
-            (
-                "db_queries",
-                receipt.db_queries as u128,
-                self.max_db_queries as u128,
-            ),
-            (
-                "cache_writes",
-                receipt.cache_writes as u128,
-                self.max_cache_writes as u128,
-            ),
-        ];
-        if let Some((field, observed, maximum)) = limits
-            .into_iter()
-            .find(|(_, observed, maximum)| observed > maximum)
-        {
-            return Err(format!(
-                "memory-search performance contract exceeded: field={field} observed={observed} maximum={maximum}"
-            ));
-        }
-        Ok(())
-    }
 }
 
 impl MemorySearchFixtureV1 {
@@ -131,18 +32,111 @@ impl MemorySearchFixtureV1 {
         self
     }
 
-    pub fn build(self) -> Result<MemorySearchIndexV1, String> {
-        if self.schema_id != MEMORY_SEARCH_FIXTURE_SCHEMA_ID
-            || self.schema_version != MEMORY_SEARCH_FIXTURE_SCHEMA_VERSION
-        {
-            return Err("unsupported memory-search fixture contract".to_string());
-        }
-        MemorySearchIndexV1::build(self.generation, self.items)
+    pub fn load_generation(&self) -> Result<MemorySearchIndexV1, String> {
+        self.build()
+    }
+
+    pub fn build(&self) -> Result<MemorySearchIndexV1, String> {
+        MemorySearchIndexV1::build(self.generation.clone(), self.items.clone())
     }
 }
 
-impl MemorySearchBackendV1 for MemorySearchFixtureV1 {
-    fn load_generation(&self) -> Result<MemorySearchIndexV1, String> {
-        self.clone().build()
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+pub struct MemorySearchScenarioContractV1 {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub backend: String,
+    pub reader_count: usize,
+}
+
+impl MemorySearchScenarioContractV1 {
+    pub fn from_toml(source: &str) -> Result<Self, String> {
+        toml::from_str(source)
+            .map_err(|error| format!("invalid memory-search scenario contract: {error}"))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+pub struct MemorySearchBenchmarkContractV1 {
+    pub max_cold_lookup_micros: u128,
+    pub max_warm_lookup_micros: u128,
+    pub max_provider_process_count: usize,
+    pub max_source_bytes_materialized: usize,
+    pub max_db_opens: usize,
+    pub max_db_queries: usize,
+    pub max_cache_writes: usize,
+}
+
+impl MemorySearchBenchmarkContractV1 {
+    pub fn from_toml(source: &str) -> Result<Self, String> {
+        toml::from_str(source)
+            .map_err(|error| format!("invalid memory-search benchmark contract: {error}"))
+    }
+
+    pub fn validate_receipt(
+        &self,
+        receipt: &MemorySearchPerformanceReceiptV1,
+    ) -> Result<(), String> {
+        if receipt.generation_load_micros > self.max_cold_lookup_micros {
+            return Err(format!(
+                "memory-search cold lookup exceeded budget: actualMicros={} budgetMicros={}",
+                receipt.generation_load_micros, self.max_cold_lookup_micros
+            ));
+        }
+        if receipt.index_lookup_micros > self.max_warm_lookup_micros {
+            return Err(format!(
+                "memory-search warm lookup exceeded budget: actualMicros={} budgetMicros={}",
+                receipt.index_lookup_micros, self.max_warm_lookup_micros
+            ));
+        }
+        if receipt.provider_subprocesses > self.max_provider_process_count
+            || receipt.source_bytes_materialized > self.max_source_bytes_materialized
+            || receipt.db_opens > self.max_db_opens
+            || receipt.db_queries > self.max_db_queries
+            || receipt.cache_writes > self.max_cache_writes
+        {
+            return Err(format!(
+                "memory-search zero-IO contract violated: providerProcesses={} sourceBytesMaterialized={} dbOpens={} dbQueries={} cacheWrites={}",
+                receipt.provider_subprocesses,
+                receipt.source_bytes_materialized,
+                receipt.db_opens,
+                receipt.db_queries,
+                receipt.cache_writes
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct MemorySearchFixtureSlotV1 {
+    loaded: OnceLock<Arc<MemorySearchIndexV1>>,
+    load_lock: Mutex<()>,
+}
+
+impl MemorySearchFixtureSlotV1 {
+    pub fn load_once(
+        &self,
+        fixture: &MemorySearchFixtureV1,
+    ) -> Result<Arc<MemorySearchIndexV1>, String> {
+        if let Some(index) = self.loaded.get() {
+            return Ok(Arc::clone(index));
+        }
+        let _load_guard = self
+            .load_lock
+            .lock()
+            .map_err(|_| "resident Memory Search load lock poisoned".to_owned())?;
+        if let Some(index) = self.loaded.get() {
+            return Ok(Arc::clone(index));
+        }
+        let index = Arc::new(fixture.load_generation()?);
+        if self.loaded.set(Arc::clone(&index)).is_err() {
+            unreachable!("load lock guarantees a single Memory Search publisher");
+        }
+        Ok(index)
+    }
+
+    pub fn get(&self) -> Option<Arc<MemorySearchIndexV1>> {
+        self.loaded.get().map(Arc::clone)
     }
 }

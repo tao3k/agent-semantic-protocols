@@ -660,11 +660,21 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
                 selector_id: "source_index_perf_fixture".into(),
                 symbol: Some("source_index_perf_fixture".into()),
                 kind: Some("function".into()),
-                start_line: 1,
-                end_line: 3,
                 source: "pub fn source_index_perf_fixture() {}".to_string().into(),
-                payload_proof: None,
                 query_keys: vec!["source_index_perf_fixture".to_string().into()],
+                materialization_proof: crate::materialization_fixture::materialization_proof(
+                    crate::materialization_fixture::MaterializationFixtureInput {
+                        language_id: "rust",
+                        provider_id: "rs-harness",
+                        owner_path: "src/source_index_perf.rs",
+                        structural_selector: "source_index_perf_fixture",
+                        item_kind: "function",
+                        item_name: "source_index_perf_fixture",
+                        source: b"pub fn source_index_perf_fixture() {}",
+                        source_byte_start: 0,
+                        source_byte_end: b"pub fn source_index_perf_fixture() {}".len() as u64,
+                    },
+                ),
             }],
         },
     }
@@ -681,6 +691,7 @@ fn large_refresh_request(
         let owner_path = format!("src/generated/owner_{index}.rs");
         let selector_id = format!("source-index-large-owner-{index}");
         let symbol = format!("source_index_large_owner_{index}");
+        let source = format!("pub fn {symbol}() {{}}");
         file_hashes.push(ClientCacheFileHash {
             path: owner_path.clone(),
             sha256: format!("{index:064x}"),
@@ -697,14 +708,24 @@ fn large_refresh_request(
         });
         selectors.push(ClientDbSourceIndexSelector {
             owner_path: owner_path.into(),
-            selector_id: selector_id.into(),
+            selector_id: selector_id.clone().into(),
             symbol: Some(symbol.clone().into()),
             kind: Some("function".into()),
-            start_line: 1,
-            end_line: 1,
-            source: format!("pub fn {symbol}() {{}}").into(),
-            payload_proof: None,
+            source: source.clone().into(),
             query_keys: vec![symbol.into()],
+            materialization_proof: crate::materialization_fixture::materialization_proof(
+                crate::materialization_fixture::MaterializationFixtureInput {
+                    language_id: "rust",
+                    provider_id: "rs-harness",
+                    owner_path: &format!("src/generated/owner_{index}.rs"),
+                    structural_selector: &selector_id,
+                    item_kind: "function",
+                    item_name: &format!("source_index_large_owner_{index}"),
+                    source: source.as_bytes(),
+                    source_byte_start: 0,
+                    source_byte_end: source.len() as u64,
+                },
+            ),
         });
     }
     ClientDbSourceIndexRefreshRequest {

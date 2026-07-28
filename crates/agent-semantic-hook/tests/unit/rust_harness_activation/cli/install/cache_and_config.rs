@@ -51,6 +51,7 @@ enabled = false
     )
     .expect("write .agents/asp.toml");
     let protocol_bin_dir = root.join(".agent-bin");
+    write_real_asp_launcher(&protocol_bin_dir);
     let prj_cache_home = root.join(".project-cache");
     let output = protocol_command()
         .env("PATH", &protocol_bin_dir)
@@ -124,6 +125,7 @@ fn cli_install_refreshes_drifted_managed_client_hook_config() {
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
     let protocol_bin_dir = root.join(".agent-bin");
+    write_real_asp_launcher(&protocol_bin_dir);
     let client_config_path = asp_state_home.join("hooks/config.toml");
     std::fs::create_dir_all(client_config_path.parent().expect("config parent"))
         .expect("create client config dir");
@@ -151,7 +153,12 @@ decision = "deny"
         "install stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert_eq!(
         std::fs::read_to_string(&client_config_path).expect("read client config"),
         agent_semantic_hook::default_client_config_template()
@@ -174,6 +181,7 @@ fn cli_install_refreshes_legacy_managed_hook_config() {
     let client_config_path = asp_state_home.join("hooks/config.toml");
     std::fs::create_dir_all(client_config_path.parent().expect("config parent"))
         .expect("create client config dir");
+    write_real_asp_launcher(&protocol_bin_dir);
     let legacy_config = r#"# Semantic agent client hook config.
 schemaId = "agent.semantic-protocols.hook.client-config"
 schemaVersion = "1"
@@ -208,7 +216,12 @@ argvSourceGlobAny = [
         "install stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("userConfigStatus=migrated-managed"),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let client_config = std::fs::read_to_string(&client_config_path).expect("read client config");
     assert_eq!(
@@ -226,6 +239,7 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");
     let asp_bin_dir = asp_bin_dir();
     let protocol_bin_dir = root.join(".agent-bin");
+    write_real_asp_launcher(&protocol_bin_dir);
     let path = std::env::join_paths([protocol_bin_dir.as_path(), asp_bin_dir.as_path()])
         .expect("protocol and ASP PATH");
     std::fs::create_dir_all(root.join(".codex")).expect("create .codex");
@@ -310,3 +324,4 @@ fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
     assert!(user_config.contains("agent-semantic-protocol trusted hook state"));
     let _ = std::fs::remove_dir_all(&root);
 }
+use crate::rust_harness_activation::cli::install::support::write_real_asp_launcher;

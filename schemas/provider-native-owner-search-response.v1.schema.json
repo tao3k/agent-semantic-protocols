@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/provider-native-owner-search-response.v1.schema.json",
+  "title": "ASP Provider Native Owner Search Response v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "requestedOwnerPath",
+    "requestedQuery",
+    "sourceContentDigest",
+    "parsedOwnerCount",
+    "projectionCompleteness",
+    "projections"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-native-owner-search-response"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestedOwnerPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestedQuery": {
+      "type": "string"
+    },
+    "sourceContentDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "parsedOwnerCount": {
+      "const": 1
+    },
+    "projectionCompleteness": {
+      "const": "complete-owner"
+    },
+    "projections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "structuralSelector",
+          "signature",
+          "itemKind",
+          "itemName",
+          "captureName",
+          "sourceByteStart",
+          "sourceByteEnd"
+        ],
+        "properties": {
+          "structuralSelector": {
+            "type": "string",
+            "minLength": 1
+          },
+          "signature": {
+            "type": "string",
+            "minLength": 1
+          },
+          "itemKind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "itemName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "captureName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceByteStart": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sourceByteEnd": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  }
+}

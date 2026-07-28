@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/asp.resource-sync-receipt.v1.schema.json",
+  "title": "ASP Resource Sync Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "status",
+    "previousResourceGeneration",
+    "activeResourceGeneration",
+    "stagedResourceCount",
+    "publishedResourceCount",
+    "activationWrites",
+    "dbOpens",
+    "dbTransactions",
+    "providerInvocations",
+    "sessionRegistryOpens",
+    "sourceIndexWrites",
+    "residentNotification"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "asp.resource-sync-receipt.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "status": {
+      "enum": [
+        "unchanged",
+        "published"
+      ]
+    },
+    "previousResourceGeneration": {
+      "$ref": "#/$defs/optionalDigest"
+    },
+    "activeResourceGeneration": {
+      "$ref": "#/$defs/digest"
+    },
+    "stagedResourceCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "publishedResourceCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "activationWrites": {
+      "const": 0
+    },
+    "dbOpens": {
+      "const": 0
+    },
+    "dbTransactions": {
+      "const": 0
+    },
+    "providerInvocations": {
+      "const": 0
+    },
+    "sessionRegistryOpens": {
+      "const": 0
+    },
+    "sourceIndexWrites": {
+      "const": 0
+    },
+    "residentNotification": {
+      "enum": [
+        "queued",
+        "not-running",
+        "unchanged"
+      ]
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "optionalDigest": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/digest"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

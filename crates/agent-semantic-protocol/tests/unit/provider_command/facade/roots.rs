@@ -503,6 +503,8 @@ fn install_exact_selector_projection_provider(
     let packet =
         agent_semantic_content_identity::exact_selector_projection_packet::build_exact_selector_projection_packet_v1(
             agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
+                source_byte_start: 0,
+                source_byte_end: u64::try_from(source.len()).expect("source length"),
                 language_id: &language_id,
                 provider_id: &provider_id,
                 canonical_item_selector,

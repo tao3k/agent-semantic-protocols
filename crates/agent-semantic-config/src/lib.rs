@@ -10,7 +10,6 @@ pub use codex_plugin_config::codex_config_plugin_enabled;
 
 pub use hook_client_config::HookClientDecisionMaterializer;
 pub use hook_client_config::hook_client_contract_fingerprint;
-mod layout;
 
 pub use hook_client_config::HookClientStructuredFormat;
 mod semantic_identity;
@@ -37,11 +36,4 @@ pub use hook_client_config::{
 };
 pub use hook_client_config::{
     HookClientStructuredFilterGrammar, HookClientStructuredProjectionMatchConfig,
-};
-pub use layout::{
-    PRJ_CACHE_HOME_ENV, ProjectCacheSource, ProjectEnvStatus, ProjectRuntimeEnv,
-    ProjectRuntimeLayout, project_activation_path, project_cache_root, project_cache_root_with_env,
-    project_client_cache_dir, project_hook_cache_dir, project_protocol_home,
-    project_provider_lock_dir, project_runtime_bin_dir, project_runtime_layout,
-    project_runtime_layout_with_env,
 };

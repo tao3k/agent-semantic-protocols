@@ -111,9 +111,53 @@ pub enum SearchPipeSourceIndexDecision {
 pub struct SearchPipeSourceIndexAcquisition {
     pub decision: SearchPipeSourceIndexDecision,
     pub gate: Option<SearchPipeSourceIndexGate>,
-    pub candidates: Vec<SearchPipeCandidate>,
+    pub(crate) candidates: Vec<SearchPipeCandidate>,
     pub source_snapshot: Option<agent_semantic_content_identity::SourceSnapshotEvidence>,
+    /// Canonical generation authority for every graph-derived candidate.
+    ///
+    /// A source snapshot alone is not sufficient: filesystem/search overlays
+    /// can describe only a package fragment while still carrying a valid
+    /// snapshot digest. Graph routing must bind its facts to the complete,
+    /// active workspace generation before it may rank or render them.
+    pub workspace_generation:
+        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationAuthorityV1,
     pub index_artifact_digest: Option<String>,
+}
+
+impl SearchPipeSourceIndexAcquisition {
+    /// Bind a validated complete generation to this acquisition.
+    pub fn bind_workspace_generation(
+        &mut self,
+        evidence: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
+    ) -> Result<
+        (),
+        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceError,
+    >{
+        evidence.validate_complete()?;
+        self.workspace_generation =
+            agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationAuthorityV1::Active {
+                evidence,
+            };
+        Ok(())
+    }
+
+    /// Untrusted discovery hints may be inspected without graph authority.
+    pub fn discovery_candidates(&self) -> &[SearchPipeCandidate] {
+        &self.candidates
+    }
+
+    /// Graph consumers must prove that this acquisition belongs to the active
+    /// complete workspace generation before observing candidates.
+    pub fn admitted_graph_candidates(
+        &self,
+        active: &agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
+    ) -> Result<
+        &[SearchPipeCandidate],
+        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceError,
+    >{
+        self.workspace_generation.admit_graph(active)?;
+        Ok(&self.candidates)
+    }
 }
 
 pub struct SearchPipeSourceIndexAcquisitionRequest<'a> {
@@ -160,6 +204,7 @@ pub fn collect_search_pipe_source_index_acquisition(
         SearchPipeSourceIndexDecision::DeferBackend
     };
     Some(SearchPipeSourceIndexAcquisition {
+        workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationAuthorityV1::cold_required(),
         decision,
         gate: None,
         candidates,

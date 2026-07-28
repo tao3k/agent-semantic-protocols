@@ -640,7 +640,7 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
     }];
     if scans_nested_actions {
         actions.extend(codex_command_actions(tool_name, tool_input));
-        for nested in nested_tool_actions(tool_input) {
+        for nested in nested_tool_actions(tool_name, tool_input) {
             actions.extend(collect_tool_actions(&nested.tool_name, &nested.input));
         }
     }
@@ -711,6 +711,9 @@ fn tool_input_needs_action_scan(tool_name: &str, tool_input: &Value) -> bool {
     let Some(object) = tool_input.as_object() else {
         return false;
     };
+    if tool_name == "functions.exec" && object.get("code").and_then(Value::as_str).is_some() {
+        return true;
+    }
     ACTION_SCAN_KEYS.iter().any(|key| object.contains_key(*key))
 }
 
@@ -724,9 +727,12 @@ struct NestedToolAction {
     input: Value,
 }
 
-fn nested_tool_actions(tool_input: &Value) -> Vec<NestedToolAction> {
+fn nested_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<NestedToolAction> {
     let mut nested = Vec::new();
     if let Some(action) = nested_function_action(tool_input) {
+        nested.push(action);
+    }
+    if let Some(action) = nested_functions_exec_code_action(tool_name, tool_input) {
         nested.push(action);
     }
     for key in ["tool_uses", "toolUses", "tools", "tool_calls", "toolCalls"] {
@@ -740,6 +746,55 @@ fn nested_tool_actions(tool_input: &Value) -> Vec<NestedToolAction> {
         }
     }
     nested
+}
+
+fn nested_functions_exec_code_action(
+    tool_name: &str,
+    tool_input: &Value,
+) -> Option<NestedToolAction> {
+    if tool_name != "functions.exec" {
+        return None;
+    }
+    let code = tool_input.get("code")?.as_str()?.trim();
+    let code = code.strip_suffix(';').unwrap_or(code).trim();
+    let argument = code
+        .strip_prefix("await tools.exec_command(")?
+        .strip_suffix(')')?
+        .trim();
+    let argument = argument.strip_prefix('{')?.strip_suffix('}')?.trim();
+    let (key, value) = argument.split_once(':')?;
+    let key = key.trim().trim_matches('"');
+    if !matches!(key, "cmd" | "command") {
+        return None;
+    }
+    let value = value.trim();
+    if !value.starts_with('"') {
+        return None;
+    }
+    let mut escaped = false;
+    let mut literal_end = None;
+    for (index, byte) in value.as_bytes().iter().copied().enumerate().skip(1) {
+        match byte {
+            b'\\' if !escaped => escaped = true,
+            b'"' if !escaped => {
+                literal_end = Some(index + 1);
+                break;
+            }
+            _ => escaped = false,
+        }
+    }
+    let literal_end = literal_end?;
+    let trailing = value[literal_end..].trim();
+    if !trailing.is_empty() && trailing != "," {
+        return None;
+    }
+    let command = serde_json::from_str::<String>(&value[..literal_end]).ok()?;
+    let mut input = serde_json::Map::new();
+    input.insert(key.to_owned(), Value::String(command));
+    Some(NestedToolAction {
+        tool_name: "exec_command".to_owned(),
+        input: Value::Object(input),
+    })
 }
 
 fn nested_action_from_tool_use(tool_use: &Value) -> Option<NestedToolAction> {

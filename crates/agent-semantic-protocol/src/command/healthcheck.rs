@@ -2,7 +2,6 @@
 
 use super::hook_runtime::active_codex_plugin_skill_path;
 use super::protocol_binary::protocol_binary_on_path;
-use agent_semantic_config::{PRJ_CACHE_HOME_ENV, ProjectRuntimeLayout, project_runtime_layout};
 use agent_semantic_hook::{
     RuntimeProfiles, RuntimeProviderHealthStatus, load_activation, runtime_profiles_for_runtime,
 };
@@ -18,7 +17,7 @@ const HEALTHCHECK_PROTOCOL_VERSION: &str = "1";
 
 pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     let options = HealthcheckOptions::parse(args)?;
-    let layout = project_runtime_layout(&options.project_root);
+    let layout = HealthcheckStateLayout::resolve(&options.project_root)?;
     let context = agent_semantic_client_core::ProjectContext::resolve(&options.project_root)?;
     let project_state_paths = agent_semantic_runtime::project_state_paths(context.cwd())?;
     let activation_path = project_state_paths.activation_path;
@@ -256,7 +255,7 @@ fn check_binary(activation_path: &Path) -> BinaryCheck {
 }
 
 fn collect_layout_issues(
-    layout: &ProjectRuntimeLayout,
+    layout: &HealthcheckStateLayout,
     skill: &SkillHealthReceipt,
 ) -> Vec<HealthIssue> {
     let mut issues = Vec::new();
@@ -265,14 +264,8 @@ fn collect_layout_issues(
             "missing-git-toplevel",
             format!(
                 "failed to locate git toplevel from {}",
-                layout.requested_root.display()
+                layout.project_root.display()
             ),
-        ));
-    }
-    if layout.cache_home.is_none() {
-        issues.push(error(
-            "missing-cache-home",
-            format!("set {PRJ_CACHE_HOME_ENV} or run inside a git worktree"),
         ));
     }
     collect_file_issue(
@@ -408,9 +401,33 @@ fn fs_status(path: Option<&Path>, kind: FsKind) -> &'static str {
     }
 }
 
+struct HealthcheckStateLayout {
+    project_root: PathBuf,
+    state_home: PathBuf,
+    repo_id: String,
+    workspace_id: String,
+    git_toplevel: Option<PathBuf>,
+    agents_dir: Option<PathBuf>,
+}
+
+impl HealthcheckStateLayout {
+    fn resolve(project_root: &Path) -> Result<Self, String> {
+        let state = agent_semantic_runtime::state_core::ResolvedState::resolve(project_root)?;
+        let git_toplevel = state.repo.git_toplevel.clone();
+        Ok(Self {
+            project_root: project_root.to_path_buf(),
+            state_home: state.state_home,
+            repo_id: state.repo.repo_id.to_string(),
+            workspace_id: state.workspace.workspace_id.to_string(),
+            agents_dir: git_toplevel.as_ref().map(|root| root.join(".agents")),
+            git_toplevel,
+        })
+    }
+}
+
 struct HealthcheckReport<'a> {
     status: &'a str,
-    layout: &'a ProjectRuntimeLayout,
+    layout: &'a HealthcheckStateLayout,
     activation_path: &'a Path,
     activation: &'a ActivationCheck,
     activation_runtime: &'a ActivationRuntimeCheck,
@@ -431,20 +448,12 @@ fn print_compact(report: &HealthcheckReport<'_>) {
         issues,
     } = report;
     println!(
-        "[asp-healthcheck] status={} gitToplevel={} cacheHome={} cacheSource={}",
+        "[asp-healthcheck] status={} stateHome={} repoId={} workspaceId={} gitToplevel={}",
         status,
+        layout.state_home.display(),
+        layout.repo_id,
+        layout.workspace_id,
         display_opt(layout.git_toplevel.as_deref()),
-        display_opt(layout.cache_home.as_deref()),
-        layout
-            .cache_source
-            .as_ref()
-            .map(|source| source.as_str())
-            .unwrap_or("missing"),
-    );
-    println!(
-        "|env {}={}",
-        PRJ_CACHE_HOME_ENV,
-        env_status(layout.prj_cache_home.as_deref()),
     );
     println!(
         "|path agentsDir={} status={}",
@@ -539,13 +548,11 @@ fn print_json(report: &HealthcheckReport<'_>) -> Result<(), String> {
         "protocolId": HEALTHCHECK_PROTOCOL_ID,
         "protocolVersion": HEALTHCHECK_PROTOCOL_VERSION,
         "status": status,
-        "projectRoot": layout.requested_root.display().to_string(),
+        "projectRoot": layout.project_root.display().to_string(),
+        "stateHome": layout.state_home.display().to_string(),
+        "repoId": layout.repo_id,
+        "workspaceId": layout.workspace_id,
         "gitToplevel": path_value(layout.git_toplevel.as_deref()),
-        "cacheHome": path_value(layout.cache_home.as_deref()),
-        "cacheSource": layout.cache_source.as_ref().map(|source| source.as_str()),
-        "env": {
-            "PRJ_CACHE_HOME": path_value(layout.prj_cache_home.as_deref()),
-        },
         "paths": {
             "agentsDir": path_report(layout.agents_dir.as_deref(), fs_status(layout.agents_dir.as_deref(), FsKind::Dir), None, None),
             "activation": path_report(Some(activation_path), activation.status, activation.provider_count, activation.error.as_deref()),
@@ -607,13 +614,6 @@ fn display_count(count: Option<usize>) -> String {
     count
         .map(|count| count.to_string())
         .unwrap_or_else(|| "n/a".to_string())
-}
-
-fn env_status(path: Option<&Path>) -> String {
-    match path {
-        Some(path) => format!("set:{}", path.display()),
-        None => "unset".to_string(),
-    }
 }
 
 fn runtime_provider_status(status: RuntimeProviderHealthStatus) -> &'static str {

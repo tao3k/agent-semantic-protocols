@@ -8,7 +8,7 @@ pub(super) fn graph_owner_rank_report_with_topology(
     candidates: &[Candidate],
     query_terms: &[String],
     workspace_root: Option<&Path>,
-    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+    generation: &agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1<'_>,
 ) -> agent_semantic_search::GraphOwnerRankReport {
     let projection_candidates = candidates
         .iter()
@@ -27,13 +27,15 @@ pub(super) fn graph_owner_rank_report_with_topology(
     let submodule_paths = workspace_root
         .map(agent_semantic_search::graph_project_submodule_paths)
         .unwrap_or_default();
-    agent_semantic_search::rank_graph_owner_report(agent_semantic_search::GraphOwnerRankRequest {
-        candidates: projection_candidates
-            .iter()
-            .map(agent_semantic_search::GraphOwnerRankCandidate::from)
-            .collect(),
-        query_terms: query_terms.to_vec(),
-        submodule_paths,
-        source_snapshot: source_snapshot.clone(),
-    })
+    agent_semantic_search::rank_graph_owner_report(
+        agent_semantic_search::GraphOwnerRankRequest::from_admitted_generation(
+            projection_candidates
+                .iter()
+                .map(agent_semantic_search::GraphOwnerRankCandidate::from)
+                .collect(),
+            query_terms.to_vec(),
+            submodule_paths,
+            generation,
+        ),
+    )
 }

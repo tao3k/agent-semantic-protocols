@@ -67,7 +67,7 @@ fn install_rust_provider(state_home: &Path, delegate: Option<&str>) {
     let metadata_digest =
         agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed)
             .expect("installed provider metadata digest");
-    let lock_dir = state_home.join("runtime/provider-locks");
+    let lock_dir = agent_semantic_runtime::provider_receipt_dir(&state_home);
     std::fs::create_dir_all(&lock_dir).expect("create provider lock registry");
     std::fs::write(
         lock_dir.join("rust.lock.toml"),

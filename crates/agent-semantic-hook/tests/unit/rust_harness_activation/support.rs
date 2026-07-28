@@ -154,6 +154,7 @@ pub(super) fn root_owned_rust_activation_json() -> String {
     )
     .expect("digest provider execution command");
     let activation = agent_semantic_hook::HookActivation {
+        rankers: Vec::new(),
         schema_id: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: agent_semantic_hook::HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
         schema_authority: "https://tao3k.github.io/agent-semantic-protocols/schemas/".to_string(),
@@ -267,7 +268,7 @@ fn write_state_home_provider_file(
         .expect("provider content digest");
     let metadata_digest = agent_semantic_content_identity::file_artifact_metadata_digest_v1(&path)
         .expect("provider metadata digest");
-    let lock_dir = state_home.join("runtime").join("provider-locks");
+    let lock_dir = agent_semantic_runtime::provider_receipt_dir(&state_home);
     std::fs::create_dir_all(&lock_dir).expect("create provider lock dir");
     std::fs::write(
         lock_dir.join(format!("{language_id}.lock.toml")),

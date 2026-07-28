@@ -1,0 +1,25 @@
+[benchmark]
+id = "code-search-turso-resident-session-warm-path"
+phase = "warm"
+timer_unit = "microseconds"
+sample_count = 128
+target_p95_us = 5000
+max_sample_us = 10000
+concurrent_task_count = 32
+lookups_per_task = 16
+concurrent_target_p95_us = 1000
+concurrent_max_sample_us = 5000
+engine = "turso-0.7"
+merkle_algorithm = "blake3-merkle-v1"
+require_resident_connection = true
+max_additional_turso_db_open_count = 0
+max_provider_process_count = 0
+max_source_blob_read_count = 0
+max_source_rehash_count = 0
+fallback_reason = "none"
+
+[gate]
+policy = "SEARCH-AGENT-ASP-CODE-SEARCH-TURSO-PERF-001"
+require_all_samples_inside_max = true
+forbid_best_of_sampling = true
+require_single_read_session = true

@@ -17,7 +17,6 @@ pub use activation::{
     ASP_PROVIDER_ACTIVATION_PATH_ENV, ProviderRegistryEvidence, ProviderRegistrySnapshot,
     ResolvedProvider, RuntimeProfileStatus,
 };
-pub use agent_semantic_config::ProjectEnvStatus;
 pub use agent_semantic_hook::ProviderExecution;
 pub use cache_artifact::{
     replay_artifact_path, replay_artifacts_root, structured_evidence_artifact_path,
