@@ -1,6 +1,7 @@
 //! DB Engine-owned source index refresh and lookup facade.
 
 mod api;
+pub use api::current_live_provider_source_index_snapshot_with_registry;
 mod projection;
 mod provider_envelope;
 
@@ -18,11 +19,11 @@ pub use api::{
 pub use projection::{LanguageProjectionImportReport, import_language_projection};
 pub use provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1, ProviderSourceSnapshotEnvelopePublicationV1,
-    ProviderWorkspaceIdentityV1, provider_workspace_identity_v1,
+    ProviderWorkspaceIdentityV1,
     current_provider_source_index_snapshot_at_artifact_root_with_registry,
     ensure_provider_source_index_snapshot_at_artifact_root_with_registry,
     provider_source_snapshot_envelope_path_at_artifact_root_with_registry,
-    publish_provider_source_snapshot_envelope,
+    provider_workspace_identity_v1, publish_provider_source_snapshot_envelope,
 };
 mod collect;
 mod generation;

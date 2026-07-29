@@ -1,12 +1,12 @@
 {
   "schemaId": "agent.semantic-protocols.callable-skeleton-projection",
-  "schemaVersion": "v1",
+  "schemaVersion": "1",
   "projectionKind": "callable-skeleton",
   "languageId": "rust",
   "providerId": "rs-harness",
   "rootSelector": {
     "schemaId": "asp.exact-structural-selector.v1",
-    "schemaVersion": "v1",
+    "schemaVersion": "1",
     "languageId": "rust",
     "ownerPath": "crates/example/src/dispatch.rs",
     "selector": "rust://crates/example/src/dispatch.rs#node/function/run/identity=root",
@@ -15,7 +15,7 @@
     "queryPackDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "rootItemSelector": {
       "schemaId": "asp.canonical-item-selector.v1",
-      "schemaVersion": "v1",
+      "schemaVersion": "1",
       "languageId": "rust",
       "kind": "function",
       "symbol": "run",
@@ -46,7 +46,7 @@
       "queryable": true,
       "exactSelector": {
         "schemaId": "asp.exact-structural-selector.v1",
-        "schemaVersion": "v1",
+        "schemaVersion": "1",
         "languageId": "rust",
         "ownerPath": "crates/example/src/dispatch.rs",
         "selector": "rust://crates/example/src/dispatch.rs#node/function/run/arm/identity=pattern-command-rust",
@@ -55,7 +55,7 @@
         "queryPackDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         "rootItemSelector": {
           "schemaId": "asp.canonical-item-selector.v1",
-          "schemaVersion": "v1",
+          "schemaVersion": "1",
           "languageId": "rust",
           "kind": "function",
           "symbol": "run",

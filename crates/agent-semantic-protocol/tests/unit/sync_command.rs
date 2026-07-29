@@ -467,3 +467,29 @@ projection = "asp-explorer.toml"
         root
     }
 }
+#[test]
+fn sync_command_has_zero_runtime_database_or_activation_authority() {
+    let source = include_str!("../../src/command/sync.rs");
+    for forbidden in [
+        "ClientDbEngine::",
+        "AgentSessionRegistry::",
+        "load_or_refresh_default_activation",
+        "load_or_sync_activation_for_language",
+    ] {
+        assert!(
+            !source.contains(forbidden),
+            "asp sync must not regain runtime authority through {forbidden}"
+        );
+    }
+    for required in [
+        "activationWrites=0",
+        "dbOpens=0",
+        "dbTransactions=0",
+        "sessionRegistryOpens=0",
+    ] {
+        assert!(
+            source.contains(required),
+            "asp sync must publish the zero-authority receipt field {required}"
+        );
+    }
+}

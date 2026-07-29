@@ -1,0 +1,599 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/workspace-db-owner-ipc.v1.schema.json",
+  "title": "Workspace database owner IPC",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/endpoint"
+    },
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/response"
+    }
+  ],
+  "$defs": {
+    "identity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "workspaceIdentity",
+        "ownerEpoch",
+        "bindingToken",
+        "socketPath"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.workspace-db-owner-endpoint.v1"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "workspaceIdentity": {
+          "$ref": "#/$defs/identity"
+        },
+        "ownerEpoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bindingToken": {
+          "$ref": "#/$defs/identity"
+        },
+        "socketPath": {
+          "$ref": "#/$defs/identity"
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "workspaceIdentity",
+        "ownerEpoch",
+        "bindingToken",
+        "requestId",
+        "operation"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.workspace-db-owner-request.v1"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "workspaceIdentity": {
+          "$ref": "#/$defs/identity"
+        },
+        "ownerEpoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bindingToken": {
+          "$ref": "#/$defs/identity"
+        },
+        "requestId": {
+          "$ref": "#/$defs/identity"
+        },
+        "operation": {
+          "$ref": "#/$defs/operation"
+        }
+      }
+    },
+    "operation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "health"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "request"
+          ],
+          "properties": {
+            "kind": {
+              "const": "read-source-index"
+            },
+            "request": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "projectRoot",
+                "indexedProjectRoot",
+                "sourceSnapshot",
+                "query",
+                "limit"
+              ],
+              "properties": {
+                "projectRoot": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "indexedProjectRoot": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sourceSnapshot": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "schemaId",
+                    "algorithm",
+                    "rootDigest",
+                    "sourceKind",
+                    "leafCount",
+                    "providerDigest"
+                  ],
+                  "properties": {
+                    "schemaId": {
+                      "const": "asp.source-snapshot.v1"
+                    },
+                    "algorithm": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "rootDigest": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sourceKind": {
+                      "enum": [
+                        "filesystem",
+                        "editor-buffer",
+                        "git-tree",
+                        "derived-overlay"
+                      ]
+                    },
+                    "leafCount": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "baseRootDigest": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "providerDigest": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "dirtyPathsDigest": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                },
+                "query": {
+                  "type": "string"
+                },
+                "languageId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "request"
+          ],
+          "properties": {
+            "kind": {
+              "const": "write-provider-incremental-owner"
+            },
+            "request": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "query",
+            "incrementalBudget",
+            "continuation"
+          ],
+          "properties": {
+            "kind": {
+              "const": "read-provider-tree-sitter-query"
+            },
+            "query": {
+              "type": "object"
+            },
+            "incrementalBudget": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "continuation": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "scope",
+            "ownerPath"
+          ],
+          "properties": {
+            "kind": {
+              "const": "read-provider-owner-projections"
+            },
+            "scope": {
+              "type": "object"
+            },
+            "ownerPath": {
+              "$ref": "#/$defs/identity"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "query",
+            "result"
+          ],
+          "properties": {
+            "kind": {
+              "const": "write-provider-tree-sitter-owner-result"
+            },
+            "query": {
+              "type": "object"
+            },
+            "result": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "scope",
+            "owners"
+          ],
+          "properties": {
+            "kind": {
+              "const": "probe-provider-owners"
+            },
+            "scope": {
+              "type": "object"
+            },
+            "owners": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "request"
+          ],
+          "properties": {
+            "kind": {
+              "const": "upsert-provider-inventory"
+            },
+            "request": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "scope",
+            "mode"
+          ],
+          "properties": {
+            "kind": {
+              "const": "finish-writes"
+            },
+            "scope": {
+              "type": "object"
+            },
+            "mode": {
+              "enum": [
+                "resident-batch",
+                "owner-durability-boundary"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "workspaceIdentity",
+        "ownerEpoch",
+        "requestId",
+        "result"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.workspace-db-owner-response.v1"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "workspaceIdentity": {
+          "$ref": "#/$defs/identity"
+        },
+        "ownerEpoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/identity"
+        },
+        "result": {
+          "$ref": "#/$defs/result"
+        }
+      }
+    },
+    "result": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "healthy"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "lookup"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "source-index"
+            },
+            "lookup": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "db_path",
+                "state",
+                "candidates",
+                "source_snapshot",
+                "index_artifact_digest"
+              ],
+              "properties": {
+                "db_path": {
+                  "type": "string"
+                },
+                "state": {
+                  "enum": [
+                    "missing-db",
+                    "empty-index",
+                    "cold-required",
+                    "busy",
+                    "hit",
+                    "miss"
+                  ]
+                },
+                "candidates": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "source_snapshot": {
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "index_artifact_digest": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "receipt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "provider-incremental-owner"
+            },
+            "receipt": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "read"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "provider-tree-sitter-query"
+            },
+            "read": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "projections"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "provider-owner-projections"
+            },
+            "projections": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "receipt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "provider-tree-sitter-owner"
+            },
+            "receipt": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "receipt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "provider-owners"
+            },
+            "receipt": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "receipt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "provider-inventory"
+            },
+            "receipt": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "receipt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "write-finish"
+            },
+            "receipt": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "code",
+            "message"
+          ],
+          "properties": {
+            "state": {
+              "const": "failed"
+            },
+            "code": {
+              "$ref": "#/$defs/identity"
+            },
+            "message": {
+              "$ref": "#/$defs/identity"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -36,10 +36,6 @@ pub struct StatePaths {
     pub projects_by_id_dir: PathBuf,
     pub project_dir: PathBuf,
     pub project_json: PathBuf,
-    #[serde(default)]
-    pub project_client_dir: PathBuf,
-    #[serde(default)]
-    pub project_client_db_path: PathBuf,
     pub workspace_dir: PathBuf,
     pub workspace_json: PathBuf,
     pub hooks_dir: PathBuf,
@@ -58,7 +54,6 @@ impl StatePaths {
         let aliases_by_display_name_dir = state_home.join("aliases").join("by-display-name");
         let projects_by_id_dir = state_home.join("projects").join("by-id");
         let project_dir = projects_by_id_dir.join(repo_id.as_str());
-        let project_client_dir = project_dir.join("live").join("client");
         let workspace_dir = project_dir.join("workspaces").join(workspace_id.as_str());
         let hooks_dir = workspace_dir.join("hooks");
         let client_dir = workspace_dir.join("live").join("client");
@@ -73,8 +68,6 @@ impl StatePaths {
             projects_by_id_dir,
             project_json: project_dir.join("project.json"),
             project_dir,
-            project_client_db_path: project_client_dir.join(CLIENT_DB_FILE),
-            project_client_dir,
             workspace_json: workspace_dir.join("workspace.json"),
             workspace_dir: workspace_dir.clone(),
             hooks_dir,

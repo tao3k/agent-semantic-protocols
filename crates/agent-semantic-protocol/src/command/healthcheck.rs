@@ -38,6 +38,10 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     );
     collect_binary_issue(&mut issues, &binary);
 
+    let catalog = collect_catalog_readiness(
+        &mut issues,
+        super::global_provider_catalog::read_global_provider_catalog_readiness(),
+    );
     let status = overall_status(&issues);
     let report = HealthcheckReport {
         status,
@@ -47,6 +51,7 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         activation_runtime: &activation_runtime,
         binary: &binary,
         skill: &skill,
+        catalog: &catalog,
         issues: &issues,
     };
     if options.json {
@@ -55,7 +60,7 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         print_compact(&report);
     }
 
-    Ok(())
+    healthcheck_command_result(status)
 }
 
 #[derive(Debug)]
@@ -102,6 +107,48 @@ struct HealthIssue {
     severity: &'static str,
     code: &'static str,
     message: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "status", rename_all = "kebab-case")]
+enum CatalogReadinessReceipt {
+    Ready {
+        catalog_generation: String,
+        provider_count: usize,
+        elapsed_micros: u128,
+    },
+    Error {
+        message: String,
+    },
+}
+
+fn collect_catalog_readiness(
+    issues: &mut Vec<HealthIssue>,
+    readiness: Result<super::global_provider_catalog::GlobalProviderCatalogReadiness, String>,
+) -> CatalogReadinessReceipt {
+    match readiness {
+        Ok(readiness) => CatalogReadinessReceipt::Ready {
+            catalog_generation: readiness.catalog_generation,
+            provider_count: readiness.provider_count,
+            elapsed_micros: readiness.elapsed_micros,
+        },
+        Err(message) => {
+            issues.push(HealthIssue {
+                severity: "error",
+                code: "global-provider-catalog-readiness-failed",
+                message: message.clone(),
+            });
+            CatalogReadinessReceipt::Error { message }
+        }
+    }
+}
+
+fn healthcheck_command_result(status: &str) -> Result<(), String> {
+    if status == "error" {
+        Err("healthcheck status=error".to_owned())
+    } else {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -433,8 +480,13 @@ struct HealthcheckReport<'a> {
     activation_runtime: &'a ActivationRuntimeCheck,
     binary: &'a BinaryCheck,
     skill: &'a SkillHealthReceipt,
+    catalog: &'a CatalogReadinessReceipt,
     issues: &'a [HealthIssue],
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/command/healthcheck.rs"]
+mod tests;
 
 fn print_compact(report: &HealthcheckReport<'_>) {
     let HealthcheckReport {
@@ -445,6 +497,7 @@ fn print_compact(report: &HealthcheckReport<'_>) {
         activation_runtime,
         binary,
         skill,
+        catalog,
         issues,
     } = report;
     println!(
@@ -500,6 +553,22 @@ fn print_compact(report: &HealthcheckReport<'_>) {
             );
         }
     }
+    match catalog {
+        CatalogReadinessReceipt::Ready {
+            catalog_generation,
+            provider_count,
+            elapsed_micros,
+        } => println!(
+            "|catalogReadiness status=ready generation={} providerCount={} elapsedMicros={}",
+            catalog_generation, provider_count, elapsed_micros
+        ),
+        CatalogReadinessReceipt::Error { message } => {
+            println!(
+                "|catalogReadiness status=error message={}",
+                single_line(message)
+            )
+        }
+    }
     for issue in *issues {
         println!(
             "|{} code={} message={}",
@@ -519,6 +588,7 @@ fn print_json(report: &HealthcheckReport<'_>) -> Result<(), String> {
         activation_runtime,
         binary,
         skill,
+        catalog,
         issues,
     } = report;
     let providers = activation_runtime
@@ -578,6 +648,7 @@ fn print_json(report: &HealthcheckReport<'_>) -> Result<(), String> {
             "error": binary.error,
         },
         "providers": providers,
+        "catalogReadiness": catalog,
         "issues": issues,
     });
     let text = serde_json::to_string_pretty(&document)

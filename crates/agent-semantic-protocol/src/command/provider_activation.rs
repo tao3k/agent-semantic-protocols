@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use agent_semantic_hook::{
     HookRuntime, default_activation_path, discover_activation_path, language_activation_path,
-    load_or_sync_activation, load_or_sync_activation_for_language, parse_hook_activation,
+    load_activation as load_published_activation, parse_hook_activation,
 };
 
 pub(super) fn load_activation_for_language_message() -> Option<HookRuntime> {
@@ -20,15 +20,28 @@ pub(super) fn provider_activation_path(invocation_root: &Path) -> PathBuf {
 }
 
 pub(super) fn load_activation(path: &Path, invocation_root: &Path) -> Result<HookRuntime, String> {
-    load_or_sync_activation(path, invocation_root)
+    load_published_activation(path).map_err(|error| {
+        format!(
+            "state=cold-required reasonKind=published-activation-required projectRoot={} activation={} error={error}",
+            invocation_root.display(),
+            path.display()
+        )
+    })
 }
 
 pub(super) fn load_activation_for_language(
-    path: &Path,
+    _path: &Path,
     invocation_root: &Path,
     language_id: &str,
 ) -> Result<HookRuntime, String> {
-    load_or_sync_activation_for_language(path, invocation_root, language_id)
+    agent_semantic_hook::registered_language_runtime(invocation_root, language_id).map_err(
+        |error| {
+        format!(
+                "state=cold-required reasonKind=registered-language-runtime-unavailable languageId={language_id} projectRoot={} error={error}",
+            invocation_root.display(),
+        )
+        },
+    )
 }
 
 pub(super) fn activation_path_for_language(

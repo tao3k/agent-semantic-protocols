@@ -96,7 +96,8 @@
       "required": [
         "sourceId",
         "path",
-        "sourceKind"
+        "sourceKind",
+        "sourceContentDigest"
       ],
       "properties": {
         "sourceId": {
@@ -113,6 +114,9 @@
             "config",
             "generated"
           ]
+        },
+        "sourceContentDigest": {
+          "$ref": "#/$defs/digest"
         }
       }
     },
@@ -146,7 +150,8 @@
         "ownerId",
         "kind",
         "name",
-        "selector"
+        "selector",
+        "projections"
       ],
       "properties": {
         "itemId": {
@@ -163,6 +168,54 @@
         },
         "selector": {
           "$ref": "#/$defs/identifier"
+        },
+        "projections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/itemProjection"
+          }
+        }
+      }
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "itemProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectionKind",
+        "sourceByteStart",
+        "sourceByteEnd",
+        "normalizedParserFactsDigest",
+        "projectionDigest",
+        "projectionText"
+      ],
+      "properties": {
+        "projectionKind": {
+          "enum": [
+            "source",
+            "callable-skeleton"
+          ]
+        },
+        "sourceByteStart": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceByteEnd": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "normalizedParserFactsDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "projectionDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "projectionText": {
+          "type": "string"
         }
       }
     },

@@ -10,7 +10,7 @@
     "languageId",
     "providerId",
     "requestedOwnerPath",
-    "requestedQuery",
+    "requestedProjectionMode",
     "sourceContentDigest",
     "parsedOwnerCount",
     "projectionCompleteness",
@@ -35,8 +35,8 @@
       "type": "string",
       "minLength": 1
     },
-    "requestedQuery": {
-      "type": "string"
+    "requestedProjectionMode": {
+      "const": "complete-owner"
     },
     "sourceContentDigest": {
       "type": "string",

@@ -94,7 +94,13 @@ mod search_suggest;
 mod source_access;
 mod sync;
 mod tree_sitter_query_diagnostics;
+mod workspace_db_checkpoint;
+mod workspace_db_owner;
+mod workspace_db_resident;
+mod workspace_db_runtime;
+mod workspace_tree_sitter_inventory;
 mod workspace_tree_sitter_query;
+mod workspace_tree_sitter_query_trace;
 
 pub(crate) use dispatch::run_protocol_command;
 pub(in crate::command) use hook_enforcement::codex_enforcement_report;

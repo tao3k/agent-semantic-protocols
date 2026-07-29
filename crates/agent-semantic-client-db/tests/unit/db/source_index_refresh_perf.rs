@@ -631,6 +631,8 @@ fn source_index_refresh_detects_selector_change_without_file_hash_change() {
 }
 
 fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
+    let structural_selector =
+        "rust://src/source_index_perf.rs#item/function/source_index_perf_fixture";
     ClientDbSourceIndexRefreshRequest {
         membership_change_set:
             agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
@@ -657,7 +659,7 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
             }],
             selectors: vec![ClientDbSourceIndexSelector {
                 owner_path: "src/source_index_perf.rs".into(),
-                selector_id: "source_index_perf_fixture".into(),
+                selector_id: structural_selector.into(),
                 symbol: Some("source_index_perf_fixture".into()),
                 kind: Some("function".into()),
                 source: "pub fn source_index_perf_fixture() {}".to_string().into(),
@@ -667,7 +669,7 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
                         language_id: "rust",
                         provider_id: "rs-harness",
                         owner_path: "src/source_index_perf.rs",
-                        structural_selector: "source_index_perf_fixture",
+                        structural_selector,
                         item_kind: "function",
                         item_name: "source_index_perf_fixture",
                         source: b"pub fn source_index_perf_fixture() {}",
@@ -689,8 +691,8 @@ fn large_refresh_request(
     let mut selectors = Vec::with_capacity(owner_count as usize);
     for index in 0..owner_count {
         let owner_path = format!("src/generated/owner_{index}.rs");
-        let selector_id = format!("source-index-large-owner-{index}");
         let symbol = format!("source_index_large_owner_{index}");
+        let selector_id = format!("rust://{owner_path}#item/function/{symbol}");
         let source = format!("pub fn {symbol}() {{}}");
         file_hashes.push(ClientCacheFileHash {
             path: owner_path.clone(),

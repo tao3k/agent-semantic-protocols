@@ -150,6 +150,7 @@ pub(super) fn provider_routes(binary: &str, query: Option<CommandTemplate>) -> H
             binary, "search", "lexical", "{query}", "owner", "tests", "--view", "seeds", ".",
         ]),
         query,
+        exact_selector_native: None,
         ingest: command_with_stdin(
             &[
                 binary, "search", "ingest", "owner", "tests", "--view", "seeds", ".",

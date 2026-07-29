@@ -78,7 +78,7 @@ fn exact_selector_merkle_turso_scenario(c: &mut Criterion) {
         agent_semantic_content_identity::exact_selector_projection_packet::ExactSelectorProjectionPacketV1Input {
             language_id: &("rust").into(),
             provider_id: &("rs-harness").into(),
-            canonical_item_selector: agent_semantic_content_identity::CanonicalItemSelectorV1::parse("rust://src/lib.rs#item/function/bench_symbol")
+            canonical_item_selector: agent_semantic_content_identity::CanonicalItemSelector::parse("rust://src/lib.rs#item/function/bench_symbol")
                 .expect("canonical benchmark selector"),
             parser_identity_digest: &parser_identity_digest,
             query_pack_digest: &query_pack_digest,

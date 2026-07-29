@@ -327,6 +327,9 @@
         "query": {
           "$ref": "#/$defs/methodId"
         },
+        "exactSelectorNative": {
+          "$ref": "#/$defs/methodId"
+        },
         "ingest": {
           "$ref": "#/$defs/methodId"
         },

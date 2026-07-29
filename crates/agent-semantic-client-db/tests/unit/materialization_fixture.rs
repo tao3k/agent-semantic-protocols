@@ -1,5 +1,5 @@
 use agent_semantic_content_identity::{
-    CanonicalItemIdentityV1, CanonicalItemSelectorV1, ExactSelectorMaterializationProofV1,
+    CanonicalItemIdentity, CanonicalItemSelector, ExactSelectorMaterializationProofV1,
     ExactSelectorProjectionModeV1,
 };
 
@@ -35,8 +35,8 @@ pub(crate) fn materialization_proof(
     ExactSelectorMaterializationProofV1 {
         language_id: input.language_id.to_string(),
         provider_id: input.provider_id.to_string(),
-        canonical_item_selector: CanonicalItemSelectorV1::new(
-            CanonicalItemIdentityV1::new(input.language_id, input.item_kind, input.item_name),
+        canonical_item_selector: CanonicalItemSelector::new(
+            CanonicalItemIdentity::new(input.language_id, input.item_kind, input.item_name),
             input.structural_selector,
         ),
         parser_identity_digest: domain_digest(
@@ -55,7 +55,7 @@ pub(crate) fn materialization_proof(
         normalized_parser_facts_digest: *blake3::hash(normalized_parser_facts.as_bytes())
             .as_bytes(),
         structural_selector: input.structural_selector.to_string(),
-        projection_mode: ExactSelectorProjectionModeV1::Code,
+        projection_mode: ExactSelectorProjectionModeV1::Source,
         source_byte_start: input.source_byte_start,
         source_byte_end: input.source_byte_end,
         projection_digest: *blake3::hash(&projection).as_bytes(),

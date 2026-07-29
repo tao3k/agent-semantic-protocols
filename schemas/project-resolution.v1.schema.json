@@ -1,0 +1,301 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/project-resolution.v1.schema.json",
+  "title": "Project Resolution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "completeness",
+    "projectIdentity",
+    "repositoryCandidates",
+    "resolutionGeneration",
+    "resolvedSourceScopes",
+    "conflicts",
+    "metrics"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.project-resolution"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "state": {
+      "enum": [
+        "resolved",
+        "project-entry-missing",
+        "project-scope-conflict",
+        "manifest-invalid",
+        "unsupported"
+      ]
+    },
+    "completeness": {
+      "enum": [
+        "exact",
+        "partial"
+      ]
+    },
+    "projectIdentity": {
+      "$ref": "#/$defs/projectIdentity"
+    },
+    "repositoryCandidates": {
+      "$ref": "repository-candidate-snapshot.v1.schema.json"
+    },
+    "packageGraph": {
+      "$ref": "language-package-graph.v1.schema.json"
+    },
+    "resolutionGeneration": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resolvedSourceScopes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/resolvedSourceScope"
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/conflict"
+      }
+    },
+    "reasonKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recommendedNext": {
+      "$ref": "#/$defs/recommendedNext"
+    },
+    "metrics": {
+      "$ref": "#/$defs/metrics"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "resolved"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "packageGraph"
+        ]
+      },
+      "else": {
+        "required": [
+          "reasonKind",
+          "recommendedNext"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "projectInstanceId",
+        "projectEntry",
+        "languageId",
+        "providerId",
+        "parserIdentityDigest"
+      ],
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectInstanceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectEntry": {
+          "$ref": "#/$defs/path"
+        },
+        "languageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "providerId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parserIdentityDigest": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "exclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prefix",
+        "authority"
+      ],
+      "properties": {
+        "prefix": {
+          "$ref": "#/$defs/path"
+        },
+        "authority": {
+          "enum": [
+            "asp-infrastructure",
+            "package-manager",
+            "provider-default",
+            "user-policy"
+          ]
+        }
+      }
+    },
+    "resolvedSourceScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scopeId",
+        "packageId",
+        "targetId",
+        "roots",
+        "extensions",
+        "includeAuthority",
+        "exclusions"
+      ],
+      "properties": {
+        "scopeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/path"
+          },
+          "minItems": 1
+        },
+        "extensions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "includeAuthority": {
+          "enum": [
+            "package-manager",
+            "provider-default",
+            "user-policy"
+          ]
+        },
+        "exclusions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/exclusion"
+          }
+        }
+      }
+    },
+    "conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "includeAuthority",
+        "excludeAuthority",
+        "reasonKind"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "includeAuthority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "excludeAuthority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reasonKind": {
+          "const": "project-scope-conflict"
+        }
+      }
+    },
+    "recommendedNext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parsedManifestCount",
+        "parsedLockfileCount",
+        "affectedPackageCount",
+        "fullWorkspaceReads",
+        "fullManifestReparses",
+        "dbOpens",
+        "elapsedMicros"
+      ],
+      "properties": {
+        "parsedManifestCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "parsedLockfileCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "affectedPackageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fullWorkspaceReads": {
+          "const": 0
+        },
+        "fullManifestReparses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dbOpens": {
+          "const": 0
+        },
+        "elapsedMicros": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

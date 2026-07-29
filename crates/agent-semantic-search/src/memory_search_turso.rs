@@ -1,128 +1,199 @@
+use std::time::Instant;
+
+use agent_semantic_client_db::{ProviderSearchWorkspaceSession, TursoResidentSelectorQuery};
+
 use crate::memory_search::{
-    MemorySearchBackendV1, MemorySearchGenerationV1, MemorySearchIndexV1, MemorySearchItemV1,
-    MemorySearchSourceLeafV1,
+    MemorySearchGenerationReceipt, MemorySearchItem, MemorySearchPerformanceReceipt,
+    MemorySearchRequest, MemorySearchResolution, MemorySearchResolutionState,
 };
-use agent_semantic_client_core::{SemanticSchemaId, SemanticSchemaVersion};
-use agent_semantic_client_db::engine::ClientDbSourceIndexGenerationSnapshotV1;
-use agent_semantic_content_identity::CanonicalItemSelectorV1;
-use std::path::Path;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-/// Provider identity required to interpret one active Turso generation.
-pub struct TursoMemorySearchBindingV1 {
-    /// Registered language identifier.
+pub struct TursoMemorySearchBinding {
     pub language_id: String,
-    /// Activated provider identifier.
     pub provider_id: String,
-    /// Digest of the parser identity used to produce selectors.
     pub parser_identity_digest: String,
-    /// Digest of the activated query pack.
     pub query_pack_digest: String,
 }
 
 #[derive(Clone, Debug)]
-/// Immutable Search-owned backend materialized from an active Turso generation.
-pub struct TursoMemorySearchBackendV1 {
-    index: MemorySearchIndexV1,
+pub struct TursoMemorySearchBackend {
+    session: TursoMemorySearchSession,
+    project_root: String,
+    schema_id: String,
+    schema_version: String,
+    binding: TursoMemorySearchBinding,
 }
 
-impl TursoMemorySearchBackendV1 {
-    /// Load and verify the active database generation once before serving memory-only reads.
-    pub async fn load_from_db(
-        db_path: &Path,
-        project_root: &Path,
-        schema_id: &SemanticSchemaId,
-        schema_version: &SemanticSchemaVersion,
-        binding: TursoMemorySearchBindingV1,
-    ) -> Result<Option<Self>, String> {
-        let Some(snapshot) =
-            agent_semantic_client_db::engine::latest_turso_source_index_generation_snapshot(
-                db_path,
-                project_root,
-                schema_id,
-                schema_version,
-            )
-            .await?
-        else {
-            return Ok(None);
-        };
-        Self::from_snapshot(snapshot, binding).map(Some)
+#[derive(Clone, Debug)]
+enum TursoMemorySearchSession {
+    Resident(agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession),
+    Fixture(ProviderSearchWorkspaceSession),
+}
+
+impl TursoMemorySearchBackend {
+    pub fn new(
+        session: agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
+        project_root: impl Into<String>,
+        schema_id: impl Into<String>,
+        schema_version: impl Into<String>,
+        binding: TursoMemorySearchBinding,
+    ) -> Result<Self, String> {
+        Self::with_session(
+            TursoMemorySearchSession::Resident(session),
+            project_root,
+            schema_id,
+            schema_version,
+            binding,
+        )
     }
 
-    /// Verify and materialize a database snapshot into the shared in-memory index.
-    pub fn from_snapshot(
-        snapshot: ClientDbSourceIndexGenerationSnapshotV1,
-        binding: TursoMemorySearchBindingV1,
+    pub(crate) fn new_fixture(
+        session: ProviderSearchWorkspaceSession,
+        project_root: impl Into<String>,
+        schema_id: impl Into<String>,
+        schema_version: impl Into<String>,
+        binding: TursoMemorySearchBinding,
     ) -> Result<Self, String> {
-        if binding.language_id.is_empty()
-            || binding.provider_id.is_empty()
-            || binding.parser_identity_digest.len() != 64
-            || binding.query_pack_digest.len() != 64
-        {
-            return Err("invalid Turso memory-search provider binding".to_string());
-        }
-        let source_leaves = snapshot
-            .file_hashes
-            .iter()
-            .map(
-                |(owner_path, owner_content_digest)| MemorySearchSourceLeafV1 {
-                    owner_path: owner_path.clone(),
-                    owner_content_digest: owner_content_digest.clone(),
-                },
-            )
-            .collect::<Vec<_>>();
-        let mut items = Vec::with_capacity(snapshot.selector_count as usize);
-        for owner in &snapshot.owners {
-            if owner.language_id.as_deref() != Some(binding.language_id.as_str())
-                || owner.provider_id.as_deref() != Some(binding.provider_id.as_str())
-            {
+        Self::with_session(
+            TursoMemorySearchSession::Fixture(session),
+            project_root,
+            schema_id,
+            schema_version,
+            binding,
+        )
+    }
+
+    fn with_session(
+        session: TursoMemorySearchSession,
+        project_root: impl Into<String>,
+        schema_id: impl Into<String>,
+        schema_version: impl Into<String>,
+        binding: TursoMemorySearchBinding,
+    ) -> Result<Self, String> {
+        let project_root = project_root.into();
+        let schema_id = schema_id.into();
+        let schema_version = schema_version.into();
+        for (field, value) in [
+            ("projectRoot", project_root.as_str()),
+            ("schemaId", schema_id.as_str()),
+            ("schemaVersion", schema_version.as_str()),
+            ("languageId", binding.language_id.as_str()),
+            ("providerId", binding.provider_id.as_str()),
+        ] {
+            if value.trim().is_empty() {
                 return Err(format!(
-                    "Turso memory-search generation contains a foreign provider owner: ownerPath={}",
-                    owner.owner_path
+                    "Turso Memory Search binding {field} must not be empty"
                 ));
             }
-            for selector in &owner.selectors {
-                let canonical_item_selector =
-                    CanonicalItemSelectorV1::parse(
-                        &selector.materialization_proof.structural_selector,
-                    )
-                    .map_err(
-                        |error| {
-                            format!(
-                                "invalid Turso memory-search canonical selector: ownerPath={} error={error}",
-                                owner.owner_path
-                            )
-                        },
-                    )?;
-                items.push(MemorySearchItemV1 {
-                    owner_path: owner.owner_path.clone(),
-                    owner_content_digest: owner.owner_content_digest.clone(),
-                    canonical_item_selector,
-                });
-            }
         }
-        let leaf_count = source_leaves.len();
-        let generation = MemorySearchGenerationV1 {
-            generation_id: snapshot.generation_id,
-            root_digest: snapshot.source_snapshot.root_digest,
-            root_depth: MemorySearchGenerationV1::expected_root_depth(leaf_count),
-            leaf_count,
-            owner_count: snapshot.owner_count as usize,
-            selector_count: snapshot.selector_count as usize,
-            language_id: binding.language_id,
-            provider_id: binding.provider_id,
-            parser_identity_digest: binding.parser_identity_digest,
-            query_pack_digest: binding.query_pack_digest,
-            source_leaves,
-        };
+        if binding.parser_identity_digest.len() != 64 || binding.query_pack_digest.len() != 64 {
+            return Err(
+                "Turso Memory Search parser and query-pack digests must be 64 hex characters"
+                    .to_string(),
+            );
+        }
         Ok(Self {
-            index: MemorySearchIndexV1::build(generation, items)?,
+            session,
+            project_root,
+            schema_id,
+            schema_version,
+            binding,
         })
     }
-}
 
-impl MemorySearchBackendV1 for TursoMemorySearchBackendV1 {
-    fn load_generation(&self) -> Result<MemorySearchIndexV1, String> {
-        Ok(self.index.clone())
+    pub async fn resolve(
+        &self,
+        request: &MemorySearchRequest,
+    ) -> Result<MemorySearchResolution, String> {
+        let started = Instant::now();
+        if request.canonical_item_selector.language_id.as_str() != self.binding.language_id {
+            return Err(format!(
+                "Turso Memory Search language binding mismatch: bound={} requested={}",
+                self.binding.language_id,
+                request.canonical_item_selector.language_id.as_str(),
+            ));
+        }
+        let query = TursoResidentSelectorQuery {
+            project_root: self.project_root.clone(),
+            schema_id: self.schema_id.clone(),
+            schema_version: self.schema_version.clone(),
+            provider_id: self.binding.provider_id.clone(),
+            parser_identity_digest: self.binding.parser_identity_digest.clone(),
+            query_pack_digest: self.binding.query_pack_digest.clone(),
+            canonical_item_selector: request.canonical_item_selector.clone(),
+        };
+        let read = match &self.session {
+            TursoMemorySearchSession::Resident(session) => {
+                session.read_resident_selector(&query).await?
+            }
+            TursoMemorySearchSession::Fixture(session) => {
+                session.read_resident_selector(&query).await?
+            }
+        }
+            .ok_or_else(|| {
+                format!(
+                    "Turso Memory Search has no active generation: projectRoot={} schemaId={} schemaVersion={}",
+                    self.project_root, self.schema_id, self.schema_version,
+                )
+            })?;
+        if read.source_snapshot.leaf_count != read.owner_count as usize {
+            return Err(format!(
+                "Turso Memory Search generation is incomplete: leafCount={} ownerCount={}",
+                read.source_snapshot.leaf_count, read.owner_count,
+            ));
+        }
+        let candidates = read
+            .candidates
+            .into_iter()
+            .map(|candidate| MemorySearchItem {
+                owner_path: candidate.owner_path,
+                owner_content_digest: candidate.owner_content_digest,
+                canonical_item_selector: candidate.canonical_item_selector,
+            })
+            .collect::<Vec<_>>();
+        let (state, resolved) = if request.expected_generation_id != read.generation_id {
+            (MemorySearchResolutionState::GenerationMismatch, None)
+        } else if let Some(hit) = candidates
+            .iter()
+            .find(|candidate| candidate.owner_path == request.requested_owner_path)
+            .cloned()
+        {
+            (MemorySearchResolutionState::LiveHit, Some(hit))
+        } else {
+            match candidates.as_slice() {
+                [candidate] => (
+                    MemorySearchResolutionState::LiveRelocated,
+                    Some(candidate.clone()),
+                ),
+                [] if read.actual_kinds.is_empty() => (MemorySearchResolutionState::Missing, None),
+                [] => (MemorySearchResolutionState::KindMismatch, None),
+                _ => (MemorySearchResolutionState::Ambiguous, None),
+            }
+        };
+        let candidate_count = candidates.len();
+        Ok(MemorySearchResolution {
+            state,
+            resolved,
+            candidates,
+            actual_kinds: read.actual_kinds,
+            generation: MemorySearchGenerationReceipt {
+                generation_id: read.generation_id,
+                root_digest: read.source_snapshot.root_digest,
+                root_depth: 0,
+                leaf_count: read.source_snapshot.leaf_count,
+                owner_count: read.owner_count as usize,
+                selector_count: read.selector_count as usize,
+            },
+            performance: MemorySearchPerformanceReceipt {
+                generation_load_micros: 0,
+                index_lookup_micros: started.elapsed().as_micros(),
+                candidate_count,
+                source_bytes_materialized: 0,
+                db_opens: 0,
+                db_queries: read.database_query_count as usize,
+                provider_subprocesses: 0,
+                cache_writes: 0,
+            },
+        })
     }
 }

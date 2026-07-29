@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 pub const CANONICAL_ITEM_SELECTOR_SCHEMA_ID: &str = "asp.canonical-item-selector.v1";
-pub const CANONICAL_ITEM_SELECTOR_SCHEMA_VERSION: &str = "v1";
+pub const CANONICAL_ITEM_SELECTOR_SCHEMA_VERSION: &str = "1";
 
-macro_rules! canonical_item_text_v1 {
+macro_rules! canonical_item_text {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
         #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -29,44 +29,44 @@ macro_rules! canonical_item_text_v1 {
     };
 }
 
-canonical_item_text_v1!(
+canonical_item_text!(
     /// Canonical relation between a scope frame and the selected item.
-    CanonicalItemScopeRelationV1
+    CanonicalItemScopeRelation
 );
-canonical_item_text_v1!(
+canonical_item_text!(
     /// Canonical language-neutral scope kind.
-    CanonicalItemScopeKindV1
+    CanonicalItemScopeKind
 );
-canonical_item_text_v1!(
+canonical_item_text!(
     /// Canonical scope symbol.
-    CanonicalItemScopeSymbolV1
+    CanonicalItemScopeSymbol
 );
-canonical_item_text_v1!(
+canonical_item_text!(
     /// Canonical language id for a selected item.
-    CanonicalItemLanguageIdV1
+    CanonicalItemLanguageId
 );
-canonical_item_text_v1!(
+canonical_item_text!(
     /// Canonical language-neutral item kind.
-    CanonicalItemKindV1
+    CanonicalItemKind
 );
-canonical_item_text_v1!(
+canonical_item_text!(
     /// Canonical selected item symbol.
-    CanonicalItemSymbolV1
+    CanonicalItemSymbol
 );
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CanonicalItemScopeV1 {
-    pub relation: CanonicalItemScopeRelationV1,
-    pub kind: CanonicalItemScopeKindV1,
-    pub symbol: CanonicalItemScopeSymbolV1,
+pub struct CanonicalItemScope {
+    pub relation: CanonicalItemScopeRelation,
+    pub kind: CanonicalItemScopeKind,
+    pub symbol: CanonicalItemScopeSymbol,
 }
 
-impl CanonicalItemScopeV1 {
+impl CanonicalItemScope {
     pub fn new(
-        relation: impl Into<CanonicalItemScopeRelationV1>,
-        kind: impl Into<CanonicalItemScopeKindV1>,
-        symbol: impl Into<CanonicalItemScopeSymbolV1>,
+        relation: impl Into<CanonicalItemScopeRelation>,
+        kind: impl Into<CanonicalItemScopeKind>,
+        symbol: impl Into<CanonicalItemScopeSymbol>,
     ) -> Self {
         Self {
             relation: relation.into(),
@@ -78,18 +78,18 @@ impl CanonicalItemScopeV1 {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CanonicalItemIdentityV1 {
-    pub language_id: CanonicalItemLanguageIdV1,
-    pub kind: CanonicalItemKindV1,
-    pub symbol: CanonicalItemSymbolV1,
-    pub scopes: Vec<CanonicalItemScopeV1>,
+pub struct CanonicalItemIdentity {
+    pub language_id: CanonicalItemLanguageId,
+    pub kind: CanonicalItemKind,
+    pub symbol: CanonicalItemSymbol,
+    pub scopes: Vec<CanonicalItemScope>,
 }
 
-impl CanonicalItemIdentityV1 {
+impl CanonicalItemIdentity {
     pub fn new(
-        language_id: impl Into<CanonicalItemLanguageIdV1>,
-        kind: impl Into<CanonicalItemKindV1>,
-        symbol: impl Into<CanonicalItemSymbolV1>,
+        language_id: impl Into<CanonicalItemLanguageId>,
+        kind: impl Into<CanonicalItemKind>,
+        symbol: impl Into<CanonicalItemSymbol>,
     ) -> Self {
         Self {
             language_id: language_id.into(),
@@ -101,12 +101,12 @@ impl CanonicalItemIdentityV1 {
 
     pub fn with_scope(
         mut self,
-        relation: impl Into<CanonicalItemScopeRelationV1>,
-        kind: impl Into<CanonicalItemScopeKindV1>,
-        symbol: impl Into<CanonicalItemScopeSymbolV1>,
+        relation: impl Into<CanonicalItemScopeRelation>,
+        kind: impl Into<CanonicalItemScopeKind>,
+        symbol: impl Into<CanonicalItemScopeSymbol>,
     ) -> Self {
         self.scopes
-            .push(CanonicalItemScopeV1::new(relation, kind, symbol));
+            .push(CanonicalItemScope::new(relation, kind, symbol));
         self
     }
 
@@ -139,17 +139,17 @@ impl CanonicalItemIdentityV1 {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CanonicalItemSelectorV1 {
+pub struct CanonicalItemSelector {
     pub schema_id: String,
     pub schema_version: String,
-    pub language_id: CanonicalItemLanguageIdV1,
-    pub kind: CanonicalItemKindV1,
-    pub symbol: CanonicalItemSymbolV1,
-    pub scopes: Vec<CanonicalItemScopeV1>,
+    pub language_id: CanonicalItemLanguageId,
+    pub kind: CanonicalItemKind,
+    pub symbol: CanonicalItemSymbol,
+    pub scopes: Vec<CanonicalItemScope>,
     pub structural_selector: String,
 }
 
-impl CanonicalItemSelectorV1 {
+impl CanonicalItemSelector {
     pub fn parse(structural_selector: impl Into<String>) -> Result<Self, String> {
         let structural_selector = structural_selector.into();
         let (language_id, selector_body) =
@@ -169,13 +169,38 @@ impl CanonicalItemSelectorV1 {
             &crate::structural_selector::CanonicalItemIdentityPath::from(identity_path),
         )
         .map_err(|error| format!("canonical item structuralSelector is invalid: {error}"))?;
-        let selector = CanonicalItemSelectorV1::new(identity, structural_selector);
+        let selector = CanonicalItemSelector::new(identity, structural_selector);
         selector.validate()?;
         Ok(selector)
     }
 
-    pub fn new(identity: CanonicalItemIdentityV1, structural_selector: impl Into<String>) -> Self {
-        let CanonicalItemIdentityV1 {
+    pub fn parse_root_or_exact_descendant(
+        structural_selector: impl Into<String>,
+    ) -> Result<Self, String> {
+        let structural_selector = structural_selector.into();
+        let mut parts = structural_selector.split("/segment/");
+        let root = parts.next().unwrap_or_default();
+        let descendants = parts.collect::<Vec<_>>();
+        if descendants.is_empty() {
+            return Self::parse(structural_selector);
+        }
+        for descendant in descendants {
+            let (kind, identity) = descendant.split_once('/').ok_or_else(|| {
+                "exact descendant structuralSelector segment must include <kind>/<identity>"
+                    .to_string()
+            })?;
+            if kind.is_empty() || identity.is_empty() || identity.contains('/') {
+                return Err(
+                    "exact descendant structuralSelector segment must be a canonical <kind>/<identity> pair"
+                        .to_string(),
+                );
+            }
+        }
+        Self::parse(root.to_string())
+    }
+
+    pub fn new(identity: CanonicalItemIdentity, structural_selector: impl Into<String>) -> Self {
+        let CanonicalItemIdentity {
             language_id,
             kind,
             symbol,

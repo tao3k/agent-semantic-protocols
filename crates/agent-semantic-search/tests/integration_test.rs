@@ -4,8 +4,8 @@ mod exact_selector_fixture_performance_gate;
 mod exact_selector_fixture_publication_gate;
 #[path = "integration/exact_selector_generation_fixture.rs"]
 mod exact_selector_generation_fixture;
-#[path = "integration/memory_search_performance_gate.rs"]
-mod memory_search_performance_gate;
+#[path = "integration/performance_gate.rs"]
+mod performance_gate;
 #[path = "integration/search_projection.rs"]
 mod search_projection;
 

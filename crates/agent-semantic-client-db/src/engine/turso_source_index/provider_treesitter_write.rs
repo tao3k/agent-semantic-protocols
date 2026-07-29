@@ -4,29 +4,18 @@ use std::collections::BTreeSet;
 
 use sha2::{Digest, Sha256};
 
-use super::provider_incremental::ProviderIncrementalScopeV1;
+use super::provider_incremental::ProviderIncrementalScoped;
 use super::provider_treesitter::{
-    ProviderOwnerInventoryEntryStateV1, ProviderOwnerInventoryEntryV1,
-    ProviderOwnerInventoryStateV1, ProviderOwnerInventoryWriteReceiptV1,
-    ProviderOwnerInventoryWriteV1, ProviderTreeSitterCaptureProjectionV1,
-    ProviderTreeSitterOwnerResultStateV1, ProviderTreeSitterOwnerResultV1,
-    ProviderTreeSitterOwnerWriteReceiptV1, ProviderTreeSitterQueryIdentityV1,
+    ProviderOwnerInventoryEntry, ProviderOwnerInventoryEntryState, ProviderOwnerInventoryState,
+    ProviderOwnerInventoryWrite, ProviderOwnerInventoryWriteReceipt,
+    ProviderTreeSitterCaptureProjection, ProviderTreeSitterOwnerResult,
+    ProviderTreeSitterOwnerResultState, ProviderTreeSitterOwnerWriteReceipt,
+    ProviderTreeSitterQueryIdentity,
 };
-use super::workspace_db_registry::ProviderSearchWorkspaceSessionV1;
-
-pub(super) async fn upsert_provider_owner_inventory_in_session_v1(
-    session: &ProviderSearchWorkspaceSessionV1,
-    request: &ProviderOwnerInventoryWriteV1,
-) -> Result<ProviderOwnerInventoryWriteReceiptV1, String> {
-    let mut connection = session.writer_connection().await;
-    upsert_provider_owner_inventory_on_connection(&mut connection, request).await
-}
-
-async fn upsert_provider_owner_inventory_on_connection(
+pub(super) async fn upsert_provider_owner_inventory_on_connection(
     connection: &mut turso::Connection,
-    request: &ProviderOwnerInventoryWriteV1,
-) -> Result<ProviderOwnerInventoryWriteReceiptV1, String> {
-    validate_inventory_write(request)?;
+    request: &ProviderOwnerInventoryWrite,
+) -> Result<ProviderOwnerInventoryWriteReceipt, String> {
     let inventory_digest = inventory_digest(request);
     let inventory_generation = inventory_generation(&request.scope, inventory_digest.as_str());
     let current_paths = request
@@ -56,7 +45,7 @@ async fn upsert_provider_owner_inventory_on_connection(
                 .count()
                 .try_into()
                 .unwrap_or(u32::MAX);
-            ProviderOwnerInventoryWriteReceiptV1 {
+            ProviderOwnerInventoryWriteReceipt {
                 inventory_digest,
                 inventory_generation,
                 upserted_entry_count: request.entries.len().try_into().unwrap_or(u32::MAX),
@@ -74,21 +63,11 @@ async fn upsert_provider_owner_inventory_on_connection(
     Ok(receipt)
 }
 
-pub(super) async fn write_provider_treesitter_owner_result_in_session_v1(
-    session: &ProviderSearchWorkspaceSessionV1,
-    query: &ProviderTreeSitterQueryIdentityV1,
-    result: &ProviderTreeSitterOwnerResultV1,
-) -> Result<ProviderTreeSitterOwnerWriteReceiptV1, String> {
-    let mut connection = session.writer_connection().await;
-    write_provider_treesitter_owner_result_on_connection(&mut connection, query, result).await
-}
-
-async fn write_provider_treesitter_owner_result_on_connection(
+pub(super) async fn write_provider_treesitter_owner_result_on_connection(
     connection: &mut turso::Connection,
-    query: &ProviderTreeSitterQueryIdentityV1,
-    result: &ProviderTreeSitterOwnerResultV1,
-) -> Result<ProviderTreeSitterOwnerWriteReceiptV1, String> {
-    validate_query_owner_write(query, result)?;
+    query: &ProviderTreeSitterQueryIdentity,
+    result: &ProviderTreeSitterOwnerResult,
+) -> Result<ProviderTreeSitterOwnerWriteReceipt, String> {
     let capture_names = canonical_capture_names(&query.capture_names);
     let capture_names_json = serde_json::to_string(&capture_names)
         .map_err(|error| format!("failed to encode Tree-sitter capture names: {error}"))?;
@@ -96,13 +75,9 @@ async fn write_provider_treesitter_owner_result_on_connection(
         .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
         .await
         .map_err(|error| format!("failed to begin Tree-sitter owner transaction: {error}"))?;
-    let write = replace_query_owner_transaction(
-        &transaction,
-        query,
-        result,
-        capture_names_json.as_str(),
-    )
-    .await;
+    let write =
+        replace_query_owner_transaction(&transaction, query, result, capture_names_json.as_str())
+            .await;
     match write {
         Ok(()) => transaction
             .commit()
@@ -116,7 +91,7 @@ async fn write_provider_treesitter_owner_result_on_connection(
         }
     }
     verify_query_owner_visibility(&connection, query, result).await?;
-    Ok(ProviderTreeSitterOwnerWriteReceiptV1 {
+    Ok(ProviderTreeSitterOwnerWriteReceipt {
         query_digest: query.query_digest.clone(),
         owner_path: result.owner_path.clone(),
         owner_content_digest: result.owner_content_digest.clone(),
@@ -128,7 +103,7 @@ async fn write_provider_treesitter_owner_result_on_connection(
 
 async fn replace_inventory_transaction(
     connection: &turso::Connection,
-    request: &ProviderOwnerInventoryWriteV1,
+    request: &ProviderOwnerInventoryWrite,
     inventory_digest: &str,
     inventory_generation: &str,
 ) -> Result<(), String> {
@@ -179,7 +154,7 @@ async fn replace_inventory_transaction(
 
 async fn delete_inventory_entries(
     connection: &turso::Connection,
-    scope: &ProviderIncrementalScopeV1,
+    scope: &ProviderIncrementalScoped,
 ) -> Result<(), String> {
     connection
         .execute(
@@ -197,9 +172,9 @@ async fn delete_inventory_entries(
 
 async fn insert_inventory_entry(
     connection: &turso::Connection,
-    scope: &ProviderIncrementalScopeV1,
+    scope: &ProviderIncrementalScoped,
     inventory_generation: &str,
-    entry: &ProviderOwnerInventoryEntryV1,
+    entry: &ProviderOwnerInventoryEntry,
 ) -> Result<(), String> {
     connection
         .execute(
@@ -227,8 +202,8 @@ async fn insert_inventory_entry(
 
 async fn replace_query_owner_transaction(
     connection: &turso::Connection,
-    query: &ProviderTreeSitterQueryIdentityV1,
-    result: &ProviderTreeSitterOwnerResultV1,
+    query: &ProviderTreeSitterQueryIdentity,
+    result: &ProviderTreeSitterOwnerResult,
     capture_names_json: &str,
 ) -> Result<(), String> {
     ensure_query_metadata(connection, query, capture_names_json).await?;
@@ -242,7 +217,7 @@ async fn replace_query_owner_transaction(
 
 async fn ensure_query_metadata(
     connection: &turso::Connection,
-    query: &ProviderTreeSitterQueryIdentityV1,
+    query: &ProviderTreeSitterQueryIdentity,
     capture_names_json: &str,
 ) -> Result<(), String> {
     let existing = read_query_capture_names(connection, query).await?;
@@ -282,8 +257,8 @@ async fn ensure_query_metadata(
 
 async fn delete_owner_captures(
     connection: &turso::Connection,
-    query: &ProviderTreeSitterQueryIdentityV1,
-    result: &ProviderTreeSitterOwnerResultV1,
+    query: &ProviderTreeSitterQueryIdentity,
+    result: &ProviderTreeSitterOwnerResult,
 ) -> Result<(), String> {
     connection
         .execute(
@@ -312,8 +287,8 @@ async fn delete_owner_captures(
 
 async fn upsert_owner_result(
     connection: &turso::Connection,
-    query: &ProviderTreeSitterQueryIdentityV1,
-    result: &ProviderTreeSitterOwnerResultV1,
+    query: &ProviderTreeSitterQueryIdentity,
+    result: &ProviderTreeSitterOwnerResult,
 ) -> Result<(), String> {
     connection
         .execute(
@@ -354,9 +329,9 @@ async fn upsert_owner_result(
 
 async fn insert_capture_projection(
     connection: &turso::Connection,
-    query: &ProviderTreeSitterQueryIdentityV1,
-    result: &ProviderTreeSitterOwnerResultV1,
-    projection: &ProviderTreeSitterCaptureProjectionV1,
+    query: &ProviderTreeSitterQueryIdentity,
+    result: &ProviderTreeSitterOwnerResult,
+    projection: &ProviderTreeSitterCaptureProjection,
 ) -> Result<(), String> {
     connection
         .execute(
@@ -395,7 +370,9 @@ async fn insert_capture_projection(
     Ok(())
 }
 
-fn validate_inventory_write(request: &ProviderOwnerInventoryWriteV1) -> Result<(), String> {
+pub(super) fn validate_inventory_write(
+    request: &ProviderOwnerInventoryWrite,
+) -> Result<(), String> {
     validate_scope(&request.scope)?;
     let mut owner_paths = BTreeSet::new();
     for entry in &request.entries {
@@ -407,15 +384,13 @@ fn validate_inventory_write(request: &ProviderOwnerInventoryWriteV1) -> Result<(
             ));
         }
         match entry.state {
-            ProviderOwnerInventoryEntryStateV1::Indexed if entry.owner_content_digest.is_none() => {
+            ProviderOwnerInventoryEntryState::Indexed if entry.owner_content_digest.is_none() => {
                 return Err(format!(
                     "indexed inventory owner {} requires a content digest",
                     entry.owner_path
                 ));
             }
-            ProviderOwnerInventoryEntryStateV1::Unindexed
-                if entry.owner_content_digest.is_some() =>
-            {
+            ProviderOwnerInventoryEntryState::Unindexed if entry.owner_content_digest.is_some() => {
                 return Err(format!(
                     "unindexed inventory owner {} must not claim a content digest",
                     entry.owner_path
@@ -430,9 +405,9 @@ fn validate_inventory_write(request: &ProviderOwnerInventoryWriteV1) -> Result<(
     Ok(())
 }
 
-fn validate_query_owner_write(
-    query: &ProviderTreeSitterQueryIdentityV1,
-    result: &ProviderTreeSitterOwnerResultV1,
+pub(super) fn validate_query_owner_write(
+    query: &ProviderTreeSitterQueryIdentity,
+    result: &ProviderTreeSitterOwnerResult,
 ) -> Result<(), String> {
     validate_scope(&query.scope)?;
     validate_digest("queryDigest", query.query_digest.as_str())?;
@@ -442,7 +417,7 @@ fn validate_query_owner_write(
     if result.query_digest != query.query_digest {
         return Err("Tree-sitter owner result query digest drift".to_string());
     }
-    if result.state != ProviderTreeSitterOwnerResultStateV1::Processed {
+    if result.state != ProviderTreeSitterOwnerResultState::Processed {
         return Err("Tree-sitter writer accepts only processed owner results".to_string());
     }
     if result.complete_owner_refresh_count > 1 {
@@ -479,7 +454,7 @@ fn validate_query_owner_write(
 }
 
 fn validate_capture_projection(
-    projection: &ProviderTreeSitterCaptureProjectionV1,
+    projection: &ProviderTreeSitterCaptureProjection,
     selector_prefix: &str,
     capture_names: &[String],
 ) -> Result<(), String> {
@@ -506,7 +481,7 @@ fn validate_capture_projection(
     Ok(())
 }
 
-fn validate_scope(scope: &ProviderIncrementalScopeV1) -> Result<(), String> {
+fn validate_scope(scope: &ProviderIncrementalScoped) -> Result<(), String> {
     for (field, value) in [
         ("projectRoot", scope.project_root.as_str()),
         ("workspaceIdentity", scope.workspace_identity.as_str()),
@@ -552,7 +527,7 @@ fn validate_digest(field: &str, digest: &str) -> Result<(), String> {
     }
 }
 
-fn inventory_digest(request: &ProviderOwnerInventoryWriteV1) -> String {
+fn inventory_digest(request: &ProviderOwnerInventoryWrite) -> String {
     let mut entries = request.entries.iter().collect::<Vec<_>>();
     entries.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
     let mut hasher = Sha256::new();
@@ -569,7 +544,7 @@ fn inventory_digest(request: &ProviderOwnerInventoryWriteV1) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-fn inventory_generation(scope: &ProviderIncrementalScopeV1, inventory_digest: &str) -> String {
+fn inventory_generation(scope: &ProviderIncrementalScoped, inventory_digest: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"asp.provider-owner-inventory-generation.v1\0");
     for value in [
@@ -589,18 +564,18 @@ fn hash_text(hasher: &mut Sha256, value: &str) {
     hasher.update(value.as_bytes());
 }
 
-fn inventory_state_text(state: ProviderOwnerInventoryStateV1) -> &'static str {
+fn inventory_state_text(state: ProviderOwnerInventoryState) -> &'static str {
     match state {
-        ProviderOwnerInventoryStateV1::Exact => "exact",
-        ProviderOwnerInventoryStateV1::Known => "known",
+        ProviderOwnerInventoryState::Exact => "exact",
+        ProviderOwnerInventoryState::Known => "known",
     }
 }
 
-fn inventory_entry_state_text(state: ProviderOwnerInventoryEntryStateV1) -> &'static str {
+fn inventory_entry_state_text(state: ProviderOwnerInventoryEntryState) -> &'static str {
     match state {
-        ProviderOwnerInventoryEntryStateV1::Indexed => "indexed",
-        ProviderOwnerInventoryEntryStateV1::Dirty => "dirty",
-        ProviderOwnerInventoryEntryStateV1::Unindexed => "unindexed",
+        ProviderOwnerInventoryEntryState::Indexed => "indexed",
+        ProviderOwnerInventoryEntryState::Dirty => "dirty",
+        ProviderOwnerInventoryEntryState::Unindexed => "unindexed",
     }
 }
 
@@ -613,7 +588,7 @@ fn canonical_capture_names(capture_names: &[String]) -> Vec<String> {
 
 async fn read_inventory_paths(
     connection: &turso::Connection,
-    scope: &ProviderIncrementalScopeV1,
+    scope: &ProviderIncrementalScoped,
 ) -> Result<BTreeSet<String>, String> {
     let mut rows = connection
         .query(
@@ -643,7 +618,7 @@ async fn read_inventory_paths(
 
 async fn read_query_capture_names(
     connection: &turso::Connection,
-    query: &ProviderTreeSitterQueryIdentityV1,
+    query: &ProviderTreeSitterQueryIdentity,
 ) -> Result<Option<String>, String> {
     let mut rows = connection
         .query(
@@ -679,8 +654,8 @@ async fn read_query_capture_names(
 
 async fn verify_inventory_visibility(
     connection: &turso::Connection,
-    request: &ProviderOwnerInventoryWriteV1,
-    receipt: &ProviderOwnerInventoryWriteReceiptV1,
+    request: &ProviderOwnerInventoryWrite,
+    receipt: &ProviderOwnerInventoryWriteReceipt,
 ) -> Result<(), String> {
     let mut rows = connection
         .query(
@@ -720,8 +695,8 @@ async fn verify_inventory_visibility(
 
 async fn verify_query_owner_visibility(
     connection: &turso::Connection,
-    query: &ProviderTreeSitterQueryIdentityV1,
-    result: &ProviderTreeSitterOwnerResultV1,
+    query: &ProviderTreeSitterQueryIdentity,
+    result: &ProviderTreeSitterOwnerResult,
 ) -> Result<(), String> {
     let mut rows = connection
         .query(
@@ -761,7 +736,7 @@ async fn verify_query_owner_visibility(
     Ok(())
 }
 
-fn scope_params(scope: &ProviderIncrementalScopeV1) -> (&str, &str, &str, &str) {
+fn scope_params(scope: &ProviderIncrementalScoped) -> (&str, &str, &str, &str) {
     (
         scope.project_root.as_str(),
         scope.workspace_identity.as_str(),

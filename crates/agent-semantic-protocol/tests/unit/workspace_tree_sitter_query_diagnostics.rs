@@ -73,7 +73,7 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
     if workspace.exists() {
         fs::remove_dir_all(&workspace).expect("clear previous search workspace");
     }
-    let state_home = workspace.with_extension("asp-state");
+    let state_home = workspace.join("home/.agent-semantic-protocols");
     if state_home.exists() {
         fs::remove_dir_all(&state_home).expect("clear previous search state");
     }
@@ -94,8 +94,8 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
             crate::provider_command::support::provider("gerbil-scheme", Vec::new()),
         ],
     );
-
-    isolate_test_provider_cwd(&workspace);
+    write_rust_owner_delegate(&workspace, &state_home);
+    write_provider_install_receipts(&state_home);
 
     let run_search = || {
         let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
@@ -105,8 +105,7 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
                 command.env(variable, value);
             }
         }
-        command.env("PRJ_CACHE_HOME", workspace.join(".cache"));
-        command.env("AST_STATE_HOME", &state_home);
+        command.env("ASP_STATE_HOME", &state_home);
         command.env("ASP_PROVIDER_ACTIVATION_REFRESH", "0");
         command.env("ASP_TREESITTER_TRACE", "1");
         command
@@ -130,11 +129,29 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
     );
+    let client_db_paths = collect_files_named(&state_home, "facts.turso");
+    assert_eq!(
+        client_db_paths.len(),
+        1,
+        "expected one canonical Turso client DB below {}, got {client_db_paths:?}",
+        state_home.display()
+    );
+    assert!(
+        client_db_paths[0].starts_with(&state_home)
+            && client_db_paths[0]
+                .components()
+                .any(|component| component.as_os_str() == "live"),
+        "canonical Turso client DB path drift: {}",
+        client_db_paths[0].display()
+    );
     let stdout = String::from_utf8(output.stdout).expect("utf-8 stdout");
     let stderr = String::from_utf8(output.stderr).expect("utf-8 stderr");
+    let mut trace_history = vec![stderr.clone()];
     assert_eq!(stdout.matches("[search-treesitter]").count(), 1);
     assert!(stdout.contains("language=rust"), "stdout={stdout}");
     assert!(stdout.contains("state=partial"), "stdout={stdout}");
+    assert!(stdout.contains("scheduledOwners=1"), "stdout={stdout}");
+    assert!(stdout.contains("remainingOwners=1"), "stdout={stdout}");
     assert!(stdout.contains("providerParses=1"), "stdout={stdout}");
     assert!(stdout.contains("nextCommand="), "stdout={stdout}");
     assert!(stdout.contains("nextOwnerCursor="), "stdout={stdout}");
@@ -159,6 +176,7 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
         );
         let advance_stdout =
             String::from_utf8(advance_output.stdout).expect("advance utf-8 stdout");
+        trace_history.push(String::from_utf8(advance_output.stderr).expect("advance utf-8 stderr"));
         assert!(
             advance_stdout.contains("reference.name"),
             "stdout={advance_stdout}"
@@ -208,7 +226,7 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
     ] {
         assert!(
             warm_stdout.contains(counter),
-            "counter={counter} stdout={warm_stdout} stderr={warm_stderr}"
+            "counter={counter} stdout={warm_stdout} stderr={warm_stderr} history={trace_history:?}"
         );
     }
 
@@ -217,9 +235,10 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
         "pub struct AgentSessionLookupRequest;\npub struct DirtyOwner;\n",
     )
     .expect("change one Rust owner");
+    write_rust_owner_delegate(&workspace, &state_home);
     let dirty_output = run_search();
-    fs::remove_dir_all(&workspace).expect("remove search workspace");
     fs::remove_dir_all(&state_home).expect("remove search state");
+    fs::remove_dir_all(&workspace).expect("remove search workspace");
     assert!(
         dirty_output.status.success(),
         "dirty stdout={}\ndirty stderr={}",
@@ -243,202 +262,147 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
         );
     }
 }
-fn find_rust_provider_binary(root: &std::path::Path) -> std::path::PathBuf {
-    fn rust_binary(value: &serde_json::Value) -> Option<&str> {
-        match value {
-            serde_json::Value::Object(object) => {
-                if object.get("languageId").and_then(serde_json::Value::as_str) == Some("rust") {
-                    if let Some(binary) = object.get("binary").and_then(serde_json::Value::as_str) {
-                        return Some(binary);
-                    }
-                }
-                object.values().find_map(rust_binary)
-            }
-            serde_json::Value::Array(values) => values.iter().find_map(rust_binary),
-            _ => None,
-        }
-    }
 
-    fn visit(directory: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
-        std::fs::read_dir(directory)
-            .expect("read activation fixture directory")
-            .filter_map(Result::ok)
-            .for_each(|entry| {
-                let path = entry.path();
-                if path.is_dir() {
-                    visit(&path, files);
-                } else if path.extension().and_then(|value| value.to_str()) == Some("json") {
-                    files.push(path);
-                }
-            });
-    }
-
-    let mut files = Vec::new();
-    visit(root, &mut files);
-    files.sort();
-    for file in files {
-        let Ok(value) = serde_json::from_slice::<serde_json::Value>(
-            &std::fs::read(&file).expect("read activation JSON"),
-        ) else {
-            continue;
-        };
-        let Some(binary) = rust_binary(&value) else {
-            continue;
-        };
-        let candidate = std::path::PathBuf::from(binary);
-        if candidate.is_absolute() && candidate.exists() {
-            return candidate;
-        }
-        let rooted = root.join(candidate);
-        if rooted.exists() {
-            return rooted;
-        }
-    }
-    fn resolve_provider_command(
-        provider: &serde_json::Map<String, serde_json::Value>,
-        root: &std::path::Path,
-    ) -> Option<std::path::PathBuf> {
-        fn command_string(value: &serde_json::Value) -> Option<&str> {
-            match value {
-                serde_json::Value::String(value) => Some(value),
-                serde_json::Value::Array(values) => values.first().and_then(command_string),
-                serde_json::Value::Object(object) => [
-                    "binary",
-                    "program",
-                    "executable",
-                    "argv",
-                    "command",
-                ]
-                .into_iter()
-                .find_map(|key| object.get(key).and_then(command_string)),
-                _ => None,
-            }
-        }
-
-        ["binary", "program", "executable", "argv", "command"]
-            .into_iter()
-            .find_map(|key| provider.get(key).and_then(command_string))
-            .map(std::path::PathBuf::from)
-            .map(|path| if path.is_absolute() { path } else { root.join(path) })
-    }
-
-    fn provider_binary(
-        value: &serde_json::Value,
-        root: &std::path::Path,
-    ) -> Option<std::path::PathBuf> {
-        match value {
-            serde_json::Value::Object(object) => {
-                let language_is_rust = ["languageId", "language_id", "language"]
-                    .into_iter()
-                    .any(|key| object.get(key).and_then(serde_json::Value::as_str) == Some("rust"));
-                if language_is_rust {
-                    if let Some(binary) = resolve_provider_command(object, root) {
-                        return Some(binary);
-                    }
-                }
-                object
-                    .values()
-                    .find_map(|value| provider_binary(value, root))
-            }
-            serde_json::Value::Array(values) => values
-                .iter()
-                .find_map(|value| provider_binary(value, root)),
-            _ => None,
-        }
-    }
-
-    fn activation_binary(
-        directory: &std::path::Path,
-        root: &std::path::Path,
-    ) -> Option<std::path::PathBuf> {
-        let entries = std::fs::read_dir(directory).ok()?;
-        for entry in entries.flatten() {
+fn collect_files_named(root: &std::path::Path, file_name: &str) -> Vec<std::path::PathBuf> {
+    fn visit(directory: &std::path::Path, file_name: &str, matches: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(directory)
+            .expect("read canonical state directory")
+            .flatten()
+        {
             let path = entry.path();
             if path.is_dir() {
-                if let Some(binary) = activation_binary(&path, root) {
-                    return Some(binary);
-                }
-            } else if path.extension().and_then(std::ffi::OsStr::to_str) == Some("json") {
-                let Ok(bytes) = std::fs::read(&path) else {
-                    continue;
-                };
-                let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
-                    continue;
-                };
-                if let Some(binary) = provider_binary(&value, root) {
-                    return Some(binary);
-                }
+                visit(&path, file_name, matches);
+            } else if path.file_name().and_then(std::ffi::OsStr::to_str) == Some(file_name) {
+                matches.push(path);
             }
         }
-        None
     }
 
-    activation_binary(root, root)
-        .expect("Rust provider binary is absent from generated activation fixture")
+    let mut matches = Vec::new();
+    visit(root, file_name, &mut matches);
+    matches.sort();
+    matches
 }
 
-fn isolate_test_provider_cwd(root: &std::path::Path) {
-    let binary = find_rust_provider_binary(root);
-    assert!(
-        binary.starts_with(root),
-        "test provider binary must be scenario-owned: {}",
-        binary.display()
+fn write_provider_install_receipts(state_home: &std::path::Path) {
+    let receipt_dir = state_home.join("runtime/providers/receipts");
+    std::fs::create_dir_all(&receipt_dir).expect("create provider install receipt directory");
+    for (language_id, provider_id, binary) in [
+        ("rust", "rs-harness", "rs-harness"),
+        ("typescript", "ts-harness", "ts-harness"),
+        ("julia", "asp-julia-harness", "asp-julia-harness"),
+        ("gerbil-scheme", "gslph", "gslph"),
+    ] {
+        let installed_path = state_home.join("runtime/bin").join(binary);
+        let installed_entrypoint_digest =
+            agent_semantic_content_identity::file_content_digest_v1(&installed_path)
+                .expect("digest provider fixture binary");
+        let installed_entrypoint_metadata_digest =
+            agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed_path)
+                .expect("digest provider fixture metadata");
+        let installed_path = installed_path
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+        std::fs::write(
+            receipt_dir.join(format!("{language_id}.lock.toml")),
+            format!(
+                "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{provider_id}\"\ninstalledPath = \"{installed_path}\"\ninstalledEntrypointDigest = \"{installed_entrypoint_digest}\"\ninstalledEntrypointMetadataDigest = \"{installed_entrypoint_metadata_digest}\"\n"
+            ),
+        )
+        .expect("write provider fixture install receipt");
+    }
+}
+
+fn write_rust_owner_delegate(workspace: &std::path::Path, state_home: &std::path::Path) {
+    fn digest(path: &std::path::Path) -> String {
+        agent_semantic_content_identity::file_content_digest_v1(path)
+            .expect("digest provider owner fixture")
+    }
+
+    fn response(
+        owner_path: &str,
+        source_content_digest: String,
+        projections: serde_json::Value,
+    ) -> String {
+        serde_json::to_string(&serde_json::json!({
+            "schemaId": "agent.semantic-protocols.provider-native-owner-search-response",
+            "schemaVersion": "1",
+            "languageId": "rust",
+            "providerId": "rs-harness",
+            "requestedOwnerPath": owner_path,
+            "requestedQuery": "",
+            "sourceContentDigest": source_content_digest,
+            "parsedOwnerCount": 1,
+            "projectionCompleteness": "complete-owner",
+            "projections": projections,
+        }))
+        .expect("encode provider owner response")
+    }
+
+    fn shell_quote(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+
+    let lib_source =
+        std::fs::read_to_string(workspace.join("lib.rs")).expect("read Rust struct owner fixture");
+    let mut lib_projections = vec![serde_json::json!({
+        "structuralSelector": "rust://lib.rs#item/struct/AgentSessionLookupRequest",
+        "signature": "pub struct AgentSessionLookupRequest;",
+        "itemKind": "struct",
+        "itemName": "AgentSessionLookupRequest",
+        "captureName": "declaration.name",
+        "sourceByteStart": 0,
+        "sourceByteEnd": 37,
+    })];
+    if lib_source.contains("pub struct DirtyOwner;") {
+        lib_projections.push(serde_json::json!({
+            "structuralSelector": "rust://lib.rs#item/struct/DirtyOwner",
+            "signature": "pub struct DirtyOwner;",
+            "itemKind": "struct",
+            "itemName": "DirtyOwner",
+            "captureName": "declaration.name",
+            "sourceByteStart": 38,
+            "sourceByteEnd": 60,
+        }));
+    }
+    let lib_response = response(
+        "lib.rs",
+        digest(&workspace.join("lib.rs")),
+        serde_json::Value::Array(lib_projections),
     );
-    let wrapper = root.join(".provider-wrapper/rs-harness");
-    std::fs::create_dir_all(wrapper.parent().expect("provider wrapper parent"))
-        .expect("create provider wrapper directory");
-    let quoted_binary = binary.to_string_lossy().replace('\'', "'\"'\"'");
+    let other_response = response(
+        "other.rs",
+        digest(&workspace.join("other.rs")),
+        serde_json::json!([{
+            "structuralSelector": "rust://other.rs#item/function/unrelated",
+            "signature": "pub fn unrelated() {}",
+            "itemKind": "function",
+            "itemName": "unrelated",
+            "captureName": "declaration.name",
+            "sourceByteStart": 0,
+            "sourceByteEnd": 21,
+        }]),
+    );
+    let delegate = state_home.join("runtime/bin/.rs-harness-delegate");
     std::fs::write(
-        &wrapper,
+        &delegate,
         format!(
-            "#!/bin/sh\nprovider_cwd=\"$AST_STATE_HOME/provider-cwd\"\nmkdir -p \"$provider_cwd/src\"\ncd \"$provider_cwd\"\nexec '{quoted_binary}' \"$@\"\n"
+            "#!/bin/sh\nrequest=$(cat)\ncase \"$request\" in\n  *'\"ownerPath\":\"lib.rs\"'*) printf '%s\\n' {} ;;\n  *'\"ownerPath\":\"other.rs\"'*) printf '%s\\n' {} ;;\n  *) printf '%s\\n' 'unknown owner-native fixture request' >&2; exit 64 ;;\nesac\n",
+            shell_quote(&lib_response),
+            shell_quote(&other_response),
         ),
     )
-    .expect("write test provider cwd wrapper");
+    .expect("write self-contained Rust owner delegate");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
 
-        let mut permissions = std::fs::metadata(&wrapper)
-            .expect("read isolated test provider wrapper metadata")
+        let mut permissions = std::fs::metadata(&delegate)
+            .expect("read Rust owner delegate metadata")
             .permissions();
         permissions.set_mode(0o755);
-        std::fs::set_permissions(&wrapper, permissions)
-            .expect("mark isolated test provider wrapper executable");
-    }
-    rewrite_test_provider_command(root, root, &binary, &wrapper);
-}
-
-fn rewrite_test_provider_command(
-    directory: &std::path::Path,
-    activation_root: &std::path::Path,
-    binary: &std::path::Path,
-    wrapper: &std::path::Path,
-) {
-    let absolute = binary.to_string_lossy();
-    let relative = binary
-        .strip_prefix(activation_root)
-        .ok()
-        .map(|path| path.to_string_lossy().into_owned());
-    for entry in std::fs::read_dir(directory)
-        .expect("read provider activation directory")
-        .flatten()
-    {
-        let path = entry.path();
-        if path.is_dir() {
-            rewrite_test_provider_command(&path, activation_root, binary, wrapper);
-            continue;
-        }
-        if path.extension().and_then(std::ffi::OsStr::to_str) != Some("json") {
-            continue;
-        }
-        let text = std::fs::read_to_string(&path).expect("read provider activation JSON");
-        let mut rewritten = text.replace(absolute.as_ref(), &wrapper.to_string_lossy());
-        if let Some(relative) = &relative {
-            rewritten = rewritten.replace(relative, &wrapper.to_string_lossy());
-        }
-        if rewritten != text {
-            std::fs::write(&path, rewritten).expect("rewrite test provider activation command");
-        }
+        std::fs::set_permissions(&delegate, permissions)
+            .expect("mark Rust owner delegate executable");
     }
 }

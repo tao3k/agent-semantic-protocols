@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-descriptor.v1.schema.json",
+  "title": "Provider Project Resolution Descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "capabilityId",
+    "entryMarkers",
+    "manifestKinds",
+    "lockfileKinds",
+    "supportsGitCandidates",
+    "supportsProviderOnly",
+    "parserId",
+    "commandBinding"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-project-resolution-descriptor"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "capabilityId": {
+      "const": "project-resolution"
+    },
+    "entryMarkers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "manifestKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "lockfileKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "supportsGitCandidates": {
+      "const": true
+    },
+    "supportsProviderOnly": {
+      "type": "boolean"
+    },
+    "parserId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commandBinding": {
+      "const": "projectResolution"
+    }
+  }
+}

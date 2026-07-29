@@ -1,0 +1,59 @@
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+use agent_semantic_client_core::state_core::ResolvedState;
+use agent_semantic_client_db::ProviderIncrementalScoped;
+
+pub(crate) fn environment_lock() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("lock workspace database test environment")
+}
+
+pub(crate) struct StateHomeGuard {
+    previous: Option<OsString>,
+}
+
+impl StateHomeGuard {
+    pub(crate) fn install(state_home: &Path) -> Self {
+        let previous = std::env::var_os("ASP_STATE_HOME");
+        unsafe {
+            std::env::set_var("ASP_STATE_HOME", state_home);
+        }
+        Self { previous }
+    }
+}
+
+impl Drop for StateHomeGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if let Some(previous) = &self.previous {
+                std::env::set_var("ASP_STATE_HOME", previous);
+            } else {
+                std::env::remove_var("ASP_STATE_HOME");
+            }
+        }
+    }
+}
+
+pub(crate) fn workspace(
+    parent: &Path,
+    name: &str,
+) -> (PathBuf, ResolvedState, ProviderIncrementalScoped) {
+    let project_root = parent.join(name);
+    std::fs::create_dir_all(&project_root).expect("create workspace database test project");
+    std::fs::create_dir(project_root.join(".git"))
+        .expect("create workspace database Git identity marker");
+    let resolved = ResolvedState::resolve(&project_root).expect("resolve workspace database state");
+    let scope = ProviderIncrementalScoped {
+        project_root: project_root.to_string_lossy().into_owned(),
+        workspace_identity: resolved.workspace.workspace_id.as_str().to_owned(),
+        provider_workspace_identity_digest: format!("{:064x}", 17),
+        language_id: "rust".to_owned(),
+        provider_id: "rust-test-provider".to_owned(),
+        provider_workspace_root: project_root.to_string_lossy().into_owned(),
+    };
+    (project_root, resolved, scope)
+}

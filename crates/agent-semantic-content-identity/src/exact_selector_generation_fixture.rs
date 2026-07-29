@@ -15,19 +15,15 @@ const RECORD_HEADER_LEN: usize = 4 + 4 + 4 + 1 + 8 + 8 + (DIGEST_LEN * 3);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum ExactSelectorProjectionModeV1 {
-    Code = 1,
-    Names = 2,
-    Verbatim = 3,
-    Skeleton = 4,
+    Source = 1,
+    CallableSkeleton = 2,
 }
 
 impl ExactSelectorProjectionModeV1 {
     fn from_byte(value: u8) -> Result<Self, ExactSelectorGenerationFixtureErrorV1> {
         match value {
-            1 => Ok(Self::Code),
-            2 => Ok(Self::Names),
-            3 => Ok(Self::Verbatim),
-            4 => Ok(Self::Skeleton),
+            1 => Ok(Self::Source),
+            2 => Ok(Self::CallableSkeleton),
             _ => Err(ExactSelectorGenerationFixtureErrorV1::InvalidProjectionMode(value)),
         }
     }
@@ -68,7 +64,7 @@ pub struct ExactSelectorMerkleProofStepV1 {
 pub struct ExactSelectorMaterializationProofV1 {
     pub language_id: String,
     pub provider_id: String,
-    pub canonical_item_selector: crate::CanonicalItemSelectorV1,
+    pub canonical_item_selector: crate::CanonicalItemSelector,
     pub parser_identity_digest: [u8; DIGEST_LEN],
     pub query_pack_digest: [u8; DIGEST_LEN],
     pub workspace_root_digest: [u8; DIGEST_LEN],
@@ -104,7 +100,7 @@ struct ExactSelectorProjectionPacketWireV1 {
     digest_algorithm: String,
     language_id: String,
     provider_id: String,
-    canonical_item_selector: crate::CanonicalItemSelectorV1,
+    canonical_item_selector: crate::CanonicalItemSelector,
     parser_identity_digest: String,
     query_pack_digest: String,
     owner_path: String,
@@ -131,7 +127,7 @@ struct ExactSelectorMerkleProofWireV1 {
     parser_identity_digest: String,
     query_pack_digest: String,
     parser_fact_digest: String,
-    canonical_item_selector: crate::CanonicalItemSelectorV1,
+    canonical_item_selector: crate::CanonicalItemSelector,
     structural_selector: String,
     projection_mode: String,
     projection_digest: String,
@@ -179,10 +175,8 @@ fn encode_digest_v1(digest: &[u8; DIGEST_LEN]) -> String {
 
 fn projection_mode_name_v1(mode: ExactSelectorProjectionModeV1) -> &'static str {
     match mode {
-        ExactSelectorProjectionModeV1::Code => "code",
-        ExactSelectorProjectionModeV1::Names => "names",
-        ExactSelectorProjectionModeV1::Verbatim => "verbatim",
-        ExactSelectorProjectionModeV1::Skeleton => "skeleton",
+        ExactSelectorProjectionModeV1::Source => "source",
+        ExactSelectorProjectionModeV1::CallableSkeleton => "callable-skeleton",
     }
 }
 
@@ -190,10 +184,8 @@ fn projection_mode_v1<E: serde::de::Error>(
     value: &str,
 ) -> Result<ExactSelectorProjectionModeV1, E> {
     match value {
-        "code" => Ok(ExactSelectorProjectionModeV1::Code),
-        "names" => Ok(ExactSelectorProjectionModeV1::Names),
-        "verbatim" => Ok(ExactSelectorProjectionModeV1::Verbatim),
-        "skeleton" => Ok(ExactSelectorProjectionModeV1::Skeleton),
+        "source" => Ok(ExactSelectorProjectionModeV1::Source),
+        "callable-skeleton" => Ok(ExactSelectorProjectionModeV1::CallableSkeleton),
         _ => Err(E::custom("unknown exact selector projection mode")),
     }
 }
@@ -991,7 +983,7 @@ fn utf8_slice(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::CanonicalItemSelectorV1;
+    use crate::CanonicalItemSelector;
 
     fn digest(byte: u8) -> [u8; DIGEST_LEN] {
         [byte; DIGEST_LEN]
@@ -1003,7 +995,7 @@ mod tests {
         ExactSelectorMaterializationProofV1 {
             language_id: "rust".to_string(),
             provider_id: "rs-harness".to_string(),
-            canonical_item_selector: CanonicalItemSelectorV1::parse(&structural_selector)
+            canonical_item_selector: CanonicalItemSelector::parse(&structural_selector)
                 .expect("canonical selector"),
             parser_identity_digest: digest(1),
             query_pack_digest: digest(2),
@@ -1014,7 +1006,7 @@ mod tests {
             source_blob_digest: digest(4),
             normalized_parser_facts_digest: digest(5),
             structural_selector,
-            projection_mode: ExactSelectorProjectionModeV1::Code,
+            projection_mode: ExactSelectorProjectionModeV1::Source,
             source_byte_start: 0,
             source_byte_end: 11,
             projection_digest: *blake3::hash(&projection).as_bytes(),
@@ -1118,7 +1110,7 @@ mod tests {
                 owner_subtree_digest: digest(5),
                 source_blob_digest: digest(6),
                 normalized_parser_facts_digest: digest(7),
-                projection_mode: ExactSelectorProjectionModeV1::Code,
+                projection_mode: ExactSelectorProjectionModeV1::Source,
                 source_byte_range: 0..11,
                 projection: b"fn run() {}".to_vec(),
             }],
@@ -1183,7 +1175,7 @@ mod tests {
                 owner_subtree_digest: digest(5),
                 source_blob_digest: digest(6),
                 normalized_parser_facts_digest: digest(7),
-                projection_mode: ExactSelectorProjectionModeV1::Code,
+                projection_mode: ExactSelectorProjectionModeV1::Source,
                 source_byte_range: 0..11,
                 projection: b"fn run() {}".to_vec(),
             }],
@@ -1221,7 +1213,7 @@ mod tests {
                 owner_subtree_digest: digest(5),
                 source_blob_digest: digest(6),
                 normalized_parser_facts_digest: digest(7),
-                projection_mode: ExactSelectorProjectionModeV1::Code,
+                projection_mode: ExactSelectorProjectionModeV1::Source,
                 source_byte_range: 0..11,
                 projection: b"fn run() {}".to_vec(),
             }],

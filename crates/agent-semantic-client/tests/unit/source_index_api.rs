@@ -3,11 +3,9 @@ fn materialized_snapshot_binds_root_leaf_and_owner_counts() {
     let owner = "src/lib.rs";
     let bytes = b"pub fn exact_owner() {}".to_vec();
     let owner_digest = blake3::hash(&bytes).to_hex().to_string();
-    let workspace_snapshot =
-        agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
-            owner,
-            owner_digest.as_str(),
-        )]);
+    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
+        [(owner, owner_digest.as_str())],
+    );
     let source_snapshot = workspace_snapshot.evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         "provider-digest".to_string(),

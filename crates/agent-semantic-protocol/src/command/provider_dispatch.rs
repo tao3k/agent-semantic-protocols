@@ -234,12 +234,10 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 &invocation_root,
             )?
             .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
-        let exact_activation_path = provider_activation_path(&exact_project_root);
-        if super::provider_direct_exact::try_run_active_fixture_exact_query(
+        if super::provider_direct_exact::try_run_resident_turso_exact_query(
             language_id,
             &exact_provider_args,
             &exact_project_root,
-            &exact_activation_path,
             exact_query_started,
         )? {
             return Ok(());
@@ -381,7 +379,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 agent_semantic_hook::registered_provider_method_invocation_v1(
                     language_id,
                     provider.provider_id.as_str(),
-                    "search/owner-native-v1",
+                    "search/owner-native",
                 )?
                 .is_some(),
                 provider_invokes_asp_facade(language_id, provider, &config),
@@ -577,7 +575,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         .is_some()
         {
             return super::provider_direct_exact::run_direct_exact_query(
-                super::provider_direct_exact::DirectExactQueryContextV1 {
+                super::provider_direct_exact::DirectExactQueryContext {
                     language_id,
                     provider_args: &provider_args,
                     project_root: &project_root,

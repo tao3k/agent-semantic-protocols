@@ -5,7 +5,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 
 fn turso_cache_hot_path(c: &mut Criterion) {
     use agent_semantic_content_identity::canonical_item_identity::{
-        CanonicalItemIdentityV1, CanonicalItemSelectorV1,
+        CanonicalItemIdentity, CanonicalItemSelector,
     };
     use agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1;
     use agent_semantic_content_identity::exact_selector_merkle::{
@@ -44,8 +44,8 @@ fn turso_cache_hot_path(c: &mut Criterion) {
         .owner_subtree_digest(owner_path)
         .expect("resolve benchmark owner subtree");
     let projection_mode = ExactProjectionModeV1::Code;
-    let canonical_item_selector = CanonicalItemSelectorV1::new(
-        CanonicalItemIdentityV1::new("rust", "function", "warm_symbol"),
+    let canonical_item_selector = CanonicalItemSelector::new(
+        CanonicalItemIdentity::new("rust", "function", "warm_symbol"),
         selector,
     );
     let packet = build_exact_selector_projection_packet_v1(

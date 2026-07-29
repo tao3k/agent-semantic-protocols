@@ -14,7 +14,7 @@ identity. Its grammar is:
 Every =kind=, =symbol=, =relation=, and scope component MUST be encoded as an
 RFC 3986 URI component. Only =ALPHA / DIGIT / "-" / "." / "_" / "~"= remain
 unescaped; all other UTF-8 bytes use uppercase percent encoding. Scope segments
-MUST appear in the same order as =CanonicalItemIdentityV1.scopes=. Providers
+MUST appear in the same order as =CanonicalItemIdentity.scopes=. Providers
 MUST reject malformed, incomplete, reordered, or non-canonical encodings.
 
 An identity without scopes ends after its item symbol. An identity with scopes
@@ -41,7 +41,7 @@ language-specific item identity.
 
 The shared identity contains =languageId=, =kind=, =symbol=, and an ordered
 =scopes[]= list. Each scope contains =relation=, =kind=, and =symbol=.
-=CanonicalItemSelectorV1= binds those facts to one =structuralSelector=. The
+=CanonicalItemSelector= binds those facts to one =structuralSelector=. The
 outer exact-projection packet supplies =providerId= and =ownerPath=.
 Language-specific concepts live in scope facts:
 

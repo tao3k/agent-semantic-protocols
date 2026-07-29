@@ -1,14 +1,14 @@
 use super::{
     INCREMENTAL_OWNER_BUDGET, WorkspaceTreeSitterRequest, join_capture_projections,
-    registered_source_path,
+    provider_path_is_ignored, registered_source_path,
 };
 
 fn complete_owner(
     selector: &str,
     signature: &str,
     source_size: usize,
-) -> agent_semantic_client_db::ProviderSelectorProjectionV1 {
-    agent_semantic_client_db::ProviderSelectorProjectionV1 {
+) -> agent_semantic_client_db::ProviderSelectorProjection {
+    agent_semantic_client_db::ProviderSelectorProjection {
         structural_selector: selector.to_string(),
         capture_name: "item".to_string(),
         signature: signature.to_string(),
@@ -128,4 +128,23 @@ fn route_source_has_no_legacy_snapshot_blob_or_fallback_path() {
 #[test]
 fn cold_incremental_budget_limits_provider_subprocesses_to_one_owner() {
     assert_eq!(INCREMENTAL_OWNER_BUDGET, 1);
+}
+
+#[test]
+fn provider_ignored_prefixes_match_only_complete_path_components() {
+    let ignored = vec![
+        "./target".to_string(),
+        "node_modules/".to_string(),
+        ".git".to_string(),
+    ];
+
+    assert!(provider_path_is_ignored("target", &ignored));
+    assert!(provider_path_is_ignored("target/debug/build.rs", &ignored));
+    assert!(provider_path_is_ignored(
+        "node_modules/package/index.rs",
+        &ignored
+    ));
+    assert!(provider_path_is_ignored(".git/worktrees/demo", &ignored));
+    assert!(!provider_path_is_ignored("targeted/src/lib.rs", &ignored));
+    assert!(!provider_path_is_ignored("src/node_modules.rs", &ignored));
 }

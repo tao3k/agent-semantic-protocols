@@ -1,5 +1,0 @@
-schema_id = "memory-search-fixture-v1"
-schema_version = "1"
-scenario_id = "complete-generation-relocation"
-backend = "memory"
-reader_count = 16

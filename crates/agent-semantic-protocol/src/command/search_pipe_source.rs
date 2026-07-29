@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use agent_semantic_client::lookup_search_pipe_source_index_for_language;
 use agent_semantic_search::{
     SearchPipeAutoAcquisitionRequest, SearchPipeDocumentAcquisitionRequest,
     SearchPipeSearchOverlayAcquisitionRequest, SearchPipeSourceAcquisition,
@@ -235,17 +234,24 @@ fn auto_candidates(request: AutoCandidateRequest<'_>) -> Result<CandidateAcquisi
     let source_index_query_gated = scopes.is_empty()
         && agent_semantic_search::search_pipe_source_index_query_gate(query_terms).is_some();
     let source_index_lookup = if scopes.is_empty() && !source_index_query_gated {
-        Some(lookup_search_pipe_source_index_for_language(
-            agent_semantic_client::SourceIndexLookupRequest {
-                cache_project_root: project_root,
-                indexed_project_root: project_root,
-                language_id: Some(&language),
-                query: &source_index_query,
+        let session = super::workspace_db_resident::session(project_root)
+            .map_err(|error| error.to_string())?;
+        let lookup = super::workspace_db_runtime::block_on(session.read_source_index(
+            &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest {
+                project_root: project_root.to_path_buf(),
+                indexed_project_root: project_root.to_path_buf(),
+                source_snapshot: current_snapshot.source_snapshot.clone(),
+                query: source_index_query.clone(),
+                language_id: Some(language),
                 limit: PIPE_CANDIDATE_LINE_LIMIT as u32,
-                source_snapshot: &current_snapshot.source_snapshot,
-                live_import: None,
             },
-        )?)
+        ))
+        .map_err(|error| error.to_string())??;
+        Some(
+            agent_semantic_search::search_pipe_source_index_lookup_from_client_result(
+                agent_semantic_search::rank_source_index_lookup_result(lookup, &source_index_query),
+            ),
+        )
     } else {
         None
     };

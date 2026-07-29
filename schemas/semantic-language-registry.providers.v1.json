@@ -17,7 +17,7 @@
               "rs-harness"
             ]
           },
-          "method": "search/owner-native-v1",
+          "method": "search/owner-native",
           "outputSchemaIds": [
             "agent.semantic-protocols.provider-native-owner-search-response"
           ],
@@ -25,7 +25,7 @@
             "provider-native-owner-search-request.v1",
             "provider-native-owner-search-response.v1"
           ],
-          "requiresQuery": true,
+          "requiresQuery": false,
           "supportsCompact": false,
           "supportsJson": true,
           "supportsPackageScope": false,
@@ -314,7 +314,7 @@
         }
       ],
       "methods": [
-        "search/owner-native-v1",
+        "search/owner-native",
         "query/exact-selector-native-v1",
         "search/prime",
         "search/owner",
@@ -613,6 +613,30 @@
           }
         },
         {
+          "method": "query/exact-selector-native-v1",
+          "command": "query",
+          "view": "exact-selector",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.provider-native-exact-projection"
+          ],
+          "packetSchemas": [
+            "provider-native-exact-request.v1",
+            "provider-native-exact-response.v1"
+          ],
+          "requiresQuery": true,
+          "acceptsStdin": true,
+          "supportsPackageScope": false,
+          "supportsJson": true,
+          "supportsCompact": false,
+          "invocation": {
+            "argv": [
+              "ts-harness",
+              "query",
+              "--asp-exact-request-stdin"
+            ]
+          }
+        },
+        {
           "acceptsStdin": true,
           "command": "search",
           "method": "search/semantic-facts",
@@ -706,6 +730,7 @@
         "search/ingest",
         "search/semantic-facts",
         "query/exact-selector",
+        "query/exact-selector-native-v1",
         "check/changed",
         "guide"
       ],
@@ -1015,6 +1040,30 @@
           }
         },
         {
+          "method": "query/exact-selector-native-v1",
+          "command": "query",
+          "view": "exact-selector",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.provider-native-exact-projection"
+          ],
+          "packetSchemas": [
+            "provider-native-exact-request.v1",
+            "provider-native-exact-response.v1"
+          ],
+          "requiresQuery": true,
+          "acceptsStdin": true,
+          "supportsPackageScope": false,
+          "supportsJson": true,
+          "supportsCompact": false,
+          "invocation": {
+            "argv": [
+              "py-harness",
+              "query",
+              "--asp-exact-request-stdin"
+            ]
+          }
+        },
+        {
           "acceptsStdin": true,
           "command": "search",
           "method": "search/semantic-facts",
@@ -1108,6 +1157,7 @@
         "search/ingest",
         "search/semantic-facts",
         "query/exact-selector",
+        "query/exact-selector-native-v1",
         "check/changed",
         "guide"
       ],
@@ -1901,13 +1951,37 @@
           "supportsJson": false,
           "invocation": {
             "argv": [
-            "gslph",
-            "query",
-            "--selector",
-            "{owner}",
+              "gslph",
+              "query",
+              "--selector",
+              "{owner}",
               "--workspace",
               "{workspace}",
               "--names-only"
+            ]
+          }
+        },
+        {
+          "method": "query/exact-selector-native-v1",
+          "command": "query",
+          "view": "exact-selector",
+          "outputSchemaIds": [
+            "agent.semantic-protocols.provider-native-exact-projection"
+          ],
+          "packetSchemas": [
+            "provider-native-exact-request.v1",
+            "provider-native-exact-response.v1"
+          ],
+          "requiresQuery": true,
+          "acceptsStdin": true,
+          "supportsPackageScope": false,
+          "supportsJson": true,
+          "supportsCompact": false,
+          "invocation": {
+            "argv": [
+              "gslph",
+              "query",
+              "--asp-exact-request-stdin"
             ]
           }
         },
@@ -1982,6 +2056,7 @@
         "search/proof",
         "search/compare",
         "query/exact-selector",
+        "query/exact-selector-native-v1",
         "check/changed",
         "guide"
       ],

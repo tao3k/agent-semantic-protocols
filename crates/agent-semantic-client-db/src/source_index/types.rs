@@ -78,7 +78,17 @@ pub fn client_db_source_index_scope_dir_evidence_hash(
 macro_rules! source_index_value_type {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+        #[derive(
+            Clone,
+            Debug,
+            Eq,
+            PartialEq,
+            Ord,
+            PartialOrd,
+            Hash,
+            serde::Serialize,
+            serde::Deserialize,
+        )]
         pub struct $name(String);
 
         impl $name {
@@ -305,7 +315,8 @@ pub struct ClientDbSourceIndexScopeFile {
 }
 
 /// Source-index lookup state for agent-facing search fallbacks.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ClientDbSourceIndexLookupState {
     MissingDb,
     EmptyIndex,
@@ -330,7 +341,7 @@ impl ClientDbSourceIndexLookupState {
 }
 
 /// Agent-facing source-index candidate row returned by the DB facade.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexCandidate {
     pub path: ClientDbSourceIndexCandidatePath,
     pub language_id: Option<LanguageId>,
@@ -347,7 +358,8 @@ pub struct ClientDbSourceIndexCandidate {
 }
 
 /// Typed source category for source-index candidate rows.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ClientDbSourceIndexSourceKind {
     File,
     Other(String),
@@ -389,7 +401,7 @@ impl From<ClientDbSourceIndexOwner> for ClientDbSourceIndexCandidate {
 }
 
 /// Lookup result from the DB Engine-owned source index.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexLookupResult {
     pub db_path: PathBuf,
     pub state: ClientDbSourceIndexLookupState,

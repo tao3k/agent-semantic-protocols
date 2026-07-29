@@ -5,8 +5,8 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_db::{
-    ProviderIncrementalOwnerWriteV1, ProviderIncrementalScopeV1, ProviderOwnerFingerprintV1,
-    ProviderSearchWorkspaceSessionV1, ProviderSelectorProjectionV1, WorkspaceDbRegistry,
+    ProviderIncrementalOwnerWrite, ProviderIncrementalScoped, ProviderOwnerFingerprint,
+    ProviderSelectorProjection, WorkspaceDbRegistry,
 };
 
 use super::{
@@ -14,7 +14,7 @@ use super::{
     provider_owner_metadata,
 };
 use crate::command::provider_owner_native::{
-    ExpectedOwnerResponse, ProviderNativeOwnerSearchResponseV1, validate_provider_owner_response,
+    ExpectedOwnerResponse, ProviderNativeOwnerSearchResponse, validate_provider_owner_response,
 };
 
 #[test]
@@ -27,15 +27,15 @@ fn complete_owner_seed_serves_alpha_then_beta_without_provider_or_source_io() {
     fixture
         .runtime
         .block_on(fixture.session.write_provider_incremental_owner(
-            &ProviderIncrementalOwnerWriteV1 {
-            scope: scope.clone(),
-            owner_path: owner_key.to_string(),
-            fingerprint: ProviderOwnerFingerprintV1 {
-                metadata: metadata.clone(),
-                content_digest: "a".repeat(64),
-            },
-            projection_completeness: "complete-owner".to_string(),
-            projections,
+            &ProviderIncrementalOwnerWrite {
+                scope: scope.clone(),
+                owner_path: owner_key.to_string(),
+                fingerprint: ProviderOwnerFingerprint {
+                    metadata: metadata.clone(),
+                    content_digest: "a".repeat(64),
+                },
+                projection_completeness: "complete-owner".to_string(),
+                projections,
             },
         ))
         .expect("seed complete owner transaction");
@@ -90,14 +90,14 @@ fn validated_new_then_changed_commit_becomes_zero_provider_warm_hit() {
     );
     assert_eq!(
         new_probe.decision,
-        agent_semantic_client_db::ProviderOwnerDecisionV1::New
+        agent_semantic_client_db::ProviderOwnerDecision::New
     );
     let new_hit = commit_complete_owner_response(CommitOwnerRequest {
         runtime: &fixture.runtime,
         session: &fixture.session,
         scope: &scope,
         owner_path: owner_key,
-        fingerprint: ProviderOwnerFingerprintV1 {
+        fingerprint: ProviderOwnerFingerprint {
             metadata: metadata_new,
             content_digest: digest(&fixture.owner_path),
         },
@@ -127,14 +127,14 @@ fn validated_new_then_changed_commit_becomes_zero_provider_warm_hit() {
     );
     assert_eq!(
         changed_probe.decision,
-        agent_semantic_client_db::ProviderOwnerDecisionV1::Changed
+        agent_semantic_client_db::ProviderOwnerDecision::Changed
     );
     let changed_hit = commit_complete_owner_response(CommitOwnerRequest {
         runtime: &fixture.runtime,
         session: &fixture.session,
         scope: &scope,
         owner_path: owner_key,
-        fingerprint: ProviderOwnerFingerprintV1 {
+        fingerprint: ProviderOwnerFingerprint {
             metadata: metadata_changed.clone(),
             content_digest: digest(&fixture.owner_path),
         },
@@ -171,18 +171,18 @@ fn provider_response_rejects_partial_completeness_and_invalid_span_before_write(
         language_id: "rust",
         provider_id: "rs-harness",
         owner_path: "src/lib.rs",
-        query: "alpha",
+        projection_mode: "complete-owner",
         content_digest: content_digest.as_str(),
         source_size: 20,
     };
-    let partial: ProviderNativeOwnerSearchResponseV1 =
+    let partial: ProviderNativeOwnerSearchResponse =
         serde_json::from_value(provider_response("query-filtered", 0, 17))
             .expect("partial response shape");
     let partial_error =
         validate_provider_owner_response(partial, expected).expect_err("reject partial response");
     assert!(partial_error.contains("completeness drift"));
 
-    let invalid_span: ProviderNativeOwnerSearchResponseV1 =
+    let invalid_span: ProviderNativeOwnerSearchResponse =
         serde_json::from_value(provider_response("complete-owner", 0, 21))
             .expect("invalid span response shape");
     let invalid_span_error = validate_provider_owner_response(
@@ -191,7 +191,7 @@ fn provider_response_rejects_partial_completeness_and_invalid_span_before_write(
             language_id: "rust",
             provider_id: "rs-harness",
             owner_path: "src/lib.rs",
-            query: "alpha",
+            projection_mode: "complete-owner",
             content_digest: content_digest.as_str(),
             source_size: 20,
         },
@@ -211,7 +211,7 @@ fn provider_response(
         "languageId": "rust",
         "providerId": "rs-harness",
         "requestedOwnerPath": "src/lib.rs",
-        "requestedQuery": "alpha",
+        "requestedProjectionMode": "complete-owner",
         "sourceContentDigest": "c".repeat(64),
         "parsedOwnerCount": 1,
         "projectionCompleteness": projection_completeness,
@@ -231,8 +231,8 @@ fn projection(
     name: &str,
     source_byte_start: u64,
     source_byte_end: u64,
-) -> ProviderSelectorProjectionV1 {
-    ProviderSelectorProjectionV1 {
+) -> ProviderSelectorProjection {
+    ProviderSelectorProjection {
         structural_selector: format!("rust://src/lib.rs#item/function/{name}"),
         capture_name: "declaration.name".to_string(),
         signature: format!("pub fn {name}()"),
@@ -243,7 +243,7 @@ fn projection(
     }
 }
 
-fn item_names(projections: &[ProviderSelectorProjectionV1]) -> Vec<&str> {
+fn item_names(projections: &[ProviderSelectorProjection]) -> Vec<&str> {
     projections
         .iter()
         .map(|projection| projection.item_name.as_str())
@@ -272,7 +272,7 @@ fn assert_refresh_side_effects(receipt: &super::OwnerItemsExecutionReceipt) {
     assert!(receipt.merkle_path_node_writes >= 1);
 }
 
-fn expect_refresh(lookup: OwnerItemsLookup) -> agent_semantic_client_db::ProviderOwnerProbeV1 {
+fn expect_refresh(lookup: OwnerItemsLookup) -> agent_semantic_client_db::ProviderOwnerProbe {
     let OwnerItemsLookup::Refresh(probe) = lookup else {
         panic!("owner must require refresh");
     };
@@ -290,8 +290,10 @@ struct WarmOwnerFixture {
     root: PathBuf,
     owner_path: PathBuf,
     runtime: tokio::runtime::Runtime,
-    session: ProviderSearchWorkspaceSessionV1,
-    scope: ProviderIncrementalScopeV1,
+    session: agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
+    server_shutdown: Option<tokio::sync::watch::Sender<bool>>,
+    server_task: Option<tokio::task::JoinHandle<Result<(), String>>>,
+    scope: ProviderIncrementalScoped,
 }
 
 impl WarmOwnerFixture {
@@ -311,7 +313,7 @@ impl WarmOwnerFixture {
             .expect("write owner fixture");
         let resolved = agent_semantic_client_core::state_core::ResolvedState::resolve(&root)
             .expect("resolve warm owner workspace");
-        let scope = ProviderIncrementalScopeV1 {
+        let scope = ProviderIncrementalScoped {
             project_root: resolved.workspace.root.to_string_lossy().into_owned(),
             workspace_identity: resolved.workspace.workspace_id.as_str().to_owned(),
             provider_workspace_identity_digest: "b".repeat(64),
@@ -323,9 +325,36 @@ impl WarmOwnerFixture {
             .enable_all()
             .build()
             .expect("build warm owner runtime");
-        let session = runtime
-            .block_on(WorkspaceDbRegistry::process().acquire(&root, &scope))
-            .expect("acquire warm owner workspace session");
+        let registry = std::sync::Arc::new(WorkspaceDbRegistry::default());
+        runtime
+            .block_on(registry.bootstrap_workspace(&root))
+            .expect("bootstrap warm owner workspace");
+        let endpoint =
+            agent_semantic_client_db::workspace_db_ipc::prepare_workspace_db_owner_endpoint(
+                &root.join("runtime"),
+                &scope.workspace_identity,
+                1,
+                "warm-owner-fixture",
+            )
+            .expect("prepare warm owner endpoint");
+        let listener =
+            agent_semantic_client_db::workspace_db_ipc::bind_workspace_db_owner(&endpoint)
+                .expect("bind warm owner endpoint");
+        let session = agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::new(
+            endpoint.clone(),
+        );
+        let last_activity = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let (server_shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
+        let server_task = runtime.spawn(async move {
+            agent_semantic_client_db::workspace_db_ipc::serve_workspace_db_session_until_shutdown(
+                &listener,
+                &endpoint,
+                registry,
+                last_activity,
+                shutdown_rx,
+            )
+            .await
+        });
         Self {
             _state_home: state_home,
             _environment: environment,
@@ -333,11 +362,13 @@ impl WarmOwnerFixture {
             owner_path,
             runtime,
             session,
+            server_shutdown: Some(server_shutdown),
+            server_task: Some(server_task),
             scope,
         }
     }
 
-    fn scope(&self) -> ProviderIncrementalScopeV1 {
+    fn scope(&self) -> ProviderIncrementalScoped {
         self.scope.clone()
     }
 }
@@ -377,6 +408,12 @@ impl Drop for StateHomeGuard {
 
 impl Drop for WarmOwnerFixture {
     fn drop(&mut self) {
+        if let Some(shutdown) = self.server_shutdown.take() {
+            let _ = shutdown.send(true);
+        }
+        if let Some(task) = self.server_task.take() {
+            let _ = self.runtime.block_on(task);
+        }
         let _ = fs::remove_dir_all(&self.root);
     }
 }

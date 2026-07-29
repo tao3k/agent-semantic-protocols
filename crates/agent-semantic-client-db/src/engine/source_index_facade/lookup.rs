@@ -579,6 +579,49 @@ async fn lookup_source_index_read_model_at_path(
     ))
 }
 
+pub(crate) async fn lookup_source_index_read_model_in_resident_connection(
+    db_path: PathBuf,
+    connection: Arc<turso::Connection>,
+    indexed_project_root: &Path,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+    query: &str,
+    language_id: Option<&LanguageId>,
+    limit: u32,
+) -> Result<ClientDbSourceIndexLookupResult, String> {
+    let lookup_scope = TursoSourceIndexLookupRequestScope {
+        project_root: indexed_project_root
+            .canonicalize()
+            .unwrap_or_else(|_| indexed_project_root.to_path_buf())
+            .display()
+            .to_string(),
+        schema_id: crate::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID.to_string(),
+        schema_version: crate::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION.to_string(),
+    };
+    let expected_index_artifact_digest =
+        agent_semantic_content_identity::hash_derived_artifact_key(
+            agent_semantic_content_identity::DerivedArtifactKeyInput {
+                artifact_kind: "source-index",
+                schema_id: "asp.source-index-artifact.v1",
+                snapshot_root: &source_snapshot.root_digest,
+                provider_digest: &source_snapshot.provider_digest,
+                parameters: &[],
+            },
+        )
+        .value;
+    lookup_source_index_read_model_at_path(
+        db_path,
+        Some(lookup_scope),
+        query,
+        language_id,
+        limit,
+        &source_snapshot.root_digest,
+        &expected_index_artifact_digest,
+        Some(connection),
+        None,
+    )
+    .await
+}
+
 async fn turso_source_index_lookup_schema_current(
     connection: &turso::Connection,
     requested_scope: Option<&TursoSourceIndexLookupRequestScope>,

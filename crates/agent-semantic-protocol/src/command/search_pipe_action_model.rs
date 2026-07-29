@@ -4,7 +4,7 @@
 pub(super) struct PipeAction {
     pub(super) index: usize,
     pub(super) owner: String,
-    pub(super) selector: agent_semantic_content_identity::CanonicalItemSelectorV1,
+    pub(super) selector: agent_semantic_content_identity::CanonicalItemSelector,
     pub(super) symbol: String,
     pub(super) source_alias: String,
 }

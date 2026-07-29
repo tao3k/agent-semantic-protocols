@@ -222,8 +222,8 @@ async fn exact_selector_projection_round_trip_hydrates_a_validated_merkle_record
             &[b"rust"],
         );
     let canonical_item_selector =
-        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
-            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new(
+        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::new(
+            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentity::new(
                 "rust",
                 "function",
                 "cached_symbol",

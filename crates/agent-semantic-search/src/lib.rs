@@ -11,9 +11,9 @@ mod graph_candidate_projection;
 pub use graph_action_frontier::{DependencyActionNodeV1, matched_dependency_action_targets};
 mod graph_candidate_sparsity;
 mod graph_evidence_projection;
+pub mod graph_generation_authority;
 mod graph_node_projection;
 mod graph_owner_rank;
-pub mod graph_generation_authority;
 pub use graph_owner_rank::{
     GraphOwnerRankCandidate, GraphOwnerRankReport, GraphOwnerRankRequest, GraphOwnerRankScore,
     GraphOwnerRankedOwner, rank_graph_owner_report,
@@ -28,19 +28,17 @@ pub mod memory_search_fixture;
 pub mod memory_search_resident;
 pub mod memory_search_turso;
 pub use memory_search::{
-    MemorySearchBackendV1, MemorySearchGenerationV1, MemorySearchIndexV1, MemorySearchItemV1,
-    MemorySearchPerformanceReceiptV1, MemorySearchRequestV1, MemorySearchResolutionStateV1,
-    MemorySearchResolutionV1,
+    MemorySearchGeneration, MemorySearchGenerationReceipt, MemorySearchItem,
+    MemorySearchPerformanceReceipt, MemorySearchRequest, MemorySearchResolution,
+    MemorySearchResolutionState, MemorySearchSourceLeaf,
 };
 pub use memory_search_fixture::{
-    MEMORY_SEARCH_FIXTURE_SCHEMA_ID, MEMORY_SEARCH_FIXTURE_SCHEMA_VERSION, MemorySearchFixtureV1,
+    MEMORY_SEARCH_FIXTURE_SCHEMA_ID, MEMORY_SEARCH_FIXTURE_SCHEMA_VERSION, MemorySearchFixture,
 };
-pub use memory_search_resident::MemorySearchResidentV1;
+pub use memory_search_resident::MemorySearchResident;
+pub use memory_search_turso::{TursoMemorySearchBackend, TursoMemorySearchBinding};
 
 mod lexical_search_frame;
-#[cfg(test)]
-#[path = "../tests/unit/memory_search_fixture.rs"]
-mod memory_search_fixture_tests;
 mod owner_items_source_index_trace;
 mod pipe_candidates;
 mod pipe_source;
@@ -218,7 +216,8 @@ pub use source_index_lookup::{
     SourceIndexClientCacheLookupRequest, SourceIndexClientCachePlannerLookupRequest,
     SourceIndexLookupRequest, lookup_source_index, lookup_source_index_for_language,
     lookup_source_index_in_cache, lookup_source_index_in_client_cache_dir,
-    lookup_source_index_in_client_cache_dir_with_planner,
+    lookup_source_index_in_client_cache_dir_with_planner, rank_source_index_lookup_result,
+    search_pipe_source_index_lookup_from_client_result,
 };
 pub use source_index_rank::{
     SourceIndexRankCandidate, rank_source_index_candidates, reorder_source_index_candidates,

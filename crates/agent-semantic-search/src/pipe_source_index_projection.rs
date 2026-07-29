@@ -82,7 +82,8 @@ fn source_index_candidate_has_materialization_proof(
     let Some(proof) = candidate.selector_proof.as_ref() else {
         return false;
     };
-    if proof.projection_mode != agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code
+    if proof.projection_mode
+        != agent_semantic_content_identity::ExactSelectorProjectionModeV1::Source
         || proof.structural_selector.trim().is_empty()
         || agent_semantic_content_identity::ExactSelectorGenerationRecordV1::try_from(proof)
             .is_err()
@@ -142,10 +143,10 @@ fn source_index_candidate_text(candidate: &SearchPipeSourceIndexCandidate) -> St
         .selector_proof
         .as_ref()
         .map(|proof| match proof.projection_mode {
-            agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code => "code",
-            agent_semantic_content_identity::ExactSelectorProjectionModeV1::Names => "names",
-            agent_semantic_content_identity::ExactSelectorProjectionModeV1::Verbatim => "verbatim",
-            agent_semantic_content_identity::ExactSelectorProjectionModeV1::Skeleton => "skeleton",
+            agent_semantic_content_identity::ExactSelectorProjectionModeV1::Source => "source",
+            agent_semantic_content_identity::ExactSelectorProjectionModeV1::CallableSkeleton => {
+                "callable-skeleton"
+            }
         })
         .unwrap_or("none");
     let keys = candidate

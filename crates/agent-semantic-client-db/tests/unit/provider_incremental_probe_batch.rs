@@ -1,15 +1,15 @@
 use agent_semantic_client_db::{
-    ProviderOwnerBatchProbeRequestV1, ProviderOwnerDecisionV1, ProviderOwnerInventoryStateV1,
-    ProviderOwnerInventoryWriteV1, ProviderOwnerMetadataV1, WorkspaceDbRegistry,
+    ProviderOwnerBatchProbeRequest, ProviderOwnerDecision, ProviderOwnerInventoryState,
+    ProviderOwnerInventoryWrite, ProviderOwnerMetadata, WorkspaceDbRegistry,
 };
 
-use super::workspace_db_registry::{StateHomeGuard, TestDir, environment_lock, workspace};
+use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
 
-fn requests(count: usize) -> Vec<ProviderOwnerBatchProbeRequestV1> {
+fn requests(count: usize) -> Vec<ProviderOwnerBatchProbeRequest> {
     (0..count)
-        .map(|index| ProviderOwnerBatchProbeRequestV1 {
+        .map(|index| ProviderOwnerBatchProbeRequest {
             owner_path: format!("src/owner-{index:04}.rs"),
-            metadata: ProviderOwnerMetadataV1 {
+            metadata: ProviderOwnerMetadata {
                 file_identity: format!("file-{index}"),
                 size_bytes: 10,
                 modified_unix_nanos: 20,
@@ -61,9 +61,9 @@ async fn resident_session_reuses_open_state_for_inventory_write_and_batch_probe(
         .await
         .expect("acquire resident workspace session");
     session
-        .upsert_provider_owner_inventory(&ProviderOwnerInventoryWriteV1 {
+        .upsert_provider_owner_inventory(&ProviderOwnerInventoryWrite {
             scope: scope.clone(),
-            state: ProviderOwnerInventoryStateV1::Exact,
+            state: ProviderOwnerInventoryState::Exact,
             entries: Vec::new(),
         })
         .await
@@ -82,7 +82,7 @@ async fn resident_session_reuses_open_state_for_inventory_write_and_batch_probe(
         receipt
             .results
             .iter()
-            .all(|result| result.probe.decision == ProviderOwnerDecisionV1::New)
+            .all(|result| result.probe.decision == ProviderOwnerDecision::New)
     );
     let counters = registry.counters();
     assert_eq!(counters.database_open_count, 1);

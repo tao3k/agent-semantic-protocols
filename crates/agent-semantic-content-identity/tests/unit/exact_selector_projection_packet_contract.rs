@@ -25,8 +25,8 @@ fn packet() -> ExactSelectorProjectionPacketV1 {
             source_byte_end: 16,
             language_id: &language_id,
             provider_id: &provider_id,
-            canonical_item_selector: agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
-                agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new("rust", "function", "run"),
+            canonical_item_selector: agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::new(
+                agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentity::new("rust", "function", "run"),
                 "rust://crates/example/src/lib.rs#item/function/run",
             ),
             parser_identity_digest: &digest('a'),

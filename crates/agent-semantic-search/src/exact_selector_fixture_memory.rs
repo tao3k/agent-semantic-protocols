@@ -17,6 +17,13 @@ pub struct ExactSelectorFixtureArtifactV1 {
 pub struct ExactSelectorFixtureProjectionV1 {
     fixture_bytes: Arc<[u8]>,
     projection_range: std::ops::Range<usize>,
+    language_id: String,
+    provider_id: String,
+    workspace_root_digest: [u8; 32],
+    workspace_identity_digest: [u8; 32],
+    parser_identity_digest: [u8; 32],
+    query_pack_digest: [u8; 32],
+    generation_digest: [u8; 32],
     owner_path: String,
     source_blob_digest: [u8; 32],
     owner_subtree_digest: [u8; 32],
@@ -31,6 +38,31 @@ impl ExactSelectorFixtureProjectionV1 {
 
     pub fn owner_path(&self) -> &str {
         &self.owner_path
+    }
+
+    pub fn matches_generation_authority_v1(
+        &self,
+        language_id: &str,
+        provider_id: &str,
+        parser_identity_digest: &str,
+        query_pack_digest: &str,
+    ) -> bool {
+        self.language_id == language_id
+            && self.provider_id == provider_id
+            && digest_matches_v1(parser_identity_digest, &self.parser_identity_digest)
+            && digest_matches_v1(query_pack_digest, &self.query_pack_digest)
+    }
+
+    pub const fn workspace_root_digest(&self) -> &[u8; 32] {
+        &self.workspace_root_digest
+    }
+
+    pub const fn workspace_identity_digest(&self) -> &[u8; 32] {
+        &self.workspace_identity_digest
+    }
+
+    pub const fn generation_digest(&self) -> &[u8; 32] {
+        &self.generation_digest
     }
 
     pub const fn source_blob_digest(&self) -> &[u8; 32] {
@@ -97,15 +129,24 @@ where
             &fixture.fixture_digest,
             structural_selector,
         )?;
-        Ok(projection.map(|projection| ExactSelectorFixtureProjectionV1 {
-            fixture_bytes: Arc::clone(&fixture.fixture_bytes),
-            projection_range: projection.projection_range,
-            owner_path: projection.owner_path,
-            source_blob_digest: projection.source_blob_digest,
-            owner_subtree_digest: projection.owner_subtree_digest,
-            normalized_parser_facts_digest: projection.normalized_parser_facts_digest,
-            projection_mode: projection.projection_mode,
-        }))
+        Ok(
+            projection.map(|projection| ExactSelectorFixtureProjectionV1 {
+                fixture_bytes: Arc::clone(&fixture.fixture_bytes),
+                projection_range: projection.projection_range,
+                language_id: projection.language_id,
+                provider_id: projection.provider_id,
+                workspace_root_digest: projection.workspace_root_digest,
+                workspace_identity_digest: projection.workspace_identity_digest,
+                parser_identity_digest: projection.parser_identity_digest,
+                query_pack_digest: projection.query_pack_digest,
+                generation_digest: projection.generation_digest,
+                owner_path: projection.owner_path,
+                source_blob_digest: projection.source_blob_digest,
+                owner_subtree_digest: projection.owner_subtree_digest,
+                normalized_parser_facts_digest: projection.normalized_parser_facts_digest,
+                projection_mode: projection.projection_mode,
+            }),
+        )
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -216,6 +257,13 @@ pub fn exact_selector_fixture_projection_range_v1(
 #[derive(Debug)]
 struct ExactSelectorFixtureProjectionMetadataV1 {
     projection_range: std::ops::Range<usize>,
+    language_id: String,
+    provider_id: String,
+    workspace_root_digest: [u8; 32],
+    workspace_identity_digest: [u8; 32],
+    parser_identity_digest: [u8; 32],
+    query_pack_digest: [u8; 32],
+    generation_digest: [u8; 32],
     owner_path: String,
     source_blob_digest: [u8; 32],
     owner_subtree_digest: [u8; 32],
@@ -253,6 +301,13 @@ fn exact_selector_fixture_projection_metadata_v1(
             }
             Ok(ExactSelectorFixtureProjectionMetadataV1 {
                 projection_range: start..end,
+                language_id: fixture.language_id().to_owned(),
+                provider_id: fixture.provider_id().to_owned(),
+                workspace_root_digest: *fixture.workspace_root_digest(),
+                workspace_identity_digest: *fixture.workspace_identity_digest(),
+                parser_identity_digest: *fixture.parser_identity_digest(),
+                query_pack_digest: *fixture.query_pack_digest(),
+                generation_digest: *fixture.generation_digest(),
                 owner_path: record.owner_path.to_owned(),
                 source_blob_digest: *record.source_blob_digest,
                 owner_subtree_digest: *record.owner_subtree_digest,
@@ -261,4 +316,8 @@ fn exact_selector_fixture_projection_metadata_v1(
             })
         })
         .transpose()
+}
+
+fn digest_matches_v1(expected: &str, actual: &[u8; 32]) -> bool {
+    blake3::Hash::from_hex(expected).is_ok_and(|digest| digest.as_bytes() == actual)
 }

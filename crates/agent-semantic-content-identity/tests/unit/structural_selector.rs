@@ -1,11 +1,11 @@
-use agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1;
+use agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentity;
 use agent_semantic_content_identity::structural_selector::{
     decode_canonical_item_identity_path, encode_canonical_item_identity_path,
 };
 
 #[test]
 fn canonical_item_identity_path_round_trips_ordered_cfg_scopes() {
-    let identity = CanonicalItemIdentityV1::new("rust", "function", "run_search_view").with_scope(
+    let identity = CanonicalItemIdentity::new("rust", "function", "run_search_view").with_scope(
         "conditional-compilation",
         "cfg",
         "not(feature = \"semantic-search-json\")",

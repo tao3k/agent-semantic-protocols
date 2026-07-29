@@ -213,6 +213,46 @@ pub fn active_asp_artifact_receipt_path(activation_path: &Path) -> Result<PathBu
     Ok(parent.join(ACTIVE_ASP_ARTIFACT_RECEIPT_FILE))
 }
 
+pub fn active_exact_selector_fixture_artifact_input_v1(
+    activation_path: &Path,
+) -> Result<Option<ActiveAspArtifactInput>, String> {
+    let receipt_path = active_asp_artifact_receipt_path(activation_path)?;
+    let bytes = match fs::read(&receipt_path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "failed to read active exact-selector receipt {}: {error}",
+                receipt_path.display()
+            ));
+        }
+    };
+    let receipt: ActiveAspArtifactReceiptV1 = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("failed to parse {}: {error}", receipt_path.display()))?;
+    receipt
+        .validate()
+        .map_err(|error| format!("invalid active ASP artifact receipt: {error:?}"))?;
+    let Some(leaf) = receipt
+        .leaves()
+        .iter()
+        .find(|leaf| leaf.artifact_kind() == ActiveArtifactKindV1::ExactSelectorGenerationFixture)
+    else {
+        return Ok(None);
+    };
+    verify_materialized_leaf(
+        Path::new(leaf.materialized_path()),
+        leaf,
+        "exact-selector-generation-fixture",
+        MaterializationMatchPolicy::Exact,
+    )?;
+    Ok(Some(ActiveAspArtifactInput {
+        logical_path: leaf.logical_path().to_owned(),
+        artifact_kind: leaf.artifact_kind(),
+        materialized_path: PathBuf::from(leaf.materialized_path()),
+        artifact_digest: leaf.artifact_digest().as_str().to_owned(),
+    }))
+}
+
 pub fn reconcile_active_asp_artifact_receipt_from_materialized_set(
     activation_path: &Path,
 ) -> Result<bool, String> {

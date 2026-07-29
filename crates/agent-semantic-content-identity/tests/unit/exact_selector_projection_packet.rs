@@ -3,7 +3,7 @@ use crate::exact_selector_merkle::{ExactProjectionModeV1, canonical_content_dige
 
 #[test]
 fn builder_binds_source_parser_facts_and_projection_bytes() {
-    use crate::canonical_item_identity::{CanonicalItemIdentityV1, CanonicalItemSelectorV1};
+    use crate::canonical_item_identity::{CanonicalItemIdentity, CanonicalItemSelector};
 
     let parser_digest = canonical_content_digest_v1(b"parser", &[b"rs-harness"]);
     let query_pack_digest = canonical_content_digest_v1(b"query-pack", &[b"rust"]);
@@ -18,8 +18,8 @@ fn builder_binds_source_parser_facts_and_projection_bytes() {
         crate::exact_selector_projection_packet::ProjectionPacketStructuralSelectorV1::from(
             structural_selector,
         );
-    let canonical_item_selector = CanonicalItemSelectorV1::new(
-        CanonicalItemIdentityV1::new("rust", "function", "example"),
+    let canonical_item_selector = CanonicalItemSelector::new(
+        CanonicalItemIdentity::new("rust", "function", "example"),
         structural_selector,
     );
     let packet = build_exact_selector_projection_packet_v1(

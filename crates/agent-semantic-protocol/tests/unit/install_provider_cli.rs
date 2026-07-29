@@ -57,6 +57,100 @@ fn install_language_pinned_release_ignores_asp_toml_provider_bin() {
     assert_install_language_pinned_release_ignores_asp_toml_provider_bin();
 }
 
+#[test]
+#[cfg(unix)]
+fn install_binary_warm_provider_reconciliation_reads_zero_provider_bytes() {
+    let root = temp_project_root();
+    let state_home = root.join("state");
+    let runtime_bin = state_home.join("runtime/bin");
+    let runtime_artifacts = state_home.join("runtime/artifacts");
+    let provider_receipts = state_home.join("runtime/providers/receipts");
+    std::fs::create_dir_all(&runtime_bin).expect("create runtime bin");
+    std::fs::create_dir_all(&runtime_artifacts).expect("create runtime artifacts");
+    std::fs::create_dir_all(&provider_receipts).expect("create provider receipts");
+    for registration in agent_semantic_hook::registered_provider_binaries_v1() {
+        let binary_path = runtime_bin.join(registration.binary());
+        if !binary_path.exists() {
+            std::fs::write(
+                &binary_path,
+                format!("#!/bin/sh\n# {}\n", registration.binary()),
+            )
+            .expect("write provider binary");
+            make_executable(&binary_path);
+        }
+        let artifact_digest = agent_semantic_content_identity::file_content_digest_v1(&binary_path)
+            .expect("provider content digest");
+        let metadata_digest =
+            agent_semantic_content_identity::file_artifact_metadata_digest_v1(&binary_path)
+                .expect("provider metadata digest");
+        let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
+            &[binary_path.to_string_lossy().to_string()],
+            &artifact_digest,
+        )
+        .expect("provider execution command digest");
+        std::fs::write(
+            provider_receipts.join(format!("{}.lock.toml", registration.language_id())),
+            format!(
+                "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"{}\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\nexecutionCommandDigest = \"{}\"\n",
+                registration.language_id(),
+                registration.provider_id(),
+                binary_path.display(),
+                artifact_digest,
+                metadata_digest,
+                execution_command_digest,
+            ),
+        )
+        .expect("write provider receipt");
+    }
+    let asp_source = root.join("source/asp");
+    std::fs::create_dir_all(asp_source.parent().expect("ASP source parent"))
+        .expect("create ASP source parent");
+    std::fs::copy(env!("CARGO_BIN_EXE_asp"), &asp_source).expect("copy ASP source artifact");
+    make_executable(&asp_source);
+
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_asp"))
+            .args(["install", "binary", "--target"])
+            .arg(&asp_source)
+            .env("ASP_STATE_HOME", &state_home)
+            .env("HOME", root.join("home"))
+            .env("ASP_NO_AGENT_PLATFORM", "1")
+            .current_dir(&root)
+            .output()
+            .expect("run ASP binary reconciliation")
+    };
+    let first = run();
+    assert!(
+        first.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&first.stdout),
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let warm = run();
+    assert!(
+        warm.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&warm.stdout),
+        String::from_utf8_lossy(&warm.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&warm.stdout);
+    assert!(stdout.contains("providerBinaryByteReads=0"), "{stdout}");
+    assert!(
+        stdout.contains("globalProviderCatalogBinaryByteReads=0"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("globalProviderCatalogChangedLeafCount=0"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("globalProviderCatalogWrite=false"),
+        "{stdout}"
+    );
+
+    std::fs::remove_dir_all(root).expect("remove install binary fixture");
+}
+
 fn assert_install_pinned_release_writes_runtime_bin_package_and_lock() {
     let root = temp_project_root();
     let home = root.join("home");

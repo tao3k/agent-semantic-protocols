@@ -1,12 +1,12 @@
 use agent_semantic_client_db::{
-    ProviderIncrementalScopeV1, ProviderOwnerInventoryEntryStateV1, ProviderOwnerInventoryEntryV1,
-    ProviderOwnerInventoryStateV1, ProviderOwnerInventoryWriteV1,
-    ProviderTreeSitterCaptureProjectionV1, ProviderTreeSitterOwnerResultStateV1,
-    ProviderTreeSitterOwnerResultV1, ProviderTreeSitterQueryIdentityV1,
-    ProviderTreeSitterQueryReadStateV1, ProviderSearchWorkspaceSessionV1, WorkspaceDbRegistry,
+    ProviderIncrementalScoped, ProviderOwnerInventoryEntry, ProviderOwnerInventoryEntryState,
+    ProviderOwnerInventoryState, ProviderOwnerInventoryWrite, ProviderSearchWorkspaceSession,
+    ProviderTreeSitterCaptureProjection, ProviderTreeSitterOwnerResult,
+    ProviderTreeSitterOwnerResultState, ProviderTreeSitterQueryIdentity,
+    ProviderTreeSitterQueryReadState, WorkspaceDbRegistry,
 };
 
-use super::workspace_db_registry::{StateHomeGuard, TestDir, environment_lock, workspace};
+use crate::test_support::{StateHomeGuard, TestDir, environment_lock, workspace};
 
 fn digest(seed: u8) -> String {
     format!("{seed:064x}")
@@ -17,8 +17,8 @@ struct TestContext {
     _temp: TestDir,
     _state_home: StateHomeGuard,
     registry: WorkspaceDbRegistry,
-    session: ProviderSearchWorkspaceSessionV1,
-    scope: ProviderIncrementalScopeV1,
+    session: ProviderSearchWorkspaceSession,
+    scope: ProviderIncrementalScoped,
 }
 
 impl TestContext {
@@ -49,11 +49,11 @@ impl TestContext {
 }
 
 fn scope(
-    base: &ProviderIncrementalScopeV1,
+    base: &ProviderIncrementalScoped,
     provider_id: &str,
     language_id: &str,
-) -> ProviderIncrementalScopeV1 {
-    ProviderIncrementalScopeV1 {
+) -> ProviderIncrementalScoped {
+    ProviderIncrementalScoped {
         project_root: base.project_root.clone(),
         workspace_identity: base.workspace_identity.clone(),
         provider_workspace_identity_digest: digest(
@@ -68,17 +68,17 @@ fn scope(
 fn entry(
     owner_path: &str,
     content_seed: u8,
-    state: ProviderOwnerInventoryEntryStateV1,
-) -> ProviderOwnerInventoryEntryV1 {
-    ProviderOwnerInventoryEntryV1 {
+    state: ProviderOwnerInventoryEntryState,
+) -> ProviderOwnerInventoryEntry {
+    ProviderOwnerInventoryEntry {
         owner_path: owner_path.into(),
         owner_content_digest: Some(digest(content_seed)),
         state,
     }
 }
 
-fn query(scope: &ProviderIncrementalScopeV1, query_seed: u8) -> ProviderTreeSitterQueryIdentityV1 {
-    ProviderTreeSitterQueryIdentityV1 {
+fn query(scope: &ProviderIncrementalScoped, query_seed: u8) -> ProviderTreeSitterQueryIdentity {
+    ProviderTreeSitterQueryIdentity {
         scope: scope.clone(),
         query_digest: digest(query_seed),
         capture_names: vec!["reference.name".into()],
@@ -86,13 +86,13 @@ fn query(scope: &ProviderIncrementalScopeV1, query_seed: u8) -> ProviderTreeSitt
 }
 
 async fn publish_inventory(
-    session: &ProviderSearchWorkspaceSessionV1,
-    scope: &ProviderIncrementalScopeV1,
-    state: ProviderOwnerInventoryStateV1,
-    entries: Vec<ProviderOwnerInventoryEntryV1>,
+    session: &ProviderSearchWorkspaceSession,
+    scope: &ProviderIncrementalScoped,
+    state: ProviderOwnerInventoryState,
+    entries: Vec<ProviderOwnerInventoryEntry>,
 ) -> String {
     session
-        .upsert_provider_owner_inventory(&ProviderOwnerInventoryWriteV1 {
+        .upsert_provider_owner_inventory(&ProviderOwnerInventoryWrite {
             scope: scope.clone(),
             state,
             entries,
@@ -103,15 +103,15 @@ async fn publish_inventory(
 }
 
 async fn publish_cached_owner(
-    session: &ProviderSearchWorkspaceSessionV1,
-    query: &ProviderTreeSitterQueryIdentityV1,
+    session: &ProviderSearchWorkspaceSession,
+    query: &ProviderTreeSitterQueryIdentity,
     inventory_generation: &str,
     owner_path: &str,
     content_seed: u8,
     with_capture: bool,
 ) {
     let projections = if with_capture {
-        vec![ProviderTreeSitterCaptureProjectionV1 {
+        vec![ProviderTreeSitterCaptureProjection {
             structural_selector: format!("rust://{owner_path}#item/struct/Hit"),
             signature: "struct Hit".into(),
             item_kind: "struct".into(),
@@ -128,14 +128,14 @@ async fn publish_cached_owner(
     session
         .write_provider_treesitter_owner_result(
             query,
-            &ProviderTreeSitterOwnerResultV1 {
-            owner_path: owner_path.into(),
-            owner_content_digest: digest(content_seed),
-            query_digest: query.query_digest.clone(),
-            inventory_generation: inventory_generation.into(),
-            state: ProviderTreeSitterOwnerResultStateV1::Processed,
-            complete_owner_refresh_count: 1,
-            projections,
+            &ProviderTreeSitterOwnerResult {
+                owner_path: owner_path.into(),
+                owner_content_digest: digest(content_seed),
+                query_digest: query.query_digest.clone(),
+                inventory_generation: inventory_generation.into(),
+                state: ProviderTreeSitterOwnerResultState::Processed,
+                complete_owner_refresh_count: 1,
+                projections,
             },
         )
         .await
@@ -155,7 +155,7 @@ async fn missing_inventory_is_typed_without_reopening_turso_state() {
 
     assert_eq!(
         read.state,
-        ProviderTreeSitterQueryReadStateV1::MissingInventory
+        ProviderTreeSitterQueryReadState::MissingInventory
     );
     assert!(!read.absence_authoritative);
     assert!(read.inventory.is_none());
@@ -170,11 +170,11 @@ async fn exact_inventory_returns_cache_and_deterministic_budget_queue() {
     let generation = publish_inventory(
         &context.session,
         rust,
-        ProviderOwnerInventoryStateV1::Exact,
+        ProviderOwnerInventoryState::Exact,
         vec![
-            entry("a.rs", 1, ProviderOwnerInventoryEntryStateV1::Indexed),
-            entry("b.rs", 2, ProviderOwnerInventoryEntryStateV1::Indexed),
-            entry("c.rs", 3, ProviderOwnerInventoryEntryStateV1::Indexed),
+            entry("a.rs", 1, ProviderOwnerInventoryEntryState::Indexed),
+            entry("b.rs", 2, ProviderOwnerInventoryEntryState::Indexed),
+            entry("c.rs", 3, ProviderOwnerInventoryEntryState::Indexed),
         ],
     )
     .await;
@@ -187,7 +187,7 @@ async fn exact_inventory_returns_cache_and_deterministic_budget_queue() {
         .await
         .expect("read");
 
-    assert_eq!(read.state, ProviderTreeSitterQueryReadStateV1::Partial);
+    assert_eq!(read.state, ProviderTreeSitterQueryReadState::Partial);
     assert_eq!(read.cached_results[0].owner_path, "a.rs");
     assert_eq!(read.scheduled_entries[0].owner_path, "b.rs");
     let receipt = read.receipt.expect("receipt");
@@ -208,10 +208,10 @@ async fn continuation_advances_and_exact_inventory_completes_after_writes() {
     let generation = publish_inventory(
         &context.session,
         rust,
-        ProviderOwnerInventoryStateV1::Exact,
+        ProviderOwnerInventoryState::Exact,
         vec![
-            entry("a.rs", 1, ProviderOwnerInventoryEntryStateV1::Indexed),
-            entry("b.rs", 2, ProviderOwnerInventoryEntryStateV1::Indexed),
+            entry("a.rs", 1, ProviderOwnerInventoryEntryState::Indexed),
+            entry("b.rs", 2, ProviderOwnerInventoryEntryState::Indexed),
         ],
     )
     .await;
@@ -241,9 +241,118 @@ async fn continuation_advances_and_exact_inventory_completes_after_writes() {
         .read_provider_treesitter_query(&query, 1, None)
         .await
         .expect("complete");
-    assert_eq!(complete.state, ProviderTreeSitterQueryReadStateV1::Complete);
+    assert_eq!(complete.state, ProviderTreeSitterQueryReadState::Complete);
     assert!(complete.absence_authoritative);
     assert!(complete.scheduled_entries.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn exact_two_owner_rounds_are_complete_only_after_both_query_results_exist() {
+    for (label, inserted, expected) in [
+        (
+            "treesitter-order-lib-other",
+            [("other.rs", 2_u8), ("lib.rs", 1_u8)],
+            [("lib.rs", 1_u8), ("other.rs", 2_u8)],
+        ),
+        (
+            "treesitter-order-a-z",
+            [("z.rs", 4_u8), ("a.rs", 3_u8)],
+            [("a.rs", 3_u8), ("z.rs", 4_u8)],
+        ),
+    ] {
+        let context = TestContext::new(label, "rust-provider", "rust").await;
+        let generation = publish_inventory(
+            &context.session,
+            &context.scope,
+            ProviderOwnerInventoryState::Exact,
+            inserted
+                .into_iter()
+                .map(|(owner, seed)| entry(owner, seed, ProviderOwnerInventoryEntryState::Indexed))
+                .collect(),
+        )
+        .await;
+        let query = query(&context.scope, 40);
+
+        let first = context
+            .session
+            .read_provider_treesitter_query(&query, 1, None)
+            .await
+            .expect("schedule first owner");
+        assert_eq!(first.state, ProviderTreeSitterQueryReadState::Partial);
+        assert_eq!(first.scheduled_entries.len(), 1);
+        assert_eq!(first.scheduled_entries[0].owner_path, expected[0].0);
+        let first_receipt = first.receipt.expect("first receipt");
+        assert_eq!(first_receipt.remaining_owner_count, 1);
+        assert_eq!(
+            first_receipt
+                .continuation
+                .expect("first continuation")
+                .next_owner_cursor,
+            expected[1].0
+        );
+        publish_cached_owner(
+            &context.session,
+            &query,
+            &generation,
+            expected[0].0,
+            expected[0].1,
+            false,
+        )
+        .await;
+
+        let audit = context
+            .session
+            .read_provider_treesitter_query(&query, 0, None)
+            .await
+            .expect("audit pending owner");
+        assert_eq!(audit.state, ProviderTreeSitterQueryReadState::Partial);
+        assert!(audit.scheduled_entries.is_empty());
+        let audit_receipt = audit.receipt.expect("audit receipt");
+        assert_eq!(audit_receipt.remaining_owner_count, 1);
+        assert_eq!(
+            audit_receipt
+                .continuation
+                .expect("audit continuation")
+                .next_owner_cursor,
+            expected[1].0
+        );
+
+        let second = context
+            .session
+            .read_provider_treesitter_query(&query, 1, None)
+            .await
+            .expect("schedule second owner");
+        assert_eq!(second.state, ProviderTreeSitterQueryReadState::Partial);
+        assert_eq!(second.scheduled_entries.len(), 1);
+        assert_eq!(second.scheduled_entries[0].owner_path, expected[1].0);
+        assert_eq!(
+            second
+                .receipt
+                .expect("second receipt")
+                .remaining_owner_count,
+            0
+        );
+        publish_cached_owner(
+            &context.session,
+            &query,
+            &generation,
+            expected[1].0,
+            expected[1].1,
+            false,
+        )
+        .await;
+
+        let complete = context
+            .session
+            .read_provider_treesitter_query(&query, 0, None)
+            .await
+            .expect("complete audit");
+        assert_eq!(complete.state, ProviderTreeSitterQueryReadState::Complete);
+        assert!(complete.scheduled_entries.is_empty());
+        let complete_receipt = complete.receipt.expect("complete receipt");
+        assert_eq!(complete_receipt.remaining_owner_count, 0);
+        assert!(complete_receipt.continuation.is_none());
+    }
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -253,12 +362,8 @@ async fn continuation_rejects_query_identity_drift() {
     publish_inventory(
         &context.session,
         rust,
-        ProviderOwnerInventoryStateV1::Exact,
-        vec![entry(
-            "a.rs",
-            1,
-            ProviderOwnerInventoryEntryStateV1::Indexed,
-        )],
+        ProviderOwnerInventoryState::Exact,
+        vec![entry("a.rs", 1, ProviderOwnerInventoryEntryState::Indexed)],
     )
     .await;
     let original = query(rust, 40);
@@ -284,12 +389,8 @@ async fn continuation_rejects_inventory_generation_drift() {
     publish_inventory(
         &context.session,
         rust,
-        ProviderOwnerInventoryStateV1::Exact,
-        vec![entry(
-            "a.rs",
-            1,
-            ProviderOwnerInventoryEntryStateV1::Indexed,
-        )],
+        ProviderOwnerInventoryState::Exact,
+        vec![entry("a.rs", 1, ProviderOwnerInventoryEntryState::Indexed)],
     )
     .await;
     let query = query(rust, 40);
@@ -302,8 +403,8 @@ async fn continuation_rejects_inventory_generation_drift() {
     publish_inventory(
         &context.session,
         rust,
-        ProviderOwnerInventoryStateV1::Exact,
-        vec![entry("a.rs", 2, ProviderOwnerInventoryEntryStateV1::Dirty)],
+        ProviderOwnerInventoryState::Exact,
+        vec![entry("a.rs", 2, ProviderOwnerInventoryEntryState::Dirty)],
     )
     .await;
 
@@ -322,12 +423,8 @@ async fn changed_owner_content_digest_invalidates_old_query_cache() {
     let generation = publish_inventory(
         &context.session,
         rust,
-        ProviderOwnerInventoryStateV1::Exact,
-        vec![entry(
-            "a.rs",
-            1,
-            ProviderOwnerInventoryEntryStateV1::Indexed,
-        )],
+        ProviderOwnerInventoryState::Exact,
+        vec![entry("a.rs", 1, ProviderOwnerInventoryEntryState::Indexed)],
     )
     .await;
     let query = query(rust, 40);
@@ -335,8 +432,8 @@ async fn changed_owner_content_digest_invalidates_old_query_cache() {
     publish_inventory(
         &context.session,
         rust,
-        ProviderOwnerInventoryStateV1::Exact,
-        vec![entry("a.rs", 2, ProviderOwnerInventoryEntryStateV1::Dirty)],
+        ProviderOwnerInventoryState::Exact,
+        vec![entry("a.rs", 2, ProviderOwnerInventoryEntryState::Dirty)],
     )
     .await;
 
@@ -356,12 +453,8 @@ async fn new_query_digest_schedules_owner_even_when_old_query_is_cached() {
     let generation = publish_inventory(
         &context.session,
         rust,
-        ProviderOwnerInventoryStateV1::Exact,
-        vec![entry(
-            "a.rs",
-            1,
-            ProviderOwnerInventoryEntryStateV1::Indexed,
-        )],
+        ProviderOwnerInventoryState::Exact,
+        vec![entry("a.rs", 1, ProviderOwnerInventoryEntryState::Indexed)],
     )
     .await;
     publish_cached_owner(
@@ -391,42 +484,30 @@ async fn known_inventory_never_completes_and_ignores_unrelated_provider_state() 
     let rust_generation = publish_inventory(
         &context.session,
         rust,
-        ProviderOwnerInventoryStateV1::Known,
-        vec![entry(
-            "a.rs",
-            1,
-            ProviderOwnerInventoryEntryStateV1::Indexed,
-        )],
+        ProviderOwnerInventoryState::Known,
+        vec![entry("a.rs", 1, ProviderOwnerInventoryEntryState::Indexed)],
     )
     .await;
     publish_inventory(
         &context.session,
         &julia,
-        ProviderOwnerInventoryStateV1::Exact,
+        ProviderOwnerInventoryState::Exact,
         vec![entry(
             "unrelated.jl",
             9,
-            ProviderOwnerInventoryEntryStateV1::Indexed,
+            ProviderOwnerInventoryEntryState::Indexed,
         )],
     )
     .await;
     let query = query(rust, 40);
-    publish_cached_owner(
-        &context.session,
-        &query,
-        &rust_generation,
-        "a.rs",
-        1,
-        false,
-    )
-    .await;
+    publish_cached_owner(&context.session, &query, &rust_generation, "a.rs", 1, false).await;
 
     let read = context
         .session
         .read_provider_treesitter_query(&query, 2, None)
         .await
         .expect("known inventory");
-    assert_eq!(read.state, ProviderTreeSitterQueryReadStateV1::Partial);
+    assert_eq!(read.state, ProviderTreeSitterQueryReadState::Partial);
     assert!(!read.absence_authoritative);
     assert_eq!(read.cached_results.len(), 1);
     assert!(

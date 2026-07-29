@@ -13,6 +13,15 @@ use crate::engine::{
 };
 
 impl ClientDbEngine {
+    /// Publish one complete source-index generation through the engine-owned
+    /// Turso path and return its generation receipt.
+    pub async fn refresh_source_index_generation(
+        &self,
+        request: ClientDbSourceIndexRefreshRequest,
+    ) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
+        refresh_turso_source_index_import(self.db_path(), request).await
+    }
+
     pub fn lookup_exact_selector_projection_v1_from_client_dir(
         client_dir: impl AsRef<Path>,
         key: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1<

@@ -22,7 +22,7 @@
       "const": "asp.exact-structural-selector.v1"
     },
     "schemaVersion": {
-      "const": "v1"
+      "const": "1"
     },
     "languageId": {
       "type": "string",

@@ -207,7 +207,7 @@ enum SearchLoopCommandV1 {
 #+begin_src rust
 struct ExactQueryCommandV1 {
     facade_language_id: LanguageId,
-    selector: CanonicalItemSelectorV1,
+    selector: CanonicalItemSelector,
     projection: ExactProjectionMode,
     snapshot_authority: ExactSnapshotAuthority,
 }

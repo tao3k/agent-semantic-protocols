@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::reconcile_provider_install_receipt_in_lock_dir;
+use super::provider_install_receipt_matches_artifact;
+use super::{read_provider_install_receipt, reconcile_provider_install_receipt_in_lock_dir};
 
 #[test]
 fn provider_receipt_is_resigned_after_runtime_binary_becomes_a_cas_link() {
@@ -62,6 +63,42 @@ fn provider_receipt_is_resigned_after_runtime_binary_becomes_a_cas_link() {
                 .expect("metadata digest")
                 .as_str()
         )
+    );
+    let receipt =
+        read_provider_install_receipt("rust", &lock_dir).expect("read typed provider receipt");
+    assert_eq!(receipt.language_id, "rust");
+    assert_eq!(receipt.provider_id, "rs-harness");
+    assert_eq!(receipt.installed_path, runtime_binary);
+    assert_eq!(
+        receipt.installed_entrypoint_digest,
+        lock["installedEntrypointDigest"]
+            .as_str()
+            .expect("installed content digest")
+    );
+    assert_eq!(
+        receipt.installed_entrypoint_metadata_digest,
+        lock["installedEntrypointMetadataDigest"]
+            .as_str()
+            .expect("installed metadata digest")
+    );
+    assert_eq!(
+        receipt.execution_command_digest,
+        lock["executionCommandDigest"]
+            .as_str()
+            .expect("execution command digest")
+    );
+    assert!(
+        provider_install_receipt_matches_artifact(&receipt, &runtime_binary)
+            .expect("compare provider receipt metadata")
+    );
+
+    std::fs::remove_file(&runtime_binary).expect("remove runtime link after receipt publication");
+    std::fs::remove_file(&immutable_binary)
+        .expect("remove immutable binary after receipt publication");
+    assert_eq!(
+        read_provider_install_receipt("rust", &lock_dir)
+            .expect("typed receipt read must not touch provider bytes"),
+        receipt
     );
 
     std::fs::remove_dir_all(root).expect("remove fixture");

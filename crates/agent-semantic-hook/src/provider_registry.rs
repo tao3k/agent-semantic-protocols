@@ -10,12 +10,95 @@ use crate::protocol_activation::protocol_activation_manifest::{
     ManifestSourceDefaults, ProviderManifest,
 };
 
+// The embedded registry is the admission authority for provider-native routes.
 const SCHEMA_REGISTRY_JSON: &str =
     include_str!("../../../schemas/semantic-language-registry.providers.v1.json");
 
 pub fn semantic_registry_digest() -> String {
     let digest = <sha2::Sha256 as sha2::Digest>::digest(SCHEMA_REGISTRY_JSON.as_bytes());
     format!("sha256:{digest:x}")
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RegisteredProviderCatalogIdentity {
+    pub language_id: String,
+    pub manifest_digest: String,
+    pub provider_registry_digest: String,
+    pub query_pack_digest: String,
+    pub exact_query_pack_identity_digest: String,
+}
+
+pub fn registered_provider_catalog_identities() -> &'static [RegisteredProviderCatalogIdentity] {
+    static IDENTITIES: std::sync::OnceLock<Vec<RegisteredProviderCatalogIdentity>> =
+        std::sync::OnceLock::new();
+    IDENTITIES
+        .get_or_init(|| {
+            let manifests = schema_registry_provider_manifests();
+            let registry: serde_json::Value = serde_json::from_str(SCHEMA_REGISTRY_JSON)
+                .expect("embedded semantic language registry must be valid JSON");
+            registry
+                .get("languages")
+                .and_then(serde_json::Value::as_array)
+                .expect("embedded semantic language registry must declare languages")
+                .iter()
+                .map(|descriptor| {
+                    let language_id = descriptor
+                        .get("languageId")
+                        .and_then(serde_json::Value::as_str)
+                        .expect("registered language descriptor must declare languageId");
+                    let manifest = manifests
+                        .iter()
+                        .find(|manifest| manifest.language_id.as_str() == language_id)
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "missing provider manifest for registered language `{}`",
+                                language_id
+                            )
+                        });
+                    let descriptor_bytes = serde_json::to_vec(descriptor)
+                        .expect("registered language descriptor must serialize");
+                    let query_pack_bytes =
+                        serde_json::to_vec(descriptor.get("queryPackDescriptor").expect(
+                            "registered language descriptor must declare queryPackDescriptor",
+                        ))
+                        .expect("registered query pack descriptor must serialize");
+                    RegisteredProviderCatalogIdentity {
+                        language_id: language_id.to_owned(),
+                        manifest_digest:
+                            crate::protocol_activation::digest::provider_manifest_digest(manifest)
+                                .expect("registered provider manifest must serialize"),
+                        provider_registry_digest: format!(
+                            "sha256:{:x}",
+                            <sha2::Sha256 as sha2::Digest>::digest(descriptor_bytes)
+                        ),
+                        query_pack_digest: format!(
+                            "sha256:{:x}",
+                            <sha2::Sha256 as sha2::Digest>::digest(&query_pack_bytes)
+                        ),
+                        exact_query_pack_identity_digest:
+                            agent_semantic_content_identity::exact_selector_projection_packet::
+                                derive_query_pack_identity_digest_v1(&query_pack_bytes)
+                                .as_str()
+                                .to_owned(),
+                    }
+                })
+                .collect()
+        })
+        .as_slice()
+}
+
+pub fn registered_language_descriptor_digest(language_id: &str) -> Option<String> {
+    registered_provider_catalog_identities()
+        .iter()
+        .find(|identity| identity.language_id == language_id)
+        .map(|identity| identity.provider_registry_digest.clone())
+}
+
+pub fn registered_query_pack_digest(language_id: &str) -> Option<String> {
+    registered_provider_catalog_identities()
+        .iter()
+        .find(|identity| identity.language_id == language_id)
+        .map(|identity| identity.query_pack_digest.clone())
 }
 
 const LANGUAGE_PROVIDER_MANIFEST_JSON: &[&str] = &[
@@ -52,7 +135,7 @@ const COMMON_IGNORED_PATH_PREFIXES: &[&str] = &[
     "target",
 ];
 
-pub(crate) fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
+pub fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
     let language_manifests = language_provider_manifests();
     schema_registry()
         .languages
@@ -179,6 +262,7 @@ pub fn materialize_provider_routes(
         owner: resolve_route_invocation(language, &bindings.owner)?,
         lexical: resolve_route_invocation(language, &bindings.lexical)?,
         query: optional(&bindings.query)?,
+        exact_selector_native: optional(&bindings.exact_selector_native)?,
         ingest: resolve_route_invocation(language, &bindings.ingest)?,
         check_changed: resolve_route_invocation(language, &bindings.check_changed)?,
         dependency_topology: optional(&bindings.dependency_topology)?,

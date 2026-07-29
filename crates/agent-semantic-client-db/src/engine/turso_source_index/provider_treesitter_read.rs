@@ -1,25 +1,25 @@
 use std::collections::BTreeMap;
 
+use super::workspace_db_registry::ProviderSearchWorkspaceSession;
 use super::{
-    ProviderOwnerInventoryEntryStateV1, ProviderOwnerInventoryEntryV1,
-    ProviderOwnerInventoryStateV1, ProviderOwnerInventoryV1, ProviderRemainingOwnerCountKindV1,
-    ProviderTreeSitterCaptureProjectionV1, ProviderTreeSitterContinuationV1,
-    ProviderTreeSitterOwnerResultStateV1, ProviderTreeSitterOwnerResultV1,
-    ProviderTreeSitterQueryCountersV1, ProviderTreeSitterQueryIdentityV1,
-    ProviderTreeSitterQueryReadStateV1, ProviderTreeSitterQueryReadV1,
-    ProviderTreeSitterQueryReceiptV1,
+    ProviderOwnerInventory, ProviderOwnerInventoryEntry, ProviderOwnerInventoryEntryState,
+    ProviderOwnerInventoryState, ProviderRemainingOwnerCountKind,
+    ProviderTreeSitterCaptureProjection, ProviderTreeSitterContinuation,
+    ProviderTreeSitterOwnerResult, ProviderTreeSitterOwnerResultState,
+    ProviderTreeSitterQueryCounters, ProviderTreeSitterQueryIdentity, ProviderTreeSitterQueryRead,
+    ProviderTreeSitterQueryReadState, ProviderTreeSitterQueryReceipt,
 };
-use super::workspace_db_registry::ProviderSearchWorkspaceSessionV1;
 
-pub(super) async fn read_provider_treesitter_query_in_session_v1(
-    session: &ProviderSearchWorkspaceSessionV1,
-    query: &ProviderTreeSitterQueryIdentityV1,
+pub(super) async fn read_provider_treesitter_query_in_session(
+    session: &ProviderSearchWorkspaceSession,
+    query: &ProviderTreeSitterQueryIdentity,
     incremental_budget: u32,
-    continuation: Option<&ProviderTreeSitterContinuationV1>,
-) -> Result<ProviderTreeSitterQueryReadV1, String> {
+    continuation: Option<&ProviderTreeSitterContinuation>,
+) -> Result<ProviderTreeSitterQueryRead, String> {
     validate_query(query)?;
+    let read_lease = session.read_connection();
     read_provider_treesitter_query_on_connection(
-        session.read_connection(),
+        &read_lease,
         query,
         incremental_budget,
         continuation,
@@ -29,21 +29,21 @@ pub(super) async fn read_provider_treesitter_query_in_session_v1(
 
 async fn read_provider_treesitter_query_on_connection(
     connection: &turso::Connection,
-    query: &ProviderTreeSitterQueryIdentityV1,
+    query: &ProviderTreeSitterQueryIdentity,
     incremental_budget: u32,
-    continuation: Option<&ProviderTreeSitterContinuationV1>,
-) -> Result<ProviderTreeSitterQueryReadV1, String> {
+    continuation: Option<&ProviderTreeSitterContinuation>,
+) -> Result<ProviderTreeSitterQueryRead, String> {
     let Some(inventory) = read_inventory(connection, query).await? else {
         if continuation.is_some() {
             return Err("Tree-sitter continuation cannot resume without provider inventory".into());
         }
-        return Ok(ProviderTreeSitterQueryReadV1::missing());
+        return Ok(ProviderTreeSitterQueryRead::missing());
     };
     validate_continuation(query, &inventory, continuation)?;
     let cached_by_owner = read_current_cached_results(connection, query, &inventory).await?;
     let (mut cached_results, mut work) = (Vec::new(), Vec::new());
     for entry in &inventory.entries {
-        let is_current_cache = entry.state == ProviderOwnerInventoryEntryStateV1::Indexed
+        let is_current_cache = entry.state == ProviderOwnerInventoryEntryState::Indexed
             && entry.owner_content_digest.is_some()
             && cached_by_owner.contains_key(entry.owner_path.as_str());
         if is_current_cache {
@@ -72,10 +72,10 @@ async fn read_provider_treesitter_query_on_connection(
     let scheduled_entries = work[start..end].to_vec();
     let remaining_owner_count = work.len().saturating_sub(end);
     let remaining_count_kind = match inventory.state {
-        ProviderOwnerInventoryStateV1::Exact => ProviderRemainingOwnerCountKindV1::Exact,
-        ProviderOwnerInventoryStateV1::Known => ProviderRemainingOwnerCountKindV1::KnownLowerBound,
+        ProviderOwnerInventoryState::Exact => ProviderRemainingOwnerCountKind::Exact,
+        ProviderOwnerInventoryState::Known => ProviderRemainingOwnerCountKind::KnownLowerBound,
     };
-    let next = work.get(end).map(|entry| ProviderTreeSitterContinuationV1 {
+    let next = work.get(end).map(|entry| ProviderTreeSitterContinuation {
         provider_workspace_identity_digest: query.scope.provider_workspace_identity_digest.clone(),
         query_digest: query.query_digest.clone(),
         inventory_digest: inventory.inventory_digest.clone(),
@@ -84,7 +84,7 @@ async fn read_provider_treesitter_query_on_connection(
         remaining_count_kind,
         next_owner_cursor: entry.owner_path.clone(),
     });
-    let complete = inventory.state == ProviderOwnerInventoryStateV1::Exact
+    let complete = inventory.state == ProviderOwnerInventoryState::Exact
         && work.is_empty()
         && continuation.is_none();
     let cached_projection_count = cached_results
@@ -93,7 +93,7 @@ async fn read_provider_treesitter_query_on_connection(
         .sum::<usize>()
         .try_into()
         .unwrap_or(u32::MAX);
-    let receipt = ProviderTreeSitterQueryReceiptV1 {
+    let receipt = ProviderTreeSitterQueryReceipt {
         query: query.clone(),
         inventory_state: inventory.state,
         inventory_digest: inventory.inventory_digest.clone(),
@@ -105,16 +105,16 @@ async fn read_provider_treesitter_query_on_connection(
         remaining_count_kind,
         incremental_budget,
         continuation: next,
-        counters: ProviderTreeSitterQueryCountersV1 {
+        counters: ProviderTreeSitterQueryCounters {
             query_cache_reads: 1,
-            ..ProviderTreeSitterQueryCountersV1::default()
+            ..ProviderTreeSitterQueryCounters::default()
         },
     };
-    Ok(ProviderTreeSitterQueryReadV1 {
+    Ok(ProviderTreeSitterQueryRead {
         state: if complete {
-            ProviderTreeSitterQueryReadStateV1::Complete
+            ProviderTreeSitterQueryReadState::Complete
         } else {
-            ProviderTreeSitterQueryReadStateV1::Partial
+            ProviderTreeSitterQueryReadState::Partial
         },
         absence_authoritative: complete,
         inventory: Some(inventory),
@@ -124,7 +124,7 @@ async fn read_provider_treesitter_query_on_connection(
     })
 }
 
-fn validate_query(query: &ProviderTreeSitterQueryIdentityV1) -> Result<(), String> {
+fn validate_query(query: &ProviderTreeSitterQueryIdentity) -> Result<(), String> {
     if query.query_digest.trim().is_empty() {
         return Err("Tree-sitter query digest must be non-empty".into());
     }
@@ -141,9 +141,9 @@ fn validate_query(query: &ProviderTreeSitterQueryIdentityV1) -> Result<(), Strin
 }
 
 fn validate_continuation(
-    query: &ProviderTreeSitterQueryIdentityV1,
-    inventory: &ProviderOwnerInventoryV1,
-    continuation: Option<&ProviderTreeSitterContinuationV1>,
+    query: &ProviderTreeSitterQueryIdentity,
+    inventory: &ProviderOwnerInventory,
+    continuation: Option<&ProviderTreeSitterContinuation>,
 ) -> Result<(), String> {
     let Some(token) = continuation else {
         return Ok(());
@@ -156,9 +156,9 @@ fn validate_continuation(
         && token.inventory_state == inventory.state
         && token.remaining_count_kind
             == match inventory.state {
-                ProviderOwnerInventoryStateV1::Exact => ProviderRemainingOwnerCountKindV1::Exact,
-                ProviderOwnerInventoryStateV1::Known => {
-                    ProviderRemainingOwnerCountKindV1::KnownLowerBound
+                ProviderOwnerInventoryState::Exact => ProviderRemainingOwnerCountKind::Exact,
+                ProviderOwnerInventoryState::Known => {
+                    ProviderRemainingOwnerCountKind::KnownLowerBound
                 }
             };
     if matches {
@@ -170,8 +170,8 @@ fn validate_continuation(
 
 async fn read_inventory(
     connection: &turso::Connection,
-    query: &ProviderTreeSitterQueryIdentityV1,
-) -> Result<Option<ProviderOwnerInventoryV1>, String> {
+    query: &ProviderTreeSitterQueryIdentity,
+) -> Result<Option<ProviderOwnerInventory>, String> {
     let scope = &query.scope;
     let mut rows = match connection
         .query(
@@ -231,7 +231,7 @@ async fn read_inventory(
         .await
         .map_err(|error| format!("failed to read provider inventory entry: {error}"))?
     {
-        entries.push(ProviderOwnerInventoryEntryV1 {
+        entries.push(ProviderOwnerInventoryEntry {
             owner_path: row_text(&entry, 0, "ownerPath")?,
             owner_content_digest: entry
                 .get::<Option<String>>(1)
@@ -239,7 +239,7 @@ async fn read_inventory(
             state: decode_entry_state(row_text(&entry, 2, "ownerState")?)?,
         });
     }
-    Ok(Some(ProviderOwnerInventoryV1 {
+    Ok(Some(ProviderOwnerInventory {
         scope: scope.clone(),
         state,
         inventory_digest,
@@ -250,9 +250,9 @@ async fn read_inventory(
 
 async fn read_current_cached_results(
     connection: &turso::Connection,
-    query: &ProviderTreeSitterQueryIdentityV1,
-    inventory: &ProviderOwnerInventoryV1,
-) -> Result<BTreeMap<String, ProviderTreeSitterOwnerResultV1>, String> {
+    query: &ProviderTreeSitterQueryIdentity,
+    inventory: &ProviderOwnerInventory,
+) -> Result<BTreeMap<String, ProviderTreeSitterOwnerResult>, String> {
     let scope = &query.scope;
     let mut rows = connection
         .query(
@@ -300,7 +300,7 @@ async fn read_current_cached_results(
         )
         .await
         .map_err(|error| format!("failed to read Tree-sitter query cache: {error}"))?;
-    let mut results = BTreeMap::<String, ProviderTreeSitterOwnerResultV1>::new();
+    let mut results = BTreeMap::<String, ProviderTreeSitterOwnerResult>::new();
     while let Some(row) = rows
         .next()
         .await
@@ -310,12 +310,12 @@ async fn read_current_cached_results(
         let result =
             results
                 .entry(owner_path.clone())
-                .or_insert_with(|| ProviderTreeSitterOwnerResultV1 {
+                .or_insert_with(|| ProviderTreeSitterOwnerResult {
                     owner_path,
                     owner_content_digest: row.get::<String>(1).unwrap_or_default(),
                     query_digest: query.query_digest.clone(),
                     inventory_generation: row.get::<String>(2).unwrap_or_default(),
-                    state: ProviderTreeSitterOwnerResultStateV1::Cached,
+                    state: ProviderTreeSitterOwnerResultState::Cached,
                     complete_owner_refresh_count: row.get::<i64>(3).unwrap_or_default() as u32,
                     projections: Vec::new(),
                 });
@@ -325,7 +325,7 @@ async fn read_current_cached_results(
         {
             result
                 .projections
-                .push(ProviderTreeSitterCaptureProjectionV1 {
+                .push(ProviderTreeSitterCaptureProjection {
                     structural_selector,
                     signature: row_text(&row, 5, "signature")?,
                     item_kind: row_text(&row, 6, "itemKind")?,
@@ -341,19 +341,19 @@ async fn read_current_cached_results(
     Ok(results)
 }
 
-fn decode_inventory_state(value: String) -> Result<ProviderOwnerInventoryStateV1, String> {
+fn decode_inventory_state(value: String) -> Result<ProviderOwnerInventoryState, String> {
     match value.as_str() {
-        "exact" => Ok(ProviderOwnerInventoryStateV1::Exact),
-        "known" => Ok(ProviderOwnerInventoryStateV1::Known),
+        "exact" => Ok(ProviderOwnerInventoryState::Exact),
+        "known" => Ok(ProviderOwnerInventoryState::Known),
         _ => Err(format!("unknown provider inventory state `{value}`")),
     }
 }
 
-fn decode_entry_state(value: String) -> Result<ProviderOwnerInventoryEntryStateV1, String> {
+fn decode_entry_state(value: String) -> Result<ProviderOwnerInventoryEntryState, String> {
     match value.as_str() {
-        "indexed" => Ok(ProviderOwnerInventoryEntryStateV1::Indexed),
-        "dirty" => Ok(ProviderOwnerInventoryEntryStateV1::Dirty),
-        "unindexed" => Ok(ProviderOwnerInventoryEntryStateV1::Unindexed),
+        "indexed" => Ok(ProviderOwnerInventoryEntryState::Indexed),
+        "dirty" => Ok(ProviderOwnerInventoryEntryState::Dirty),
+        "unindexed" => Ok(ProviderOwnerInventoryEntryState::Unindexed),
         _ => Err(format!("unknown provider inventory entry state `{value}`")),
     }
 }

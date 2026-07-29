@@ -3,7 +3,8 @@ use super::membership::{
     turso_source_index_membership_changes,
 };
 use super::projection::{
-    refresh_turso_source_index_posting_projection, write_turso_source_index_owner_rows,
+    refresh_turso_source_index_posting_projection, refresh_turso_source_index_selector_projection,
+    write_turso_source_index_owner_rows,
 };
 use super::readiness::turso_source_index_projection_ready;
 use super::trace::{
@@ -107,6 +108,7 @@ pub(super) async fn write_turso_source_index_rows(
         let selector_fingerprint = prepared.selector_fingerprint;
         let changed_owner_paths = prepared.changed_owner_paths;
         let changed_owner_rows = prepared.changed_owner_rows;
+        let changed_selector_rows = prepared.changed_selector_rows;
         let semantic_term_count = prepared.semantic_term_count;
         let membership_trace_stage = match membership_change_set {
             crate::source_index::ClientDbSourceIndexMembershipChangeSet::FullSnapshot => {
@@ -171,6 +173,17 @@ pub(super) async fn write_turso_source_index_rows(
         projection_owner_paths.extend(removed_owner_paths.iter().cloned());
         projection_owner_paths.sort();
         projection_owner_paths.dedup();
+        refresh_turso_source_index_selector_projection(
+            connection,
+            project_root,
+            import.schema_id.as_str(),
+            import.schema_version.as_str(),
+            physical_generation_id,
+            &projection_owner_paths,
+            &changed_selector_rows,
+        )
+        .await?;
+        source_index_db_trace("snapshot-selector-rows-written", cold_write_started);
         let posting_count = refresh_turso_source_index_posting_projection(
             connection,
             project_root,

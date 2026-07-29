@@ -16,6 +16,19 @@ pub(super) struct TursoSourceIndexOwnerRow {
     pub(super) selector_count: i64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct TursoSourceIndexSelectorRow {
+    pub(super) owner_path: String,
+    pub(super) owner_content_digest: String,
+    pub(super) language_id: String,
+    pub(super) parser_identity_digest: String,
+    pub(super) query_pack_digest: String,
+    pub(super) item_kind: String,
+    pub(super) item_symbol: String,
+    pub(super) scopes_json: String,
+    pub(super) structural_selector: String,
+}
+
 async fn active_turso_source_index_generation(
     connection: &turso::Connection,
     project_root: &str,
@@ -149,6 +162,7 @@ pub(super) struct PreparedTursoSourceIndexRows {
     pub(super) selector_fingerprint: String,
     pub(super) changed_owner_paths: std::collections::BTreeSet<String>,
     pub(super) changed_owner_rows: Vec<TursoSourceIndexOwnerRow>,
+    pub(super) changed_selector_rows: Vec<TursoSourceIndexSelectorRow>,
     pub(super) semantic_term_count: usize,
 }
 
@@ -293,11 +307,65 @@ pub(super) async fn prepare_turso_source_index_rows(
         .into_iter()
         .filter(|row| changed_owner_paths.contains(row.owner_path.as_str()))
         .collect();
+    let changed_selector_rows = import
+        .selectors
+        .iter()
+        .filter(|selector| changed_owner_paths.contains(selector.owner_path.as_str()))
+        .map(|selector| {
+            let structural_selector = selector
+                .materialization_proof
+                .structural_selector
+                .as_str();
+            let canonical =
+                agent_semantic_content_identity::CanonicalItemSelector::parse(
+                    structural_selector,
+                )
+                .map_err(|error| {
+                    format!(
+                        "failed to normalize Turso source-index selector identity: owner={} selector={} error={error}",
+                        selector.owner_path.as_str(),
+                        structural_selector,
+                    )
+                })?;
+            let owner_content_digest = imported_membership
+                .get(selector.owner_path.as_str())
+                .expect("source-index selector membership validated before prepare")
+                .to_string();
+            let scopes_json = serde_json::to_string(&canonical.scopes).map_err(|error| {
+                format!(
+                    "failed to encode Turso source-index selector scopes: selector={} error={error}",
+                    structural_selector,
+                )
+            })?;
+            Ok(TursoSourceIndexSelectorRow {
+                owner_path: selector.owner_path.as_str().to_string(),
+                owner_content_digest,
+                language_id: canonical.language_id.as_str().to_string(),
+                parser_identity_digest: selector
+                    .materialization_proof
+                    .parser_identity_digest
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect(),
+                query_pack_digest: selector
+                    .materialization_proof
+                    .query_pack_digest
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect(),
+                item_kind: canonical.kind.as_str().to_string(),
+                item_symbol: canonical.symbol.as_str().to_string(),
+                scopes_json,
+                structural_selector: structural_selector.to_string(),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     Ok(PreparedTursoSourceIndexRows {
         physical_generation_id,
         selector_fingerprint,
         changed_owner_paths,
         changed_owner_rows,
+        changed_selector_rows,
         semantic_term_count,
     })
 }

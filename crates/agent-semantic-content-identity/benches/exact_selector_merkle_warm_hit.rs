@@ -38,8 +38,8 @@ fn record() -> ExactSelectorProjectionRecordV1 {
     );
     let structural_selector = "rust://crates/example/src/lib.rs#item/function/run".to_owned();
     let canonical_item_selector =
-        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
-            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new(
+        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::new(
+            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentity::new(
                 "rust", "function", "run",
             ),
             structural_selector.as_str(),

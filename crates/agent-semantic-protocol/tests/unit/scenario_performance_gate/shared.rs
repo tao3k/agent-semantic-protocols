@@ -173,7 +173,7 @@ pub(super) fn owner_items_fixture_uses_native_transport(language_id: &str) -> bo
     agent_semantic_hook::registered_provider_method_invocation_v1(
         language_id,
         manifest.provider_id().as_str(),
-        "search/owner-native-v1",
+        "search/owner-native",
     )
     .expect("resolve fixture owner transport")
     .is_some()

@@ -189,7 +189,7 @@ pub(super) fn concrete_pipe_actions_from_candidates(candidates: &[Candidate]) ->
     let mut selectors = HashSet::new();
     for candidate in candidates.iter().take(12) {
         let Some(selector) = candidate_executable_selector(candidate).and_then(|selector| {
-            agent_semantic_content_identity::CanonicalItemSelectorV1::parse(selector).ok()
+            agent_semantic_content_identity::CanonicalItemSelector::parse(selector).ok()
         }) else {
             continue;
         };
@@ -426,20 +426,20 @@ fn owner_and_selector(
     locator: &str,
 ) -> Option<(
     String,
-    agent_semantic_content_identity::CanonicalItemSelectorV1,
+    agent_semantic_content_identity::CanonicalItemSelector,
 )> {
-    let selector = agent_semantic_content_identity::CanonicalItemSelectorV1::parse(locator).ok()?;
+    let selector = agent_semantic_content_identity::CanonicalItemSelector::parse(locator).ok()?;
     let owner = structural_selector_owner(selector.structural_selector())?;
     Some((owner.to_string(), selector))
 }
 
 fn executable_structural_selector_from_action_fields(
     fields: &str,
-) -> Option<agent_semantic_content_identity::CanonicalItemSelectorV1> {
+) -> Option<agent_semantic_content_identity::CanonicalItemSelector> {
     action_field(fields, "structuralSelector")
         .or_else(|| action_field(fields, "selector"))
         .and_then(|selector| {
-            agent_semantic_content_identity::CanonicalItemSelectorV1::parse(selector).ok()
+            agent_semantic_content_identity::CanonicalItemSelector::parse(selector).ok()
         })
 }
 

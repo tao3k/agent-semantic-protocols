@@ -19,104 +19,6 @@ use crate::engine::{
 
 pub(in crate::engine) const TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION: i64 = 3;
 
-pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
-    connection: &turso::Connection,
-) -> Result<(), String> {
-    for statement in [
-        "CREATE TABLE IF NOT EXISTS asp_source_index_scope_v1 (
-            project_root TEXT NOT NULL,
-            schema_id TEXT NOT NULL,
-            schema_version TEXT NOT NULL,
-            generation_id TEXT NOT NULL,
-            file_hashes_json TEXT NOT NULL,
-            source_snapshot_json TEXT NOT NULL DEFAULT '',
-            selector_fingerprint TEXT NOT NULL DEFAULT '',
-            owner_count INTEGER NOT NULL,
-            selector_count INTEGER NOT NULL,
-            updated_at_ms INTEGER NOT NULL,
-            PRIMARY KEY (project_root, schema_id, schema_version)
-        )",
-        "CREATE TABLE IF NOT EXISTS asp_source_index_owner_v1 (
-            project_root TEXT NOT NULL,
-            schema_id TEXT NOT NULL,
-            schema_version TEXT NOT NULL,
-            generation_id TEXT NOT NULL,
-            file_hash TEXT NOT NULL,
-            owner_path TEXT NOT NULL,
-            language_id TEXT,
-            provider_id TEXT,
-            source_kind TEXT NOT NULL,
-            line_count INTEGER,
-            query_keys_json TEXT NOT NULL,
-            selector_facts_json TEXT NOT NULL,
-            term_tokens_json TEXT NOT NULL,
-            selector_count INTEGER NOT NULL,
-            PRIMARY KEY (project_root, schema_id, schema_version, generation_id, owner_path)
-        )",
-        "CREATE TABLE IF NOT EXISTS asp_source_index_layout_v1 (
-            project_root TEXT NOT NULL,
-            schema_id TEXT NOT NULL,
-            schema_version TEXT NOT NULL,
-            term_projection_version INTEGER NOT NULL,
-            token_projection_generation_id TEXT NOT NULL DEFAULT '',
-            PRIMARY KEY (project_root, schema_id, schema_version)
-        )",
-        "CREATE TABLE IF NOT EXISTS asp_source_index_token_owner_v1 (
-            project_root TEXT NOT NULL,
-            schema_id TEXT NOT NULL,
-            schema_version TEXT NOT NULL,
-            generation_id TEXT NOT NULL,
-            token TEXT NOT NULL,
-            owner_path TEXT NOT NULL,
-            PRIMARY KEY (project_root, schema_id, schema_version, generation_id, token, owner_path)
-        )",
-        "CREATE TABLE IF NOT EXISTS asp_exact_selector_projection_v1 (
-            language_id TEXT NOT NULL,
-            workspace_root_digest TEXT NOT NULL,
-            owner_path TEXT NOT NULL,
-            owner_subtree_digest TEXT NOT NULL,
-            source_blob_digest TEXT NOT NULL,
-            parser_identity_digest TEXT NOT NULL,
-            query_pack_digest TEXT NOT NULL,
-            structural_selector TEXT NOT NULL,
-            projection_mode TEXT NOT NULL,
-            record_json TEXT NOT NULL,
-            PRIMARY KEY (
-                language_id,
-                workspace_root_digest,
-                owner_path,
-                owner_subtree_digest,
-                source_blob_digest,
-                parser_identity_digest,
-                query_pack_digest,
-                structural_selector,
-                projection_mode
-            )
-        )",
-    ] {
-        execute_turso_statement(
-            connection,
-            statement,
-            "failed to bootstrap Turso source-index schema",
-        )
-        .await?;
-    }
-
-    for statement in [
-        "CREATE INDEX IF NOT EXISTS asp_source_index_owner_v1_lookup_idx
-            ON asp_source_index_owner_v1(project_root, schema_id, schema_version, generation_id, language_id, owner_path)",
-    ] {
-        execute_turso_statement(
-            connection,
-            statement,
-            "failed to bootstrap Turso source-index schema",
-        )
-        .await?;
-    }
-    super::provider_incremental_schema::bootstrap_provider_incremental_schema(connection).await?;
-    Ok(())
-}
-
 pub(super) async fn ensure_turso_source_index_schema(
     connection: &turso::Connection,
 ) -> Result<bool, String> {
@@ -124,7 +26,7 @@ pub(super) async fn ensure_turso_source_index_schema(
         Ok(()) => Ok(false),
         Err(error) if error.contains("no such table") || error.contains("no such column") => {
             reset_turso_source_index_schema(connection).await?;
-            bootstrap_turso_source_index_schema(connection).await?;
+            super::schema::bootstrap_turso_source_index_schema(connection).await?;
             validate_turso_source_index_schema(connection).await?;
             Ok(true)
         }
@@ -180,6 +82,18 @@ async fn validate_turso_source_index_schema(connection: &turso::Connection) -> R
                 .map_err(|error| error.to_string())?;
             connection
                 .query(
+                    "SELECT project_root, schema_id, schema_version, generation_id,
+                            owner_path, owner_content_digest, language_id, item_kind,
+                            parser_identity_digest, query_pack_digest, item_symbol,
+                            scopes_json, structural_selector
+                     FROM asp_source_index_selector_v1
+                     LIMIT 1",
+                    (),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            connection
+                .query(
                     "SELECT language_id, workspace_root_digest, owner_path,
                             owner_subtree_digest, source_blob_digest,
                             parser_identity_digest, query_pack_digest,
@@ -201,6 +115,7 @@ async fn reset_turso_source_index_schema(connection: &turso::Connection) -> Resu
     for table in [
         "asp_exact_selector_projection_v1",
         "asp_source_index_token_owner_v1",
+        "asp_source_index_selector_v1",
         "asp_source_index_owner_v1",
         "asp_source_index_layout_v1",
         "asp_source_index_scope_v1",
@@ -596,6 +511,17 @@ async fn reusable_turso_source_index_generation(
                              AND owner.schema_version = asp_source_index_scope_v1.schema_version
                              AND owner.generation_id = asp_source_index_scope_v1.generation_id
                        )
+                       AND (
+                           asp_source_index_scope_v1.selector_count = 0
+                           OR asp_source_index_scope_v1.selector_count = (
+                               SELECT COUNT(*)
+                               FROM asp_source_index_selector_v1 AS selector
+                               WHERE selector.project_root = asp_source_index_scope_v1.project_root
+                                 AND selector.schema_id = asp_source_index_scope_v1.schema_id
+                                 AND selector.schema_version = asp_source_index_scope_v1.schema_version
+                                 AND selector.generation_id = asp_source_index_scope_v1.generation_id
+                           )
+                       )
                      LIMIT 1",
                     (
                         project_root,
@@ -668,7 +594,17 @@ pub(super) async fn turso_source_index_scope_row_counts(
         || async {
             connection
                 .query(
-                    "SELECT COUNT(*), COALESCE(SUM(selector_count), 0)
+                    "SELECT
+                         COUNT(*),
+                         COALESCE(SUM(selector_count), 0),
+                         (
+                             SELECT COUNT(*)
+                             FROM asp_source_index_selector_v1
+                             WHERE project_root = ?1
+                               AND schema_id = ?2
+                               AND schema_version = ?3
+                               AND generation_id = ?4
+                         )
                      FROM asp_source_index_owner_v1
                      WHERE project_root = ?1
                        AND schema_id = ?2
@@ -695,13 +631,23 @@ pub(super) async fn turso_source_index_scope_row_counts(
         })?
         .max(0)
         .min(i64::from(u32::MAX)) as u32;
-    let selector_count = row
+    let owner_selector_count = row
         .get::<i64>(1)
         .map_err(|error| {
             format!("failed to read Turso source-index snapshot selector count: {error}")
         })?
         .max(0)
         .min(i64::from(u32::MAX)) as u32;
+    let selector_count = row
+        .get::<i64>(2)
+        .map_err(|error| format!("failed to read Turso normalized selector count: {error}"))?
+        .max(0)
+        .min(i64::from(u32::MAX)) as u32;
+    if owner_selector_count != selector_count {
+        return Err(format!(
+            "Turso source-index selector projection is incomplete: ownerSelectors={owner_selector_count} normalizedSelectors={selector_count}"
+        ));
+    }
     Ok((owner_count, selector_count))
 }
 

@@ -99,8 +99,8 @@ impl ProjectPaths {
         let hook_state_dir = project_state_paths.hook_state_dir;
         let activation_path = project_state_paths.activation_path;
         let client_cache_dir = project_state_paths.client_cache_dir;
-        let project_client_db_dir = project_state_paths.project_client_db_dir;
-        let project_client_db_path = project_state_paths.project_client_db_path;
+        let client_db_dir = project_state_paths.client_db_dir;
+        let client_db_path = project_state_paths.client_db_path;
         let artifacts_dir = project_state_paths.artifacts_dir;
         let runtime_home = state_root.join("runtime");
         let runtime_bin_dir = runtime_home.join("bin");
@@ -123,8 +123,8 @@ impl ProjectPaths {
         fields.insert("hookStateDir", path_string(&hook_state_dir));
         fields.insert("activation", path_string(&activation_path));
         fields.insert("clientCacheDir", path_string(&client_cache_dir));
-        fields.insert("projectClientDbDir", path_string(&project_client_db_dir));
-        fields.insert("projectClientDbPath", path_string(&project_client_db_path));
+        fields.insert("clientDbDir", path_string(&client_db_dir));
+        fields.insert("clientDbPath", path_string(&client_db_path));
         fields.insert("artifactsDir", path_string(&artifacts_dir));
         fields.insert("runtimeHome", path_string(&runtime_home));
         fields.insert("runtimeBinDir", path_string(&runtime_bin_dir));

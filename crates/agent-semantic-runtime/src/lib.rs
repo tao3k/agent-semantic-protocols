@@ -14,7 +14,7 @@ pub use codex_app_server_sessions::{
 };
 mod codex_rollout_sessions;
 pub use codex_app_server_sessions::codex_app_server_child_session_metadata;
-mod git;
+pub mod git;
 mod graph_render;
 pub mod language_owner_items;
 mod live_corpus;

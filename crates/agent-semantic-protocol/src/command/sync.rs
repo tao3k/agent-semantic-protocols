@@ -14,7 +14,6 @@ pub(super) struct AgentConfigurationSync {
     pub(super) projected: usize,
     pub(super) codex_registry_entries: usize,
     pub(super) codex_spawn_agent_metadata: &'static str,
-    pub(super) activation_status: &'static str,
 }
 
 struct CodexAgentRegistryEntry {
@@ -31,23 +30,14 @@ pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let project_root = project_root_arg(args)?;
-    let project_state = agent_semantic_runtime::project_state_paths(&project_root)?;
-    let client_db_migration =
-        agent_semantic_client_db::ClientDbEngine::migrate_active_project_client_dir_to_turso_0_7(
-            &project_state.client_cache_dir,
-        )?;
-    let (client_db_migration_status, client_db_rollback) =
-        client_db_migration_receipt(&client_db_migration);
-    let agent_session_registry =
-        agent_semantic_client_db::AgentSessionRegistry::open_or_create_project(&project_root)?;
     let sync = run_org_state_sync(&project_root)?;
-    let agent_configs = sync_agent_configuration_for_project(&project_root)?;
+    let agent_configs = sync_global_agent_configs()?;
     let org_state = agent_semantic_runtime::project_state_paths(&project_root)?
         .protocol_home
         .join("org");
     let org_artifacts = org_artifacts_root_for_project(&project_root)?;
     println!(
-        "[asp-sync] orgState={} orgArtifacts={} orgRepo={} orgStatus={} orgSourceIndex={} orgSourceIndexGeneration={} agentConfigs={} codexAgentRegistry={} codexSpawnAgentMetadata={} activationStatus={} clientDbMigration={} clientDb={} clientDbRollback={} agentSessionRegistry={}",
+        "[asp-sync] orgState={} orgArtifacts={} orgRepo={} orgStatus={} orgSourceIndex={} orgSourceIndexGeneration={} agentConfigs={} codexAgentRegistry={} codexSpawnAgentMetadata={} activationWrites=0 dbOpens=0 dbTransactions=0 sessionRegistryOpens=0",
         display_path(&project_root, &org_state),
         display_path(&project_root, &org_artifacts),
         sync.source,
@@ -57,43 +47,8 @@ pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
         agent_configs.projected,
         agent_configs.codex_registry_entries,
         agent_configs.codex_spawn_agent_metadata,
-        agent_configs.activation_status,
-        client_db_migration_status,
-        display_path(
-            &project_root,
-            &project_state.client_cache_dir.join("facts.turso"),
-        ),
-        client_db_rollback,
-        display_path(&project_root, agent_session_registry.db_path()),
     );
     Ok(())
-}
-
-fn client_db_migration_receipt(
-    migration: &agent_semantic_client_db::engine::ClientDbTurso07ActiveMigration,
-) -> (&'static str, String) {
-    use agent_semantic_client_db::engine::ClientDbTurso07ActiveMigration;
-
-    match migration {
-        ClientDbTurso07ActiveMigration::Absent { .. } => ("absent", "-".to_string()),
-        ClientDbTurso07ActiveMigration::AlreadyCurrent { .. } => ("current", "-".to_string()),
-        ClientDbTurso07ActiveMigration::Migrated {
-            rollback_client_dir,
-            ..
-        } => ("migrated", rollback_client_dir.display().to_string()),
-    }
-}
-
-fn sync_agent_configuration_for_project(
-    project_root: &std::path::Path,
-) -> Result<AgentConfigurationSync, String> {
-    let activation_path = agent_semantic_hook::default_activation_path(project_root);
-    let activation_status =
-        agent_semantic_hook::load_or_refresh_default_activation(&activation_path, project_root)?
-            .status;
-    let mut sync = sync_global_agent_configs()?;
-    sync.activation_status = activation_status;
-    Ok(sync)
 }
 
 fn sync_global_agent_configs() -> Result<AgentConfigurationSync, String> {
@@ -105,7 +60,6 @@ fn sync_global_agent_configs() -> Result<AgentConfigurationSync, String> {
             projected: 0,
             codex_registry_entries,
             codex_spawn_agent_metadata: "visible-agent-type",
-            activation_status: "not-synced",
         });
     }
     let mut synced = 0usize;
@@ -150,7 +104,6 @@ fn sync_global_agent_configs() -> Result<AgentConfigurationSync, String> {
         projected: synced,
         codex_registry_entries,
         codex_spawn_agent_metadata: "visible-agent-type",
-        activation_status: "not-synced",
     })
 }
 

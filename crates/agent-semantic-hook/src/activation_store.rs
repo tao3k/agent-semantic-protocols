@@ -9,7 +9,7 @@ use crate::provider_manifest::{
 };
 use agent_semantic_runtime::project_activation_path;
 use std::{
-    env, fs,
+    fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -62,35 +62,20 @@ pub fn load_or_sync_activation(
 
 /// Build a generated activation for one requested language without validating
 /// or materializing unrelated provider receipts.
-pub fn load_or_sync_activation_for_language(
-    activation_path: &Path,
+/// Resolve one registered language into an in-memory runtime selection.
+///
+/// This is a read-only query boundary: it does not read, write, refresh, or
+/// require a project-language activation artifact.
+pub fn registered_language_runtime(
     project_root: &Path,
     language_id: &str,
 ) -> Result<HookRuntime, String> {
-    if !is_generated_activation_path_for_project(activation_path, project_root) {
-        return load_activation(activation_path);
-    }
-    let scoped_activation_path =
-        generated_language_activation_path(activation_path, project_root, language_id);
     let scope = ProviderCommandSelectionScopeV1::TargetLanguage(language_id.into());
-    let selections = default_activation_selections_for_scope(
-        project_root,
-        &scope,
-        Some(&scoped_activation_path),
-    )?;
-    if let Some(activation) = reusable_activation(
-        &scoped_activation_path,
-        project_root,
-        selections.providers(),
-    )? {
-        materialize_activation_receipt(&scoped_activation_path, project_root, &selections)?;
-        return activation_to_runtime(&activation);
-    }
+    let selections = default_activation_selections_for_scope(project_root, &scope, None)?;
     let activation = build_default_activation_from_selections(project_root, &selections)?;
-    write_activation(&scoped_activation_path, &activation)?;
-    materialize_activation_receipt(&scoped_activation_path, project_root, &selections)?;
     activation_to_runtime(&activation)
 }
+
 
 /// Resolve the activation artifact consumed by one language-scoped command.
 pub fn language_activation_path(
@@ -347,57 +332,18 @@ pub fn default_activation_path(project_root: &Path) -> PathBuf {
 
 /// Return the State Core managed activation path when it already exists.
 pub fn discover_activation_path(start: &Path) -> Option<PathBuf> {
-    if let Some(path) = env::var_os("ASP_STATE_HOME")
-        .map(PathBuf::from)
-        .map(|state_home| {
-            state_home
-                .join("hooks")
-                .join("state")
-                .join("activation.json")
-        })
+    project_activation_path(start)
+        .ok()
         .filter(|path| path.is_file())
-    {
-        return Some(path);
-    }
-    if let Some(path) = env::var_os("PRJ_CACHE_HOME")
-        .map(PathBuf::from)
-        .map(|cache_home| {
-            cache_home
-                .join("agent-semantic-protocol")
-                .join("hooks")
-                .join("activation.json")
-        })
-        .filter(|path| path.is_file())
-    {
-        return Some(path);
-    }
-    start.ancestors().find_map(|candidate| {
-        project_activation_path(candidate)
-            .ok()
-            .filter(|path| path.is_file())
-            .or_else(|| {
-                let legacy_path = legacy_project_activation_path(candidate);
-                legacy_path.is_file().then_some(legacy_path)
-            })
-    })
 }
 
 fn is_generated_activation_path_for_project(path: &Path, project_root: &Path) -> bool {
     project_activation_path(project_root)
         .map(|default_path| default_path == path)
         .unwrap_or(false)
-        || legacy_project_activation_path(project_root) == path
         || agent_semantic_runtime::state::project_root_for_activation_path(path)
             .map(|root| canonicalize_if_possible(&root) == canonicalize_if_possible(project_root))
             .unwrap_or(false)
-}
-
-fn legacy_project_activation_path(project_root: &Path) -> PathBuf {
-    project_root
-        .join(".cache")
-        .join("agent-semantic-protocol")
-        .join("hooks")
-        .join("activation.json")
 }
 
 fn canonicalize_if_possible(path: &Path) -> PathBuf {

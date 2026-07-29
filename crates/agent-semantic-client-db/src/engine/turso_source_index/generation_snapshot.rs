@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum ClientDbSourceIndexGenerationSnapshotErrorV1 {
+pub(super) enum ClientDbSourceIndexGenerationSnapshotError {
     FileHashesDecode(String),
     SourceSnapshotDecode(String),
     Incomplete {
@@ -33,7 +33,7 @@ pub(super) enum ClientDbSourceIndexGenerationSnapshotErrorV1 {
     },
 }
 
-impl std::fmt::Display for ClientDbSourceIndexGenerationSnapshotErrorV1 {
+impl std::fmt::Display for ClientDbSourceIndexGenerationSnapshotError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::FileHashesDecode(error) => {
@@ -83,7 +83,7 @@ impl std::fmt::Display for ClientDbSourceIndexGenerationSnapshotErrorV1 {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Canonical selector fact persisted for one source-index generation.
-pub struct ClientDbSourceIndexSelectorFactV1 {
+pub struct ClientDbSourceIndexSelectorFact {
     /// Stable selector identifier persisted by the language provider.
     pub selector_id: String,
     /// Optional parser-owned symbol.
@@ -98,7 +98,7 @@ pub struct ClientDbSourceIndexSelectorFactV1 {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// One owner and its selectors from an immutable source-index generation.
-pub struct ClientDbSourceIndexGenerationOwnerV1 {
+pub struct ClientDbSourceIndexGenerationOwner {
     /// Workspace-relative owner path.
     pub owner_path: String,
     /// Content digest committed into the generation root.
@@ -112,12 +112,12 @@ pub struct ClientDbSourceIndexGenerationOwnerV1 {
     /// Optional source line count.
     pub line_count: Option<i64>,
     /// Canonical selectors attributed to the owner.
-    pub selectors: Vec<ClientDbSourceIndexSelectorFactV1>,
+    pub selectors: Vec<ClientDbSourceIndexSelectorFact>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Fully materialized, root-verified active source-index generation.
-pub struct ClientDbSourceIndexGenerationSnapshotV1 {
+pub struct ClientDbSourceIndexGenerationSnapshot {
     /// Immutable generation identifier.
     pub generation_id: String,
     /// Complete workspace owner path to content digest map.
@@ -129,7 +129,7 @@ pub struct ClientDbSourceIndexGenerationSnapshotV1 {
     /// Published selector count.
     pub selector_count: u32,
     /// Deterministically ordered owner facts.
-    pub owners: Vec<ClientDbSourceIndexGenerationOwnerV1>,
+    pub owners: Vec<ClientDbSourceIndexGenerationOwner>,
 }
 
 /// Load one complete active generation and reject partial Merkle or selector coverage.
@@ -138,7 +138,7 @@ pub async fn latest_turso_source_index_generation_snapshot(
     project_root: &Path,
     schema_id: &SemanticSchemaId,
     schema_version: &SemanticSchemaVersion,
-) -> Result<Option<ClientDbSourceIndexGenerationSnapshotV1>, String> {
+) -> Result<Option<ClientDbSourceIndexGenerationSnapshot>, String> {
     if !db_path.exists() {
         return Ok(None);
     }
@@ -205,7 +205,7 @@ pub(super) async fn load_turso_source_index_generation_snapshot(
     project_root: &str,
     schema_id: &str,
     schema_version: &str,
-) -> Result<Option<ClientDbSourceIndexGenerationSnapshotV1>, String> {
+) -> Result<Option<ClientDbSourceIndexGenerationSnapshot>, String> {
     let Some((generation_id, file_hashes_json, source_snapshot_json, owner_count, selector_count)) =
         latest_turso_source_index_generation_on_connection(
             connection,
@@ -248,12 +248,12 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
     owner_count: u32,
     selector_count: u32,
     owner_rows: HashMap<String, TursoSourceIndexOwnerRow>,
-) -> Result<ClientDbSourceIndexGenerationSnapshotV1, ClientDbSourceIndexGenerationSnapshotErrorV1> {
+) -> Result<ClientDbSourceIndexGenerationSnapshot, ClientDbSourceIndexGenerationSnapshotError> {
     let file_hash_records = serde_json::from_str::<
         Vec<agent_semantic_client_core::ClientCacheFileHash>,
     >(file_hashes_json)
     .map_err(|error| {
-        ClientDbSourceIndexGenerationSnapshotErrorV1::FileHashesDecode(error.to_string())
+        ClientDbSourceIndexGenerationSnapshotError::FileHashesDecode(error.to_string())
     })?;
     let file_hash_record_count = file_hash_records.len();
     let all_file_hashes = file_hash_records
@@ -270,14 +270,14 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
         .collect::<BTreeMap<_, _>>();
     let source_snapshot = serde_json::from_str::<SourceSnapshotEvidence>(source_snapshot_json)
         .map_err(|error| {
-            ClientDbSourceIndexGenerationSnapshotErrorV1::SourceSnapshotDecode(error.to_string())
+            ClientDbSourceIndexGenerationSnapshotError::SourceSnapshotDecode(error.to_string())
         })?;
     if source_snapshot.leaf_count != file_hashes.len()
         || all_file_hashes.len() != file_hash_record_count
         || file_hashes.len() != owner_count as usize
         || owner_rows.len() != owner_count as usize
     {
-        return Err(ClientDbSourceIndexGenerationSnapshotErrorV1::Incomplete {
+        return Err(ClientDbSourceIndexGenerationSnapshotError::Incomplete {
             leaf_count: source_snapshot.leaf_count,
             file_hash_count: file_hashes.len(),
             owner_count,
@@ -290,7 +290,7 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
         .map(|owner| {
             if file_hashes.get(owner.owner_path.as_str()) != Some(&owner.file_hash) {
                 return Err(
-                    ClientDbSourceIndexGenerationSnapshotErrorV1::OwnerDigestOutsideGeneration {
+                    ClientDbSourceIndexGenerationSnapshotError::OwnerDigestOutsideGeneration {
                         owner_path: owner.owner_path,
                     },
                 );
@@ -300,14 +300,14 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
                     &owner.selector_facts_json,
                 )
                 .map_err(|error| {
-                    ClientDbSourceIndexGenerationSnapshotErrorV1::SelectorFactsDecode {
+                    ClientDbSourceIndexGenerationSnapshotError::SelectorFactsDecode {
                         owner_path: owner.owner_path.clone(),
                         error: error.to_string(),
                     }
                 })?;
             if selector_facts.len() != owner.selector_count.max(0) as usize {
                 return Err(
-                    ClientDbSourceIndexGenerationSnapshotErrorV1::OwnerSelectorCountDrift {
+                    ClientDbSourceIndexGenerationSnapshotError::OwnerSelectorCountDrift {
                         owner_path: owner.owner_path,
                         expected: owner.selector_count.max(0) as usize,
                         actual: selector_facts.len(),
@@ -315,7 +315,7 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
                 );
             }
             decoded_selector_count += selector_facts.len();
-            Ok(ClientDbSourceIndexGenerationOwnerV1 {
+            Ok(ClientDbSourceIndexGenerationOwner {
                 owner_path: owner.owner_path,
                 owner_content_digest: owner.file_hash,
                 language_id: owner.language_id,
@@ -324,7 +324,7 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
                 line_count: owner.line_count,
                 selectors: selector_facts
                     .into_iter()
-                    .map(|selector| ClientDbSourceIndexSelectorFactV1 {
+                    .map(|selector| ClientDbSourceIndexSelectorFact {
                         selector_id: selector.selector_id,
                         symbol: selector.symbol,
                         kind: selector.kind,
@@ -334,17 +334,17 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
                     .collect(),
             })
         })
-        .collect::<Result<Vec<_>, ClientDbSourceIndexGenerationSnapshotErrorV1>>()?;
+        .collect::<Result<Vec<_>, ClientDbSourceIndexGenerationSnapshotError>>()?;
     if decoded_selector_count != selector_count as usize {
         return Err(
-            ClientDbSourceIndexGenerationSnapshotErrorV1::GenerationSelectorCountDrift {
+            ClientDbSourceIndexGenerationSnapshotError::GenerationSelectorCountDrift {
                 expected: selector_count,
                 actual: decoded_selector_count,
             },
         );
     }
     owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
-    Ok(ClientDbSourceIndexGenerationSnapshotV1 {
+    Ok(ClientDbSourceIndexGenerationSnapshot {
         generation_id,
         file_hashes,
         source_snapshot,

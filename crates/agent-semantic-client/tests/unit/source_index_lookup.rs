@@ -35,7 +35,7 @@ fn search_pipe_source_index_lookup_projection_preserves_payload_proof() {
                         language_id: "rust".to_string(),
                         provider_id: "rs-harness".to_string(),
                         canonical_item_selector:
-                            agent_semantic_content_identity::CanonicalItemSelectorV1::parse(
+                            agent_semantic_content_identity::CanonicalItemSelector::parse(
                                 "rust://src/lib.rs#item/function/owner",
                             )
                             .expect("canonical item selector"),
@@ -49,7 +49,7 @@ fn search_pipe_source_index_lookup_projection_preserves_payload_proof() {
                         normalized_parser_facts_digest: [6; 32],
                         structural_selector: "rust://src/lib.rs#item/function/owner".to_string(),
                         projection_mode:
-                            agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code,
+                            agent_semantic_content_identity::ExactSelectorProjectionModeV1::Source,
                         source_byte_start: 0,
                         source_byte_end: 10,
                         projection_digest: [7; 32],
@@ -68,7 +68,7 @@ fn search_pipe_source_index_lookup_projection_preserves_payload_proof() {
     );
     assert_eq!(
         proof.projection_mode,
-        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code
+        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Source
     );
     assert_eq!(proof.source_byte_start, 0);
     assert_eq!(proof.source_byte_end, 10);

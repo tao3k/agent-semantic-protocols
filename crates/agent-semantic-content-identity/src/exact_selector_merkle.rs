@@ -49,7 +49,7 @@ pub struct ExactSelectorMerkleProofV1 {
     pub(crate) parser_identity_digest: ContentDigestV1,
     pub(crate) query_pack_digest: ContentDigestV1,
     pub(crate) parser_fact_digest: ContentDigestV1,
-    pub(crate) canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
+    pub(crate) canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelector,
     pub(crate) structural_selector: String,
     pub(crate) projection_mode: ExactProjectionModeV1,
     pub(crate) projection_digest: ContentDigestV1,
@@ -65,7 +65,7 @@ pub(crate) struct ExactSelectorMerkleProofInputV1 {
     pub(crate) parser_identity_digest: ContentDigestV1,
     pub(crate) query_pack_digest: ContentDigestV1,
     pub(crate) parser_fact_digest: ContentDigestV1,
-    pub(crate) canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
+    pub(crate) canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelector,
     pub(crate) structural_selector: String,
     pub(crate) projection_mode: ExactProjectionModeV1,
     pub(crate) projection_digest: ContentDigestV1,
@@ -172,7 +172,7 @@ impl ExactSelectorMerkleProofV1 {
 
     pub fn canonical_item_selector(
         &self,
-    ) -> &crate::canonical_item_identity::CanonicalItemSelectorV1 {
+    ) -> &crate::canonical_item_identity::CanonicalItemSelector {
         &self.canonical_item_selector
     }
 
@@ -209,7 +209,7 @@ pub fn derive_parser_fact_digest_v1(
 }
 
 pub fn derive_projection_digest_v1(
-    canonical_item_selector: &crate::canonical_item_identity::CanonicalItemSelectorV1,
+    canonical_item_selector: &crate::canonical_item_identity::CanonicalItemSelector,
     structural_selector: &str,
     projection_mode: ExactProjectionModeV1,
     parser_fact_digest: &ContentDigestV1,

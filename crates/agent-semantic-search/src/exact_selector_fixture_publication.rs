@@ -55,10 +55,18 @@ pub fn build_exact_selector_fixture_from_projection_records_v1(
                 owner_subtree_digest: parse_digest(proof.owner_subtree_digest().as_str())?,
                 normalized_parser_facts_digest: parse_digest(proof.parser_fact_digest().as_str())?,
                 projection_mode: match proof.projection_mode() {
-                    ExactProjectionModeV1::Names => ExactSelectorProjectionModeV1::Names,
-                    ExactProjectionModeV1::Skeleton => ExactSelectorProjectionModeV1::Skeleton,
-                    ExactProjectionModeV1::Code => ExactSelectorProjectionModeV1::Code,
-                    ExactProjectionModeV1::Verbatim => ExactSelectorProjectionModeV1::Verbatim,
+                    ExactProjectionModeV1::Code | ExactProjectionModeV1::Verbatim => {
+                        ExactSelectorProjectionModeV1::Source
+                    }
+                    ExactProjectionModeV1::Skeleton => {
+                        ExactSelectorProjectionModeV1::CallableSkeleton
+                    }
+                    ExactProjectionModeV1::Names => {
+                        return Err(
+                            "names-only projection cannot publish a typed exact-selector generation"
+                                .to_string(),
+                        );
+                    }
                 },
                 source_byte_range: record.source_byte_range,
                 projection: record.projection_payload,

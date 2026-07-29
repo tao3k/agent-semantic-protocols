@@ -109,7 +109,6 @@ pub(super) fn reject_search_file_workspace(
     Ok(())
 }
 
-
 pub(super) fn invalid_source_selector_query_message(
     language_id: &str,
     selector: &str,
@@ -156,7 +155,7 @@ pub(super) fn is_provider_owned_structural_selector_query(
     let Some(selector) = option_value(args, "--selector") else {
         return false;
     };
-    agent_semantic_content_identity::CanonicalItemSelectorV1::parse(selector)
+    agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(selector)
         .is_ok_and(|selector| selector.language_id.as_str() == language_id)
 }
 

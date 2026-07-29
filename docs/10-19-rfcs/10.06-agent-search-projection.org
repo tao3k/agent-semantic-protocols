@@ -78,6 +78,55 @@ provider workspace, query digest, current generation, inventory state, and the
 next owner cursor so another invocation cannot resume a different query or
 generation accidentally.
 
+** Project-resolution projection
+
+Search graph admission starts from the same =ProjectResolution= that owns
+inventory scope.  The projection layer MUST NOT infer package ownership from
+path prefixes, source extensions, activation arrays, or whichever owner was
+indexed first.  It admits typed project-resolution nodes for repository, worktree,
+project entry, package, target, source scope, manifest, lockfile, and dependency
+identity.
+
+The required project-resolution relations are:
+
+- =instantiates= from one stable project identity to its worktree instance;
+- =declares= from project entry or package manifest to packages and targets;
+- =member-of= from package to language workspace;
+- =owns-source= from package target to a resolved source scope;
+- =depends-on= for internal package edges and external dependency identities;
+- =derived-from= from every resolved scope to its package-manager or provider
+  default authority; and
+- =bounded-by= from a resolved scope to the repository candidate generation.
+
+Every owner, item, test, finding, and dependency node projected by ordinary
+search MUST be reachable from exactly one admitted source scope or carry a
+typed ambiguity result.  A path that is merely present in the Git candidate
+snapshot is not yet a language owner.  A declared package target whose source
+path is absent from the live candidate snapshot remains a package-graph fact
+but is projected as =source-missing= rather than silently removed.
+
+Projection admission validates the repository, worktree, project, provider
+parser, candidate, manifest, lock, and resolution generation identities.  A
+search-generation receipt whose project-resolution generation differs from the active
+project resolution is stale and MUST NOT be ranked or rendered.  Incremental
+owner mutations may advance the search generation without reparsing the
+package graph; manifest, lockfile, project-entry, index-membership, or provider
+project-parser changes invalidate only their affected package-graph closure.
+
+Project-resolution completeness is independent from parser-index completeness.
+=project-resolution= is =exact= only when every manifest-declared member and
+target was resolved or has a typed unresolved state.  An exact project
+resolution with a partial parser generation may prove package ownership but
+cannot prove item enumeration.  A partial project resolution cannot prove
+package absence, owner absence, dependency absence, or whole-workspace query
+closure.
+
+Compact search receipts report the selected =projectId=,
+=projectInstanceId=, =packageId=, =targetId=, and
+=projectResolutionGeneration= when those facts affect routing.  They omit
+repeated path data but never omit scope authority, completeness, ambiguity, or
+the relation that makes an owner reachable.
+
 * Problem
 
 The current compact search output started as line protocol:
@@ -1881,7 +1930,7 @@ consume that boundary; they MUST NOT own copied graph renderers, item seed
 parsers, line-protocol reparsers, or language-private projection pipelines.
 
 Canonical item identity remains provider-owned. The shared renderer validates
-and transports =CanonicalItemSelectorV1= without reconstructing it from
+and transports =CanonicalItemSelector= without reconstructing it from
 =ownerPath=, =read=, source ranges, symbol strings, or language-specific
 hints. A missing canonical selector is a typed projection error, never an
 owner-only fallback and never a range selector.
@@ -3484,6 +3533,14 @@ Ranking a cross-workspace or cross-language candidate and filtering it later is
 invalid because its edges already distort graph topology and frontier choice.
 
 * Callable skeleton projection and structural descent
+
+The contract family is v1, while every JSON wire object uses
+=schemaVersion: "1"=.  Queryable callable children append the parser-owned
+=/segment/<kind>/ordinal-N= identity to the canonical root item selector.
+The ordinal is assigned by the provider AST traversal for the bound generation;
+it is not a line or byte-offset selector.  Querying that returned selector MUST
+materialize the parser span for the same child under the same generation,
+parser, and query-pack digests.
 
 The existing =projection=skeleton= action is an item-level frontier choice. It
 does not yet define the semantic payload for a large callable, and it does not

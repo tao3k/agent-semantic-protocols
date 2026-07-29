@@ -3,7 +3,7 @@
 * Decision
 
 The search action frontier MUST carry an exact query target as
-=CanonicalItemSelectorV1=.  A raw string, a source locator hint, or an owner path
+=CanonicalItemSelector=.  A raw string, a source locator hint, or an owner path
 is not a query target.
 
 The canonical selector parser is language neutral.  It decodes the shared
@@ -15,12 +15,12 @@ allowlist.
 * Construction boundary
 
 A =QueryCode= action may be constructed only after the structural selector has
-been decoded into =CanonicalItemSelectorV1=.  Invalid, empty, range-based, or
+been decoded into =CanonicalItemSelector=.  Invalid, empty, range-based, or
 owner-only values are not downgraded or repaired into a query action.  They
 remain discovery evidence and require an owner or lexical search action.
 
 The action renderer accepts the typed selector and materializes the query
-command from =CanonicalItemSelectorV1.structuralSelector=.  Consequently the
+command from =CanonicalItemSelector.structuralSelector=.  Consequently the
 renderer cannot emit =asp <language> query= without a canonical exact selector.
 The command language is taken from the typed selector identity rather than from
 an unrelated outer request string.
@@ -38,7 +38,7 @@ an unrelated outer request string.
 * Registered-language consumer boundary
 
 The provider-owned structural query dispatcher MUST validate the selector with
-=CanonicalItemSelectorV1= and derive the owner from that validated selector.
+=CanonicalItemSelector= and derive the owner from that validated selector.
 It MUST NOT enumerate language IDs when extracting the owner.  The registered
 provider manifest and the shared v1 registry method set are the language
 inventory.

@@ -1,95 +1,17 @@
-use std::ffi::OsString;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::sync::Arc;
 
-use agent_semantic_client_core::state_core::ResolvedState;
 use agent_semantic_client_db::{
-    ProviderIncrementalOwnerWriteV1, ProviderIncrementalScopeV1, ProviderOwnerFingerprintV1,
-    ProviderOwnerMetadataV1, WorkspaceDbRegistry, WorkspaceDbRegistryCountersV1,
+    ProviderIncrementalOwnerWrite, ProviderOwnerFingerprint, ProviderOwnerMetadata,
+    WorkspaceDbRegistry, WorkspaceDbRegistryCounters,
 };
 
-pub(super) struct TestDir(PathBuf);
-
-impl TestDir {
-    pub(super) fn new(label: &str) -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "asp-workspace-db-registry-{}-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed),
-            label
-        ));
-        std::fs::create_dir_all(&path).expect("create workspace registry test directory");
-        Self(path)
-    }
-
-    pub(super) fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-pub(super) fn environment_lock() -> MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("lock workspace registry test environment")
-}
-
-pub(super) struct StateHomeGuard {
-    previous: Option<OsString>,
-}
-
-impl StateHomeGuard {
-    pub(super) fn install(state_home: &Path) -> Self {
-        let previous = std::env::var_os("AST_STATE_HOME");
-        unsafe {
-            std::env::set_var("AST_STATE_HOME", state_home);
-        }
-        Self { previous }
-    }
-}
-
-impl Drop for StateHomeGuard {
-    fn drop(&mut self) {
-        unsafe {
-            if let Some(previous) = &self.previous {
-                std::env::set_var("AST_STATE_HOME", previous);
-            } else {
-                std::env::remove_var("AST_STATE_HOME");
-            }
-        }
-    }
-}
-
-pub(super) fn workspace(
-    parent: &Path,
-    name: &str,
-) -> (PathBuf, ResolvedState, ProviderIncrementalScopeV1) {
-    let project_root = parent.join(name);
-    std::fs::create_dir_all(&project_root).expect("create workspace registry project");
-    let resolved = ResolvedState::resolve(&project_root).expect("resolve workspace registry state");
-    let scope = ProviderIncrementalScopeV1 {
-        project_root: project_root.to_string_lossy().into_owned(),
-        workspace_identity: resolved.workspace.workspace_id.as_str().to_owned(),
-        provider_workspace_identity_digest: "provider-workspace-v1".to_owned(),
-        language_id: "rust".to_owned(),
-        provider_id: "rust-test-provider".to_owned(),
-        provider_workspace_root: project_root.to_string_lossy().into_owned(),
-    };
-    (project_root, resolved, scope)
-}
+use crate::test_support::{StateHomeGuard, environment_lock, workspace};
+use tempfile::TempDir;
 
 #[tokio::test(flavor = "current_thread")]
 async fn wrong_workspace_identity_fails_before_database_open() {
     let _environment = environment_lock();
-    let temp = TestDir::new("wrong-identity");
+    let temp = TempDir::new().expect("create wrong-identity tempfile");
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root, resolved, mut scope) = workspace(temp.path(), "wrong-identity");
@@ -103,14 +25,50 @@ async fn wrong_workspace_identity_fails_before_database_open() {
         .expect_err("wrong workspace identity must fail closed");
 
     assert!(error.contains("workspace identity mismatch"));
-    assert_eq!(registry.counters(), WorkspaceDbRegistryCountersV1::default());
+    assert_eq!(registry.counters(), WorkspaceDbRegistryCounters::default());
     assert!(!client_db_path.exists());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn member_project_root_reuses_the_canonical_workspace_entry() {
+    let _environment = environment_lock();
+    let temp = TempDir::new().expect("create member-root tempfile");
+    let state_home = temp.path().join("state");
+    let _state_home = StateHomeGuard::install(&state_home);
+    let (workspace_root, _resolved, mut scope) = workspace(temp.path(), "member-root");
+    let member_root = workspace_root.join("crates/member");
+    std::fs::create_dir_all(&member_root).expect("create nested workspace member");
+    scope.project_root = member_root.display().to_string();
+    let registry = WorkspaceDbRegistry::default();
+
+    let root_session = registry
+        .acquire(&workspace_root, &scope)
+        .await
+        .expect("workspace root must accept a member-scoped provider request");
+    let member_session = registry
+        .acquire(&member_root, &scope)
+        .await
+        .expect("workspace member must resolve through the canonical workspace entry");
+
+    assert_eq!(
+        root_session.workspace_identity(),
+        member_session.workspace_identity()
+    );
+    assert_eq!(
+        root_session.client_db_path(),
+        member_session.client_db_path()
+    );
+    let counters = registry.counters();
+    assert_eq!(counters.database_open_count, 1);
+    assert_eq!(counters.connection_create_count, 2);
+    assert_eq!(counters.schema_bootstrap_count, 1);
+    assert_eq!(counters.registry_hit_count, 1);
 }
 
 #[tokio::test(flavor = "current_thread")]
 async fn one_hundred_concurrent_leases_open_and_bootstrap_once() {
     let _environment = environment_lock();
-    let temp = TestDir::new("concurrent");
+    let temp = TempDir::new().expect("create concurrent tempfile");
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root, _resolved, scope) = workspace(temp.path(), "concurrent");
@@ -145,7 +103,7 @@ async fn one_hundred_concurrent_leases_open_and_bootstrap_once() {
 #[tokio::test(flavor = "current_thread")]
 async fn different_workspaces_initialize_independent_entries() {
     let _environment = environment_lock();
-    let temp = TestDir::new("independent");
+    let temp = TempDir::new().expect("create independent tempfile");
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
     let (project_root_a, _resolved_a, scope_a) = workspace(temp.path(), "workspace-a");
@@ -171,11 +129,10 @@ async fn different_workspaces_initialize_independent_entries() {
 #[tokio::test(flavor = "current_thread")]
 async fn one_hundred_concurrent_writes_share_one_serial_writer() {
     let _environment = environment_lock();
-    let temp = TestDir::new("concurrent-writers");
+    let temp = TempDir::new().expect("create concurrent-writers tempfile");
     let state_home = temp.path().join("state");
     let _state_home = StateHomeGuard::install(&state_home);
-    let (project_root, _resolved, mut scope) =
-        workspace(temp.path(), "concurrent-writers");
+    let (project_root, _resolved, mut scope) = workspace(temp.path(), "concurrent-writers");
     scope.provider_workspace_identity_digest = format!("{:064x}", 17);
     let registry = Arc::new(WorkspaceDbRegistry::default());
     let session = registry
@@ -188,11 +145,11 @@ async fn one_hundred_concurrent_writes_share_one_serial_writer() {
         let scope = scope.clone();
         writes.spawn(async move {
             session
-                .write_provider_incremental_owner(&ProviderIncrementalOwnerWriteV1 {
+                .write_provider_incremental_owner(&ProviderIncrementalOwnerWrite {
                     scope,
                     owner_path: format!("src/owner-{index:03}.rs"),
-                    fingerprint: ProviderOwnerFingerprintV1 {
-                        metadata: ProviderOwnerMetadataV1 {
+                    fingerprint: ProviderOwnerFingerprint {
+                        metadata: ProviderOwnerMetadata {
                             file_identity: format!("writer-file-{index}"),
                             size_bytes: 1,
                             modified_unix_nanos: index,

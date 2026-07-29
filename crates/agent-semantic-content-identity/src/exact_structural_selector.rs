@@ -2,11 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub const EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID: &str = "asp.exact-structural-selector.v1";
-pub const EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION: &str = "v1";
+pub const EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION: &str = "1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CanonicalItemSelectorV1 {
+pub struct CanonicalItemSelector {
     pub schema_id: String,
     pub schema_version: String,
     pub language_id: String,
@@ -45,7 +45,7 @@ pub struct ExactStructuralSelectorV1 {
     pub generation_identity_digest: String,
     pub parser_identity_digest: String,
     pub query_pack_digest: String,
-    pub root_item_selector: CanonicalItemSelectorV1,
+    pub root_item_selector: CanonicalItemSelector,
     pub segments: Vec<ExactStructuralSelectorSegmentV1>,
 }
 
@@ -89,7 +89,7 @@ impl ExactStructuralSelectorV1 {
 
     fn validate_root_item(&self) -> Result<(), ExactStructuralSelectorValidationError> {
         let root = &self.root_item_selector;
-        if root.schema_id != "asp.canonical-item-selector.v1" || root.schema_version != "v1" {
+        if root.schema_id != "asp.canonical-item-selector.v1" || root.schema_version != "1" {
             return Err(ExactStructuralSelectorValidationError::RootItemContract);
         }
         if root.language_id != self.language_id {
@@ -174,9 +174,9 @@ mod tests {
             generation_identity_digest: "a".repeat(64),
             parser_identity_digest: "b".repeat(64),
             query_pack_digest: "c".repeat(64),
-            root_item_selector: CanonicalItemSelectorV1 {
+            root_item_selector: CanonicalItemSelector {
                 schema_id: "asp.canonical-item-selector.v1".to_owned(),
-                schema_version: "v1".to_owned(),
+                schema_version: "1".to_owned(),
                 language_id: "rust".to_owned(),
                 kind: "function".to_owned(),
                 symbol: "run".to_owned(),

@@ -196,17 +196,6 @@ fn run_install_for_client(
         materialized_path: client_config_path.clone(),
         artifact_digest: client_config_digest,
     });
-    let global_provider_catalog_generation =
-        if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Global) {
-            Some(
-                crate::command::global_provider_catalog::publish_global_provider_catalog_v1(
-                    &activation,
-                    &provider_artifacts,
-                )?,
-            )
-        } else {
-            None
-        };
     remove_incompatible_hook_event_state(&project_root)?;
     timings.mark("event-state");
     let (config_path, extra_config_receipt) = match client {
@@ -289,16 +278,11 @@ fn run_install_for_client(
         display_path(&project_root, &client_config_path),
         user_config_status.as_str()
     );
-    let global_provider_catalog_receipt = global_provider_catalog_generation
-        .as_deref()
-        .map(|generation| format!(" globalProviderCatalog={generation}"))
-        .unwrap_or_default();
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} clientDbMigration={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} clientDbMigration={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
-        global_provider_catalog_receipt,
         display_path(&project_root, &active_artifact.receipt_path),
         active_artifact.receipt.artifact_root_digest().as_str(),
         active_artifact.artifact_byte_reads,

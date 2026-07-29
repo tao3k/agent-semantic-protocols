@@ -15,7 +15,7 @@
     "sourceFingerprint",
     "sourceEncoding",
     "sourceBytesBase64",
-    "query",
+    "projectionMode",
     "transport"
   ],
   "properties": {
@@ -82,24 +82,8 @@
     "sourceBytesBase64": {
       "type": "string"
     },
-    "query": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "text",
-        "itemMode"
-      ],
-      "properties": {
-        "text": {
-          "type": "string"
-        },
-        "itemMode": {
-          "enum": [
-            "items",
-            "signatures"
-          ]
-        }
-      }
+    "projectionMode": {
+      "const": "complete-owner"
     },
     "transport": {
       "const": "stdin-json"

@@ -1,12 +1,12 @@
 {
   "schemaId": "agent.semantic-protocols.callable-skeleton-projection",
-  "schemaVersion": "v1",
+  "schemaVersion": "1",
   "projectionKind": "callable-skeleton",
   "languageId": "python",
   "providerId": "py-harness",
   "rootSelector": {
     "schemaId": "asp.exact-structural-selector.v1",
-    "schemaVersion": "v1",
+    "schemaVersion": "1",
     "languageId": "python",
     "ownerPath": "src/dispatch.py",
     "selector": "python://src/dispatch.py#node/function/run/identity=root",
@@ -15,7 +15,7 @@
     "queryPackDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
     "rootItemSelector": {
       "schemaId": "asp.canonical-item-selector.v1",
-      "schemaVersion": "v1",
+      "schemaVersion": "1",
       "languageId": "python",
       "kind": "function",
       "symbol": "run",

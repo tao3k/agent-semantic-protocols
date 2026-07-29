@@ -1,45 +1,47 @@
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use super::{
-    ProviderIncrementalScopeV1, ProviderOwnerDecisionV1, ProviderOwnerMetadataV1,
-    ProviderOwnerProbeV1, ProviderSearchWorkspaceSessionV1,
+    ProviderIncrementalScoped, ProviderOwnerDecision, ProviderOwnerMetadata, ProviderOwnerProbe,
+    ProviderSearchWorkspaceSession,
 };
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProviderOwnerBatchProbeRequestV1 {
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderOwnerBatchProbeRequest {
     pub owner_path: String,
-    pub metadata: ProviderOwnerMetadataV1,
+    pub metadata: ProviderOwnerMetadata,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProviderOwnerBatchProbeResultV1 {
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderOwnerBatchProbeResult {
     pub owner_path: String,
-    pub probe: ProviderOwnerProbeV1,
+    pub probe: ProviderOwnerProbe,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProviderOwnerBatchProbeReceiptV1 {
-    pub results: Vec<ProviderOwnerBatchProbeResultV1>,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderOwnerBatchProbeReceipt {
+    pub results: Vec<ProviderOwnerBatchProbeResult>,
     pub read_lock_count: u32,
     pub connection_open_count: u32,
     pub scope_scan_count: u32,
 }
 
 struct StoredOwner {
-    metadata: ProviderOwnerMetadataV1,
+    metadata: ProviderOwnerMetadata,
     content_digest: String,
 }
 
 /// Classify a provider inventory through a process-resident workspace session.
-pub(super) async fn probe_provider_owners_in_session_v1(
-    session: &ProviderSearchWorkspaceSessionV1,
-    scope: &ProviderIncrementalScopeV1,
-    owners: &[ProviderOwnerBatchProbeRequestV1],
-) -> Result<ProviderOwnerBatchProbeReceiptV1, String> {
-    let generation = match read_active_generation(session.read_connection(), scope).await {
+pub(super) async fn probe_provider_owners_in_session(
+    session: &ProviderSearchWorkspaceSession,
+    scope: &ProviderIncrementalScoped,
+    owners: &[ProviderOwnerBatchProbeRequest],
+) -> Result<ProviderOwnerBatchProbeReceipt, String> {
+    let read_lease = session.read_connection();
+    let generation = match read_active_generation(&read_lease, scope).await {
         Ok(generation) => generation,
         Err(error) if schema_is_missing(error.as_str()) => {
-            return Ok(ProviderOwnerBatchProbeReceiptV1 {
+            return Ok(ProviderOwnerBatchProbeReceipt {
                 results: new_owner_results(owners, None),
                 read_lock_count: 0,
                 connection_open_count: 0,
@@ -48,8 +50,8 @@ pub(super) async fn probe_provider_owners_in_session_v1(
         }
         Err(error) => return Err(error),
     };
-    let stored = read_stored_owners(session.read_connection(), scope).await?;
-    Ok(ProviderOwnerBatchProbeReceiptV1 {
+    let stored = read_stored_owners(&read_lease, scope).await?;
+    Ok(ProviderOwnerBatchProbeReceipt {
         results: owners
             .iter()
             .map(|owner| classify_owner(owner, stored.get(owner.owner_path.as_str()), &generation))
@@ -61,15 +63,15 @@ pub(super) async fn probe_provider_owners_in_session_v1(
 }
 
 fn new_owner_results(
-    owners: &[ProviderOwnerBatchProbeRequestV1],
+    owners: &[ProviderOwnerBatchProbeRequest],
     generation_before: Option<String>,
-) -> Vec<ProviderOwnerBatchProbeResultV1> {
+) -> Vec<ProviderOwnerBatchProbeResult> {
     owners
         .iter()
-        .map(|owner| ProviderOwnerBatchProbeResultV1 {
+        .map(|owner| ProviderOwnerBatchProbeResult {
             owner_path: owner.owner_path.clone(),
-            probe: ProviderOwnerProbeV1 {
-                decision: ProviderOwnerDecisionV1::New,
+            probe: ProviderOwnerProbe {
+                decision: ProviderOwnerDecision::New,
                 generation_before: generation_before.clone(),
                 content_digest: None,
             },
@@ -78,27 +80,27 @@ fn new_owner_results(
 }
 
 fn classify_owner(
-    owner: &ProviderOwnerBatchProbeRequestV1,
+    owner: &ProviderOwnerBatchProbeRequest,
     stored: Option<&StoredOwner>,
     generation_before: &Option<String>,
-) -> ProviderOwnerBatchProbeResultV1 {
+) -> ProviderOwnerBatchProbeResult {
     let probe = match stored {
-        None => ProviderOwnerProbeV1 {
-            decision: ProviderOwnerDecisionV1::New,
+        None => ProviderOwnerProbe {
+            decision: ProviderOwnerDecision::New,
             generation_before: generation_before.clone(),
             content_digest: None,
         },
-        Some(stored) => ProviderOwnerProbeV1 {
+        Some(stored) => ProviderOwnerProbe {
             decision: if stored.metadata == owner.metadata {
-                ProviderOwnerDecisionV1::Unchanged
+                ProviderOwnerDecision::Unchanged
             } else {
-                ProviderOwnerDecisionV1::Changed
+                ProviderOwnerDecision::Changed
             },
             generation_before: generation_before.clone(),
             content_digest: Some(stored.content_digest.clone()),
         },
     };
-    ProviderOwnerBatchProbeResultV1 {
+    ProviderOwnerBatchProbeResult {
         owner_path: owner.owner_path.clone(),
         probe,
     }
@@ -106,7 +108,7 @@ fn classify_owner(
 
 async fn read_active_generation(
     connection: &turso::Connection,
-    scope: &ProviderIncrementalScopeV1,
+    scope: &ProviderIncrementalScoped,
 ) -> Result<Option<String>, String> {
     let mut rows = connection
         .query(
@@ -138,7 +140,7 @@ async fn read_active_generation(
 
 async fn read_stored_owners(
     connection: &turso::Connection,
-    scope: &ProviderIncrementalScopeV1,
+    scope: &ProviderIncrementalScoped,
 ) -> Result<BTreeMap<String, StoredOwner>, String> {
     let mut rows = connection
         .query(
@@ -176,7 +178,7 @@ async fn read_stored_owners(
         stored.insert(
             owner_path,
             StoredOwner {
-                metadata: ProviderOwnerMetadataV1 {
+                metadata: ProviderOwnerMetadata {
                     file_identity: row
                         .get::<String>(1)
                         .map_err(|error| format!("failed to decode fileIdentity: {error}"))?,

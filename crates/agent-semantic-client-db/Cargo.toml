@@ -21,7 +21,6 @@ fs2 = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 parking_lot.workspace = true
 turso.workspace = true
-turso_sdk_kit.workspace = true
 agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }
 blake3.workspace = true
 which = { workspace = true }
@@ -71,6 +70,7 @@ required-features = ["turso-sync-server-e2e"]
 [dev-dependencies]
 criterion = { workspace = true }
 asp-rust-project-harness-policy.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true }
 
 [build-dependencies]

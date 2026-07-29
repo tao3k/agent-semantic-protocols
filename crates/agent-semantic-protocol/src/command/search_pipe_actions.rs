@@ -146,7 +146,7 @@ fn query_code_action(request: &SearchPipeActionRequest<'_>, action: &PipeAction)
 
 fn query_code_selector(
     action: &PipeAction,
-) -> agent_semantic_content_identity::CanonicalItemSelectorV1 {
+) -> agent_semantic_content_identity::CanonicalItemSelector {
     action.selector.clone()
 }
 

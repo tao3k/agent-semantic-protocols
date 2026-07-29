@@ -61,7 +61,7 @@ fn exact_memory_search_has_zero_io_receipt() {
             owner_subtree_digest: digest(5),
             source_blob_digest: digest(6),
             normalized_parser_facts_digest: digest(7),
-            projection_mode: ExactSelectorProjectionModeV1::Code,
+            projection_mode: ExactSelectorProjectionModeV1::Source,
             source_byte_range: 0..11,
             projection: b"fn run() {}".to_vec(),
         }],
@@ -89,6 +89,7 @@ fn exact_memory_search_has_zero_io_receipt() {
 
 #[test]
 fn exact_memory_search_publishes_one_content_addressed_artifact_for_parallel_writers() {
+    let _publication_resource = super::performance_gate::lock();
     let generation_digest = digest(4);
     let bytes = build_exact_selector_generation_fixture_v1(
         &ExactSelectorGenerationIdentityV1 {
@@ -109,7 +110,7 @@ fn exact_memory_search_publishes_one_content_addressed_artifact_for_parallel_wri
             owner_subtree_digest: digest(5),
             source_blob_digest: digest(6),
             normalized_parser_facts_digest: digest(7),
-            projection_mode: ExactSelectorProjectionModeV1::Code,
+            projection_mode: ExactSelectorProjectionModeV1::Source,
             source_byte_range: 0..11,
             projection: b"fn run() {}".to_vec(),
         }],
@@ -183,7 +184,7 @@ fn exact_memory_search_rejects_a_fixture_from_another_workspace_identity() {
             owner_subtree_digest: digest(5),
             source_blob_digest: digest(6),
             normalized_parser_facts_digest: digest(7),
-            projection_mode: ExactSelectorProjectionModeV1::Code,
+            projection_mode: ExactSelectorProjectionModeV1::Source,
             source_byte_range: 0..11,
             projection: b"fn run() {}".to_vec(),
         }],

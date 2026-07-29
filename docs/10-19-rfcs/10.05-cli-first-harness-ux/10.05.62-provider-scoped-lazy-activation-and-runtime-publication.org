@@ -63,6 +63,15 @@ The router reads those indexes and materializes only the selected provider.
 Ambiguous extension candidates are resolved by harness-owned workspace-anchor
 facts. Registry lookup MUST NOT activate candidates while resolving them.
 
+** Query admission does not depend on project-language activation
+
+An ordinary language =search= or exact =query= resolves its provider from the
+published registry and immutable Global artifact catalog.  A missing, stale,
+or unparsable project-language activation is not query authority and MUST NOT
+block that read-only route.  Provider materialization is an explicit
+writer-lane operation; a query MUST NOT repair, synchronize, or require a
+project-language activation before dispatch.
+
 ** Bootstrap precedes activation
 
 The hook MUST resolve bootstrap control-plane intent before loading any

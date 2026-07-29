@@ -74,8 +74,8 @@ pub(crate) fn run_install_command(args: &[String]) -> Result<(), String> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct RegisteredProviderBinaryReconciliationV1 {
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RegisteredProviderBinaryReconciliation {
     registration_count: usize,
     binary_identity_count: usize,
     reconciled_count: usize,
@@ -84,13 +84,15 @@ struct RegisteredProviderBinaryReconciliationV1 {
     receipt_reconciled_count: usize,
     receipt_changed_count: usize,
     receipt_missing_count: usize,
+    provider_receipts: Vec<super::install_provider_reconcile::ProviderInstallReceipt>,
+    binary_byte_reads: usize,
 }
 
 fn reconcile_registered_provider_runtime_binaries(
     runtime_bin_dir: &Path,
     artifact_root: &Path,
     provider_lock_dir: &Path,
-) -> Result<RegisteredProviderBinaryReconciliationV1, String> {
+) -> Result<RegisteredProviderBinaryReconciliation, String> {
     let registrations = agent_semantic_hook::registered_provider_binaries_v1();
     let binary_names = registrations
         .iter()
@@ -102,6 +104,26 @@ fn reconcile_registered_provider_runtime_binaries(
     let mut receipt_reconciled_count = 0;
     let mut receipt_changed_count = 0;
     let mut receipt_missing_count = 0;
+    let mut provider_receipts = Vec::new();
+    let mut binary_byte_reads = 0;
+    let current_receipts = registrations
+        .iter()
+        .filter_map(|registration| {
+            let receipt = super::install_provider_reconcile::read_provider_install_receipt(
+                registration.language_id().as_str(),
+                provider_lock_dir,
+            )
+            .ok()?;
+            let binary_path = runtime_bin_dir.join(registration.binary());
+            super::install_provider_reconcile::provider_install_receipt_matches_artifact(
+                &receipt,
+                &binary_path,
+            )
+            .ok()
+            .filter(|current| *current)
+            .map(|_| receipt)
+        })
+        .collect::<Vec<_>>();
     for binary_name in &binary_names {
         let target = runtime_bin_dir.join(binary_name);
         match std::fs::symlink_metadata(&target) {
@@ -117,6 +139,16 @@ fn reconcile_registered_provider_runtime_binaries(
                 ));
             }
         }
+        if current_receipts.iter().any(|receipt| {
+            receipt
+                .installed_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                == Some(binary_name.as_str())
+        }) {
+            reconciled_count += 1;
+            continue;
+        }
         let binary_identity =
             super::protocol_binary::RuntimeBinaryIdentityV1::from_registered_provider(binary_name)?;
         let install = super::protocol_binary::install_protocol_binary_target(
@@ -125,6 +157,7 @@ fn reconcile_registered_provider_runtime_binaries(
             artifact_root,
             &binary_identity,
         )?;
+        binary_byte_reads += 1;
         reconciled_count += 1;
         if install.status != "already-present" {
             changed_count += 1;
@@ -150,18 +183,33 @@ fn reconcile_registered_provider_runtime_binaries(
                 ));
             }
         }
+        if let Some(receipt) = current_receipts
+            .iter()
+            .find(|receipt| receipt.language_id == registration.language_id().as_str())
+        {
+            receipt_reconciled_count += 1;
+            provider_receipts.push(receipt.clone());
+            continue;
+        }
         let changed =
             super::install_provider_reconcile::reconcile_provider_install_receipt_in_lock_dir(
                 registration.language_id().as_str(),
                 provider_lock_dir,
                 false,
             )?;
+        binary_byte_reads += 1;
         receipt_reconciled_count += 1;
         if changed {
             receipt_changed_count += 1;
         }
+        provider_receipts.push(
+            super::install_provider_reconcile::read_provider_install_receipt(
+                registration.language_id().as_str(),
+                provider_lock_dir,
+            )?,
+        );
     }
-    Ok(RegisteredProviderBinaryReconciliationV1 {
+    Ok(RegisteredProviderBinaryReconciliation {
         registration_count: registrations.len(),
         binary_identity_count: binary_names.len(),
         reconciled_count,
@@ -170,6 +218,8 @@ fn reconcile_registered_provider_runtime_binaries(
         receipt_reconciled_count,
         receipt_changed_count,
         receipt_missing_count,
+        provider_receipts,
+        binary_byte_reads,
     })
 }
 
@@ -212,13 +262,16 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
         &artifact_root,
         &runtime_state.provider_lock_dir,
     )?;
+    let global_provider_catalog = super::global_provider_catalog::publish_global_provider_catalog(
+        &provider_binaries.provider_receipts,
+    )?;
     let active_artifact_receipt = agent_semantic_hook::rebind_active_asp_binary_receipt_if_present(
         &installed.path,
         &installed.artifact_digest,
         &runtime_state.activation_path,
     )?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryLatest={} binaryStableEntry={} binarySwitch=atomic providerRegistrations={} providerBinaryIdentities={} providerBinariesReconciled={} providerBinariesChanged={} providerBinariesMissing={} providerReceiptsReconciled={} providerReceiptsChanged={} providerReceiptsMissing={} activeArtifactReceipt={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryLatest={} binaryStableEntry={} binarySwitch=atomic providerRegistrations={} providerBinaryIdentities={} providerBinariesReconciled={} providerBinariesChanged={} providerBinariesMissing={} providerReceiptsReconciled={} providerReceiptsChanged={} providerReceiptsMissing={} providerBinaryByteReads={} globalProviderCatalog={} globalProviderCatalogChangedLeafCount={} globalProviderCatalogBinaryByteReads={} globalProviderCatalogWrite={} globalProviderCatalogElapsedMicros={} activeArtifactReceipt={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
@@ -232,14 +285,16 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
         provider_binaries.receipt_reconciled_count,
         provider_binaries.receipt_changed_count,
         provider_binaries.receipt_missing_count,
+        provider_binaries.binary_byte_reads,
+        global_provider_catalog.catalog_generation,
+        global_provider_catalog.changed_leaf_count,
+        global_provider_catalog.binary_byte_reads,
+        global_provider_catalog.catalog_write,
+        global_provider_catalog.elapsed_micros,
         active_artifact_receipt.as_str(),
     );
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/provider_runtime_publication.rs"]
-mod provider_runtime_publication_tests;
 
 fn run_install_hook(args: &[String]) -> Result<(), String> {
     if args.is_empty() || has_help_flag(args) {
@@ -339,6 +394,10 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             ));
         }
         let runtime_state = project_runtime_state(project_root.unwrap_or(&invocation_root))?;
+        let _reconciliation_guard =
+            super::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
+                &runtime_state.protocol_home,
+            )?;
         let stable_entry = project_root.map_or_else(
             || install_target.path.clone(),
             |_| runtime_state.runtime_bin_dir.join(&provider_binary),
@@ -361,6 +420,10 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             agent_semantic_content_identity::file_content_digest_v1(&installed_path)?;
         let installed_entrypoint_metadata_digest =
             agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed_path)?;
+        let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
+            &[installed_path.to_string_lossy().to_string()],
+            &installed_entrypoint_digest,
+        )?;
         let installed_sha256 = sha256_file(&installed_path)?;
         let (scope, lock_path) = match &install_args.scope {
             InstallScope::Global => (
@@ -403,11 +466,26 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
                 artifact_entrypoint_sha256: None,
                 installed_entrypoint_digest: Some(&installed_entrypoint_digest),
                 installed_entrypoint_metadata_digest: &installed_entrypoint_metadata_digest,
+                execution_command_digest: &execution_command_digest,
                 launcher_digest: None,
             },
         )?;
+        let global_provider_catalog = if matches!(&install_args.scope, InstallScope::Global) {
+            let provider_binaries = reconcile_registered_provider_runtime_binaries(
+                &runtime_state.runtime_bin_dir,
+                &artifact_root,
+                &runtime_state.provider_lock_dir,
+            )?;
+            Some(
+                super::global_provider_catalog::publish_global_provider_catalog(
+                    &provider_binaries.provider_receipts,
+                )?,
+            )
+        } else {
+            None
+        };
         println!(
-            "[asp-install] provider={} language={} scope={} installMode=record-installed-receipt sourceKind=develop-root-justfile target={} binary={} sha256={} installedPath={} lock={} switch=atomic",
+            "[asp-install] provider={} language={} scope={} installMode=record-installed-receipt sourceKind=develop-root-justfile target={} binary={} sha256={} installedPath={} lock={} switch=atomic globalProviderCatalog={} globalProviderCatalogWrite={}",
             spec.provider_id,
             spec.language_id,
             scope,
@@ -416,6 +494,13 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             installed_sha256,
             installed_path.display(),
             lock_path.display(),
+            global_provider_catalog
+                .as_ref()
+                .map(|publication| publication.catalog_generation.as_str())
+                .unwrap_or("not-applicable"),
+            global_provider_catalog
+                .as_ref()
+                .is_some_and(|publication| publication.catalog_write),
         );
         return Ok(());
     }
@@ -502,6 +587,10 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         agent_semantic_content_identity::file_content_digest_v1(&installed)?;
     let installed_entrypoint_metadata_digest =
         agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed)?;
+    let execution_command_digest = agent_semantic_hook::provider_execution_command_digest(
+        &[installed.to_string_lossy().to_string()],
+        &installed_entrypoint_digest,
+    )?;
     let lock_path = provider_lock_dir.join(format!("{language_id}.lock.toml"));
     write_provider_lock(
         &lock_path,
@@ -530,6 +619,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
             artifact_entrypoint_sha256: None,
             installed_entrypoint_digest: Some(&installed_entrypoint_digest),
             installed_entrypoint_metadata_digest: &installed_entrypoint_metadata_digest,
+            execution_command_digest: &execution_command_digest,
             launcher_digest: None,
         },
     )?;
@@ -766,6 +856,7 @@ struct ProviderInstallLock<'a> {
     artifact_entrypoint_sha256: Option<&'a str>,
     installed_entrypoint_digest: Option<&'a str>,
     installed_entrypoint_metadata_digest: &'a str,
+    execution_command_digest: &'a str,
     launcher_digest: Option<&'a str>,
 }
 
@@ -839,8 +930,9 @@ fn write_provider_lock(path: &Path, lock: &ProviderInstallLock<'_>) -> Result<()
         ));
     }
     contents.push_str(&format!(
-        "installedEntrypointMetadataDigest = \"{}\"\n",
-        toml_escape(lock.installed_entrypoint_metadata_digest)
+        "installedEntrypointMetadataDigest = \"{}\"\nexecutionCommandDigest = \"{}\"\n",
+        toml_escape(lock.installed_entrypoint_metadata_digest),
+        toml_escape(lock.execution_command_digest),
     ));
     if let Some(value) = lock.launcher_digest {
         contents.push_str(&format!("launcherDigest = \"{}\"\n", toml_escape(value)));

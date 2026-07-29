@@ -10,20 +10,14 @@
     "languageId",
     "providerId",
     "ownerPath",
-    "requestedStructuralSelector",
-    "structuralSelector",
-    "projectionMode",
-    "normalizedParserFacts",
-    "sourceContentDigest",
-    "sourceByteStart",
-    "sourceByteEnd"
+    "requestedStructuralSelector"
   ],
   "properties": {
     "schemaId": {
       "const": "agent.semantic-protocols.provider-native-exact-projection"
     },
     "schemaVersion": {
-      "const": "v1"
+      "const": "1"
     },
     "languageId": {
       "type": "string",
@@ -40,6 +34,60 @@
     "requestedStructuralSelector": {
       "type": "string",
       "minLength": 1
+    },
+    "resolutionState": {
+      "enum": [
+        "resolved",
+        "item-missing",
+        "owner-missing",
+        "kind-mismatch",
+        "ambiguous"
+      ]
+    },
+    "reasonKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rootDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "itemKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "itemName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "actualKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "recommendedNext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     },
     "structuralSelector": {
       "type": "string",
@@ -73,6 +121,58 @@
       "minimum": 0
     }
   },
+  "oneOf": [
+    {
+      "required": [
+        "structuralSelector",
+        "projectionMode",
+        "normalizedParserFacts",
+        "sourceContentDigest",
+        "sourceByteStart",
+        "sourceByteEnd"
+      ],
+      "properties": {
+        "resolutionState": {
+          "const": "resolved"
+        }
+      }
+    },
+    {
+      "required": [
+        "resolutionState",
+        "reasonKind",
+        "itemKind",
+        "itemName",
+        "candidates",
+        "actualKinds",
+        "recommendedNext"
+      ],
+      "properties": {
+        "resolutionState": {
+          "enum": [
+            "item-missing",
+            "owner-missing",
+            "kind-mismatch",
+            "ambiguous"
+          ]
+        }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "projectionText"
+            ]
+          },
+          {
+            "required": [
+              "projectionPayload"
+            ]
+          }
+        ]
+      }
+    }
+  ],
   "allOf": [
     {
       "if": {

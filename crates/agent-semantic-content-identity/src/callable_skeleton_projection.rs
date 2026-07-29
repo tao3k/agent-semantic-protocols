@@ -9,7 +9,7 @@ use std::fmt;
 
 pub const CALLABLE_SKELETON_PROJECTION_SCHEMA_ID: &str =
     "agent.semantic-protocols.callable-skeleton-projection";
-pub const CALLABLE_SKELETON_PROJECTION_SCHEMA_VERSION: &str = "v1";
+pub const CALLABLE_SKELETON_PROJECTION_SCHEMA_VERSION: &str = "1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -252,7 +252,7 @@ impl std::error::Error for CallableSkeletonEncodingError {}
 mod tests {
     use super::*;
     use crate::exact_structural_selector::{
-        CanonicalItemSelectorV1, EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID,
+        CanonicalItemSelector, EXACT_STRUCTURAL_SELECTOR_SCHEMA_ID,
         EXACT_STRUCTURAL_SELECTOR_SCHEMA_VERSION, ExactStructuralSelectorSegmentV1,
     };
     use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -267,9 +267,9 @@ mod tests {
             generation_identity_digest: "a".repeat(64),
             parser_identity_digest: "b".repeat(64),
             query_pack_digest: "c".repeat(64),
-            root_item_selector: CanonicalItemSelectorV1 {
+            root_item_selector: CanonicalItemSelector {
                 schema_id: "asp.canonical-item-selector.v1".to_owned(),
-                schema_version: "v1".to_owned(),
+                schema_version: "1".to_owned(),
                 language_id: "rust".to_owned(),
                 kind: "function".to_owned(),
                 symbol: "run".to_owned(),

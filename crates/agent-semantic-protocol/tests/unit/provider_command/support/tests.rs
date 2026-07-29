@@ -4,6 +4,79 @@ use super::{
 };
 use serde_json::json;
 
+fn source_tree_snapshot(root: &std::path::Path) -> Vec<(String, u64, u128)> {
+    fn collect(
+        root: &std::path::Path,
+        directory: &std::path::Path,
+        entries: &mut Vec<(String, u64, u128)>,
+    ) {
+        let mut children = std::fs::read_dir(directory)
+            .expect("read source fixture directory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read source fixture entries");
+        children.sort_by_key(std::fs::DirEntry::file_name);
+        for child in children {
+            let path = child.path();
+            if path.is_dir() {
+                collect(root, &path, entries);
+                continue;
+            }
+            let metadata = child.metadata().expect("read source fixture metadata");
+            let modified = metadata
+                .modified()
+                .expect("read source fixture modified time")
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("source fixture modified after epoch")
+                .as_nanos();
+            entries.push((
+                path.strip_prefix(root)
+                    .expect("source fixture is below root")
+                    .to_string_lossy()
+                    .to_string(),
+                metadata.len(),
+                modified,
+            ));
+        }
+    }
+
+    let source_root = root.join("src");
+    let mut entries = Vec::new();
+    collect(&source_root, &source_root, &mut entries);
+    entries
+}
+
+#[test]
+fn activation_fixture_does_not_mutate_project_source_tree() {
+    let root = temp_project_root("activation-does-not-mutate-source");
+    std::fs::create_dir_all(root.join("src")).expect("create source root");
+    std::fs::write(root.join("src/lib.rs"), "pub struct ExistingOwner;\n")
+        .expect("write existing source owner");
+    let before = source_tree_snapshot(&root);
+
+    write_activation(
+        &root,
+        &[
+            provider("rust", Vec::new()),
+            provider("typescript", Vec::new()),
+            provider("julia", Vec::new()),
+            provider("gerbil-scheme", Vec::new()),
+        ],
+    );
+
+    let after = source_tree_snapshot(&root);
+    assert_eq!(
+        after, before,
+        "activation must not mutate provider inventory"
+    );
+    assert!(
+        after
+            .iter()
+            .all(|(path, _, _)| !path.contains("asp_scope_fixture_")),
+        "activation must not inject source-scope fixtures: {after:?}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn state_home_provider_fixture_writes_lock_for_runtime_binary() {
     let root = temp_project_root("state-home-provider-lock-fixture");

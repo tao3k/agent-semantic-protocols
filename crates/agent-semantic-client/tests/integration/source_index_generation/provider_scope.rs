@@ -296,6 +296,41 @@ fn target_provider_publication_does_not_require_complete_generation() {
 }
 
 #[test]
+fn target_provider_live_snapshot_does_not_require_published_envelope() {
+    let root = test_root("provider-live-without-envelope");
+    std::fs::create_dir_all(&root).expect("create Gerbil workspace");
+    std::fs::write(root.join("gerbil.pkg"), "package: gslph\n").expect("write Gerbil anchor");
+    std::fs::write(root.join("build.ss"), "(displayln \"build\")\n")
+        .expect("write Gerbil build source");
+    let gerbil = provider("gerbil-scheme", "gerbil-scheme-harness", ".", ".ss");
+    let unrelated = provider("rust", "rs-harness", "missing-rust-src", ".rs");
+    let provider_registry = ProviderRegistrySnapshot {
+        activation_path: root.join("activation.json"),
+        providers: vec![gerbil, unrelated],
+    };
+
+    let snapshot =
+        agent_semantic_client::source_index::current_live_provider_source_index_snapshot_with_registry(
+            &root,
+            &"gerbil-scheme".into(),
+            &"gerbil-scheme-harness".into(),
+            &provider_registry,
+        )
+        .expect("capture target provider directly from the live worktree");
+    assert_eq!(snapshot.source_blobs.iter().count(), 1);
+    assert_eq!(
+        snapshot
+            .source_blobs
+            .iter()
+            .next()
+            .map(|source| source.0),
+        Some("build.ss")
+    );
+    assert!(!root.join("artifacts").exists());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn target_provider_gerbil_envelope_shape_publishes_source_owner() {
     let root = test_root("gerbil-envelope-shape");
     std::fs::create_dir_all(&root).expect("create Gerbil workspace");

@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use super::registered_provider_binaries_v1;
+use super::{registered_provider_binaries_v1, registered_provider_catalog_identities};
 
 #[test]
 fn registered_binary_identities_are_materialized_from_the_v1_registry_schema() {
@@ -59,4 +59,21 @@ fn shared_provider_binaries_are_not_duplicated_by_publication_planners() {
             && *binary != "."
             && *binary != ".."
     }));
+}
+
+#[test]
+fn every_registered_language_has_one_canonical_exact_query_pack_identity() {
+    let identities = registered_provider_catalog_identities();
+    assert_eq!(identities.len(), registered_provider_binaries_v1().len());
+    for identity in identities {
+        assert_eq!(identity.exact_query_pack_identity_digest.len(), 64);
+        assert!(
+            identity
+                .exact_query_pack_identity_digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')),
+            "language {} has a non-canonical exact query-pack identity",
+            identity.language_id
+        );
+    }
 }

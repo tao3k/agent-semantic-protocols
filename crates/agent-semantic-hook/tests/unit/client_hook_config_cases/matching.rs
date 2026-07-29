@@ -740,8 +740,14 @@ fn registered_source_read_action_matches_real_payload_field_variants() {
             decision.fields["configRuleId"], "materialize-registered-source-read-action",
             "{label}: payload={payload}"
         );
-        assert_eq!(decision.fields["agentAction"]["action"], "read", "{label}: payload={payload}");
-        assert_eq!(decision.fields["agentAction"]["effect"], "read", "{label}: payload={payload}");
+        assert_eq!(
+            decision.fields["agentAction"]["action"], "read",
+            "{label}: payload={payload}"
+        );
+        assert_eq!(
+            decision.fields["agentAction"]["effect"], "read",
+            "{label}: payload={payload}"
+        );
         assert_eq!(
             decision.fields["normalizedActions"][0]["operationIntent"], "direct-read",
             "{label}: payload={payload}"

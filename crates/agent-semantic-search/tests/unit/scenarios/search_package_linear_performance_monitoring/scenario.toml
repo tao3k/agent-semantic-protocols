@@ -23,7 +23,6 @@ reference_patterns = [
   "graph_topology_projection",
   "integration_test",
   "lexical_search_frame",
-  "memory_search_fixture",
   "owner_items_source_index_trace",
   "pipe_candidates",
   "pipe_source_query_gate",

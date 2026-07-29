@@ -229,6 +229,9 @@
         "query": {
           "$ref": "#/$defs/commandTemplate"
         },
+        "exactSelectorNative": {
+          "$ref": "#/$defs/commandTemplate"
+        },
         "ingest": {
           "$ref": "#/$defs/commandTemplate"
         },

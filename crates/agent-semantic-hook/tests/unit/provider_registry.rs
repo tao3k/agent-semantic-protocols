@@ -36,7 +36,7 @@ fn selected_registry_method_lookup_is_lazy_and_sub_millisecond_warm() {
         let invocation = crate::registered_provider_method_invocation_v1(
             "rust",
             "rs-harness",
-            "search/owner-native-v1",
+            "search/owner-native",
         )
         .expect("resolve selected provider method")
         .expect("selected provider method");
@@ -90,7 +90,7 @@ fn registry_method_inventory_is_explicit() {
     let rust_native_owner = crate::registered_provider_method_invocation_v1(
         "rust",
         "rs-harness",
-        "search/owner-native-v1",
+        "search/owner-native",
     )
     .expect("resolve Rust native owner transport")
     .expect("Rust native owner transport must be registered");
@@ -114,7 +114,7 @@ fn registry_method_inventory_is_explicit() {
             crate::registered_provider_method_invocation_v1(
                 language.language_id.as_str(),
                 language.provider_id.as_str(),
-                "search/owner-native-v1",
+                "search/owner-native",
             )
             .expect("resolve native owner transport")
             .is_none(),
@@ -123,41 +123,36 @@ fn registry_method_inventory_is_explicit() {
         );
     }
 
-    let rust_native_exact = crate::registered_provider_method_invocation_v1(
-        "rust",
-        "rs-harness",
-        "query/exact-selector-native-v1",
-    )
-    .expect("resolve Rust native exact transport")
-    .expect("Rust native exact transport must be registered");
-    assert_eq!(
-        rust_native_exact.argv,
-        ["rs-harness", "query", "--asp-exact-request-stdin"]
-    );
-
-    for language in registry
-        .languages
-        .iter()
-        .filter(|language| language.language_id != "rust")
-    {
-        assert!(
-            crate::registered_provider_method_invocation_v1(
-                language.language_id.as_str(),
-                language.provider_id.as_str(),
-                "query/exact-selector-native-v1",
-            )
-            .expect("resolve native exact transport")
-            .is_none(),
-            "{} must not advertise an unimplemented native exact transport",
+    let mut declared_native_exact_count = 0usize;
+    for language in &registry.languages {
+        let declared = language
+            .method_descriptors
+            .iter()
+            .find(|descriptor| descriptor.method == "query/exact-selector-native-v1")
+            .map(|descriptor| descriptor.invocation.clone());
+        declared_native_exact_count += usize::from(declared.is_some());
+        let resolved = crate::registered_provider_method_invocation_v1(
+            language.language_id.as_str(),
+            language.provider_id.as_str(),
+            "query/exact-selector-native-v1",
+        )
+        .expect("resolve provider-declared native exact transport");
+        assert_eq!(
+            resolved, declared,
+            "{} native exact admission must be derived from its registered method descriptor",
             language.language_id
         );
     }
+    assert!(
+        declared_native_exact_count > 0,
+        "at least one registered language must exercise native exact admission"
+    );
 
     assert!(
         crate::registered_provider_method_invocation_v1(
             "rust",
             "not-rs-harness",
-            "search/owner-native-v1",
+            "search/owner-native",
         )
         .expect_err("provider identity drift must fail closed")
         .contains("provider drift")

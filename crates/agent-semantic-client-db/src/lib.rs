@@ -30,7 +30,12 @@ pub mod turso_mvcc_store;
 mod turso_mvcc_typed;
 pub mod turso_sync_storage;
 mod types;
+mod workspace_db_endpoint;
+pub mod workspace_db_ipc;
+mod workspace_db_ipc_server;
+pub mod workspace_db_owner_election;
 pub use types::ClientDbProviderCommandSelectionInput;
+pub use workspace_db_ipc::{WorkspaceDbIpcSession, serve_workspace_db_session_until_shutdown};
 
 pub use agent_semantic_client_core::ClientDbStatus;
 pub use agent_session_registry::{
@@ -54,18 +59,17 @@ pub use dependency_index::{
 pub use engine::{
     ClientDbBackend, ClientDbEngine, ClientDbEngineDurability, ClientDbEngineFeatures,
     ClientDbEngineReadSession, ClientDbEngineReport, ClientDbEngineWriteSession,
-    ProviderIncrementalOwnerWriteV1, ProviderIncrementalScopeV1, ProviderIncrementalWriteReceiptV1,
-    ProviderOwnerBatchProbeReceiptV1, ProviderOwnerBatchProbeRequestV1,
-    ProviderOwnerBatchProbeResultV1, ProviderOwnerDecisionV1, ProviderOwnerFingerprintV1,
-    ProviderOwnerInventoryEntryStateV1, ProviderOwnerInventoryEntryV1,
-    ProviderOwnerInventoryStateV1, ProviderOwnerInventoryV1, ProviderOwnerInventoryWriteReceiptV1,
-    ProviderOwnerInventoryWriteV1, ProviderOwnerMetadataV1, ProviderOwnerProbeV1,
-    ProviderRemainingOwnerCountKindV1, ProviderSelectorProjectionV1,
-    ProviderTreeSitterCaptureProjectionV1, ProviderTreeSitterContinuationV1,
-    ProviderTreeSitterOwnerResultStateV1, ProviderTreeSitterOwnerResultV1,
-    ProviderTreeSitterOwnerWriteReceiptV1, ProviderTreeSitterQueryCountersV1,
-    ProviderTreeSitterQueryIdentityV1, ProviderTreeSitterQueryReadStateV1,
-    ProviderTreeSitterQueryReadV1, ProviderTreeSitterQueryReceiptV1,
+    ProviderIncrementalOwnerWrite, ProviderIncrementalScoped, ProviderIncrementalWriteReceipt,
+    ProviderOwnerBatchProbeReceipt, ProviderOwnerBatchProbeRequest, ProviderOwnerBatchProbeResult,
+    ProviderOwnerDecision, ProviderOwnerFingerprint, ProviderOwnerInventory,
+    ProviderOwnerInventoryEntry, ProviderOwnerInventoryEntryState, ProviderOwnerInventoryState,
+    ProviderOwnerInventoryWrite, ProviderOwnerInventoryWriteReceipt, ProviderOwnerMetadata,
+    ProviderOwnerProbe, ProviderRemainingOwnerCountKind, ProviderSelectorProjection,
+    ProviderTreeSitterCaptureProjection, ProviderTreeSitterContinuation,
+    ProviderTreeSitterOwnerResult, ProviderTreeSitterOwnerResultState,
+    ProviderTreeSitterOwnerWriteReceipt, ProviderTreeSitterQueryCounters,
+    ProviderTreeSitterQueryIdentity, ProviderTreeSitterQueryRead, ProviderTreeSitterQueryReadState,
+    ProviderTreeSitterQueryReceipt,
 };
 pub use engine::{
     ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
@@ -124,6 +128,13 @@ pub use types::{
     ClientDbSyntaxQueryReplay,
 };
 extern crate self as agent_semantic_client_db;
+
+#[cfg(test)]
+#[path = "../tests/unit/test_support_common.rs"]
+mod test_support;
+
 pub use engine::{
-    ProviderSearchWorkspaceSessionV1, WorkspaceDbRegistry, WorkspaceDbRegistryCountersV1,
+    ProviderSearchWorkspaceSession, TursoResidentSelectorCandidate, TursoResidentSelectorQuery,
+    TursoResidentSelectorRead, WorkspaceDbRegistry, WorkspaceDbRegistryCounters,
+    WorkspaceDbWriteFinishMode, WorkspaceDbWriteFinishReceipt,
 };

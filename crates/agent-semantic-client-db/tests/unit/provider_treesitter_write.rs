@@ -1,29 +1,30 @@
-use std::{fs, path::PathBuf};
+use std::sync::MutexGuard;
 
 use super::{
-    ProviderIncrementalScopeV1, ProviderOwnerInventoryEntryStateV1, ProviderOwnerInventoryEntryV1,
-    ProviderOwnerInventoryStateV1, ProviderOwnerInventoryWriteReceiptV1,
-    ProviderOwnerInventoryWriteV1, ProviderTreeSitterCaptureProjectionV1,
-    ProviderTreeSitterOwnerResultStateV1, ProviderTreeSitterOwnerResultV1,
-    ProviderTreeSitterQueryIdentityV1, connect_turso_client_db, scope_params,
-    upsert_provider_owner_inventory_v1, write_provider_treesitter_owner_result_v1,
+    ProviderIncrementalScoped, ProviderOwnerInventoryEntry, ProviderOwnerInventoryEntryState,
+    ProviderOwnerInventoryState, ProviderOwnerInventoryWrite, ProviderOwnerInventoryWriteReceipt,
+    ProviderTreeSitterCaptureProjection, ProviderTreeSitterOwnerResult,
+    ProviderTreeSitterOwnerResultState, ProviderTreeSitterQueryIdentity, scope_params,
 };
+use crate::engine::{ProviderSearchWorkspaceSession, WorkspaceDbRegistry};
+use crate::test_support::{StateHomeGuard, environment_lock, workspace};
+use tempfile::TempDir;
 
 #[tokio::test(flavor = "current_thread")]
 async fn exact_rust_inventory_is_isolated_from_julia_and_gerbil_scopes() {
-    let fixture = ProviderTreeSitterWriteFixture::new("scope-isolation");
+    let fixture = ProviderTreeSitterWriteFixture::new("scope-isolation").await;
     let rust = fixture.scope("rust", "rust-harness", '1');
     let julia = fixture.scope("julia", "julia-harness", '2');
     let gerbil = fixture.scope("gerbil-scheme", "gerbil-harness", '3');
 
     fixture
-        .write_inventory(&julia, ProviderOwnerInventoryStateV1::Known, &["src/a.jl"])
+        .write_inventory(&julia, ProviderOwnerInventoryState::Known, &["src/a.jl"])
         .await;
     fixture
-        .write_inventory(&gerbil, ProviderOwnerInventoryStateV1::Known, &["src/a.ss"])
+        .write_inventory(&gerbil, ProviderOwnerInventoryState::Known, &["src/a.ss"])
         .await;
     let receipt = fixture
-        .write_inventory(&rust, ProviderOwnerInventoryStateV1::Exact, &["src/lib.rs"])
+        .write_inventory(&rust, ProviderOwnerInventoryState::Exact, &["src/lib.rs"])
         .await;
 
     assert_eq!(receipt.upserted_entry_count, 1);
@@ -37,21 +38,21 @@ async fn exact_rust_inventory_is_isolated_from_julia_and_gerbil_scopes() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn second_inventory_write_deletes_only_stale_rust_owner() {
-    let fixture = ProviderTreeSitterWriteFixture::new("stale-owner");
+    let fixture = ProviderTreeSitterWriteFixture::new("stale-owner").await;
     let rust = fixture.scope("rust", "rust-harness", '1');
     let julia = fixture.scope("julia", "julia-harness", '2');
     let gerbil = fixture.scope("gerbil-scheme", "gerbil-harness", '3');
 
     fixture
-        .write_inventory(&julia, ProviderOwnerInventoryStateV1::Known, &["src/a.jl"])
+        .write_inventory(&julia, ProviderOwnerInventoryState::Known, &["src/a.jl"])
         .await;
     fixture
-        .write_inventory(&gerbil, ProviderOwnerInventoryStateV1::Known, &["src/a.ss"])
+        .write_inventory(&gerbil, ProviderOwnerInventoryState::Known, &["src/a.ss"])
         .await;
     fixture
         .write_inventory(
             &rust,
-            ProviderOwnerInventoryStateV1::Exact,
+            ProviderOwnerInventoryState::Exact,
             &["src/lib.rs", "src/stale.rs"],
         )
         .await;
@@ -59,7 +60,7 @@ async fn second_inventory_write_deletes_only_stale_rust_owner() {
     let gerbil_generation = fixture.inventory_generation(&gerbil).await;
 
     let receipt = fixture
-        .write_inventory(&rust, ProviderOwnerInventoryStateV1::Exact, &["src/lib.rs"])
+        .write_inventory(&rust, ProviderOwnerInventoryState::Exact, &["src/lib.rs"])
         .await;
 
     assert_eq!(receipt.upserted_entry_count, 1);
@@ -76,14 +77,10 @@ async fn second_inventory_write_deletes_only_stale_rust_owner() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn one_owner_capture_set_is_atomically_replaced() {
-    let fixture = ProviderTreeSitterWriteFixture::new("capture-replace");
+    let fixture = ProviderTreeSitterWriteFixture::new("capture-replace").await;
     let scope = fixture.scope("rust", "rust-harness", '1');
     let inventory = fixture
-        .write_inventory(
-            &scope,
-            ProviderOwnerInventoryStateV1::Exact,
-            &["src/lib.rs"],
-        )
+        .write_inventory(&scope, ProviderOwnerInventoryState::Exact, &["src/lib.rs"])
         .await;
     let query = fixture.query(scope, 'a', &["declaration.name", "reference.name"]);
     let content_digest = digest('b');
@@ -96,7 +93,9 @@ async fn one_owner_capture_set_is_atomically_replaced() {
             fixture.capture("reference.name", "example()", 8, 15),
         ],
     );
-    write_provider_treesitter_owner_result_v1(fixture.db_path.as_path(), &query, &first)
+    fixture
+        .session
+        .write_provider_treesitter_owner_result(&query, &first)
         .await
         .expect("write initial owner captures");
 
@@ -106,10 +105,11 @@ async fn one_owner_capture_set_is_atomically_replaced() {
         content_digest.as_str(),
         vec![fixture.capture("declaration.name", "pub fn replacement()", 0, 11)],
     );
-    let receipt =
-        write_provider_treesitter_owner_result_v1(fixture.db_path.as_path(), &query, &replacement)
-            .await
-            .expect("replace owner captures");
+    let receipt = fixture
+        .session
+        .write_provider_treesitter_owner_result(&query, &replacement)
+        .await
+        .expect("replace owner captures");
 
     assert_eq!(receipt.capture_projection_writes, 1);
     assert_eq!(
@@ -128,14 +128,10 @@ async fn one_owner_capture_set_is_atomically_replaced() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn query_and_content_digest_keys_do_not_cross_results() {
-    let fixture = ProviderTreeSitterWriteFixture::new("cache-keys");
+    let fixture = ProviderTreeSitterWriteFixture::new("cache-keys").await;
     let scope = fixture.scope("rust", "rust-harness", '1');
     let inventory = fixture
-        .write_inventory(
-            &scope,
-            ProviderOwnerInventoryStateV1::Exact,
-            &["src/lib.rs"],
-        )
+        .write_inventory(&scope, ProviderOwnerInventoryState::Exact, &["src/lib.rs"])
         .await;
     let query_a = fixture.query(scope.clone(), 'a', &["declaration.name"]);
     let query_b = fixture.query(scope, 'b', &["declaration.name"]);
@@ -153,7 +149,9 @@ async fn query_and_content_digest_keys_do_not_cross_results() {
             content,
             vec![fixture.capture("declaration.name", signature, 0, 8)],
         );
-        write_provider_treesitter_owner_result_v1(fixture.db_path.as_path(), query, &result)
+        fixture
+            .session
+            .write_provider_treesitter_owner_result(query, &result)
             .await
             .expect("write cache-key fixture result");
     }
@@ -187,7 +185,7 @@ async fn invalid_completeness_signature_span_and_cache_key_fail_before_db_open()
         ("span", InvalidWrite::Span),
         ("cache-key", InvalidWrite::CacheKey),
     ] {
-        let fixture = ProviderTreeSitterWriteFixture::new(label);
+        let fixture = ProviderTreeSitterWriteFixture::new(label).await;
         let scope = fixture.scope("rust", "rust-harness", '1');
         let query = fixture.query(scope, 'a', &["declaration.name"]);
         let mut result = fixture.result(
@@ -198,22 +196,26 @@ async fn invalid_completeness_signature_span_and_cache_key_fail_before_db_open()
         );
         match invalid {
             InvalidWrite::Completeness => {
-                result.state = ProviderTreeSitterOwnerResultStateV1::Cached;
+                result.state = ProviderTreeSitterOwnerResultState::Cached;
             }
             InvalidWrite::Signature => result.projections[0].signature.clear(),
             InvalidWrite::Span => result.projections[0].source_byte_end = 65,
             InvalidWrite::CacheKey => result.query_digest = digest('d'),
         }
 
-        let error =
-            write_provider_treesitter_owner_result_v1(fixture.db_path.as_path(), &query, &result)
-                .await
-                .expect_err("invalid writer request must fail");
+        let transactions_before = fixture.registry.counters().writer_transaction_count;
+        let error = fixture
+            .session
+            .write_provider_treesitter_owner_result(&query, &result)
+            .await
+            .expect_err("invalid writer request must fail");
         assert!(!error.is_empty());
-        assert!(
-            !fixture.db_path.exists(),
-            "{label} validation opened or wrote the database"
+        assert_eq!(
+            fixture.registry.counters().writer_transaction_count,
+            transactions_before,
+            "{label} validation entered a writer transaction"
         );
+        assert_eq!(fixture.query_owner_row_count(&query.scope).await, 0);
     }
 }
 
@@ -226,15 +228,33 @@ enum InvalidWrite {
 }
 
 struct ProviderTreeSitterWriteFixture {
-    root: PathBuf,
-    db_path: PathBuf,
+    _environment: MutexGuard<'static, ()>,
+    _state_home: StateHomeGuard,
+    _temp: TempDir,
+    base_scope: ProviderIncrementalScoped,
+    registry: WorkspaceDbRegistry,
+    session: ProviderSearchWorkspaceSession,
 }
 
 impl ProviderTreeSitterWriteFixture {
-    fn new(label: &str) -> Self {
-        let root = temp_root(label);
-        let db_path = root.join("facts.turso");
-        Self { root, db_path }
+    async fn new(label: &str) -> Self {
+        let environment = environment_lock();
+        let temp = TempDir::new().expect("create provider Tree-sitter tempfile");
+        let state_home = StateHomeGuard::install(&temp.path().join("state"));
+        let (project_root, _resolved, base_scope) = workspace(temp.path(), label);
+        let registry = WorkspaceDbRegistry::default();
+        let session = registry
+            .acquire(&project_root, &base_scope)
+            .await
+            .expect("acquire provider Tree-sitter workspace session");
+        Self {
+            _environment: environment,
+            _state_home: state_home,
+            _temp: temp,
+            base_scope,
+            registry,
+            session,
+        }
     }
 
     fn scope(
@@ -242,53 +262,51 @@ impl ProviderTreeSitterWriteFixture {
         language_id: &str,
         provider_id: &str,
         digest_character: char,
-    ) -> ProviderIncrementalScopeV1 {
-        ProviderIncrementalScopeV1 {
-            project_root: "/project".to_string(),
-            workspace_identity: "workspace-1".to_string(),
+    ) -> ProviderIncrementalScoped {
+        ProviderIncrementalScoped {
+            project_root: self.base_scope.project_root.clone(),
+            workspace_identity: self.base_scope.workspace_identity.clone(),
             provider_workspace_identity_digest: digest(digest_character),
             language_id: language_id.to_string(),
             provider_id: provider_id.to_string(),
-            provider_workspace_root: "/project".to_string(),
+            provider_workspace_root: self.base_scope.provider_workspace_root.clone(),
         }
     }
 
     async fn write_inventory(
         &self,
-        scope: &ProviderIncrementalScopeV1,
-        state: ProviderOwnerInventoryStateV1,
+        scope: &ProviderIncrementalScoped,
+        state: ProviderOwnerInventoryState,
         owner_paths: &[&str],
-    ) -> ProviderOwnerInventoryWriteReceiptV1 {
+    ) -> ProviderOwnerInventoryWriteReceipt {
         let entries = owner_paths
             .iter()
             .enumerate()
-            .map(|(index, owner_path)| ProviderOwnerInventoryEntryV1 {
+            .map(|(index, owner_path)| ProviderOwnerInventoryEntry {
                 owner_path: (*owner_path).to_string(),
                 owner_content_digest: Some(digest(
                     char::from_digit((index + 4) as u32, 16).unwrap(),
                 )),
-                state: ProviderOwnerInventoryEntryStateV1::Indexed,
+                state: ProviderOwnerInventoryEntryState::Indexed,
             })
             .collect();
-        upsert_provider_owner_inventory_v1(
-            self.db_path.as_path(),
-            &ProviderOwnerInventoryWriteV1 {
+        self.session
+            .upsert_provider_owner_inventory(&ProviderOwnerInventoryWrite {
                 scope: scope.clone(),
                 state,
                 entries,
-            },
-        )
-        .await
-        .expect("write provider inventory")
+            })
+            .await
+            .expect("write provider inventory")
     }
 
     fn query(
         &self,
-        scope: ProviderIncrementalScopeV1,
+        scope: ProviderIncrementalScoped,
         digest_character: char,
         capture_names: &[&str],
-    ) -> ProviderTreeSitterQueryIdentityV1 {
-        ProviderTreeSitterQueryIdentityV1 {
+    ) -> ProviderTreeSitterQueryIdentity {
+        ProviderTreeSitterQueryIdentity {
             scope,
             query_digest: digest(digest_character),
             capture_names: capture_names
@@ -300,17 +318,17 @@ impl ProviderTreeSitterWriteFixture {
 
     fn result(
         &self,
-        query: &ProviderTreeSitterQueryIdentityV1,
+        query: &ProviderTreeSitterQueryIdentity,
         inventory_generation: &str,
         owner_content_digest: &str,
-        projections: Vec<ProviderTreeSitterCaptureProjectionV1>,
-    ) -> ProviderTreeSitterOwnerResultV1 {
-        ProviderTreeSitterOwnerResultV1 {
+        projections: Vec<ProviderTreeSitterCaptureProjection>,
+    ) -> ProviderTreeSitterOwnerResult {
+        ProviderTreeSitterOwnerResult {
             owner_path: "src/lib.rs".to_string(),
             owner_content_digest: owner_content_digest.to_string(),
             query_digest: query.query_digest.clone(),
             inventory_generation: inventory_generation.to_string(),
-            state: ProviderTreeSitterOwnerResultStateV1::Processed,
+            state: ProviderTreeSitterOwnerResultState::Processed,
             complete_owner_refresh_count: 1,
             projections,
         }
@@ -322,8 +340,8 @@ impl ProviderTreeSitterWriteFixture {
         signature: &str,
         start: u64,
         end: u64,
-    ) -> ProviderTreeSitterCaptureProjectionV1 {
-        ProviderTreeSitterCaptureProjectionV1 {
+    ) -> ProviderTreeSitterCaptureProjection {
+        ProviderTreeSitterCaptureProjection {
             structural_selector: format!(
                 "rust://src/lib.rs#item/function/example-{capture_name}-{start}"
             ),
@@ -338,10 +356,8 @@ impl ProviderTreeSitterWriteFixture {
         }
     }
 
-    async fn inventory_entry_count(&self, scope: &ProviderIncrementalScopeV1) -> i64 {
-        let connection = connect_turso_client_db(self.db_path.as_path())
-            .await
-            .expect("open fixture database");
+    async fn inventory_entry_count(&self, scope: &ProviderIncrementalScoped) -> i64 {
+        let connection = self.session.read_connection();
         scalar(
             &connection,
             "SELECT COUNT(*) FROM provider_owner_inventory_entry_v1
@@ -353,9 +369,7 @@ impl ProviderTreeSitterWriteFixture {
     }
 
     async fn total_inventory_entry_count(&self) -> i64 {
-        let connection = connect_turso_client_db(self.db_path.as_path())
-            .await
-            .expect("open fixture database");
+        let connection = self.session.read_connection();
         scalar(
             &connection,
             "SELECT COUNT(*) FROM provider_owner_inventory_entry_v1",
@@ -364,10 +378,8 @@ impl ProviderTreeSitterWriteFixture {
         .await
     }
 
-    async fn inventory_state(&self, scope: &ProviderIncrementalScopeV1) -> String {
-        let connection = connect_turso_client_db(self.db_path.as_path())
-            .await
-            .expect("open fixture database");
+    async fn inventory_state(&self, scope: &ProviderIncrementalScoped) -> String {
+        let connection = self.session.read_connection();
         scalar_text(
             &connection,
             "SELECT inventory_state FROM provider_owner_inventory_v1
@@ -378,10 +390,8 @@ impl ProviderTreeSitterWriteFixture {
         .await
     }
 
-    async fn inventory_generation(&self, scope: &ProviderIncrementalScopeV1) -> String {
-        let connection = connect_turso_client_db(self.db_path.as_path())
-            .await
-            .expect("open fixture database");
+    async fn inventory_generation(&self, scope: &ProviderIncrementalScoped) -> String {
+        let connection = self.session.read_connection();
         scalar_text(
             &connection,
             "SELECT inventory_generation FROM provider_owner_inventory_v1
@@ -392,10 +402,8 @@ impl ProviderTreeSitterWriteFixture {
         .await
     }
 
-    async fn inventory_paths(&self, scope: &ProviderIncrementalScopeV1) -> Vec<String> {
-        let connection = connect_turso_client_db(self.db_path.as_path())
-            .await
-            .expect("open fixture database");
+    async fn inventory_paths(&self, scope: &ProviderIncrementalScoped) -> Vec<String> {
+        let connection = self.session.read_connection();
         let mut rows = connection
             .query(
                 "SELECT owner_path FROM provider_owner_inventory_entry_v1
@@ -415,12 +423,10 @@ impl ProviderTreeSitterWriteFixture {
 
     async fn owner_capture_count(
         &self,
-        query: &ProviderTreeSitterQueryIdentityV1,
+        query: &ProviderTreeSitterQueryIdentity,
         content_digest: &str,
     ) -> i64 {
-        let connection = connect_turso_client_db(self.db_path.as_path())
-            .await
-            .expect("open fixture database");
+        let connection = self.session.read_connection();
         scalar(
             &connection,
             "SELECT capture_count FROM provider_treesitter_query_owner_v1
@@ -432,10 +438,8 @@ impl ProviderTreeSitterWriteFixture {
         .await
     }
 
-    async fn query_owner_row_count(&self, scope: &ProviderIncrementalScopeV1) -> i64 {
-        let connection = connect_turso_client_db(self.db_path.as_path())
-            .await
-            .expect("open fixture database");
+    async fn query_owner_row_count(&self, scope: &ProviderIncrementalScoped) -> i64 {
+        let connection = self.session.read_connection();
         scalar(
             &connection,
             "SELECT COUNT(*) FROM provider_treesitter_query_owner_v1
@@ -448,12 +452,10 @@ impl ProviderTreeSitterWriteFixture {
 
     async fn capture_signatures(
         &self,
-        query: &ProviderTreeSitterQueryIdentityV1,
+        query: &ProviderTreeSitterQueryIdentity,
         content_digest: &str,
     ) -> Vec<String> {
-        let connection = connect_turso_client_db(self.db_path.as_path())
-            .await
-            .expect("open fixture database");
+        let connection = self.session.read_connection();
         let mut rows = connection
             .query(
                 "SELECT signature FROM provider_treesitter_capture_projection_v1
@@ -470,12 +472,6 @@ impl ProviderTreeSitterWriteFixture {
             signatures.push(row.get::<String>(0).expect("decode capture signature"));
         }
         signatures
-    }
-}
-
-impl Drop for ProviderTreeSitterWriteFixture {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
     }
 }
 
@@ -504,7 +500,7 @@ async fn scalar_text<P: turso::IntoParams>(
 }
 
 fn query_owner_params<'a>(
-    query: &'a ProviderTreeSitterQueryIdentityV1,
+    query: &'a ProviderTreeSitterQueryIdentity,
     content_digest: &'a str,
 ) -> (
     &'a str,
@@ -528,17 +524,4 @@ fn query_owner_params<'a>(
 
 fn digest(character: char) -> String {
     std::iter::repeat_n(character, 64).collect()
-}
-
-fn temp_root(label: &str) -> PathBuf {
-    let root = std::env::temp_dir().join(format!(
-        "asp-provider-treesitter-write-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system time before unix epoch")
-            .as_nanos()
-    ));
-    fs::create_dir_all(&root).expect("create provider Tree-sitter fixture root");
-    root
 }

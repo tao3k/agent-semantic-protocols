@@ -23,6 +23,7 @@ use super::root_language_facade::run_root_language_facade;
 use super::run_protocol_version_command;
 use super::source_access::run_source_access_command;
 use super::sync::run_sync_command;
+use super::workspace_db_owner::run_workspace_db_command;
 
 pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> {
     normalize_agent_session_command_args(&mut args)?;
@@ -65,6 +66,7 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
         Some("source-access") => run_source_access_command(&args[1..]),
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
         Some("graph") => run_graph_command(&args[1..]),
+        Some("workspace-db") => run_workspace_db_command(&args[1..]),
         Some(language_id) => run_language_command(language_id, &args[1..]),
         _ => Err(usage()),
     }
@@ -202,7 +204,7 @@ fn option_is_present(args: &[String], option: &str) -> bool {
 }
 
 fn usage() -> String {
-    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|sync|paths|healthcheck|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|sync|paths|healthcheck|workspace-db|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 fn run_client_command(args: Vec<String>) -> Result<(), String> {

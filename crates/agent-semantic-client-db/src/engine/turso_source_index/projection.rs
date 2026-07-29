@@ -4,6 +4,7 @@ const TURSO_SOURCE_INDEX_OWNER_WINDOW_PER_TOKEN: usize = 128;
 use crate::engine::turso_statement::{execute_turso_operation, execute_turso_statement};
 
 const TURSO_SOURCE_INDEX_OWNER_BATCH_SIZE: usize = 128;
+const TURSO_SOURCE_INDEX_SELECTOR_BATCH_SIZE: usize = 128;
 
 fn turso_source_index_values_clause(row_count: usize, column_count: usize) -> String {
     let row = format!("({})", vec!["?"; column_count].join(","));
@@ -76,6 +77,87 @@ pub(super) async fn write_turso_source_index_owner_rows(
                     .map_err(|error| error.to_string())
             },
             "failed to write Turso source-index owner facts",
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+pub(super) async fn refresh_turso_source_index_selector_projection(
+    connection: &turso::Connection,
+    project_root: &str,
+    schema_id: &str,
+    schema_version: &str,
+    generation_id: &str,
+    owner_paths: &[String],
+    selector_rows: &[super::prepare::TursoSourceIndexSelectorRow],
+) -> Result<(), String> {
+    if owner_paths.is_empty() {
+        return Ok(());
+    }
+    let owner_paths_json = serde_json::to_string(owner_paths)
+        .map_err(|error| format!("failed to encode Turso selector projection owners: {error}"))?;
+    execute_turso_operation(
+        || async {
+            connection
+                .execute(
+                    "DELETE FROM asp_source_index_selector_v1
+                     WHERE project_root = ?1
+                       AND schema_id = ?2
+                       AND schema_version = ?3
+                       AND generation_id = ?4
+                       AND owner_path IN (SELECT value FROM json_each(?5))",
+                    (
+                        project_root,
+                        schema_id,
+                        schema_version,
+                        generation_id,
+                        owner_paths_json.as_str(),
+                    ),
+                )
+                .await
+                .map_err(|error| error.to_string())
+        },
+        "failed to clear Turso source-index selector projection",
+    )
+    .await?;
+
+    for batch in selector_rows.chunks(TURSO_SOURCE_INDEX_SELECTOR_BATCH_SIZE) {
+        let statement = format!(
+            "INSERT INTO asp_source_index_selector_v1 (
+                project_root, schema_id, schema_version, generation_id,
+                owner_path, owner_content_digest, language_id,
+                parser_identity_digest, query_pack_digest, item_kind,
+                item_symbol, scopes_json, structural_selector
+             ) VALUES {}",
+            turso_source_index_values_clause(batch.len(), 13),
+        );
+        let mut params = Vec::with_capacity(batch.len() * 13);
+        for row in batch {
+            params.extend([
+                turso_source_index_text_value(project_root),
+                turso_source_index_text_value(schema_id),
+                turso_source_index_text_value(schema_version),
+                turso_source_index_text_value(generation_id),
+                turso_source_index_text_value(&row.owner_path),
+                turso_source_index_text_value(&row.owner_content_digest),
+                turso_source_index_text_value(&row.language_id),
+                turso_source_index_text_value(&row.parser_identity_digest),
+                turso_source_index_text_value(&row.query_pack_digest),
+                turso_source_index_text_value(&row.item_kind),
+                turso_source_index_text_value(&row.item_symbol),
+                turso_source_index_text_value(&row.scopes_json),
+                turso_source_index_text_value(&row.structural_selector),
+            ]);
+        }
+        execute_turso_operation(
+            || async {
+                connection
+                    .execute(statement.as_str(), params.clone())
+                    .await
+                    .map_err(|error| error.to_string())
+            },
+            "failed to write Turso source-index selector projection",
         )
         .await?;
     }

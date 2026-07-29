@@ -48,6 +48,165 @@ directory remains the locator only when =--workspace= is absent. A positional
 search path is a query scope, not an implicit workspace selector, and MUST NOT
 materialize activation or persistent State for that path.
 
+** Provider workspace-root identity normalization
+
+The provider boundary MUST normalize every explicit search workspace root to
+one absolute lexical or canonical identity before downstream discovery,
+projection, or cache lookup.  An absolute input remains absolute.  A relative
+input that names an existing path resolves from the provider current working
+directory.  When the current working directory already ends with the relative
+workspace input, the normalized root is the current working directory itself;
+the provider MUST NOT concatenate the same workspace identity a second time.
+Otherwise the normalized root is exactly one =cwd.join(input)= followed by
+lexical normalization and, when the target exists, canonicalization.
+
+Workspace-root normalization is a request-boundary operation.  It MUST NOT
+require =asp sync=, generate a second workspace identity, or fall back to a
+legacy cache or database root.  Invalid or unresolvable inputs fail with a
+focused error naming the input and current working directory.
+
+** Repository and language-project resolution
+
+Repository and language-project resolution is the core authority beneath
+source envelopes, incremental parser generations, Tree-sitter inventory,
+reasoning search, and workspace database ownership.  It is not an optimization
+inside any of those consumers.  This resolution MUST be runnable before a source
+envelope exists, MUST NOT open Turso, MUST NOT require =asp sync=, and MUST NOT
+depend on an already-materialized search generation.  Its successful output is
+one typed =ProjectResolution= receipt; downstream consumers MUST NOT reconstruct
+project scope independently.
+
+For a Git checkout, the runtime Git owner MUST use the repository common
+directory, worktree, index, ignore, sparse-checkout, submodule, symlink, and
+working-tree status semantics to publish a =RepositoryCandidateSnapshot=.  The
+snapshot contains the stable repository identity, distinct worktree identity,
+candidate generation, tracked index entries, live tracked changes and
+deletions, and ignore-aware untracked additions admitted by Git.  ASP MUST NOT
+replace Git status/index semantics with an unbounded =read_dir= walk.  A
+submodule is a new repository boundary; a sparse checkout cannot admit owners
+outside its materialized worktree scope.
+
+Provider project markers are parser dispatch keys, not directory-filter
+strings.  A marker such as =Cargo.toml=, =package.json=, =pyproject.toml=, or
+=Project.toml= selects the registered provider project resolver and supplies
+its exact project-entry path.  The resolver parses that entry plus only
+manifest-declared workspace members, package manifests, lockfiles, path
+dependencies, target declarations, and source-root declarations.  It emits a
+normalized =LanguagePackageGraph= with project, package, target, internal
+dependency, external dependency identity, generated-root, and source-root
+facts.  Provider defaults MAY complete omitted package-manager declarations,
+but the receipt MUST distinguish explicit package-manager facts from provider
+defaults.
+
+The shared =ProjectResolution= binds =RepositoryIdentity=,
+=WorktreeIdentity=, provider and parser identities, normalized project-entry
+path, =LanguagePackageGraph=, =ResolvedSourceScope= records, candidate
+generation, manifest and lock digests, and the resolution generation.  A
+=ResolvedSourceScope= names its owning package and target, admitted extensions,
+source and generated roots, inclusion authority, and exclusion authority.
+Flat =packageRoots=, =sourceRoots=, =sourceExtensions=, and
+=ignoredPathPrefixes= arrays are provider declarations used to build this
+receipt; they are not independently executable inventory authority.
+
+Scope admission applies ordered authorities:
+
+1. ASP infrastructure exclusions such as Git metadata and State Home runtime
+   artifacts are hard exclusions.
+2. Package-manager workspace membership, exclusions, and explicit targets are
+   authoritative project facts.
+3. Explicit package and target source paths precede provider defaults.
+4. Provider default roots and extensions fill only undeclared semantics.
+5. User policy overlays are explicit final policy facts.
+
+An ordinary provider ignore prefix MUST NOT silently exclude a path explicitly
+owned by a package target.  Conflicts fail closed with a typed
+=project-scope-conflict= result naming both authorities.
+
+For a non-Git workspace, repository candidate resolution uses an explicitly labeled
+=provider-only= repository candidate mode.  The caller supplies a project entry
+or the provider probes only its finite registered marker names at the selected
+workspace root.  Further traversal follows manifest-declared members,
+dependencies, and roots.  Missing project entry is the typed
+=project-entry-missing= state; it never authorizes a generic recursive walk.
+
+Repository, worktree, project, and project-instance identities are distinct.
+One Git common repository shared by several worktrees has one repository
+identity, one stable project identity per provider plus normalized project
+entry, and separate worktree/project-instance identities.  This prevents
+worktrees, cache directories, and repeated path spellings from manufacturing
+new project IDs while preserving their independent live file generations.
+
+The Level zero cache key is the Git index/status generation, relevant manifest
+and lock digests, provider project-parser digest, and policy-overlay digest.  An
+unchanged warm resolution performs no source reads, provider processes,
+database opens, or artifact writes.  One manifest or index delta re-resolves
+only the affected package-graph closure.  Receipts report candidate counts,
+parsed manifest and lock counts, affected package count, =fullWorkspaceReads=,
+=fullManifestReparses=, =dbOpens=, and elapsed microseconds.  Ordinary and warm
+paths require all three prohibited counters to remain zero.
+
+** Incremental Tree-sitter inventory candidate scope and pruning
+
+For a Git repository, inventory enumeration MUST derive its initial candidate
+owner set from the Git worktree and index file scope: tracked files plus current
+working-tree additions required to observe live edits.  It MUST then intersect
+those candidates with the activated provider project scope, including project
+markers, configuration files, package roots, declared source roots, registered
+source extensions, and ignored path prefixes.  A Git workspace MUST NOT perform
+an unbounded recursive walk from the workspace root.
+
+For a non-Git workspace, the provider MUST use an explicitly labeled
+=provider-only= candidate scope derived from the same project markers,
+configuration, package/source roots, extensions, and ignored prefixes.  It MUST
+NOT silently widen that scope into a generic workspace-root crawl.
+
+Inventory enumeration MUST apply every activated provider ignored path prefix
+before descending into a directory.  Matching is against normalized,
+root-relative path components: an ignored prefix such as =target= prunes
+=target/= but MUST NOT prune a distinct component such as =mytarget=.  Nested
+prefixes such as =.data/codex= and =.codex/harness-state= are matched as
+component sequences rather than raw string prefixes.
+
+Ignored directories and their descendants MUST never become inventory owners
+and MUST never be published to the incremental workspace database.  Symlink
+skipping and registered source-extension filtering remain mandatory after
+prefix pruning.  This enumeration contract is parser/provider owned and MUST
+NOT require =asp sync=, use a legacy fallback, or defer ignored-owner removal to
+a later database cleanup.
+
+* Exact-selector miss is a typed discovery result
+An exact selector already supplies the owner and canonical item identity.  The
+workspace-resident DB projection is an optional hot-path cache for this
+operation, not a prerequisite.  A missing resident-service endpoint is a typed
+cache miss and MUST continue through the parser-owned live-owner projection.
+This continuation MUST NOT open Turso directly.  Endpoint decode, workspace
+identity, schema, and transport failures remain terminal errors.
+
+An exact selector identifies one deterministic projection request.  Failure to
+find that item in a valid live owner is a semantic query result, not a provider
+transport failure.
+
+- Provider JSON mode MUST return the existing provider-native exact projection
+  v1 contract with a typed =resolutionState= variant for =item-missing=,
+  =owner-missing=, =kind-mismatch=, and =ambiguous=.
+- A semantic miss MUST NOT be encoded only in stderr and MUST NOT be wrapped by
+  the facade as =provider failed: status=... stderr=...=.
+- Miss packets MUST include =reasonKind=, the requested owner/item identity,
+  structured =candidates= and =actualKinds= arrays, and one
+  =recommendedNext= search command.
+- Candidate selection MUST prefer the requested canonical item kind.  It MUST
+  not fill a bounded candidate list with unrelated modules, reexports, or
+  other item kinds merely because they occur first in the owner.
+- The language facade MUST render the typed miss compactly and preserve it in
+  machine-readable output.  An empty or missing projection is never silently
+  treated as source bytes.
+- Provider crash, invalid JSON, schema drift, and byte-authority failure remain
+  transport/protocol failures and stay distinct from a semantic miss.
+
+This keeps exact =query= deterministic while routing discovery back to
+=search owner <path> items=.  Callers consume a typed result and never recover
+control flow by parsing provider stderr.
+
 * Module map
 
 - [[file:10.05-cli-first-harness-ux/10.05.00-overview.org][Overview And Non-Goals]] :: One-sentence summary through What NOT to build: the anti-patterns.
@@ -101,9 +260,10 @@ Merkle-materialize the full workspace.  =asp sync .= remains an explicit
 full-generation recovery operation for callers that require complete
 enumeration or negative proof.
 
-Search routing may open the project Turso 0.7 database.  It MUST NOT create or
-depend on =hooks/state/languages/<language>=, hook event state, or another
-client-specific lifecycle directory.
+Search routing may resolve only the canonical workspace identity and MUST call
+that workspace's unique database owner through typed IPC.  It MUST NOT open
+=facts.turso=, create or depend on =hooks/state/languages/<language>=, use hook
+event state, or introduce another client-specific lifecycle directory.
 
 Workspace Tree-sitter persistence is query-specific.  An arbitrary compiled
 Tree-sitter query cannot be answered from the complete-owner item projection
@@ -152,6 +312,10 @@ to CAS.
 - [[file:10.05-cli-first-harness-ux/10.05.90-readiness-history.org][Readiness History And Bottom Line]] :: MVP order: M1–M7 through The bottom line.
 
 * Exact query projection contract
+
+The contract family is v1, while every JSON wire object uses
+=schemaVersion: "1"=.  The =v1= token belongs in schema IDs and filenames; it
+MUST NOT appear as the =schemaVersion= field value.
 
 Exact query has one explicit projection axis:
 
@@ -202,7 +366,7 @@ they do not rely on Org include expansion.
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.00-overview.org"
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.10-search-query-surface.org"
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.15-tool-health-and-search-history.org"
-#+INCLUDE: "10.05-cli-first-harness-ux/10.05.20-prime-compact-graph.org"
+#+INCLUDE: "10.05-cli-first-harness-ux/10.05.20-prime-search-flow.org"
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.30-ingest-pattern-views.org"
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.35-validation-exit-codes.org"
 #+INCLUDE: "10.05-cli-first-harness-ux/10.05.40-daemon-guide-hooks.org"
@@ -287,7 +451,8 @@ absent, the CLI-owned marketplace/add path remains required and failure is
 reported without pretending the plugin is installed.
 * Incremental workspace database ownership
 
-The process-resident workspace registry, canonical identity validation,
-session-lease lifetime, concurrency, and database-open receipt contract are
-owned by
-[[file:10.05-cli-first-harness-ux/10.05.65-process-resident-workspace-db-registry-v1.org][10.05.65 Process-resident workspace database registry v1]].
+Workspace-scoped single-owner Turso 0.7.1 MVCC, typed IPC-only access,
+owner-local single-writer queue/batching, concurrent snapshot reads,
+election/takeover, checkpoint/restart, superseded D3 evidence, no-legacy
+boundaries, and production/upstream-characterization capability gates are owned by
+[[file:10.05-cli-first-harness-ux/10.05.65-process-resident-workspace-db-registry-v1.org][10.05.65 Workspace-scoped single database owner v1]].

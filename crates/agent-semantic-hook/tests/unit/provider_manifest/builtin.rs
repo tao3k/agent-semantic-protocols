@@ -133,7 +133,7 @@ fn registered_provider_query_routes_are_exact_selector_only() {
         let synthetic_selector =
             format!("{language_id}://src/provider#item/function/provider_contract");
         let canonical =
-            agent_semantic_content_identity::CanonicalItemSelectorV1::parse(&synthetic_selector)
+            agent_semantic_content_identity::CanonicalItemSelector::parse(&synthetic_selector)
                 .unwrap_or_else(|error| {
                     panic!(
                         "{language_id} query provider has no canonical selector identity: {error}"
@@ -153,6 +153,36 @@ fn registered_provider_query_routes_are_exact_selector_only() {
     assert!(
         rust.search_capabilities().owner_items,
         "Rust harness implements owner-items and must advertise the capability"
+    );
+}
+
+#[test]
+fn provider_native_exact_route_is_declared_and_materialized_generically() {
+    let manifests = builtin_provider_manifests();
+    let mut native_languages = Vec::new();
+
+    for manifest in &manifests {
+        let language_id = manifest.language_id().as_str();
+        let routes = agent_semantic_hook::materialize_provider_routes(manifest)
+            .unwrap_or_else(|error| panic!("materialize {language_id} routes: {error}"));
+        let Some(route) = routes.exact_selector_native.as_ref() else {
+            continue;
+        };
+        native_languages.push(language_id);
+
+        let registered = agent_semantic_hook::registered_provider_method_invocation_v1(
+            language_id,
+            manifest.provider_id().as_str(),
+            "query/exact-selector-native-v1",
+        )
+        .unwrap_or_else(|error| panic!("resolve {language_id} native exact route: {error}"))
+        .expect("manifest native exact binding must resolve to a registered method");
+        assert_eq!(route, &registered);
+    }
+
+    assert!(
+        !native_languages.is_empty(),
+        "at least one provider must exercise the shared native exact route binding"
     );
 }
 

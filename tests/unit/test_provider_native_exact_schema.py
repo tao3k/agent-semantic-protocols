@@ -41,7 +41,7 @@ def _validator(path: Path) -> Draft202012Validator:
 def _response(projection_mode: str) -> dict[str, object]:
     return {
         "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
-        "schemaVersion": "v1",
+        "schemaVersion": "1",
         "languageId": "rust",
         "providerId": "rs-harness",
         "ownerPath": "crates/example/src/dispatch.rs",
@@ -62,7 +62,7 @@ def _response(projection_mode: str) -> dict[str, object]:
 def test_request_requires_explicit_v1_projection() -> None:
     request = {
         "schemaId": "agent.semantic-protocols.provider-native-exact-request",
-        "schemaVersion": "v1",
+        "schemaVersion": "1",
         "languageId": "rust",
         "providerId": "rs-harness",
         "projectionKind": "source",

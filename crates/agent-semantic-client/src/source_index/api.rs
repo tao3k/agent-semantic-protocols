@@ -244,6 +244,30 @@ pub fn current_provider_source_index_snapshot_with_registry(
     )
 }
 
+/// Capture the current worktree snapshot for exactly one registered provider.
+///
+/// This is the rootDepth=0 query boundary. It performs no envelope
+/// publication, CAS write, database bootstrap, or activation synchronization.
+pub fn current_live_provider_source_index_snapshot_with_registry(
+    project_root: &Path,
+    language_id: &agent_semantic_client_core::LanguageId,
+    provider_id: &agent_semantic_client_core::ProviderId,
+    provider_registry: &ProviderRegistrySnapshot,
+) -> Result<CurrentSourceIndexSnapshot, String> {
+    let registry = provider_registry.evidence(project_root);
+    let files = collect_source_index_files(
+        project_root,
+        provider_registry,
+        &super::collect::SourceIndexCollectionScopeV1::TargetProvider {
+            language_id: language_id.clone(),
+            provider_id: provider_id.clone(),
+        },
+    )?;
+    let (_, workspace_snapshot, source_snapshot, source_blobs) =
+        source_index_snapshot_from_files(project_root, &files, &registry)?;
+    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PublishedProviderSourceEnvelope {

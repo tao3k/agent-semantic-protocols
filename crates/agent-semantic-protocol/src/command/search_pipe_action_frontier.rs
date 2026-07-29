@@ -14,7 +14,7 @@ pub(super) struct ActionNode {
 pub(super) enum ActionRoute {
     QueryCode {
         language_id: String,
-        selector: agent_semantic_content_identity::CanonicalItemSelectorV1,
+        selector: agent_semantic_content_identity::CanonicalItemSelector,
         owner: String,
         symbol: String,
         workspace: String,

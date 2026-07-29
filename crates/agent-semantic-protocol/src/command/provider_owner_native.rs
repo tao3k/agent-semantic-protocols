@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use agent_semantic_client_db::{
-    ProviderIncrementalScopeV1, ProviderOwnerFingerprintV1, ProviderOwnerMetadataV1,
-    ProviderSelectorProjectionV1,
+    ProviderIncrementalScoped, ProviderOwnerFingerprint, ProviderOwnerMetadata,
+    ProviderSelectorProjection,
 };
 use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 use serde::Deserialize;
@@ -18,31 +18,30 @@ pub(super) struct ProviderOwnerNativeTransportContext<'a> {
 }
 
 pub(super) struct ProviderOwnerNativeRequest<'a> {
-    pub(super) scope: &'a ProviderIncrementalScopeV1,
+    pub(super) scope: &'a ProviderIncrementalScoped,
     pub(super) owner_path: &'a str,
-    pub(super) fingerprint: &'a ProviderOwnerFingerprintV1,
+    pub(super) fingerprint: &'a ProviderOwnerFingerprint,
     pub(super) source_bytes: &'a [u8],
-    pub(super) query: &'a str,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ProviderNativeOwnerSearchResponseV1 {
+pub(super) struct ProviderNativeOwnerSearchResponse {
     pub(super) schema_id: String,
     pub(super) schema_version: String,
     pub(super) language_id: String,
     pub(super) provider_id: String,
     pub(super) requested_owner_path: String,
-    pub(super) requested_query: String,
+    pub(super) requested_projection_mode: String,
     pub(super) source_content_digest: String,
     pub(super) parsed_owner_count: u32,
     pub(super) projection_completeness: String,
-    pub(super) projections: Vec<ProviderNativeOwnerProjectionV1>,
+    pub(super) projections: Vec<ProviderNativeOwnerProjection>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct ProviderNativeOwnerProjectionV1 {
+pub(super) struct ProviderNativeOwnerProjection {
     pub(super) structural_selector: String,
     pub(super) signature: String,
     pub(super) item_kind: String,
@@ -56,7 +55,7 @@ pub(super) struct ExpectedOwnerResponse<'a> {
     pub(super) language_id: &'a str,
     pub(super) provider_id: &'a str,
     pub(super) owner_path: &'a str,
-    pub(super) query: &'a str,
+    pub(super) projection_mode: &'a str,
     pub(super) content_digest: &'a str,
     pub(super) source_size: u64,
 }
@@ -64,17 +63,17 @@ pub(super) struct ExpectedOwnerResponse<'a> {
 pub(super) fn run_provider_owner_native(
     context: ProviderOwnerNativeTransportContext<'_>,
     request: ProviderOwnerNativeRequest<'_>,
-) -> Result<Vec<ProviderSelectorProjectionV1>, String> {
+) -> Result<Vec<ProviderSelectorProjection>, String> {
     validate_transport_identity(&context, &request)?;
     let stdin = encode_request(&context, &request)?;
     let transport = agent_semantic_hook::registered_provider_method_invocation_v1(
         context.language_id,
         context.provider.provider_id.as_str(),
-        "search/owner-native-v1",
+        "search/owner-native",
     )?
     .ok_or_else(|| {
         format!(
-            "ProviderRegistry is missing native owner transport: languageId={} providerId={} method=search/owner-native-v1",
+            "ProviderRegistry is missing native owner transport: languageId={} providerId={} method=search/owner-native",
             context.language_id, context.provider.provider_id
         )
     })?;
@@ -109,7 +108,7 @@ pub(super) fn run_provider_owner_native(
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    let response: ProviderNativeOwnerSearchResponseV1 =
+    let response: ProviderNativeOwnerSearchResponse =
         serde_json::from_slice(output.stdout.as_ref())
             .map_err(|error| format!("invalid provider owner-search response JSON: {error}"))?;
     validate_provider_owner_response(
@@ -118,7 +117,7 @@ pub(super) fn run_provider_owner_native(
             language_id: context.language_id,
             provider_id: request.scope.provider_id.as_str(),
             owner_path: request.owner_path,
-            query: request.query,
+            projection_mode: "complete-owner",
             content_digest: request.fingerprint.content_digest.as_str(),
             source_size: request.source_bytes.len() as u64,
         },
@@ -159,25 +158,22 @@ fn encode_request(
         },
         "sourceEncoding": "base64",
         "sourceBytesBase64": encode_base64(request.source_bytes),
-        "query": {
-            "text": request.query,
-            "itemMode": "items",
-        },
+        "projectionMode": "complete-owner",
         "transport": "stdin-json",
     }))
     .map_err(|error| format!("failed to encode provider owner-search request: {error}"))
 }
 
 pub(super) fn validate_provider_owner_response(
-    response: ProviderNativeOwnerSearchResponseV1,
+    response: ProviderNativeOwnerSearchResponse,
     expected: ExpectedOwnerResponse<'_>,
-) -> Result<Vec<ProviderSelectorProjectionV1>, String> {
+) -> Result<Vec<ProviderSelectorProjection>, String> {
     if response.schema_id != "agent.semantic-protocols.provider-native-owner-search-response"
         || response.schema_version != "1"
         || response.language_id != expected.language_id
         || response.provider_id != expected.provider_id
         || response.requested_owner_path != expected.owner_path
-        || response.requested_query != expected.query
+        || response.requested_projection_mode != expected.projection_mode
         || response.source_content_digest != expected.content_digest
         || response.parsed_owner_count != 1
         || response.projection_completeness != "complete-owner"
@@ -196,7 +192,7 @@ pub(super) fn validate_provider_owner_response(
                 expected.source_size,
                 &mut selectors,
             )?;
-            Ok(ProviderSelectorProjectionV1 {
+            Ok(ProviderSelectorProjection {
                 structural_selector: projection.structural_selector,
                 capture_name: projection.capture_name,
                 signature: projection.signature,
@@ -210,7 +206,7 @@ pub(super) fn validate_provider_owner_response(
 }
 
 fn validate_projection(
-    projection: &ProviderNativeOwnerProjectionV1,
+    projection: &ProviderNativeOwnerProjection,
     selector_prefix: &str,
     source_size: u64,
     selectors: &mut BTreeSet<String>,
@@ -259,7 +255,7 @@ fn encode_base64(bytes: &[u8]) -> String {
 }
 
 #[cfg(unix)]
-pub(super) fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadataV1, String> {
+pub(super) fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadata, String> {
     use std::os::unix::fs::MetadataExt;
 
     let metadata = std::fs::metadata(path).map_err(|error| {
@@ -268,7 +264,7 @@ pub(super) fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetada
             path.display()
         )
     })?;
-    Ok(ProviderOwnerMetadataV1 {
+    Ok(ProviderOwnerMetadata {
         file_identity: format!("unix:{}:{}", metadata.dev(), metadata.ino()),
         size_bytes: metadata.len(),
         modified_unix_nanos: metadata
@@ -283,7 +279,7 @@ pub(super) fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetada
 }
 
 #[cfg(not(unix))]
-pub(super) fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadataV1, String> {
+pub(super) fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadata, String> {
     use std::time::UNIX_EPOCH;
 
     let metadata = std::fs::metadata(path).map_err(|error| {
@@ -298,7 +294,7 @@ pub(super) fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetada
         .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
         .map(|value| value.as_nanos().try_into().unwrap_or(i64::MAX))
         .unwrap_or_default();
-    Ok(ProviderOwnerMetadataV1 {
+    Ok(ProviderOwnerMetadata {
         file_identity: format!("path:{}", path.display()),
         size_bytes: metadata.len(),
         modified_unix_nanos,

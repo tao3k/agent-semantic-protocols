@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
 
-use agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1;
 use serde::{Deserialize, Serialize};
 
 const GLOBAL_PROVIDER_CATALOG_SCHEMA_ID: &str = "asp.global-provider-catalog.v1";
@@ -10,7 +9,7 @@ const GLOBAL_PROVIDER_CATALOG_FILE: &str = "provider-catalog.v1.json";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(super) struct GlobalProviderCatalogProviderV1 {
+pub(super) struct GlobalProviderCatalogProvider {
     pub(super) language_id: String,
     pub(super) provider_id: String,
     pub(super) manifest_id: String,
@@ -19,16 +18,40 @@ pub(super) struct GlobalProviderCatalogProviderV1 {
     pub(super) artifact_digest: String,
     pub(super) artifact_metadata_digest: String,
     pub(super) execution_command_digest: String,
-    pub(super) semantic_registry_digest: String,
+    pub(super) exact_parser_identity_digest: String,
+    pub(super) argv_prefix: Vec<String>,
+    pub(super) provider_registry_digest: String,
+    pub(super) query_pack_digest: String,
+    pub(super) exact_query_pack_identity_digest: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct GlobalProviderCatalogV1 {
+struct GlobalProviderCatalog {
     schema_id: String,
     schema_version: String,
     catalog_generation: String,
-    providers: Vec<GlobalProviderCatalogProviderV1>,
+    providers: Vec<GlobalProviderCatalogProvider>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GlobalProviderCatalogPublication {
+    pub(super) catalog_generation: String,
+    pub(super) changed_leaf_count: usize,
+    pub(super) binary_byte_reads: usize,
+    pub(super) catalog_write: bool,
+    pub(super) elapsed_micros: u128,
+    pub(super) receipt_read_micros: u128,
+    pub(super) manifest_digest_micros: u128,
+    pub(super) registry_digest_micros: u128,
+    pub(super) query_pack_digest_micros: u128,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GlobalProviderCatalogReadiness {
+    pub(super) catalog_generation: String,
+    pub(super) provider_count: usize,
+    pub(super) elapsed_micros: u128,
 }
 
 fn catalog_path() -> Result<PathBuf, String> {
@@ -41,19 +64,21 @@ fn canonical_path(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
-fn generation_digest(
-    providers: &[GlobalProviderCatalogProviderV1],
-) -> Result<String, String> {
+fn generation_digest(providers: &[GlobalProviderCatalogProvider]) -> Result<String, String> {
     let bytes = serde_json::to_vec(providers)
         .map_err(|error| format!("failed to encode Global provider catalog generation: {error}"))?;
-    Ok(
+    Ok(format!(
+        "blake3-256:{}",
         agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(&bytes)
             .as_str()
-            .to_owned(),
-    )
+    ))
 }
 
-fn validate_catalog(catalog: &GlobalProviderCatalogV1) -> Result<(), String> {
+fn blake3_integrity_ref(digest: &str) -> String {
+    format!("blake3-256:{digest}")
+}
+
+fn validate_catalog(catalog: &GlobalProviderCatalog) -> Result<(), String> {
     if catalog.schema_id != GLOBAL_PROVIDER_CATALOG_SCHEMA_ID
         || catalog.schema_version != GLOBAL_PROVIDER_CATALOG_SCHEMA_VERSION
     {
@@ -69,69 +94,132 @@ fn validate_catalog(catalog: &GlobalProviderCatalogV1) -> Result<(), String> {
             catalog.catalog_generation
         ));
     }
-    let registry_digest = agent_semantic_hook::semantic_registry_digest();
     for provider in &catalog.providers {
-        let registered_provider =
-            agent_semantic_hook::registered_provider_id_v1(&provider.language_id).ok_or_else(
-                || {
-                    format!(
-                        "Global provider catalog language is not registered: {}",
-                        provider.language_id
-                    )
-                },
-            )?;
+        let registered_provider = agent_semantic_hook::registered_provider_id_v1(
+            &provider.language_id,
+        )
+        .ok_or_else(|| {
+            format!(
+                "Global provider catalog language is not registered: {}",
+                provider.language_id
+            )
+        })?;
         if registered_provider != provider.provider_id {
             return Err(format!(
                 "Global provider catalog provider drift: language={} expected={} actual={}",
                 provider.language_id, registered_provider, provider.provider_id
             ));
         }
-        if provider.semantic_registry_digest != registry_digest {
+        let registry_digest =
+            agent_semantic_hook::registered_language_descriptor_digest(&provider.language_id)
+                .ok_or_else(|| {
+                    format!(
+                        "Global provider catalog language is not registered: {}",
+                        provider.language_id
+                    )
+                })?;
+        if provider.provider_registry_digest != registry_digest {
             return Err(format!(
                 "Global provider catalog registry drift: language={} expected={} actual={}",
-                provider.language_id, registry_digest, provider.semantic_registry_digest
+                provider.language_id, registry_digest, provider.provider_registry_digest
             ));
         }
-        let materialized_path = Path::new(&provider.materialized_path);
-        let artifact_digest =
-            agent_semantic_content_identity::file_content_digest_v1(materialized_path)?;
-        if artifact_digest != provider.artifact_digest {
+        let exact_identity = agent_semantic_hook::registered_provider_catalog_identities()
+            .iter()
+            .find(|identity| identity.language_id == provider.language_id)
+            .ok_or_else(|| {
+                format!(
+                    "Global provider catalog exact identity is not registered: {}",
+                    provider.language_id
+                )
+            })?;
+        if provider.exact_query_pack_identity_digest
+            != exact_identity.exact_query_pack_identity_digest
+        {
             return Err(format!(
-                "Global provider catalog artifact digest drift: language={} path={}",
-                provider.language_id,
-                materialized_path.display()
+                "Global provider catalog exact query-pack identity drift: language={}",
+                provider.language_id
             ));
         }
-        let artifact_metadata_digest =
-            agent_semantic_content_identity::file_artifact_metadata_digest_v1(materialized_path)?
-                .to_string();
-        if artifact_metadata_digest != provider.artifact_metadata_digest {
+        let exact_parser_identity_digest =
+            agent_semantic_content_identity::exact_selector_projection_packet::
+                derive_parser_identity_digest_v1(
+                    &agent_semantic_content_identity::exact_selector_projection_packet::
+                        ProjectionPacketProviderIdV1::from(provider.provider_id.as_str()),
+                    &agent_semantic_content_identity::exact_selector_projection_packet::
+                        ProjectionPacketExecutionCommandDigestV1::from(
+                            provider.execution_command_digest.as_str(),
+                        ),
+                    &agent_semantic_content_identity::exact_selector_projection_packet::
+                        ProjectionPacketSemanticRegistryDigestV1::from(
+                            provider.provider_registry_digest.as_str(),
+                        ),
+                )
+                .as_str()
+                .to_owned();
+        if provider.exact_parser_identity_digest != exact_parser_identity_digest {
             return Err(format!(
-                "Global provider catalog artifact metadata drift: language={} path={}",
-                provider.language_id,
-                materialized_path.display()
+                "Global provider catalog exact parser identity drift: language={}",
+                provider.language_id
+            ));
+        }
+        if provider.argv_prefix.len() != 1 || provider.argv_prefix[0] != provider.materialized_path
+        {
+            return Err(format!(
+                "Global provider catalog argv is not the installed provider artifact: language={} provider={}",
+                provider.language_id, provider.provider_id
             ));
         }
     }
     Ok(())
 }
 
-fn active_catalog() -> &'static RwLock<Option<Arc<GlobalProviderCatalogV1>>> {
-    static ACTIVE: OnceLock<RwLock<Option<Arc<GlobalProviderCatalogV1>>>> = OnceLock::new();
+fn validate_provider_leaf(provider: &GlobalProviderCatalogProvider) -> Result<(), String> {
+    let materialized_path = Path::new(&provider.materialized_path);
+    let artifact_metadata_digest =
+        agent_semantic_content_identity::file_artifact_metadata_digest_v1(materialized_path)?
+            .to_string();
+    if blake3_integrity_ref(&artifact_metadata_digest) != provider.artifact_metadata_digest {
+        return Err(format!(
+            "Global provider catalog artifact metadata drift: language={} path={}",
+            provider.language_id,
+            materialized_path.display()
+        ));
+    }
+    Ok(())
+}
+
+fn active_catalog() -> &'static RwLock<Option<Arc<GlobalProviderCatalog>>> {
+    static ACTIVE: OnceLock<RwLock<Option<Arc<GlobalProviderCatalog>>>> = OnceLock::new();
     ACTIVE.get_or_init(Default::default)
 }
 
-fn load_catalog_from_disk() -> Result<Arc<GlobalProviderCatalogV1>, String> {
+type ProviderLeafVerificationV1 = Arc<agent_semantic_search::LoadOnceGenerationV1<()>>;
+
+fn verified_provider_leaves() -> &'static RwLock<Vec<(String, ProviderLeafVerificationV1)>> {
+    static VERIFIED: OnceLock<RwLock<Vec<(String, ProviderLeafVerificationV1)>>> = OnceLock::new();
+    VERIFIED.get_or_init(Default::default)
+}
+
+fn load_catalog_from_disk() -> Result<Arc<GlobalProviderCatalog>, String> {
     let path = catalog_path()?;
-    let bytes = std::fs::read(&path)
-        .map_err(|error| format!("failed to read Global provider catalog {}: {error}", path.display()))?;
-    let catalog: GlobalProviderCatalogV1 = serde_json::from_slice(&bytes)
-        .map_err(|error| format!("failed to parse Global provider catalog {}: {error}", path.display()))?;
+    let bytes = std::fs::read(&path).map_err(|error| {
+        format!(
+            "failed to read Global provider catalog {}: {error}",
+            path.display()
+        )
+    })?;
+    let catalog: GlobalProviderCatalog = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "failed to parse Global provider catalog {}: {error}",
+            path.display()
+        )
+    })?;
     validate_catalog(&catalog)?;
     Ok(Arc::new(catalog))
 }
 
-fn load_once_catalog() -> Result<Arc<GlobalProviderCatalogV1>, String> {
+fn load_once_catalog() -> Result<Arc<GlobalProviderCatalog>, String> {
     if let Some(catalog) = active_catalog()
         .read()
         .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?
@@ -147,11 +235,41 @@ fn load_once_catalog() -> Result<Arc<GlobalProviderCatalogV1>, String> {
     Ok(Arc::clone(catalog))
 }
 
-pub(super) fn global_provider_for_language_v1(
+pub(super) fn read_global_provider_catalog_readiness()
+-> Result<GlobalProviderCatalogReadiness, String> {
+    let started_at = std::time::Instant::now();
+    let catalog = load_catalog_from_disk()?;
+    Ok(GlobalProviderCatalogReadiness {
+        catalog_generation: catalog.catalog_generation.clone(),
+        provider_count: catalog.providers.len(),
+        elapsed_micros: started_at.elapsed().as_micros(),
+    })
+}
+
+fn validate_provider_leaf_once(
+    verification_key: String,
+    verify: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let verification = {
+        let mut verified = verified_provider_leaves()
+            .write()
+            .map_err(|_| "Global provider catalog leaf write guard is poisoned".to_owned())?;
+        if let Some((_, verification)) = verified.iter().find(|(key, _)| key == &verification_key) {
+            Arc::clone(verification)
+        } else {
+            let verification = Arc::new(agent_semantic_search::LoadOnceGenerationV1::new());
+            verified.push((verification_key, Arc::clone(&verification)));
+            verification
+        }
+    };
+    verification.get_or_try_init(verify).map(|_| ())
+}
+
+pub(super) fn global_provider_for_language(
     language_id: &str,
-) -> Result<GlobalProviderCatalogProviderV1, String> {
+) -> Result<GlobalProviderCatalogProvider, String> {
     let catalog = load_once_catalog()?;
-    catalog
+    let provider = catalog
         .providers
         .iter()
         .find(|provider| provider.language_id == language_id)
@@ -160,59 +278,227 @@ pub(super) fn global_provider_for_language_v1(
             format!(
                 "Global provider catalog has no provider for language {language_id}; run the explicit Global plugin reconciliation"
             )
-        })
+        })?;
+    let verification_key = format!(
+        "{}:{}:{}",
+        catalog.catalog_generation, provider.language_id, provider.artifact_digest
+    );
+    validate_provider_leaf_once(verification_key, || validate_provider_leaf(&provider))?;
+    Ok(provider)
 }
 
-pub(super) fn publish_global_provider_catalog_v1(
-    activation: &agent_semantic_hook::HookActivation,
-    artifacts: &[agent_semantic_hook::ActiveAspArtifactInput],
-) -> Result<String, String> {
-    let registry_digest = agent_semantic_hook::semantic_registry_digest();
-    let mut providers = activation
-        .providers
+pub(super) fn publish_global_provider_catalog(
+    receipts: &[super::install_provider_reconcile::ProviderInstallReceipt],
+) -> Result<GlobalProviderCatalogPublication, String> {
+    let started_at = std::time::Instant::now();
+    let receipt_read_micros = 0;
+    let manifest_digest_micros = 0;
+    let mut registry_digest_micros = 0;
+    let query_pack_digest_micros = 0;
+    let phase = std::time::Instant::now();
+    let catalog_identities = agent_semantic_hook::registered_provider_catalog_identities();
+    registry_digest_micros += phase.elapsed().as_micros();
+    let manifests = agent_semantic_hook::schema_registry_provider_manifests();
+    let active_generation = active_catalog()
+        .read()
+        .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?
+        .as_ref()
+        .filter(|active| active_catalog_matches_receipts(active, &manifests, receipts))
+        .map(|active| active.catalog_generation.clone());
+    if let Some(catalog_generation) = active_generation {
+        return Ok(GlobalProviderCatalogPublication {
+            catalog_generation,
+            changed_leaf_count: 0,
+            binary_byte_reads: 0,
+            catalog_write: false,
+            elapsed_micros: started_at.elapsed().as_micros(),
+            receipt_read_micros,
+            manifest_digest_micros,
+            registry_digest_micros,
+            query_pack_digest_micros,
+        });
+    }
+    let mut providers = manifests
         .iter()
-        .map(|provider| {
-            let provider_path = canonical_path(Path::new(&provider.binary));
-            let artifact = artifacts
+        .map(|manifest| {
+            let receipt = receipts
                 .iter()
-                .filter(|artifact| artifact.artifact_kind == ActiveArtifactKindV1::ProviderBinary)
-                .find(|artifact| canonical_path(&artifact.materialized_path) == provider_path)
+                .find(|receipt| receipt.language_id == manifest.language_id().as_str())
+                .or_else(|| {
+                    receipts.iter().find(|receipt| {
+                        receipt
+                            .installed_path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            == Some(manifest.binary())
+                    })
+                })
                 .ok_or_else(|| {
                     format!(
-                        "Global provider catalog is missing installed artifact: language={} provider={} path={}",
-                        provider.language_id,
-                        provider.provider_id,
-                        provider_path.display()
+                        "Global provider catalog lacks install receipt for language={} binary={}",
+                        manifest.language_id(),
+                        manifest.binary()
                     )
                 })?;
-            Ok(GlobalProviderCatalogProviderV1 {
-                language_id: provider.language_id.to_string(),
-                provider_id: provider.provider_id.to_string(),
-                manifest_id: provider.manifest_id.clone(),
-                manifest_digest: provider.manifest_digest.clone(),
+            if receipt.language_id == manifest.language_id().as_str()
+                && receipt.provider_id != manifest.provider_id().as_str()
+            {
+                return Err(format!(
+                    "provider install receipt identity mismatch: language={} expectedProvider={} actualProvider={}",
+                    receipt.language_id,
+                    manifest.provider_id(),
+                    receipt.provider_id
+                ));
+            }
+            let provider_path = canonical_path(&receipt.installed_path);
+            if provider_path.file_name().and_then(|name| name.to_str()) != Some(manifest.binary()) {
+                return Err(format!(
+                    "provider install receipt binary mismatch: language={} expectedBinary={} actualPath={}",
+                    manifest.language_id(),
+                    manifest.binary(),
+                    provider_path.display()
+                ));
+            }
+            let artifact_digest =
+                blake3_integrity_ref(&receipt.installed_entrypoint_digest);
+            let command_prefix = vec![provider_path.to_string_lossy().to_string()];
+            let identity = catalog_identities
+                .iter()
+                .find(|identity| identity.language_id == manifest.language_id().as_str())
+                .ok_or_else(|| {
+                    format!(
+                        "Global provider catalog language identity is not registered: {}",
+                        manifest.language_id()
+                    )
+                })?;
+            let manifest_digest = identity.manifest_digest.clone();
+            let provider_registry_digest = identity.provider_registry_digest.clone();
+            let query_pack_digest = identity.query_pack_digest.clone();
+            let exact_parser_identity_digest =
+                agent_semantic_content_identity::exact_selector_projection_packet::
+                    derive_parser_identity_digest_v1(
+                        &agent_semantic_content_identity::exact_selector_projection_packet::
+                        ProjectionPacketProviderIdV1::from(manifest.provider_id().as_str()),
+                        &agent_semantic_content_identity::exact_selector_projection_packet::
+                            ProjectionPacketExecutionCommandDigestV1::from(
+                                receipt.execution_command_digest.as_str(),
+                            ),
+                        &agent_semantic_content_identity::exact_selector_projection_packet::
+                            ProjectionPacketSemanticRegistryDigestV1::from(
+                                provider_registry_digest.as_str(),
+                            ),
+                    )
+                    .as_str()
+                    .to_owned();
+            Ok(GlobalProviderCatalogProvider {
+                language_id: manifest.language_id().to_string(),
+                provider_id: manifest.provider_id().to_string(),
+                manifest_id: manifest.manifest_id().to_owned(),
+                manifest_digest,
                 materialized_path: provider_path.to_string_lossy().to_string(),
-                artifact_digest: artifact.artifact_digest.clone(),
-                artifact_metadata_digest:
-                    agent_semantic_content_identity::file_artifact_metadata_digest_v1(
-                        &provider_path,
-                    )?
-                    .to_string(),
-                execution_command_digest: provider.execution_command_digest.clone(),
-                semantic_registry_digest: registry_digest.clone(),
+                artifact_digest,
+                artifact_metadata_digest: blake3_integrity_ref(
+                    &receipt.installed_entrypoint_metadata_digest,
+                ),
+                execution_command_digest: receipt.execution_command_digest.clone(),
+                exact_parser_identity_digest,
+                argv_prefix: command_prefix,
+                provider_registry_digest,
+                query_pack_digest,
+                exact_query_pack_identity_digest: identity
+                    .exact_query_pack_identity_digest
+                    .clone(),
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
     providers.sort_by(|left, right| {
         (&left.language_id, &left.provider_id).cmp(&(&right.language_id, &right.provider_id))
     });
-    let catalog = GlobalProviderCatalogV1 {
+    let catalog = GlobalProviderCatalog {
         schema_id: GLOBAL_PROVIDER_CATALOG_SCHEMA_ID.to_owned(),
         schema_version: GLOBAL_PROVIDER_CATALOG_SCHEMA_VERSION.to_owned(),
         catalog_generation: generation_digest(&providers)?,
         providers,
     };
+    if active_catalog()
+        .read()
+        .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?
+        .as_ref()
+        .is_some_and(|active| active.catalog_generation == catalog.catalog_generation)
+    {
+        return Ok(GlobalProviderCatalogPublication {
+            catalog_generation: catalog.catalog_generation,
+            changed_leaf_count: 0,
+            binary_byte_reads: 0,
+            catalog_write: false,
+            elapsed_micros: started_at.elapsed().as_micros(),
+            receipt_read_micros,
+            manifest_digest_micros,
+            registry_digest_micros,
+            query_pack_digest_micros,
+        });
+    }
     validate_catalog(&catalog)?;
     let path = catalog_path()?;
+    let previous = if path.exists() {
+        let bytes = std::fs::read(&path).map_err(|error| {
+            format!(
+                "failed to read Global provider catalog {}: {error}",
+                path.display()
+            )
+        })?;
+        serde_json::from_slice::<GlobalProviderCatalog>(&bytes)
+            .ok()
+            .filter(|previous| validate_catalog(previous).is_ok())
+    } else {
+        None
+    };
+    let changed_leaf_count = previous
+        .as_ref()
+        .map(|previous| {
+            catalog
+                .providers
+                .iter()
+                .filter(|provider| {
+                    previous
+                        .providers
+                        .iter()
+                        .find(|candidate| candidate.language_id == provider.language_id)
+                        != Some(*provider)
+                })
+                .count()
+                + previous
+                    .providers
+                    .iter()
+                    .filter(|provider| {
+                        !catalog
+                            .providers
+                            .iter()
+                            .any(|candidate| candidate.language_id == provider.language_id)
+                    })
+                    .count()
+        })
+        .unwrap_or(catalog.providers.len());
+    if previous
+        .as_ref()
+        .is_some_and(|previous| previous.catalog_generation == catalog.catalog_generation)
+    {
+        *active_catalog()
+            .write()
+            .map_err(|_| "Global provider catalog write guard is poisoned".to_owned())? =
+            Some(Arc::new(catalog.clone()));
+        return Ok(GlobalProviderCatalogPublication {
+            catalog_generation: catalog.catalog_generation,
+            changed_leaf_count: 0,
+            binary_byte_reads: 0,
+            catalog_write: false,
+            elapsed_micros: started_at.elapsed().as_micros(),
+            receipt_read_micros,
+            manifest_digest_micros,
+            registry_digest_micros,
+            query_pack_digest_micros,
+        });
+    }
     let parent = path.parent().ok_or_else(|| {
         format!(
             "Global provider catalog path has no parent: {}",
@@ -247,5 +533,53 @@ pub(super) fn publish_global_provider_catalog_v1(
         .write()
         .map_err(|_| "Global provider catalog write guard is poisoned".to_owned())? =
         Some(Arc::new(catalog.clone()));
-    Ok(catalog.catalog_generation)
+    Ok(GlobalProviderCatalogPublication {
+        catalog_generation: catalog.catalog_generation,
+        changed_leaf_count,
+        binary_byte_reads: 0,
+        catalog_write: true,
+        elapsed_micros: started_at.elapsed().as_micros(),
+        receipt_read_micros,
+        manifest_digest_micros,
+        registry_digest_micros,
+        query_pack_digest_micros,
+    })
+}
+
+fn active_catalog_matches_receipts(
+    active: &GlobalProviderCatalog,
+    manifests: &[agent_semantic_hook::ProviderManifest],
+    receipts: &[super::install_provider_reconcile::ProviderInstallReceipt],
+) -> bool {
+    active.providers.len() == manifests.len()
+        && manifests.iter().all(|manifest| {
+            let Some(provider) = active
+                .providers
+                .iter()
+                .find(|provider| provider.language_id == manifest.language_id().as_str())
+            else {
+                return false;
+            };
+            let Some(receipt) = receipts
+                .iter()
+                .find(|receipt| receipt.language_id == manifest.language_id().as_str())
+                .or_else(|| {
+                    receipts.iter().find(|receipt| {
+                        receipt
+                            .installed_path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            == Some(manifest.binary())
+                    })
+                })
+            else {
+                return false;
+            };
+            provider.provider_id == manifest.provider_id().as_str()
+                && provider.artifact_digest
+                    == blake3_integrity_ref(&receipt.installed_entrypoint_digest)
+                && provider.artifact_metadata_digest
+                    == blake3_integrity_ref(&receipt.installed_entrypoint_metadata_digest)
+                && provider.execution_command_digest == receipt.execution_command_digest
+        })
 }

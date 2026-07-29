@@ -1,6 +1,6 @@
 use agent_semantic_client_db::ClientDbEngine;
 use agent_semantic_content_identity::canonical_item_identity::{
-    CanonicalItemIdentityV1, CanonicalItemSelectorV1,
+    CanonicalItemIdentity, CanonicalItemSelector,
 };
 use agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1;
 use agent_semantic_content_identity::exact_selector_merkle::{
@@ -22,8 +22,8 @@ fn turso_round_trip_returns_only_a_validated_merkle_projection() {
     std::fs::create_dir_all(&root).expect("create exact-selector test directory");
     let owner_path = "src/lib.rs";
     let selector = "rust://src/lib.rs#item/function/example";
-    let canonical_item_selector = CanonicalItemSelectorV1::new(
-        CanonicalItemIdentityV1::new("rust", "function", "example"),
+    let canonical_item_selector = CanonicalItemSelector::new(
+        CanonicalItemIdentity::new("rust", "function", "example"),
         selector,
     );
     let source = b"fn example() {}\n";

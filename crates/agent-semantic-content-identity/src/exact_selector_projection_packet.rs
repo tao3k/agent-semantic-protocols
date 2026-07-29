@@ -110,7 +110,7 @@ pub struct ExactSelectorProjectionPacketV1 {
     pub digest_algorithm: String,
     pub language_id: ProjectionPacketLanguageIdV1,
     pub provider_id: ProjectionPacketProviderIdV1,
-    canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
+    canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelector,
     pub parser_identity_digest: ContentDigestV1,
     pub query_pack_digest: ContentDigestV1,
     pub owner_path: ProjectionPacketOwnerPathV1,
@@ -131,7 +131,7 @@ pub struct ExactSelectorProjectionPacketV1Input<'a> {
     /// Provider that produced the projection.
     pub provider_id: &'a ProjectionPacketProviderIdV1,
     /// Canonical item selected from the owner.
-    pub canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelectorV1,
+    pub canonical_item_selector: crate::canonical_item_identity::CanonicalItemSelector,
     /// Digest identifying the parser implementation.
     pub parser_identity_digest: &'a ContentDigestV1,
     /// Digest identifying the parser query pack.

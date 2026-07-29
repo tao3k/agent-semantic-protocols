@@ -17,9 +17,9 @@ mod value;
 pub use active_artifact_merkle_v1::ActiveArtifactSetIdV1;
 pub use canonical_item_identity::{
     CANONICAL_ITEM_SELECTOR_SCHEMA_ID, CANONICAL_ITEM_SELECTOR_SCHEMA_VERSION,
-    CanonicalItemIdentityV1, CanonicalItemKindV1, CanonicalItemLanguageIdV1,
-    CanonicalItemScopeKindV1, CanonicalItemScopeRelationV1, CanonicalItemScopeSymbolV1,
-    CanonicalItemScopeV1, CanonicalItemSelectorV1, CanonicalItemSymbolV1,
+    CanonicalItemIdentity, CanonicalItemKind, CanonicalItemLanguageId, CanonicalItemScope,
+    CanonicalItemScopeKind, CanonicalItemScopeRelation, CanonicalItemScopeSymbol,
+    CanonicalItemSelector, CanonicalItemSymbol,
 };
 
 pub use derived_artifact_evidence::{

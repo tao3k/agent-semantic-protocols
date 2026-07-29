@@ -54,7 +54,7 @@ pub fn render_selector_seeded_search_pipe(request: SelectorSeededSearchPipeReque
         workspace,
     } = request;
     let canonical_selector =
-        agent_semantic_content_identity::CanonicalItemSelectorV1::parse(selector)
+        agent_semantic_content_identity::CanonicalItemSelector::parse(selector)
             .ok()
             .filter(|selector| selector.language_id.as_str() == language_id);
     let owner = canonical_selector
@@ -124,7 +124,7 @@ fn reject_unsupported_view(
 }
 
 fn selector_seed_actions(
-    selector: Option<&agent_semantic_content_identity::CanonicalItemSelectorV1>,
+    selector: Option<&agent_semantic_content_identity::CanonicalItemSelector>,
     owner: &str,
     symbol: &str,
     query: &str,
@@ -167,7 +167,7 @@ fn selector_seed_actions(
         .collect()
 }
 
-fn selector_owner(selector: &agent_semantic_content_identity::CanonicalItemSelectorV1) -> &str {
+fn selector_owner(selector: &agent_semantic_content_identity::CanonicalItemSelector) -> &str {
     selector
         .structural_selector()
         .split_once("://")
@@ -176,7 +176,7 @@ fn selector_owner(selector: &agent_semantic_content_identity::CanonicalItemSelec
         .expect("validated canonical selector has an owner")
 }
 
-fn selector_symbol(selector: &agent_semantic_content_identity::CanonicalItemSelectorV1) -> &str {
+fn selector_symbol(selector: &agent_semantic_content_identity::CanonicalItemSelector) -> &str {
     selector.symbol.as_str()
 }
 

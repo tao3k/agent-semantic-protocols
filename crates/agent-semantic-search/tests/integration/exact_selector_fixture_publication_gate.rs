@@ -60,6 +60,7 @@ fn active_receipt_without_exact_fixture_is_typed_cold_required() {
 
 #[test]
 fn concurrent_publication_commits_one_complete_generation() {
+    let _performance_gate = super::performance_gate::lock();
     let started = std::time::Instant::now();
     let identity = Arc::new(ExactSelectorGenerationIdentityV1 {
         generation_digest: [9; 32],
@@ -79,7 +80,7 @@ fn concurrent_publication_commits_one_complete_generation() {
         source_blob_digest: [1; 32],
         owner_subtree_digest: [2; 32],
         normalized_parser_facts_digest: [3; 32],
-        projection_mode: ExactSelectorProjectionModeV1::Code,
+        projection_mode: ExactSelectorProjectionModeV1::Source,
         source_byte_range: 0..32,
         projection: vec![0x5a; 32],
     };
@@ -147,6 +148,21 @@ fn concurrent_publication_commits_one_complete_generation() {
         .expect("warm active artifact selector hit");
     let warm_micros = warm_started.elapsed().as_micros();
     assert_eq!(cold_projection.as_bytes(), warm_projection.as_bytes());
+    assert!(warm_projection.matches_generation_authority_v1(
+        "rust",
+        "rs-harness",
+        &blake3::Hash::from_bytes([8; 32]).to_hex().to_string(),
+        &blake3::Hash::from_bytes([7; 32]).to_hex().to_string(),
+    ));
+    assert!(!warm_projection.matches_generation_authority_v1(
+        "rust",
+        "rs-harness",
+        &blake3::Hash::from_bytes([0; 32]).to_hex().to_string(),
+        &blake3::Hash::from_bytes([7; 32]).to_hex().to_string(),
+    ));
+    assert_eq!(warm_projection.workspace_root_digest(), &[5; 32]);
+    assert_eq!(warm_projection.workspace_identity_digest(), &[6; 32]);
+    assert_eq!(warm_projection.generation_digest(), &[9; 32]);
     eprintln!("activeArtifactLookup coldMicros={cold_micros} warmMicros={warm_micros}");
     assert!(
         cold_micros <= 1_000,

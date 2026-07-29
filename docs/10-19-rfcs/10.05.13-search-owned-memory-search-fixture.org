@@ -1,39 +1,37 @@
-#+title: Search-owned Memory Search Fixture
+#+title: Search-owned Turso Memory Search Fixture
 #+startup: overview
 
 * Status
 
-Proposed v1 contract for implementation and performance gating.
+Accepted v1 contract aligned with 10.05.69.
 
 * Ownership
 
-=agent-semantic-search= owns Memory Search semantics, immutable generation
-indexes, fixture construction, resolution outcomes, and performance receipts.
+=agent-semantic-search= owns Memory Search resolution semantics, fixture
+scenarios, and performance receipts.  Turso is the single runtime and fixture
+search authority.  The fixture does not implement a generic backend, a Rust
+map index, or a second generation model.
 
-Storage crates implement backend adapters only.  Turso, an in-process fixture,
-and future remote stores must expose the same Search-owned contract.  No
-storage backend may define selector relocation semantics.
+Protocol versions belong to schema filenames, =schemaId=, and
+=schemaVersion: "1"=.  Rust domain types do not use =V1= suffixes.
 
-* V1 flow
+* Production-shaped flow
 
 #+begin_example
-MemorySearchFixtureV1
-  -> MemorySearchGenerationV1
-  -> MemorySearchIndexV1
-  -> MemorySearchEngineV1
-  -> MemorySearchResolutionV1
+MemorySearchFixture
+  -> source-index generation transaction
+  -> WorkspaceDbRegistry resident session
+  -> TursoMemorySearchBackend
+  -> MemorySearchResolution
 #+end_example
 
-The generation commits to:
+Fixture publication and runtime lookup are separate phases.  Publication uses
+the production source-index transaction.  Lookup uses the same resident
+workspace session and indexed Turso statement as installed ASP.
 
-- generation identity and source root
-- language and provider identity
-- canonical item identities
-- owner topology and owner content digests
-- parser and query-pack identities
+* Resolution contract
 
-The engine accepts a requested canonical item identity and returns exactly one
-typed outcome:
+The backend returns exactly one typed outcome:
 
 - =live-hit=
 - =live-relocated=
@@ -42,52 +40,35 @@ typed outcome:
 - =missing=
 - =generation-mismatch=
 
-* Fixture contract
+Identity is bound to workspace, active generation, language, provider, parser,
+query pack, canonical item, and owner content digest.
 
-=MemorySearchFixtureV1= is a production-shaped fixture, not a test-only text
-stub.  It builds the same immutable indexes consumed by runtime backends.
+* Provider boundary
 
-Required fixture scenarios:
+Provider owner acquisition always publishes =complete-owner= projections.
+User query text is not a provider acquisition input and is applied only by the
+resident Turso consumer.  The same schema-owned provider method is available
+to every registered language and is lazily loaded from the provider registry.
 
-1. exact item remains in its owner
-2. item moves to one sibling owner
-3. two owners contain the same unscoped identity
-4. symbol survives with a different item kind
-5. generation changes after a relocation receipt
-6. empty generation with Merkle root depth zero
-7. concurrent readers share one immutable generation
+* Required scenarios
 
-Fixtures contain typed canonical selectors and owner evidence.  They must not
-derive identities from filenames, source text search, or line ranges.
-
-* Backend contract
-
-A backend loads one immutable generation and may persist a resolution receipt
-bound to:
-
-- generation identity
-- requested canonical identity
-- resolved canonical identity
-- parser identity
-- query-pack identity
-- projection mode
-
-The engine validates the receipt.  The backend does not interpret it.
+1. exact item remains in its owner;
+2. item moves to one sibling owner;
+3. two owners contain the same unscoped identity;
+4. symbol survives with a different item kind;
+5. generation changes after relocation;
+6. empty generation with Merkle root depth zero;
+7. concurrent readers share one resident generation;
+8. nested project roots reuse one canonical workspace session;
+9. every registered language either passes the owner-projection fixture or
+   fails closed as an explicitly unsupported capability.
 
 * Performance receipt
 
-Every fixture and runtime execution reports:
+Every fixture and installed execution reports generation load latency, indexed
+lookup latency, candidate count, source bytes, DB opens and queries, provider
+processes, cache writes, and resolution state.
 
-- generation load latency
-- index lookup latency
-- candidate count
-- source bytes materialized
-- DB opens and queries
-- provider subprocess count
-- cache writes
-- resolution state
-
-Warm resolution requires zero provider subprocesses and zero workspace source
-scans.  Cold resolution against an already active generation must remain a
-bounded in-memory/index lookup; fixture gates establish the exact percentile
-budget before the runtime adapter is enabled.
+Warm lookup requires zero provider processes, zero source scans, zero database
+opens, zero schema bootstraps, and zero writes.  Compile and bootstrap receipts
+are measured separately from runtime lookup.

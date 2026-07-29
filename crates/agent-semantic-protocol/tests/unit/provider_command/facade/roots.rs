@@ -478,8 +478,8 @@ fn install_exact_selector_projection_provider(
         );
     let source = std::fs::read(member.join("src/lib.rs")).expect("read exact-selector source");
     let canonical_item_selector =
-        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1::new(
-            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentityV1::new(
+        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::new(
+            agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentity::new(
                 "rust", "function", "value",
             ),
             structural_selector,

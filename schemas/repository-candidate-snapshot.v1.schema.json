@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json",
+  "title": "Repository Candidate Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "mode",
+    "repositoryIdentity",
+    "worktreeIdentity",
+    "candidateGeneration",
+    "candidates",
+    "metrics"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.repository-candidate-snapshot"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "mode": {
+      "enum": [
+        "git",
+        "provider-only"
+      ]
+    },
+    "repositoryIdentity": {
+      "$ref": "#/$defs/repositoryIdentity"
+    },
+    "worktreeIdentity": {
+      "$ref": "#/$defs/worktreeIdentity"
+    },
+    "candidateGeneration": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/candidate"
+      }
+    },
+    "metrics": {
+      "$ref": "#/$defs/metrics"
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repositoryIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "repositoryId",
+        "root"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "git",
+            "path"
+          ]
+        },
+        "repositoryId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "root": {
+          "$ref": "#/$defs/path"
+        },
+        "gitCommonDir": {
+          "$ref": "#/$defs/path"
+        },
+        "remoteUrl": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "worktreeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceId",
+        "checkoutRoot",
+        "sparseCheckout"
+      ],
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkoutRoot": {
+          "$ref": "#/$defs/path"
+        },
+        "gitDir": {
+          "$ref": "#/$defs/path"
+        },
+        "headOid": {
+          "type": "string",
+          "minLength": 1
+        },
+        "indexDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sparseCheckout": {
+          "type": "boolean"
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "state",
+        "authority"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "state": {
+          "enum": [
+            "indexed",
+            "modified",
+            "added",
+            "deleted",
+            "untracked"
+          ]
+        },
+        "authority": {
+          "enum": [
+            "git-index",
+            "git-worktree",
+            "git-status",
+            "provider-marker",
+            "provider-manifest"
+          ]
+        },
+        "indexMode": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateCount",
+        "trackedCount",
+        "changedCount",
+        "untrackedCount",
+        "deletedCount",
+        "fullWorkspaceReads",
+        "elapsedMicros"
+      ],
+      "properties": {
+        "candidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "trackedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "untrackedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deletedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fullWorkspaceReads": {
+          "const": 0
+        },
+        "elapsedMicros": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

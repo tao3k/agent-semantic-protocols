@@ -59,7 +59,7 @@ fn record(index: usize) -> ExactSelectorGenerationRecordV1 {
         owner_subtree_digest: [6; 32],
         source_blob_digest: [7; 32],
         normalized_parser_facts_digest: [8; 32],
-        projection_mode: ExactSelectorProjectionModeV1::Code,
+        projection_mode: ExactSelectorProjectionModeV1::Source,
         source_byte_range: 0..projection.len() as u64,
         projection,
     }
@@ -83,7 +83,7 @@ fn resident_projection_carries_live_owner_validation_proof() {
     assert_eq!(projection.normalized_parser_facts_digest(), &[8; 32]);
     assert_eq!(
         projection.projection_mode(),
-        ExactSelectorProjectionModeV1::Code
+        ExactSelectorProjectionModeV1::Source
     );
     assert_eq!(loads.load(Ordering::SeqCst), 1);
 }
@@ -103,6 +103,7 @@ fn fixture(selector_count: usize) -> ExactSelectorFixtureArtifactV1 {
 
 #[test]
 fn ten_thousand_selector_memory_lookup_has_hard_cold_and_warm_gates() {
+    let _performance_gate = super::performance_gate::lock();
     const SELECTOR_COUNT: usize = 10_000;
     let fixture = fixture(SELECTOR_COUNT);
     let target = selector(SELECTOR_COUNT - 1);
@@ -163,6 +164,7 @@ impl ExactSelectorFixtureBackendV1 for CountingBackend {
 
 #[test]
 fn thirty_two_concurrent_callers_load_one_fixture_generation() {
+    let _performance_gate = super::performance_gate::lock();
     let loads = Arc::new(AtomicUsize::new(0));
     let resident = Arc::new(ExactSelectorFixtureResidentV1::new(CountingBackend {
         artifact: Mutex::new(Some(fixture(10_000))),
@@ -196,6 +198,7 @@ fn thirty_two_concurrent_callers_load_one_fixture_generation() {
 
 #[test]
 fn digest_verified_file_backend_has_hard_cold_and_warm_gates() {
+    let _performance_gate = super::performance_gate::lock();
     let fixture = fixture(1);
     let artifact_digest = blake3::hash(&fixture.fixture_bytes).to_hex().to_string();
     let path = std::env::temp_dir().join(format!(
@@ -229,6 +232,11 @@ fn digest_verified_file_backend_has_hard_cold_and_warm_gates() {
     assert!(
         warm_elapsed <= WARM_BUDGET,
         "file fixture warm path exceeded hard budget: elapsed={warm_elapsed:?} budget={WARM_BUDGET:?}"
+    );
+    eprintln!(
+        "fileFixturePerformance coldMicros={} warmMicros={}",
+        cold_elapsed.as_micros(),
+        warm_elapsed.as_micros()
     );
     std::fs::remove_file(path).expect("remove fixture artifact");
 }

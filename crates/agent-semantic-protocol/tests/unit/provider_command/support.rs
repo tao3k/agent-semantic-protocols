@@ -10,11 +10,8 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod paths;
-mod source_scope;
 #[cfg(test)]
 mod tests;
-
-use source_scope::ensure_provider_source_scope_fixture;
 
 pub(super) const CACHE_SOURCE_PATH: &str = "src/lib.rs";
 pub(super) const CACHE_SOURCE_TEXT: &str = "struct CacheReplay;\n";
@@ -68,7 +65,6 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 .into_iter()
                 .find(|manifest| manifest.language_id().as_str() == spec.language_id)
                 .unwrap_or_else(|| panic!("missing manifest for {}", spec.language_id));
-            ensure_provider_source_scope_fixture(root, &manifest);
             let runtime_bin = state_runtime_bin(root);
             let installed_provider = runtime_bin.join(manifest.binary());
             if !installed_provider.exists() {

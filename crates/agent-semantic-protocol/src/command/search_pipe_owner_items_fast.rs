@@ -10,10 +10,9 @@ use super::search_pipe_provider_facts::ProviderGraphFactsContext;
 use super::search_pipe_view::reject_non_graph_turbo_receipt;
 use agent_semantic_client::language_owner_items_workspace_root;
 use agent_semantic_client_db::{
-    ProviderIncrementalOwnerWriteV1, ProviderIncrementalScopeV1, ProviderIncrementalWriteReceiptV1,
-    ProviderOwnerBatchProbeRequestV1, ProviderOwnerDecisionV1, ProviderOwnerFingerprintV1,
-    ProviderOwnerMetadataV1, ProviderOwnerProbeV1, ProviderSearchWorkspaceSessionV1,
-    ProviderSelectorProjectionV1, WorkspaceDbRegistry,
+    ProviderIncrementalOwnerWrite, ProviderIncrementalScoped, ProviderIncrementalWriteReceipt,
+    ProviderOwnerBatchProbeRequest, ProviderOwnerDecision, ProviderOwnerFingerprint,
+    ProviderOwnerMetadata, ProviderOwnerProbe, ProviderSelectorProjection,
 };
 
 pub(super) struct SearchOwnerItemsFastContext<'a> {
@@ -27,7 +26,7 @@ pub(super) struct SearchOwnerItemsFastContext<'a> {
 struct OwnerItemsSearchState<'a> {
     language_id: &'a str,
     owner_project_root: PathBuf,
-    incremental_scope: Option<ProviderIncrementalScopeV1>,
+    incremental_scope: Option<ProviderIncrementalScoped>,
     provider_context: Option<&'a ProviderGraphFactsContext<'a>>,
     owner: &'a Path,
     query: &'a str,
@@ -68,14 +67,11 @@ impl<'a> OwnerItemsSearchState<'a> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .map_err(|error| {
-                format!("failed to create provider incremental runtime: {error}")
-            })?;
+            .map_err(|error| format!("failed to create provider incremental runtime: {error}"))?;
         owner_items_trace("runtime-build", runtime_started);
         let session_started = Instant::now();
-        let session = runtime.block_on(
-            WorkspaceDbRegistry::process().acquire(&self.owner_project_root, scope),
-        )?;
+        let session = super::workspace_db_resident::session(&self.owner_project_root)
+            .map_err(|error| error.to_string())?;
         owner_items_trace("workspace-session-acquire", session_started);
         let normalized_owner_started = Instant::now();
         let (owner_path, owner_key) = normalized_owner_path(&self.owner_project_root, self.owner)?;
@@ -131,28 +127,28 @@ struct OwnerItemsExecutionReceipt {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct OwnerItemsWarmHit {
     generation: Option<String>,
-    projections: Vec<ProviderSelectorProjectionV1>,
+    projections: Vec<ProviderSelectorProjection>,
     receipt: OwnerItemsExecutionReceipt,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum OwnerItemsLookup {
     Warm(OwnerItemsWarmHit),
-    Refresh(ProviderOwnerProbeV1),
+    Refresh(ProviderOwnerProbe),
 }
 
 fn lookup_owner_state(
     runtime: &tokio::runtime::Runtime,
-    session: &ProviderSearchWorkspaceSessionV1,
-    scope: &ProviderIncrementalScopeV1,
+    session: &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
+    scope: &ProviderIncrementalScoped,
     owner_path: &str,
-    metadata: &ProviderOwnerMetadataV1,
+    metadata: &ProviderOwnerMetadata,
     query: &str,
 ) -> Result<OwnerItemsLookup, String> {
     let owner_state_started = Instant::now();
     let probe_receipt = runtime.block_on(session.probe_provider_owners(
         scope,
-        &[ProviderOwnerBatchProbeRequestV1 {
+        &[ProviderOwnerBatchProbeRequest {
             owner_path: owner_path.to_owned(),
             metadata: metadata.clone(),
         }],
@@ -164,7 +160,7 @@ fn lookup_owner_state(
         .ok_or_else(|| "provider owner batch probe returned no result".to_owned())?
         .probe;
     owner_items_trace("turso-owner-state", owner_state_started);
-    if probe.decision != ProviderOwnerDecisionV1::Unchanged {
+    if probe.decision != ProviderOwnerDecision::Unchanged {
         return Ok(OwnerItemsLookup::Refresh(probe));
     }
     let filter_started = Instant::now();
@@ -194,7 +190,7 @@ fn zero_side_effect_warm_receipt() -> OwnerItemsExecutionReceipt {
     }
 }
 
-fn projection_matches_query(projection: &ProviderSelectorProjectionV1, query: &str) -> bool {
+fn projection_matches_query(projection: &ProviderSelectorProjection, query: &str) -> bool {
     let query = query.to_ascii_lowercase();
     query.is_empty()
         || projection
@@ -237,22 +233,22 @@ struct RefreshOwnerRequest<'a> {
     language_id: &'a str,
     owner_project_root: &'a Path,
     runtime: &'a tokio::runtime::Runtime,
-    session: &'a ProviderSearchWorkspaceSessionV1,
-    scope: &'a ProviderIncrementalScopeV1,
+    session: &'a agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
+    scope: &'a ProviderIncrementalScoped,
     provider_context: &'a ProviderGraphFactsContext<'a>,
     owner_path: &'a Path,
     owner_key: &'a str,
-    metadata: ProviderOwnerMetadataV1,
+    metadata: ProviderOwnerMetadata,
     query: &'a str,
-    probe: ProviderOwnerProbeV1,
+    probe: ProviderOwnerProbe,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct OwnerItemsRefreshHit {
-    decision: ProviderOwnerDecisionV1,
+    decision: ProviderOwnerDecision,
     generation_before: Option<String>,
     generation_after: String,
-    projections: Vec<ProviderSelectorProjectionV1>,
+    projections: Vec<ProviderSelectorProjection>,
     receipt: OwnerItemsExecutionReceipt,
 }
 
@@ -267,7 +263,7 @@ fn refresh_owner_from_provider(
     })?;
     let content_digest =
         agent_semantic_content_identity::ArtifactHash::blake3(source_bytes.as_slice()).value;
-    let fingerprint = ProviderOwnerFingerprintV1 {
+    let fingerprint = ProviderOwnerFingerprint {
         metadata: request.metadata.clone(),
         content_digest: content_digest.clone(),
     };
@@ -283,7 +279,6 @@ fn refresh_owner_from_provider(
             owner_path: request.owner_key,
             fingerprint: &fingerprint,
             source_bytes: source_bytes.as_slice(),
-            query: request.query,
         },
     )?;
     commit_complete_owner_response(CommitOwnerRequest {
@@ -300,13 +295,13 @@ fn refresh_owner_from_provider(
 
 struct CommitOwnerRequest<'a> {
     runtime: &'a tokio::runtime::Runtime,
-    session: &'a ProviderSearchWorkspaceSessionV1,
-    scope: &'a ProviderIncrementalScopeV1,
+    session: &'a agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession,
+    scope: &'a ProviderIncrementalScoped,
     owner_path: &'a str,
-    fingerprint: ProviderOwnerFingerprintV1,
+    fingerprint: ProviderOwnerFingerprint,
     query: &'a str,
-    decision: ProviderOwnerDecisionV1,
-    projections: Vec<ProviderSelectorProjectionV1>,
+    decision: ProviderOwnerDecision,
+    projections: Vec<ProviderSelectorProjection>,
 }
 
 fn commit_complete_owner_response(
@@ -322,7 +317,7 @@ fn commit_complete_owner_response(
         request
             .runtime
             .block_on(request.session.write_provider_incremental_owner(
-                &ProviderIncrementalOwnerWriteV1 {
+                &ProviderIncrementalOwnerWrite {
                     scope: request.scope.clone(),
                     owner_path: request.owner_path.to_string(),
                     fingerprint: request.fingerprint,
@@ -338,9 +333,9 @@ fn commit_complete_owner_response(
 }
 
 fn refresh_hit_from_write(
-    decision: ProviderOwnerDecisionV1,
-    projections: Vec<ProviderSelectorProjectionV1>,
-    write: ProviderIncrementalWriteReceiptV1,
+    decision: ProviderOwnerDecision,
+    projections: Vec<ProviderSelectorProjection>,
+    write: ProviderIncrementalWriteReceipt,
 ) -> OwnerItemsRefreshHit {
     OwnerItemsRefreshHit {
         decision,
@@ -370,9 +365,9 @@ fn render_refreshed_owner_items(owner_path: &str, query: &str, hit: &OwnerItemsR
     }
     owner_items_trace("render", render_started);
     let state = match hit.decision {
-        ProviderOwnerDecisionV1::New => "new",
-        ProviderOwnerDecisionV1::Changed => "changed",
-        ProviderOwnerDecisionV1::Unchanged => "warm",
+        ProviderOwnerDecision::New => "new",
+        ProviderOwnerDecision::Changed => "changed",
+        ProviderOwnerDecision::Unchanged => "warm",
     };
     eprintln!(
         "[provider-incremental-owner] state={} owner={} query={:?} matches={} generationBefore={} generationAfter={} metadataReads={} sourceByteReads={} providerInvocations={} providerParses={} ownerIndexWrites={} casWrites={} merkleLeafWrites={} merklePathNodeWrites={} fullWorkspaceReads=0 fullMerkleRebuilds=0 unrelatedProviderCount=0",
@@ -432,7 +427,7 @@ fn normalized_owner_path(
 }
 
 #[cfg(unix)]
-fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadataV1, String> {
+fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadata, String> {
     use std::os::unix::fs::MetadataExt;
 
     let metadata = fs::metadata(path).map_err(|error| {
@@ -441,7 +436,7 @@ fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadataV1, Strin
             path.display()
         )
     })?;
-    Ok(ProviderOwnerMetadataV1 {
+    Ok(ProviderOwnerMetadata {
         file_identity: format!("unix:{}:{}", metadata.dev(), metadata.ino()),
         size_bytes: metadata.len(),
         modified_unix_nanos: metadata
@@ -456,7 +451,7 @@ fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadataV1, Strin
 }
 
 #[cfg(not(unix))]
-fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadataV1, String> {
+fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadata, String> {
     let metadata = fs::metadata(path).map_err(|error| {
         format!(
             "failed to inspect owner metadata {}: {error}",
@@ -469,7 +464,7 @@ fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadataV1, Strin
         .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|duration| duration.as_nanos().min(i64::MAX as u128) as i64)
         .unwrap_or_default();
-    Ok(ProviderOwnerMetadataV1 {
+    Ok(ProviderOwnerMetadata {
         file_identity: format!("path:{}", path.display()),
         size_bytes: metadata.len(),
         modified_unix_nanos,
@@ -480,7 +475,7 @@ fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadataV1, Strin
 fn resolve_incremental_owner_state(
     owner_project_root: &Path,
     context: &SearchOwnerItemsFastContext<'_>,
-) -> Result<Option<ProviderIncrementalScopeV1>, String> {
+) -> Result<Option<ProviderIncrementalScoped>, String> {
     let Some(provider_context) = context.provider_context else {
         return Ok(None);
     };
@@ -488,7 +483,7 @@ fn resolve_incremental_owner_state(
         agent_semantic_client_core::state_core::ResolvedState::resolve(owner_project_root)?;
     let provider_workspace =
         agent_semantic_client::source_index::provider_workspace_identity_v1(owner_project_root)?;
-    let scope = ProviderIncrementalScopeV1 {
+    let scope = ProviderIncrementalScoped {
         project_root: resolved.workspace.root.to_string_lossy().into_owned(),
         workspace_identity: resolved.workspace.workspace_id.to_string(),
         provider_workspace_identity_digest: provider_workspace.digest,

@@ -4,14 +4,15 @@
 //! generations. Reasoning search may refresh one owner without materializing a
 //! complete workspace snapshot.
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::engine::turso_statement::run_turso_operation;
 
-
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Identity boundary for one provider's incremental reasoning-search state.
-pub struct ProviderIncrementalScopeV1 {
+pub struct ProviderIncrementalScoped {
     pub project_root: String,
     pub workspace_identity: String,
     pub provider_workspace_identity_digest: String,
@@ -20,25 +21,28 @@ pub struct ProviderIncrementalScopeV1 {
     pub provider_workspace_root: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Metadata that can be inspected without reading owner source bytes.
-pub struct ProviderOwnerMetadataV1 {
+pub struct ProviderOwnerMetadata {
     pub file_identity: String,
     pub size_bytes: u64,
     pub modified_unix_nanos: i64,
     pub change_time_unix_nanos: i64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Complete metadata and content identity persisted for one owner.
-pub struct ProviderOwnerFingerprintV1 {
-    pub metadata: ProviderOwnerMetadataV1,
+pub struct ProviderOwnerFingerprint {
+    pub metadata: ProviderOwnerMetadata,
     pub content_digest: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Parser-owned selector projection persisted for one owner item.
-pub struct ProviderSelectorProjectionV1 {
+pub struct ProviderSelectorProjection {
     pub structural_selector: String,
     pub capture_name: String,
     pub signature: String,
@@ -48,35 +52,39 @@ pub struct ProviderSelectorProjectionV1 {
     pub source_byte_end: u64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 /// Incremental acquisition decision for one requested owner.
-pub enum ProviderOwnerDecisionV1 {
+pub enum ProviderOwnerDecision {
     Unchanged,
     Changed,
     New,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Metadata probe result returned before any source read or provider parse.
-pub struct ProviderOwnerProbeV1 {
-    pub decision: ProviderOwnerDecisionV1,
+pub struct ProviderOwnerProbe {
+    pub decision: ProviderOwnerDecision,
     pub generation_before: Option<String>,
     pub content_digest: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Atomic replacement request for one provider owner.
-pub struct ProviderIncrementalOwnerWriteV1 {
-    pub scope: ProviderIncrementalScopeV1,
+pub struct ProviderIncrementalOwnerWrite {
+    pub scope: ProviderIncrementalScoped,
     pub owner_path: String,
-    pub fingerprint: ProviderOwnerFingerprintV1,
+    pub fingerprint: ProviderOwnerFingerprint,
     pub projection_completeness: String,
-    pub projections: Vec<ProviderSelectorProjectionV1>,
+    pub projections: Vec<ProviderSelectorProjection>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Committed write counts and generation transition for one owner replacement.
-pub struct ProviderIncrementalWriteReceiptV1 {
+pub struct ProviderIncrementalWriteReceipt {
     pub generation_before: Option<String>,
     pub generation_after: String,
     pub owner_index_writes: u32,
@@ -86,9 +94,9 @@ pub struct ProviderIncrementalWriteReceiptV1 {
 
 pub(super) async fn read_provider_owner_projections(
     connection: &turso::Connection,
-    scope: &ProviderIncrementalScopeV1,
+    scope: &ProviderIncrementalScoped,
     owner_path: &str,
-) -> Result<Vec<ProviderSelectorProjectionV1>, String> {
+) -> Result<Vec<ProviderSelectorProjection>, String> {
     let mut rows = run_turso_operation(
         || async {
             connection
@@ -128,7 +136,7 @@ pub(super) async fn read_provider_owner_projections(
         let source_byte_end = row
             .get::<i64>(6)
             .map_err(|error| format!("failed to decode provider projection end: {error}"))?;
-        projections.push(ProviderSelectorProjectionV1 {
+        projections.push(ProviderSelectorProjection {
             structural_selector: row.get::<String>(0).map_err(|error| {
                 format!("failed to decode provider projection selector: {error}")
             })?,
@@ -155,18 +163,10 @@ pub(super) async fn read_provider_owner_projections(
     Ok(projections)
 }
 
-pub(super) async fn write_provider_incremental_owner_in_session_v1(
-    session: &super::ProviderSearchWorkspaceSessionV1,
-    request: &ProviderIncrementalOwnerWriteV1,
-) -> Result<ProviderIncrementalWriteReceiptV1, String> {
-    let mut connection = session.writer_connection().await;
-    write_provider_incremental_owner_on_connection(&mut connection, request).await
-}
-
-async fn write_provider_incremental_owner_on_connection(
+pub(super) async fn write_provider_incremental_owner_on_connection(
     connection: &mut turso::Connection,
-    request: &ProviderIncrementalOwnerWriteV1,
-) -> Result<ProviderIncrementalWriteReceiptV1, String> {
+    request: &ProviderIncrementalOwnerWrite,
+) -> Result<ProviderIncrementalWriteReceipt, String> {
     if request.projection_completeness != "complete-owner" {
         return Err(format!(
             "provider incremental write requires projectionCompleteness=complete-owner, got {}",
@@ -197,8 +197,8 @@ async fn write_provider_incremental_owner_on_connection(
 
 async fn write_provider_incremental_owner_transaction(
     transaction: &turso::transaction::Transaction<'_>,
-    request: &ProviderIncrementalOwnerWriteV1,
-) -> Result<ProviderIncrementalWriteReceiptV1, String> {
+    request: &ProviderIncrementalOwnerWrite,
+) -> Result<ProviderIncrementalWriteReceipt, String> {
     let connection = &**transaction;
     let scope = &request.scope;
     let generation_before = active_provider_generation(connection, scope).await?;
@@ -379,7 +379,7 @@ async fn write_provider_incremental_owner_transaction(
         "failed to publish provider active generation",
     )
     .await?;
-    Ok(ProviderIncrementalWriteReceiptV1 {
+    Ok(ProviderIncrementalWriteReceipt {
         generation_before,
         generation_after,
         owner_index_writes: 1,
@@ -390,7 +390,7 @@ async fn write_provider_incremental_owner_transaction(
 
 async fn active_provider_generation(
     connection: &turso::Connection,
-    scope: &ProviderIncrementalScopeV1,
+    scope: &ProviderIncrementalScoped,
 ) -> Result<Option<String>, String> {
     let mut rows = run_turso_operation(
         || async {
@@ -430,7 +430,7 @@ async fn active_provider_generation(
 
 async fn provider_owner_count(
     connection: &turso::Connection,
-    scope: &ProviderIncrementalScopeV1,
+    scope: &ProviderIncrementalScoped,
 ) -> Result<u32, String> {
     let mut rows = run_turso_operation(
         || async {
@@ -468,7 +468,7 @@ async fn provider_owner_count(
 
 async fn upsert_merkle_node(
     connection: &turso::Connection,
-    scope: &ProviderIncrementalScopeV1,
+    scope: &ProviderIncrementalScoped,
     node_key: &str,
     parent_node_key: &str,
     node_kind: &str,
@@ -512,7 +512,7 @@ async fn upsert_merkle_node(
 
 async fn digest_merkle_children(
     connection: &turso::Connection,
-    scope: &ProviderIncrementalScopeV1,
+    scope: &ProviderIncrementalScoped,
     parent_node_key: &str,
 ) -> Result<String, String> {
     let mut rows = run_turso_operation(
@@ -563,7 +563,7 @@ async fn digest_merkle_children(
 
 async fn merkle_node_digest(
     connection: &turso::Connection,
-    scope: &ProviderIncrementalScopeV1,
+    scope: &ProviderIncrementalScoped,
     node_key: &str,
 ) -> Result<Option<String>, String> {
     let mut rows = run_turso_operation(

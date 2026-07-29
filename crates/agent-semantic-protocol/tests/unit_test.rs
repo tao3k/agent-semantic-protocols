@@ -36,6 +36,8 @@ mod command_agent_session_registry_render;
 mod command_dispatch_agent_session_policy;
 #[path = "unit/command/gerbil_check_cache.rs"]
 mod command_gerbil_check_cache;
+#[path = "unit/command/global_provider_catalog.rs"]
+mod command_global_provider_catalog;
 #[path = "unit/command/search_pipe_evidence_projection.rs"]
 mod command_search_pipe_evidence_projection;
 #[path = "unit/command/search_pipe_projection.rs"]
@@ -84,5 +86,7 @@ mod state_home_fixture;
 mod sync_command;
 #[path = "unit/tree_sitter_query_diagnostics.rs"]
 mod tree_sitter_query_diagnostics;
+#[path = "unit/command/workspace_db_resident_service.rs"]
+mod workspace_db_resident_service;
 #[path = "unit/workspace_tree_sitter_query_diagnostics.rs"]
 mod workspace_tree_sitter_query_diagnostics;

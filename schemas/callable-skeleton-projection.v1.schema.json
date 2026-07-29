@@ -23,7 +23,7 @@
       "const": "agent.semantic-protocols.callable-skeleton-projection"
     },
     "schemaVersion": {
-      "const": "v1"
+      "const": "1"
     },
     "projectionKind": {
       "const": "callable-skeleton"

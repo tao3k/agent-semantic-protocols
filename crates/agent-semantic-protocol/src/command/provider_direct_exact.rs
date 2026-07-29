@@ -3,7 +3,6 @@
 use std::path::Path;
 use std::time::Instant;
 
-use agent_semantic_content_identity::exact_selector_merkle::ExactProjectionModeV1;
 use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 
 use super::provider_execution::provider_process_args;
@@ -13,7 +12,7 @@ use super::provider_selector::{
 };
 
 /// Complete direct exact-query execution context.
-pub(super) struct DirectExactQueryContextV1<'a> {
+pub(super) struct DirectExactQueryContext<'a> {
     pub(super) language_id: &'a str,
     pub(super) provider_args: &'a [String],
     pub(super) project_root: &'a Path,
@@ -24,13 +23,17 @@ pub(super) struct DirectExactQueryContextV1<'a> {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProviderNativeExactRequestV1<'a> {
+struct ProviderNativeExactRequest<'a> {
     schema_id: &'static str,
     schema_version: &'static str,
     language_id: &'a str,
     provider_id: &'a str,
     structural_selector: &'a str,
     owner_path: &'a str,
+    projection_kind: &'a str,
+    generation_identity_digest: &'a str,
+    parser_identity_digest: &'a str,
+    query_pack_digest: &'a str,
     source_digest: &'a str,
     source_byte_length: usize,
     source_encoding: &'static str,
@@ -40,7 +43,7 @@ struct ProviderNativeExactRequestV1<'a> {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ProviderNativeExactProjectionV1 {
+struct ProviderNativeExactProjection {
     schema_id: String,
     schema_version: String,
     language_id: String,
@@ -48,118 +51,179 @@ struct ProviderNativeExactProjectionV1 {
     owner_path: String,
     requested_structural_selector: String,
     structural_selector: String,
-    projection_mode: ExactProjectionModeV1,
-    projection_text: String,
+    projection_mode: ProviderNativeExactProjectionMode,
+    projection_text: Option<String>,
+    projection_payload: Option<
+        agent_semantic_content_identity::callable_skeleton_projection::CallableSkeletonProjectionV1,
+    >,
     source_content_digest: String,
     source_byte_start: u64,
     source_byte_end: u64,
 }
 
-type ActiveExactFixtureResidentV1 = agent_semantic_search::ExactSelectorFixtureResidentV1<
-    agent_semantic_search::ExactSelectorFixtureFileBackendV1,
->;
-
-fn active_exact_fixture_resident_v1(
-    input: &agent_semantic_hook::ActiveAspArtifactInput,
-) -> Result<std::sync::Arc<ActiveExactFixtureResidentV1>, String> {
-    static RESIDENTS: std::sync::OnceLock<
-        std::sync::Mutex<
-            std::collections::HashMap<String, std::sync::Arc<ActiveExactFixtureResidentV1>>,
-        >,
-    > = std::sync::OnceLock::new();
-    let residents = RESIDENTS.get_or_init(Default::default);
-    let mut residents = residents
-        .lock()
-        .map_err(|_| "active exact fixture resident registry is poisoned".to_owned())?;
-    if let Some(resident) = residents.get(&input.artifact_digest) {
-        return Ok(std::sync::Arc::clone(resident));
-    }
-    let backend = agent_semantic_search::active_exact_selector_fixture::
-        exact_selector_fixture_backend_from_active_artifact_v1(input)?;
-    let resident = std::sync::Arc::new(
-        agent_semantic_search::ExactSelectorFixtureResidentV1::new(backend),
-    );
-    residents.insert(input.artifact_digest.clone(), std::sync::Arc::clone(&resident));
-    Ok(resident)
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderNativeExactResolution {
+    schema_id: String,
+    schema_version: String,
+    language_id: String,
+    provider_id: String,
+    owner_path: String,
+    requested_structural_selector: String,
+    resolution_state: String,
+    reason_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    root_digest: Option<String>,
+    item_kind: String,
+    item_name: String,
+    #[serde(default)]
+    candidates: Vec<String>,
+    #[serde(default)]
+    actual_kinds: Vec<String>,
+    recommended_next: ProviderNativeExactRecommendedNext,
 }
 
-fn requested_projection_mode_v1(
-    provider_args: &[String],
-) -> agent_semantic_content_identity::ExactSelectorProjectionModeV1 {
-    if provider_args.iter().any(|arg| arg == "--verbatim") {
-        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Verbatim
-    } else if provider_args.iter().any(|arg| arg == "--names-only") {
-        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Names
-    } else if provider_args.iter().any(|arg| arg == "--code") {
-        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code
-    } else {
-        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Skeleton
-    }
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderNativeExactRecommendedNext {
+    command: String,
 }
 
-pub(super) fn try_run_active_fixture_exact_query(
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum ProviderNativeExactResponse {
+    Resolution(ProviderNativeExactResolution),
+    Projection(ProviderNativeExactProjection),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum ProviderNativeExactProjectionMode {
+    Source,
+    CallableSkeleton,
+}
+
+pub(super) fn try_run_resident_turso_exact_query(
     language_id: &str,
     provider_args: &[String],
     project_root: &Path,
-    activation_path: &Path,
     started: Instant,
 ) -> Result<bool, String> {
+    let projection_kind = direct_projection_kind(provider_args)?;
     if provider_args.iter().any(|arg| arg == "--json") {
         return Ok(false);
     }
     let Some(owner_path) = provider_owned_structural_owner_path(language_id, provider_args) else {
         return Ok(false);
     };
-    let Some(structural_selector) =
-        provider_owned_structural_selector(language_id, provider_args)
+    let Some(structural_selector) = provider_owned_structural_selector(language_id, provider_args)
     else {
         return Ok(false);
     };
-    let receipt_path = agent_semantic_hook::active_asp_artifact_receipt_path(activation_path)?;
-    if !receipt_path.is_file() {
-        return Ok(false);
-    }
-    let current_asp = std::env::current_exe()
-        .map_err(|error| format!("failed to resolve current ASP binary: {error}"))?;
-    let receipt =
-        match agent_semantic_hook::verify_active_asp_artifact_receipt(activation_path, &[&current_asp])
-        {
-            Ok(receipt) => receipt,
-            Err(_) => return Ok(false),
-        };
-    let input =
-        match agent_semantic_search::active_exact_selector_fixture::
-            exact_selector_fixture_active_artifact_input_v1(&receipt)
-        {
-            Ok(input) => input,
-            Err(error) if error.contains("reasonKind=active-fixture-missing") => return Ok(false),
-            Err(error) => return Err(error),
-        };
-    let resident = active_exact_fixture_resident_v1(&input)?;
-    let Some(projection) = resident.resolve(structural_selector)? else {
-        return Ok(false);
-    };
-    let canonical_workspace = project_root.canonicalize().map_err(|error| {
+    let provider = super::global_provider_catalog::global_provider_for_language(language_id)?;
+    let canonical_project_root = project_root.canonicalize().map_err(|error| {
         format!(
             "failed to canonicalize exact-selector workspace {}: {error}",
             project_root.display()
         )
     })?;
-    let canonical_owner = canonical_exact_owner(&canonical_workspace, owner_path)?;
-    let source = std::fs::read(&canonical_owner).map_err(|error| {
-        format!("failed to read exact-selector owner bytes: ownerPath={owner_path} error={error}")
-    })?;
-    if !projection.matches_live_owner_v1(
-        owner_path,
-        &source,
-        requested_projection_mode_v1(provider_args),
-    ) {
+    let Some(canonical_item_selector) = resident_canonical_item_selector(structural_selector)?
+    else {
+        trace("resident-turso-descendant-provider-fallback", started);
+        return Ok(false);
+    };
+    let session = match super::workspace_db_resident::session(project_root) {
+        Ok(session) => session,
+        Err(error) if error.is_unavailable() => {
+            trace("resident-turso-service-unavailable", started);
+            return Ok(false);
+        }
+        Err(error) => return Err(error.to_string()),
+    };
+    let read = super::workspace_db_runtime::block_on(session.read_resident_selector(
+        &agent_semantic_client_db::TursoResidentSelectorQuery {
+            project_root: canonical_project_root.display().to_string(),
+            schema_id: agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID.to_owned(),
+            schema_version:
+                agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION.to_owned(),
+            provider_id: provider.provider_id.clone(),
+            parser_identity_digest: provider.exact_parser_identity_digest.clone(),
+            query_pack_digest: provider.exact_query_pack_identity_digest.clone(),
+            canonical_item_selector,
+        },
+    ))??;
+    let Some(read) = read else {
+        trace("resident-turso-generation-missing", started);
+        return Ok(false);
+    };
+    let candidate = read
+        .candidates
+        .iter()
+        .find(|candidate| candidate.owner_path == owner_path)
+        .or_else(|| match read.candidates.as_slice() {
+            [candidate] => Some(candidate),
+            _ => None,
+        });
+    let Some(candidate) = candidate else {
+        trace("resident-turso-selector-miss", started);
+        return Ok(false);
+    };
+    let Some(projection) = candidate.projection.as_ref() else {
+        trace("resident-turso-projection-missing", started);
+        return Ok(false);
+    };
+    if projection.structural_selector != structural_selector {
+        return Err("resident Turso projection selector identity mismatch".to_owned());
+    }
+    let Some(canonical_owner) =
+        canonical_exact_owner(&canonical_project_root, &candidate.owner_path)?
+    else {
+        trace("resident-turso-owner-missing", started);
+        return Ok(false);
+    };
+    let Some(source) = read_exact_owner(&canonical_owner, &candidate.owner_path)? else {
+        trace("resident-turso-owner-disappeared", started);
+        return Ok(false);
+    };
+    let live_digest =
+        agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(&source);
+    if live_digest.as_str() != candidate.owner_content_digest {
+        trace("resident-turso-live-owner-mismatch", started);
         return Ok(false);
     }
-    std::io::Write::write_all(&mut std::io::stdout().lock(), projection.as_bytes())
-        .map_err(|error| format!("failed to write resident exact-selector projection: {error}"))?;
-    trace("resident-fixture-hit", started);
+    let start = usize::try_from(projection.source_byte_start)
+        .map_err(|_| "resident Turso projection start exceeds address space".to_owned())?;
+    let end = usize::try_from(projection.source_byte_end)
+        .map_err(|_| "resident Turso projection end exceeds address space".to_owned())?;
+    let payload = match projection_kind {
+        "source" => source.get(start..end).ok_or_else(|| {
+            format!(
+                "resident Turso projection byte range is invalid: start={start} end={end} sourceBytes={}",
+                source.len()
+            )
+        })?,
+        "callable-skeleton" => projection.signature.as_bytes(),
+        _ => unreachable!("projection kind is validated before resident lookup"),
+    };
+    std::io::Write::write_all(&mut std::io::stdout().lock(), payload)
+        .map_err(|error| format!("failed to write resident Turso exact projection: {error}"))?;
+    trace("resident-turso-hit", started);
     Ok(true)
+}
+
+pub(super) fn resident_canonical_item_selector(
+    structural_selector: &str,
+) -> Result<
+    Option<agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector>,
+    String,
+> {
+    let canonical_item_selector = agent_semantic_content_identity::canonical_item_identity::
+        CanonicalItemSelector::parse_root_or_exact_descendant(structural_selector)
+        .map_err(|error| format!("invalid exact-selector canonical identity: {error}"))?;
+    Ok(
+        (canonical_item_selector.structural_selector() == structural_selector)
+            .then_some(canonical_item_selector),
+    )
 }
 
 pub(super) fn run_catalog_direct_exact_query(
@@ -168,37 +232,52 @@ pub(super) fn run_catalog_direct_exact_query(
     project_root: &Path,
     started: Instant,
 ) -> Result<(), String> {
-    let provider =
-        super::global_provider_catalog::global_provider_for_language_v1(language_id)?;
-    let owner_path = provider_owned_structural_owner_path(language_id, provider_args).ok_or_else(
-        || "catalog exact query is missing an exact owner path".to_owned(),
-    )?;
-    let structural_selector =
-        provider_owned_structural_selector(language_id, provider_args).ok_or_else(|| {
-            "catalog exact query is missing an exact structural selector".to_owned()
-        })?;
+    let provider = super::global_provider_catalog::global_provider_for_language(language_id)?;
+    let owner_path = provider_owned_structural_owner_path(language_id, provider_args)
+        .ok_or_else(|| "catalog exact query is missing an exact owner path".to_owned())?;
+    let structural_selector = provider_owned_structural_selector(language_id, provider_args)
+        .ok_or_else(|| "catalog exact query is missing an exact structural selector".to_owned())?;
+    let projection_kind = direct_projection_kind(provider_args)?;
     let canonical_workspace = project_root.canonicalize().map_err(|error| {
         format!(
             "failed to canonicalize exact-selector workspace {}: {error}",
             project_root.display()
         )
     })?;
-    let canonical_owner = canonical_exact_owner(&canonical_workspace, owner_path)?;
-    let source = std::fs::read(&canonical_owner).map_err(|error| {
-        format!("failed to read exact-selector owner bytes: ownerPath={owner_path} error={error}")
-    })?;
+    let Some(canonical_owner) = canonical_exact_owner(&canonical_workspace, owner_path)? else {
+        return write_owner_missing_resolution(
+            language_id,
+            &provider.provider_id,
+            provider_args,
+            owner_path,
+            structural_selector,
+        );
+    };
+    let Some(source) = read_exact_owner(&canonical_owner, owner_path)? else {
+        return write_owner_missing_resolution(
+            language_id,
+            &provider.provider_id,
+            provider_args,
+            owner_path,
+            structural_selector,
+        );
+    };
     trace("catalog-owner-read", started);
     let source_content_digest =
         agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(&source)
             .as_str()
             .to_owned();
-    let request = ProviderNativeExactRequestV1 {
+    let request = ProviderNativeExactRequest {
         schema_id: "agent.semantic-protocols.provider-native-exact-request",
         schema_version: "1",
         language_id,
         provider_id: &provider.provider_id,
         structural_selector,
         owner_path,
+        projection_kind,
+        generation_identity_digest: &source_content_digest,
+        parser_identity_digest: &provider.exact_parser_identity_digest,
+        query_pack_digest: &provider.exact_query_pack_identity_digest,
         source_digest: &source_content_digest,
         source_byte_length: source.len(),
         source_encoding: "base64",
@@ -207,43 +286,59 @@ pub(super) fn run_catalog_direct_exact_query(
     };
     let request = serde_json::to_vec(&request)
         .map_err(|error| format!("failed to encode catalog exact-selector request: {error}"))?;
-    let template = agent_semantic_hook::registered_provider_method_invocation_v1(
+    let native_exact = agent_semantic_hook::registered_provider_method_invocation_v1(
         language_id,
         &provider.provider_id,
         "query/exact-selector-native-v1",
     )?
-    .ok_or_else(|| {
-        format!(
-            "Global provider catalog has no exact-selector method: language={} provider={}",
-            language_id, provider.provider_id
-        )
-    })?;
-    let mut invocation = template.argv;
-    let program = invocation.first_mut().ok_or_else(|| {
-        format!(
+    .is_some();
+    let mut invocation = provider.argv_prefix.clone();
+    if invocation.is_empty() {
+        return Err(format!(
             "Global provider catalog exact method has empty argv: language={language_id}"
-        )
+        ));
+    }
+    invocation.extend(direct_provider_process_args(provider_args));
+    if !native_exact {
+        return Err(format!(
+            "catalog provider {} does not declare query/exact-selector-native-v1 required by typed projection `{projection_kind}`",
+            provider.provider_id
+        ));
+    }
+    let _program = invocation.first().ok_or_else(|| {
+        format!("Global provider catalog exact method has empty argv: language={language_id}")
     })?;
-    *program = provider.materialized_path.clone();
-    invocation.push("--json".to_owned());
-    invocation.extend(
-        provider_args
-            .iter()
-            .filter(|arg| {
-                matches!(
-                    arg.as_str(),
-                    "--names-only" | "--code" | "--verbatim" | "--skeleton"
-                )
-            })
-            .cloned(),
-    );
+    if !invocation.iter().any(|argument| argument == "--json") {
+        invocation.push("--json".to_owned());
+    }
+    if !invocation
+        .iter()
+        .any(|argument| argument == "--asp-exact-request-stdin")
+    {
+        invocation.push("--asp-exact-request-stdin".to_owned());
+    }
     if !invocation
         .windows(2)
         .any(|pair| pair[0] == "--asp-provider-id")
     {
+        invocation.extend(["--asp-provider-id".to_owned(), provider.provider_id.clone()]);
+    }
+    if !invocation
+        .windows(2)
+        .any(|pair| pair[0] == "--asp-parser-identity-digest")
+    {
         invocation.extend([
-            "--asp-provider-id".to_owned(),
-            provider.provider_id.clone(),
+            "--asp-parser-identity-digest".to_owned(),
+            provider.execution_command_digest.clone(),
+        ]);
+    }
+    if !invocation
+        .windows(2)
+        .any(|pair| pair[0] == "--asp-query-pack-digest")
+    {
+        invocation.extend([
+            "--asp-query-pack-digest".to_owned(),
+            provider.query_pack_digest.clone(),
         ]);
     }
     let output = super::provider_process::run_catalog_provider_command_with_stdin(
@@ -262,32 +357,107 @@ pub(super) fn run_catalog_direct_exact_query(
             String::from_utf8_lossy(output.stderr.as_ref())
         ));
     }
-    let native: ProviderNativeExactProjectionV1 = serde_json::from_slice(output.stdout.as_ref())
+    let native: ProviderNativeExactResponse = serde_json::from_slice(output.stdout.as_ref())
         .map_err(|error| format!("failed to decode catalog exact-selector output: {error}"))?;
-    validate_projection(
-        &native,
-        language_id,
-        &provider.provider_id,
-        provider_args,
-        owner_path,
-        structural_selector,
-        &source_content_digest,
-        &source,
-    )?;
-    if provider_args.iter().any(|arg| arg == "--json") {
-        std::io::Write::write_all(&mut std::io::stdout().lock(), output.stdout.as_ref())
-            .map_err(|error| format!("failed to write catalog exact-selector packet: {error}"))
-    } else {
-        std::io::Write::write_all(
-            &mut std::io::stdout().lock(),
-            native.projection_text.as_bytes(),
-        )
-        .map_err(|error| format!("failed to write catalog exact-selector projection: {error}"))
+    trace("catalog-provider-decode", started);
+    match native {
+        ProviderNativeExactResponse::Resolution(resolution) => {
+            validate_resolution(
+                &resolution,
+                language_id,
+                &provider.provider_id,
+                owner_path,
+                structural_selector,
+            )?;
+            trace("catalog-resolution-validate", started);
+            let result =
+                write_resolution_output(&resolution, provider_args, Some(output.stdout.as_ref()));
+            trace("catalog-resolution-written", started);
+            result
+        }
+        ProviderNativeExactResponse::Projection(projection) => {
+            validate_projection(
+                &projection,
+                language_id,
+                &provider.provider_id,
+                provider_args,
+                owner_path,
+                structural_selector,
+                &source_content_digest,
+                &source_content_digest,
+                &provider.exact_parser_identity_digest,
+                &provider.exact_query_pack_identity_digest,
+                &source,
+            )?;
+            trace("catalog-projection-validate", started);
+            let result = if provider_args.iter().any(|arg| arg == "--json") {
+                std::io::Write::write_all(&mut std::io::stdout().lock(), output.stdout.as_ref())
+                    .map_err(|error| {
+                        format!("failed to write catalog exact-selector packet: {error}")
+                    })
+            } else {
+                write_projection_output(&projection)
+            };
+            trace("catalog-projection-written", started);
+            result
+        }
     }
 }
 
+pub(crate) fn direct_projection_kind(provider_args: &[String]) -> Result<&str, String> {
+    let mut projection_kind = None;
+    let mut index = 0usize;
+    while index < provider_args.len() {
+        let arg = provider_args[index].as_str();
+        let candidate = if arg == "--projection" {
+            index += 1;
+            Some(
+                provider_args
+                    .get(index)
+                    .ok_or_else(|| "exact query --projection requires a value".to_string())?
+                    .as_str(),
+            )
+        } else {
+            arg.strip_prefix("--projection=")
+        };
+        if let Some(candidate) = candidate {
+            if !matches!(candidate, "source" | "callable-skeleton") {
+                return Err(format!(
+                    "unsupported exact query projection `{candidate}`; expected source or callable-skeleton"
+                ));
+            }
+            if projection_kind.replace(candidate).is_some() {
+                return Err("exact query accepts exactly one --projection".to_string());
+            }
+        }
+        index += 1;
+    }
+    projection_kind.ok_or_else(|| {
+        "exact query requires explicit `--projection source|callable-skeleton`".to_string()
+    })
+}
+
+pub(crate) fn direct_provider_process_args(provider_args: &[String]) -> Vec<String> {
+    let provider_args = provider_process_args(provider_args);
+    let mut filtered = Vec::with_capacity(provider_args.len());
+    let mut index = 0usize;
+    while index < provider_args.len() {
+        if provider_args[index] == "--projection" {
+            index += 2;
+            continue;
+        }
+        if provider_args[index].starts_with("--projection=") {
+            index += 1;
+            continue;
+        }
+        filtered.push(provider_args[index].clone());
+        index += 1;
+    }
+    filtered
+}
+
 /// Run one canonical exact selector from one live workspace-contained owner.
-pub(super) fn run_direct_exact_query(context: DirectExactQueryContextV1<'_>) -> Result<(), String> {
+pub(super) fn run_direct_exact_query(context: DirectExactQueryContext<'_>) -> Result<(), String> {
     let owner_path =
         provider_owned_structural_owner_path(context.language_id, context.provider_args)
             .ok_or_else(|| {
@@ -297,28 +467,55 @@ pub(super) fn run_direct_exact_query(context: DirectExactQueryContextV1<'_>) -> 
         provider_owned_structural_selector(context.language_id, context.provider_args).ok_or_else(
             || "provider-owned structural query is missing an exact selector".to_string(),
         )?;
+    let projection_kind = direct_projection_kind(context.provider_args)?;
     let canonical_workspace = context.project_root.canonicalize().map_err(|error| {
         format!(
             "failed to canonicalize exact-selector workspace {}: {error}",
             context.project_root.display()
         )
     })?;
-    let canonical_owner = canonical_exact_owner(&canonical_workspace, owner_path)?;
-    let source = std::fs::read(&canonical_owner).map_err(|error| {
-        format!("failed to read exact-selector owner bytes: ownerPath={owner_path} error={error}")
-    })?;
+    let Some(canonical_owner) = canonical_exact_owner(&canonical_workspace, owner_path)? else {
+        return write_owner_missing_resolution(
+            context.language_id,
+            context.provider.provider_id.as_str(),
+            context.provider_args,
+            owner_path,
+            structural_selector,
+        );
+    };
+    let Some(source) = read_exact_owner(&canonical_owner, owner_path)? else {
+        return write_owner_missing_resolution(
+            context.language_id,
+            context.provider.provider_id.as_str(),
+            context.provider_args,
+            owner_path,
+            structural_selector,
+        );
+    };
     trace("direct-owner-read", context.started);
     let source_content_digest =
         agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(&source)
             .as_str()
             .to_owned();
-    let request = ProviderNativeExactRequestV1 {
+    let query_pack_bytes = serde_json::to_vec(&context.provider.query_pack_descriptor)
+        .map_err(|error| format!("failed to encode activated query-pack descriptor: {error}"))?;
+    let query_pack_digest =
+        agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+            &query_pack_bytes,
+        )
+        .as_str()
+        .to_owned();
+    let request = ProviderNativeExactRequest {
         schema_id: "agent.semantic-protocols.provider-native-exact-request",
         schema_version: "1",
         language_id: context.language_id,
         provider_id: context.provider.provider_id.as_str(),
         structural_selector,
         owner_path,
+        projection_kind,
+        generation_identity_digest: &source_content_digest,
+        parser_identity_digest: context.provider.execution_command_digest.as_str(),
+        query_pack_digest: &query_pack_digest,
         source_digest: &source_content_digest,
         source_byte_length: source.len(),
         source_encoding: "base64",
@@ -327,11 +524,15 @@ pub(super) fn run_direct_exact_query(context: DirectExactQueryContextV1<'_>) -> 
     };
     let request = serde_json::to_vec(&request)
         .map_err(|error| format!("failed to encode exact-selector stdin request: {error}"))?;
-    let mut provider_argv = provider_process_args(context.provider_args);
+    let mut provider_argv = direct_provider_process_args(context.provider_args);
     provider_argv.extend([
         "--json".to_string(),
         "--asp-provider-id".to_string(),
         context.provider.provider_id.to_string(),
+        "--asp-parser-identity-digest".to_string(),
+        context.provider.execution_command_digest.to_string(),
+        "--asp-query-pack-digest".to_string(),
+        query_pack_digest.clone(),
         "--asp-exact-request-stdin".to_string(),
     ]);
     let invocations = provider_invocations(
@@ -361,33 +562,55 @@ pub(super) fn run_direct_exact_query(context: DirectExactQueryContextV1<'_>) -> 
             String::from_utf8_lossy(output.stderr.as_ref())
         ));
     }
-    let native: ProviderNativeExactProjectionV1 = serde_json::from_slice(output.stdout.as_ref())
+    let native: ProviderNativeExactResponse = serde_json::from_slice(output.stdout.as_ref())
         .map_err(|error| {
             format!("failed to decode direct exact-selector provider output: {error}")
         })?;
-    validate_projection(
-        &native,
-        context.language_id,
-        context.provider.provider_id.as_str(),
-        context.provider_args,
-        owner_path,
-        structural_selector,
-        &source_content_digest,
-        &source,
-    )?;
-    if context.provider_args.iter().any(|arg| arg == "--json") {
-        std::io::Write::write_all(&mut std::io::stdout().lock(), output.stdout.as_ref())
-            .map_err(|error| format!("failed to write direct exact-selector packet: {error}"))
-    } else {
-        std::io::Write::write_all(
-            &mut std::io::stdout().lock(),
-            native.projection_text.as_bytes(),
-        )
-        .map_err(|error| format!("failed to write direct exact-selector projection: {error}"))
+    match native {
+        ProviderNativeExactResponse::Resolution(resolution) => {
+            validate_resolution(
+                &resolution,
+                context.language_id,
+                context.provider.provider_id.as_str(),
+                owner_path,
+                structural_selector,
+            )?;
+            write_resolution_output(
+                &resolution,
+                context.provider_args,
+                Some(output.stdout.as_ref()),
+            )
+        }
+        ProviderNativeExactResponse::Projection(projection) => {
+            validate_projection(
+                &projection,
+                context.language_id,
+                context.provider.provider_id.as_str(),
+                context.provider_args,
+                owner_path,
+                structural_selector,
+                &source_content_digest,
+                &source_content_digest,
+                context.provider.execution_command_digest.as_str(),
+                &query_pack_digest,
+                &source,
+            )?;
+            if context.provider_args.iter().any(|arg| arg == "--json") {
+                std::io::Write::write_all(&mut std::io::stdout().lock(), output.stdout.as_ref())
+                    .map_err(|error| {
+                        format!("failed to write direct exact-selector packet: {error}")
+                    })
+            } else {
+                write_projection_output(&projection)
+            }
+        }
     }
 }
 
-fn canonical_exact_owner(workspace: &Path, owner_path: &str) -> Result<std::path::PathBuf, String> {
+fn canonical_exact_owner(
+    workspace: &Path,
+    owner_path: &str,
+) -> Result<Option<std::path::PathBuf>, String> {
     let owner = Path::new(owner_path);
     if owner.is_absolute()
         || owner.components().any(|component| {
@@ -403,33 +626,189 @@ fn canonical_exact_owner(workspace: &Path, owner_path: &str) -> Result<std::path
             "exact-selector owner is not a canonical workspace-relative path: {owner_path}"
         ));
     }
-    let canonical_owner = workspace.join(owner).canonicalize().map_err(|error| {
-        format!(
-            "failed to resolve exact-selector owner inside workspace: ownerPath={owner_path} error={error}"
-        )
-    })?;
+    let canonical_owner = match workspace.join(owner).canonicalize() {
+        Ok(canonical_owner) => canonical_owner,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "failed to resolve exact-selector owner inside workspace: ownerPath={owner_path} error={error}"
+            ));
+        }
+    };
     if !canonical_owner.starts_with(workspace) || !canonical_owner.is_file() {
         return Err(format!(
             "exact-selector owner escaped or is not a file in the provider workspace: ownerPath={owner_path}"
         ));
     }
-    Ok(canonical_owner)
+    Ok(Some(canonical_owner))
+}
+
+fn write_projection_output(native: &ProviderNativeExactProjection) -> Result<(), String> {
+    let output = match native.projection_mode {
+        ProviderNativeExactProjectionMode::Source => native
+            .projection_text
+            .as_deref()
+            .ok_or_else(|| "source exact projection is missing projectionText".to_string())?
+            .as_bytes()
+            .to_vec(),
+        ProviderNativeExactProjectionMode::CallableSkeleton => {
+            let payload = native.projection_payload.as_ref().ok_or_else(|| {
+                "callable-skeleton exact projection is missing projectionPayload".to_string()
+            })?;
+            let mut output = serde_json::to_vec(payload)
+                .map_err(|error| format!("failed to encode callable-skeleton payload: {error}"))?;
+            output.push(b'\n');
+            output
+        }
+    };
+    std::io::Write::write_all(&mut std::io::stdout().lock(), &output)
+        .map_err(|error| format!("failed to write direct exact-selector projection: {error}"))
+}
+
+fn write_owner_missing_resolution(
+    language_id: &str,
+    provider_id: &str,
+    provider_args: &[String],
+    owner_path: &str,
+    structural_selector: &str,
+) -> Result<(), String> {
+    let selector =
+        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::parse(
+            structural_selector,
+        )?;
+    let resolution = ProviderNativeExactResolution {
+        schema_id: "agent.semantic-protocols.provider-native-exact-projection".to_owned(),
+        schema_version: "1".to_owned(),
+        language_id: language_id.to_owned(),
+        provider_id: provider_id.to_owned(),
+        owner_path: owner_path.to_owned(),
+        requested_structural_selector: structural_selector.to_owned(),
+        resolution_state: "owner-missing".to_owned(),
+        reason_kind: "owner-not-in-workspace".to_owned(),
+        root_digest: None,
+        item_kind: selector.kind.as_str().to_owned(),
+        item_name: selector.symbol.as_str().to_owned(),
+        candidates: Vec::new(),
+        actual_kinds: Vec::new(),
+        recommended_next: ProviderNativeExactRecommendedNext {
+            command: format!(
+                "asp {language_id} search pipe '{}' --workspace . --view seeds",
+                selector.symbol.as_str()
+            ),
+        },
+    };
+    validate_resolution(
+        &resolution,
+        language_id,
+        provider_id,
+        owner_path,
+        structural_selector,
+    )?;
+    write_resolution_output(&resolution, provider_args, None)
+}
+
+fn validate_resolution(
+    resolution: &ProviderNativeExactResolution,
+    language_id: &str,
+    provider_id: &str,
+    owner_path: &str,
+    structural_selector: &str,
+) -> Result<(), String> {
+    validate_projection_field(
+        "schemaId",
+        &resolution.schema_id,
+        "agent.semantic-protocols.provider-native-exact-projection",
+    )?;
+    validate_projection_field("schemaVersion", &resolution.schema_version, "1")?;
+    validate_projection_field("languageId", &resolution.language_id, language_id)?;
+    validate_projection_field("providerId", &resolution.provider_id, provider_id)?;
+    validate_projection_field("ownerPath", &resolution.owner_path, owner_path)?;
+    validate_projection_field(
+        "requestedStructuralSelector",
+        &resolution.requested_structural_selector,
+        structural_selector,
+    )?;
+    if !matches!(
+        resolution.resolution_state.as_str(),
+        "item-missing" | "owner-missing" | "kind-mismatch" | "ambiguous"
+    ) {
+        return Err(format!(
+            "exact-selector semantic resolutionState is invalid: {}",
+            resolution.resolution_state
+        ));
+    }
+    if resolution.reason_kind.is_empty() {
+        return Err("exact-selector semantic reasonKind is empty".to_owned());
+    }
+    let selector =
+        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::parse(
+            structural_selector,
+        )?;
+    validate_projection_field("itemKind", &resolution.item_kind, selector.kind.as_str())?;
+    validate_projection_field("itemName", &resolution.item_name, selector.symbol.as_str())?;
+    if resolution.recommended_next.command.is_empty() {
+        return Err("exact-selector semantic recommendedNext.command is empty".to_owned());
+    }
+    for candidate in &resolution.candidates {
+        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::parse(
+            candidate,
+        )
+        .map_err(|error| {
+            format!("exact-selector semantic candidate is not canonical: {candidate}: {error}")
+        })?;
+    }
+    Ok(())
+}
+
+fn write_resolution_output(
+    resolution: &ProviderNativeExactResolution,
+    provider_args: &[String],
+    raw_json: Option<&[u8]>,
+) -> Result<(), String> {
+    if provider_args.iter().any(|arg| arg == "--json") {
+        if let Some(raw_json) = raw_json {
+            return std::io::Write::write_all(&mut std::io::stdout().lock(), raw_json).map_err(
+                |error| format!("failed to write exact-selector semantic packet: {error}"),
+            );
+        }
+        let mut packet = serde_json::to_vec(resolution)
+            .map_err(|error| format!("failed to encode exact-selector semantic packet: {error}"))?;
+        packet.push(b'\n');
+        return std::io::Write::write_all(&mut std::io::stdout().lock(), &packet)
+            .map_err(|error| format!("failed to write exact-selector semantic packet: {error}"));
+    }
+    let output = format!(
+        "exact source query state={} reasonKind={} ownerPath={} itemKind={} itemName={} candidates={} actualKinds={} next={}\n",
+        resolution.resolution_state,
+        resolution.reason_kind,
+        resolution.owner_path,
+        resolution.item_kind,
+        resolution.item_name,
+        resolution.candidates.join(","),
+        resolution.actual_kinds.join(","),
+        resolution.recommended_next.command,
+    );
+    std::io::Write::write_all(&mut std::io::stdout().lock(), output.as_bytes())
+        .map_err(|error| format!("failed to write exact-selector semantic result: {error}"))
 }
 
 fn validate_projection(
-    native: &ProviderNativeExactProjectionV1,
+    native: &ProviderNativeExactProjection,
     language_id: &str,
     provider_id: &str,
     provider_args: &[String],
     owner_path: &str,
     structural_selector: &str,
     source_content_digest: &str,
+    generation_identity_digest: &str,
+    parser_identity_digest: &str,
+    query_pack_digest: &str,
     source: &[u8],
 ) -> Result<(), String> {
-    let projection_mode = if provider_args.iter().any(|arg| arg == "--names-only") {
-        ExactProjectionModeV1::Names
-    } else {
-        ExactProjectionModeV1::Code
+    let projection_mode = match direct_projection_kind(provider_args)? {
+        "source" => ProviderNativeExactProjectionMode::Source,
+        "callable-skeleton" => ProviderNativeExactProjectionMode::CallableSkeleton,
+        _ => unreachable!("direct_projection_kind validates its result"),
     };
     validate_projection_field(
         "schemaId",
@@ -472,16 +851,63 @@ fn validate_projection(
             source.len()
         ));
     }
-    if projection_mode == ExactProjectionModeV1::Code {
-        let start = usize::try_from(native.source_byte_start)
-            .map_err(|_| "direct exact-selector byte start overflow".to_string())?;
-        let end = usize::try_from(native.source_byte_end)
-            .map_err(|_| "direct exact-selector byte end overflow".to_string())?;
-        if native.projection_text.as_bytes() != &source[start..end] {
-            return Err(
-                "direct exact-selector projection is not the parser-owned source byte slice"
-                    .to_string(),
-            );
+    match projection_mode {
+        ProviderNativeExactProjectionMode::Source => {
+            if native.projection_payload.is_some() {
+                return Err(
+                    "source exact-selector projection unexpectedly carries projectionPayload"
+                        .to_string(),
+                );
+            }
+            let projection_text = native.projection_text.as_deref().ok_or_else(|| {
+                "source exact-selector projection is missing projectionText".to_string()
+            })?;
+            let start = usize::try_from(native.source_byte_start)
+                .map_err(|_| "direct exact-selector byte start overflow".to_string())?;
+            let end = usize::try_from(native.source_byte_end)
+                .map_err(|_| "direct exact-selector byte end overflow".to_string())?;
+            if projection_text.as_bytes() != &source[start..end] {
+                return Err(
+                    "direct exact-selector projection is not the parser-owned source byte slice"
+                        .to_string(),
+                );
+            }
+        }
+        ProviderNativeExactProjectionMode::CallableSkeleton => {
+            if native.projection_text.is_some() {
+                return Err(
+                    "callable-skeleton exact projection unexpectedly carries projectionText"
+                        .to_string(),
+                );
+            }
+            let payload = native.projection_payload.as_ref().ok_or_else(|| {
+                "callable-skeleton exact projection is missing projectionPayload".to_string()
+            })?;
+            payload
+                .validate()
+                .map_err(|error| format!("invalid callable-skeleton projection: {error}"))?;
+            validate_projection_field("payload.languageId", &payload.language_id, language_id)?;
+            validate_projection_field("payload.providerId", &payload.provider_id, provider_id)?;
+            validate_projection_field(
+                "payload.rootSelector.selector",
+                &payload.root_selector.selector,
+                structural_selector,
+            )?;
+            validate_projection_field(
+                "payload.rootSelector.generationIdentityDigest",
+                &payload.root_selector.generation_identity_digest,
+                generation_identity_digest,
+            )?;
+            validate_projection_field(
+                "payload.rootSelector.parserIdentityDigest",
+                &payload.root_selector.parser_identity_digest,
+                parser_identity_digest,
+            )?;
+            validate_projection_field(
+                "payload.rootSelector.queryPackDigest",
+                &payload.root_selector.query_pack_digest,
+                query_pack_digest,
+            )?;
         }
     }
     Ok(())
@@ -494,6 +920,16 @@ fn validate_projection_field(field: &str, actual: &str, expected: &str) -> Resul
     Err(format!(
         "direct exact-selector {field} mismatch: expected={expected:?} actual={actual:?}"
     ))
+}
+
+fn read_exact_owner(canonical_owner: &Path, owner_path: &str) -> Result<Option<Vec<u8>>, String> {
+    match std::fs::read(canonical_owner) {
+        Ok(source) => Ok(Some(source)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!(
+            "failed to read exact-selector owner bytes: ownerPath={owner_path} error={error}"
+        )),
+    }
 }
 
 fn encode_base64(bytes: &[u8]) -> String {

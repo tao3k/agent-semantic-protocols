@@ -194,20 +194,20 @@ agent-tools-install-language language bin_dir="" target="" scope="global" projec
         exit 2
         ;;
     esac
-    if [[ -z "${bin_dir}" ]]; then
-      bin_dir="${SEMANTIC_AGENT_BIN_DIR:-${state_home}/runtime/bin}"
+    runtime_bin="${state_home}/runtime/bin"
+    if [[ -n "${bin_dir}" && "${bin_dir}" != "${runtime_bin}" ]]; then
+      echo "custom provider bin_dir is unsupported; ASP State Home runtime/bin is the only provider runtime authority: ${runtime_bin}" >&2
+      exit 2
     fi
-    mkdir -p "${bin_dir}"
+    mkdir -p "${runtime_bin}"
     case "{{ language }}" in
       rust)
         direnv exec "${repo_root}" cargo build \
           --manifest-path "${repo_root}/languages/rust-lang-project-harness/Cargo.toml" \
           --release --features cli --bin rs-harness
-        install -m 755 \
-          "${repo_root}/languages/rust-lang-project-harness/target/release/rs-harness" \
-          "${bin_dir}/rs-harness"
         provider="rust"
         binary="rs-harness"
+        provider_source="${repo_root}/languages/rust-lang-project-harness/target/release/rs-harness"
         ;;
       typescript)
         npm --prefix "${repo_root}/languages/typescript-lang-project-harness" ci
@@ -216,45 +216,47 @@ agent-tools-install-language language bin_dir="" target="" scope="global" projec
         mkdir -p "${artifact_dir}"
         cp -R "${repo_root}/languages/typescript-lang-project-harness/dist/provider/." "${artifact_dir}/"
         printf '#!/usr/bin/env bash\nexec node %q "$@"\n' \
-          "${artifact_dir}/ts-harness.mjs" >"${bin_dir}/ts-harness"
-        chmod 755 "${bin_dir}/ts-harness"
+          "${artifact_dir}/ts-harness.mjs" >"${artifact_dir}/ts-harness"
+        chmod 755 "${artifact_dir}/ts-harness"
         provider="typescript"
         binary="ts-harness"
+        provider_source="${artifact_dir}/ts-harness"
         ;;
       python)
         uv sync --project "${repo_root}/languages/python-lang-project-harness" --frozen
+        artifact_dir="${state_home}/runtime/provider-artifacts/py-harness/develop"
+        mkdir -p "${artifact_dir}"
         printf '#!/usr/bin/env bash\nexec %q "$@"\n' \
           "${repo_root}/languages/python-lang-project-harness/.venv/bin/py-harness" \
-          >"${bin_dir}/py-harness"
-        chmod 755 "${bin_dir}/py-harness"
+          >"${artifact_dir}/py-harness"
+        chmod 755 "${artifact_dir}/py-harness"
         provider="python"
         binary="py-harness"
+        provider_source="${artifact_dir}/py-harness"
         ;;
       julia)
         direnv exec "${repo_root}" env \
           ASP_JULIA_BUILD_DIR="${repo_root}/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local" \
           ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 \
           "${repo_root}/languages/JuliaLangProjectHarness.jl/juliac/build_provider.sh"
-        install -m 755 \
-          "${repo_root}/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness" \
-          "${bin_dir}/asp-julia-harness"
         provider="julia"
         binary="asp-julia-harness"
+        provider_source="${repo_root}/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness"
         ;;
       gerbil-scheme)
-        just agent-tools-build-gerbil "${bin_dir}"
+        artifact_dir="${state_home}/runtime/provider-artifacts/gslph/develop"
+        just agent-tools-build-gerbil "${artifact_dir}"
         provider="gerbil-scheme-harness"
         binary="gslph"
+        provider_source="${artifact_dir}/gslph"
         ;;
       org)
         direnv exec "${repo_root}" cargo build \
           --manifest-path "${repo_root}/languages/orgize/Cargo.toml" \
           --release --features md --bin orgize
-        install -m 755 \
-          "${repo_root}/languages/orgize/target/release/orgize" \
-          "${bin_dir}/orgize"
         provider="orgize"
         binary="orgize"
+        provider_source="${repo_root}/languages/orgize/target/release/orgize"
         ;;
       *)
         echo "unsupported develop language: {{ language }}" >&2
@@ -264,21 +266,18 @@ agent-tools-install-language language bin_dir="" target="" scope="global" projec
     install_args=(
       install language "{{ language }}"
       "${scope_args[@]}"
-      --record-installed-receipt "${bin_dir}/${binary}"
+      --record-installed-receipt "${provider_source}"
     )
     if [[ -n "${target}" ]]; then
       install_args+=(--target "${target}")
     fi
-    protocol_bin="${ASP_BIN:-${state_home}/runtime/bin/asp}"
+    protocol_bin="${state_home}/runtime/bin/asp"
     if [[ ! -x "${protocol_bin}" ]]; then
-      protocol_bin="$(command -v asp || true)"
-    fi
-    if [[ -z "${protocol_bin}" || ! -x "${protocol_bin}" ]]; then
       echo "canonical ASP binary is required to record the provider receipt; run 'just agent-tools-install-protocol' first" >&2
       exit 1
     fi
     "${protocol_bin}" "${install_args[@]}"
-    echo "[agent-tools-install] provider=${provider} language={{ language }} installMode=develop-workspace source=root-justfile binary=${binary} installedPath=${bin_dir}/${binary} receipt=recorded"
+    echo "[agent-tools-install] provider=${provider} language={{ language }} installMode=develop-workspace source=root-justfile binary=${binary} installedPath=${runtime_bin}/${binary} receipt=recorded"
 
 # Develop mode: build and install the Rust provider from this checkout.
 agent-tools-install-rust bin_dir="":
@@ -317,23 +316,26 @@ agent-tools-build-gerbil bin_dir="":
       repo_root="$PWD"; \
       bin_dir="{{bin_dir}}"; \
     if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
+      mkdir -p "${bin_dir}"; \
       package_dir="${repo_root}/{{gerbil_harness_project}}"; \
-      root_bin="${repo_root}/.bin"; \
       cd "${package_dir}"; \
       if [ "$(uname -s)" = "Darwin" ]; then \
         env SDKROOT= CC="$(xcrun --find clang)" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
           -e '(import :gslph/src/build-api/native-build)' \
+          -e '(compile-package-api-if-stale)'; \
+        env SDKROOT= CC="$(xcrun --find clang)" GERBIL_PATH="${package_dir}/.gerbil" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
+          -e '(import :gslph/src/build-api/native-build)' \
           -e '(install-target #f #f #f #f #f #t (quote asp))'; \
       else \
-        env SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi -e '(import :gslph/src/build-api/native-build)' \
+        env SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
+          -e '(import :gslph/src/build-api/native-build)' \
+          -e '(compile-package-api-if-stale)'; \
+        env GERBIL_PATH="${package_dir}/.gerbil" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
+          -e '(import :gslph/src/build-api/native-build)' \
           -e '(install-target #f #f #f #f #f #t (quote asp))'; \
       fi; \
     launcher="${bin_dir}/gslph"; \
       test -x "${launcher}"; \
-      mkdir -p "${root_bin}" "${bin_dir}"; \
-      if [ ! "${launcher}" -ef "${root_bin}/gslph" ]; then install -m 755 "${launcher}" "${root_bin}/gslph"; fi; \
-      if [ ! "${launcher}" -ef "${bin_dir}/gslph" ]; then install -m 755 "${launcher}" "${bin_dir}/gslph"; fi; \
-      test -x "${root_bin}/gslph"; \
       test -x "${bin_dir}/gslph"; \
       "${bin_dir}/gslph" --help >/dev/null; \
       echo "[agent-tools-install] provider=gslph installMode=develop-workspace source=justfile-native-build installedPath=${bin_dir}/gslph"

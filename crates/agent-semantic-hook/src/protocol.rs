@@ -88,6 +88,8 @@ pub struct HookRoutes {
     pub lexical: CommandTemplate,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<CommandTemplate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact_selector_native: Option<CommandTemplate>,
     pub ingest: CommandTemplate,
     pub check_changed: CommandTemplate,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -110,6 +112,8 @@ pub struct HookRouteBindings {
     pub lexical: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact_selector_native: Option<String>,
     pub ingest: String,
     pub check_changed: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

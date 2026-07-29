@@ -3,6 +3,7 @@
 //! Root semantic agent hook runtime for provider manifests and project activations.
 
 mod activation_store;
+pub use activation_store::registered_language_runtime;
 mod active_artifact_receipt;
 pub use active_artifact_receipt::{
     ActiveAspArtifactReconciliationV1, rebind_active_asp_binary_receipt_if_present,
@@ -45,7 +46,10 @@ pub use provider_registry::registered_language_ids;
 pub use provider_registry::{
     RegisteredProviderBinaryV1, registered_provider_binaries_v1, registered_provider_binary_v1,
 };
-pub use provider_registry::{materialize_provider_routes, semantic_registry_digest};
+pub use provider_registry::{
+    materialize_provider_routes, registered_language_descriptor_digest,
+    registered_query_pack_digest, schema_registry_provider_manifests, semantic_registry_digest,
+};
 mod runtime_profile;
 pub mod source_access;
 mod source_selector;
@@ -57,13 +61,13 @@ mod tool_action;
 pub use crate::activation_store::{
     DefaultActivationSync, default_activation_path, discover_activation_path,
     language_activation_path, load_activation, load_or_refresh_default_activation,
-    load_or_sync_activation, load_or_sync_activation_for_language, parse_hook_activation,
+    load_or_sync_activation, parse_hook_activation,
     write_activation,
 };
 pub use crate::active_artifact_receipt::{
     ActiveAspArtifactInput, ActiveAspArtifactMaterialization, active_asp_artifact_receipt_path,
-    active_provider_artifact_input, active_provider_artifact_input_with_state_home,
-    materialize_active_asp_artifact_receipt,
+    active_exact_selector_fixture_artifact_input_v1, active_provider_artifact_input,
+    active_provider_artifact_input_with_state_home, materialize_active_asp_artifact_receipt,
     materialize_active_asp_artifact_receipt_for_current_process,
     reconcile_active_asp_artifact_receipt_from_materialized_set,
     verify_active_asp_artifact_receipt,
@@ -147,6 +151,7 @@ pub use read_only_subagent::{
 #[cfg(test)]
 extern crate self as agent_semantic_hook;
 pub use crate::provider_registry::{
+    RegisteredProviderCatalogIdentity, registered_provider_catalog_identities,
     registered_provider_id_v1, registered_provider_method_invocation_v1,
 };
 #[doc(hidden)]

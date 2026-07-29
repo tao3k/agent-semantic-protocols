@@ -4,7 +4,7 @@ use std::path::Path;
 
 use super::{
     CurrentSourceIndexSnapshot, LanguageId, ProviderId, ProviderRegistrySnapshot,
-    SourceIndexOwnerPath, current_provider_source_index_snapshot_with_registry,
+    SourceIndexOwnerPath,
     current_source_index_snapshot_for_owner_with_registry,
     current_source_index_snapshot_with_registry,
 };
@@ -78,7 +78,7 @@ pub fn current_provider_source_index_snapshot_from_activation(
     provider_id: &ProviderId,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let provider_registry = ProviderRegistrySnapshot::from_activation(activation_path, activation)?;
-    current_provider_source_index_snapshot_with_registry(
+    crate::source_index::current_live_provider_source_index_snapshot_with_registry(
         project_root,
         language_id,
         provider_id,

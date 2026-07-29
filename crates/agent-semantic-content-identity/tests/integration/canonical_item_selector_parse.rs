@@ -1,4 +1,4 @@
-use agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelectorV1;
+use agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector;
 
 #[test]
 fn canonical_selector_parse_is_language_neutral() {
@@ -18,7 +18,7 @@ fn canonical_selector_parse_is_language_neutral() {
         ),
         ("julia", "julia://src/Parser.jl#item/function/parse"),
     ] {
-        let parsed = CanonicalItemSelectorV1::parse(selector)
+        let parsed = CanonicalItemSelector::parse(selector)
             .unwrap_or_else(|error| panic!("{language_id} selector rejected: {error}"));
 
         assert_eq!(parsed.language_id.as_str(), language_id);
@@ -38,7 +38,7 @@ fn canonical_selector_parse_rejects_non_item_and_noncanonical_identity_paths() {
         "rust://src/lib.rs#item/function/%70arse",
     ] {
         assert!(
-            CanonicalItemSelectorV1::parse(selector).is_err(),
+            CanonicalItemSelector::parse(selector).is_err(),
             "invalid selector was accepted: {selector}"
         );
     }

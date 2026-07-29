@@ -13,6 +13,22 @@ An exact selector query consumes an installed Global provider catalog and an
 active exact-selector generation.  Query execution never creates, refreshes,
 or writes activation state.
 
+This contract is language-neutral.  Rust native exact transport, Gerbil
+Scheme, Julia, Python, TypeScript, Org, Markdown, and future Registry languages
+must enter the same pre-activation exact consumer.  A language-specific fast
+path must not be the only path that avoids activation.
+
+* Dispatch boundary
+
+Exact-query classification and workspace identity resolution occur before any
+project activation load.  The dispatcher has only two legal exact routes:
+
+1. verified resident fixture or live-overlay hit;
+2. verified Global catalog provider invocation.
+
+It must not continue into the ordinary activation-backed provider dispatcher.
+This is a structural call-graph rule, not an error-message convention.
+
 * Route
 
 #+begin_example
@@ -47,6 +63,21 @@ binary and invocation contract.  A workspace session references the active
 catalog generation; it does not contain or generate a provider binary
 selection.
 
+The catalog is published only by explicit Global installation reconciliation.
+Its canonical materialized path is owned by State Home runtime state and is
+independent of a project activation.  Each provider entry contains:
+
+- language, provider, and manifest identity;
+- verified CAS materialized path;
+- content and artifact-metadata digests;
+- execution-command digest;
+- canonical direct argv prefix;
+- semantic Registry digest.
+
+The argv prefix begins with the verified installed provider artifact.  Query
+must not reconstruct a provider path from an activation string or search the
+host =PATH=.
+
 The exact consumer must not call:
 
 - =load_or_sync_activation_for_language=;
@@ -56,6 +87,26 @@ The exact consumer must not call:
 - a direct Turso open.
 
 Missing catalog identity fails closed with a Global reconciliation receipt.
+
+Provider invocation remains language-owned:
+
+- a Registry-declared native exact method consumes the typed stdin request;
+- another provider receives its normal exact query argv from the same catalog
+  entry;
+- neither route loads activation.
+
+* Active artifact verification
+
+An exact fixture lookup verifies only the exact-selector fixture leaf required
+for that lookup, followed by the live owner proof.  It does not verify or
+materialize the activation leaf, ASP binary leaf, unrelated provider leaves, or
+runtime config leaf.
+
+An activation size or digest mismatch therefore cannot block exact selector
+lookup.  It remains a health/install reconciliation error and is reported by
+the owning lifecycle command.  Leaf-scoped verification must still validate
+the receipt structure, fixture artifact digest, materialized fixture identity,
+selector, owner path, live source digest, projection mode, and generation.
 
 * Resident lifetime
 
@@ -77,6 +128,145 @@ workspace identity
 
 It contains parser facts and projections for the current owner only.  It is
 never populated under an older source digest.
+
+* Output and async I/O boundary
+** Core result contract
+
+The exact-selector consumer core MUST return an immutable output value containing
+the projected =Bytes= and a typed execution receipt.  The core MUST NOT write to
+stdout, stderr, a terminal, or an IPC socket.  This keeps projection,
+verification, transport, and presentation as separate responsibilities.
+
+The receipt MUST validate against
+=schemas/asp.exact-selector-execution-receipt.v1.schema.json=.  It is a shared
+language-neutral contract; provider-owned schemas MAY add semantic projection
+facts, but MUST NOT redefine lifecycle or performance counters.
+
+The typed receipt MUST expose at least:
+
+- =catalogGeneration=
+- =exactGenerationDigest=
+- =projectionMode=
+- =routeKind=
+- =activationReads=
+- =activationWrites=
+- =syncCalls=
+- =databaseOpens=
+- =providerProcessCount=
+- =elapsedMicros=
+
+The v1 projection identity is exactly =source= or =callable-skeleton=.  Legacy
+=--code=, =--names-only=, =--verbatim=, and output encodings such as =--json=
+MUST NOT become projection identities or compatibility aliases.
+
+** Transport adapters
+
+The resident transport adapter MUST write the core result through Tokio
+=AsyncWrite=.  Backpressure, cancellation, and client disconnects belong to
+this asynchronous IPC boundary; they MUST NOT be implemented inside the exact
+consumer.
+
+A one-shot CLI adapter MAY use =std::io::Write= only for the final bounded write
+of an already-computed result to stdout or stderr.  It MUST NOT perform provider
+I/O, activation I/O, database I/O, catalog publication, generation repair, or
+retry loops.
+
+Changing =std::io= to Tokio inside the one-shot CLI adapter is not a performance
+fix.  The performance contract is satisfied by eliminating query-time state
+reconciliation and process/file/DB acquisition from the exact consumer.
+
+** Registry-wide installed performance gate
+
+The installed gate MUST enumerate every language in the semantic Registry.  It
+MUST exercise each declared exact-selector route against a valid Global catalog
+generation while project activation metadata is missing, stale, size-drifted,
+or digest-drifted.  Rust native exact projection and Gerbil Scheme generic exact
+projection are mandatory representatives; adding a Registry language adds a
+gate row automatically.
+
+Every successful warm resident query MUST emit:
+
+#+begin_example
+activationReads=0
+activationWrites=0
+syncCalls=0
+databaseOpens=0
+providerProcessCount=0
+#+end_example
+
+The gate MUST fail when an exact query invokes =asp sync=, calls an activation
+load/refresh helper, opens Turso directly, rebuilds the provider catalog, or
+starts a provider process after its exact generation is resident.
+
+Cold installed lookup means the first lookup in a newly started resident
+authority against already-published immutable artifacts.  It does not authorize
+installation, activation repair, provider build, database bootstrap, or source
+index materialization.  Cold and warm latency budgets MUST be expressed in
+microseconds in the typed receipt and enforced by the shared Search fixture
+benchmark, not by language-specific tests.
+
+Catalog verification MUST be Merkle-leaf scoped.  Loading a catalog validates
+its schema, Registry identity, and immutable catalog generation without reading
+every provider artifact.  Selecting a language validates only that provider
+leaf.  An exact query for one language MUST NOT hash, canonicalize, stat, open,
+or execute artifacts owned by any other language.
+
+Each resident authority MUST keep one load-once verification cell keyed by
+=(catalogGeneration, languageId, artifactDigest)=.  Concurrent first readers of
+the same leaf join that cell; they MUST NOT hash the same artifact concurrently.
+A failed verification remains failed for that immutable generation.  Publishing
+a new catalog generation creates new cells instead of mutating or clearing the
+old generation in place.
+
+The verification cell is owned by the shared Search package's load-once
+generation mechanism.  Protocol dispatch composes that mechanism; it MUST NOT
+introduce a second provider-private cache or language-specific synchronization
+primitive.
+
+** Exact generation lifecycle ownership
+
+An exact-selector fixture is a leaf of
+=asp.active-workspace-generation.v1=, not a leaf of the active ASP binary or
+hook activation receipt.  Binary installation MAY publish provider artifacts
+and catalog generations, but MUST NOT declare a workspace exact generation
+current.
+
+The workspace generation digest MUST close over:
+
+- workspace identity and workspace root digest
+- language and provider identity
+- exact-selector fixture schema identity
+- parser identity digest
+- query-pack digest
+- provider source-envelope digest
+- graph-topology fixture digest
+- exact-selector fixture digest
+- rootDepth and complete owner/leaf/selector counts
+
+A change to any producer, schema, parser, query pack, envelope, topology, or
+fixture input creates a new immutable workspace generation.  Rebinding an ASP
+binary receipt MUST NOT rewrite, bless, or keep alive a fixture from an older
+workspace generation.
+
+Publication commits the provider envelope, topology fixture, exact-selector
+fixture, and active-generation record atomically.  The resident authority swaps
+to the new record only after every referenced leaf verifies.  Query-time code
+MUST NOT repair a partial generation.
+
+The exact consumer core returns immutable projection bytes plus a typed
+receipt.  It does not write stdout.
+
+#+begin_example
+exact consumer -> Bytes + ExactQueryReceiptV1
+               -> resident IPC adapter -> tokio::io::AsyncWrite
+               -> one-shot CLI adapter -> std::io::Write
+#+end_example
+
+=std::io= is permitted only in the thin one-shot CLI adapter for the final
+bounded write.  Resident IPC, provider sessions, and concurrent request
+transport use Tokio async I/O.  Replacing the final stdout write with Tokio is
+not a substitute for removing provider process startup, filesystem reads, or
+activation work from the core.
 
 * Performance contract
 
@@ -121,3 +311,13 @@ must not be used to make either gate pass.
    generation without a global lock.
 5. Remove the provider catalog or change its digest.  Exact query fails closed
    without activation refresh, provider build, database access, or sync.
+6. Iterate every language/provider pair in the semantic Registry.  Corrupt the
+   project activation size and digest before each exact query.  No result or
+   error may contain activation mismatch, activation refresh, or activation
+   write evidence.
+7. Run representative installed selectors for every provider that declares an
+   exact surface.  The matrix must include Rust native exact and Gerbil Scheme
+   generic exact.  A Rust-only gate is insufficient.
+8. Assert from the command receipt that warm fixture and overlay hits have
+   =providerProcessStarts=0=, and every exact route has
+   =activationReads=0= and =activationWrites=0=.

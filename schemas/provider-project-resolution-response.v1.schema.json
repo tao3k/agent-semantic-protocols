@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-response.v1.schema.json",
+  "title": "Provider Project Resolution Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "providerId",
+    "state"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-project-resolution-response"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "state": {
+      "enum": [
+        "resolved",
+        "failed"
+      ]
+    },
+    "resolution": {
+      "$ref": "https://schemas.agent-semantic-protocols.dev/project-resolution.v1.schema.json"
+    },
+    "failure": {
+      "$ref": "#/$defs/failure"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "state": {
+          "const": "resolved"
+        }
+      },
+      "required": [
+        "resolution"
+      ],
+      "not": {
+        "required": [
+          "failure"
+        ]
+      }
+    },
+    {
+      "properties": {
+        "state": {
+          "const": "failed"
+        }
+      },
+      "required": [
+        "failure"
+      ],
+      "not": {
+        "required": [
+          "resolution"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reasonKind",
+        "message",
+        "nextAction"
+      ],
+      "properties": {
+        "reasonKind": {
+          "enum": [
+            "project-entry-missing",
+            "project-entry-outside-repository-candidates",
+            "project-entry-invalid",
+            "project-scope-conflict"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nextAction": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

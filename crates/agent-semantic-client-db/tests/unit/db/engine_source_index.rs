@@ -223,7 +223,7 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
     assert_eq!(proof.structural_selector, selector);
     assert_eq!(
         proof.projection_mode,
-        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code
+        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Source
     );
     assert_eq!(proof.source_byte_start, 0);
     assert_eq!(proof.source_byte_end, source.len() as u64);
@@ -346,7 +346,7 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
     assert_eq!(proof.structural_selector, selector);
     assert_eq!(
         proof.projection_mode,
-        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Code
+        agent_semantic_content_identity::ExactSelectorProjectionModeV1::Source
     );
     assert_eq!(proof.source_byte_start, 0);
     assert_eq!(

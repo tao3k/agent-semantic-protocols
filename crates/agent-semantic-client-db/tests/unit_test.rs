@@ -34,9 +34,15 @@ mod selector_generation_evidence;
 mod snapshot_fixture;
 #[path = "unit/db/source_index_refresh_perf.rs"]
 mod source_index_refresh_perf;
+#[path = "unit/test_support.rs"]
+mod test_support;
 #[path = "unit/turso_mvcc_benchmark.rs"]
 mod turso_mvcc_benchmark;
 #[path = "unit/turso_mvcc_partition.rs"]
 mod turso_mvcc_partition;
+#[path = "unit/workspace_db_ipc.rs"]
+mod workspace_db_ipc;
+#[path = "unit/workspace_db_owner_election.rs"]
+mod workspace_db_owner_election;
 #[path = "unit/workspace_db_registry.rs"]
 mod workspace_db_registry;

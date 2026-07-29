@@ -16,8 +16,8 @@ pub struct ProjectStatePaths {
     pub activation_path: PathBuf,
     pub client_cache_dir: PathBuf,
     pub client_cache_manifest_path: PathBuf,
-    pub project_client_db_dir: PathBuf,
-    pub project_client_db_path: PathBuf,
+    pub client_db_dir: PathBuf,
+    pub client_db_path: PathBuf,
     pub artifacts_dir: PathBuf,
     pub runtime_home: PathBuf,
     pub runtime_bin_dir: PathBuf,
@@ -80,8 +80,8 @@ fn project_state_paths_from_resolved(
     let hook_state_dir = hook_dir.join("state");
     let activation_path = hook_state_dir.join("activation.json");
     let client_cache_dir = resolved.paths.client_dir.clone();
-    let project_client_db_dir = resolved.paths.project_client_dir.clone();
-    let project_client_db_path = resolved.paths.project_client_db_path.clone();
+    let client_db_dir = resolved.paths.client_dir.clone();
+    let client_db_path = resolved.paths.client_db_path.clone();
     let artifacts_dir = resolved.paths.artifacts_dir.clone();
     let runtime_home = protocol_home.join("runtime");
     let runtime_bin_dir = runtime_home.join("bin");
@@ -98,8 +98,8 @@ fn project_state_paths_from_resolved(
         activation_path,
         client_cache_dir,
         client_cache_manifest_path: resolved.paths.client_cache_manifest_path.clone(),
-        project_client_db_dir,
-        project_client_db_path,
+        client_db_dir,
+        client_db_path,
         artifacts_dir,
         runtime_home,
         runtime_bin_dir: runtime_bin_dir.clone(),
