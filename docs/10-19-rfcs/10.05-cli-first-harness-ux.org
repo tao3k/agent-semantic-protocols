@@ -149,9 +149,11 @@ manifest-declared workspace members, package manifests, lockfiles, path
 dependencies, target declarations, and source-root declarations.  It emits a
 normalized =LanguagePackageGraph= with project, package, target, internal
 dependency, external dependency identity, generated-root, and source-root
-facts.  Provider defaults MAY complete omitted package-manager declarations,
-but the receipt MUST distinguish explicit package-manager facts from provider
-defaults.
+facts.  Omitted manifest fields MUST be resolved only through the selected
+package manager's documented semantics.  A provider MUST NOT invent generic
+default roots, extensions, ignored directories, or workspace membership.
+Package-manager-derived facts are labeled =package-manager= and retain the
+owning parser and project-entry evidence in the receipt.
 
 The shared =ProjectResolution= binds =RepositoryIdentity=,
 =WorktreeIdentity=, provider and parser identities, normalized project-entry
@@ -159,9 +161,10 @@ path, =LanguagePackageGraph=, =ResolvedSourceScope= records, candidate
 generation, manifest and lock digests, and the resolution generation.  A
 =ResolvedSourceScope= names its owning package and target, admitted extensions,
 source and generated roots, inclusion authority, and exclusion authority.
-Flat =packageRoots=, =sourceRoots=, =sourceExtensions=, and
-=ignoredPathPrefixes= arrays are provider declarations used to build this
-receipt; they are not independently executable inventory authority.
+Flat =packageRoots=, =sourceRoots=, and =sourceExtensions= arrays are derived
+receipt projections; they are not provider configuration and are not
+independently executable inventory authority.  Provider-owned
+=ignoredPathPrefixes= are not part of project resolution.
 
 Scope admission applies ordered authorities:
 
@@ -169,13 +172,16 @@ Scope admission applies ordered authorities:
    artifacts are hard exclusions.
 2. Package-manager workspace membership, exclusions, and explicit targets are
    authoritative project facts.
-3. Explicit package and target source paths precede provider defaults.
-4. Provider default roots and extensions fill only undeclared semantics.
-5. User policy overlays are explicit final policy facts.
+3. Package-manager-defined implicit targets and conventional layouts are
+   admitted only when produced by that package manager's parser.
+4. User policy overlays are explicit final policy facts applied by ASP.
 
-An ordinary provider ignore prefix MUST NOT silently exclude a path explicitly
-owned by a package target.  Conflicts fail closed with a typed
-=project-scope-conflict= result naming both authorities.
+ASP applies repository ignore semantics and its normalized policy overlay once
+to the repository candidate snapshot before provider resolution.  Providers
+MUST NOT reapply private default ignore lists to that snapshot.  A policy
+exclusion MUST NOT silently exclude a path explicitly owned by a package
+target; conflicts fail closed with a typed =project-scope-conflict= result
+naming both authorities.
 
 For a non-Git workspace, repository candidate resolution uses an explicitly labeled
 =provider-only= repository candidate mode.  The caller supplies a project entry
@@ -210,17 +216,13 @@ markers, configuration files, package roots, declared source roots, registered
 source extensions, and ignored path prefixes.  A Git workspace MUST NOT perform
 an unbounded recursive walk from the workspace root.
 
-For a non-Git workspace, the provider MUST use an explicitly labeled
-=provider-only= candidate scope derived from the same project markers,
-configuration, package/source roots, extensions, and ignored prefixes.  It MUST
-NOT silently widen that scope into a generic workspace-root crawl.
+For a non-Git workspace, ASP MUST use an explicitly labeled =provider-only=
+candidate scope derived from finite project-marker probing followed by
+package-manager-declared members and source roots.  It MUST NOT silently widen
+that scope into a generic workspace-root crawl.
 
-Inventory enumeration MUST apply every activated provider ignored path prefix
-before descending into a directory.  Matching is against normalized,
-root-relative path components: an ignored prefix such as =target= prunes
-=target/= but MUST NOT prune a distinct component such as =mytarget=.  Nested
-prefixes such as =.data/codex= and =.codex/harness-state= are matched as
-component sequences rather than raw string prefixes.
+Inventory enumeration consumes the already-normalized ASP candidate snapshot;
+it MUST NOT apply a second provider-private ignore pass.
 
 Ignored directories and their descendants MUST never become inventory owners
 and MUST never be published to the incremental workspace database.  Symlink

@@ -60,7 +60,6 @@
       "enum": [
         "manifest-explicit",
         "package-manager",
-        "provider-default",
         "policy-overlay"
       ]
     },
@@ -150,7 +149,6 @@
           "enum": [
             "infrastructure",
             "package-manager",
-            "provider-default",
             "user-policy"
           ]
         }

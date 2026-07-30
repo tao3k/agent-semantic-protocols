@@ -253,7 +253,6 @@
           "enum": [
             "manifest-explicit",
             "package-manager",
-            "provider-default",
             "policy-overlay"
           ]
         },

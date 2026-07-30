@@ -81,8 +81,9 @@ judgments, and proof/evidence text. It records `contentKind`, `criticality`,
 `lossiness`, `trustLevel`, `validFor`, `notValidFor`, `preserved`, `omitted`,
 and exact-source requirements. This is a content payload transform, not a graph,
 frontier, rank, action, or command-materialization protocol.
-For tree-sitter-backed source query rendering, non-`--code` output is
-locator/frontier evidence only, while `--code` prints pure source code. Query
+For tree-sitter-backed exact query rendering, `--projection source` returns
+parser-authoritative source and `--projection callable-skeleton` returns the
+bounded callable structure. Query
 render profiles such as the `compact-graph-frontier` profile and
 `corpus-locator` profile project an ASP-compiled tree-sitter query plan over
 provider-native projection; they do not introduce a new packet surface.
@@ -284,13 +285,14 @@ extension command allows that evidence path.
 `agent-semantic-project-config.v1.schema.json` owns the shared `asp.toml`
 project configuration surface. `discovery.ignoredDirNames` is the canonical
 directory-skip list, and `discovery.includeHiddenDirNames` is the only
-schema-owned way to opt hidden directories into provider project walks. The
-ASP facade applies activation-root config first and invocation-root config
-second; list assignments are normalized replacements, not prompt-time merges.
-The retired `[search] ignoreDirs/includeHiddenDirs` names remain runtime input
-compatibility only. Source-language providers, embedded document providers
-(`org`/`md`), fd/rg prefilters, and hook activation should consume the same
-normalized config before selecting provider facts or binaries. Built-in
+schema-owned way to opt hidden directories into the ASP repository candidate
+snapshot. The ASP facade applies activation-root config first and
+invocation-root config second; list assignments are normalized replacements,
+not prompt-time merges. Retired `[search] ignoreDirs/includeHiddenDirs` input
+is unsupported. ASP applies normalized discovery policy once before
+dispatching candidate-bounded project-resolution requests; source-language
+providers MUST NOT maintain or reapply private default ignore lists to those
+candidates. Built-in
 document providers are enabled by default and require no activation entry, but
 they still honor `providers.org.enabled=false` and
 `providers.md.enabled=false`. Hook activation also consumes
@@ -461,8 +463,8 @@ shape: `executionBackend=codeql` and `adapterMode=codeql-query` are allowed for
 CodeQL-projected semantic frontier packets. CodeQL is an optional semantic
 backend rather than a new command family or a requirement for basic syntax
 query. The first CodeQL-aligned target is `flow-lite` local source/sink/path frontier,
-still rendered through frontier-first packets and exact `--code` follow-up
-selectors.
+still rendered through frontier-first packets and exact
+`--projection source|callable-skeleton` follow-up selectors.
 Compact contract: CodeQL is an optional semantic backend for `flow-lite` local source/sink/path frontier.
 `docs/10-19-rfcs/10.12-asp-native-relation-flow-codeql.org` owns the native relation catalog,
 flow-lite packet plan, artifact policy, and CodeQL promotion gates that sit
@@ -498,7 +500,7 @@ by RFC 012. It intentionally starts with local source/sink/path shapes such as
 `test-coverage-path`. This is not a global dataflow contract. The packet keeps
 source/sink handles, ordered path steps, guard/effect points, evidence
 artifacts, and `confidence=proved|bounded|partial|unavailable` explicit before
-an agent asks for exact source with `--code`.
+an agent asks for an exact source projection.
 
 `semantic-codeql-evidence.v1.schema.json` is the metadata-only artifact contract
 for optional CodeQL evidence. It records database/query fingerprints, source
@@ -545,9 +547,10 @@ fixtures may cite upstream `test/corpus` files for grammar provenance, but
 should test only provider/ASP capture granularity rather than duplicate
 upstream parser grammar coverage.
 
-Agent-facing syntax query stdout has a separate render contract from the JSON
-packet: non-`--code` output is locator/frontier evidence only, while `--code`
-prints pure source code. Rust currently renders a graph-rendered
+Agent-facing syntax search stdout has a separate render contract from exact
+query projection: search output is locator/frontier evidence, while exact
+query accepts only the typed `source` and `callable-skeleton` projections.
+Rust currently renders a graph-rendered
 locator-frontier profile, and TypeScript/Python render the `corpus-locator`
 profile. These are render profiles over frontier facts, not "compact frontier"
 protocols. Both profiles are valid only when backed by the same ASP-compiled
@@ -625,7 +628,7 @@ same-owner scans; `forbiddenStages` can also reject the aggregate
 Failure-frontier replay gates use
 `evidence.failureFrontierComparison` to compare a baseline receipt/trace with a
 candidate receipt/trace. The candidate must prove command reduction, bounded
-`direct-source-read --code` count, zero duplicate selectors, zero same-file
+exact source-projection count, zero duplicate selectors, zero same-file
 window fanout, and full coverage of explicit `expectedHotBlocks`. Receipt-path
 comparisons validate stable checked-in replay evidence; trace-path comparisons
 first normalize JSONL command traces into the same receipt contract, then run
@@ -733,17 +736,14 @@ suppression may report `sourceBytesReturned=true` while keeping
 emits this packet for Codex integration tests; it is not an agent exploration
 surface.
 
-`semantic-read-packet.v1.schema.json` is the active provider-owned packet for
-bounded exact source windows or actionable read-plan frontiers selected by the
-language query layer. Its `schemaVersion` remains the current fixed contract
-value while the read-plan frontier shape is refined. It is not a root hook
-command surface and does not reintroduce a root read command. Providers
-may emit it from `query/*` methods, for example an exact
-`query --from-hook direct-source-read --selector <path[:range]>` recovery with
-`outputMode=read-packet`. The packet records parser-owned selection evidence:
+`semantic-read-packet.v1.schema.json` is the provider-owned historical packet
+for bounded source windows. It is not a root hook command surface and does not
+define the current exact-query CLI. The current exact-query contract uses a
+canonical structural selector plus `--projection source|callable-skeleton`.
+The packet records parser-owned selection evidence:
 project-relative selectors or source locators, owner paths, optional item facts,
 bounded source-preserved line windows, truncation state, and notes. Exact
-`direct-source-read --code` windows must not be reconstructed from lossy compact
+exact source projections must not be reconstructed from lossy search
 projection rows; projection may select or repair a frontier, but `sourceWindows`
 text is source/formatter-preserved for the bounded selector. When a selector is
 broad or low-signal, providers should emit `readPlan` with `code=false`,
@@ -751,16 +751,12 @@ broad or low-signal, providers should emit `readPlan` with `code=false`,
 `avoid` actions instead of `sourceWindows`; broad discovery still stays in
 provider search, prime, ingest, or normal query repair.
 
-ASP owns the shared output mode names for provider stdout and packet requests:
-`frontier`, `code`, `read-packet`, and `json`. `frontier` is the default compact
-search/query mode and is source-free: providers must return metadata, omit/avoid
-facts, and executable read locators rather than `|code` rows or inline `text=`
-source fields. `code` is selected only by `--code` and may carry pure
-source/compact code text. `read-packet` is selected by `--json --view
-read-packet` and is the structured mode that may carry `sourceWindows` or
-`readPlan`. Other JSON packet requests use `json`. The ASP client validates the
-default frontier mode before prompt-output cache write-back and replay so
-language packages cannot drift into incompatible compact renderers.
+ASP separates search projection from exact query projection. Search is
+source-free locator/frontier evidence. Exact query accepts only
+`--projection source|callable-skeleton`; JSON is an explicit diagnostic or
+machine-consumer representation, never an implicit replacement for source
+projection. The removed `code` flag and direct-read recovery surface are not
+valid aliases.
 
 When a direct read must distinguish worktree, staged index, and committed
 contents, the same packet carries `sourceVersion=worktree|index|head`.
