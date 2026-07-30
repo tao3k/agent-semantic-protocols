@@ -1,0 +1,144 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchLoopMerge.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchLoopMerge",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (left right : SearchLoopMerge.Outcome),\n  SearchLoopMerge.joinOutcome left right = SearchLoopMerge.joinOutcome right left",
+   "theoremFamily": "merge-algebra",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-CONFLUENCE", "ASP-RFC-10.05-SMA-OUTCOME-JOIN"],
+   "name": "SearchLoopMerge.joinOutcome_commutative",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (first second third : SearchLoopMerge.Outcome),\n  SearchLoopMerge.joinOutcome (SearchLoopMerge.joinOutcome first second) third =\n    SearchLoopMerge.joinOutcome first (SearchLoopMerge.joinOutcome second third)",
+   "theoremFamily": "merge-algebra",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-CONFLUENCE", "ASP-RFC-10.05-SMA-OUTCOME-JOIN"],
+   "name": "SearchLoopMerge.joinOutcome_associative",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (outcome : SearchLoopMerge.Outcome), SearchLoopMerge.joinOutcome outcome outcome = outcome",
+   "theoremFamily": "merge-algebra",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-CONFLUENCE", "ASP-RFC-10.05-SMA-OUTCOME-JOIN"],
+   "name": "SearchLoopMerge.joinOutcome_idempotent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {domain : SearchLoopClauseFirst.ValidationDomain} (ledger : SearchLoopMerge.NormalizedLedger domain)\n  (left right : SearchLoopMerge.AdmittedResult domain),\n  SearchLoopMerge.mergeAdmitted (SearchLoopMerge.mergeAdmitted ledger left) right =\n    SearchLoopMerge.mergeAdmitted (SearchLoopMerge.mergeAdmitted ledger right) left",
+   "theoremFamily": "merge-confluence",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-ADMISSION",
+    "ASP-RFC-10.05-SMA-CONFLUENCE",
+    "ASP-RFC-10.05-SMA-OUTCOME-JOIN",
+    "ASP-RFC-10.05-SMA-TYPED-CONFLICT"],
+   "name": "SearchLoopMerge.admitted_merges_commute",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {domain : SearchLoopClauseFirst.ValidationDomain} (ledger : SearchLoopMerge.NormalizedLedger domain)\n  (result : SearchLoopMerge.AdmittedResult domain),\n  SearchLoopMerge.mergeAdmitted (SearchLoopMerge.mergeAdmitted ledger result) result =\n    SearchLoopMerge.mergeAdmitted ledger result",
+   "theoremFamily": "merge-confluence",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-ADMISSION",
+    "ASP-RFC-10.05-SMA-CONFLUENCE",
+    "ASP-RFC-10.05-SMA-OUTCOME-JOIN",
+    "ASP-RFC-10.05-SMA-TYPED-CONFLICT"],
+   "name": "SearchLoopMerge.admitted_merge_is_idempotent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {domain : SearchLoopClauseFirst.ValidationDomain} (ledger : SearchLoopMerge.NormalizedLedger domain)\n  {left right : List (SearchLoopMerge.AdmittedResult domain)},\n  left.Perm right → SearchLoopMerge.mergeMany ledger left = SearchLoopMerge.mergeMany ledger right",
+   "theoremFamily": "merge-confluence",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-ADMISSION",
+    "ASP-RFC-10.05-SMA-CONFLUENCE",
+    "ASP-RFC-10.05-SMA-OUTCOME-JOIN",
+    "ASP-RFC-10.05-SMA-TYPED-CONFLICT"],
+   "name": "SearchLoopMerge.mergeMany_permutation_invariant",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (store : SearchLoopMerge.ResultStore) (left right : SearchLoopMerge.ClauseResult),\n  left.clause ≠ right.clause →\n    SearchLoopMerge.writeResult (SearchLoopMerge.writeResult store left) right =\n      SearchLoopMerge.writeResult (SearchLoopMerge.writeResult store right) left",
+   "theoremFamily": "ledger-independence",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-CONFLUENCE", "ASP-RFC-10.05-SMA-OUTCOME-JOIN"],
+   "name": "SearchLoopMerge.independent_writes_commute",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (left right : SearchLoopMerge.ClauseResult),\n  SearchLoopMerge.mergePair left right = SearchLoopMerge.mergePair right left",
+   "theoremFamily": "merge-algebra",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-ADMISSION",
+    "ASP-RFC-10.05-SMA-CONFLUENCE",
+    "ASP-RFC-10.05-SMA-OUTCOME-JOIN",
+    "ASP-RFC-10.05-SMA-TYPED-CONFLICT"],
+   "name": "SearchLoopMerge.mergePair_commutative",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (result : SearchLoopMerge.ClauseResult),\n  SearchLoopMerge.mergePair result result = SearchLoopMerge.PairMerge.merged result",
+   "theoremFamily": "merge-algebra",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-ADMISSION",
+    "ASP-RFC-10.05-SMA-CONFLUENCE",
+    "ASP-RFC-10.05-SMA-OUTCOME-JOIN",
+    "ASP-RFC-10.05-SMA-TYPED-CONFLICT"],
+   "name": "SearchLoopMerge.mergePair_idempotent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (left right : SearchLoopMerge.ClauseResult),\n  left.clause = right.clause →\n    left.domain ≠ right.domain →\n      SearchLoopMerge.mergePair left right =\n        SearchLoopMerge.PairMerge.conflict SearchLoopMerge.MergeConflict.validationDomain",
+   "theoremFamily": "typed-conflict",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-ADMISSION", "ASP-RFC-10.05-SMA-TYPED-CONFLICT"],
+   "name": "SearchLoopMerge.domain_mismatch_is_typed_conflict",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (left right : SearchLoopMerge.ClauseResult),\n  left.clause ≠ right.clause →\n    SearchLoopMerge.mergePair left right =\n      SearchLoopMerge.PairMerge.conflict SearchLoopMerge.MergeConflict.clauseIdentity",
+   "theoremFamily": "typed-conflict",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-ADMISSION", "ASP-RFC-10.05-SMA-TYPED-CONFLICT"],
+   "name": "SearchLoopMerge.clause_mismatch_is_typed_conflict",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "SearchLoopMerge.writeResult (SearchLoopMerge.writeResult SearchLoopMerge.emptyStore SearchLoopMerge.pendingResult)\n    SearchLoopMerge.contradictoryResult ≠\n  SearchLoopMerge.writeResult\n    (SearchLoopMerge.writeResult SearchLoopMerge.emptyStore SearchLoopMerge.contradictoryResult)\n    SearchLoopMerge.pendingResult",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-CONFLUENCE", "ASP-RFC-10.05-SMA-OUTCOME-JOIN"],
+   "name": "SearchLoopMerge.last_write_wins_is_order_dependent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "SearchLoopMerge.mergePair SearchLoopMerge.pendingResult SearchLoopMerge.contradictoryResult =\n  SearchLoopMerge.PairMerge.merged SearchLoopMerge.contradictoryResult",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SMA-CONFLUENCE", "ASP-RFC-10.05-SMA-OUTCOME-JOIN"],
+   "name": "SearchLoopMerge.conflicting_outcomes_join_to_contradiction",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 13,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 0,
+ "axiomDependentDeclarationCount": 13}

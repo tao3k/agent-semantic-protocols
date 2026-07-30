@@ -58,8 +58,8 @@ fn builtin_manifests_include_julia_juliac_provider() {
     assert!(
         julia
             .source()
-            .default_ignored_path_prefixes
-            .contains(&".devenv".to_string())
+            .default_project_markers
+            .contains(&"Project.toml".to_string())
     );
 }
 

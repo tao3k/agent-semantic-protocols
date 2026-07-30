@@ -13,7 +13,7 @@ use super::agent_session_registry::run_agent_command;
 use super::ast_patch::run_ast_patch_command;
 use super::dispatch_agent_session_policy::is_agent_session_control_json_command;
 use super::document_provider;
-use super::global_resident::run_global_resident_command;
+use super::runtime_server::run_runtime_server_command;
 use super::graph::run_graph_command;
 use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
@@ -66,7 +66,7 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
         ),
         Some("paths") => run_paths_command(&args[1..]),
         Some("healthcheck") => run_healthcheck_command(&args[1..]),
-        Some("resident") => run_global_resident_command(&args[1..]),
+        Some("server") => run_runtime_server_command(&args[1..]),
         Some("live-corpus") => run_live_corpus_command(&args[1..]),
         Some("source-access") => run_source_access_command(&args[1..]),
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
@@ -212,7 +212,7 @@ fn option_is_present(args: &[String], option: &str) -> bool {
 }
 
 fn usage() -> String {
-    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|sync|paths|healthcheck|resident|workspace-db|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|sync|paths|healthcheck|server|workspace-db|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 fn run_client_command(args: Vec<String>) -> Result<(), String> {

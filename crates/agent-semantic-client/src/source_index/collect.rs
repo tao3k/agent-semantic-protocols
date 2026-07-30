@@ -24,9 +24,7 @@ pub(crate) fn collect_source_index_files(
             SourceIndexCollectionScope::TargetProvider {
                 language_id,
                 provider_id,
-            } => {
-                language_id == &provider.language_id && provider_id == &provider.provider_id
-            }
+            } => language_id == &provider.language_id && provider_id == &provider.provider_id,
             SourceIndexCollectionScope::TargetProviderId { provider_id } => {
                 provider_id == &provider.provider_id
             }

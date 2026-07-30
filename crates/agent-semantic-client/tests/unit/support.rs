@@ -176,6 +176,7 @@ pub(super) fn resolved_provider(language_id: &str) -> agent_semantic_client_core
     )
     .unwrap_or_else(|error| panic!("{language_id} execution command digest: {error}"));
     let provider = agent_semantic_hook::ActivatedProvider {
+        project_resolution: None,
         manifest_id: manifest.manifest_id().to_owned(),
         manifest_digest,
         language_id: manifest.language_id().clone(),
@@ -188,8 +189,6 @@ pub(super) fn resolved_provider(language_id: &str) -> agent_semantic_client_core
         package_roots: vec![".".to_string()],
         source_extensions: manifest.source().default_extensions.clone(),
         config_files: manifest.source().default_config_files.clone(),
-        source_roots: manifest.source().default_source_roots.clone(),
-        ignored_path_prefixes: manifest.source().default_ignored_path_prefixes.clone(),
         search_capabilities: manifest.search_capabilities().clone(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
         query_pack_descriptor: manifest.query_pack_descriptor().clone(),

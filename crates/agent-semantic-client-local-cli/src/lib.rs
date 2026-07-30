@@ -9,7 +9,6 @@ pub use backend::{LocalNativeCliBackend, LocalNativeCommand, LocalNativeOutput};
 pub use provider_workspace_scope::{
     PROVIDER_WORKSPACE_SCOPE_SCHEMA_ID, ProviderWorkspaceScope, ProviderWorkspaceScopeFile,
     ProviderWorkspaceScopeFiles, ProviderWorkspaceScopePacket, ProviderWorkspaceScopePathFile,
-    provider_workspace_scope,
-    provider_workspace_scope_files, provider_workspace_scope_files_from_packet,
-    provider_workspace_scope_from_stdout,
+    provider_workspace_scope, provider_workspace_scope_files,
+    provider_workspace_scope_files_from_packet, provider_workspace_scope_from_stdout,
 };

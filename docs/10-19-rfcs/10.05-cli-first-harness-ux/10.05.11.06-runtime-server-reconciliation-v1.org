@@ -1,0 +1,61 @@
+#+title: Global Resident Runtime Reconciliation v1
+#+options: toc:2 num:nil
+
+* Status
+
+Accepted implementation contract for the single ASP Runtime Server.
+
+* Invariant
+
+The platform supervisor owns exactly one long-lived ASP Runtime Server.
+Workspace identity selects an entry inside that server; it must never elect,
+spawn, or probe a second per-workspace server process.
+
+The canonical runtime entry is =ASP_STATE_HOME/runtime/bin/asp=. Every control
+request carries the expected SHA-256 of that canonical runtime. The server
+receipt carries the SHA-256 of the artifact that is currently executing.
+
+* Health reconciliation
+
+Healthcheck performs one typed Runtime Server status request. When the running
+digest equals the expected canonical digest it is read-only. When they differ,
+healthcheck sends a typed restart request containing the expected digest.
+
+Restart is idempotent at the Runtime Server boundary:
+
+- a server whose running digest differs from the request's expected digest
+  returns =draining= and exits through the Tokio control loop;
+- a server whose running digest already equals the expected digest returns
+  =healthy= and does not exit;
+- concurrent healthchecks therefore converge on one supervisor restart instead
+  of causing a restart cascade.
+
+The health path never kills a PID, deletes an election file, opens a workspace
+database, starts a provider process, or creates a per-workspace socket.
+
+* Performance and pressure gate
+
+Read-only =Status= is a memory-plane operation, not a control-socket
+roundtrip. The Runtime Server publishes a fixed-layout, generation-guarded
+status snapshot; each client maps it once and then reads a consistent snapshot
+without filesystem reads, socket traffic, database access, locks, or provider
+work. =Restart= and =Reconcile= remain ordered control-plane operations on the
+bounded socket transport.
+
+The Runtime Server transport is batch-first. A persistent client lane sends one
+non-empty request array per frame and receives one position-preserving receipt
+array. Single-request calls use a one-element batch; there is no parallel
+single-frame compatibility protocol. Lane count derives from available machine
+parallelism, while request bursts are coalesced without spawning one socket per
+request.
+
+Fixtures must run on Tokio's multi-thread runtime with adaptive concurrency.
+They must cover multiple workspaces and sessions, simultaneous status requests,
+simultaneous stale-digest restart requests, read traffic during drain, and the
+first request after supervisor restart.
+
+The warm status path must remain within the Runtime Server performance budget
+and report zero filesystem reads, database opens, provider process spawns,
+schema bootstraps, lock probes, manifest reads, and workspace
+canonicalizations. Digest computation belongs to atomic runtime publication,
+not the warm health path.

@@ -123,12 +123,10 @@ fn endpoint_retirement_is_atomic_with_owner_election() {
     )
     .expect("write endpoint fixture");
 
-    let owner = try_acquire_workspace_db_owner_election(
-        &runtime_base,
-        "workspace-atomic-retirement",
-    )
-    .expect("acquire current owner election")
-    .expect("current owner wins election");
+    let owner =
+        try_acquire_workspace_db_owner_election(&runtime_base, "workspace-atomic-retirement")
+            .expect("acquire current owner election")
+            .expect("current owner wins election");
     assert_eq!(
         try_retire_workspace_db_owner_endpoint(
             &runtime_base,

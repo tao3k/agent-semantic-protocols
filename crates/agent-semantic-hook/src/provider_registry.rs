@@ -6,9 +6,7 @@ use crate::protocol::{
     HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION, PROVIDER_MANIFEST_SCHEMA_ID,
     PROVIDER_MANIFEST_SCHEMA_VERSION,
 };
-use crate::protocol_activation::protocol_activation_manifest::{
-    ProviderManifest,
-};
+use crate::protocol_activation::protocol_activation_manifest::ProviderManifest;
 
 // The embedded registry is the admission authority for provider-native routes.
 const SCHEMA_REGISTRY_JSON: &str =
@@ -115,10 +113,9 @@ const LANGUAGE_PROVIDER_MANIFEST_JSON: &[&str] = &[
         "../../../languages/gerbil-scheme-language-project-harness/provider/asp-provider-manifest.json"
     ),
     include_str!("../../../languages/JuliaLangProjectHarness.jl/juliac/asp-provider-manifest.json"),
-    include_str!("../../../languages/org/provider/asp-org-provider-manifest.json"),
-    include_str!("../../../languages/org/provider/asp-md-provider-manifest.json"),
+    include_str!("../../../languages/orgize/provider/asp-org-provider-manifest.json"),
+    include_str!("../../../languages/orgize/provider/asp-md-provider-manifest.json"),
 ];
-
 
 pub fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
     let language_manifests = language_provider_manifests();
@@ -313,7 +310,6 @@ fn normalize_language_provider_manifest(manifest: &mut ProviderManifest) {
     manifest.protocol_version = HOOK_PROTOCOL_VERSION.to_string();
     manifest.manifest_version = env!("CARGO_PKG_VERSION").to_string();
 }
-
 
 fn schema_registry() -> &'static SemanticLanguageRegistry {
     static REGISTRY: std::sync::OnceLock<SemanticLanguageRegistry> = std::sync::OnceLock::new();

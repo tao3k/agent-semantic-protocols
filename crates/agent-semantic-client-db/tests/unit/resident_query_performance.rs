@@ -62,7 +62,9 @@ fn receipt_rejects_nonzero_query_io() {
     receipt.io.db_opens = 1;
 
     assert_eq!(
-        receipt.validate().expect_err("query-time DB open must fail"),
+        receipt
+            .validate()
+            .expect_err("query-time DB open must fail"),
         "resident query data plane performed forbidden I/O"
     );
 }
@@ -81,15 +83,9 @@ fn receipt_serializes_shared_schema_field_names() {
     .expect("serializable receipt");
     let value = serde_json::to_value(receipt).expect("serialize receipt");
 
-    assert_eq!(
-        value["schemaId"],
-        "asp.resident-query-performance-receipt"
-    );
+    assert_eq!(value["schemaId"], "asp.resident-query-performance-receipt");
     assert_eq!(value["workspace"]["kind"], "checkout-root");
-    assert_eq!(
-        value["workspace"]["workspaceRoot"],
-        "/workspace/repository"
-    );
+    assert_eq!(value["workspace"]["workspaceRoot"], "/workspace/repository");
     assert_eq!(value["rootDepth"], serde_json::json!([1, 0]));
     assert_eq!(value["io"]["dbOpens"], 0);
 }

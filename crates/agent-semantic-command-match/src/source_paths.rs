@@ -54,7 +54,6 @@ fn git_object_path_candidate(token: &str) -> Option<&str> {
     Some(path)
 }
 
-
 /// Applies the caller-owned typed predicate to one parser-produced candidate.
 ///
 /// Path, language, and provider classification deliberately remain outside

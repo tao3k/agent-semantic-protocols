@@ -1,16 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-semantic-protocols.dev/schemas/global-resident-control.v1.schema.json",
-  "title": "ASP Global Resident Control",
+  "title": "ASP Runtime Server Control",
   "oneOf": [
     {
       "$ref": "#/$defs/endpoint"
     },
     {
-      "$ref": "#/$defs/request"
+      "$ref": "#/$defs/requestBatch"
     },
     {
-      "$ref": "#/$defs/receipt"
+      "$ref": "#/$defs/receiptBatch"
+    },
+    {
+      "$ref": "#/$defs/statusSnapshot"
     }
   ],
   "$defs": {
@@ -26,10 +29,11 @@
         "runtimeArtifactDigest",
         "bindingToken",
         "socketPath"
+        ,"statusMemoryPath"
       ],
       "properties": {
         "schemaId": {
-          "const": "agent.semantic-protocols.global-resident-endpoint.v1"
+          "const": "agent.semantic-protocols.runtime-server-endpoint.v1"
         },
         "schemaVersion": {
           "const": "1"
@@ -57,7 +61,68 @@
         "socketPath": {
           "type": "string",
           "minLength": 1
+        },
+        "statusMemoryPath": {
+          "type": "string",
+          "minLength": 1
         }
+      }
+    },
+    "statusSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "generation",
+        "state",
+        "runtimeArtifactDigest",
+        "transportContractDigest",
+        "workspaceEntryCount",
+        "ownerEpoch"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.runtime-server-status-snapshot.v1"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "state": {
+          "enum": [
+            "healthy",
+            "starting",
+            "draining",
+            "degraded"
+          ]
+        },
+        "runtimeArtifactDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transportContractDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceEntryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ownerEpoch": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "requestBatch": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/request"
       }
     },
     "request": {
@@ -67,11 +132,15 @@
         "schemaId",
         "schemaVersion",
         "operation",
-        "requestId"
+        "expectedRuntimeArtifactDigest",
+        "requestId",
+        "transportContractDigest",
+        "ownerEpoch",
+        "bindingToken"
       ],
       "properties": {
         "schemaId": {
-          "const": "agent.semantic-protocols.global-resident-control-request.v1"
+          "const": "agent.semantic-protocols.runtime-server-control-request.v1"
         },
         "schemaVersion": {
           "const": "1"
@@ -83,10 +152,33 @@
             "restart"
           ]
         },
+        "expectedRuntimeArtifactDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "transportContractDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "ownerEpoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "bindingToken": {
+          "type": "string",
+          "minLength": 1
+        },
         "requestId": {
           "type": "string",
           "minLength": 1
         }
+      }
+    },
+    "receiptBatch": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/receipt"
       }
     },
     "receipt": {
@@ -103,7 +195,7 @@
       ],
       "properties": {
         "schemaId": {
-          "const": "agent.semantic-protocols.global-resident-control-receipt.v1"
+          "const": "agent.semantic-protocols.runtime-server-control-receipt.v1"
         },
         "schemaVersion": {
           "const": "1"

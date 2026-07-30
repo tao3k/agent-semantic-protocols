@@ -4,18 +4,19 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
-const MACOS_SERVICE_LABEL: &str = "dev.tao3k.agent-semantic-protocols.asp-resident";
-const LINUX_SERVICE_NAME: &str = "asp-resident.service";
+const MACOS_SERVICE_LABEL: &str = "dev.tao3k.agent-semantic-protocols.asp-runtime-server";
+#[cfg(target_os = "linux")]
+const LINUX_SERVICE_NAME: &str = "asp-runtime-server.service";
 
-pub(crate) fn install_global_resident_supervisor(protocol_home: &Path) -> Result<(), String> {
+pub(crate) fn install_runtime_server_supervisor(protocol_home: &Path) -> Result<(), String> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|error| format!("failed to create resident installer Tokio runtime: {error}"))?
+        .map_err(|error| format!("failed to create Runtime Server installer Tokio runtime: {error}"))?
         .block_on(install(protocol_home))
 }
 
-pub(crate) async fn reconcile_global_resident_supervisor() -> Result<(), String> {
+pub(crate) async fn reconcile_runtime_server_supervisor() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let service = format!("gui/{}/{}", unsafe { libc::getuid() }, MACOS_SERVICE_LABEL);
@@ -24,7 +25,7 @@ pub(crate) async fn reconcile_global_resident_supervisor() -> Result<(), String>
                 .args(["kickstart", "-k", &service])
                 .output()
                 .await,
-            "reconcile Global ASP launchd service",
+            "reconcile ASP Runtime Server launchd service",
         );
     }
     #[cfg(target_os = "linux")]
@@ -34,11 +35,11 @@ pub(crate) async fn reconcile_global_resident_supervisor() -> Result<(), String>
                 .args(["--user", "restart", LINUX_SERVICE_NAME])
                 .output()
                 .await,
-            "reconcile Global ASP systemd user service",
+            "reconcile ASP Runtime Server systemd user service",
         );
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    Err("Global ASP resident supervisor is unsupported on this platform".to_owned())
+    Err("ASP Runtime Server supervisor is unsupported on this platform".to_owned())
 }
 
 async fn install(protocol_home: &Path) -> Result<(), String> {
@@ -47,7 +48,7 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
         .await
         .map_err(|error| {
             format!(
-                "canonical Global ASP runtime is unavailable at {}: {error}",
+                "canonical ASP Runtime Server binary is unavailable at {}: {error}",
                 runtime_artifact.display()
             )
         })?;
@@ -60,7 +61,7 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
             .join("LaunchAgents")
             .join(format!("{MACOS_SERVICE_LABEL}.plist"));
         let rendered = include_str!(
-            "../../templates/resident/dev.tao3k.agent-semantic-protocols.asp-resident.plist"
+            "../../templates/server/dev.tao3k.agent-semantic-protocols.asp-runtime-server.plist"
         )
         .replace("@ASP_RUNTIME@", &runtime_artifact.to_string_lossy())
         .replace("@ASP_STATE_HOME@", &protocol_home.to_string_lossy());
@@ -73,7 +74,7 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
             .join("systemd")
             .join("user")
             .join(LINUX_SERVICE_NAME);
-        let rendered = include_str!("../../templates/resident/asp-resident.service")
+        let rendered = include_str!("../../templates/server/asp-runtime-server.service")
             .replace("@ASP_RUNTIME@", &runtime_artifact.to_string_lossy())
             .replace("@ASP_STATE_HOME@", &protocol_home.to_string_lossy());
         atomic_write(&target, rendered.as_bytes()).await?;
@@ -82,20 +83,20 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
                 .args(["--user", "daemon-reload"])
                 .output()
                 .await,
-            "reload Global ASP systemd user service",
+            "reload ASP Runtime Server systemd user service",
         )?;
         require_command_success(
             Command::new("systemctl")
                 .args(["--user", "enable", "--now", LINUX_SERVICE_NAME])
                 .output()
                 .await,
-            "enable Global ASP systemd user service",
+            "enable ASP Runtime Server systemd user service",
         )
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = (protocol_home, runtime_artifact);
-        Err("Global ASP resident supervisor is unsupported on this platform".to_owned())
+        Err("ASP Runtime Server supervisor is unsupported on this platform".to_owned())
     }
 }
 

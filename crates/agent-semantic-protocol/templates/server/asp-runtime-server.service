@@ -3,7 +3,7 @@ Description=Global ASP resident daemon
 
 [Service]
 Type=simple
-ExecStart=@ASP_RUNTIME@ resident daemon
+ExecStart=@ASP_RUNTIME@ server daemon
 Environment=ASP_STATE_HOME=@ASP_STATE_HOME@
 Restart=always
 RestartSec=10ms

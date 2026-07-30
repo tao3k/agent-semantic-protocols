@@ -1,4 +1,4 @@
-mod cli_help_model;
+include!("cli_help_model.rs");
 pub(crate) fn install_plugin_command() -> Command {
     Command::new("plugin")
         .bin_name("asp install plugin")

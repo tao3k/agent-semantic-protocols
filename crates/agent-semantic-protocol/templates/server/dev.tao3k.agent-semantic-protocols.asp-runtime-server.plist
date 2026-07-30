@@ -4,11 +4,11 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>dev.tao3k.agent-semantic-protocols.asp-resident</string>
+  <string>dev.tao3k.agent-semantic-protocols.asp-runtime-server</string>
   <key>ProgramArguments</key>
   <array>
     <string>@ASP_RUNTIME@</string>
-    <string>resident</string>
+    <string>server</string>
     <string>daemon</string>
   </array>
   <key>EnvironmentVariables</key>

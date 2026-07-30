@@ -28,52 +28,28 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         layout.state_home.join("runtime").join("bin").join("asp"),
     );
     let skill = check_skill(&options.project_root);
-    let resident_result = binary
-        .binary_artifact_digest
-        .as_deref()
-        .ok_or_else(|| "active ASP artifact digest is unavailable".to_owned())
-        .and_then(|digest| {
-            super::workspace_db_resident::ensure_with_runtime_identity(
-                context.cwd(),
-                &binary.canonical_runtime_asp,
-                digest,
-            )
-        });
-    let resident_endpoint_identity = resident_result
-        .as_ref()
-        .err()
-        .and_then(|_| super::workspace_db_resident::inspect_endpoint_identity(context.cwd()).ok());
+    let resident_result = super::runtime_server::healthcheck_runtime_server();
     let resident = match &resident_result {
-        Ok(receipt) => WorkspaceResidentRuntimeCheck {
-            status: receipt.status.to_owned(),
-            workspace_identity: receipt.workspace_identity.clone(),
-            owner_epoch: receipt.owner_epoch,
-            transport_contract_digest: receipt.transport_contract_digest.clone(),
-            runtime_binary_path: receipt.runtime_binary_path.clone(),
-            runtime_binary_digest: receipt.runtime_binary_digest.clone(),
+        Ok(receipt) => GlobalResidentRuntimeCheck {
+            status: format!("{:?}", receipt.state).to_lowercase(),
+            transport_contract_digest: Some(receipt.transport_contract_digest.clone()),
+            runtime_binary_digest: Some(receipt.runtime_artifact_digest.clone()),
+            workspace_entry_count: Some(receipt.workspace_entry_count),
             error: None,
         },
-        Err(resident_error) => {
-            let endpoint = resident_endpoint_identity.as_ref();
-            WorkspaceResidentRuntimeCheck {
-                status: "error".to_owned(),
-                workspace_identity: endpoint.and_then(|receipt| receipt.workspace_identity.clone()),
-                owner_epoch: endpoint.and_then(|receipt| receipt.owner_epoch),
-                transport_contract_digest: endpoint
-                    .and_then(|receipt| receipt.transport_contract_digest.clone()),
-                runtime_binary_path: endpoint
-                    .and_then(|receipt| receipt.runtime_binary_path.clone()),
-                runtime_binary_digest: endpoint
-                    .and_then(|receipt| receipt.runtime_binary_digest.clone()),
-                error: Some(resident_error.clone()),
-            }
-        }
+        Err(resident_error) => GlobalResidentRuntimeCheck {
+            status: "error".to_owned(),
+            transport_contract_digest: None,
+            runtime_binary_digest: None,
+            workspace_entry_count: None,
+            error: Some(resident_error.clone()),
+        },
     };
 
     let mut issues = collect_layout_issues(&layout, &skill);
     if let Err(resident_error) = &resident_result {
         issues.push(error(
-            "workspace-resident-runtime-degraded",
+            "global-resident-runtime-degraded",
             resident_error.clone(),
         ));
     }
@@ -533,13 +509,11 @@ fn fs_status(path: Option<&Path>, kind: FsKind) -> &'static str {
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct WorkspaceResidentRuntimeCheck {
+struct GlobalResidentRuntimeCheck {
     status: String,
-    workspace_identity: Option<String>,
-    owner_epoch: Option<u64>,
     transport_contract_digest: Option<String>,
-    runtime_binary_path: Option<String>,
     runtime_binary_digest: Option<String>,
+    workspace_entry_count: Option<usize>,
     error: Option<String>,
 }
 
@@ -574,7 +548,7 @@ struct HealthcheckReport<'a> {
     activation: &'a ActivationCheck,
     activation_runtime: &'a ActivationRuntimeCheck,
     binary: &'a BinaryCheck,
-    resident: &'a WorkspaceResidentRuntimeCheck,
+    resident: &'a GlobalResidentRuntimeCheck,
     skill: &'a SkillHealthReceipt,
     catalog: &'a CatalogReadinessReceipt,
     issues: &'a [HealthIssue],
@@ -641,11 +615,10 @@ fn print_compact(report: &HealthcheckReport<'_>) {
         binary.error.as_deref().unwrap_or("none")
     );
     println!(
-        "|residentRuntime status={} workspaceIdentity={} ownerEpoch={} transportContractDigest={} runtimeBinaryPath={} runtimeBinaryDigest={} error={}",
+        "|residentRuntime scope=global status={} workspaceEntryCount={} transportContractDigest={} runtimeBinaryDigest={} error={}",
         resident.status,
-        resident.workspace_identity.as_deref().unwrap_or("none"),
         resident
-            .owner_epoch
+            .workspace_entry_count
             .map(|value| value.to_string())
             .as_deref()
             .unwrap_or("none"),
@@ -653,7 +626,6 @@ fn print_compact(report: &HealthcheckReport<'_>) {
             .transport_contract_digest
             .as_deref()
             .unwrap_or("none"),
-        resident.runtime_binary_path.as_deref().unwrap_or("none"),
         resident.runtime_binary_digest.as_deref().unwrap_or("none"),
         resident.error.as_deref().unwrap_or("none"),
     );

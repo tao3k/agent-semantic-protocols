@@ -3,38 +3,9 @@
 use std::path::Path;
 use std::time::Instant;
 
-
 use super::provider_selector::{
     provider_owned_structural_owner_path, provider_owned_structural_selector,
 };
-
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderNativeExactResolution {
-    schema_id: String,
-    schema_version: String,
-    language_id: String,
-    provider_id: String,
-    owner_path: String,
-    requested_structural_selector: String,
-    resolution_state: String,
-    reason_kind: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    root_digest: Option<String>,
-    item_kind: String,
-    item_name: String,
-    #[serde(default)]
-    candidates: Vec<String>,
-    #[serde(default)]
-    actual_kinds: Vec<String>,
-    recommended_next: ProviderNativeExactRecommendedNext,
-}
-
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderNativeExactRecommendedNext {
-    command: String,
-}
 
 fn resident_canonical_item_selector(
     structural_selector: &str,
@@ -49,62 +20,6 @@ fn resident_canonical_item_selector(
         (canonical_item_selector.structural_selector() == structural_selector)
             .then_some(canonical_item_selector),
     )
-}
-
-fn write_resident_resolution(
-    language_id: &str,
-    provider_id: &str,
-    provider_args: &[String],
-    owner_path: &str,
-    structural_selector: &str,
-    root_digest: &str,
-    resolution_state: &str,
-    reason_kind: &str,
-    candidates: Vec<String>,
-    actual_kinds: Vec<String>,
-) -> Result<(), String> {
-    let selector =
-        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::parse(
-            structural_selector,
-        )?;
-    let next_command = if resolution_state == "owner-missing" {
-        format!(
-            "asp {language_id} search pipe '{}' --workspace . --view seeds",
-            selector.symbol.as_str()
-        )
-    } else {
-        format!(
-            "asp {language_id} search owner '{}' items --query '{}' --workspace . --view seeds",
-            owner_path,
-            selector.symbol.as_str()
-        )
-    };
-    let resolution = ProviderNativeExactResolution {
-        schema_id: "agent.semantic-protocols.provider-native-exact-projection".to_owned(),
-        schema_version: "1".to_owned(),
-        language_id: language_id.to_owned(),
-        provider_id: provider_id.to_owned(),
-        owner_path: owner_path.to_owned(),
-        requested_structural_selector: structural_selector.to_owned(),
-        resolution_state: resolution_state.to_owned(),
-        reason_kind: reason_kind.to_owned(),
-        root_digest: Some(root_digest.to_owned()),
-        item_kind: selector.kind.as_str().to_owned(),
-        item_name: selector.symbol.as_str().to_owned(),
-        candidates,
-        actual_kinds,
-        recommended_next: ProviderNativeExactRecommendedNext {
-            command: next_command,
-        },
-    };
-    validate_resolution(
-        &resolution,
-        language_id,
-        provider_id,
-        owner_path,
-        structural_selector,
-    )?;
-    write_resolution_output(&resolution, provider_args, None)
 }
 
 pub(super) fn try_run_resident_turso_exact_query(
@@ -129,8 +44,7 @@ pub(super) fn try_run_resident_turso_exact_query(
         agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?
             .workspace
             .root;
-    let Some(canonical_item_selector) =
-        resident_canonical_item_selector(structural_selector)?
+    let Some(canonical_item_selector) = resident_canonical_item_selector(structural_selector)?
     else {
         trace("resident-turso-descendant-provider-fallback", started);
         return Ok(false);
@@ -169,37 +83,8 @@ pub(super) fn try_run_resident_turso_exact_query(
             _ => None,
         });
     let Some(candidate) = candidate else {
-        let (resolution_state, reason_kind) = if read.candidates.len() > 1 {
-            ("ambiguous", "multiple-snapshot-items")
-        } else if !read.actual_kinds.is_empty() {
-            ("kind-mismatch", "owner-item-kind-mismatch")
-        } else if read.requested_owner_exists {
-            ("item-missing", "item-not-in-live-owner")
-        } else {
-            ("owner-missing", "owner-not-in-workspace")
-        };
-        write_resident_resolution(
-            language_id,
-            &provider.provider_id,
-            provider_args,
-            owner_path,
-            structural_selector,
-            &read.source_snapshot.root_digest,
-            resolution_state,
-            reason_kind,
-            read.candidates
-                .iter()
-                .map(|candidate| {
-                    candidate
-                        .canonical_item_selector
-                        .structural_selector
-                        .clone()
-                })
-                .collect(),
-            read.actual_kinds,
-        )?;
-        trace("resident-turso-selector-resolution", started);
-        return Ok(true);
+        trace("resident-turso-selector-miss-provider-fallback", started);
+        return Ok(false);
     };
     let Some(projection) = candidate.projection.as_ref() else {
         trace("resident-turso-projection-missing", started);
@@ -256,7 +141,6 @@ pub(super) fn try_run_resident_turso_exact_query(
     Ok(true)
 }
 
-
 #[derive(Debug, clap::Parser)]
 #[command(
     no_binary_name = true,
@@ -292,7 +176,6 @@ pub(crate) fn direct_projection_kind(provider_args: &[String]) -> Result<&'stati
         })
         .map_err(|error| error.to_string())
 }
-
 
 fn canonical_exact_owner(
     workspace: &Path,
@@ -330,100 +213,6 @@ fn canonical_exact_owner(
     Ok(Some(canonical_owner))
 }
 
-fn validate_resolution(
-    resolution: &ProviderNativeExactResolution,
-    language_id: &str,
-    provider_id: &str,
-    owner_path: &str,
-    structural_selector: &str,
-) -> Result<(), String> {
-    validate_projection_field(
-        "schemaId",
-        &resolution.schema_id,
-        "agent.semantic-protocols.provider-native-exact-projection",
-    )?;
-    validate_projection_field("schemaVersion", &resolution.schema_version, "1")?;
-    validate_projection_field("languageId", &resolution.language_id, language_id)?;
-    validate_projection_field("providerId", &resolution.provider_id, provider_id)?;
-    validate_projection_field("ownerPath", &resolution.owner_path, owner_path)?;
-    validate_projection_field(
-        "requestedStructuralSelector",
-        &resolution.requested_structural_selector,
-        structural_selector,
-    )?;
-    if !matches!(
-        resolution.resolution_state.as_str(),
-        "item-missing" | "owner-missing" | "kind-mismatch" | "identity-incomplete" | "ambiguous"
-    ) {
-        return Err(format!(
-            "exact-selector semantic resolutionState is invalid: {}",
-            resolution.resolution_state
-        ));
-    }
-    if resolution.reason_kind.is_empty() {
-        return Err("exact-selector semantic reasonKind is empty".to_owned());
-    }
-    let selector =
-        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::parse(
-            structural_selector,
-        )?;
-    validate_projection_field("itemKind", &resolution.item_kind, selector.kind.as_str())?;
-    validate_projection_field("itemName", &resolution.item_name, selector.symbol.as_str())?;
-    if resolution.recommended_next.command.is_empty() {
-        return Err("exact-selector semantic recommendedNext.command is empty".to_owned());
-    }
-    for candidate in &resolution.candidates {
-        agent_semantic_content_identity::canonical_item_identity::CanonicalItemSelector::parse(
-            candidate,
-        )
-        .map_err(|error| {
-            format!("exact-selector semantic candidate is not canonical: {candidate}: {error}")
-        })?;
-    }
-    Ok(())
-}
-
-fn write_resolution_output(
-    resolution: &ProviderNativeExactResolution,
-    provider_args: &[String],
-    raw_json: Option<&[u8]>,
-) -> Result<(), String> {
-    if provider_args.iter().any(|arg| arg == "--json") {
-        if let Some(raw_json) = raw_json {
-            return std::io::Write::write_all(&mut std::io::stdout().lock(), raw_json).map_err(
-                |error| format!("failed to write exact-selector semantic packet: {error}"),
-            );
-        }
-        let mut packet = serde_json::to_vec(resolution)
-            .map_err(|error| format!("failed to encode exact-selector semantic packet: {error}"))?;
-        packet.push(b'\n');
-        return std::io::Write::write_all(&mut std::io::stdout().lock(), &packet)
-            .map_err(|error| format!("failed to write exact-selector semantic packet: {error}"));
-    }
-    let output = format!(
-        "exact source query state={} reasonKind={} ownerPath={} itemKind={} itemName={} candidates={} actualKinds={} next={}\n",
-        resolution.resolution_state,
-        resolution.reason_kind,
-        resolution.owner_path,
-        resolution.item_kind,
-        resolution.item_name,
-        resolution.candidates.join(","),
-        resolution.actual_kinds.join(","),
-        resolution.recommended_next.command,
-    );
-    std::io::Write::write_all(&mut std::io::stdout().lock(), output.as_bytes())
-        .map_err(|error| format!("failed to write exact-selector semantic result: {error}"))
-}
-
-fn validate_projection_field(field: &str, actual: &str, expected: &str) -> Result<(), String> {
-    if actual == expected {
-        return Ok(());
-    }
-    Err(format!(
-        "direct exact-selector {field} mismatch: expected={expected:?} actual={actual:?}"
-    ))
-}
-
 fn read_exact_owner(canonical_owner: &Path, owner_path: &str) -> Result<Option<Vec<u8>>, String> {
     match std::fs::read(canonical_owner) {
         Ok(source) => Ok(Some(source)),
@@ -433,7 +222,6 @@ fn read_exact_owner(canonical_owner: &Path, owner_path: &str) -> Result<Option<V
         )),
     }
 }
-
 
 fn trace(stage: &str, started: Instant) {
     if std::env::var_os("ASP_EXACT_QUERY_TRACE").is_some() {

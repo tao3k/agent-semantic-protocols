@@ -36,10 +36,7 @@ async fn concurrent_receipt_validation_is_zero_io_and_sub_millisecond_at_p99() {
             let started = Instant::now();
             let mut receipt = ResidentQueryPerformanceReceipt::zero_io(
                 ResidentWorkspaceReference::WorkspaceId {
-                    workspace_id: format!(
-                        "workspace-stress-{}",
-                        request_index % workspace_count
-                    ),
+                    workspace_id: format!("workspace-stress-{}", request_index % workspace_count),
                 },
                 format!("blake3-256:{}", "a".repeat(64)),
                 if request_index % 2 == 0 {

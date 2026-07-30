@@ -105,7 +105,7 @@ pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Resu
         &asp_binary_path,
     )?;
     if install_global_resident {
-        crate::command::resident_supervisor::install_global_resident_supervisor(
+    crate::command::runtime_server_supervisor::install_runtime_server_supervisor(
             &runtime_state.protocol_home,
         )?;
     }

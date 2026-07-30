@@ -30,8 +30,9 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
         .find(|provider| provider.language_id == "rust")
         .expect("rust provider");
     let expected_source_extensions = rust_provider.coverage.source_extensions.clone();
+    let expected_config_files = rust_provider.coverage.config_files.clone();
     rust_provider.coverage.source_extensions.clear();
-    rust_provider.coverage.ignored_path_prefixes = vec!["target".to_string()];
+    rust_provider.coverage.config_files.clear();
     write_activation(&activation_path, &activation).expect("write stale activation");
 
     let runtime = load_or_sync_activation(&activation_path, &root).expect("sync activation");
@@ -40,16 +41,13 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
         .iter()
         .find(|provider| provider.language_id == "rust")
         .expect("runtime rust provider");
-    assert!(
-        runtime_rust_provider
-            .ignored_path_prefixes
-            .iter()
-            .any(|prefix| prefix == ".data"),
-        "runtime should refresh common ignored prefixes"
-    );
     assert_eq!(
         runtime_rust_provider.source_extensions, expected_source_extensions,
         "runtime should resolve source extensions from the current manifest"
+    );
+    assert_eq!(
+        runtime_rust_provider.config_files, expected_config_files,
+        "runtime should resolve config files from the current manifest"
     );
 
     let refreshed_text = fs::read_to_string(&activation_path).expect("read activation");
@@ -60,23 +58,13 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
         .iter()
         .find(|provider| provider.language_id == "rust")
         .expect("refreshed rust provider");
-    assert!(
-        refreshed_rust_provider
-            .coverage
-            .ignored_path_prefixes
-            .iter()
-            .any(|prefix| prefix == ".cache")
-    );
-    assert!(
-        refreshed_rust_provider
-            .coverage
-            .ignored_path_prefixes
-            .iter()
-            .any(|prefix| prefix == ".data")
-    );
     assert_eq!(
         refreshed_rust_provider.coverage.source_extensions, expected_source_extensions,
         "activation sync should durably refresh manifest source extensions"
+    );
+    assert_eq!(
+        refreshed_rust_provider.coverage.config_files, expected_config_files,
+        "activation sync should durably refresh manifest config files"
     );
 
     fs::remove_dir_all(root).expect("remove temp root");

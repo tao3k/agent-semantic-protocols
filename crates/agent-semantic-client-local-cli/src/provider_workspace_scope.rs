@@ -100,11 +100,7 @@ pub fn provider_workspace_scope_files(
         return Ok(ProviderWorkspaceScopeFiles::Unsupported);
     };
     Ok(ProviderWorkspaceScopeFiles::Supported(
-        provider_workspace_scope_files_from_packet(
-            project_root,
-            package_root_path,
-            packet,
-        ),
+        provider_workspace_scope_files_from_packet(project_root, package_root_path, packet),
     ))
 }
 

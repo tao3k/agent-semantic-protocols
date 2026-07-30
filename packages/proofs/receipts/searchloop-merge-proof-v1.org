@@ -1,0 +1,137 @@
+#+title: SearchLoop merge proof receipt v1
+#+startup: overview
+
+* SearchLoop merge proof receipt
+:PROPERTIES:
+:ID:       ASP-PROOF-RECEIPT-SEARCHLOOP-MERGE-V1
+:END:
+
+** Status
+
+- Status: verified
+- Date: 2026-07-29
+- Proof package: =packages/proofs=
+- Lean module: =ASPProof.SearchLoopMerge=
+- RFC module:
+  =docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.13-searchloop-merge-algebra.org=
+
+** Verified obligations
+
+1. =joinOutcome= is commutative, associative, and idempotent.
+2. Results admitted into one indexed validation domain commute under normalized
+   ledger merge.
+3. Replaying one admitted result is idempotent.
+4. =mergeMany= is invariant under every finite =List.Perm= of admitted results.
+5. Raw writes to distinct clause keys commute.
+6. Pair merge is commutative and idempotent after identity admission.
+7. Clause and validation-domain mismatches produce typed conflicts.
+8. Last-write-wins is order-dependent for conflicting outcomes on one clause.
+9. Contradictory evidence dominates pending evidence under normalized join.
+
+The fourth obligation closes the RFC's previous open claim “prove merge
+confluence for independent clause-result orderings.”  It is stronger than a
+single two-update example because it quantifies over finite permutations.
+
+** Lean build evidence
+
+Command:
+
+#+begin_src sh
+direnv exec . lake build
+#+end_src
+
+Result:
+
+- exit status: =0=
+- jobs: =7=
+- rebuilt modules: =ASPProof.SearchLoopMerge=, =ASPProof.Audit=, =ASPProof=
+
+Direct module check:
+
+#+begin_src sh
+direnv exec . lake env lean ASPProof/SearchLoopMerge.lean
+#+end_src
+
+Result: exit status =0=.
+
+** Lean-owned JSON audit
+
+Generation command:
+
+#+begin_src sh
+direnv exec . lake env lean audit/SearchLoopMergeAudit.lean
+#+end_src
+
+Artifact:
+[[file:searchloop-merge-audit-v1.json][searchloop-merge-audit-v1.json]]
+
+- schema: =asp.lean-proof-audit.v1=
+- declarations: =13=
+- axiom-free declarations: =0=
+- axiom-dependent declarations: =13=
+- axiom inventory: =Quot.sound=, =propext=
+- =sorryAx=: false
+- raw artifact SHA-256:
+  =d52e570449e7c03ebc47ce08cd62a3c1dcb1fd4ce29760f1f74a37f63012ed48=
+
+The inventory is explicit rather than described as “axiom-free.”  Function
+extensionality of normalized ledgers accounts for =Quot.sound= in this Lean
+environment; simplification of proposition equalities accounts for =propext=.
+
+** AXLE fail-closed admission
+
+The aggregate audit was split by axiom authority before AXLE admission:
+
+1. [[file:searchloop-merge-algebra-audit-v1.json][searchloop-merge-algebra-audit-v1.json]]
+   contains nine algebra, typed-conflict, and counterexample declarations.  Its
+   raw SHA-256 is
+   =a78c44178aa9fc212014f8c1c7d9456c85d43d8e9ba8b6a703248c75439c7f7f=.
+   AXLE allowed only =propext=.
+2. [[file:searchloop-merge-ledger-audit-v1.json][searchloop-merge-ledger-audit-v1.json]]
+   contains four confluence and ledger-independence declarations.  Its raw
+   SHA-256 is
+   =45ef27407c5cb66d0ab766f88e207dd748ee30cbcfbd998ab921494c21568b89=.
+   AXLE allowed =propext= and =Quot.sound=.
+
+Both invocations required every RFC clause covered by their scope and every
+expected theorem family.  The admitted artifacts are:
+
+- [[file:searchloop-merge-algebra-axle-audit-v1.json][searchloop-merge-algebra-axle-audit-v1.json]]
+  with canonical audit SHA-256
+  =88ad1d0ec0683d208d2f2a33c1a8183970a123ec23ddee6a5008f5b8d8aee7be=;
+  and
+- [[file:searchloop-merge-ledger-axle-audit-v1.json][searchloop-merge-ledger-axle-audit-v1.json]]
+  with canonical audit SHA-256
+  =6f67169a3d317679261a5834a04e960e3ccc1e195a9ee8cc292b9f5d142dfb92=.
+
+Both invocations exited =0=.  Their non-overlapping declaration counts sum to
+=13=.
+
+Negative policy gate:
+
+- invoking the four-declaration ledger audit with only =propext= exited =2=;
+- exact diagnostic:
+  =axioms are not admitted by policy: ['Quot.sound']=.
+
+The AXLE digest is computed from its canonical semantic audit representation.
+It is intentionally distinguished from the raw Lean JSON file digest.
+
+The aggregate
+[[file:searchloop-merge-axle-audit-v1.json][searchloop-merge-axle-audit-v1.json]]
+is retained only as a diagnostic inventory compatibility artifact; it is not an
+admission authority.  The conjunction of the two scoped receipts is
+authoritative.  This prevents =Quot.sound=, needed for extensional ledger
+equality, from being silently authorized for the algebra-only proof families.
+
+** Proof boundary
+
+This receipt does not claim:
+
+1. universal SearchLoop termination;
+2. graph-escalation completeness;
+3. provider evidence soundness;
+4. scheduling fairness; or
+5. confluence of arbitrary side effects.
+
+It verifies only admission and normalized clause-result reduction under one
+validation domain.

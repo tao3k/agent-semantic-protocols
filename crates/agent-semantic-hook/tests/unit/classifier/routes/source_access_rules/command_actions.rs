@@ -118,8 +118,7 @@ fn git_object_and_tree_reads_match_source_access_rule() {
 
         assert_eq!(decision.decision, DecisionKind::Deny, "command={command}");
         assert_eq!(
-            decision.reason_kind,
-            expected_reason,
+            decision.reason_kind, expected_reason,
             "command={command} decision={decision:#?}"
         );
         assert!(

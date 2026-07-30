@@ -5,26 +5,12 @@ use super::support::{root_owned_rust_activation_json, rust_harness_activation};
 
 #[test]
 fn root_owned_rust_activation_tracks_rust_harness_default_scope() {
-    let config = asp_rust_project_harness_policy::default_rust_harness_config();
     let runtime = rust_harness_activation();
     let provider = &runtime.providers[0];
 
-    for root in config
-        .source_dir_names
-        .iter()
-        .chain(config.test_dir_names.iter())
-    {
-        assert!(
-            provider.source_roots.contains(root),
-            "rust activation is missing rust harness source root {root}"
-        );
-    }
-    for ignored in config.ignored_dir_names {
-        assert!(
-            provider.ignored_path_prefixes.contains(&ignored),
-            "rust activation is missing rust harness ignored prefix {ignored}"
-        );
-    }
+    assert_eq!(provider.package_roots, ["."]);
+    assert!(provider.source_extensions.iter().any(|value| value == ".rs"));
+    assert!(provider.config_files.iter().any(|value| value == "Cargo.toml"));
 }
 
 #[test]
@@ -32,7 +18,7 @@ fn root_owned_rust_activation_uses_shared_hook_schema() {
     let runtime = rust_harness_activation();
 
     assert_eq!(runtime.project_root, ".");
-    assert_eq!(runtime.providers[0].source_roots[0], "src");
+    assert_eq!(runtime.providers[0].package_roots[0], ".");
 }
 
 #[test]
@@ -51,7 +37,7 @@ fn rust_harness_activation_uses_provider_identity() {
     assert_eq!(provider.language_id, "rust");
     assert_eq!(provider.provider_id, "rs-harness");
     assert_eq!(provider.binary, "rs-harness");
-    assert!(provider.source_roots.iter().any(|root| root == "src"));
+    assert_eq!(provider.package_roots, ["."]);
     assert!(
         provider
             .source_extensions

@@ -1,0 +1,254 @@
+#+title: SearchLoop Trace Semantics and Lean JSON Audit
+#+property: header-args :eval never
+
+* Status and authority
+:PROPERTIES:
+:ID: ASP-RFC-10.05-SEARCHLOOP-TRACE-AUDIT
+:END:
+
+This module refines the SearchLoop clauses with executable trace semantics and a
+machine-readable Lean-to-AXLE audit boundary.  It is normative for:
+
+- admissible SearchLoop initial states;
+- productive steps, typed terminal steps, and trace progress;
+- closure safety over complete traces;
+- budget accounting for mandatory and unresolved work;
+- Lean proof-audit JSON and AXLE admission receipts.
+
+The executable model is
+=packages/proofs/ASPProof/SearchLoopTrace.lean=.  Lean checks the derivations.
+This RFC owns their protocol meaning.  AXLE consumes Lean-owned JSON; it does
+not parse Lean source or scrape human-oriented compiler output.
+
+* State and transition model
+:PROPERTIES:
+:ID: ASP-RFC-10.05-SEARCHLOOP-TRACE-STATE
+:END:
+
+A SearchLoop state is
+
+\[
+S = (D, m, u, b, e, z)
+\]
+
+where:
+
+- \(D\) is the validation domain;
+- \(m\) is remaining mandatory work;
+- \(u\) is unresolved discovery or graph work;
+- \(b\) is remaining budget;
+- \(e\) is closure evidence;
+- \(z\) is =running=, =closed=, or =needs-budget=.
+
+The work measure is
+
+\[
+W(S) = m + u.
+\]
+
+A productive step discharges one mandatory item or resolves one unresolved work
+item.  It consumes one unit of budget and satisfies
+
+\[
+W(S') + 1 = W(S).
+\]
+
+A terminal step changes the state to =closed= or =needs-budget=.  Terminal
+steps are not required to reduce \(W\).
+
+* Admissible initial states
+:PROPERTIES:
+:ID: ASP-RFC-10.05-SEARCHLOOP-TRACE-ADMISSION
+:END:
+
+Trace safety cannot be proved from an arbitrary initial value.  A conforming
+executor MUST admit an initial state only when:
+
+- its validation domain is complete and current for the action frontier;
+- an already =closed= state satisfies =SafeToClose=;
+- counters and budget belong to the same snapshot as the clause set;
+- terminal states are not silently resumed as =running=.
+
+The Lean invariant =ClosureSafe initial= is therefore a theorem premise, not an
+implementation convenience.
+
+* Closure safety
+:PROPERTIES:
+:ID: ASP-RFC-10.05-SEARCHLOOP-TRACE-CLOSURE
+:END:
+
+Safe closure is
+
+\[
+SafeToClose(S) \iff m = 0 \land Closed(e).
+\]
+
+The following weaker rule is invalid:
+
+\[
+m = 0 \Longrightarrow SafeToClose(S).
+\]
+
+Lean constructs a state with \(m=0\) and stale closure evidence.  Consequently,
+zero remaining mandatory work MUST NOT close a SearchLoop unless evidence is
+also discharged, contradiction-free, fresh, and exactly materialized where
+required.
+
+Every transition preserves the validation domain.  Every trace that starts in
+an admitted =ClosureSafe= state preserves closure safety.  Snapshot, provider,
+schema, or policy drift starts a new action identity and cannot be represented
+as an ordinary step inside the old trace.
+
+* Progress and typed termination
+:PROPERTIES:
+:ID: ASP-RFC-10.05-SEARCHLOOP-TRACE-PROGRESS
+:END:
+
+The valid local progress proposition is:
+
+\[
+Step(S,S') \Longrightarrow
+  W(S') < W(S) \lor TypedTerminal(S').
+\]
+
+The stronger proposition that every step decreases work is false.
+=needs-budget= terminalization preserves the unresolved work measure while
+making the blocked condition explicit.
+
+For a productive trace of length \(n\):
+
+\[
+n + W(S_n) = W(S_0)
+\]
+
+and therefore
+
+\[
+n \le W(S_0).
+\]
+
+This is a bounded-progress theorem, not universal liveness.  Environmental
+retries, provider recovery, and budget replenishment require separate fairness
+assumptions and separate trace identities.
+
+* Budget repair discovered by Lean
+:PROPERTIES:
+:ID: ASP-RFC-10.05-SEARCHLOOP-TRACE-BUDGET
+:END:
+
+Budgeting only by mandatory clause count is unsound.  Lean constructs:
+
+\[
+m = 1,\quad u = 1,\quad b = 1.
+\]
+
+Here \(m \le b\), but \(b < W(S)\).  The prior sufficient-budget premise can
+therefore schedule mandatory work while omitting unresolved discovery or graph
+work.
+
+A conforming planner MUST do one of the following:
+
+1. budget against \(m+u\); or
+2. use separate typed budgets and prove that each productive transition
+   consumes the matching budget class.
+
+It MUST NOT call \(m \le b\) a sufficient budget condition for a complete
+SearchLoop trace.
+
+* Lean JSON audit contract
+:PROPERTIES:
+:ID: ASP-RFC-10.05-LEAN-JSON-AUDIT
+:END:
+
+The Lean-owned emitter produces
+=asp.lean-proof-audit.v1=, validated by
+=schemas/lean-proof-audit.v1.schema.json=.  The document records:
+
+- Lean version, proof package, module, and source path;
+- a deterministic declaration count and ordered declaration list;
+- theorem name, family, elaborated type, and RFC clause IDs;
+- the complete axiom closure of each theorem;
+- the union axiom inventory;
+- explicit =hasSorryAx= values at declaration and document scope.
+
+The canonical producer is:
+
+#+begin_src sh
+cd packages/proofs
+lake build
+lake env lean audit/SearchLoopTraceAudit.lean
+#+end_src
+
+The producer writes
+=packages/proofs/receipts/searchloop-trace-audit-v1.json=.  Repeated execution
+over the same Lean environment and sources MUST be byte deterministic.
+
+Human-oriented =#print axioms= output MAY be used while developing a proof, but
+MUST NOT be parsed as the audit protocol.
+
+* AXLE admission contract
+:PROPERTIES:
+:ID: ASP-RFC-10.05-AXLE-LEAN-AUDIT
+:END:
+
+AXLE consumes the Lean JSON audit and emits
+=asp.axle-lean-audit-receipt.v1=, validated by
+=schemas/axle-lean-audit-receipt.v1.schema.json=.
+
+AXLE MUST fail closed when:
+
+- schema identity or version is unknown;
+- declaration counts or names are inconsistent;
+- declaration names are duplicated;
+- a theorem lacks a stable RFC clause ID;
+- an axiom is not admitted by the selected policy;
+- =sorryAx= appears or disagrees with the declared flags;
+- document axiom inventory differs from the union of declaration axioms;
+- a required theorem family or RFC clause is missing.
+
+AXLE computes a canonical semantic SHA-256 over the parsed audit and records the
+admitted theorem families, RFC clause IDs, and axiom inventory.  The raw audit
+file digest remains a separate artifact identity.
+
+AXLE does not decide whether a theorem accurately represents the RFC.  It proves
+that the declared Lean results, dependencies, and RFC links satisfy the selected
+admission policy.  Semantic adequacy remains the RFC review and counterexample
+loop:
+
+#+begin_example
+RFC clauses
+  -> Lean model and counterexamples
+  -> Lean JSON audit
+  -> AXLE fail-closed admission
+  -> RFC repair or accepted proof receipt
+#+end_example
+
+* Current theorem families
+:PROPERTIES:
+:ID: ASP-RFC-10.05-SEARCHLOOP-TRACE-THEOREMS
+:END:
+
+| Family           | Checked result                                            |
+|------------------+-----------------------------------------------------------|
+| trace safety     | domain preservation and closure-safety preservation       |
+| bounded progress | productive step decrease, trace conservation, trace bound |
+| typed progress   | work decreases or the next state is typed terminal        |
+| counterexample   | zero mandatory work does not imply safe closure           |
+| counterexample   | mandatory-only budget undercounts unresolved work         |
+| counterexample   | typed terminalization need not decrease work              |
+
+The current JSON audit contains twelve theorems: six are axiom-free and six
+depend only on Lean's standard =propext=.  It reports no =sorryAx=.
+
+* Remaining proof obligations
+:PROPERTIES:
+:ID: ASP-RFC-10.05-SEARCHLOOP-TRACE-OPEN
+:END:
+
+- connect AXLE-produced declaration bundles mechanically to Lean theorem
+  targets rather than maintaining the target list by hand;
+- prove merge confluence for independent clause-result orderings;
+- model cache invalidation as a trace transition;
+- prove graph-escalation completeness for declared scenario classes;
+- distinguish internal work budget, provider-call budget, and wall-clock budget;
+- prove fairness only under an explicit replenishment and scheduler model.

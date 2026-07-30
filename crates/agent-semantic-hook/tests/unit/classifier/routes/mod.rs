@@ -28,8 +28,6 @@ fn document_provider(language_id: &str, extension: &str) -> ActivatedProvider {
         ProviderFixtureLayout {
             source_extensions: &[extension],
             config_files: &[],
-            source_roots: &[],
-            ignored_path_prefixes: &[],
         },
         routes,
     )
@@ -86,8 +84,6 @@ fn rust_provider() -> ActivatedProvider {
         ProviderFixtureLayout {
             source_extensions: &[".rs"],
             config_files: &["Cargo.toml", "Cargo.lock"],
-            source_roots: &["src", "tests", "crates"],
-            ignored_path_prefixes: &["target"],
         },
         routes,
     )
@@ -102,8 +98,6 @@ fn python_provider() -> ActivatedProvider {
         ProviderFixtureLayout {
             source_extensions: &[".py", ".pyi"],
             config_files: &["pyproject.toml"],
-            source_roots: &["src", "tests"],
-            ignored_path_prefixes: &[".venv", "__pycache__"],
         },
         routes,
     )

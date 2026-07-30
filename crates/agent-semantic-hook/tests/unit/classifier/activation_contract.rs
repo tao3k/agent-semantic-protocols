@@ -54,7 +54,7 @@ fn activation_rejects_manifest_digest_drift() {
 fn activation_resolves_provider_manifest_and_project_coverage() {
     let manifest = provider_manifest();
     let digest = provider_manifest_digest(&manifest).expect("manifest digest");
-    let expected_source_roots = manifest.source().default_source_roots.clone();
+    let expected_package_roots = vec![".".to_string()];
     let expected_guide_argv = agent_semantic_hook::materialize_provider_routes(&manifest)
         .expect("materialize TypeScript routes")
         .guide
@@ -73,7 +73,10 @@ fn activation_resolves_provider_manifest_and_project_coverage() {
     assert_eq!(runtime.providers.len(), 1);
     assert_eq!(runtime.providers[0].language_id, "typescript");
     assert_eq!(runtime.providers[0].provider_id, "ts-harness");
-    assert_eq!(runtime.providers[0].source_roots, expected_source_roots);
+    assert_eq!(
+        runtime.providers[0].package_roots,
+        expected_package_roots
+    );
     assert_eq!(
         runtime.providers[0].routes.guide.as_ref().unwrap().argv,
         expected_guide_argv
@@ -113,10 +116,8 @@ fn activation_value(manifest: &ProviderManifest, manifest_digest: &str) -> Value
         routes,
         coverage: ActivationCoverage {
             package_roots: vec![".".to_string()],
-            source_roots: manifest.source().default_source_roots.clone(),
             config_files: manifest.source().default_config_files.clone(),
             source_extensions: manifest.source().default_extensions.clone(),
-            ignored_path_prefixes: manifest.source().default_ignored_path_prefixes.clone(),
         },
     };
     json!({

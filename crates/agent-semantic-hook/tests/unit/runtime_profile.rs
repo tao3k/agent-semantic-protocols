@@ -96,10 +96,8 @@ fn runtime_profiles_for_activation_rejects_persisted_command_prefix() {
             routes: provider.routes.clone(),
             coverage: ActivationCoverage {
                 package_roots: provider.package_roots.clone(),
-                source_roots: provider.source_roots.clone(),
                 config_files: provider.config_files.clone(),
                 source_extensions: provider.source_extensions.clone(),
-                ignored_path_prefixes: provider.ignored_path_prefixes.clone(),
             },
         }],
     };
@@ -225,8 +223,6 @@ fn activated_rust_provider(provider_command_prefix: Vec<String>) -> ActivatedPro
         package_roots: vec![".".to_string()],
         source_extensions: manifest.source.default_extensions,
         config_files: manifest.source.default_config_files,
-        source_roots: manifest.source.default_source_roots,
-        ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
         search_capabilities: manifest.search_capabilities,
         project_resolution: manifest.project_resolution,
         semantic_facts_descriptor: manifest.semantic_facts_descriptor,
@@ -270,8 +266,6 @@ fn activated_gerbil_provider(provider_command_prefix: Vec<String>) -> ActivatedP
         package_roots: vec![".".to_string()],
         source_extensions: manifest.source.default_extensions,
         config_files: manifest.source.default_config_files,
-        source_roots: manifest.source.default_source_roots,
-        ignored_path_prefixes: manifest.source.default_ignored_path_prefixes,
         search_capabilities: manifest.search_capabilities,
         project_resolution: manifest.project_resolution,
         semantic_facts_descriptor: manifest.semantic_facts_descriptor,

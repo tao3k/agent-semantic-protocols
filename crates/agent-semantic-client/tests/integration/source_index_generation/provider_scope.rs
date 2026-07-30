@@ -319,11 +319,7 @@ fn target_provider_live_snapshot_does_not_require_published_envelope() {
         .expect("capture target provider directly from the live worktree");
     assert_eq!(snapshot.source_blobs.iter().count(), 1);
     assert_eq!(
-        snapshot
-            .source_blobs
-            .iter()
-            .next()
-            .map(|source| source.0),
+        snapshot.source_blobs.iter().next().map(|source| source.0),
         Some("build.ss")
     );
     assert!(!root.join("artifacts").exists());

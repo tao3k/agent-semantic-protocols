@@ -11,7 +11,7 @@ and Graph-on-Demand.  It does not contain Lean implementation and does not
 declare the design ready for Rust or Python implementation.
 
 Lean theorem and counterexample sources belong to the independent
-=packages/proof= package.  AXLE extraction remains a separate producer under
+=packages/proofs= container.  AXLE extraction remains a separate producer under
 =packages/python/tools=.
 
 * Executable and mathematical artifacts
@@ -25,17 +25,20 @@ The first executable model is:
 
 The independent proof package manifest and ownership note are:
 
-- =packages/proof/lakefile.toml=
-- =packages/proof/README.org=
+- =packages/proofs/lakefile.toml=
+- =packages/proofs/README.org=
 
 The corresponding human-facing mathematical projection is:
 
-- [[file:math/searchloop-clause-first-model.typ][SearchLoop Clause-first
-  mathematical model (Typst)]]
+- [[file:00.11-clause-first-mathematical-model.org][SearchLoop Clause-first
+  mathematical model (Org-owned embedded Typst)]]
 
-Lean is authoritative for checked derivations.  Typst explains definitions,
-counterexamples, theorem meaning, and RFC repairs.  Both artifacts use the same
-RFC clause and theorem identities.
+Lean is authoritative for checked derivations.  The embedded Typst block
+explains definitions, counterexamples, theorem meaning, and RFC repairs.
+Orgize selects that block through its parser-owned identity and streams its body
+to Typst stdin; there is no separately authoritative =.typ= file or required
+rendered artifact.  Both projections use the same RFC clause and theorem
+identities.
 
 * Modeling goal
 :PROPERTIES:
@@ -360,10 +363,11 @@ lake env lean ASPProof/SearchLoopClauseFirst.lean
 The successful run used Lean =4.32.2= and Lake =5.0.0=.  It emitted no
 =sorry=, =admit=, or =unsafe= warning.
 
-The matching Typst source is
-[[file:math/searchloop-clause-first-model.typ][SearchLoop Clause-first
-mathematical model]].  Typst =0.15.1= compiled it to a four-page A4 validation
-artifact.
+The matching mathematical projection is the Org-owned embedded Typst block in
+[[file:00.11-clause-first-mathematical-model.org][SearchLoop Clause-first
+mathematical model]].  Orgize selects the block and streams only its body to
+Typst stdin.  Validation writes neither a standalone =.typ= source nor a
+rendered artifact.
 
 This is a first safety bundle, not full Clause-first proof closure.  Qualified
 n-ary reconstruction, AND/OR sufficiency, transition preservation, graph

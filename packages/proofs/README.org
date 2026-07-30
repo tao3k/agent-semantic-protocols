@@ -42,8 +42,22 @@ mathematical explanation.
 
 #+begin_src sh
 lake build
-lean ASPProof/SearchLoopClauseFirst.lean
+lake env lean ASPProof/SearchLoopClauseFirst.lean
+lake env lean ASPProof/SearchLoopTrace.lean
+lake env lean audit/SearchLoopTraceAudit.lean
 #+end_src
 
 Neither command establishes RFC closure by itself.  Proof receipts must also
 report assumptions, unsafe declarations, and any =sorry= or =admit= inventory.
+
+* Receipts
+
+- =receipts/searchloop-clause-first-proof-v1.org=: first executable
+  Clause-first model, theorem inventory, axiom audit, Org-owned Typst stdin
+  lint, and remaining RFC-to-AXLE-to-Lean gaps.
+- =receipts/searchloop-trace-audit-v1.json=: Lean-owned deterministic JSON
+  audit for trace safety, bounded progress, typed progress, counterexamples,
+  RFC clause identities, and axiom closures.
+- =receipts/searchloop-trace-proof-v1.org=: human-facing execution receipt for
+  the Lean JSON producer, AXLE admission, schemas, theorem counts, and remaining
+  proof obligations.

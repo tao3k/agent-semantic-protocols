@@ -212,22 +212,6 @@ async fn probe_async(workspace_root: &Path) -> Result<WorkspaceResidentServiceHe
     })
 }
 
-pub(super) fn inspect_endpoint_identity(
-    workspace_root: &Path,
-) -> Result<WorkspaceResidentServiceEnsureReceipt, String> {
-    let workspace_root = canonical_workspace_root(workspace_root)?;
-    let session = super::workspace_db_runtime::block_on(load_session_async(&workspace_root))?
-        .map_err(|error| error.to_string())?;
-    Ok(WorkspaceResidentServiceEnsureReceipt {
-        status: "endpoint-current-unverified",
-        workspace_identity: Some(session.workspace_identity().to_owned()),
-        workspace_root: Some(workspace_root),
-        transport_contract_digest: Some(session.transport_contract_digest().to_owned()),
-        owner_epoch: Some(session.owner_epoch()),
-        runtime_binary_path: Some(session.runtime_binary_path().to_owned()),
-        runtime_binary_digest: Some(session.runtime_binary_digest().to_owned()),
-    })
-}
 
 pub(super) fn ensure(cwd: &Path) -> Result<WorkspaceResidentServiceEnsureReceipt, String> {
     let state_home = std::env::var_os("ASP_STATE_HOME")
@@ -253,17 +237,6 @@ pub(super) fn ensure(cwd: &Path) -> Result<WorkspaceResidentServiceEnsureReceipt
     })?
 }
 
-pub(super) fn ensure_with_runtime_identity(
-    cwd: &Path,
-    executable: &Path,
-    expected_runtime_digest: &str,
-) -> Result<WorkspaceResidentServiceEnsureReceipt, String> {
-    super::workspace_db_runtime::block_on(ensure_with_runtime_identity_async(
-        cwd,
-        executable,
-        expected_runtime_digest,
-    ))?
-}
 
 async fn ensure_with_runtime_identity_async(
     cwd: &Path,

@@ -163,16 +163,14 @@ pub(super) async fn read_turso_resident_selector(
                     })?
                     .max(0)
                     .min(i64::from(u32::MAX)) as u32,
-                row.get::<i64>(14)
-                    .map_err(|error| {
-                        format!("failed to decode requested owner membership: {error}")
-                    })?
-                    != 0,
+                row.get::<i64>(14).map_err(|error| {
+                    format!("failed to decode requested owner membership: {error}")
+                })? != 0,
             ));
         }
-        let owner_path = row.get::<Option<String>>(4).map_err(|error| {
-            format!("failed to decode resident Turso selector owner: {error}")
-        })?;
+        let owner_path = row
+            .get::<Option<String>>(4)
+            .map_err(|error| format!("failed to decode resident Turso selector owner: {error}"))?;
         let Some(item_kind) = row
             .get::<Option<String>>(6)
             .map_err(|error| format!("failed to decode resident Turso item kind: {error}"))?
@@ -231,13 +229,8 @@ pub(super) async fn read_turso_resident_selector(
             projection,
         });
     }
-    let Some((
-        generation_id,
-        source_snapshot,
-        owner_count,
-        selector_count,
-        requested_owner_exists,
-    )) = generation
+    let Some((generation_id, source_snapshot, owner_count, selector_count, requested_owner_exists)) =
+        generation
     else {
         return Ok(None);
     };

@@ -97,7 +97,6 @@ fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
     )
     .expect("write source file");
     let mut provider = gerbil_scheme_provider();
-    provider.source_roots = vec!["src".to_string()];
     provider.source_extensions = vec!["ss".to_string()];
     let snapshot = ProviderRegistrySnapshot {
         activation_path: root.join("activation.json"),

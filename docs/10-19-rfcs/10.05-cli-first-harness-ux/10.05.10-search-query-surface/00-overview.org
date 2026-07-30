@@ -1,5 +1,9 @@
 * SearchLoop is the protocol: search plus query capabilities
 
+The executable trace refinement and Lean-to-AXLE machine audit are specified in
+[[file:00.12-searchloop-trace-and-lean-json-audit.org][SearchLoop trace semantics
+and Lean JSON audit]].
+
 The agent-facing architecture is defined by
 [[file:00.01-search-loop-architecture.org][SearchLoop architecture]].  This
 module family defines the capabilities used by the loop.  Provider facade and

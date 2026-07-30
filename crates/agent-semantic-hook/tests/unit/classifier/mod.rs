@@ -65,8 +65,6 @@ pub(super) fn typescript_provider() -> ActivatedProvider {
         ProviderFixtureLayout {
             source_extensions: &[".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"],
             config_files: &["package.json", "tsconfig.json"],
-            source_roots: &["src", "tests"],
-            ignored_path_prefixes: &["node_modules", "dist"],
         },
         routes,
     )
@@ -80,8 +78,6 @@ fn rust_provider() -> ActivatedProvider {
         ProviderFixtureLayout {
             source_extensions: &[".rs"],
             config_files: &["Cargo.toml"],
-            source_roots: &["src", "tests", "benches", "examples"],
-            ignored_path_prefixes: &["target"],
         },
         routes,
     )
@@ -90,8 +86,6 @@ fn rust_provider() -> ActivatedProvider {
 pub(super) struct ProviderFixtureLayout<'a> {
     pub(super) source_extensions: &'a [&'a str],
     pub(super) config_files: &'a [&'a str],
-    pub(super) source_roots: &'a [&'a str],
-    pub(super) ignored_path_prefixes: &'a [&'a str],
 }
 
 pub(super) fn provider(
@@ -120,16 +114,6 @@ pub(super) fn provider(
             .config_files
             .iter()
             .map(|config| (*config).to_string())
-            .collect(),
-        source_roots: layout
-            .source_roots
-            .iter()
-            .map(|root| (*root).to_string())
-            .collect(),
-        ignored_path_prefixes: layout
-            .ignored_path_prefixes
-            .iter()
-            .map(|prefix| (*prefix).to_string())
             .collect(),
         search_capabilities: manifest.search_capabilities().clone(),
         project_resolution: manifest.project_resolution().cloned(),

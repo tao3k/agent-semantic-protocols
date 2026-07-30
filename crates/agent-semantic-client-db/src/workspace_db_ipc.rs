@@ -381,7 +381,10 @@ impl WorkspaceDbIpcSession {
     }
 
     pub async fn shutdown(&self) -> Result<(), String> {
-        match self.call_operation(WorkspaceDbIpcOperation::Shutdown).await? {
+        match self
+            .call_operation(WorkspaceDbIpcOperation::Shutdown)
+            .await?
+        {
             WorkspaceDbIpcResult::ShutdownAccepted => Ok(()),
             result => Err(format!(
                 "workspace resident DB service returned an unexpected shutdown result: {result:?}"

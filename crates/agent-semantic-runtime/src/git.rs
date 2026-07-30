@@ -159,10 +159,7 @@ impl std::fmt::Display for GitWorkspaceFileScopeError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::DiscoverRepository { message } => {
-                write!(
-                    formatter,
-                    "failed to discover Git repository: {message}"
-                )
+                write!(formatter, "failed to discover Git repository: {message}")
             }
             Self::MissingWorktree { git_dir } => write!(
                 formatter,
@@ -273,10 +270,11 @@ pub fn discover_repository_candidate_snapshot(
     let Some(scope) = discover_git_workspace_file_scope(workspace)? else {
         return Ok(None);
     };
-    let repository =
-        gix::discover(workspace).map_err(|error| GitWorkspaceFileScopeError::DiscoverRepository {
+    let repository = gix::discover(workspace).map_err(|error| {
+        GitWorkspaceFileScopeError::DiscoverRepository {
             message: error.to_string(),
-        })?;
+        }
+    })?;
     let git_dir = canonicalize_if_possible(repository.git_dir());
     let git_common_dir = canonicalize_if_possible(repository.common_dir());
     let remote_url = canonical_remote_url_from_repository(&repository)
@@ -294,10 +292,7 @@ pub fn discover_repository_candidate_snapshot(
         git_dir.display()
     );
     let worktree_id = stable_identity("worktree", worktree_basis.as_bytes());
-    let head_id = repository
-        .head_id()
-        .ok()
-        .map(|id| id.detach().to_string());
+    let head_id = repository.head_id().ok().map(|id| id.detach().to_string());
     let mut candidates = scope
         .files
         .iter()
@@ -460,13 +455,7 @@ mod repository_candidate_snapshot_tests {
         let candidates = first
             .candidates
             .iter()
-            .map(|candidate| {
-                (
-                    candidate.path.clone(),
-                    candidate.state,
-                    candidate.authority,
-                )
-            })
+            .map(|candidate| (candidate.path.clone(), candidate.state, candidate.authority))
             .collect::<Vec<_>>();
         assert_eq!(
             candidates,

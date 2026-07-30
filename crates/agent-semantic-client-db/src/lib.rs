@@ -10,10 +10,10 @@ pub use agent_session_registry::{
 pub mod artifact_pointer_store;
 pub mod context_run_mvcc;
 mod dependency_index;
-pub mod global_resident_control;
-pub mod resident_query_performance;
-pub mod workspace_project_resolution;
 pub mod engine;
+pub mod runtime_server_control;
+pub mod runtime_server;
+pub mod resident_query_performance;
 mod source_index;
 pub mod storage_contract;
 pub mod storage_performance_receipt;
@@ -23,13 +23,14 @@ pub mod turso_agent_storage;
 pub mod turso_cdc_storage;
 pub mod turso_encrypted_storage;
 mod turso_mvcc_keyset;
+pub mod workspace_project_resolution;
+pub use runtime_server_control::{
+    RuntimeServerControlReceipt, RuntimeServerEndpoint, RuntimeServerOperation,
+    acquire_runtime_server_election, call_runtime_server, prepare_runtime_server_endpoint,
+    runtime_server_endpoint_path, runtime_server_runtime_base,
+};
 pub use turso_mvcc_keyset::{
     TursoMvccEventId, TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey,
-};
-pub use global_resident_control::{
-    GlobalResidentControlReceipt, GlobalResidentEndpoint, GlobalResidentOperation,
-    acquire_global_resident_election, call_global_resident, global_resident_endpoint_path,
-    global_resident_runtime_base, prepare_global_resident_endpoint,
 };
 mod turso_mvcc_maintenance;
 pub mod turso_mvcc_partition;

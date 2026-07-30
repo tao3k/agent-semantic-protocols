@@ -1,33 +1,24 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
-use agent_semantic_client_db::global_resident_control::{
-    read_global_resident_request, write_global_resident_receipt,
-};
+use agent_semantic_client_db::runtime_server::RuntimeServer;
 use agent_semantic_client_db::{
-    GlobalResidentControlReceipt, GlobalResidentEndpoint, GlobalResidentOperation,
-    WorkspaceDbRegistry, acquire_global_resident_election, call_global_resident,
-    global_resident_endpoint_path, prepare_global_resident_endpoint,
+    RuntimeServerControlReceipt, RuntimeServerEndpoint, RuntimeServerOperation, WorkspaceDbRegistry,
+    acquire_runtime_server_election, call_runtime_server, prepare_runtime_server_endpoint,
+    runtime_server_endpoint_path,
 };
 use clap::{Parser, Subcommand};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::watch;
-use tokio::task::JoinSet;
-use tokio_stream::StreamExt;
-use tokio_stream::wrappers::UnixListenerStream;
 
 #[derive(Debug, Parser)]
-#[command(name = "asp resident", disable_help_subcommand = true)]
-struct ResidentArgs {
+#[command(name = "asp server", disable_help_subcommand = true)]
+struct ServerArgs {
     #[command(subcommand)]
-    command: ResidentCommand,
+    command: ServerCommand,
 }
 
 #[derive(Debug, Subcommand)]
-enum ResidentCommand {
+enum ServerCommand {
     Status,
     Reconcile,
     Restart,
@@ -35,37 +26,37 @@ enum ResidentCommand {
     Daemon,
 }
 
-pub(crate) fn run_global_resident_command(args: &[String]) -> Result<(), String> {
-    let parsed = ResidentArgs::try_parse_from(
-        std::iter::once("asp resident".to_owned()).chain(args.iter().cloned()),
+pub(crate) fn run_runtime_server_command(args: &[String]) -> Result<(), String> {
+    let parsed = ServerArgs::try_parse_from(
+        std::iter::once("asp server".to_owned()).chain(args.iter().cloned()),
     )
     .map_err(|error| error.to_string())?;
     match parsed.command {
-        ResidentCommand::Daemon => tokio::runtime::Builder::new_multi_thread()
+        ServerCommand::Daemon => tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .map_err(|error| format!("failed to create Global ASP daemon Tokio runtime: {error}"))?
+            .map_err(|error| format!("failed to create ASP Runtime Server Tokio runtime: {error}"))?
             .block_on(run_daemon()),
         command => tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .map_err(|error| format!("failed to create resident client Tokio runtime: {error}"))?
+            .map_err(|error| format!("failed to create ASP Runtime Server client Tokio runtime: {error}"))?
             .block_on(async move {
                 match command {
-                    ResidentCommand::Status => run_control(GlobalResidentOperation::Status).await,
-                    ResidentCommand::Reconcile => {
-                        run_control(GlobalResidentOperation::Reconcile).await
+                    ServerCommand::Status => run_control(RuntimeServerOperation::Status).await,
+                    ServerCommand::Reconcile => {
+                        run_control(RuntimeServerOperation::Reconcile).await
                     }
-                    ResidentCommand::Restart => run_control(GlobalResidentOperation::Restart).await,
-                    ResidentCommand::Daemon => unreachable!("daemon handled before client runtime"),
+                    ServerCommand::Restart => run_control(RuntimeServerOperation::Restart).await,
+                    ServerCommand::Daemon => unreachable!("daemon handled before client runtime"),
                 }
             }),
     }
 }
 
-async fn run_control(operation: GlobalResidentOperation) -> Result<(), String> {
+async fn run_control(operation: RuntimeServerOperation) -> Result<(), String> {
     let state_home = state_home()?;
-    let endpoint_path = global_resident_endpoint_path(&state_home);
+    let endpoint_path = runtime_server_endpoint_path(&state_home);
     let endpoint = read_endpoint(&endpoint_path).await;
     let request_id = request_identity("control").await?;
     let endpoint = match endpoint {
@@ -73,13 +64,13 @@ async fn run_control(operation: GlobalResidentOperation) -> Result<(), String> {
         Err(error)
             if matches!(
                 operation,
-                GlobalResidentOperation::Reconcile | GlobalResidentOperation::Restart
+                RuntimeServerOperation::Reconcile | RuntimeServerOperation::Restart
             ) =>
         {
-            super::resident_supervisor::reconcile_global_resident_supervisor().await?;
+            super::runtime_server_supervisor::reconcile_runtime_server_supervisor().await?;
             let runtime_artifact_path = state_home.join("runtime").join("bin").join("asp");
             let runtime_artifact_digest = digest_file(&runtime_artifact_path).await?;
-            let receipt = GlobalResidentControlReceipt::starting(
+            let receipt = RuntimeServerControlReceipt::starting(
                 request_id,
                 runtime_artifact_digest,
                 format!("platform supervisor reconcile requested: {error}"),
@@ -89,11 +80,71 @@ async fn run_control(operation: GlobalResidentOperation) -> Result<(), String> {
         }
         Err(error) => return Err(error),
     };
-    let receipt = call_global_resident(&endpoint, operation, request_id).await?;
+    let expected_runtime_artifact_digest = if operation == RuntimeServerOperation::Status {
+        endpoint.runtime_artifact_digest.clone()
+    } else {
+        digest_file(&state_home.join("runtime").join("bin").join("asp")).await?
+    };
+    let receipt = call_runtime_server(
+        &endpoint,
+        operation,
+        expected_runtime_artifact_digest,
+        request_id,
+    )
+    .await?;
     print_receipt(&receipt).await
 }
 
-async fn print_receipt(receipt: &GlobalResidentControlReceipt) -> Result<(), String> {
+pub(super) fn healthcheck_runtime_server() -> Result<RuntimeServerControlReceipt, String> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| format!("failed to create resident health Tokio runtime: {error}"))?
+        .block_on(healthcheck_runtime_server_async())
+}
+
+async fn healthcheck_runtime_server_async() -> Result<RuntimeServerControlReceipt, String> {
+    let state_home = state_home()?;
+    let endpoint = read_endpoint(&runtime_server_endpoint_path(&state_home)).await?;
+    let canonical_runtime = state_home.join("runtime").join("bin").join("asp");
+    let canonical_artifact = tokio::fs::canonicalize(&canonical_runtime)
+        .await
+        .map_err(|error| {
+            format!(
+                "failed to resolve canonical Global ASP runtime {}: {error}",
+                canonical_runtime.display()
+            )
+        })?;
+    let running_artifact = tokio::fs::canonicalize(&endpoint.runtime_artifact_path)
+        .await
+        .map_err(|error| {
+            format!(
+                "failed to resolve running Global ASP artifact {}: {error}",
+                endpoint.runtime_artifact_path
+            )
+        })?;
+    let (operation, expected_runtime_artifact_digest) =
+        if canonical_artifact == running_artifact {
+            (
+                RuntimeServerOperation::Status,
+                endpoint.runtime_artifact_digest.clone(),
+            )
+        } else {
+            (
+                RuntimeServerOperation::Restart,
+                digest_file(&canonical_runtime).await?,
+            )
+        };
+    call_runtime_server(
+        &endpoint,
+        operation,
+        expected_runtime_artifact_digest,
+        request_identity("healthcheck").await?,
+    )
+    .await
+}
+
+async fn print_receipt(receipt: &RuntimeServerControlReceipt) -> Result<(), String> {
     let mut bytes = serde_json::to_vec(receipt)
         .map_err(|error| format!("failed to encode global resident receipt: {error}"))?;
     bytes.push(b'\n');
@@ -110,13 +161,13 @@ async fn print_receipt(receipt: &GlobalResidentControlReceipt) -> Result<(), Str
 }
 
 async fn run_daemon() -> Result<(), String> {
-    let election = acquire_global_resident_election().await?;
+    let election = acquire_runtime_server_election().await?;
     let state_home = state_home()?;
     let runtime_artifact_path = std::env::current_exe()
         .map_err(|error| format!("failed to resolve running ASP artifact: {error}"))?;
     let runtime_artifact_digest = digest_file(&runtime_artifact_path).await?;
     let (owner_epoch, binding_token) = daemon_identity().await?;
-    let endpoint = prepare_global_resident_endpoint(
+    let endpoint = prepare_runtime_server_endpoint(
         &runtime_artifact_path,
         &runtime_artifact_digest,
         owner_epoch,
@@ -125,120 +176,17 @@ async fn run_daemon() -> Result<(), String> {
     .await?;
     let socket_path = PathBuf::from(&endpoint.socket_path);
     remove_stale_socket(&socket_path).await?;
-    let listener = UnixListener::bind(&socket_path).map_err(|error| {
-        format!(
-            "failed to bind global resident socket {}: {error}",
-            socket_path.display()
-        )
-    })?;
     publish_endpoint(&state_home, &endpoint).await?;
 
-    let registry = Arc::new(WorkspaceDbRegistry::default());
-    let result = serve_control_loop(listener, endpoint.clone(), registry).await;
+    let server = RuntimeServer::bind(
+        endpoint.clone(),
+        std::sync::Arc::new(WorkspaceDbRegistry::default()),
+    )
+    .await?;
+    let result = server.serve().await.map(|_| ());
     cleanup_endpoint(&state_home, &endpoint).await;
     drop(election);
     result
-}
-
-async fn serve_control_loop(
-    listener: UnixListener,
-    endpoint: GlobalResidentEndpoint,
-    registry: Arc<WorkspaceDbRegistry>,
-) -> Result<(), String> {
-    let mut incoming = UnixListenerStream::new(listener);
-    let mut connections = JoinSet::new();
-    let (drain_sender, drain_receiver) = watch::channel(false);
-    loop {
-        tokio::select! {
-            connection = incoming.next() => {
-                let Some(connection) = connection else {
-                    break;
-                };
-                let stream = connection
-                    .map_err(|error| format!("failed to accept global resident request: {error}"))?;
-                connections.spawn(serve_control_connection(
-                    stream,
-                    endpoint.clone(),
-                    Arc::clone(&registry),
-                    drain_receiver.clone(),
-                ));
-            }
-            completed = connections.join_next(), if !connections.is_empty() => {
-                match completed {
-                    Some(Ok(Ok(true))) => {
-                        let _ = drain_sender.send(true);
-                        break;
-                    }
-                    Some(Ok(Ok(false))) => {}
-                    Some(Ok(Err(error))) => {
-                        report_daemon_error(format!(
-                            "global resident rejected control connection: {error}"
-                        ))
-                        .await;
-                    }
-                    Some(Err(error)) => {
-                        report_daemon_error(format!(
-                            "global resident control task failed: {error}"
-                        ))
-                        .await;
-                    }
-                    None => {}
-                }
-            }
-        }
-    }
-    let _ = drain_sender.send(true);
-    drop(incoming);
-    while let Some(completed) = connections.join_next().await {
-        match completed {
-            Ok(Ok(_)) => {}
-            Ok(Err(error)) => {
-                report_daemon_error(format!(
-                    "global resident rejected control connection during drain: {error}"
-                ))
-                .await;
-            }
-            Err(error) => {
-                report_daemon_error(format!(
-                    "global resident control task failed during drain: {error}"
-                ))
-                .await;
-            }
-        }
-    }
-    Ok(())
-}
-
-async fn serve_control_connection(
-    mut stream: UnixStream,
-    endpoint: GlobalResidentEndpoint,
-    registry: Arc<WorkspaceDbRegistry>,
-    mut drain: watch::Receiver<bool>,
-) -> Result<bool, String> {
-    let request = tokio::select! {
-        request = read_global_resident_request(&mut stream) => request?,
-        changed = drain.changed() => {
-            let _ = changed;
-            return Ok(false);
-        }
-    };
-    request.validate_for_endpoint(&endpoint)?;
-    let restart = request.operation == GlobalResidentOperation::Restart;
-    let (slot_count, loaded_entry_count) = registry.workspace_entry_counts();
-    let workspace_entry_count = slot_count.max(loaded_entry_count);
-    let receipt = if restart {
-        GlobalResidentControlReceipt::draining(request.request_id, &endpoint, workspace_entry_count)
-    } else {
-        GlobalResidentControlReceipt::healthy(request.request_id, &endpoint, workspace_entry_count)
-    };
-    write_global_resident_receipt(&mut stream, &receipt).await?;
-    Ok(restart)
-}
-
-async fn report_daemon_error(message: String) {
-    let mut stderr = tokio::io::stderr();
-    let _ = stderr.write_all(message.as_bytes()).await;
-    let _ = stderr.write_all(b"\n").await;
 }
 
 fn state_home() -> Result<PathBuf, String> {
@@ -251,14 +199,14 @@ fn state_home() -> Result<PathBuf, String> {
     Ok(PathBuf::from(home).join(".agent-semantic-protocols"))
 }
 
-async fn read_endpoint(path: &Path) -> Result<GlobalResidentEndpoint, String> {
+async fn read_endpoint(path: &Path) -> Result<RuntimeServerEndpoint, String> {
     let bytes = tokio::fs::read(path).await.map_err(|error| {
         format!(
             "global resident endpoint is unavailable at {}: {error}",
             path.display()
         )
     })?;
-    let endpoint: GlobalResidentEndpoint = serde_json::from_slice(&bytes)
+    let endpoint: RuntimeServerEndpoint = serde_json::from_slice(&bytes)
         .map_err(|error| format!("failed to decode global resident endpoint: {error}"))?;
     endpoint.validate()?;
     Ok(endpoint)
@@ -266,9 +214,9 @@ async fn read_endpoint(path: &Path) -> Result<GlobalResidentEndpoint, String> {
 
 async fn publish_endpoint(
     state_home: &Path,
-    endpoint: &GlobalResidentEndpoint,
+    endpoint: &RuntimeServerEndpoint,
 ) -> Result<(), String> {
-    atomic_write_json(&global_resident_endpoint_path(state_home), endpoint).await
+    atomic_write_json(&runtime_server_endpoint_path(state_home), endpoint).await
 }
 
 async fn atomic_write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
@@ -303,21 +251,23 @@ async fn remove_stale_socket(path: &Path) -> Result<(), String> {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(format!(
-            "failed to remove stale global resident socket {}: {error}",
+            "failed to remove stale Runtime Server socket {}: {error}",
             path.display()
         )),
     }
 }
 
-async fn cleanup_endpoint(state_home: &Path, endpoint: &GlobalResidentEndpoint) {
-    let endpoint_path = global_resident_endpoint_path(state_home);
+async fn cleanup_endpoint(state_home: &Path, endpoint: &RuntimeServerEndpoint) {
+    let endpoint_path = runtime_server_endpoint_path(state_home);
     let socket_path = PathBuf::from(&endpoint.socket_path);
+    let status_memory_path = PathBuf::from(&endpoint.status_memory_path);
     let owned = read_endpoint(&endpoint_path).await.is_ok_and(|actual| {
         actual.owner_epoch == endpoint.owner_epoch && actual.binding_token == endpoint.binding_token
     });
     if owned {
         let _ = tokio::fs::remove_file(endpoint_path).await;
         let _ = tokio::fs::remove_file(socket_path).await;
+        let _ = tokio::fs::remove_file(status_memory_path).await;
     }
 }
 

@@ -113,6 +113,7 @@ dependencies = [
  "criterion",
  "fs2",
  "fs4 1.1.0",
+ "memmap2",
  "parking_lot",
  "serde",
  "serde_json",

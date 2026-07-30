@@ -1,6 +1,6 @@
 use agent_semantic_hook::{
-    HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
-    HOOK_PROTOCOL_VERSION, builtin_provider_manifests, provider_manifest_digest,
+    builtin_provider_manifests, provider_manifest_digest, HOOK_ACTIVATION_SCHEMA_ID,
+    HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION,
 };
 use std::{
     ffi::{OsStr, OsString},
@@ -11,7 +11,7 @@ use std::{
 
 pub(super) fn write_rust_activation_with_ignored_prefixes(
     root: &Path,
-    ignored: &[&str],
+    _ignored: &[&str],
 ) -> std::path::PathBuf {
     let manifest = builtin_provider_manifests()
         .into_iter()
@@ -65,14 +65,12 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
                 package_roots: vec![".".to_string()],
-                source_roots: vec!["crates/app/src".to_string(), "vendor/tool/src".to_string()],
                 config_files: vec![
                     "Cargo.toml".to_string(),
                     "crates/app/Cargo.toml".to_string(),
                     "vendor/tool/Cargo.toml".to_string(),
                 ],
                 source_extensions: vec!["rs".to_string()],
-                ignored_path_prefixes: ignored.iter().map(|prefix| (*prefix).to_string()).collect(),
             },
         }],
     };
@@ -152,13 +150,8 @@ pub(super) fn write_gerbil_activation_with_command_prefix(
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
                 package_roots: vec![".".to_string()],
-                source_roots: source_roots
-                    .iter()
-                    .map(|source_root| (*source_root).to_string())
-                    .collect(),
                 config_files: vec!["gerbil.pkg".to_string()],
                 source_extensions: vec!["ss".to_string()],
-                ignored_path_prefixes: Vec::new(),
             },
         }],
     };

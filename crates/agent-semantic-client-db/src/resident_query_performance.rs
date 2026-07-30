@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const RESIDENT_QUERY_PERFORMANCE_SCHEMA_ID: &str =
-    "asp.resident-query-performance-receipt";
+pub const RESIDENT_QUERY_PERFORMANCE_SCHEMA_ID: &str = "asp.resident-query-performance-receipt";
 pub const RESIDENT_QUERY_PERFORMANCE_SCHEMA_VERSION: &str = "1";
 pub const RESIDENT_QUERY_BUDGET_MICROS: u64 = 1_000;
 

@@ -182,10 +182,8 @@ pub(super) fn root_owned_rust_activation_json() -> String {
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
                 package_roots: vec![".".to_string()],
-                source_roots: manifest.source().default_source_roots.clone(),
                 config_files: manifest.source().default_config_files.clone(),
                 source_extensions: manifest.source().default_extensions.clone(),
-                ignored_path_prefixes: manifest.source().default_ignored_path_prefixes.clone(),
             },
         }],
     };
