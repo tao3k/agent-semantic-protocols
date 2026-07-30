@@ -182,7 +182,7 @@ impl ResolutionEvidence {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 /// Workspace path-to-digest snapshot with deterministic root and overlay operations.
 pub struct WorkspaceSnapshot {
     root_digest: String,

@@ -62,10 +62,13 @@ fn with_agent_org_artifact_archive_warning(
     config: &ClientHookConfig,
     project_root: &str,
 ) -> HookDecision {
+    if decision.event != "session-start" {
+        return decision;
+    }
     let Some(warning) = config.agent_org_artifacts_archive_warning(Path::new(project_root)) else {
         return decision;
     };
-    if decision.event == "session-start" && !decision.message.contains("ASP Org Archive Warning:") {
+    if !decision.message.contains("ASP Org Archive Warning:") {
         if !decision.message.is_empty() {
             decision.message.push_str("\n\n");
         }

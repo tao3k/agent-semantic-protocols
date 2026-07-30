@@ -26,18 +26,17 @@ pub struct WorkspaceDbOwnerEndpoint {
     pub schema_id: String,
     pub schema_version: String,
     pub workspace_identity: String,
-    pub owner_artifact_digest: String,
+    pub transport_contract_digest: String,
     pub owner_epoch: u64,
+    pub owner_pid: u32,
+    pub runtime_binary_path: String,
+    pub runtime_binary_digest: String,
     pub binding_token: String,
     pub socket_path: String,
 }
 
 impl WorkspaceDbOwnerEndpoint {
-    pub fn validate_for_workspace(
-        &self,
-        workspace_identity: &str,
-        owner_artifact_digest: &str,
-    ) -> Result<(), String> {
+    pub fn validate_for_workspace(&self, workspace_identity: &str) -> Result<(), String> {
         if self.schema_id != super::workspace_db_ipc::WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID
             || self.schema_version != super::workspace_db_ipc::WORKSPACE_DB_OWNER_SCHEMA_VERSION
         {
@@ -49,10 +48,11 @@ impl WorkspaceDbOwnerEndpoint {
                 self.workspace_identity
             ));
         }
-        if self.owner_artifact_digest != owner_artifact_digest {
+        let transport_contract_digest = workspace_db_owner_transport_contract_digest();
+        if self.transport_contract_digest != transport_contract_digest {
             return Err(format!(
-                "workspace owner endpoint artifact mismatch: expected={owner_artifact_digest} actual={}",
-                self.owner_artifact_digest
+                "workspace owner endpoint transport contract mismatch: expected={transport_contract_digest} actual={}",
+                self.transport_contract_digest
             ));
         }
         if self.owner_epoch == 0 || self.binding_token.is_empty() || self.socket_path.is_empty() {
@@ -68,16 +68,22 @@ impl WorkspaceDbOwnerEndpoint {
 pub fn prepare_workspace_db_owner_endpoint(
     runtime_base: &Path,
     workspace_identity: &str,
-    owner_artifact_digest: &str,
     owner_epoch: u64,
+    owner_pid: u32,
+    runtime_binary_path: &Path,
+    runtime_binary_digest: &str,
     binding_token: &str,
 ) -> Result<WorkspaceDbOwnerEndpoint, String> {
     if workspace_identity.is_empty()
-        || owner_artifact_digest.is_empty()
         || binding_token.is_empty()
         || owner_epoch == 0
+        || owner_pid == 0
+        || runtime_binary_digest.is_empty()
     {
-        return Err("workspace owner endpoint requires identity, epoch, and token".to_owned());
+        return Err(
+            "workspace owner endpoint requires identity, epoch, pid, runtime digest, and token"
+                .to_owned(),
+        );
     }
     std::fs::create_dir_all(runtime_base).map_err(|error| {
         format!(
@@ -96,8 +102,10 @@ pub fn prepare_workspace_db_owner_endpoint(
             "workspace owner runtime directory is not private to the current UID".to_owned(),
         );
     }
-    let digest = blake3::hash(workspace_identity.as_bytes()).to_hex();
-    let socket_path = runtime_base.join(format!("w-{}.sock", &digest[..16]));
+    let owner_digest =
+        blake3::hash(format!("{workspace_identity}\0{owner_epoch}\0{binding_token}").as_bytes())
+            .to_hex();
+    let socket_path = runtime_base.join(format!("w-{}.sock", &owner_digest[..16]));
     if socket_path.as_os_str().as_bytes().len() > MAX_UNIX_SOCKET_PATH_BYTES {
         return Err(format!(
             "workspace owner socket path exceeds Unix sun_path budget: {}",
@@ -108,11 +116,29 @@ pub fn prepare_workspace_db_owner_endpoint(
         schema_id: super::workspace_db_ipc::WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID.to_owned(),
         schema_version: super::workspace_db_ipc::WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
         workspace_identity: workspace_identity.to_owned(),
-        owner_artifact_digest: owner_artifact_digest.to_owned(),
+        transport_contract_digest: workspace_db_owner_transport_contract_digest(),
         owner_epoch,
+        owner_pid,
+        runtime_binary_path: runtime_binary_path.to_string_lossy().into_owned(),
+        runtime_binary_digest: runtime_binary_digest.to_owned(),
         binding_token: binding_token.to_owned(),
         socket_path: socket_path.to_string_lossy().into_owned(),
     })
+}
+
+pub fn workspace_db_owner_transport_contract_digest() -> String {
+    static DIGEST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DIGEST
+        .get_or_init(|| {
+            format!(
+                "blake3-256:{}",
+                blake3::hash(include_bytes!(
+                    "../../../schemas/workspace-db-owner-ipc.v1.schema.json"
+                ))
+                .to_hex()
+            )
+        })
+        .clone()
 }
 
 pub fn bind_workspace_db_owner(

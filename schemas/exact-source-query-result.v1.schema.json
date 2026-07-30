@@ -5,17 +5,140 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schemaId",
-    "selector",
-    "ownerPath",
-    "resolvedOwnerPath",
-    "itemKind",
-    "itemName",
-    "sourceSnapshot",
-    "resolutionEvidence"
+    "schemaId"
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "schemaId": {
+          "const": "asp.exact-source-query-result.v1"
+        }
+      },
+      "required": [
+        "selector",
+        "ownerPath",
+        "resolvedOwnerPath",
+        "itemKind",
+        "itemName",
+        "sourceSnapshot",
+        "resolutionEvidence"
+      ]
+    },
+    {
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.provider-native-exact-projection"
+        },
+        "resolutionState": {
+          "const": "identity-incomplete"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "languageId",
+        "providerId",
+        "requestedStructuralSelector",
+        "resolutionState",
+        "reasonKind",
+        "rootDigest",
+        "ownerPath",
+        "itemKind",
+        "itemName",
+        "candidates",
+        "actualKinds",
+        "recommendedNext"
+      ]
+    }
   ],
   "properties": {
-    "schemaId": { "const": "asp.exact-source-query-result.v1" },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestedStructuralSelector": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resolutionState": {
+      "type": "string",
+      "enum": [
+        "resolved",
+        "owner-missing",
+        "item-missing",
+        "kind-mismatch",
+        "identity-incomplete",
+        "ambiguous",
+        "parser-failed"
+      ]
+    },
+    "reasonKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rootDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ownerPath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "itemKind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "itemName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "actualKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "recommendedNext": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "command"
+          ],
+          "properties": {
+            "command": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "schemaId": {
+      "enum": [
+        "asp.exact-source-query-result.v1",
+        "agent.semantic-protocols.provider-native-exact-projection"
+      ]
+    },
     "selector": { "type": "string", "minLength": 1 },
     "ownerPath": { "type": "string", "minLength": 1 },
     "resolvedOwnerPath": { "type": "string", "minLength": 1 },

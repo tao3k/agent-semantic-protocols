@@ -6,9 +6,9 @@ use agent_semantic_client_db::{
     CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbEngine,
     ClientDbLiveSourceIndexFacts, ClientDbSourceIndexClientDirLookupRequest,
     ClientDbSourceIndexImport, ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
-    ClientDbSourceIndexLookupState, ClientDbSourceIndexMembershipChangeSet,
-    ClientDbSourceIndexOwner, ClientDbSourceIndexRefreshRequest, build_source_index_import,
-    client_db_source_index_artifact_digest, client_db_source_index_generation_id_for_snapshot,
+    ClientDbSourceIndexLookupState, ClientDbSourceIndexOwner, ClientDbSourceIndexRefreshRequest,
+    build_source_index_import, client_db_source_index_artifact_digest,
+    client_db_source_index_generation_id_for_snapshot,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -103,13 +103,12 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         }],
     })
     .expect("build resident Turso source-index import");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
             import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
-            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("materialize resident Turso source index");

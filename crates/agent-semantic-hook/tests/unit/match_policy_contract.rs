@@ -173,6 +173,13 @@ fn production_match_policy_contract() {
             payload: shell("git show HEAD:src/app.ts"),
             rule_id: "deny-uncontrolled-git-source-reads",
             decision: DecisionKind::Deny,
+            reason: ReasonKind::BulkSourceDump,
+        },
+        MatchCase {
+            name: "git metadata read",
+            payload: shell("git diff --check"),
+            rule_id: "deny-uncontrolled-git-metadata-reads",
+            decision: DecisionKind::Deny,
             reason: ReasonKind::RawBroadSearch,
         },
         MatchCase {

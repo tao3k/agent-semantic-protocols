@@ -1,4 +1,20 @@
-* CLI is the protocol: search plus query surface
+* SearchLoop is the protocol: search plus query capabilities
+
+The agent-facing architecture is defined by
+[[file:00.01-search-loop-architecture.org][SearchLoop architecture]].  This
+module family defines the capabilities used by the loop.  Provider facade and
+CLI forms remain useful human, automation, diagnostic, and recovery adapters;
+they are not the reasoning protocol and do not define the order in which an
+agent must explore.
+
+** Normative precedence
+
+The SearchLoop decision in =00.01-search-loop-architecture.org= supersedes
+older CLI-first wording in this module family.  Existing command forms remain
+normative only for adapter compatibility, harness conformance, diagnostics, or
+explicit human use.  A statement that an agent must reproduce a rendered CLI
+sequence is historical unless the SearchLoop contract names that sequence as an
+adapter-level acceptance requirement.
 Selector-seeded pipe contract:
 When an agent already has an exact provider selector and still needs owner-local context terms, the canonical search surface is a selector-seeded pipe command, not a shell-joined query plus owner search:
 #+begin_src shell
@@ -322,4 +338,3 @@ queries.
 RFC 007 adds the shared =asp ast-patch= verification path.
 Language providers still own AST adapters, but agents should use the shared
 binary for schema validation, receipts, and Codex-safe dry-run behavior.
-

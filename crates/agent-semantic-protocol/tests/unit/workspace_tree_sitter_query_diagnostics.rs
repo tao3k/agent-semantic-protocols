@@ -19,8 +19,41 @@ fn zero_match_tree_sitter_query_explains_structural_semantics() {
         std::process::id()
     ));
     fs::create_dir_all(&workspace).expect("create query workspace");
-    fs::write(workspace.join("lib.rs"), "fn direct_source_read() {}\n")
-        .expect("write Rust fixture");
+    fs::write(
+        workspace.join("lib.rs"),
+        "pub struct AgentSessionLookupRequest;\n",
+    )
+    .expect("write Rust fixture");
+    fs::write(workspace.join("other.rs"), "pub fn unrelated() {}\n")
+        .expect("write second Rust owner");
+    fs::write(
+        workspace.join("Cargo.toml"),
+        "[package]\nname = \"tree-sitter-zero-match-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[lib]\npath = \"lib.rs\"\n",
+    )
+    .expect("write Rust project entry");
+    let git_init = Command::new("git")
+        .current_dir(&workspace)
+        .args(["init", "--quiet"])
+        .status()
+        .expect("initialize Git fixture");
+    assert!(git_init.success(), "Git fixture initialization failed");
+    let git_add = Command::new("git")
+        .current_dir(&workspace)
+        .args(["add", "Cargo.toml", "lib.rs", "other.rs"])
+        .status()
+        .expect("index Git fixture candidates");
+    assert!(git_add.success(), "Git fixture index update failed");
+    let state_home = workspace.join("home/.agent-semantic-protocols");
+    crate::provider_command::support::write_activation(
+        &workspace,
+        &[crate::provider_command::support::provider(
+            "rust",
+            Vec::new(),
+        )],
+    );
+    write_rust_owner_delegate(&workspace, &state_home);
+    write_provider_install_receipts(&state_home);
+    let mut resident = start_fixture_resident(&workspace, &state_home);
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command.env_clear();
@@ -29,6 +62,7 @@ fn zero_match_tree_sitter_query_explains_structural_semantics() {
             command.env(variable, value);
         }
     }
+    command.env("ASP_STATE_HOME", &state_home);
     let output = command
         .current_dir(&workspace)
         .args([
@@ -42,6 +76,10 @@ fn zero_match_tree_sitter_query_explains_structural_semantics() {
         .arg(&workspace)
         .output()
         .expect("run structural query");
+    resident.kill().expect("stop fixture workspace resident");
+    resident
+        .wait()
+        .expect("wait for fixture workspace resident");
     fs::remove_dir_all(&workspace).expect("remove query workspace");
 
     assert!(
@@ -85,6 +123,23 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
     .expect("write Rust fixture");
     fs::write(workspace.join("other.rs"), "pub fn unrelated() {}\n")
         .expect("write second Rust owner");
+    fs::write(
+        workspace.join("Cargo.toml"),
+        "[package]\nname = \"tree-sitter-query-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n[lib]\npath = \"lib.rs\"\n",
+    )
+    .expect("write Rust project entry");
+    let git_init = Command::new("git")
+        .current_dir(&workspace)
+        .args(["init", "--quiet"])
+        .status()
+        .expect("initialize Git fixture");
+    assert!(git_init.success(), "Git fixture initialization failed");
+    let git_add = Command::new("git")
+        .current_dir(&workspace)
+        .args(["add", "Cargo.toml", "lib.rs", "other.rs"])
+        .status()
+        .expect("index Git fixture candidates");
+    assert!(git_add.success(), "Git fixture index update failed");
     crate::provider_command::support::write_activation(
         &workspace,
         &[
@@ -96,7 +151,7 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
     );
     write_rust_owner_delegate(&workspace, &state_home);
     write_provider_install_receipts(&state_home);
-
+    let mut resident = start_fixture_resident(&workspace, &state_home);
     let run_search = || {
         let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
         command.env_clear();
@@ -205,7 +260,13 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
         "incremental fixture did not complete within owner bound"
     );
 
+    let warm_started = std::time::Instant::now();
     let warm_output = run_search();
+    let warm_elapsed = warm_started.elapsed();
+    eprintln!(
+        "[typed-project-resolution-perf] phase=warm elapsedMs={:.3}",
+        warm_elapsed.as_secs_f64() * 1_000.0
+    );
     assert!(
         warm_output.status.success(),
         "warm stdout={}\nwarm stderr={}",
@@ -214,6 +275,34 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
     );
     let warm_stdout = String::from_utf8(warm_output.stdout).expect("warm utf-8 stdout");
     let warm_stderr = String::from_utf8_lossy(&warm_output.stderr);
+    let phase_elapsed_ms = |phase: &str| {
+        warm_stderr
+            .lines()
+            .find(|line| {
+                line.contains("[query-treesitter-phase]")
+                    && line.contains(&format!("phase={phase} "))
+            })
+            .and_then(|line| {
+                line.split_whitespace()
+                    .find_map(|field| field.strip_prefix("elapsedMs="))
+            })
+            .and_then(|elapsed| elapsed.parse::<f64>().ok())
+            .unwrap_or_else(|| panic!("missing phase timing for {phase}: stderr={warm_stderr}"))
+    };
+    let inventory_elapsed_ms = phase_elapsed_ms("inventory-enumerate");
+    let query_elapsed_ms = phase_elapsed_ms("total");
+    eprintln!(
+        "[typed-project-resolution-perf] phase=warm-query queryMs={query_elapsed_ms:.3} inventoryMs={inventory_elapsed_ms:.3} wallMs={:.3}",
+        warm_elapsed.as_secs_f64() * 1_000.0
+    );
+    assert!(
+        inventory_elapsed_ms < 100.0,
+        "warm typed project-resolution inventory exceeded 100ms: inventoryMs={inventory_elapsed_ms:.3} stderr={warm_stderr}"
+    );
+    assert!(
+        query_elapsed_ms < 500.0,
+        "warm incremental query exceeded 500ms: queryMs={query_elapsed_ms:.3} stderr={warm_stderr}"
+    );
     for counter in [
         "sourceReads=0",
         "providerParses=0",
@@ -237,6 +326,10 @@ fn language_tree_sitter_search_uses_explicit_rust_facade() {
     .expect("change one Rust owner");
     write_rust_owner_delegate(&workspace, &state_home);
     let dirty_output = run_search();
+    resident.kill().expect("stop fixture workspace resident");
+    resident
+        .wait()
+        .expect("wait for fixture workspace resident");
     fs::remove_dir_all(&state_home).expect("remove search state");
     fs::remove_dir_all(&workspace).expect("remove search workspace");
     assert!(
@@ -284,6 +377,39 @@ fn collect_files_named(root: &std::path::Path, file_name: &str) -> Vec<std::path
     matches
 }
 
+fn start_fixture_resident(
+    workspace: &std::path::Path,
+    state_home: &std::path::Path,
+) -> std::process::Child {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
+    command.env_clear();
+    for variable in ["HOME", "PATH", "TMPDIR", "CARGO_HOME", "RUSTUP_HOME"] {
+        if let Some(value) = std::env::var_os(variable) {
+            command.env(variable, value);
+        }
+    }
+    let mut child = command
+        .env("ASP_STATE_HOME", state_home)
+        .current_dir(workspace)
+        .args(["workspace-db", "resident", "serve", "--workspace"])
+        .arg(workspace)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("start fixture workspace resident");
+    let stdout = child.stdout.take().expect("fixture resident stdout");
+    let mut reader = std::io::BufReader::new(stdout);
+    let mut readiness = String::new();
+    std::io::BufRead::read_line(&mut reader, &mut readiness)
+        .expect("read fixture resident readiness");
+    assert!(
+        readiness.starts_with("[workspace-resident-service-ready]"),
+        "unexpected fixture resident receipt: {readiness}"
+    );
+    child
+}
+
 fn write_provider_install_receipts(state_home: &std::path::Path) {
     let receipt_dir = state_home.join("runtime/providers/receipts");
     std::fs::create_dir_all(&receipt_dir).expect("create provider install receipt directory");
@@ -294,6 +420,9 @@ fn write_provider_install_receipts(state_home: &std::path::Path) {
         ("gerbil-scheme", "gslph", "gslph"),
     ] {
         let installed_path = state_home.join("runtime/bin").join(binary);
+        if !installed_path.is_file() {
+            continue;
+        }
         let installed_entrypoint_digest =
             agent_semantic_content_identity::file_content_digest_v1(&installed_path)
                 .expect("digest provider fixture binary");
@@ -331,7 +460,7 @@ fn write_rust_owner_delegate(workspace: &std::path::Path, state_home: &std::path
             "languageId": "rust",
             "providerId": "rs-harness",
             "requestedOwnerPath": owner_path,
-            "requestedQuery": "",
+            "requestedProjectionMode": "complete-owner",
             "sourceContentDigest": source_content_digest,
             "parsedOwnerCount": 1,
             "projectionCompleteness": "complete-owner",
@@ -384,11 +513,28 @@ fn write_rust_owner_delegate(workspace: &std::path::Path, state_home: &std::path
             "sourceByteEnd": 21,
         }]),
     );
+    let project_response = serde_json::to_string(&serde_json::json!({
+        "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "state": "resolved",
+        "resolution": {
+            "resolvedSourceScopes": [{
+                "packageId": "fixture-package",
+                "targetId": "fixture-target",
+                "authority": "cargo-manifest",
+                "paths": ["lib.rs", "other.rs"]
+            }]
+        }
+    }))
+    .expect("encode provider project-resolution response");
     let delegate = state_home.join("runtime/bin/.rs-harness-delegate");
     std::fs::write(
         &delegate,
         format!(
-            "#!/bin/sh\nrequest=$(cat)\ncase \"$request\" in\n  *'\"ownerPath\":\"lib.rs\"'*) printf '%s\\n' {} ;;\n  *'\"ownerPath\":\"other.rs\"'*) printf '%s\\n' {} ;;\n  *) printf '%s\\n' 'unknown owner-native fixture request' >&2; exit 64 ;;\nesac\n",
+            "#!/bin/sh\nrequest=$(cat)\ncase \"$request\" in\n  *'\"schemaId\":\"agent.semantic-protocols.provider-project-resolution-request\"'*) printf '%s\\n' {} ;;\n  *'\"ownerPath\":\"lib.rs\"'*) printf '%s\\n' {} ;;\n  *'\"ownerPath\":\"other.rs\"'*) printf '%s\\n' {} ;;\n  *) printf '%s\\n' 'unknown typed provider fixture request' >&2; exit 64 ;;\nesac\n",
+            shell_quote(&project_response),
             shell_quote(&lib_response),
             shell_quote(&other_response),
         ),

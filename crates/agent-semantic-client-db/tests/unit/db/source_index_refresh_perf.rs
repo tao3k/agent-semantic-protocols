@@ -36,11 +36,12 @@ async fn source_index_1193_owner_cold_write_stays_inside_v1_gate() {
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
     let started_at = Instant::now();
-    let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        large_refresh_request(&project_root, 1_193),
-    )
-    .expect("write 1193-owner source-index snapshot");
+    let refresh =
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            large_refresh_request(&project_root, 1_193),
+        )
+        .expect("write 1193-owner source-index snapshot");
     let elapsed = started_at.elapsed();
 
     assert!(!refresh.reused_generation, "cold import must publish rows");
@@ -72,7 +73,11 @@ async fn source_index_1278_owner_posting_frontier_cold_write_stays_inside_v1_gat
 
     let request = large_high_term_refresh_request(&project_root, 1_278, 32);
     let started_at = Instant::now();
-    let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, request)
+    let refresh =
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            request,
+        )
         .expect("write bounded-posting source-index snapshot");
     let elapsed = started_at.elapsed();
 
@@ -100,7 +105,7 @@ async fn source_index_1193_owner_one_percent_refresh_stays_inside_v1_gate() {
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         large_refresh_request(&project_root, 1_193),
     )
@@ -119,8 +124,11 @@ async fn source_index_1193_owner_one_percent_refresh_stays_inside_v1_gate() {
 
     let started_at = Instant::now();
     let refresh =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, changed_request)
-            .expect("refresh one-percent changed source-index snapshot");
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            changed_request,
+        )
+        .expect("refresh one-percent changed source-index snapshot");
     let elapsed = started_at.elapsed();
 
     assert!(
@@ -156,7 +164,7 @@ async fn source_index_1193_owner_high_fanout_lookup_stays_inside_v1_gate() {
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         large_refresh_request(&project_root, 1_193),
     )
@@ -196,13 +204,19 @@ async fn source_index_refresh_reuse_stays_on_structured_turso_path() {
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
     let request = refresh_request(&project_root);
-    let first =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, request.clone())
-            .expect("cold source-index refresh");
+    let first = agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+        &client_dir,
+        request.clone(),
+    )
+    .expect("cold source-index refresh");
     assert!(!first.reused_generation, "first refresh should write rows");
 
     let started_at = Instant::now();
-    let second = ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, request)
+    let second =
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            request,
+        )
         .expect("warm source-index refresh");
     let elapsed = started_at.elapsed();
 
@@ -233,8 +247,11 @@ async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {
             &initial_snapshot,
         );
     initial_request.source_snapshot = initial_snapshot;
-    ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, initial_request)
-        .expect("write initial two-owner source-index snapshot");
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+        &client_dir,
+        initial_request,
+    )
+    .expect("write initial two-owner source-index snapshot");
 
     let mut pruned_request = large_refresh_request(&project_root, 2);
     let pruned_snapshot = crate::snapshot_fixture::source_snapshot_evidence_for(2);
@@ -248,19 +265,22 @@ async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {
     pruned_request.import.owners.pop();
     pruned_request.import.selectors.pop();
     let pruned =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, pruned_request)
-            .expect("publish pruned source-index snapshot");
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            pruned_request,
+        )
+        .expect("publish pruned source-index snapshot");
     assert!(!pruned.reused_generation);
     assert_eq!(pruned.owner_count, 1);
     assert_eq!(pruned.selector_count, 1);
     assert_eq!(
-        pruned.changed_owner_count, 1,
-        "a removal-only generation materializes retained owners into the new immutable snapshot"
+        pruned.changed_owner_count, 0,
+        "a removal-only overlay must retain unchanged owner rows without rewriting them"
     );
     assert_eq!(pruned.removed_owner_count, 1);
     assert_eq!(
-        pruned.posting_write_count, 16,
-        "a removal-only generation materializes retained postings into the new immutable snapshot"
+        pruned.posting_write_count, 0,
+        "a removal-only overlay must retain unchanged postings without rewriting them"
     );
 
     let rust_language_id = LanguageId::from("rust");
@@ -268,7 +288,7 @@ async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {
     let lookup = loop {
         let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
             &client_dir,
-            &pruned_snapshot,
+            &pruned.source_snapshot,
             "source_index_large_owner_1",
             Some(&rust_language_id),
             8,
@@ -307,8 +327,11 @@ async fn source_index_lookup_bounds_query_bytes_terms_and_candidate_limit() {
     for selector in &mut request.import.selectors {
         selector.query_keys.push("shared_lookup_token".into());
     }
-    ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, request)
-        .expect("write source-index memory-bound fixture");
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+        &client_dir,
+        request,
+    )
+    .expect("write source-index memory-bound fixture");
 
     let rust_language_id = LanguageId::from("rust");
     let lookup_deadline = Instant::now() + Duration::from_secs(15);
@@ -383,9 +406,11 @@ async fn source_index_failed_cold_write_rolls_back_visible_rows() {
         .import
         .owners
         .push(invalid_request.import.owners[0].clone());
-    let error =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, invalid_request)
-            .expect_err("duplicate owner must fail the cold write");
+    let error = agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+        &client_dir,
+        invalid_request,
+    )
+    .expect_err("duplicate owner must fail the cold write");
     assert!(
         error.contains("failed to write Turso source-index owner"),
         "unexpected cold-write error: {error}"
@@ -407,7 +432,7 @@ async fn source_index_failed_cold_write_rolls_back_visible_rows() {
         "a failed cold write must not expose partial source-index rows"
     );
 
-    let retry = ClientDbEngine::refresh_source_index_import_from_client_dir(
+    let retry = agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         refresh_request(&project_root),
     )
@@ -543,7 +568,7 @@ fn source_index_dirty_git_path_forces_content_hash_despite_metadata_collision() 
 }
 
 #[test]
-fn source_index_refresh_reuses_generation_after_restoring_snapshot_identity() {
+fn source_index_refresh_reuses_active_generation_while_restoring_snapshot_identity() {
     let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-refresh-restore-snapshot-identity");
     let client_dir = root.join("client");
@@ -558,9 +583,11 @@ fn source_index_refresh_reuses_generation_after_restoring_snapshot_identity() {
             &first_snapshot,
         );
     first_request.source_snapshot = first_snapshot.clone();
-    let first =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, first_request)
-            .expect("write initial source-index facts");
+    let first = agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+        &client_dir,
+        first_request,
+    )
+    .expect("write initial source-index facts");
     assert!(!first.reused_generation);
 
     let mut changed_request = refresh_request(&project_root);
@@ -572,8 +599,11 @@ fn source_index_refresh_reuses_generation_after_restoring_snapshot_identity() {
         );
     changed_request.source_snapshot = changed_snapshot;
     let changed =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, changed_request)
-            .expect("publish changed source-index membership");
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            changed_request,
+        )
+        .expect("publish changed source-index membership");
     assert!(!changed.reused_generation);
 
     let mut restored_request = refresh_request(&project_root);
@@ -583,17 +613,27 @@ fn source_index_refresh_reuses_generation_after_restoring_snapshot_identity() {
         );
     restored_request.source_snapshot = first_snapshot;
     let restored =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, restored_request)
-            .expect("republish historical source-index facts");
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            restored_request,
+        )
+        .expect("republish historical source-index facts");
     assert_eq!(
         restored.generation_id, first.generation_id,
         "first={:?} changed={:?} restored={:?}",
         first.generation_id, changed.generation_id, restored.generation_id
     );
+    assert_eq!(
+        changed.generation_id, first.generation_id,
+        "Merkle overlays must reuse one resident physical generation"
+    );
     assert_ne!(
-        restored.generation_id, changed.generation_id,
-        "first={:?} changed={:?} restored={:?}",
-        first.generation_id, changed.generation_id, restored.generation_id
+        changed.source_snapshot.root_digest,
+        first.source_snapshot.root_digest
+    );
+    assert_eq!(
+        restored.source_snapshot.root_digest,
+        first.source_snapshot.root_digest
     );
 
     let _ = std::fs::remove_dir_all(root);
@@ -608,7 +648,7 @@ fn source_index_refresh_detects_selector_change_without_file_hash_change() {
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         refresh_request(&project_root),
     )
@@ -618,8 +658,11 @@ fn source_index_refresh_detects_selector_change_without_file_hash_change() {
     changed_request.import.selectors[0].source =
         "pub fn source_index_perf_fixture() { changed(); }".into();
     let changed =
-        ClientDbEngine::refresh_source_index_import_from_client_dir(&client_dir, changed_request)
-            .expect("publish selector-only source-index change");
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            changed_request,
+        )
+        .expect("publish selector-only source-index change");
 
     assert!(!changed.reused_generation);
     assert_eq!(changed.owner_count, 1);
@@ -634,8 +677,6 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
     let structural_selector =
         "rust://src/source_index_perf.rs#item/function/source_index_perf_fixture";
     ClientDbSourceIndexRefreshRequest {
-        membership_change_set:
-            agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         file_count: 1,
         source_snapshot: crate::snapshot_fixture::source_snapshot_evidence(),
         import: ClientDbSourceIndexImport {
@@ -731,8 +772,6 @@ fn large_refresh_request(
         });
     }
     ClientDbSourceIndexRefreshRequest {
-        membership_change_set:
-            agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         file_count: owner_count,
         source_snapshot: crate::snapshot_fixture::source_snapshot_evidence(),
         import: ClientDbSourceIndexImport {

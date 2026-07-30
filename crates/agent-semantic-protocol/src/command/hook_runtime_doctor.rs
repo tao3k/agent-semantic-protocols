@@ -426,7 +426,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
             provider.execution.as_str(),
             runtime_profile_status,
             resolved_binary,
-            provider.source_roots.join(","),
+            provider.package_roots.join(","),
             provider.source_extensions.join(","),
         );
     }

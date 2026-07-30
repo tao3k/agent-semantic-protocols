@@ -32,9 +32,16 @@ async fn deep_state_home_uses_short_private_socket_and_roundtrips_typed_frame() 
     });
     std::fs::create_dir_all(&deep_state_home).expect("create deep State Home fixture");
     let runtime = fixture.path().join("r");
-    let endpoint =
-        prepare_workspace_db_owner_endpoint(&runtime, "workspace-deep-state", 7, "token-7")
-            .expect("prepare short owner endpoint");
+    let endpoint = prepare_workspace_db_owner_endpoint(
+        &runtime,
+        "workspace-deep-state",
+        7,
+        7007,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-7",
+        "token-7",
+    )
+    .expect("prepare short owner endpoint");
     assert!(!endpoint.socket_path.contains("deep-state-segment"));
     assert!(endpoint.socket_path.len() <= 103);
     let listener = bind_workspace_db_owner(&endpoint).expect("bind owner endpoint");
@@ -42,6 +49,7 @@ async fn deep_state_home_uses_short_private_socket_and_roundtrips_typed_frame() 
         schema_id: "agent.semantic-protocols.workspace-db-owner-request.v1".to_owned(),
         schema_version: "1".to_owned(),
         workspace_identity: endpoint.workspace_identity.clone(),
+        transport_contract_digest: endpoint.transport_contract_digest.clone(),
         owner_epoch: endpoint.owner_epoch,
         binding_token: endpoint.binding_token.clone(),
         request_id: "request-1".to_owned(),
@@ -57,6 +65,43 @@ async fn deep_state_home_uses_short_private_socket_and_roundtrips_typed_frame() 
     let response = response.expect("call typed owner endpoint");
     assert_eq!(response.result, WorkspaceDbIpcResult::Healthy);
     assert_eq!(response.owner_epoch, 7);
+    assert_eq!(
+        response.transport_contract_digest,
+        endpoint.transport_contract_digest
+    );
+}
+
+#[test]
+fn owner_epochs_use_distinct_socket_paths_within_one_workspace() {
+    let fixture = TempDir::new().expect("create owner epoch socket fixture");
+    let runtime = fixture.path().join("runtime");
+    let first = prepare_workspace_db_owner_endpoint(
+        &runtime,
+        "workspace-owner-epoch",
+        17,
+        7017,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-17",
+        "token-17",
+    )
+    .expect("prepare first owner epoch");
+    let second = prepare_workspace_db_owner_endpoint(
+        &runtime,
+        "workspace-owner-epoch",
+        18,
+        7018,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-18",
+        "token-18",
+    )
+    .expect("prepare second owner epoch");
+
+    assert_ne!(
+        first.socket_path, second.socket_path,
+        "a stale owner cleanup must never be able to unlink the current owner's listener pathname"
+    );
+    assert!(first.socket_path.len() <= 103);
+    assert!(second.socket_path.len() <= 103);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -67,6 +112,9 @@ async fn warm_workspace_owner_transport_is_sub_millisecond() {
         &fixture.path().join("r"),
         "workspace-transport-performance",
         11,
+        7011,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-11",
         "token-11",
     )
     .expect("prepare workspace DB owner endpoint");
@@ -119,6 +167,9 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
         &fixture.path().join("r"),
         &scope.workspace_identity,
         9,
+        7009,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-9",
         "token-9",
     )
     .expect("prepare workspace DB owner endpoint");
@@ -321,6 +372,334 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
     );
 }
 
+#[test]
+fn workspace_owner_endpoint_rejects_transport_contract_drift() {
+    let fixture = TempDir::new().expect("create endpoint identity fixture");
+    let endpoint = prepare_workspace_db_owner_endpoint(
+        &fixture.path().join("r"),
+        "workspace-artifact-identity",
+        8,
+        7008,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-8",
+        "token-8",
+    )
+    .expect("prepare workspace owner endpoint");
+
+    endpoint
+        .validate_for_workspace("workspace-artifact-identity")
+        .expect("matching transport contract must validate");
+    let mut stale_receipt =
+        serde_json::to_value(&endpoint).expect("serialize typed owner endpoint");
+    stale_receipt
+        .as_object_mut()
+        .expect("endpoint JSON object")
+        .remove("transportContractDigest");
+    let missing_digest_error = serde_json::from_value::<WorkspaceDbOwnerEndpoint>(stale_receipt)
+        .expect_err("a pre-contract endpoint receipt must be stale");
+    assert!(
+        missing_digest_error
+            .to_string()
+            .contains("transportContractDigest"),
+        "missing transport identity must be explicit: {missing_digest_error}"
+    );
+
+    let mut drifted_endpoint = endpoint;
+    drifted_endpoint.transport_contract_digest = "blake3-256:stale-contract".to_owned();
+    let error = drifted_endpoint
+        .validate_for_workspace("workspace-artifact-identity")
+        .expect_err("a stale transport contract must not reuse the resident endpoint");
+    assert!(
+        error.contains("transport contract mismatch"),
+        "transport contract drift must remain an explicit endpoint identity failure: {error}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn workspace_owner_transport_handshake_rejects_request_contract_drift() {
+    let fixture = TempDir::new().expect("create transport contract fixture");
+    let endpoint = prepare_workspace_db_owner_endpoint(
+        &fixture.path().join("runtime"),
+        "workspace-contract-handshake",
+        9,
+        7009,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-9",
+        "token-9",
+    )
+    .expect("prepare workspace owner endpoint");
+    let listener = bind_workspace_db_owner(&endpoint).expect("bind owner endpoint");
+    let mut drifted_request = request(
+        &endpoint,
+        "request-contract-drift",
+        WorkspaceDbIpcOperation::Health,
+    );
+    drifted_request.transport_contract_digest = "blake3-256:stale-contract".to_owned();
+
+    let (served, response) = tokio::join!(
+        serve_one_workspace_db_ipc_request(&listener, &endpoint),
+        call_workspace_db_owner(&endpoint, &drifted_request),
+    );
+
+    served.expect("serve drifted transport request");
+    let response = response.expect("receive typed rejection");
+    assert_eq!(
+        response.transport_contract_digest,
+        endpoint.transport_contract_digest
+    );
+    assert!(
+        matches!(
+            response.result,
+            WorkspaceDbIpcResult::Failed {
+                ref code,
+                ref message
+            } if code == "workspace-owner-binding-mismatch"
+                && message.contains("transport contract")
+        ),
+        "transport drift must fail closed through the resident handshake: {:?}",
+        response.result
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn disconnected_client_does_not_terminate_the_resident_transport() {
+    let fixture = TempDir::new().expect("create disconnected client fixture");
+    let endpoint = prepare_workspace_db_owner_endpoint(
+        &fixture.path().join("runtime"),
+        "workspace-disconnected-client",
+        12,
+        7012,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-12",
+        "token-12",
+    )
+    .expect("prepare workspace owner endpoint");
+    let listener = bind_workspace_db_owner(&endpoint).expect("bind owner endpoint");
+    let registry = std::sync::Arc::new(WorkspaceDbRegistry::default());
+    let last_activity = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+    let client = async {
+        let disconnected = tokio::net::UnixStream::connect(&endpoint.socket_path)
+            .await
+            .expect("connect client that disconnects before a frame");
+        drop(disconnected);
+        tokio::task::yield_now().await;
+
+        WorkspaceDbIpcSession::new(endpoint.clone())
+            .health()
+            .await
+            .expect("resident transport must survive a disconnected client");
+        shutdown_tx
+            .send(true)
+            .map_err(|_| "resident shutdown receiver disappeared".to_owned())
+    };
+
+    let (served, client_result) = tokio::join!(
+        serve_workspace_db_session_until_shutdown(
+            &listener,
+            &endpoint,
+            registry,
+            last_activity,
+            shutdown_rx,
+        ),
+        client,
+    );
+    client_result.expect("complete disconnected client scenario");
+    served.expect("resident transport survives the disconnected client");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn typed_shutdown_retires_one_owner_across_concurrent_sessions() {
+    let fixture = TempDir::new().expect("create typed shutdown fixture");
+    let endpoint = prepare_workspace_db_owner_endpoint(
+        &fixture.path().join("runtime"),
+        "workspace-typed-shutdown",
+        16,
+        7016,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-16",
+        "token-16",
+    )
+    .expect("prepare workspace owner endpoint");
+    let listener = bind_workspace_db_owner(&endpoint).expect("bind owner endpoint");
+    let registry = std::sync::Arc::new(WorkspaceDbRegistry::default());
+    let last_activity = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+    let clients = async {
+        let mut probes = tokio::task::JoinSet::new();
+        for _ in 0..32 {
+            let session = WorkspaceDbIpcSession::new(endpoint.clone());
+            probes.spawn(async move { session.health().await });
+        }
+        while let Some(probe) = probes.join_next().await {
+            probe
+                .expect("health probe task completes")
+                .expect("health probe uses the current owner");
+        }
+
+        let started = std::time::Instant::now();
+        tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            WorkspaceDbIpcSession::new(endpoint.clone()).shutdown(),
+        )
+        .await
+        .expect("typed shutdown stays within the transport performance gate")
+        .expect("typed shutdown is accepted by the bound owner");
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(50),
+            "typed shutdown exceeded the transport performance gate: {:?}",
+            started.elapsed()
+        );
+    };
+
+    let (served, ()) = tokio::join!(
+        serve_workspace_db_session_until_shutdown(
+            &listener,
+            &endpoint,
+            registry,
+            last_activity,
+            shutdown_rx,
+        ),
+        clients,
+    );
+    served.expect("typed shutdown retires the resident owner");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn concurrent_sessions_share_one_workspace_owner() {
+    let fixture = TempDir::new().expect("create concurrent session fixture");
+    let endpoint = prepare_workspace_db_owner_endpoint(
+        &fixture.path().join("runtime"),
+        "workspace-concurrent-sessions",
+        13,
+        7013,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-13",
+        "token-13",
+    )
+    .expect("prepare workspace owner endpoint");
+    let listener = bind_workspace_db_owner(&endpoint).expect("bind owner endpoint");
+    let registry = std::sync::Arc::new(WorkspaceDbRegistry::default());
+    let last_activity = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+    let clients = async {
+        let first = WorkspaceDbIpcSession::new(endpoint.clone());
+        let second = WorkspaceDbIpcSession::new(endpoint.clone());
+        let (first_health, second_health) = tokio::join!(first.health(), second.health());
+        first_health.expect("first session uses the shared workspace owner");
+        second_health.expect("second session uses the shared workspace owner");
+        shutdown_tx
+            .send(true)
+            .map_err(|_| "resident shutdown receiver disappeared".to_owned())
+    };
+
+    let (served, client_result) = tokio::join!(
+        serve_workspace_db_session_until_shutdown(
+            &listener,
+            &endpoint,
+            registry,
+            last_activity,
+            shutdown_rx,
+        ),
+        clients,
+    );
+    client_result.expect("complete concurrent session scenario");
+    served.expect("one workspace owner serves concurrent sessions");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn stalled_session_does_not_block_other_workspace_sessions() {
+    let fixture = TempDir::new().expect("create stalled session fixture");
+    let endpoint = prepare_workspace_db_owner_endpoint(
+        &fixture.path().join("runtime"),
+        "workspace-stalled-session",
+        14,
+        7014,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-14",
+        "token-14",
+    )
+    .expect("prepare workspace owner endpoint");
+    let listener = bind_workspace_db_owner(&endpoint).expect("bind owner endpoint");
+    let registry = std::sync::Arc::new(WorkspaceDbRegistry::default());
+    let last_activity = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+    let clients = async {
+        let _stalled = tokio::net::UnixStream::connect(&endpoint.socket_path)
+            .await
+            .expect("connect stalled workspace session");
+        tokio::task::yield_now().await;
+
+        let mut probes = tokio::task::JoinSet::new();
+        for probe_id in 0..32 {
+            let session = WorkspaceDbIpcSession::new(endpoint.clone());
+            probes.spawn(async move {
+                session
+                    .health()
+                    .await
+                    .map_err(|error| format!("health probe {probe_id} failed: {error}"))
+            });
+        }
+        while let Some(probe) = probes.join_next().await {
+            probe.map_err(|error| format!("health probe task failed: {error}"))??;
+        }
+        shutdown_tx
+            .send(true)
+            .map_err(|_| "resident shutdown receiver disappeared".to_owned())
+    };
+
+    let (served, client_result) = tokio::join!(
+        serve_workspace_db_session_until_shutdown(
+            &listener,
+            &endpoint,
+            registry,
+            last_activity,
+            shutdown_rx,
+        ),
+        clients,
+    );
+    client_result.expect("complete stalled session scenario");
+    served.expect("stalled session must not block the shared workspace owner");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn health_probe_is_bounded_when_owner_never_responds() {
+    let fixture = TempDir::new().expect("create bounded health fixture");
+    let endpoint = prepare_workspace_db_owner_endpoint(
+        &fixture.path().join("runtime"),
+        "workspace-bounded-health",
+        15,
+        7015,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-15",
+        "token-15",
+    )
+    .expect("prepare workspace owner endpoint");
+    let listener = bind_workspace_db_owner(&endpoint).expect("bind owner endpoint");
+    let unresponsive_owner = tokio::spawn(async move {
+        let (_stream, _) = listener.accept().await.expect("accept health probe");
+        std::future::pending::<()>().await;
+    });
+
+    let started = std::time::Instant::now();
+    let error = WorkspaceDbIpcSession::new(endpoint)
+        .health()
+        .await
+        .expect_err("unresponsive owner must time out");
+    unresponsive_owner.abort();
+
+    assert_eq!(error, "workspace resident DB service health exceeded 50ms");
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(150),
+        "health timeout exceeded its bounded recovery window: {:?}",
+        started.elapsed()
+    );
+}
+
 #[tokio::test]
 async fn owner_session_roundtrip_writes_reads_and_finishes_durability() {
     let _environment = environment_lock();
@@ -331,6 +710,9 @@ async fn owner_session_roundtrip_writes_reads_and_finishes_durability() {
         &fixture.path().join("r"),
         &scope.workspace_identity,
         9,
+        7009,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-9",
         "token-9",
     )
     .expect("prepare session owner endpoint");
@@ -419,6 +801,7 @@ fn request(
         schema_id: "agent.semantic-protocols.workspace-db-owner-request.v1".to_owned(),
         schema_version: "1".to_owned(),
         workspace_identity: endpoint.workspace_identity.clone(),
+        transport_contract_digest: endpoint.transport_contract_digest.clone(),
         owner_epoch: endpoint.owner_epoch,
         binding_token: endpoint.binding_token.clone(),
         request_id: request_id.to_owned(),

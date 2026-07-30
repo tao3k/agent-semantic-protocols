@@ -1,0 +1,274 @@
+#+TITLE: Bound Evidence Clause Algebra
+#+OPTIONS: toc:3
+
+* Purpose
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-PURPOSE
+:END:
+
+This module defines the logical online query unit used by Clause-first
+Retrieval.  It rejects both untyped natural-language slots and unqualified
+subject-predicate-object triples.
+
+* Abstract clause shape
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-SHAPE
+:END:
+
+A logical =AtomicEvidenceClause= contains:
+
+| Field | Meaning |
+|-
+| =clauseId= | Stable identity within an obligation graph |
+| =obligationId= | Requirement the clause may discharge |
+| =relationKind= | Shared or provider-qualified relation |
+| =arguments= | Ordered role-labeled bound values or variables |
+| =qualifiers= | Guard, callsite, receiver, substitution, scope, polarity, and relation-specific context |
+| =workspace= | Canonical workspace and project identity |
+| =snapshot= | Source or evidence generation |
+| =providerRequirement= | Required provider capability and contract |
+| =provenanceRequirement= | Admitted evidence kinds and trust scope |
+| =freshnessRequirement= | Witnesses that must remain current |
+| =state= | Resolved, searchable, fuzzy, or stalled |
+| =attempts= | Validated searched-action digests |
+| =budgetClass= | Bounded cost and materialization class |
+
+An argument is either =Bound(role, identity, witness)= or
+=Variable(role, domain, constraints)=.  Positional endpoints without roles are
+insufficient.
+
+* Qualified n-ary semantics
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-NARY
+:END:
+
+Relations may have arbitrary declared arity.  Examples include a call fact with
+caller, callee, callsite, receiver type, generic substitution, guard, owner,
+snapshot, and provider authority.
+
+Physical postings may index one argument at a time, but the logical fact retains
+all argument roles and proof-relevant qualifiers.  Reconstruction MUST recover
+one admitted fact identity, not synthesize an accidental Cartesian product from
+independent postings.
+
+* Binding judgment
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-BINDING
+:END:
+
+A new binding is admitted only when:
+
+- an admitted provider or exact-query fact names the bound identity;
+- relation kind and argument role match;
+- workspace, snapshot, provider, and policy identities are compatible;
+- required qualifiers are preserved;
+- the binding witness is recorded;
+- adding the binding does not contradict an existing binding.
+
+The model does not accept model-generated selector strings as bindings.
+
+Bindings are monotone only within an unchanged validation domain.  Snapshot or
+contract drift may invalidate a binding and re-open its clause.
+
+* Clause-state algebra
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-STATES
+:END:
+
+** Resolved
+
+The clause has sufficient admitted evidence for its parent obligation under the
+current validation domain.  Resolved does not imply global closure.
+
+** Searchable
+
+At least one provider-declared bounded action can advance an unresolved
+variable or evidence requirement from admitted anchors.
+
+** Fuzzy
+
+The clause has candidates or lexical hints but lacks the canonical identity,
+role information, provider capability, or sufficiency needed for a sound
+posting action.
+
+** Stalled
+
+No admitted bounded action can advance the clause.  The state carries a typed
+blocker such as needs-input, graph-required, provider-gap, closed-scope-required,
+contradiction, or budget exhaustion.
+
+States are semantic classifications, not score buckets.
+
+** Classification precedence
+
+For a well-formed clause under one validation domain, classification is total
+and exclusive:
+
+1. =resolved= when a valid sufficiency witness exists;
+2. =searchable= when at least one sound relation-posting action exists;
+3. =fuzzy= when no posting action exists but a bounded discovery or
+   canonicalization action can refine the clause;
+4. =stalled= when no admitted bounded action exists or a hard blocker requires
+   a typed terminal or escalation.
+
+A mandatory graph escalation is represented as a stalled clause with a
+=graph-required= next transition, not simultaneously as a local searchable
+clause.
+
+* State transitions
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-TRANSITIONS
+:END:
+
+Allowed transitions include:
+
+- fuzzy → searchable after canonical anchor admission;
+- searchable → searchable after a partial binding delta;
+- searchable → resolved after a sufficiency witness;
+- searchable → stalled after typed failure or mandatory escalation;
+- resolved → searchable or fuzzy after dependency invalidation;
+- any non-terminal state → stalled on incompatible generation or contradiction.
+
+A hidden heuristic cannot move a clause directly to resolved.
+
+* Search-action identity
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-ACTION-IDENTITY
+:END:
+
+A search action is identified by the complete semantic query pack, not the
+rendered command.  The identity includes clause, bound roles, qualifiers,
+provider route, scope, snapshot, schema, policy, and projection class.
+
+An action is not repeated while its identity remains valid and its result is
+already admitted.  A changed dependency produces a distinct action.
+
+* AND, OR, and dependency
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-COMPOSITION
+:END:
+
+Clauses discharge atomic obligations.  Obligation composition remains explicit:
+
+- =all= requires every child;
+- =any= requires one child plus a declared sufficiency rule;
+- =depends= prevents child discharge from closing its parent before named
+  prerequisites;
+- =conflicts= prevents simultaneous acceptance without reconciliation.
+
+An OR branch is an alternative proof route, not merely another candidate.
+
+* Joins
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-JOINS
+:END:
+
+Local joins are allowed when their facts share compatible identity domains and
+the provider or storage contract declares the join complete for the requested
+scope.
+
+Graph escalation is mandatory for joins crossing independent namespaces,
+owners, providers, snapshots, or qualifier domains unless a shared schema
+provides a proven complete join index.
+
+* Enumeration and negative evidence
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-NEGATIVE
+:END:
+
+Ranked retrieval cannot discharge:
+
+- “all matching items”;
+- “no producer exists”;
+- “no reachable test exists”;
+- “this is the only owner”;
+- other closed-world claims.
+
+Such clauses require:
+
+- an admitted finite scope;
+- provider coverage identity;
+- completeness and freshness witnesses;
+- non-truncated enumeration;
+- contradiction checks.
+
+No-hit postings produce an open or stalled clause unless these requirements are
+met.
+
+* Global frontier selection
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-FRONTIER
+:END:
+
+The frontier contains clauses, candidate actions, dependency relations, and
+budgets.  Selection uses global marginal utility with two safety constraints:
+
+- every mandatory searchable obligation receives a non-zero fairness floor;
+- a proof-critical action cannot be evicted solely by a cheaper optional
+  action.
+
+When the budget is smaller than the sum of mandatory floors, selection does not
+pretend to satisfy fairness.  It returns a typed insufficient-budget result
+that names the unserved obligations.
+
+The cost model accounts for actual downstream closure work, not query count
+alone.
+
+* Boundedness and cycle handling
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-BOUNDEDNESS
+:END:
+
+Every transition must add admitted evidence, remove an obligation, consume a
+finite budget, invalidate stale state, or enter a typed terminal state.
+
+Clause dependency strongly connected components are detected explicitly.  A
+cycle without a decreasing measure escalates to graph reasoning, needs-input,
+or no-sound-plan.
+
+* Delta and continuation
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-DELTA
+:END:
+
+A clause delta contains:
+
+- continuation and source generation identity;
+- clauses added, reclassified, resolved, invalidated, or stalled;
+- new bindings and their witness identities;
+- searched-action digests added or invalidated;
+- budget changes;
+- escalation and next-action proposals.
+
+Reconstructing state from a valid base plus delta MUST be deterministic.
+
+* Provider capability boundary
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-PROVIDERS
+:END:
+
+Providers publish supported relation kinds, argument roles, lookup directions,
+qualifiers, completeness classes, and cost capabilities.
+
+The shared algebra defines a minimum semantic contract.  Provider extensions
+remain namespaced.  A provider that cannot preserve required semantics returns a
+typed capability gap; it does not approximate the relation silently.
+
+* Typed clause receipt
+:PROPERTIES:
+:ID: ASP-RFC-10.05-BECA-RECEIPT
+:END:
+
+Each attempted action reports:
+
+- clause and action identity;
+- previous and next clause state;
+- admitted bindings and evidence;
+- provider, snapshot, and provenance;
+- truncation and completeness;
+- actual cost;
+- cache status;
+- escalation or blocker;
+- canonical next-action proposals.
+
+Rendered source snippets are excluded unless explicitly materialized.

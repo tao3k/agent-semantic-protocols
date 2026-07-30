@@ -7,30 +7,13 @@ use crate::ResolvedProvider;
 #[must_use]
 /// Return whether a provider owns the source-file extension at `path`.
 pub fn provider_supports_source_file(provider: &ResolvedProvider, path: &Path) -> bool {
-    let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
-        return false;
-    };
-    provider.source_extensions.iter().any(|candidate| {
-        candidate
-            .trim_start_matches('.')
-            .eq_ignore_ascii_case(extension)
-    })
+    agent_semantic_config::source_extension::source_extensions_support_file(
+        &provider.source_extensions,
+        path,
+    )
 }
 
 /// Return whether a provider excludes a path from its declared source scope.
-#[must_use]
-pub fn provider_ignores_path(
-    project_root: &Path,
-    provider: &ResolvedProvider,
-    path: &Path,
-) -> bool {
-    let relative = relative_project_path(project_root, path);
-    provider.ignored_path_prefixes.iter().any(|prefix| {
-        let prefix = normalize_project_path(prefix);
-        relative == prefix || relative.starts_with(&format!("{prefix}/"))
-    })
-}
-
 #[must_use]
 /// Resolve a project-scoped child path, including the project root itself.
 pub fn project_child_path(project_root: &Path, path: &str) -> Option<PathBuf> {

@@ -80,6 +80,13 @@ generation accidentally.
 
 ** Project-resolution projection
 
+Project, package, target, dependency, and source-scope facts are projections of
+the Level 0
+[[file:10.05-cli-first-harness-ux/10.05.11.04-project-semantic-guidance-v1.org][Project Semantic Guidance v1]]
+receipt. Search MUST consume those digest-bound facts and MUST NOT infer
+project boundaries from source-envelope contents, indexed paths, or database
+state.
+
 Search graph admission starts from the same =ProjectResolution= that owns
 inventory scope.  The projection layer MUST NOT infer package ownership from
 path prefixes, source extensions, activation arrays, or whichever owner was
@@ -176,6 +183,28 @@ is a decision node connected to other nodes by typed relations:
 This is a code reasoning graph, not a visual graph.  The provider should
 compress repeated syntax, but it must not compress away relation labels,
 rank order, next actions, locators, or omission reasons.
+
+** Callable skeleton compact selector references
+
+The provider-owned callable-skeleton payload MUST retain its complete typed
+selector authority.  The shared protocol projection layer MAY render that
+payload for an agent with one canonical root selector, written as =R=, and
+root-relative child references such as
+=R/segment/branch/ordinal-4=.  A child reference is packet-local shorthand,
+not a new selector identity; resolving it for an exact query means appending
+the emitted suffix to the packet's canonical root selector.
+
+This compact rendering belongs to the shared projection/core layer.  The CLI
+MUST only select and dispatch the projection, and a language provider MUST NOT
+reimplement the renderer.  Providers remain responsible for canonical root
+and child selectors and MAY maintain provider-owned schemas for language facts
+that do not fit the shared callable-skeleton contract.
+
+The compact view MUST state what it omits, MUST report source and rendered byte
+costs, and MUST not repeat generation, parser, or query authority on every
+node.  Full authority remains available in the typed payload; an exact child
+query returns the selected source segment.  This separation keeps large
+callables cheap to inspect without weakening selector or generation identity.
 
 ** Materialized selectors and graph-only evidence
 *** Immutable exact-projection generation

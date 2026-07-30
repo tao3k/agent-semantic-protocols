@@ -356,6 +356,30 @@ fn run_hook(args: &[String]) -> Result<(), String> {
                         serde_json::Value::String(workspace_root.display().to_string()),
                     );
                 }
+                if let Some(transport_contract_digest) = receipt.transport_contract_digest {
+                    decision.fields.insert(
+                        "workspaceResidentServiceTransportContractDigest".to_string(),
+                        serde_json::Value::String(transport_contract_digest),
+                    );
+                }
+                if let Some(owner_epoch) = receipt.owner_epoch {
+                    decision.fields.insert(
+                        "workspaceResidentServiceOwnerEpoch".to_string(),
+                        serde_json::json!(owner_epoch),
+                    );
+                }
+                if let Some(runtime_binary_path) = receipt.runtime_binary_path {
+                    decision.fields.insert(
+                        "workspaceResidentServiceRuntimeBinaryPath".to_string(),
+                        serde_json::Value::String(runtime_binary_path),
+                    );
+                }
+                if let Some(runtime_binary_digest) = receipt.runtime_binary_digest {
+                    decision.fields.insert(
+                        "workspaceResidentServiceRuntimeBinaryDigest".to_string(),
+                        serde_json::Value::String(runtime_binary_digest),
+                    );
+                }
             }
             Err(error) => {
                 decision.fields.insert(

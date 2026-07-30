@@ -39,13 +39,6 @@ impl ActivatedProvider {
         &self,
         selector: &SourceSelectorMatcher<'_>,
     ) -> Option<SourceSelectorKind> {
-        if self
-            .ignored_path_prefixes
-            .iter()
-            .any(|prefix| selector.is_ignored_by(prefix))
-        {
-            return None;
-        }
         if self.glob_matches_source_selector(selector) {
             return Some(if selector.has_glob {
                 SourceSelectorKind::Pattern
@@ -95,7 +88,7 @@ impl ActivatedProvider {
     }
 
     fn source_root_matches_search_token(&self, normalized: &str) -> bool {
-        self.source_roots.iter().any(|root| {
+        self.package_roots.iter().any(|root| {
             let root = normalize_route_path(root);
             let root = root.trim_end_matches('/');
             !root.is_empty() && (normalized == root || normalized.starts_with(&format!("{root}/")))
@@ -233,10 +226,6 @@ impl<'a> SourceSelectorMatcher<'a> {
             has_glob,
             extension_glob: extension_pattern.and_then(build_glob_set),
         }
-    }
-
-    fn is_ignored_by(&self, prefix: &str) -> bool {
-        self.normalized == prefix || self.normalized.starts_with(&format!("{prefix}/"))
     }
 
     fn targets_extension(&self, extension: &str) -> bool {

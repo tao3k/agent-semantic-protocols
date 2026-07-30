@@ -1,6 +1,7 @@
 //! DB Engine-owned source index refresh and lookup facade.
 
 mod api;
+mod collect;
 pub use api::current_live_provider_source_index_snapshot_with_registry;
 mod projection;
 mod provider_envelope;
@@ -25,10 +26,9 @@ pub use provider_envelope::{
     provider_source_snapshot_envelope_path_at_artifact_root_with_registry,
     provider_workspace_identity_v1, publish_provider_source_snapshot_envelope,
 };
-mod collect;
 mod generation;
 
-pub use collect::{SourceIndexCollectionScopeV1, collect_workspace_search_source_index_files};
+pub use collect::SourceIndexCollectionScope;
 pub use generation::{
     PublishedSourceIndexGenerationV1, TargetProviderSourceEnvelopePublicationRequestV1,
     WorkspaceSearchGenerationPublicationRequestV1, publish_target_provider_source_envelope_v1,

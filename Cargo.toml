@@ -35,7 +35,8 @@ jsonschema = { version = "0.48.1", default-features = false }
 aho-corasick = "1.1.4"
 agent-semantic-content-identity = { path = "crates/agent-semantic-content-identity" }
 agent-semantic-artifacts = { path = "crates/agent-semantic-artifacts" }
-tokio = { version = "1", features = ["io-std", "io-util", "macros", "net", "process", "rt", "time"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["net"] }
 parking_lot = "0.12.5"
 
 blake3 = "1"
@@ -43,6 +44,7 @@ bytes = "1"
 criterion = "0.8.2"
 figment = "0.10.19"
 fs2 = "0.4"
+fs4 = { version = "1", features = ["tokio"] }
 globset = "0.4"
 ignore = { version = "0.4.26", features = ["simd-accel"] }
 insta = "1"

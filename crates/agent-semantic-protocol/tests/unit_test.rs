@@ -48,6 +48,8 @@ mod context_product_state;
 mod document_owner_items_hot_path;
 #[path = "unit/document_provider.rs"]
 mod document_provider;
+#[path = "unit/exact_projection.rs"]
+mod exact_projection;
 #[path = "unit/graph_render.rs"]
 mod graph_render;
 #[path = "unit/healthcheck.rs"]

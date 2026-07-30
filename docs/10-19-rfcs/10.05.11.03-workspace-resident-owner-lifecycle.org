@@ -1,0 +1,92 @@
+#+title: Workspace Resident Owner Lifecycle
+#+startup: overview
+
+* Status
+
+Implemented contract for the workspace-scoped resident database transport.
+
+* Target architecture
+
+ASP has one Global resident process per user runtime.  It owns the provider
+catalog, the Tokio runtime, the control listener, and a keyed registry of
+workspace entries.  A workspace entry owns its Turso handle/read pool, writer
+lane, generation state, and session leases; it does not own another OS process.
+
+The public lifecycle surface is:
+
+#+begin_example
+asp resident status
+asp resident reconcile
+asp resident restart
+#+end_example
+
+The Hook calls =reconcile= and consumes a typed receipt.  Users are never asked
+to inspect or terminate a PID.  Healthy replacement uses typed drain and
+handoff.  An unreachable Global resident is restarted by the platform service
+supervisor through its stable service identity.
+
+The current workspace-scoped process election described below is a migration
+boundary.  It MUST NOT be expanded into the final multi-workspace design.
+
+* Migration authority
+
+The canonical workspace identity owns one process-lifetime election lease.  The
+lease, rather than a PID probe, is the authority for deciding whether an owner
+exists.  PID values remain diagnostic receipt fields and MUST NOT authorize
+endpoint deletion, lease stealing, or owner replacement.
+
+The resident endpoint receipt binds:
+
+- canonical workspace identity;
+- owner epoch and binding token;
+- transport contract digest;
+- canonical runtime artifact path and digest;
+- the Unix socket path for that owner epoch.
+
+* Epoch-isolated socket paths
+
+Every owner epoch MUST receive a distinct Unix socket pathname derived from the
+workspace identity, owner epoch, and binding token.  A stable pathname shared by
+successive epochs is forbidden because a concurrent stale-owner cleanup can
+unlink a newly bound listener between bind and endpoint publication.
+
+The short UID-private runtime directory remains shared, but the pathname is
+epoch-scoped and stays within the platform =sun_path= budget.
+
+* Atomic retirement and replacement
+
+Stale endpoint retirement MUST first acquire the same workspace election lease
+used by the resident owner.  After acquiring the lease it re-reads and validates
+the endpoint, then removes only that endpoint's epoch-scoped socket and receipt.
+
+If the election lease is held while the endpoint is unreachable, the caller
+MUST fail fast with a reconciliation-in-progress receipt.  It MUST NOT:
+
+- unlink any socket;
+- infer ownership from =kill(pid, 0)=;
+- steal the lease;
+- open Turso independently;
+- extend a timeout to hide the state.
+
+Runtime artifact drift is retired through the typed =shutdown= IPC operation.
+An unreachable current owner is never terminated by an OS signal in the
+production lifecycle.
+
+* Concurrency and performance gates
+
+The required scenario is multiple workspaces, sessions, and callers operating
+concurrently.
+
+- Different workspaces elect and run independently.
+- Concurrent sessions for one workspace share one resident registry and its
+  read pool/write lane.
+- Losing an election remains sub-millisecond.
+- Warm health and typed transport calls remain sub-millisecond on average.
+- A stale epoch cleanup test MUST prove that the successor epoch socket remains
+  reachable.
+- A concurrent typed shutdown test MUST prove that one owner retires exactly
+  once without terminating unrelated sessions or workspaces.
+
+Cold reconciliation may publish a short typed in-progress receipt, but search
+and query MUST NOT perform activation synchronization, duplicate Turso opens, or
+fallback to a provider process because resident lifecycle work is in progress.

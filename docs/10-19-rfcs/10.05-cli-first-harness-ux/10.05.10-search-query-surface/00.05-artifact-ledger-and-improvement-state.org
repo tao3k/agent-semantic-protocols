@@ -1,0 +1,149 @@
+#+TITLE: Artifact Ledger and Improvement State
+#+OPTIONS: toc:2
+
+* Decision
+
+Self-improving SearchLoop separates a lossless, append-only artifact ledger from
+a replaceable derived improvement state.
+
+The ledger preserves what happened.  Improvement state proposes how future
+plans should be selected.  Neither changes RFC semantics, shared schemas,
+closure rules, provider authority, or Lean theorem statements automatically.
+
+* Artifact ledger
+
+The ledger records content-addressed events such as:
+
+- intent, anchors, workspace, and source generation;
+- obligation graph and selected evidence plan;
+- branch actions and provider receipts;
+- evidence, contradictions, and freshness checks;
+- cache decisions;
+- closure-validator result;
+- user correction or downstream task outcome;
+- cost, latency, packet bytes, and model-facing bytes;
+- Lean counterexample or failed proof identity;
+- promotion, rejection, rollback, and policy-version events.
+
+Events are immutable.  Corrections append new events and relations rather than
+rewriting history.
+
+* Improvement state
+
+Improvement state is a reproducible projection of an explicit ledger prefix.
+It may contain:
+
+- branch-selection priors;
+- cost and latency estimates;
+- known hard-negative patterns;
+- cache admission and prewarm hints;
+- provider reliability observations;
+- counterexample-triggering scenario classes;
+- candidate planning policies;
+- evaluation and promotion status.
+
+It is disposable: deleting and rebuilding it from the same ledger and policy
+version MUST produce the same semantic state.
+
+* Fixed semantic kernel
+
+Automated improvement cannot modify:
+
+- RFC normative clauses;
+- obligation discharge or sufficiency rules;
+- closure and fail-closed invariants;
+- shared packet schemas;
+- workspace, snapshot, provider, or selector authority;
+- Lean theorem definitions or accepted assumptions;
+- evidence provenance requirements.
+
+Changing any of these requires an RFC and proof-cycle revision, not experience
+promotion.
+
+* Promotion pipeline
+
+An experience-derived proposal moves through:
+
+1. =candidate=: derived from ledger evidence with named scope;
+2. =replay=: evaluated against the originating and held-out episodes;
+3. =adversarial=: tested against known counterexamples and hard negatives;
+4. =shadow=: produces decisions without controlling execution;
+5. =bounded-active=: controls only declared advisory choices;
+6. =accepted= or =rejected=: recorded with evidence and policy digest;
+7. =rollback=: restores the prior accepted projection without changing ledger
+   history.
+
+Normative proposals stop before =bounded-active= and enter the RFC → AXLE →
+Lean repair loop.
+
+* Improvement safety
+
+An accepted advisory policy MUST be a refinement of the SearchLoop transition
+system:
+
+- it may choose among already allowed plans;
+- it may reduce cost or latency;
+- it may improve branch ordering or cache admission;
+- it cannot add an otherwise forbidden transition;
+- it cannot suppress a required obligation;
+- it cannot declare a new terminal state;
+- it cannot reinterpret a provider failure as evidence.
+
+Closure remains independently validated.
+
+* Long-horizon operation
+
+Long-running sessions checkpoint compact continuation and improvement-state
+identity, not a rewritten summary treated as ground truth.  Raw evidence remains
+addressable through ledger artifacts.
+
+Compaction records which facts were retained, omitted, superseded, or
+invalidated.  A later loop can request exact evidence without replaying the
+entire conversational history into model context.
+
+* Reward and evaluation boundary
+
+Self-reported model confidence is not a reward.  Evaluation uses external or
+independently checkable outcomes:
+
+- closure-validator status;
+- witness freshness;
+- downstream task and test receipts;
+- user correction;
+- Lean proof or counterexample status;
+- cost and latency under equal evidence quality;
+- regression and held-out scenario results.
+
+Optimizing command count or token use while weakening evidence is a failed
+proposal.
+
+* Feedback into RFC and Lean
+
+Ledger evidence may reveal:
+
+- repeated =no-sound-plan= states;
+- missing obligation kinds;
+- invalid sufficiency alternatives;
+- unstable cache dependencies;
+- non-progress loops;
+- unsafe policy refinements;
+- projection facts unavailable to the agent.
+
+These observations create RFC defect candidates.  Accepted normative repairs
+change the RFC digest, regenerate the AXLE declaration bundle, invalidate
+dependent Lean receipts, and replay the affected proof set.
+
+* Acceptance receipts
+
+Improvement receipts report:
+
+- ledger prefix and policy digest;
+- training, replay, held-out, and adversarial episode identities;
+- proposal scope;
+- quality, cost, latency, and cache deltas;
+- closure regressions and counterexamples;
+- shadow and bounded-active duration;
+- acceptance, rejection, or rollback reason;
+- deterministic rebuild digest.
+
+No promotion is accepted from aggregate success rate alone.

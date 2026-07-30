@@ -2,7 +2,7 @@ use std::fs;
 
 use agent_semantic_client_core::LanguageId;
 use agent_semantic_client_db::{
-    ClientDbEngine, ClientDbLanguageProjection, ClientDbLanguageProjectionImportRequest,
+    ClientDbLanguageProjection, ClientDbLanguageProjectionImportRequest,
     source_index_import_from_language_projection,
 };
 
@@ -10,7 +10,6 @@ use super::temp_root;
 
 #[tokio::test(flavor = "current_thread")]
 async fn harness_projection_imports_without_source_text_projection() {
-    let client_dir = temp_root("db-language-projection-client");
     let project_root = temp_root("db-language-projection-project");
     let source_path = project_root.join("src/projection.ss");
     fs::create_dir_all(source_path.parent().expect("source parent")).expect("create source dir");
@@ -112,24 +111,27 @@ async fn harness_projection_imports_without_source_text_projection() {
         Some("gerbil-scheme-language-project-harness"),
     );
 
-    ClientDbEngine::persist_language_projection_read_model_from_client_dir(
-        &client_dir,
-        &import.source_index,
-        &projection,
-        &source_snapshot,
-        &agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
-    )
-    .expect("persist language projection import");
+    let fixture = agent_semantic_client_db::fixture::SourceIndexFixture::default();
+    fixture
+        .commit_source_index_generation(
+            agent_semantic_client_db::ClientDbSourceIndexRefreshRequest {
+                file_count: import.source_index.file_hashes.len().min(u32::MAX as usize) as u32,
+                import: import.source_index.clone(),
+                source_snapshot: source_snapshot.clone(),
+            },
+        )
+        .expect("persist language projection import");
     let language_id = LanguageId::from("gerbil-scheme");
-    let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-        &client_dir,
-        &source_snapshot,
-        "run",
-        Some(&language_id),
-        8,
-    )
-    .await
-    .expect("lookup imported projection");
+    let lookup = fixture
+        .read_source_index(
+            project_root.clone(),
+            project_root.clone(),
+            source_snapshot.clone(),
+            "run".to_owned(),
+            Some(language_id),
+            8,
+        )
+        .expect("lookup imported projection");
     assert_eq!(lookup.source_snapshot.as_ref(), Some(&source_snapshot));
     assert!(lookup.index_artifact_digest.is_some());
     let proof = lookup
@@ -156,6 +158,5 @@ async fn harness_projection_imports_without_source_text_projection() {
         Some("function")
     );
 
-    let _ = fs::remove_dir_all(client_dir);
     let _ = fs::remove_dir_all(project_root);
 }

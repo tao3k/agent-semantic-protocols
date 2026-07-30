@@ -24,14 +24,63 @@
 
 * One-sentence summary
 
-The harness CLI is the public protocol.  A local daemon is a private
-acceleration cache.  MCP is explicitly excluded from the architecture.
+The =SearchLoop= contract is the agent-facing public protocol.  Search and
+exact query are capabilities used by that loop; the CLI is a thin adapter for
+human exploration, automation, diagnostics, and recovery.  A local daemon is a
+private acceleration cache.  MCP is explicitly excluded from the architecture.
 
-This file is the stable RFC 005 entry point.  The normative body is
-split into focused Org modules under =docs/10-19-rfcs/10.05-cli-first-harness-ux/= so
-agent-facing command contracts, graph/search behavior, hook guidance,
-and historical readiness notes can evolve without growing one large
-always-read document.
+* Synchronization responsibility and trigger contract
+
+Root =asp sync= has no cross-domain responsibility and MUST fail closed with
+the explicit domain commands.  Global agent profile projection belongs to
+=asp agent config sync=.  It reconciles ASP-owned profiles from the State Home
+into supported host agent configuration directories and is not a workspace,
+provider, source-index, Org checkout, activation, or resident-service lifecycle
+command.
+
+Its trigger contract is:
+
+- =asp install= owns its own post-install projection phase and MUST NOT shell
+  out to =asp agent config sync=.  It MAY call the same internal projection owner after
+  agent profile artifacts have been installed.
+- An operator MAY invoke =asp agent config sync= when =asp healthcheck= reports global agent
+  projection drift or when repairing a missing host projection.
+- Search, exact query, provider dispatch, PreToolUse, workspace activation,
+  resident healthcheck, and checkpoint MUST NOT invoke =asp agent config sync=.
+- =asp agent config sync= MUST NOT accept or infer a workspace.  It MUST NOT open a
+  workspace database, build a source index, start or stop a resident service,
+  write activation state, or clone, fetch, pull, or otherwise synchronize a
+  Git repository.
+
+Workspace and provider state use their explicit owners:
+
+| Concern | Owner command or lifecycle | Trigger |
+|-
+| Install binaries, plugins, hooks, provider manifests, and agent profiles | =asp install= | Explicit install or upgrade |
+| Reconcile global host agent projections | =asp agent config sync= | Explicit operator repair after healthcheck drift |
+| Detect and activate a canonical Git workspace and ensure its unique resident service | PreToolUse hook | Before a workspace-scoped tool action |
+| Stop idle or removed-workspace residents | =asp workspace-db checkpoint= | Checkpoint policy |
+| Incrementally acquire provider facts | Provider-owned =search= path | Demand-driven by search |
+| Read exact provider source | Provider-owned =query= path | Explicit selector query; never sync-gated |
+| Refresh or rebuild full workspace source-index state | =asp cache source-index refresh|rebuild --workspace <path>= | Explicit prewarm, CI, or recovery |
+| Materialize missing Org contracts or templates | Org consumer resource owner | Consumer-lazy; no root sync and no workspace Git mutation |
+
+Every synchronization surface MUST carry its domain in the command path so
+receipts and side effects have one unambiguous owner.  Root =asp sync= is
+intentionally unavailable rather than a compatibility alias.
+
+This file is the stable RFC 005 entry point and compatibility identifier.  It
+does not own the detailed search command tree.  The normative body is split
+into focused Org modules under
+=docs/10-19-rfcs/10.05-cli-first-harness-ux/= so the SearchLoop protocol,
+search/query capabilities, provider contracts, hook guidance, and historical
+readiness notes can evolve without growing one large always-read document.
+
+The search architecture starts at
+[[file:10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.01-search-loop-architecture.org][SearchLoop architecture]].
+The existing search/query modules remain the lower-level capability contracts.
+They MUST NOT require an agent to construct a long CLI command sequence in
+order to make one bounded search transition.
 
 For resident search routing, =search= is the reasoning plane and =query= is the
 exact evidence materialization plane. Resident =search= may close with a
@@ -41,6 +90,12 @@ actions. After search closure, the main agent materializes only the exact
 =query --selector= commands described by the handoff.
 
 * Explicit search workspace authority
+
+The normative bootstrap contract is defined by
+[[file:10.05-cli-first-harness-ux/10.05.11.04-project-semantic-guidance-v1.org][Project Semantic Guidance v1]].
+Repository candidates, provider project-entry parsing, package graphs, and
+resolved source scopes form ASP Level 0 and run before source-envelope,
+Tree-sitter, Search, or Turso initialization.
 
 For =asp <language> search=, an explicit =--workspace <root>= selects both the
 semantic project root and the State/cache locator root. The invocation working
@@ -136,7 +191,7 @@ entry, and separate worktree/project-instance identities.  This prevents
 worktrees, cache directories, and repeated path spellings from manufacturing
 new project IDs while preserving their independent live file generations.
 
-The Level zero cache key is the Git index/status generation, relevant manifest
+  The project-resolution cache key is the Git index/status generation, relevant manifest
 and lock digests, provider project-parser digest, and policy-overlay digest.  An
 unchanged warm resolution performs no source reads, provider processes,
 database opens, or artifact writes.  One manifest or index delta re-resolves
@@ -456,3 +511,22 @@ owner-local single-writer queue/batching, concurrent snapshot reads,
 election/takeover, checkpoint/restart, superseded D3 evidence, no-legacy
 boundaries, and production/upstream-characterization capability gates are owned by
 [[file:10.05-cli-first-harness-ux/10.05.65-process-resident-workspace-db-registry-v1.org][10.05.65 Workspace-scoped single database owner v1]].
+* Exact-query and discovery rendering contract
+
+Agent-facing exact query has one rendering selector:
+
+#+begin_src text
+--projection source|callable-skeleton
+#+end_src
+
+Discovery returns the protocol-defined seed frontier by default.  It does not
+offer historical boolean rendering switches.  CLI parsers, help generators,
+provider manifests, snapshots, tests, and agent guidance MUST expose only the
+projection vocabulary defined by the current contract.  An implementation
+MUST treat any removed rendering switch as an unknown argument; it MUST NOT
+retain a compatibility parser branch or a diagnostic that teaches the removed
+syntax.
+
+This is a protocol deletion, not a deprecation window.  Installed provider
+artifacts and workspace-resident daemons MUST publish the same help digest and
+projection vocabulary before they may report healthy.

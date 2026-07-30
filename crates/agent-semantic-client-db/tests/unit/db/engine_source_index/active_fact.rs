@@ -35,11 +35,9 @@ async fn db_engine_source_index_lookup_reads_canonical_snapshot() {
         }],
     })
     .expect("build canonical source-index import");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
-            membership_change_set:
-                agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
             import: source_index_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
@@ -114,25 +112,21 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
         }],
     })
     .expect("build project B source-index import");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
             import: import_a,
             file_count: 1,
             source_snapshot: source_snapshot_a.clone(),
-            membership_change_set:
-                agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("write project A scoped source-index snapshot");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
             import: import_b,
             file_count: 1,
             source_snapshot: source_snapshot_b,
-            membership_change_set:
-                agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("write project B scoped source-index snapshot");

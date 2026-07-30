@@ -1,0 +1,133 @@
+#+TITLE: Semantic Cache Hierarchy
+#+OPTIONS: toc:2
+
+* Decision
+
+ASP caches semantic work before optimizing model-prefix reuse.  Prefix caching
+reduces repeated model input processing; semantic caching avoids provider,
+planner, graph, materialization, and model work entirely when the same
+witness-bound result remains valid.
+
+No cache is semantic authority.  A hit is usable only when its validation
+predicate holds against current identities and freshness requirements.
+
+Clause-frontier searched digests and branch receipts use the same validation
+model.  Their specialized key and invalidation rules are defined in
+[[file:00.07-bound-evidence-clause-algebra.org][Bound evidence clause algebra]]
+and
+[[file:00.08-relation-postings-and-graph-escalation.org][Relation postings and
+graph escalation]].
+
+* Cache layers
+
+The hierarchy is:
+
+| Layer | Cached artifact | Expected reuse |
+|-
+| L0 | Valid terminal receipt | Zero-call closure when all witnesses remain fresh |
+| L1 | Obligation graph and evidence plan | Reuse compilation and planning |
+| L2 | Branch evidence receipt | Reuse one minimal evidence acquisition branch |
+| L3 | Graph facts and model-facing projection | Reuse derived relations and compact panels |
+| L4 | Deterministic model prefix | Reuse provider-side prompt computation |
+
+Lower layer number indicates stronger semantic reuse, not lower implementation
+cost.  A valid L0 hit is more valuable than an L4 hit because no model loop is
+required.
+
+* Witness-bound keys
+
+A semantic key MUST include the minimal identities that determine validity,
+including as applicable:
+
+- obligation or plan digest;
+- canonical workspace and project identity;
+- source snapshot or witness generation;
+- provider contract and artifact digests;
+- selector identities;
+- shared-schema and RFC contract digests;
+- policy overlay;
+- projection version;
+- relevant budget class;
+- model and prompt identity only for L4.
+
+Whole-workspace generation is not automatically the right key.  Branch and
+terminal receipts SHOULD name the minimal witness set whose change invalidates
+them.
+
+* Freshness and invalidation
+
+A cache hit has states =valid=, =stale=, =incompatible=, =contradictory=, or
+=unknown=.  Only =valid= evidence can discharge an obligation.
+
+Invalidation follows dependencies:
+
+- changed RFC or schema invalidates affected plans, projections, and closure
+  receipts;
+- changed witness invalidates its branch receipt and dependent terminal
+  receipts;
+- provider artifact drift invalidates provider-owned facts;
+- selector relocation requires an explicit relocation proof;
+- changed policy overlay invalidates policy-dependent closure;
+- changed model identity invalidates L4 but need not invalidate semantic
+  receipts that contain no model-dependent judgment.
+
+* Terminal receipt reuse
+
+An L0 hit may close without provider or model calls only when:
+
+- its obligation graph matches the current request;
+- every required witness passes freshness validation;
+- no dependency is invalidated;
+- the receipt was produced under compatible provider, schema, RFC, and policy
+  contracts;
+- closure validation is replayed or cryptographically bound to the validated
+  dependency set.
+
+A cached success string is not a terminal receipt.
+
+* Deterministic transcript projection
+
+Identical plans and branch receipts SHOULD produce identical model-facing
+bytes.  Parallel completion order is normalized by stable plan and branch
+identity.
+
+Determinism is measured at the projection boundary.  It does not require
+serial execution and must not reorder semantically dependent transitions.
+
+* Prefix cache boundary
+
+L4 prefix caching is an accelerator owned by the model/runtime adapter.  It
+cannot:
+
+- establish evidence freshness;
+- discharge an obligation;
+- validate closure;
+- substitute for semantic cache receipts;
+- force the protocol to resend large context solely to preserve a prefix.
+
+SearchLoop packet design optimizes semantic deltas first.  Prefix stability is
+then derived from canonical projection.
+
+* Poisoning and isolation
+
+Cache entries carry producer, tenant or trust scope, provider identity, and
+derivation provenance.  Untrusted or incompatible entries cannot be promoted
+to shared semantic state merely because their keys collide.
+
+Contradictory cache evidence is surfaced to the validator and cannot be
+resolved by rank or recency alone.
+
+* Acceptance receipts
+
+Cache evaluation reports:
+
+- L0 through L4 hit and validated-hit rates;
+- zero-call closure count;
+- stale and incompatible hit count;
+- provider and model calls avoided;
+- bytes avoided and bytes added for validation;
+- false reuse and missed invalidation findings;
+- deterministic projection digest matches;
+- cold, warm, and invalidation latency.
+
+Hit rate without validation success is not an acceptance metric.

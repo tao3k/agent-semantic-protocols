@@ -144,18 +144,18 @@ pub(super) async fn turso_source_index_membership_changes(
 }
 
 pub(super) fn validate_source_index_membership_change_set(
-    request: &crate::source_index::ClientDbSourceIndexRefreshRequest,
+    import: &crate::source_index::ClientDbSourceIndexImport,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
+    membership_change_set: &crate::source_index::ClientDbSourceIndexMembershipChangeSet,
 ) -> Result<(), String> {
     let crate::source_index::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
         changed_owner_paths,
         removed_owner_paths,
-    } = &request.membership_change_set
+    } = membership_change_set
     else {
         return Ok(());
     };
-    if request.source_snapshot.base_root_digest.is_none()
-        || request.source_snapshot.dirty_paths_digest.is_none()
-    {
+    if source_snapshot.base_root_digest.is_none() || source_snapshot.dirty_paths_digest.is_none() {
         return Err(
             "source-index Merkle overlay requires baseRootDigest and dirtyPathsDigest evidence"
                 .to_string(),
@@ -182,14 +182,12 @@ pub(super) fn validate_source_index_membership_change_set(
         );
     }
 
-    let imported_file_paths = request
-        .import
+    let imported_file_paths = import
         .file_hashes
         .iter()
         .map(|file| file.path.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    let imported_owner_paths = request
-        .import
+    let imported_owner_paths = import
         .owners
         .iter()
         .map(|owner| owner.owner_path.as_str())

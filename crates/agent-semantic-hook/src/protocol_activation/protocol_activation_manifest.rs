@@ -95,10 +95,8 @@ impl ProviderExecution {
 #[serde(rename_all = "camelCase")]
 pub struct ActivationCoverage {
     pub package_roots: Vec<String>,
-    pub source_roots: Vec<String>,
     pub config_files: Vec<String>,
     pub source_extensions: Vec<String>,
-    pub ignored_path_prefixes: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -122,6 +120,8 @@ pub struct ProviderManifest {
     pub(crate) execution: ProviderExecution,
     pub(crate) source: ManifestSourceDefaults,
     pub(crate) search_capabilities: ProviderSearchCapabilities,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) project_resolution: Option<ProviderProjectResolutionDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
     pub(crate) query_pack_descriptor: ProviderQueryPackDescriptor,
@@ -180,6 +180,10 @@ impl ProviderManifest {
 
     pub fn search_capabilities(&self) -> &ProviderSearchCapabilities {
         &self.search_capabilities
+    }
+
+    pub fn project_resolution(&self) -> Option<&ProviderProjectResolutionDescriptor> {
+        self.project_resolution.as_ref()
     }
 
     pub fn semantic_facts_descriptor(&self) -> Option<&ProviderSemanticFactsDescriptor> {
@@ -315,6 +319,27 @@ pub struct ProviderSemanticFactsDescriptor {
     pub packet_schema_ids: Vec<String>,
     pub fact_kinds: Vec<String>,
     pub intent_axes: Vec<ProviderSemanticFactsIntentAxis>,
+}
+
+/// Provider-owned parser capability for resolving repository candidates into
+/// a language package graph.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderProjectResolutionDescriptor {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub capability_id: String,
+    pub entry_markers: Vec<String>,
+    pub manifest_kinds: Vec<String>,
+    pub lockfile_kinds: Vec<String>,
+    pub supports_git_candidates: bool,
+    pub supports_provider_only: bool,
+    pub parser_id: String,
+    pub command_binding: String,
+    pub candidate_snapshot_schema: String,
+    pub package_graph_schema: String,
+    pub resolved_source_scope_schema: String,
+    pub project_resolution_schema: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -478,8 +503,6 @@ pub struct ProviderQueryPackClause {
 pub struct ManifestSourceDefaults {
     pub default_extensions: Vec<String>,
     pub default_config_files: Vec<String>,
-    pub default_source_roots: Vec<String>,
-    pub default_ignored_path_prefixes: Vec<String>,
     #[serde(default)]
     pub default_project_markers: Vec<String>,
     #[serde(default)]
@@ -509,9 +532,8 @@ pub struct ActivatedProvider {
     pub package_roots: Vec<String>,
     pub source_extensions: Vec<String>,
     pub config_files: Vec<String>,
-    pub source_roots: Vec<String>,
-    pub ignored_path_prefixes: Vec<String>,
     pub search_capabilities: ProviderSearchCapabilities,
+    pub project_resolution: Option<ProviderProjectResolutionDescriptor>,
     pub semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
     pub query_pack_descriptor: ProviderQueryPackDescriptor,
     pub semantic_registry_digest: String,

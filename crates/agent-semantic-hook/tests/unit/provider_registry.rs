@@ -85,6 +85,7 @@ fn dependency_topology_routes_are_registered_for_capable_languages() {
         );
     }
 }
+
 #[test]
 fn registry_method_inventory_is_explicit() {
     let rust_native_owner = crate::registered_provider_method_invocation_v1(

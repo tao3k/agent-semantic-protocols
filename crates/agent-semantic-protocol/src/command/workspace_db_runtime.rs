@@ -24,3 +24,19 @@ pub(super) fn block_on<F: Future>(future: F) -> Result<F::Output, String> {
 pub(super) fn handle() -> Result<&'static tokio::runtime::Runtime, String> {
     runtime()
 }
+
+pub(super) async fn digest_runtime_binary(path: std::path::PathBuf) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        agent_semantic_content_identity::file_content_digest_v1(&path)
+    })
+    .await
+    .map_err(|error| format!("workspace runtime digest task failed: {error}"))?
+}
+
+pub(super) fn spawn_resident_process(
+    command: std::process::Command,
+) -> Result<tokio::process::Child, String> {
+    tokio::process::Command::from(command)
+        .spawn()
+        .map_err(|error| format!("failed to spawn workspace resident process: {error}"))
+}

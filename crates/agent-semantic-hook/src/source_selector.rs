@@ -71,11 +71,36 @@ fn infer_agent_action_subject_kind(
     if value.contains("://") || value.contains("#item/") {
         return AgentActionSubjectKind::StructuralSelector;
     }
-    if value == "." || value == ".." || value.ends_with(['/', '\\']) {
+    if value == "." || value == ".." {
         return AgentActionSubjectKind::Directory;
     }
 
+    let normalized = normalize_source_selector(value);
     let leaf = value.rsplit(['/', '\\']).next().unwrap_or(value);
+    let registered_source_scope = registry.providers.iter().any(|provider| {
+        let ignored = std::iter::empty::<&String>().any(|prefix| {
+            normalized == prefix
+                || normalized
+                    .strip_prefix(prefix)
+                    .is_some_and(|suffix| suffix.starts_with('/'))
+        });
+        !ignored
+            && provider.package_roots.iter().any(|root| {
+                root == "."
+                    || normalized == root
+                    || normalized
+                        .strip_prefix(root)
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+                    || contains_path_component_sequence(&normalized, root)
+            })
+    });
+    if registered_source_scope && (value.ends_with(['/', '\\']) || !leaf.contains('.')) {
+        return AgentActionSubjectKind::RegisteredLanguageSourcePattern;
+    }
+    if value.ends_with(['/', '\\']) {
+        return AgentActionSubjectKind::Directory;
+    }
+
     let Some((_, suffix)) = leaf.rsplit_once('.') else {
         return AgentActionSubjectKind::Other;
     };
@@ -91,22 +116,21 @@ fn infer_agent_action_subject_kind(
         .chars()
         .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
     {
-        let extension = format!(".{suffix}");
-        let normalized = normalize_source_selector(value);
         registry.providers.iter().any(|provider| {
-            let extension_matches = provider
-                .source_extensions
-                .iter()
-                .any(|candidate| candidate.eq_ignore_ascii_case(&extension));
-            let ignored = provider.ignored_path_prefixes.iter().any(|prefix| {
+            let extension_matches =
+                agent_semantic_config::source_extension::source_extensions_support_file(
+                    &provider.source_extensions,
+                    std::path::Path::new(value),
+                );
+            let ignored = std::iter::empty::<&String>().any(|prefix| {
                 normalized == prefix
                     || normalized
                         .strip_prefix(prefix)
                         .is_some_and(|suffix| suffix.starts_with('/'))
             });
             let root_matches = !normalized.contains('/')
-                || provider.source_roots.is_empty()
-                || provider.source_roots.iter().any(|root| {
+                || provider.package_roots.is_empty()
+                || provider.package_roots.iter().any(|root| {
                     root == "."
                         || normalized == root
                         || normalized

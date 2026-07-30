@@ -143,6 +143,21 @@ fn unrelated_path_asp_is_ignored_by_canonical_target_selection() {
 }
 
 #[test]
+fn missing_artifact_root_is_not_a_digest_addressed_binary() {
+    let root = std::env::temp_dir().join(format!(
+        "asp-binary-missing-artifact-root-{}",
+        std::process::id()
+    ));
+    let identity = root.join("ambient/asp");
+    let artifact_root = root.join("runtime/artifacts");
+
+    assert!(
+        !super::is_digest_addressed_protocol_binary(&identity, &artifact_root)
+            .expect("a not-yet-materialized artifact root is not an install failure")
+    );
+}
+
+#[test]
 fn concurrent_publish_uses_per_attempt_stage_paths() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)

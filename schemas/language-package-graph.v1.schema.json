@@ -10,7 +10,7 @@
     "languageId",
     "providerId",
     "projectEntry",
-    "parserIdentityDigest",
+    "parserId",
     "manifests",
     "lockfiles",
     "packages",
@@ -36,7 +36,7 @@
     "projectEntry": {
       "$ref": "#/$defs/path"
     },
-    "parserIdentityDigest": {
+    "parserId": {
       "type": "string",
       "minLength": 1
     },

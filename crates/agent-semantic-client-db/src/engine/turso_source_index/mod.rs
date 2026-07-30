@@ -21,11 +21,12 @@ mod resident_selector;
 mod schema;
 mod trace;
 
+pub(crate) use core::commit_turso_source_index_generation_in_fixture;
 pub(super) use core::turso_source_index_access_lock;
 pub use core::{
-    latest_turso_source_index_file_hashes, latest_turso_source_index_scope_files,
-    latest_turso_source_index_stats, lookup_reusable_turso_source_index_generation,
-    refresh_turso_source_index_import,
+    commit_turso_source_index_generation_via_resident, latest_turso_source_index_file_hashes,
+    latest_turso_source_index_scope_files, latest_turso_source_index_stats,
+    lookup_reusable_turso_source_index_generation,
 };
 pub use provider_incremental::{
     ProviderIncrementalOwnerWrite, ProviderIncrementalScoped, ProviderIncrementalWriteReceipt,

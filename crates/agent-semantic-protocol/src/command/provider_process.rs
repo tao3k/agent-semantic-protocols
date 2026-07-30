@@ -115,29 +115,6 @@ pub(super) fn run_provider_command_with_stdin(
     )
 }
 
-pub(super) fn run_catalog_provider_command_with_stdin(
-    language_id: &str,
-    provider_id: &str,
-    execution_command_digest: &str,
-    invocation: &[String],
-    project_root: &Path,
-    stdin: Vec<u8>,
-) -> Result<ProviderProcessOutput, String> {
-    let (program, forwarded) = invocation
-        .split_first()
-        .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
-    run_provider_process_with_stdin(ProviderProcessRun {
-        language_id,
-        provider_id,
-        execution_command_digest,
-        program,
-        forwarded,
-        project_root,
-        limits: default_provider_process_limits()?,
-        stdin: StdinMode::bytes(stdin),
-    })
-}
-
 pub(super) fn run_provider_command_with_stdin_limits(
     language_id: &str,
     provider: &ActivatedProvider,

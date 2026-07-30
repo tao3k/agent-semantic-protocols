@@ -349,7 +349,7 @@ pub fn ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     super::generation::publish_target_provider_source_envelope_v1(
         super::generation::TargetProviderSourceEnvelopePublicationRequestV1 {
-            collection_scope: super::collect::SourceIndexCollectionScopeV1::TargetProvider {
+            collection_scope: super::collect::SourceIndexCollectionScope::TargetProvider {
                 language_id: request.language_id.clone(),
                 provider_id: request.provider_id.clone(),
             },

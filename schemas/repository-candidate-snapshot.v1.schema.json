@@ -22,10 +22,7 @@
       "const": "1"
     },
     "mode": {
-      "enum": [
-        "git",
-        "provider-only"
-      ]
+      "const": "git"
     },
     "repositoryIdentity": {
       "$ref": "#/$defs/repositoryIdentity"
@@ -43,6 +40,17 @@
         "$ref": "#/$defs/candidate"
       }
     },
+    "infrastructureExcludedPrefixes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/path"
+      },
+      "uniqueItems": true
+    },
+    "snapshotDigest": {
+      "type": "string",
+      "minLength": 1
+    },
     "metrics": {
       "$ref": "#/$defs/metrics"
     }
@@ -50,7 +58,8 @@
   "$defs": {
     "path": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
     },
     "repositoryIdentity": {
       "type": "object",
@@ -62,24 +71,27 @@
       ],
       "properties": {
         "kind": {
-          "enum": [
-            "git",
-            "path"
-          ]
+          "const": "git"
         },
         "repositoryId": {
           "type": "string",
           "minLength": 1
         },
         "root": {
-          "$ref": "#/$defs/path"
-        },
-        "gitCommonDir": {
-          "$ref": "#/$defs/path"
-        },
-        "remoteUrl": {
           "type": "string",
           "minLength": 1
+        },
+        "gitCommonDir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "remoteUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     },
@@ -97,18 +109,26 @@
           "minLength": 1
         },
         "checkoutRoot": {
-          "$ref": "#/$defs/path"
+          "type": "string",
+          "minLength": 1
         },
         "gitDir": {
-          "$ref": "#/$defs/path"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "headOid": {
-          "type": "string",
-          "minLength": 1
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "indexDigest": {
-          "type": "string",
-          "minLength": 1
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "sparseCheckout": {
           "type": "boolean"
@@ -130,10 +150,13 @@
         "state": {
           "enum": [
             "indexed",
-            "modified",
+            "unchanged",
             "added",
+            "modified",
             "deleted",
-            "untracked"
+            "renamed",
+            "untracked",
+            "submodule-boundary"
           ]
         },
         "authority": {
@@ -141,13 +164,17 @@
             "git-index",
             "git-worktree",
             "git-status",
-            "provider-marker",
-            "provider-manifest"
+            "git-untracked",
+            "git-submodule"
           ]
         },
         "indexMode": {
-          "type": "integer",
-          "minimum": 0
+          "enum": [
+            "regular",
+            "executable",
+            "symlink",
+            "gitlink"
+          ]
         }
       }
     },
@@ -185,6 +212,12 @@
           "minimum": 0
         },
         "fullWorkspaceReads": {
+          "const": 0
+        },
+        "fullMerkleRebuilds": {
+          "const": 0
+        },
+        "directDbOpens": {
           "const": 0
         },
         "elapsedMicros": {

@@ -40,6 +40,10 @@ fn search_pipe_auto_defers_source_index_for_multi_clause_query() {
     let output = asp_command(&root)
         .env("PATH", prepend_path(&bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
+        .env(
+            "ASP_WORKSPACE_RESIDENT_SERVICE_READINESS_TIMEOUT_MS",
+            "5000",
+        )
         .args([
             "rust",
             "search",
@@ -83,7 +87,7 @@ fn search_pipe_auto_defers_source_index_for_multi_clause_query() {
 }
 
 #[test]
-fn search_owner_items_source_index_trace_includes_search_frame_receipt() {
+fn search_owner_items_uses_registered_native_owner_surface() {
     use std::os::unix::fs::PermissionsExt;
 
     let root = temp_project_root("search-owner-items-source-index-frame");
@@ -105,7 +109,11 @@ fn search_owner_items_source_index_trace_includes_search_frame_receipt() {
     std::fs::write(
         &provider_path,
         format!(
-            "#!/bin/sh\nprintf called > '{marker}'\nprintf '[search-owner] q=src/lib.rs pkg=. selector=items alg=source-index-owner-items\\n'\nprintf 'O=owner:path(src/lib.rs)!owner;I=item:symbol(source_index_fixture)@src/lib.rs:1:1!syntax\\n'\n",
+            "#!/bin/sh\n\
+printf called > '{marker}'\n\
+request=$(cat)\n\
+digest=$(printf '%s' \"$request\" | sed -n 's/.*\"contentDigest\":\"\\([0-9a-f]*\\)\".*/\\1/p')\n\
+printf '%s\\n' \"{{\\\"schemaId\\\":\\\"agent.semantic-protocols.provider-native-owner-search-response\\\",\\\"schemaVersion\\\":\\\"1\\\",\\\"languageId\\\":\\\"rust\\\",\\\"providerId\\\":\\\"rs-harness\\\",\\\"requestedOwnerPath\\\":\\\"src/lib.rs\\\",\\\"requestedProjectionMode\\\":\\\"items\\\",\\\"sourceContentDigest\\\":\\\"$digest\\\",\\\"parsedOwnerCount\\\":1,\\\"projectionCompleteness\\\":\\\"complete-owner\\\",\\\"projections\\\":[{{\\\"structuralSelector\\\":\\\"rust://src/lib.rs#item/function/source_index_fixture\\\",\\\"itemKind\\\":\\\"function\\\",\\\"itemName\\\":\\\"source_index_fixture\\\",\\\"captureName\\\":\\\"function.name\\\",\\\"signature\\\":\\\"pub fn source_index_fixture()\\\",\\\"sourceByteStart\\\":0,\\\"sourceByteEnd\\\":32}}]}}\"\n",
             marker = marker.display()
         ),
     )
@@ -152,8 +160,8 @@ fn search_owner_items_source_index_trace_includes_search_frame_receipt() {
         "{stdout}"
     );
     assert!(
-        !marker.exists(),
-        "dynamic owner-items should not route source-index trace into the provider"
+        marker.exists(),
+        "registered native owner-items must execute through the provider-owned surface"
     );
     let _ = std::fs::remove_dir_all(root);
 }

@@ -329,17 +329,27 @@ impl WarmOwnerFixture {
         runtime
             .block_on(registry.bootstrap_workspace(&root))
             .expect("bootstrap warm owner workspace");
+        let runtime_binary_path =
+            std::env::current_exe().expect("resolve warm owner runtime binary");
+        let runtime_binary_digest =
+            agent_semantic_content_identity::file_content_digest_v1(&runtime_binary_path)
+                .expect("digest warm owner runtime binary");
         let endpoint =
             agent_semantic_client_db::workspace_db_ipc::prepare_workspace_db_owner_endpoint(
-                &root.join("runtime"),
+                &agent_semantic_client_db::workspace_db_ipc::workspace_db_owner_runtime_base(),
                 &scope.workspace_identity,
                 1,
+                std::process::id(),
+                &runtime_binary_path,
+                &runtime_binary_digest,
                 "warm-owner-fixture",
             )
             .expect("prepare warm owner endpoint");
-        let listener =
+        let listener = {
+            let _runtime_guard = runtime.enter();
             agent_semantic_client_db::workspace_db_ipc::bind_workspace_db_owner(&endpoint)
-                .expect("bind warm owner endpoint");
+                .expect("bind warm owner endpoint")
+        };
         let session = agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::new(
             endpoint.clone(),
         );

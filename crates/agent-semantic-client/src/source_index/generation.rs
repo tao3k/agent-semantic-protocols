@@ -21,7 +21,7 @@ static GENERATION_TRANSACTION_ID: AtomicU64 = AtomicU64::new(0);
 
 /// Typed inputs for publishing one ordinary target-provider source envelope.
 pub struct TargetProviderSourceEnvelopePublicationRequestV1<'a> {
-    pub collection_scope: super::collect::SourceIndexCollectionScopeV1,
+    pub collection_scope: super::collect::SourceIndexCollectionScope,
     pub provider_registry: &'a agent_semantic_client_core::ProviderRegistrySnapshot,
     pub artifact_root: &'a Path,
     pub project_root: &'a Path,
@@ -33,7 +33,7 @@ pub fn publish_target_provider_source_envelope_v1(
     publication: TargetProviderSourceEnvelopePublicationRequestV1<'_>,
 ) -> Result<PathBuf, String> {
     let requested_provider = match &publication.collection_scope {
-        super::collect::SourceIndexCollectionScopeV1::TargetProvider {
+        super::collect::SourceIndexCollectionScope::TargetProvider {
             language_id,
             provider_id,
         } => publication
@@ -49,7 +49,7 @@ pub fn publish_target_provider_source_envelope_v1(
                     language_id, provider_id
                 )
             })?,
-        super::collect::SourceIndexCollectionScopeV1::TargetProviderId { provider_id } => {
+        super::collect::SourceIndexCollectionScope::TargetProviderId { provider_id } => {
             let mut matches = publication
                 .provider_registry
                 .providers
@@ -65,7 +65,7 @@ pub fn publish_target_provider_source_envelope_v1(
             }
             requested_provider
         }
-        super::collect::SourceIndexCollectionScopeV1::CompleteGeneration => {
+        super::collect::SourceIndexCollectionScope::CompleteGeneration => {
             return Err(
                 "target-provider source envelope publication requires target-provider collection scope"
                     .to_owned(),
@@ -143,7 +143,7 @@ pub fn publish_target_provider_source_envelope_v1(
 
 /// Typed evidence required to publish one complete source-index generation.
 pub struct WorkspaceSearchGenerationPublicationRequestV1<'a> {
-    pub collection_scope: super::collect::SourceIndexCollectionScopeV1,
+    pub collection_scope: super::collect::SourceIndexCollectionScope,
     pub snapshot: &'a CurrentSourceIndexSnapshot,
     pub files: &'a [SourceIndexScopeFile],
     pub registry_evidence: &'a agent_semantic_client_core::ProviderRegistryEvidence,
@@ -175,11 +175,11 @@ pub fn publish_workspace_search_generation_v1(
     publication: WorkspaceSearchGenerationPublicationRequestV1<'_>,
 ) -> Result<PublishedSourceIndexGenerationV1, String> {
     match &publication.collection_scope {
-        super::collect::SourceIndexCollectionScopeV1::CompleteGeneration => {
+        super::collect::SourceIndexCollectionScope::CompleteGeneration => {
             publish_complete_workspace_search_generation_v1(publication)
         }
-        super::collect::SourceIndexCollectionScopeV1::TargetProvider { .. }
-        | super::collect::SourceIndexCollectionScopeV1::TargetProviderId { .. } => Err(
+        super::collect::SourceIndexCollectionScope::TargetProvider { .. }
+        | super::collect::SourceIndexCollectionScope::TargetProviderId { .. } => Err(
             "workspace search generation publication requires complete-generation collection scope"
                 .to_owned(),
         ),

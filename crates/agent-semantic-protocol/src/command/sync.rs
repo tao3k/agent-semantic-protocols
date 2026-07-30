@@ -1,6 +1,5 @@
 //! Project state synchronization for `asp sync`.
 
-use super::org_capture::{org_artifacts_root_for_project, run_org_state_sync};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
@@ -21,7 +20,7 @@ struct CodexAgentRegistryEntry {
     projection: String,
 }
 
-pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
+pub(crate) fn run_agent_config_sync_command(args: &[String]) -> Result<(), String> {
     if args
         .iter()
         .any(|arg| matches!(arg.as_str(), "help" | "--help" | "-h"))
@@ -29,21 +28,14 @@ pub(crate) fn run_sync_command(args: &[String]) -> Result<(), String> {
         println!("{}", usage());
         return Ok(());
     }
-    let project_root = project_root_arg(args)?;
-    let sync = run_org_state_sync(&project_root)?;
+    if let Some(argument) = args.first() {
+        return Err(format!(
+            "asp agent config sync does not accept positional arguments; unexpected argument `{argument}`"
+        ));
+    }
     let agent_configs = sync_global_agent_configs()?;
-    let org_state = agent_semantic_runtime::project_state_paths(&project_root)?
-        .protocol_home
-        .join("org");
-    let org_artifacts = org_artifacts_root_for_project(&project_root)?;
     println!(
-        "[asp-sync] orgState={} orgArtifacts={} orgRepo={} orgStatus={} orgSourceIndex={} orgSourceIndexGeneration={} agentConfigs={} codexAgentRegistry={} codexSpawnAgentMetadata={} activationWrites=0 dbOpens=0 dbTransactions=0 sessionRegistryOpens=0",
-        display_path(&project_root, &org_state),
-        display_path(&project_root, &org_artifacts),
-        sync.source,
-        sync.status,
-        sync.source_index_status,
-        sync.source_index_generation.as_deref().unwrap_or("-"),
+        "[asp-agent-config-sync] scope=global-agent-config trigger=explicit orgStateSync=consumer-lazy gitPulls=0 gitFetches=0 gitClones=0 agentConfigs={} codexAgentRegistry={} codexSpawnAgentMetadata={} activationWrites=0 dbOpens=0 dbTransactions=0 sessionRegistryOpens=0",
         agent_configs.projected,
         agent_configs.codex_registry_entries,
         agent_configs.codex_spawn_agent_metadata,
@@ -562,27 +554,6 @@ fn link_or_copy_agent_config(source: &Path, target: &Path) -> Result<(), String>
     })
 }
 
-fn project_root_arg(args: &[String]) -> Result<PathBuf, String> {
-    let cwd = env::current_dir().map_err(|error| format!("failed to read current dir: {error}"))?;
-    let root = args
-        .iter()
-        .find(|arg| !arg.starts_with('-'))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
-    Ok(if root.is_absolute() {
-        root
-    } else {
-        cwd.join(root)
-    })
-}
-
-fn display_path(project_root: &Path, path: &Path) -> String {
-    path.strip_prefix(project_root)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
 fn usage() -> &'static str {
-    "usage: asp sync [PROJECT_ROOT]\n\nSynchronizes project-owned ASP state. The Org resource tree is cloned or fast-forwarded from ASP_ORG_REPO_URL, defaulting to https://github.com/tao3k/org.git. Agent-authored Org state belongs under the root returned by `asp paths --get orgArtifacts [PROJECT_ROOT]`.\n\nAlso refreshes ASP-owned global agent config projections from ~/.agent-semantic-protocols/agents/*_codex.toml and *_claude.{md,toml} into the host agent directories."
+    "usage: asp agent config sync\n\nExplicitly reconciles ASP-owned global agent config projections from ~/.agent-semantic-protocols/agents/*_codex.toml and *_claude.{md,toml} into the host agent directories. Run it when repairing a missing or stale host projection. It is never triggered by search, query, PreToolUse, checkpoint, or workspace activation. It does not build source indexes, start resident services, write activation state, or clone, fetch, or pull Git repositories. Org consumers synchronize missing contract or template resources lazily."
 }

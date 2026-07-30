@@ -77,7 +77,6 @@ wrapperExemption = "host search is a typed action; shell wrappers belong to deny
 id = "deny-raw-registered-source-action"
 positiveCommands = [
   "read crates/agent-semantic-hook/src/lib.rs",
-  "git show HEAD:crates/agent-semantic-hook/src/lib.rs",
 ]
 negativeCommands = [
   "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --code",
@@ -188,6 +187,16 @@ negativeCommands = [
 ]
 
 [[rules]]
+id = "deny-uncontrolled-git-metadata-reads"
+positiveCommands = ["git diff --check", "git show --stat HEAD", "git ls-tree -r HEAD"]
+negativeCommands = ["git show HEAD", "git diff", "git status --short"]
+
+[[rules]]
 id = "deny-uncontrolled-git-source-reads"
-positiveCommands = ["git diff --check", "git show HEAD"]
-negativeCommands = ["git mv old.rs new.rs", "git status --short"]
+positiveCommands = [
+  "git show HEAD",
+  "git show HEAD:crates/agent-semantic-hook/src/lib.rs",
+  "git diff",
+  "git diff --cached",
+]
+negativeCommands = ["git diff --check", "git diff --stat", "git mv old.rs new.rs", "git status --short"]

@@ -23,6 +23,7 @@ pub async fn serve_one_workspace_db_ipc_request(
         .map_err(|error| format!("failed to accept workspace owner request: {error}"))?;
     let request: WorkspaceDbIpcRequest = read_frame(&mut stream).await?;
     let result = if request.workspace_identity == endpoint.workspace_identity
+        && request.transport_contract_digest == endpoint.transport_contract_digest
         && request.owner_epoch == endpoint.owner_epoch
         && request.binding_token == endpoint.binding_token
     {
@@ -30,7 +31,8 @@ pub async fn serve_one_workspace_db_ipc_request(
     } else {
         WorkspaceDbIpcResult::Failed {
             code: "workspace-owner-binding-mismatch".to_owned(),
-            message: "request workspace, epoch, or token does not match owner".to_owned(),
+            message: "request workspace, transport contract, epoch, or token does not match owner"
+                .to_owned(),
         }
     };
     write_frame(
@@ -39,6 +41,7 @@ pub async fn serve_one_workspace_db_ipc_request(
             schema_id: WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID.to_owned(),
             schema_version: WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
             workspace_identity: endpoint.workspace_identity.clone(),
+            transport_contract_digest: endpoint.transport_contract_digest.clone(),
             owner_epoch: endpoint.owner_epoch,
             request_id: request.request_id,
             result,
@@ -57,15 +60,18 @@ pub async fn serve_one_workspace_db_session_request(
         .accept()
         .await
         .map_err(|error| format!("failed to accept workspace owner session request: {error}"))?;
-    serve_workspace_db_session_stream(&mut stream, endpoint, registry).await
+    serve_workspace_db_session_stream(&mut stream, endpoint, registry)
+        .await
+        .map(|_| ())
 }
 
 async fn serve_workspace_db_session_stream(
     stream: &mut UnixStream,
     endpoint: &WorkspaceDbOwnerEndpoint,
     registry: &WorkspaceDbRegistry,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     while let Some(request) = read_optional_frame::<WorkspaceDbIpcRequest>(&mut *stream).await? {
+        let shutdown_requested = matches!(request.operation, WorkspaceDbIpcOperation::Shutdown);
         let result = if request.schema_id != WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID {
             WorkspaceDbIpcResult::Failed {
                 code: "workspace-owner-request-schema-id-mismatch".to_owned(),
@@ -83,30 +89,41 @@ async fn serve_workspace_db_session_stream(
                 ),
             }
         } else if request.workspace_identity != endpoint.workspace_identity
+            || request.transport_contract_digest != endpoint.transport_contract_digest
             || request.owner_epoch != endpoint.owner_epoch
             || request.binding_token != endpoint.binding_token
         {
             WorkspaceDbIpcResult::Failed {
                 code: "workspace-owner-binding-mismatch".to_owned(),
-                message: "request workspace, epoch, or token does not match owner".to_owned(),
+                message:
+                    "request workspace, transport contract, epoch, or token does not match owner"
+                        .to_owned(),
             }
+        } else if shutdown_requested {
+            WorkspaceDbIpcResult::ShutdownAccepted
         } else {
             dispatch_workspace_db_session_operation(registry, request.operation).await
         };
+        let shutdown_accepted =
+            shutdown_requested && matches!(&result, WorkspaceDbIpcResult::ShutdownAccepted);
         write_frame(
             &mut *stream,
             &WorkspaceDbIpcResponse {
                 schema_id: WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID.to_owned(),
                 schema_version: WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
                 workspace_identity: endpoint.workspace_identity.clone(),
+                transport_contract_digest: endpoint.transport_contract_digest.clone(),
                 owner_epoch: endpoint.owner_epoch,
                 request_id: request.request_id,
                 result,
             },
         )
         .await?;
+        if shutdown_accepted {
+            return Ok(true);
+        }
     }
-    Ok(())
+    Ok(false)
 }
 
 pub async fn serve_workspace_db_session_until_shutdown(
@@ -152,8 +169,17 @@ pub async fn serve_workspace_db_session_until_shutdown(
             }
             completed = sessions.join_next(), if !sessions.is_empty() => {
                 match completed {
-                    Some(Ok(Ok(()))) => {}
-                    Some(Ok(Err(error))) => return Err(error),
+                    Some(Ok(Ok(true))) => {
+                        sessions.abort_all();
+                        return Ok(());
+                    }
+                    Some(Ok(Ok(false))) => {}
+                    Some(Ok(Err(client_error))) => {
+                        eprintln!(
+                            "[workspace-resident-service-client] status=failed workspaceIdentity={} error={client_error}",
+                            endpoint.workspace_identity
+                        );
+                    }
                     Some(Err(error)) => {
                         return Err(format!("workspace owner session task failed: {error}"));
                     }
@@ -170,6 +196,7 @@ async fn dispatch_workspace_db_session_operation(
 ) -> WorkspaceDbIpcResult {
     let dispatched = match operation {
         WorkspaceDbIpcOperation::Health => return WorkspaceDbIpcResult::Healthy,
+        WorkspaceDbIpcOperation::Shutdown => return WorkspaceDbIpcResult::ShutdownAccepted,
         WorkspaceDbIpcOperation::ReadSourceIndex { request } => {
             let session = registry.bootstrap_workspace(&request.project_root).await;
             match session {
@@ -183,6 +210,17 @@ async fn dispatch_workspace_db_session_operation(
                     )
                     .await
                     .map(|lookup| WorkspaceDbIpcResult::SourceIndex { lookup }),
+                Err(error) => Err(error),
+            }
+        }
+        WorkspaceDbIpcOperation::CommitSourceIndexGeneration { request } => {
+            let project_root = request.import.project_root.clone();
+            let session = registry.bootstrap_workspace(&project_root).await;
+            match session {
+                Ok(session) => session
+                    .commit_source_index_generation(request)
+                    .await
+                    .map(|receipt| WorkspaceDbIpcResult::SourceIndexGeneration { receipt }),
                 Err(error) => Err(error),
             }
         }

@@ -11,7 +11,6 @@ use agent_semantic_client_core::{
 use serde::Serialize;
 use serde_json::json;
 
-use crate::source_index::{ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest};
 use crate::structural_index::parse_structural_index_packet_import;
 use crate::types::{
     ClientDbArtifactEdge, ClientDbArtifactEvent, ClientDbArtifactGraphCompactRender,
@@ -37,7 +36,6 @@ use super::turso_cache::{
 use super::turso_provider_command::{
     lookup_turso_provider_command_selections, replace_turso_provider_command_selections,
 };
-use super::turso_source_index::refresh_turso_source_index_import;
 use super::turso_syntax::{
     flush_turso_syntax_query_replay, lookup_turso_syntax_query_replay,
     upsert_turso_syntax_query_replay,
@@ -221,7 +219,7 @@ pub struct ClientDbEngineWriteSession {
     pub(super) turso_db_path: PathBuf,
 }
 
-pub(super) fn block_on_db_engine_async<T, F>(future: F) -> Result<T, String>
+pub(crate) fn block_on_db_engine_async<T, F>(future: F) -> Result<T, String>
 where
     T: Send + 'static,
     F: std::future::Future<Output = Result<T, String>> + Send + 'static,
@@ -540,25 +538,6 @@ impl ClientDbEngine {
         block_on_db_engine_async(async move {
             bootstrap_turso_client_db(&db_path).await?;
             upsert_turso_syntax_query_replay(&db_path, &generation, &packet_bytes).await
-        })
-    }
-
-    /// Apply a source-index import through the active DB Engine backend.
-    pub fn refresh_source_index_import_from_client_dir(
-        client_dir: impl AsRef<Path>,
-        request: ClientDbSourceIndexRefreshRequest,
-    ) -> Result<ClientDbSourceIndexRefreshReport, String> {
-        let client_dir = client_dir.as_ref().to_path_buf();
-        fs::create_dir_all(&client_dir).map_err(|error| {
-            format!(
-                "failed to create DB Engine client dir `{}`: {error}",
-                client_dir.display()
-            )
-        })?;
-        let db_path = Self::turso_path_for_client_dir(&client_dir);
-        block_on_db_engine_async(async move {
-            bootstrap_turso_client_db(&db_path).await?;
-            refresh_turso_source_index_import(&db_path, request).await
         })
     }
 

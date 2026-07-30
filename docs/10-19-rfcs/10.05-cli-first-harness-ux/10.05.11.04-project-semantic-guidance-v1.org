@@ -1,0 +1,319 @@
+#+TITLE: 10.05.11.04 Project Semantic Guidance v1
+#+OPTIONS: toc:3 num:nil
+
+* Status
+
+This document defines the Level 0 project semantic guidance layer for ASP.
+It is the bootstrap authority for repository candidates, provider-owned
+project resolution, package graphs, and resolved source scopes.
+
+Level 0 runs before source envelopes, incremental indexes, Tree-sitter,
+Search, and workspace databases. Those downstream systems MUST consume a
+Level 0 receipt and MUST NOT rediscover project boundaries independently.
+
+* Architecture
+
+#+begin_example
+Git repository/worktree snapshot
+        |
+        v
+RepositoryCandidateSnapshot
+        |
+        v
+provider-owned project-entry parser
+        |
+        v
+LanguagePackageGraph
+        |
+        v
+ProjectResolution + ResolvedSourceScope
+        |
+        v
+source envelope / incremental index / Tree-sitter / Search / Turso
+#+end_example
+
+These stages are typed contracts. They MUST NOT be collapsed into an
+unattributed list of paths.
+
+* Bootstrap independence
+
+Level 0:
+
+- MUST NOT depend on Turso or another workspace database;
+- MUST NOT depend on a published source envelope;
+- MUST NOT require =asp sync=;
+- MUST NOT shell out to recursively enumerate a workspace;
+- MUST use native manifest and lockfile parsers where available;
+- MUST match manifest member globs only against the repository candidate
+  snapshot; and
+- MUST fail closed when neither Git candidates nor an explicit provider entry
+  can establish a finite project scope.
+
+The bootstrap result is suitable as input to source-envelope publication and
+workspace-owner IPC. A missing envelope is therefore never a reason to skip
+Level 0.
+
+* Repository candidate authority
+
+Git owns repository and worktree identity plus the finite candidate universe.
+The runtime gix boundary MUST project a =RepositoryCandidateSnapshot= with:
+
+- stable common-repository identity;
+- worktree identity;
+- HEAD and index generation evidence;
+- tracked paths and tracked worktree modifications or deletions;
+- Git-ignore-aware untracked candidates;
+- sparse-checkout state;
+- submodule boundaries; and
+- symlink and index mode.
+
+ASP infrastructure paths such as =.git=, the resolved ASP State Home, and
+runtime artifacts are hard exclusions.
+
+ASP MUST NOT supplement a Git candidate snapshot with an unbounded
+=read_dir= traversal from the workspace root.
+
+* Provider-owned project entry resolution
+
+Registered project markers select a provider-owned project resolver. A marker
+is an input to semantic parsing, not a directory-recursion hint.
+
+For example, the Rust resolver is responsible for Cargo workspace membership,
+=exclude= and =default-members=, package manifests, explicit and default
+targets, target path overrides, examples, tests, benches, package-local source
+roots, path dependencies, and lockfile dependency identities.
+
+Other providers expose the same shared result contracts while retaining
+provider-owned facts.
+
+The registry capability is =projectResolver=. Its descriptor declares entry
+markers, manifest kinds, lockfile kinds, parser identity, Git-candidate
+support, and whether finite provider-only resolution is supported.
+
+* Project and worktree identity
+
+The identity model is:
+
+- =RepositoryIdentity=: stable identity of the Git common repository;
+- =WorktreeIdentity=: identity of one concrete checkout or worktree;
+- =ProjectIdentity=: repository identity, provider identity, and normalized
+  project-entry path; and
+- =ProjectInstance=: one project identity in a worktree at a specific
+  resolution generation.
+
+Two worktrees of the same repository share repository and project identity.
+They retain distinct worktree state and project instances.
+
+* Package graph and source scope
+
+=ProjectResolution= contains:
+
+- repository and worktree identity;
+- project entry and provider identity;
+- the provider-produced =LanguagePackageGraph=;
+- resolved source scopes; and
+- a resolution generation.
+
+Each =ResolvedSourceScope= identifies its package and target, provenance
+(manifest-explicit, provider-default, or policy-overlay), allowed extensions,
+generated/vendor/test/example classification, project entry, and relevant
+package-manager facts.
+
+Package roots and source roots are derived projections of the package graph.
+They are not independent flat configuration arrays.
+
+* Layered filtering and conflicts
+
+Filtering precedence is:
+
+1. ASP infrastructure hard exclusions;
+2. package-manager exclusions and workspace membership;
+3. explicit package and target source paths;
+4. provider defaults; and
+5. user policy overlays.
+
+An ordinary provider default ignore MUST NOT silently override an explicit
+package target. Conflicts produce a typed =source-scope-conflict= receipt with
+both authorities and the affected package or target.
+
+* Non-Git workspaces
+
+A non-Git workspace is finite only when:
+
+- the user supplies an explicit project entry; or
+- a provider probes the workspace root for its bounded registered marker set.
+
+Traversal after entry selection follows only manifest-declared workspace
+members, path dependencies, and source roots. If no entry is available, the
+resolver returns:
+
+#+begin_example
+state=project-entry-missing
+reasonKind=provider-project-entry-required
+#+end_example
+
+It MUST NOT fall back to recursive workspace enumeration.
+
+* Generation and caching
+
+The Level 0 cache key contains:
+
+- candidate generation;
+- manifest digest set;
+- lockfile digest set; and
+- provider parser digest.
+
+The warm unchanged path is memory-owned. Manifest or index deltas reparse only
+the affected package subgraph and recompute dependent source scopes.
+
+* Performance gates
+
+Required scenario gates are:
+
+- warm unchanged p95 at most 1 ms;
+- one manifest or index delta p95 at most 5 ms;
+- small repository cold path at most 10 ms;
+- 100k-candidate repository cold path at most 50 ms;
+- =fullWorkspaceReads=0=;
+- =fullMerkleRebuilds=0=; and
+- =directDbOpens=0=.
+
+Receipts report candidate count, manifest and lockfile parse counts, affected
+package count, source-scope count, generation inputs, latency, and all three
+zero-work counters.
+
+* Exclusion ownership is typed, not provider path configuration
+The same rule applies to inclusion scope.  Provider manifests MUST NOT publish
+=defaultSourceRoots=, =defaultIgnoredPathPrefixes=, or equivalent directory
+guesses.  Values such as =src=, =tests=, =packages=, =crates=, and =app= are
+not language facts and are not stable workspace scope.
+
+After a workspace identity is established, ASP MUST:
+
+1. obtain a finite candidate generation from the Git index/worktree; or, for
+   an explicitly non-Git workspace, from bounded registered project-entry
+   probing;
+2. dispatch each discovered project entry to its registered package-manager
+   resolver;
+3. parse workspace membership, packages, explicit/default targets, path
+   dependencies, generated targets, and package-manager exclusions;
+4. derive =LanguagePackageGraph= and =ResolvedSourceScope= receipts for that
+   workspace generation; and
+5. persist those receipts under the workspace artifacts owner.
+
+The artifact key MUST include the repository/worktree candidate generation,
+project-entry digest, lockfile digest when present, provider parser digest, and
+policy digest.  A change to any package-manager input invalidates only the
+affected language/package subgraph.  It MUST NOT trigger workspace-root
+recursion, reuse a provider default directory list, or require a full
+=asp sync= before ordinary search/query.
+
+Provider marker names are resolver-dispatch metadata only.  They MAY select a
+package-manager parser, but MUST NOT themselves imply a source root.  If no
+registered resolver can parse the selected project entry, resolution fails
+closed with a typed =project-resolution-unavailable= receipt.
+
+** Workspace daemon lifecycle owner
+The per-workspace resident daemon is the sole runtime owner of project
+resolution.  Hook, CLI, Search, Tree-sitter, and workspace DB clients MUST NOT
+parse package-manager files independently, open project-resolution artifacts
+directly, or retain provider-default scope.
+
+The daemon owns this typed step lifecycle:
+
+#+begin_example
+workspace-attached
+  -> candidate-generation-ready
+  -> project-entry-delta-classified
+  -> package-resolver-running
+  -> package-graph-ready
+  -> resolved-source-scope-ready
+  -> workspace-artifact-published
+  -> generation-serving
+  -> generation-retired
+#+end_example
+
+Every step receipt records =workspaceIdentity=, =generation=, input digests,
+provider/parser identity, start and finish timestamps, outcome, invalidation
+cause, and the next legal transition.  Publication is atomic: consumers see
+either the previous complete generation or the new complete generation, never
+a partially rewritten package graph.
+
+One workspace daemon serves many concurrent agent sessions.  It retains the Git
+candidate snapshot, parsed project-entry ASTs, package graph, resolved scopes,
+and workspace DB owner connections in memory.  Reads are concurrent; manifest
+and index deltas enter one ordered invalidation/resolution actor.  Hook and CLI
+use typed IPC keyed by workspace identity and required generation.
+
+If the requested generation is absent or stale, a consumer asks the daemon for
+incremental resolution and receives a typed pending/unavailable receipt.  Hook
+policy remains fail-closed while that receipt is unresolved.  No consumer may
+substitute =defaultSourceRoots=, an ignored-prefix list, a root-recursive scan,
+a direct DB open, or a full =asp sync= fallback.
+
+=defaultIgnoredPathPrefixes= and equivalent provider-owned path blacklists are
+not part of the Level 0 contract.  They are neither portable package-manager
+facts nor stable repository semantics, and providers MUST NOT hard-code common
+tool, editor, cache, build, or ASP runtime directory names.
+
+Exclusion authority is resolved in this order:
+
+1. Git supplies the finite candidate universe through index, status,
+   ignore-aware untracked discovery, sparse-checkout, and submodule boundaries.
+2. ASP infrastructure supplies centrally registered typed exclusions for the
+   active State Home and runtime artifacts.  These exclusions are derived from
+   resolved runtime identities, not copied path-name lists.
+3. The provider project resolver supplies package-manager membership,
+   manifest-declared exclusions, generated/vendor classifications, and target
+   source ownership.
+4. Explicit manifest target paths override provider defaults.  Any conflict
+   with a stronger exclusion produces a typed conflict receipt.
+5. User policy overlays are applied last and retain their own authority in the
+   receipt.
+
+Provider manifests declare resolver capability, entry markers, parser identity,
+and schema bindings only.  They MUST NOT declare generic ignored path prefixes,
+default recursive source roots, or other path guesses as project scope.
+
+* Downstream contract
+
+Source envelope, incremental index, Tree-sitter, Search, and workspace DB
+interfaces accept =ProjectResolution= or its digest-bound
+=ResolvedSourceScope= projection.
+
+They MUST fail closed when the receipt is absent, stale, provider-mismatched,
+or conflicts remain unresolved. They MUST NOT repair the condition by scanning
+the workspace or opening a database directly.
+* Provider-owned package-manager scenario authority
+
+=provider_workspace_scope= is a receipt consumer.  It MUST NOT infer package
+roots, source roots, targets, configuration files, or exclusions locally.
+Those facts are owned by the activated language harness and are published as a
+typed =ProjectResolution= containing a =LanguagePackageGraph= and
+=ResolvedSourceScope=.
+
+Every harness that declares project-resolution capability MUST ship executable
+package-manager scenarios.  Activation is incomplete until the installed
+harness has produced a passing scenario receipt for every package manager it
+declares.  A scenario suite MUST cover, where the package manager supports the
+concept:
+
+- multi-package workspace membership and exclusion;
+- explicit and default library, binary, test, example, and generated targets;
+- internal path dependencies and external dependency identity;
+- custom target paths outside conventional source directories;
+- manifest and lockfile deltas that change package graph or source scope;
+- candidate files that are present in Git but outside every resolved target;
+- malformed or missing project entries with typed fail-closed receipts;
+- a non-Git project entered through an explicit registered project entry;
+- unchanged warm resolution and incremental delta performance.
+
+Scenario assertions MUST include =fullWorkspaceReads=0= and =databaseOpens=0=.
+The warm unchanged path MUST be served from the resident daemon generation,
+while a manifest or lockfile delta MUST publish a new generation atomically.
+
+The local CLI, Hook, Search, Tree-sitter inventory, and source-index consumers
+MUST NOT fall back to manifest-name heuristics, provider defaults, directory
+recursion, or a locally reconstructed scope when a provider receipt is absent,
+timed out, invalid, or stale.  They return the provider failure receipt and its
+next action unchanged.

@@ -37,3 +37,4 @@ pub use hook_client_config::{
 pub use hook_client_config::{
     HookClientStructuredFilterGrammar, HookClientStructuredProjectionMatchConfig,
 };
+pub mod source_extension;

@@ -338,68 +338,20 @@ fn deny_decision_warns_when_done_org_artifacts_should_be_archived() {
         "{}",
         decision.message
     );
-    assert_eq!(
+    assert!(
         decision
             .fields
             .get("agentOrgArtifactsArchiveWarning")
-            .and_then(|status| status.as_str()),
-        Some("unarchived-done")
+            .is_none(),
+        "pre-tool must not scan ASP Org artifacts: {decision:?}"
     );
-    assert_eq!(
+    assert!(
         decision
             .fields
             .get("agentOrgArtifactsActiveOrgFileCount")
-            .and_then(|count| count.as_u64()),
-        Some(11)
+            .is_none(),
+        "pre-tool deny must not enumerate ASP Org artifacts: {decision:?}"
     );
-    let artifacts_path = org_artifacts_root(&root);
-    let expected_recall_command = format!(
-        "asp org recall plans --artifacts-root {} --archive-dir archives",
-        artifacts_path.display()
-    );
-    let expected_command = format!(
-        "asp org query --kind task --field todo=DONE --exclude-dir archives --workspace {} --content",
-        artifacts_path.display()
-    );
-    let expected_archive_command = format!(
-        "asp org archive done --artifacts-root {} --archive-dir archives",
-        artifacts_path.display()
-    );
-    assert_eq!(
-        decision
-            .fields
-            .get("agentOrgArtifactsPath")
-            .and_then(|path| path.as_str()),
-        Some(artifacts_path.to_str().expect("utf8 artifacts path"))
-    );
-    assert_eq!(
-        decision
-            .fields
-            .get("agentOrgArtifactsArchiveQueryCommand")
-            .and_then(|command| command.as_str()),
-        Some(expected_command.as_str())
-    );
-    assert_eq!(
-        decision
-            .fields
-            .get("agentOrgArtifactsRecallPlansCommand")
-            .and_then(|command| command.as_str()),
-        Some(expected_recall_command.as_str())
-    );
-    assert_eq!(
-        decision
-            .fields
-            .get("agentOrgArtifactsArchiveCommand")
-            .and_then(|command| command.as_str()),
-        Some(expected_archive_command.as_str())
-    );
-    let files = decision
-        .fields
-        .get("agentOrgArtifactsUnarchivedDoneFiles")
-        .and_then(|value| value.as_array())
-        .expect("done files");
-    assert_eq!(files.len(), 1);
-    assert_eq!(files[0].as_str(), Some("flow/plans/done-01.org"));
 
     let _ = fs::remove_dir_all(root);
 }
@@ -432,7 +384,7 @@ fn allow_decision_renders_agent_org_archive_warning() {
             .fields
             .get("agentOrgArtifactsArchiveWarning")
             .and_then(|status| status.as_str()),
-        Some("unarchived-done")
+        None
     );
     let rendered = render_platform_response(&decision).expect("render decision");
     assert!(

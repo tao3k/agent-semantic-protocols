@@ -54,6 +54,28 @@ serve a request for a different owner epoch.
 
 * Typed IPC is the only client surface
 
+Search consumers MUST use the typed source snapshot admitted by provider
+dispatch for the resolved workspace.  A search command MUST NOT collect a new
+=CompleteGeneration= or rematerialize the workspace snapshot on its query
+path.  If the requested workspace differs from the admitted snapshot scope, the
+router fails closed and requests a correctly scoped snapshot; it never repairs
+the mismatch with a filesystem scan.
+
+The published resident endpoint MUST carry the content digest of the shared V1
+IPC transport schema.  A client validates workspace identity, IPC schema
+identity, and transport contract identity before it reuses an endpoint.  A
+contract mismatch is an unhealthy epoch and triggers owner election for the
+current transport; process liveness alone is not a valid health proof.  The
+digest is derived from the small schema artifact, never by reading the ASP
+binary on a query path.  This prevents a newly installed client from sending a
+widened V1 request to an older resident that can deserialize the envelope while
+lacking the new operation semantics.
+
+Exact query has one public projection surface:
+=--projection source|callable-skeleton=.  Removed flags are absent from the
+parser model; they MUST fail as unknown arguments at CLI admission and MUST NOT
+survive as compatibility branches or agent-facing migration diagnostics.
+
 IPC read lanes are demand-driven rather than fixed-size. Their upper bound is
 derived from the host's available parallelism, while connections are created
 lazily only when concurrent demand occupies the currently live lanes. A

@@ -8,7 +8,6 @@ use agent_semantic_client_core::{
     ClientCacheFileHash, LanguageId, ProjectContext, ProviderId, ProviderRegistryEvidence,
     ProviderRegistrySnapshot, SemanticSchemaId, SemanticSchemaVersion,
 };
-use agent_semantic_client_db::ClientDbEngineWriteSession;
 use agent_semantic_client_db::{
     ClientDbEngine, ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexRefreshRequest,
     client_db_source_index_file_count, source_index_file_hashes,
@@ -32,24 +31,18 @@ pub fn refresh_source_index(
     project_root: &Path,
 ) -> Result<Option<SourceIndexRefreshReport>, String> {
     let trace_started = Instant::now();
-    let Some((mut context, previous_file_hashes)) =
-        source_index_refresh_context(project_root, trace_started)?
-    else {
+    let Some(mut context) = source_index_refresh_context(project_root, trace_started)? else {
         return Ok(None);
     };
-    let report = refresh_complete_source_index_generation(
-        project_root,
-        &mut context,
-        previous_file_hashes.as_slice(),
-        trace_started,
-    )?;
+    let report =
+        refresh_complete_source_index_generation(project_root, &mut context, trace_started)?;
     Ok(Some(report))
 }
 
 fn source_index_refresh_context(
     project_root: &Path,
     trace_started: Instant,
-) -> Result<Option<(SourceIndexRefreshContext, Vec<ClientCacheFileHash>)>, String> {
+) -> Result<Option<SourceIndexRefreshContext>, String> {
     let cache_report =
         agent_semantic_client_core::ClientCacheManifest::inspect_project(project_root);
     source_index_trace("cache-inspected", trace_started);
@@ -65,18 +58,12 @@ fn source_index_refresh_context(
     }
     let context = SourceIndexRefreshContext::resolve(project_root)?;
     source_index_trace("context-resolved", trace_started);
-    let Some(previous_file_hashes) = context.latest_file_hashes(project_root)? else {
-        source_index_trace("generation-absent-warm-check", trace_started);
-        return Ok(None);
-    };
-    source_index_trace("previous-file-hashes-loaded", trace_started);
-    Ok(Some((context, previous_file_hashes)))
+    Ok(Some(context))
 }
 
 fn refresh_complete_source_index_generation(
     project_root: &Path,
     context: &mut SourceIndexRefreshContext,
-    previous_file_hashes: &[ClientCacheFileHash],
     trace_started: Instant,
 ) -> Result<SourceIndexRefreshReport, String> {
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
@@ -85,13 +72,12 @@ fn refresh_complete_source_index_generation(
     let files = collect_source_index_files(
         project_root,
         &snapshot,
-        &super::collect::SourceIndexCollectionScopeV1::CompleteGeneration,
+        &super::collect::SourceIndexCollectionScope::CompleteGeneration,
     )?;
     source_index_trace("scope-files-collected", trace_started);
     let report = context.refresh_generation(SourceIndexGenerationRefresh {
         index_root: project_root,
         files: &files,
-        previous_file_hashes: Some(previous_file_hashes),
         registry: &registry,
     })?;
     source_index_trace("generation-refreshed", trace_started);
@@ -219,7 +205,7 @@ pub fn current_workspace_search_source_index_snapshot(
     let files = super::collect::collect_workspace_search_source_index_files(
         project_root,
         &provider_registry,
-        &super::collect::SourceIndexCollectionScopeV1::CompleteGeneration,
+        &super::collect::SourceIndexCollectionScope::CompleteGeneration,
     )?;
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
         source_index_snapshot_from_files(project_root, &files, &registry)?;
@@ -258,7 +244,7 @@ pub fn current_live_provider_source_index_snapshot_with_registry(
     let files = collect_source_index_files(
         project_root,
         provider_registry,
-        &super::collect::SourceIndexCollectionScopeV1::TargetProvider {
+        &super::collect::SourceIndexCollectionScope::TargetProvider {
             language_id: language_id.clone(),
             provider_id: provider_id.clone(),
         },
@@ -435,7 +421,7 @@ pub(super) fn fresh_target_provider_source_index_snapshot_with_registry(
     project_root: &Path,
     language_id: &agent_semantic_client_core::LanguageId,
     provider_id: &agent_semantic_client_core::ProviderId,
-    collection_scope: &super::collect::SourceIndexCollectionScopeV1,
+    collection_scope: &super::collect::SourceIndexCollectionScope,
     provider_registry: &ProviderRegistrySnapshot,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
     let registry = provider_registry.evidence(project_root);
@@ -555,7 +541,7 @@ pub(crate) fn current_source_index_snapshot_with_registry(
     let files = collect_source_index_files(
         project_root,
         provider_registry,
-        &super::collect::SourceIndexCollectionScopeV1::CompleteGeneration,
+        &super::collect::SourceIndexCollectionScope::CompleteGeneration,
     )?;
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
         source_index_snapshot_from_files(project_root, &files, &registry)?;
@@ -625,13 +611,12 @@ pub fn rebuild_source_index(project_root: &Path) -> Result<SourceIndexRefreshRep
     let files = collect_source_index_files(
         project_root,
         &snapshot,
-        &super::collect::SourceIndexCollectionScopeV1::CompleteGeneration,
+        &super::collect::SourceIndexCollectionScope::CompleteGeneration,
     )?;
     source_index_trace("scope-files-collected", trace_started);
     context.refresh_generation(SourceIndexGenerationRefresh {
         index_root: project_root,
         files: &files,
-        previous_file_hashes: None,
         registry: &registry,
     })
 }
@@ -655,7 +640,6 @@ pub fn refresh_runtime_source_index(
             .into(),
     )?;
 
-    let previous_file_hashes = context.latest_file_hashes(&runtime_context.checkout_root)?;
     let files = collect_runtime_source_index_files(
         (
             runtime_context.checkout_root.as_path(),
@@ -687,7 +671,6 @@ pub fn refresh_runtime_source_index(
     context.refresh_generation(SourceIndexGenerationRefresh {
         index_root: &runtime_context.checkout_root,
         files: &files,
-        previous_file_hashes: previous_file_hashes.as_deref(),
         registry: &registry,
     })
 }
@@ -695,7 +678,6 @@ pub fn refresh_runtime_source_index(
 struct SourceIndexRefreshContext {
     db_path: std::path::PathBuf,
     client_cache_dir: std::path::PathBuf,
-    db_session: ClientDbEngineWriteSession,
     schema_id: SemanticSchemaId,
     schema_version: SemanticSchemaVersion,
 }
@@ -704,14 +686,12 @@ impl SourceIndexRefreshContext {
     fn resolve(project_root: &Path) -> Result<Self, String> {
         let project_context = ProjectContext::resolve(project_root)?;
         project_context.require_inside_workspace(project_root)?;
-        let db_engine = ClientDbEngine::resolve_for_write(project_root)?;
+        let db_engine = ClientDbEngine::resolve(project_root)?;
         let db_path = db_engine.db_path().to_path_buf();
         let client_cache_dir = db_engine.client_dir().to_path_buf();
-        let db_session = ClientDbEngine::open_write_session_client_dir(db_engine.client_dir())?;
         Ok(Self {
             db_path,
             client_cache_dir,
-            db_session,
             schema_id: SemanticSchemaId::from(SOURCE_INDEX_SCHEMA_ID),
             schema_version: SemanticSchemaVersion::from(SOURCE_INDEX_SCHEMA_VERSION),
         })
@@ -721,42 +701,15 @@ impl SourceIndexRefreshContext {
         &self.client_cache_dir
     }
 
-    fn latest_file_hashes(
-        &self,
-        index_root: &Path,
-    ) -> Result<Option<Vec<ClientCacheFileHash>>, String> {
-        self.db_session.latest_source_index_file_hashes(
-            index_root,
-            &self.schema_id,
-            &self.schema_version,
-        )
-    }
-
     fn refresh_generation(
         &mut self,
         request: SourceIndexGenerationRefresh<'_>,
     ) -> Result<SourceIndexRefreshReport, String> {
         let trace_started = Instant::now();
-        let (file_hashes, workspace_snapshot, mut source_snapshot, source_blobs) =
+        let (file_hashes, _workspace_snapshot, source_snapshot, source_blobs) =
             source_index_snapshot_from_files(request.index_root, request.files, request.registry)?;
         source_index_trace("generation-file-hashes-built", trace_started);
         source_index_trace("generation-evidence-built", trace_started);
-        let (previous_stats, previous_scope_files) = if request.previous_file_hashes.is_some() {
-            (
-                self.db_session.latest_source_index_stats(
-                    request.index_root,
-                    &self.schema_id,
-                    &self.schema_version,
-                )?,
-                self.db_session.latest_source_index_scope_files(
-                    request.index_root,
-                    &self.schema_id,
-                    &self.schema_version,
-                )?,
-            )
-        } else {
-            (None, None)
-        };
         let generation_id =
             agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
                 &source_snapshot,
@@ -776,83 +729,20 @@ impl SourceIndexRefreshContext {
             },
             file_hashes,
         )?;
-        let membership_change_set = match (
-            previous_stats,
-            request.previous_file_hashes,
-            previous_scope_files,
-        ) {
-            (Some(previous_stats), Some(previous_file_hashes), Some(previous_scope_files)) => {
-                let previous_hashes = previous_file_hashes
-                    .iter()
-                    .map(|file| (file.path.as_str(), file.sha256.as_str()))
-                    .collect::<std::collections::BTreeMap<_, _>>();
-                let current_hashes = import
-                    .file_hashes
-                    .iter()
-                    .map(|file| (file.path.as_str(), file.sha256.as_str()))
-                    .collect::<std::collections::BTreeMap<_, _>>();
-                let current_owner_paths = import
-                    .owners
-                    .iter()
-                    .map(|owner| owner.owner_path.as_str().to_string())
-                    .collect::<std::collections::BTreeSet<_>>();
-                let changed_owner_paths = current_owner_paths
-                    .iter()
-                    .filter(|path| {
-                        previous_hashes.get(path.as_str()) != current_hashes.get(path.as_str())
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>();
-                let removed_owner_paths = previous_scope_files
-                    .iter()
-                    .map(|file| {
-                        agent_semantic_client_db::source_index_relative_path(
-                            request.index_root,
-                            &file.path,
-                        )
-                    })
-                    .filter(|path| !current_owner_paths.contains(path))
-                    .collect::<std::collections::BTreeSet<_>>()
-                    .into_iter()
-                    .collect::<Vec<_>>();
-                if changed_owner_paths.is_empty() && removed_owner_paths.is_empty() {
-                    agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot
-                } else {
-                    source_snapshot = workspace_snapshot.overlay_evidence(
-                        agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
-                        source_snapshot.provider_digest.clone(),
-                        previous_stats.source_snapshot.root_digest,
-                        changed_owner_paths.iter().cloned(),
-                        removed_owner_paths.iter().cloned(),
-                    )?;
-                    agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
-                        changed_owner_paths: changed_owner_paths
-                            .into_iter()
-                            .map(agent_semantic_client_db::ClientDbSourceIndexPath::new)
-                            .collect(),
-                        removed_owner_paths: removed_owner_paths
-                            .into_iter()
-                            .map(agent_semantic_client_db::ClientDbSourceIndexPath::new)
-                            .collect(),
-                    }
-                }
-            }
-            _ => agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
-        };
         source_index_trace("generation-import-assembled", trace_started);
+        let refresh_request = ClientDbSourceIndexRefreshRequest {
+            import,
+            file_count: client_db_source_index_file_count(request.files.len()),
+            source_snapshot: source_snapshot.clone(),
+        };
         let report =
-            self.db_session
-                .refresh_source_index_import(ClientDbSourceIndexRefreshRequest {
-                    import,
-                    file_count: client_db_source_index_file_count(request.files.len()),
-                    source_snapshot: source_snapshot.clone(),
-                    membership_change_set,
-                })?;
+            agent_semantic_client_db::workspace_db_ipc::
+                commit_source_index_generation_via_resident(refresh_request)?;
         source_index_trace("generation-turso-imported", trace_started);
         Ok(SourceIndexRefreshReport::from_report(
             self.db_path.clone(),
-            report,
-            source_snapshot,
+            report.clone(),
+            report.source_snapshot,
         ))
     }
 }
@@ -870,7 +760,6 @@ fn source_index_trace(stage: &str, started: Instant) {
 struct SourceIndexGenerationRefresh<'a> {
     index_root: &'a Path,
     files: &'a [SourceIndexScopeFile],
-    previous_file_hashes: Option<&'a [ClientCacheFileHash]>,
     registry: &'a ProviderRegistryEvidence,
 }
 

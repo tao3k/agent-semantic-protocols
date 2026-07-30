@@ -179,12 +179,8 @@ def validator(schema_id: str):
 
 def test_project_resolution_schema_family_accepts_resolved_project() -> None:
     schemas = load_schemas()
-    validator("repository-candidate-snapshot.v1.schema.json").validate(
-        git_candidates()
-    )
-    validator("language-package-graph.v1.schema.json").validate(
-        rust_package_graph()
-    )
+    validator("repository-candidate-snapshot.v1.schema.json").validate(git_candidates())
+    validator("language-package-graph.v1.schema.json").validate(rust_package_graph())
     validator("project-resolution.v1.schema.json").validate(resolved_project())
 
     descriptor = {
@@ -196,8 +192,12 @@ def test_project_resolution_schema_family_accepts_resolved_project() -> None:
         "lockfileKinds": ["cargo-lock"],
         "supportsGitCandidates": True,
         "supportsProviderOnly": True,
-        "parserIdentityDigest": "parser-1",
-        "commandBinding": "projectResolution",
+        "parserId": "rust.cargo-toml",
+            "commandBinding": "project-resolution-stdin",
+            "candidateSnapshotSchema": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json",
+            "packageGraphSchema": "https://schemas.agent-semantic-protocols.dev/language-package-graph.v1.schema.json",
+            "resolvedSourceScopeSchema": "https://schemas.agent-semantic-protocols.dev/resolved-source-scope.v1.schema.json",
+            "projectResolutionSchema": "https://schemas.agent-semantic-protocols.dev/project-resolution.v1.schema.json",
     }
     validator("provider-project-resolution-descriptor.v1.schema.json").validate(
         descriptor
@@ -210,9 +210,7 @@ def test_project_resolution_schema_family_rejects_root_walk_and_db_open() -> Non
     project["repositoryCandidates"]["metrics"]["fullWorkspaceReads"] = 1
     project["metrics"]["dbOpens"] = 1
 
-    errors = list(
-        validator("project-resolution.v1.schema.json").iter_errors(project)
-    )
+    errors = list(validator("project-resolution.v1.schema.json").iter_errors(project))
     assert len(errors) == 2
     assert {error.validator for error in errors} == {"const"}
 

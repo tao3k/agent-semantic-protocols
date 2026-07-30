@@ -281,7 +281,7 @@ fn production_branch_atom_inventory_is_derived_from_the_template() {
     let policy = parse_production_policy();
     assert_eq!(
         policy.rules.len(),
-        16,
+        17,
         "production rule discovery drifted: {:?}",
         policy.rules
     );
@@ -453,6 +453,13 @@ fn command_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> String {
                 "readFileSync("
             };
             format!("{prefix} -e 'require(\"fs\").{contains}\"src/app.ts\")'")
+        }
+        "deny-uncontrolled-git-metadata-reads" => {
+            if matches!(alt, "git show --stat" | "git ls-tree") {
+                format!("{alt} HEAD")
+            } else {
+                alt.to_owned()
+            }
         }
         "deny-uncontrolled-git-source-reads" => {
             format!("{alt} HEAD:src/app.ts")

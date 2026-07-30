@@ -7,10 +7,7 @@ use agent_semantic_client_core::{
     SemanticSchemaId, SemanticSchemaVersion,
 };
 
-use crate::source_index::{
-    ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
-    ClientDbSourceIndexScopeFile, ClientDbSourceIndexStats,
-};
+use crate::source_index::{ClientDbSourceIndexScopeFile, ClientDbSourceIndexStats};
 use crate::structural_index::parse_structural_index_packet_import;
 use crate::types::{
     ClientDbArtifactEvent, ClientDbGenerationHit, ClientDbProviderCommandSelection,
@@ -33,7 +30,6 @@ use super::turso_provider_command::{
 use super::turso_source_index::{
     latest_turso_source_index_file_hashes, latest_turso_source_index_scope_files,
     latest_turso_source_index_stats, lookup_reusable_turso_source_index_generation,
-    refresh_turso_source_index_import,
 };
 use super::turso_syntax::{
     flush_turso_syntax_query_replay, lookup_turso_syntax_query_replay,
@@ -328,17 +324,6 @@ impl ClientDbEngineWriteSession {
                 &file_hashes,
             )
             .await
-        })
-    }
-
-    /// Apply a source-index import through this DB Engine session.
-    pub fn refresh_source_index_import(
-        &mut self,
-        request: ClientDbSourceIndexRefreshRequest,
-    ) -> Result<ClientDbSourceIndexRefreshReport, String> {
-        let db_path = self.turso_db_path.clone();
-        block_on_db_engine_async(async move {
-            refresh_turso_source_index_import(&db_path, request).await
         })
     }
 

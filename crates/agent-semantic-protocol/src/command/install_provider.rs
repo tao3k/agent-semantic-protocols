@@ -139,13 +139,7 @@ fn reconcile_registered_provider_runtime_binaries(
                 ));
             }
         }
-        if current_receipts.iter().any(|receipt| {
-            receipt
-                .installed_path
-                .file_name()
-                .and_then(|name| name.to_str())
-                == Some(binary_name.as_str())
-        }) {
+        if registered_provider_receipt_covers_binary(&current_receipts, binary_name) {
             reconciled_count += 1;
             continue;
         }
@@ -173,6 +167,12 @@ fn reconcile_registered_provider_runtime_binaries(
         match std::fs::symlink_metadata(&lock_path) {
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if registered_provider_receipt_covers_binary(
+                    &current_receipts,
+                    registration.binary(),
+                ) {
+                    continue;
+                }
                 receipt_missing_count += 1;
                 continue;
             }
@@ -220,6 +220,19 @@ fn reconcile_registered_provider_runtime_binaries(
         receipt_missing_count,
         provider_receipts,
         binary_byte_reads,
+    })
+}
+
+fn registered_provider_receipt_covers_binary(
+    receipts: &[super::install_provider_reconcile::ProviderInstallReceipt],
+    binary_name: &str,
+) -> bool {
+    receipts.iter().any(|receipt| {
+        receipt
+            .installed_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            == Some(binary_name)
     })
 }
 

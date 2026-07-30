@@ -90,15 +90,21 @@ fn codex_search_command_action_matches_source_access_rule() {
 
 #[test]
 fn git_object_and_tree_reads_match_source_access_rule() {
-    for command in [
-        "git show HEAD:crates/agent-semantic-hook/src/lib.rs",
-        "git show --stat HEAD",
-        "git ls-tree -r HEAD",
-        "git diff HEAD -- crates/agent-semantic-hook/src/lib.rs",
-        "git diff --name-only",
-        "git diff",
-        "git diff --cached",
-        "git diff --stat",
+    for (command, expected_reason) in [
+        (
+            "git show HEAD:crates/agent-semantic-hook/src/lib.rs",
+            ReasonKind::BulkSourceDump,
+        ),
+        ("git show --stat HEAD", ReasonKind::RawBroadSearch),
+        ("git ls-tree -r HEAD", ReasonKind::RawBroadSearch),
+        (
+            "git diff HEAD -- crates/agent-semantic-hook/src/lib.rs",
+            ReasonKind::BulkSourceDump,
+        ),
+        ("git diff --name-only", ReasonKind::RawBroadSearch),
+        ("git diff", ReasonKind::BulkSourceDump),
+        ("git diff --cached", ReasonKind::BulkSourceDump),
+        ("git diff --stat", ReasonKind::RawBroadSearch),
     ] {
         let decision = classify_hook(
             &registry(),
@@ -113,8 +119,8 @@ fn git_object_and_tree_reads_match_source_access_rule() {
         assert_eq!(decision.decision, DecisionKind::Deny, "command={command}");
         assert_eq!(
             decision.reason_kind,
-            ReasonKind::RawBroadSearch,
-            "command={command}"
+            expected_reason,
+            "command={command} decision={decision:#?}"
         );
         assert!(
             decision

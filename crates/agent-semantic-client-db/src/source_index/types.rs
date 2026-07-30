@@ -181,7 +181,7 @@ source_index_value_type!(
 );
 
 /// One DB Engine-owned source index generation imported into the client DB.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexImport {
     pub generation_id: CacheGenerationId,
     pub project_root: PathBuf,
@@ -295,7 +295,7 @@ pub struct ClientDbSourceIndexImportAssemblyRequest {
 }
 
 /// Rust-owned owner row retained for index-first broad search.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexOwner {
     pub owner_path: ClientDbSourceIndexPath,
     pub language_id: Option<LanguageId>,
@@ -447,7 +447,7 @@ pub struct ClientDbSourceIndexCandidateLookupResult {
 /// `selector_id` and `materialization_proof` are the complete identity and
 /// source projection contract. Consumers must not reconstruct either from
 /// line numbers or source rereads.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexSelector {
     pub owner_path: ClientDbSourceIndexPath,
     pub selector_id: ClientDbSourceIndexSelectorId,
@@ -480,7 +480,7 @@ impl ClientDbSourceIndexRefreshResult {
 }
 
 /// Membership authority used when applying a source-index snapshot.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ClientDbSourceIndexMembershipChangeSet {
     /// Publish a complete cold snapshot and reconcile its full membership.
     FullSnapshot,
@@ -492,20 +492,20 @@ pub enum ClientDbSourceIndexMembershipChangeSet {
 }
 
 /// Request for applying a source-index import to the DB.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexRefreshRequest {
     pub import: ClientDbSourceIndexImport,
     pub file_count: u32,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
-    pub membership_change_set: ClientDbSourceIndexMembershipChangeSet,
 }
 
 /// DB-owned refresh result for source-index generation writes.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexRefreshReport {
     pub generation_id: CacheGenerationId,
     pub reused_generation: bool,
     pub file_count: u32,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub owner_count: u32,
     pub selector_count: u32,
     /// Owners whose canonical rows were inserted or replaced by this refresh.

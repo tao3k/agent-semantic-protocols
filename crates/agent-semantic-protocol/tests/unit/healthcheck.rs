@@ -238,6 +238,7 @@ fn write_activation(root: &Path, provider: &Path) {
         "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
         "projectRoot": root.canonicalize().expect("canonical root").display().to_string(),
         "generatedBy": { "runtime": "asp", "version": "test" },
+        "rankers": [],
         "providers": [{
             "manifestId": manifest.manifest_id(),
             "manifestDigest": manifest_digest,
@@ -245,7 +246,7 @@ fn write_activation(root: &Path, provider: &Path) {
             "providerId": manifest.provider_id(),
             "binary": manifest.binary(),
             "execution": manifest.execution(),
-            "providerCommandPrefix": provider_command_prefix,
+            "providerCommandPrefix": [],
             "executionCommandDigest": execution_command_digest,
             "searchCapabilities": manifest.search_capabilities(),
             "semanticFactsDescriptor": manifest.semantic_facts_descriptor(),
@@ -284,13 +285,40 @@ fn rust_manifest() -> agent_semantic_hook::ProviderManifest {
 }
 
 fn run_healthcheck(root: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
+    let state_home = envs
+        .iter()
+        .find_map(|(key, value)| (*key == "ASP_STATE_HOME").then(|| PathBuf::from(value)))
+        .or_else(|| env::var_os("ASP_STATE_HOME").map(PathBuf::from))
+        .unwrap_or_else(|| {
+            PathBuf::from(env::var_os("HOME").expect("HOME for canonical ASP state"))
+                .join(".agent-semantic-protocols")
+        });
+    let canonical_runtime_asp = state_home.join("runtime/bin/asp");
+    let global_bin = root.join("global-bin");
+    std::fs::create_dir_all(&global_bin).expect("create isolated global ASP PATH");
+    std::os::unix::fs::symlink(&canonical_runtime_asp, global_bin.join("asp"))
+        .expect("link isolated global ASP PATH to canonical runtime");
+    let path = env::join_paths(std::iter::once(global_bin).chain(env::split_paths(
+        &env::var_os("PATH").expect("PATH for healthcheck fixture"),
+    )))
+    .expect("compose isolated global ASP PATH");
+
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command.current_dir(root).arg("healthcheck").args(args);
     command.env("CODEX_HOME", root.join("codex-home"));
+    command.env("PATH", path);
     for (key, value) in envs {
         command.env(key, value);
     }
-    command.output().expect("run asp healthcheck")
+    let output = command.output().expect("run asp healthcheck");
+    if !output.status.success() {
+        eprintln!(
+            "healthcheck fixture stdout:\n{}\nhealthcheck fixture stderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+    output
 }
 
 fn write_executable(root: &Path, name: &str) -> PathBuf {

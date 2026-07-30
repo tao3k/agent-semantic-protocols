@@ -6,7 +6,7 @@ mod unix {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn sync_clones_org_state_from_git_repo_and_updates_preserving_flow() {
+    fn sync_does_not_clone_or_pull_org_state() {
         let source = temp_root("org-source");
         init_org_repo(&source, "v1");
         let project = temp_root("sync-project");
@@ -15,54 +15,65 @@ mod unix {
 
         let first = run_asp_sync(&project, &source, &state_home);
         assert!(
-            first.contains("[asp-sync]"),
-            "expected asp sync receipt, got {first}"
+            first.contains("[asp-agent-config-sync]"),
+            "expected asp agent config sync receipt, got {first}"
         );
+        assert!(first.contains("scope=global-agent-config"));
+        assert!(first.contains("trigger=explicit"));
+        assert!(first.contains("orgStateSync=consumer-lazy"));
+        assert!(first.contains("gitPulls=0"));
+        assert!(first.contains("gitFetches=0"));
+        assert!(first.contains("gitClones=0"));
         let org_state = state_home.join("org");
         assert!(
-            org_state.join(".git").is_dir(),
-            "org state must be a git checkout"
+            !org_state.exists(),
+            "generic sync must not materialize the private Org checkout"
         );
-        assert_eq!(
-            std::fs::read_to_string(org_state.join("skills").join("ASP_ORG.org"))
-                .expect("read asp org skill"),
-            "* ASP Org v1\n"
-        );
-        let org_artifacts = ResolvedState::resolve_with_state_home(&project, &state_home)
-            .expect("resolved state")
-            .paths
-            .artifacts_dir
-            .join("org");
-        assert!(org_artifacts.join("flow").join("plans").is_dir());
-        assert!(org_artifacts.join("flow").join("sdd").is_dir());
-        assert!(org_artifacts.join("flow").join("bdr").is_dir());
-        let local_plan = org_artifacts.join("flow").join("plans").join("local.org");
-        std::fs::write(&local_plan, "* Local plan\n").expect("write local flow file");
 
         update_org_repo(&source, "v2");
         let second = run_asp_sync(&project, &source, &state_home);
         assert!(
-            second.contains("orgStatus=updated"),
-            "expected fast-forward update receipt, got {second}"
+            second.contains("orgStateSync=consumer-lazy")
+                && second.contains("gitPulls=0")
+                && second.contains("gitFetches=0")
+                && second.contains("gitClones=0"),
+            "repeated generic sync must remain a zero-Git writer, got {second}"
         );
-        assert_eq!(
-            std::fs::read_to_string(org_state.join("skills").join("ASP_ORG.org"))
-                .expect("read updated asp org skill"),
-            "* ASP Org v2\n"
-        );
-        assert!(
-            local_plan.is_file(),
-            "sync must preserve untracked local flow state"
-        );
-        assert_eq!(
-            git_output(&org_state, &["status", "--porcelain"]),
-            "",
-            "local flow state should be excluded from the backing org repo status"
-        );
+        assert!(!org_state.exists());
         assert!(
             !project.join(".cache").exists(),
             "sync must not materialize Org state under the project cache"
         );
+
+        let workspace_argument = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&project)
+            .env("ASP_STATE_HOME", &state_home)
+            .args(["agent", "config", "sync", "."])
+            .output()
+            .expect("run asp agent config sync with a positional argument");
+        assert!(
+            !workspace_argument.status.success(),
+            "agent config sync must reject positional arguments"
+        );
+        let stderr = String::from_utf8_lossy(&workspace_argument.stderr);
+        assert!(
+            stderr.contains("does not accept positional arguments"),
+            "expected an actionable responsibility error, got {stderr}"
+        );
+
+        let root_sync = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .current_dir(&project)
+            .args(["sync"])
+            .output()
+            .expect("run removed root sync surface");
+        assert!(
+            !root_sync.status.success(),
+            "root sync must fail closed instead of choosing a domain"
+        );
+        let root_sync_stderr = String::from_utf8_lossy(&root_sync.stderr);
+        assert!(root_sync_stderr.contains("has no cross-domain responsibility"));
+        assert!(root_sync_stderr.contains("asp agent config sync"));
+        assert!(root_sync_stderr.contains("asp cache source-index rebuild"));
 
         let _ = std::fs::remove_dir_all(source);
         let _ = std::fs::remove_dir_all(project);
@@ -70,7 +81,7 @@ mod unix {
     }
 
     #[test]
-    fn sync_uses_languages_org_remote_by_default_without_copying_bundled_files() {
+    fn sync_leaves_default_org_remote_to_lazy_consumers() {
         let source = temp_root("default-org-source");
         init_org_repo(&source, "default");
         let git_config = temp_root("default-org-gitconfig");
@@ -89,16 +100,14 @@ mod unix {
 
         let output = run_default_remote_asp_sync(&project, &git_config, &state_home);
         assert!(
-            output.contains("orgRepo=https://github.com/tao3k/org.git"),
-            "expected default org remote receipt, got {output}"
+            output.contains("orgStateSync=consumer-lazy"),
+            "expected lazy Org state receipt, got {output}"
         );
         assert!(
-            output.contains("orgStatus=cloned"),
-            "expected default remote clone receipt, got {output}"
-        );
-        assert!(
-            !output.contains("copiedFiles="),
-            "asp sync receipt must not expose copy semantics, got {output}"
+            output.contains("gitPulls=0")
+                && output.contains("gitFetches=0")
+                && output.contains("gitClones=0"),
+            "generic sync must publish its zero-Git writer receipt, got {output}"
         );
         let org_state = state_home.join("org");
         let org_artifacts = ResolvedState::resolve_with_state_home(&project, &state_home)
@@ -107,16 +116,12 @@ mod unix {
             .artifacts_dir
             .join("org");
         assert!(
-            org_state.join(".git").is_dir(),
-            "default sync must create a git checkout"
+            !org_state.exists(),
+            "generic sync must not create the private Org checkout"
         );
         assert!(
-            org_state.join("skills").join("ASP_ORG.org").is_file(),
-            "asp sync must materialize org resources through git clone"
-        );
-        assert!(
-            org_artifacts.join("flow").join("plans").is_dir(),
-            "asp sync must keep creating org artifact flow dirs"
+            !org_artifacts.exists(),
+            "generic sync must leave Org artifacts to the consuming workflow"
         );
         assert!(
             !project.join(".cache").exists(),
@@ -169,7 +174,7 @@ projection = "asp-explorer.toml"
             .env("CODEX_HOME", &codex_home)
             .env("CLAUDE_HOME", &claude_home)
             .env("PRJ_CACHE_HOME", project.join(".cache"))
-            .args(["sync"])
+            .args(["agent", "config", "sync"])
             .output()
             .expect("run asp sync");
         assert!(
@@ -190,10 +195,6 @@ projection = "asp-explorer.toml"
         assert!(
             stdout.contains("codexSpawnAgentMetadata=visible-agent-type"),
             "expected visible Codex agent_type projection, got {stdout}"
-        );
-        assert!(
-            stdout.contains("hookConfig=created"),
-            "expected global hook config creation, got {stdout}"
         );
         assert_eq!(
             std::fs::read_link(codex_home.join("agents").join("asp-explorer.toml"))
@@ -230,7 +231,7 @@ projection = "asp-explorer.toml"
             .env("CODEX_HOME", &codex_home)
             .env("CLAUDE_HOME", &claude_home)
             .env("PRJ_CACHE_HOME", project.join(".cache"))
-            .args(["sync"])
+            .args(["agent", "config", "sync"])
             .output()
             .expect("rerun asp sync");
         assert!(second_output.status.success());
@@ -253,7 +254,7 @@ projection = "asp-explorer.toml"
             .env("CODEX_HOME", &codex_home)
             .env("CLAUDE_HOME", &claude_home)
             .env("PRJ_CACHE_HOME", project.join(".cache"))
-            .args(["sync"])
+            .args(["agent", "config", "sync"])
             .output()
             .expect("repair drifted Codex multi-agent v2 config");
         assert!(repair_output.status.success());
@@ -286,7 +287,7 @@ projection = "asp-explorer.toml"
             .env("CODEX_HOME", &codex_home)
             .env("CLAUDE_HOME", &claude_home)
             .env("PRJ_CACHE_HOME", project.join(".cache"))
-            .args(["sync"])
+            .args(["agent", "config", "sync"])
             .output()
             .expect("migrate legacy ASP namespace");
         assert!(migrate_namespace_output.status.success());
@@ -308,7 +309,7 @@ projection = "asp-explorer.toml"
             .env("CODEX_HOME", &codex_home)
             .env("CLAUDE_HOME", &claude_home)
             .env("PRJ_CACHE_HOME", project.join(".cache"))
-            .args(["sync"])
+            .args(["agent", "config", "sync"])
             .output()
             .expect("preserve user-owned namespace");
         assert!(preserve_namespace_output.status.success());
@@ -318,17 +319,6 @@ projection = "asp-explorer.toml"
             user_namespace_config,
             "asp sync must not overwrite a user-owned tool namespace"
         );
-        let hook_config = state_home.join("hooks").join("config.toml");
-        let hook_config = agent_semantic_config::load_hook_client_config_file(&hook_config)
-            .expect("load auto-synced hook config");
-        assert!(hook_config.agents.resident_agents.iter().any(|agent| {
-            agent.enabled
-                && agent
-                    .roles
-                    .iter()
-                    .any(|role| role.eq_ignore_ascii_case("search"))
-        }));
-
         let _ = std::fs::remove_dir_all(source);
         let _ = std::fs::remove_dir_all(project);
         let _ = std::fs::remove_dir_all(state_home);
@@ -344,9 +334,9 @@ projection = "asp-explorer.toml"
             .env("CODEX_HOME", state_home.join("codex-home"))
             .env("CLAUDE_HOME", state_home.join("claude-home"))
             .env("PRJ_CACHE_HOME", project.join(".cache"))
-            .args(["sync"])
+            .args(["agent", "config", "sync"])
             .output()
-            .expect("run asp sync");
+            .expect("run asp agent config sync");
         assert!(
             output.status.success(),
             "stdout={} stderr={}",
@@ -365,9 +355,9 @@ projection = "asp-explorer.toml"
             .env("CODEX_HOME", state_home.join("codex-home"))
             .env("CLAUDE_HOME", state_home.join("claude-home"))
             .env("PRJ_CACHE_HOME", project.join(".cache"))
-            .args(["sync"])
+            .args(["agent", "config", "sync"])
             .output()
-            .expect("run default remote asp sync");
+            .expect("run asp agent config sync with default Org remote");
         assert!(
             output.status.success(),
             "stdout={} stderr={}",
@@ -442,21 +432,6 @@ projection = "asp-explorer.toml"
         assert!(status.success(), "git {args:?} failed with {status}");
     }
 
-    fn git_output(root: &Path, args: &[&str]) -> String {
-        let output = Command::new("git")
-            .current_dir(root)
-            .args(args)
-            .output()
-            .expect("run git");
-        assert!(
-            output.status.success(),
-            "stdout={} stderr={}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        String::from_utf8(output.stdout).expect("utf8 stdout")
-    }
-
     fn temp_root(name: &str) -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -475,6 +450,7 @@ fn sync_command_has_zero_runtime_database_or_activation_authority() {
         "AgentSessionRegistry::",
         "load_or_refresh_default_activation",
         "load_or_sync_activation_for_language",
+        "run_org_state_sync",
     ] {
         assert!(
             !source.contains(forbidden),
@@ -486,6 +462,10 @@ fn sync_command_has_zero_runtime_database_or_activation_authority() {
         "dbOpens=0",
         "dbTransactions=0",
         "sessionRegistryOpens=0",
+        "orgStateSync=consumer-lazy",
+        "gitPulls=0",
+        "gitFetches=0",
+        "gitClones=0",
     ] {
         assert!(
             source.contains(required),

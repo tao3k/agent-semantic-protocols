@@ -112,6 +112,7 @@ dependencies = [
  "blake3",
  "criterion",
  "fs2",
+ "fs4 1.1.0",
  "parking_lot",
  "serde",
  "serde_json",
@@ -238,6 +239,7 @@ dependencies = [
  "sha2 0.10.9",
  "syn 2.0.118",
  "tokio",
+ "tokio-stream",
  "toml 0.9.12+spec-1.1.0",
  "tree-sitter",
  "which 8.0.4",
@@ -1623,6 +1625,17 @@ checksum = "8640e34b88f7652208ce9e88b1a37a2ae95227d84abec377ccd3c5cfeb141ed4"
 dependencies = [
  "rustix 1.1.4",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "fs4"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e72ed92b67c146290f88e9c89d60ca163ea417a446f61ffd7b72df3e7f1dfd5"
+dependencies = [
+ "rustix 1.1.4",
+ "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3772,6 +3785,7 @@ dependencies = [
  "bytecount",
  "cfg-if",
  "comrak",
+ "ignore",
  "jetscii",
  "memchr",
  "nom 8.0.0",
@@ -5039,7 +5053,7 @@ dependencies = [
  "downcast-rs",
  "fastdivide",
  "fnv",
- "fs4",
+ "fs4 0.13.1",
  "htmlescape",
  "itertools 0.14.0",
  "levenshtein_automata",
@@ -5323,6 +5337,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
 dependencies = [
  "rustls",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
  "tokio",
 ]
 

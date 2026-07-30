@@ -3,7 +3,6 @@
 use super::provider_execution::take_frontier_receipt_request;
 use super::provider_usage;
 
-use super::document_language_facade;
 use super::graph::GraphTurboReceiptRequest;
 use agent_semantic_hook::runtime_profiles_for_runtime;
 use agent_semantic_runtime::project_state_paths;
@@ -17,7 +16,6 @@ use super::gerbil_deps::try_run_gerbil_deps_index_command;
 use super::protocol_version_line;
 use super::provider_fast_path::{
     run_activated_owner_language_preflight, run_pre_activation_search_command_preflight,
-    search_owner_items_owner_path,
 };
 use super::provider_fast_search::fast_search_needs_provider_context;
 use super::provider_process::{
@@ -92,10 +90,6 @@ fn owner_items_execution_route(
     })
 }
 
-#[cfg(test)]
-#[path = "../../tests/unit/provider_dispatch.rs"]
-mod provider_dispatch_tests;
-
 pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
     let exact_query_started = Instant::now();
     fn uses_client_backend(args: &[String]) -> bool {
@@ -103,12 +97,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
             || matches!(args.first().map(String::as_str), Some("check"))
             || matches!(args.first().map(String::as_str), Some("cache"))
-    }
-
-    fn is_document_owner_items_search(language_id: &str, args: &[String]) -> bool {
-        document_language_facade::is_document_language(language_id)
-            && is_asp_fast_search(args)
-            && search_owner_items_owner_path(args).is_some()
     }
 
     fn provider_invokes_asp_facade(
@@ -197,9 +185,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         return Err("--frontier-receipt-out is supported only for search commands".to_string());
     }
 
-    if document_language_facade::is_document_language(language_id) && is_help(&command_args) {
-        return document_language_facade::run_document_language_help(language_id, &command_args);
-    }
     if is_help(&command_args) {
         println!("{}", provider_usage());
         return Ok(());
@@ -210,7 +195,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
     let invocation_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    let document_owner_items_search = is_document_owner_items_search(language_id, &command_args);
     validate_provider_command(&command_args)?;
     if is_guide_help(&command_args) {
         println!("{}", guide_usage(language_id));
@@ -234,7 +218,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 &invocation_root,
             )?
             .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
-        if super::provider_direct_exact::try_run_resident_turso_exact_query(
+        if super::provider_resident_exact::try_run_resident_turso_exact_query(
             language_id,
             &exact_provider_args,
             &exact_project_root,
@@ -242,12 +226,10 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         )? {
             return Ok(());
         }
-        return super::provider_direct_exact::run_catalog_direct_exact_query(
-            language_id,
-            &exact_provider_args,
-            &exact_project_root,
-            exact_query_started,
-        );
+        return Err(format!(
+            "exact source query state=source-unavailable reasonKind=active-workspace-generation-required language={language_id} workspace={}",
+            exact_project_root.display()
+        ));
     }
     let canonical_activation_path = provider_activation_path(&invocation_root);
     let activation_path = canonical_activation_path.clone();
@@ -495,10 +477,8 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                     )
                 })
                 .transpose()?;
-        let provider_context_allowed = !document_owner_items_search
-            || !provider_invokes_asp_facade(language_id, provider, &config);
-        let provider_context_required = provider_context_allowed
-            && fast_search_needs_provider_context(&provider_args, provider)?;
+        let provider_context_required =
+            fast_search_needs_provider_context(&provider_args, provider)?;
         exact_query_trace("provider-context-classified", exact_query_started);
         if provider_context_required {
             exact_query_trace("provider-context-required", exact_query_started);
@@ -566,40 +546,10 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         return run_guide_command(language_id, provider, &invocation, &project_root);
     }
     let provider_argv = provider_process_args(&provider_args);
-    if is_provider_owned_structural_selector_query(language_id, &provider_args) {
-        if agent_semantic_hook::registered_provider_method_invocation_v1(
-            language_id,
-            provider.provider_id.as_str(),
-            "query/exact-selector-native-v1",
-        )?
-        .is_some()
-        {
-            return super::provider_direct_exact::run_direct_exact_query(
-                super::provider_direct_exact::DirectExactQueryContext {
-                    language_id,
-                    provider_args: &provider_args,
-                    project_root: &project_root,
-                    provider,
-                    runtime_profiles: &runtime_profiles,
-                    started: exact_query_started,
-                },
-            );
-        }
-    }
     for invocation in
         provider_invocations(provider, &provider_argv, &project_root, &runtime_profiles)?
     {
-        run_provider_command(
-            language_id,
-            provider,
-            &invocation,
-            &project_root,
-            document_language_facade::is_document_language(language_id)
-                && command_args
-                    .first()
-                    .is_some_and(|command| command == "query")
-                && command_args.iter().any(|arg| arg == "--json"),
-        )?;
+        run_provider_command(language_id, provider, &invocation, &project_root, false)?;
     }
     Ok(())
 }

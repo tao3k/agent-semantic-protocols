@@ -2,9 +2,9 @@ use super::{
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
     CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, CacheGenerationId, ClientCacheFileHash, ClientDbEngine,
     ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest,
-    ClientDbSourceIndexLookupState, ClientDbSourceIndexMembershipChangeSet,
-    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSource, LanguageId, ProviderId,
-    SemanticSchemaId, SemanticSchemaVersion, build_source_index_import, temp_root,
+    ClientDbSourceIndexLookupState, ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexSource,
+    LanguageId, ProviderId, SemanticSchemaId, SemanticSchemaVersion, build_source_index_import,
+    temp_root,
 };
 use std::fs;
 
@@ -98,13 +98,12 @@ async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() 
         }],
     })
     .expect("build canonical source-index import");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
             import: source_index_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
-            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("bootstrap canonical source-index schema");

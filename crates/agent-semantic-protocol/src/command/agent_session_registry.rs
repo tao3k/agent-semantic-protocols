@@ -75,6 +75,13 @@ pub(crate) use agent_session_registry_tool_event::record_current_session_tool_ev
 pub(crate) fn run_agent_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("session") => run_agent_session_command(&args[1..]),
+        Some("config") if args.get(1).is_some_and(|arg| arg == "sync") => {
+            super::sync::run_agent_config_sync_command(&args[2..])
+        }
+        Some("config") => Err(
+            "usage: asp agent config sync\n\nReconcile ASP-owned global agent configuration projections."
+                .to_string(),
+        ),
         Some("help" | "--help" | "-h") | None => {
             println!("{}", agent_usage());
             Ok(())

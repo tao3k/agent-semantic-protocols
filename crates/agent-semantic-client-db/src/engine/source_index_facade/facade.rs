@@ -7,7 +7,6 @@ use crate::structural_index::ClientDbStructuralIndexImport;
 
 use crate::engine::facade::{ClientDbEngine, block_on_db_engine_async};
 use crate::engine::turso_search::replace_turso_search_document_generation;
-use crate::engine::turso_source_index::refresh_turso_source_index_import;
 use crate::engine::{
     ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
 };
@@ -19,7 +18,7 @@ impl ClientDbEngine {
         &self,
         request: ClientDbSourceIndexRefreshRequest,
     ) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
-        refresh_turso_source_index_import(self.db_path(), request).await
+        commit_turso_source_index_generation_via_resident(request).await
     }
 
     pub fn lookup_exact_selector_projection_v1_from_client_dir(
@@ -105,19 +104,15 @@ impl ClientDbEngine {
         &self,
         import: &ClientDbSourceIndexImport,
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-        membership_change_set: &crate::ClientDbSourceIndexMembershipChangeSet,
     ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
         let trace_started = std::time::Instant::now();
-        let refresh = refresh_turso_source_index_import(
-            self.db_path(),
-            ClientDbSourceIndexRefreshRequest {
+        let refresh =
+            commit_turso_source_index_generation_via_resident(ClientDbSourceIndexRefreshRequest {
                 import: import.clone(),
                 file_count: import.file_hashes.len().min(u32::MAX as usize) as u32,
                 source_snapshot: source_snapshot.clone(),
-                membership_change_set: membership_change_set.clone(),
-            },
-        )
-        .await?;
+            })
+            .await?;
         db_engine_trace("source-index-refresh-read-model", trace_started);
         let search_document_count = refresh.owner_count as usize;
         Ok(source_index_read_model_report(
@@ -132,42 +127,8 @@ impl ClientDbEngine {
         import: &ClientDbSourceIndexImport,
         projection: &crate::ClientDbLanguageProjection,
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-        membership_change_set: &crate::ClientDbSourceIndexMembershipChangeSet,
     ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
-        persist_language_projection_read_model_at_path(
-            self.db_path(),
-            import,
-            projection,
-            source_snapshot,
-            membership_change_set,
-        )
-        .await
-    }
-
-    /// Persist one parser-owned language projection through an isolated client directory.
-    pub fn persist_language_projection_read_model_from_client_dir(
-        client_dir: impl AsRef<Path>,
-        import: &ClientDbSourceIndexImport,
-        projection: &crate::ClientDbLanguageProjection,
-        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-        membership_change_set: &crate::ClientDbSourceIndexMembershipChangeSet,
-    ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
-        let db_path = Self::turso_path_for_client_dir(client_dir);
-        let import = import.clone();
-        let projection = projection.clone();
-        let source_snapshot = source_snapshot.clone();
-        let membership_change_set = membership_change_set.clone();
-        block_on_db_engine_async(async move {
-            crate::engine::turso_bootstrap::bootstrap_turso_client_db(&db_path).await?;
-            persist_language_projection_read_model_at_path(
-                &db_path,
-                &import,
-                &projection,
-                &source_snapshot,
-                &membership_change_set,
-            )
-            .await
-        })
+        persist_language_projection_read_model_at_path(import, projection, source_snapshot).await
     }
 
     /// Persist stable structural-index graph facts through the active DB Engine backend.
@@ -212,24 +173,18 @@ impl ClientDbEngine {
 }
 
 async fn persist_language_projection_read_model_at_path(
-    db_path: &Path,
     import: &ClientDbSourceIndexImport,
     projection: &crate::ClientDbLanguageProjection,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-    membership_change_set: &crate::ClientDbSourceIndexMembershipChangeSet,
 ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
     let trace_started = std::time::Instant::now();
-    crate::engine::turso_bootstrap::bootstrap_turso_client_db(db_path).await?;
-    let refresh = refresh_turso_source_index_import(
-        db_path,
-        ClientDbSourceIndexRefreshRequest {
+    let refresh =
+        commit_turso_source_index_generation_via_resident(ClientDbSourceIndexRefreshRequest {
             import: import.clone(),
             file_count: import.file_hashes.len().min(u32::MAX as usize) as u32,
             source_snapshot: source_snapshot.clone(),
-            membership_change_set: membership_change_set.clone(),
-        },
-    )
-    .await?;
+        })
+        .await?;
     db_engine_trace("language-projection-source-index-refreshed", trace_started);
     projection.validate()?;
     Ok(source_index_read_model_report(
@@ -382,3 +337,4 @@ fn structural_index_read_model_report(
         search_document_count,
     }
 }
+use crate::engine::turso_source_index::commit_turso_source_index_generation_via_resident;

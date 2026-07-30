@@ -10,6 +10,9 @@ pub use agent_session_registry::{
 pub mod artifact_pointer_store;
 pub mod context_run_mvcc;
 mod dependency_index;
+pub mod global_resident_control;
+pub mod resident_query_performance;
+pub mod workspace_project_resolution;
 pub mod engine;
 mod source_index;
 pub mod storage_contract;
@@ -23,6 +26,11 @@ mod turso_mvcc_keyset;
 pub use turso_mvcc_keyset::{
     TursoMvccEventId, TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey,
 };
+pub use global_resident_control::{
+    GlobalResidentControlReceipt, GlobalResidentEndpoint, GlobalResidentOperation,
+    acquire_global_resident_election, call_global_resident, global_resident_endpoint_path,
+    global_resident_runtime_base, prepare_global_resident_endpoint,
+};
 mod turso_mvcc_maintenance;
 pub mod turso_mvcc_partition;
 mod turso_mvcc_partition_sql;
@@ -31,6 +39,7 @@ mod turso_mvcc_typed;
 pub mod turso_sync_storage;
 mod types;
 mod workspace_db_endpoint;
+pub use workspace_db_endpoint::WorkspaceDbOwnerEndpoint;
 pub mod workspace_db_ipc;
 mod workspace_db_ipc_server;
 pub mod workspace_db_owner_election;
@@ -138,3 +147,4 @@ pub use engine::{
     TursoResidentSelectorRead, WorkspaceDbRegistry, WorkspaceDbRegistryCounters,
     WorkspaceDbWriteFinishMode, WorkspaceDbWriteFinishReceipt,
 };
+pub mod fixture;

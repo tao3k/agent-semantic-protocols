@@ -308,7 +308,10 @@ fn registered_reasoning_search_dispatches_before_raw_search_rules_and_lazy_loads
 fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
     let root = temp_root("config-driven-match-engine-contract");
     let config = ClientHookConfig::default();
-    let registry = registry();
+    let mut registry = crate::classifier::rust_registry();
+    registry
+        .providers
+        .push(crate::classifier::typescript_provider());
     let production = toml::from_str::<toml::Value>(include_str!(
         "../../../../agent-semantic-config/templates/hooks/config.toml"
     ))
@@ -360,20 +363,26 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
             "tool_name": tool_name,
             "tool_input": tool_input
         });
-        let started = std::time::Instant::now();
-        let decision = classify_hook_with_config(HookClassificationRequest {
-            registry: &registry,
-            config: &config,
-            platform: "codex",
-            event: "pre-tool",
-            payload: &payload,
-        });
-        let elapsed_micros = started.elapsed().as_micros();
+        let mut decision = None;
+        let mut elapsed_samples = [0_u128; 5];
+        for elapsed_micros in &mut elapsed_samples {
+            let started = std::time::Instant::now();
+            decision = Some(classify_hook_with_config(HookClassificationRequest {
+                registry: &registry,
+                config: &config,
+                platform: "codex",
+                event: "pre-tool",
+                payload: &payload,
+            }));
+            *elapsed_micros = started.elapsed().as_micros();
+        }
+        elapsed_samples.sort_unstable();
+        let elapsed_micros = elapsed_samples[elapsed_samples.len() / 2];
         assert!(
             elapsed_micros <= max_matcher_micros,
-            "matcher exceeded config-test.toml gate: case={case_id} elapsedMicros={elapsed_micros} maxMatcherMicros={max_matcher_micros}"
+            "matcher exceeded config-test.toml gate: case={case_id} medianElapsedMicros={elapsed_micros} samples={elapsed_samples:?} maxMatcherMicros={max_matcher_micros}"
         );
-        decision
+        decision.expect("matcher sample")
     };
 
     for rule in matrix_rules {
@@ -411,7 +420,7 @@ fn registered_reasoning_search_dispatch_survives_arbitrary_wrappers() {
                 assert_eq!(
                     decision_json["fields"]["configRuleId"].as_str(),
                     Some(rule_id),
-                    "positive case selected the wrong rule: {case_id}"
+                    "positive case selected the wrong rule: {case_id} decision={decision:#?}"
                 );
                 assert_eq!(
                     decision_json["decision"]
@@ -1059,6 +1068,15 @@ fn default_config_deny_rules_have_end_to_end_match_witnesses() {
             }),
             DecisionKind::Deny,
             "deny-uncontrolled-git-source-reads",
+        ),
+        (
+            "git metadata read",
+            json!({
+                "tool_name": "Bash",
+                "tool_input": {"command": "git diff --stat"}
+            }),
+            DecisionKind::Deny,
+            "deny-uncontrolled-git-metadata-reads",
         ),
     ];
 

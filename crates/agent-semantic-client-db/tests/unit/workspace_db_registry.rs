@@ -30,6 +30,20 @@ async fn wrong_workspace_identity_fails_before_database_open() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn finish_loaded_writes_does_not_bootstrap_an_unused_workspace() {
+    let registry = WorkspaceDbRegistry::default();
+
+    registry
+        .finish_loaded_writes(
+            agent_semantic_client_db::WorkspaceDbWriteFinishMode::OwnerDurabilityBoundary,
+        )
+        .await
+        .expect("finish an empty resident registry");
+
+    assert_eq!(registry.counters(), WorkspaceDbRegistryCounters::default());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn member_project_root_reuses_the_canonical_workspace_entry() {
     let _environment = environment_lock();
     let temp = TempDir::new().expect("create member-root tempfile");
@@ -123,6 +137,61 @@ async fn different_workspaces_initialize_independent_entries() {
     assert_eq!(counters.database_open_count, 2);
     assert_eq!(counters.connection_create_count, 4);
     assert_eq!(counters.schema_bootstrap_count, 2);
+    assert_eq!(counters.workspace_lock_retry_count, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn two_hundred_concurrent_sessions_remain_isolated_across_two_workspaces() {
+    let _environment = environment_lock();
+    let temp = TempDir::new().expect("create multi-workspace concurrency tempfile");
+    let state_home = temp.path().join("state");
+    let _state_home = StateHomeGuard::install(&state_home);
+    let (project_root_a, _resolved_a, scope_a) = workspace(temp.path(), "pressure-workspace-a");
+    let (project_root_b, _resolved_b, scope_b) = workspace(temp.path(), "pressure-workspace-b");
+    let registry = Arc::new(WorkspaceDbRegistry::default());
+    let mut leases = tokio::task::JoinSet::new();
+
+    for index in 0..200 {
+        let registry = Arc::clone(&registry);
+        let (project_root, scope) = if index % 2 == 0 {
+            (project_root_a.clone(), scope_a.clone())
+        } else {
+            (project_root_b.clone(), scope_b.clone())
+        };
+        leases.spawn(async move {
+            let session = registry.acquire(project_root, &scope).await?;
+            Ok::<_, String>((
+                scope.workspace_identity,
+                session.workspace_identity().to_owned(),
+                session.client_db_path().to_path_buf(),
+            ))
+        });
+    }
+
+    let mut workspace_a_paths = std::collections::BTreeSet::new();
+    let mut workspace_b_paths = std::collections::BTreeSet::new();
+    while let Some(lease) = leases.join_next().await {
+        let (expected_identity, actual_identity, db_path) = lease
+            .expect("multi-workspace lease task must join")
+            .expect("multi-workspace lease must succeed");
+        assert_eq!(actual_identity, expected_identity);
+        if actual_identity == scope_a.workspace_identity {
+            workspace_a_paths.insert(db_path);
+        } else if actual_identity == scope_b.workspace_identity {
+            workspace_b_paths.insert(db_path);
+        } else {
+            panic!("session escaped both requested workspace identities: {actual_identity}");
+        }
+    }
+
+    assert_eq!(workspace_a_paths.len(), 1);
+    assert_eq!(workspace_b_paths.len(), 1);
+    assert_ne!(workspace_a_paths, workspace_b_paths);
+    let counters = registry.counters();
+    assert_eq!(counters.database_open_count, 2);
+    assert_eq!(counters.connection_create_count, 4);
+    assert_eq!(counters.schema_bootstrap_count, 2);
+    assert_eq!(counters.registry_hit_count, 198);
     assert_eq!(counters.workspace_lock_retry_count, 0);
 }
 

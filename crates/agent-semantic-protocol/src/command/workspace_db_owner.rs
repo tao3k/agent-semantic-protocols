@@ -10,21 +10,30 @@ pub(super) fn run_workspace_db_command(args: &[String]) -> Result<(), String> {
     {
         return Err(usage());
     }
-    let workspace = workspace_arg(&args[2..])?;
-    serve(&workspace)
+    let (workspace, runtime_binary_digest) = workspace_arg(&args[2..])?;
+    serve(&workspace, &runtime_binary_digest)
 }
 
-fn workspace_arg(args: &[String]) -> Result<PathBuf, String> {
+fn workspace_arg(args: &[String]) -> Result<(PathBuf, String), String> {
     let mut workspace = None;
+    let mut runtime_binary_digest = None;
     let mut index = 0;
     while index < args.len() {
-        if args[index] != "--workspace" || workspace.is_some() {
-            return Err(usage());
+        match args[index].as_str() {
+            "--workspace" if workspace.is_none() => {
+                workspace = Some(args.get(index + 1).ok_or_else(usage).map(PathBuf::from)?);
+            }
+            "--runtime-binary-digest" if runtime_binary_digest.is_none() => {
+                runtime_binary_digest = Some(args.get(index + 1).ok_or_else(usage)?.clone());
+            }
+            _ => return Err(usage()),
         }
-        workspace = Some(args.get(index + 1).ok_or_else(usage).map(PathBuf::from)?);
         index += 2;
     }
-    workspace.ok_or_else(usage)
+    Ok((
+        workspace.ok_or_else(usage)?,
+        runtime_binary_digest.ok_or_else(usage)?,
+    ))
 }
 
 use super::workspace_db_checkpoint::{ResidentServiceCheckpointDecision, checkpoint_decision};
@@ -94,7 +103,7 @@ fn cleanup_owned_endpoint(
     }
 }
 
-fn serve(workspace: &Path) -> Result<(), String> {
+fn serve(workspace: &Path, runtime_binary_digest: &str) -> Result<(), String> {
     let resolved = agent_semantic_client_core::state_core::ResolvedState::resolve(workspace)?;
     let runtime_base =
         agent_semantic_client_db::workspace_db_ipc::workspace_db_owner_runtime_base();
@@ -113,10 +122,6 @@ fn serve(workspace: &Path) -> Result<(), String> {
     let runtime = super::workspace_db_runtime::handle()?;
     let bootstrap_started = std::time::Instant::now();
     let registry = std::sync::Arc::new(agent_semantic_client_db::WorkspaceDbRegistry::default());
-    let workspace_session = super::workspace_db_runtime::block_on(
-        registry.bootstrap_workspace(&resolved.workspace.root),
-    )??;
-    let bootstrap_elapsed = bootstrap_started.elapsed();
 
     let owner_epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -134,105 +139,118 @@ fn serve(workspace: &Path) -> Result<(), String> {
         .as_bytes(),
     )
     .value;
-    let owner_artifact = std::env::current_exe()
-        .map_err(|error| format!("failed to resolve workspace DB owner artifact: {error}"))?;
-    let owner_artifact_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&owner_artifact)?.to_string();
+    let runtime_binary_path = std::env::current_exe()
+        .map_err(|error| format!("failed to resolve resident runtime binary: {error}"))?;
     let endpoint = agent_semantic_client_db::workspace_db_ipc::prepare_workspace_db_owner_endpoint(
         &runtime_base,
         resolved.workspace.workspace_id.as_str(),
-        &owner_artifact_digest,
         owner_epoch,
+        std::process::id(),
+        &runtime_binary_path,
+        runtime_binary_digest,
         &binding_token,
     )?;
     agent_semantic_client_db::workspace_db_ipc::remove_stale_workspace_db_owner_socket(
         &owner_election,
         &endpoint,
     )?;
-    let listener = {
-        let _runtime_guard = runtime.enter();
-        agent_semantic_client_db::workspace_db_ipc::bind_workspace_db_owner(&endpoint)?
-    };
     let endpoint_path = resolved
         .paths
         .hooks_dir
         .join("state")
         .join("workspace-db-resident-service-endpoint.v1.json");
-    publish_endpoint(&endpoint_path, &endpoint)?;
-    eprintln!(
-        "[workspace-resident-service-ready] workspaceIdentity={} ownerEpoch={} endpoint={} socket={} bootstrapMicros={} databaseOpens=1 schemaBootstraps=1",
+    let serve_result = runtime.block_on(async {
+        let listener =
+            agent_semantic_client_db::workspace_db_ipc::bind_workspace_db_owner(&endpoint)?;
+        publish_endpoint(&endpoint_path, &endpoint)?;
+        let bootstrap_elapsed = bootstrap_started.elapsed();
+    println!(
+        "[workspace-resident-service-ready] workspaceIdentity={} ownerEpoch={} runtimeBinaryDigest={} transportContractDigest={} endpoint={}",
         endpoint.workspace_identity,
         endpoint.owner_epoch,
-        endpoint_path.display(),
-        endpoint.socket_path,
-        bootstrap_elapsed.as_micros(),
-    );
-    std::io::stderr()
-        .flush()
-        .map_err(|error| format!("failed to flush workspace DB owner receipt: {error}"))?;
-    let last_activity_epoch_seconds =
-        std::sync::Arc::new(std::sync::atomic::AtomicU64::new(now_epoch_seconds()));
-    let (shutdown_sender, shutdown_receiver) = tokio::sync::watch::channel(false);
-    let checkpoint_workspace_root = resolved.workspace.root.clone();
-    let checkpoint_workspace_identity = endpoint.workspace_identity.clone();
-    let checkpoint_activity = std::sync::Arc::clone(&last_activity_epoch_seconds);
-    let checkpoint_session = workspace_session.clone();
-    let checkpoint_interval = configured_duration(
-        "ASP_WORKSPACE_RESIDENT_SERVICE_CHECKPOINT_INTERVAL_MS",
-        DEFAULT_RESIDENT_SERVICE_CHECKPOINT_INTERVAL,
-    );
-    let idle_timeout = configured_duration(
-        "ASP_WORKSPACE_RESIDENT_SERVICE_IDLE_TIMEOUT_MS",
-        DEFAULT_RESIDENT_SERVICE_IDLE_TIMEOUT,
-    );
-    runtime.spawn(async move {
-        let mut interval = tokio::time::interval(checkpoint_interval);
-        interval.tick().await;
-        loop {
+        endpoint.runtime_binary_digest,
+        endpoint.transport_contract_digest,
+        endpoint_path.display()
+        );
+        std::io::stdout()
+            .flush()
+            .map_err(|error| format!("failed to flush workspace DB readiness receipt: {error}"))?;
+        eprintln!(
+            "[workspace-resident-service-ready] workspaceIdentity={} ownerEpoch={} runtimeBinaryDigest={} transportContractDigest={} endpoint={} socket={} bootstrapMicros={} databaseOpens=0 schemaBootstraps=0",
+            endpoint.workspace_identity,
+            endpoint.owner_epoch,
+            endpoint.runtime_binary_digest,
+            endpoint.transport_contract_digest,
+            endpoint_path.display(),
+            endpoint.socket_path,
+            bootstrap_elapsed.as_micros(),
+        );
+        std::io::stderr()
+            .flush()
+            .map_err(|error| format!("failed to flush workspace DB owner receipt: {error}"))?;
+        let last_activity_epoch_seconds =
+            std::sync::Arc::new(std::sync::atomic::AtomicU64::new(now_epoch_seconds()));
+        let (shutdown_sender, shutdown_receiver) = tokio::sync::watch::channel(false);
+        let checkpoint_workspace_root = resolved.workspace.root.clone();
+        let checkpoint_workspace_identity = endpoint.workspace_identity.clone();
+        let checkpoint_activity = std::sync::Arc::clone(&last_activity_epoch_seconds);
+        let checkpoint_registry = std::sync::Arc::clone(&registry);
+        let checkpoint_interval = configured_duration(
+            "ASP_WORKSPACE_RESIDENT_SERVICE_CHECKPOINT_INTERVAL_MS",
+            DEFAULT_RESIDENT_SERVICE_CHECKPOINT_INTERVAL,
+        );
+        let idle_timeout = configured_duration(
+            "ASP_WORKSPACE_RESIDENT_SERVICE_IDLE_TIMEOUT_MS",
+            DEFAULT_RESIDENT_SERVICE_IDLE_TIMEOUT,
+        );
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(checkpoint_interval);
             interval.tick().await;
-            let now = now_epoch_seconds();
-            let last_activity =
-                checkpoint_activity.load(std::sync::atomic::Ordering::Relaxed);
-            let decision = checkpoint_decision(
-                checkpoint_workspace_root.is_dir(),
-                last_activity,
-                now,
-                idle_timeout,
-            );
-            if decision == ResidentServiceCheckpointDecision::Continue {
-                continue;
-            }
-            if let Err(error) = checkpoint_session
-                .finish_writes(
-                    agent_semantic_client_db::WorkspaceDbWriteFinishMode::OwnerDurabilityBoundary,
-                )
-                .await
-            {
-                eprintln!(
-                    "[workspace-resident-service-checkpoint] status=flush-failed workspaceIdentity={} reason={:?} error={error}",
-                    checkpoint_workspace_identity,
-                    decision
+            loop {
+                interval.tick().await;
+                let now = now_epoch_seconds();
+                let last_activity =
+                    checkpoint_activity.load(std::sync::atomic::Ordering::Relaxed);
+                let decision = checkpoint_decision(
+                    checkpoint_workspace_root.is_dir(),
+                    last_activity,
+                    now,
+                    idle_timeout,
                 );
+                if decision == ResidentServiceCheckpointDecision::Continue {
+                    continue;
+                }
+                if let Err(error) = checkpoint_registry
+                    .finish_loaded_writes(
+                        agent_semantic_client_db::WorkspaceDbWriteFinishMode::OwnerDurabilityBoundary,
+                    )
+                    .await
+                {
+                    eprintln!(
+                        "[workspace-resident-service-checkpoint] status=flush-failed workspaceIdentity={} reason={:?} error={error}",
+                        checkpoint_workspace_identity,
+                        decision
+                    );
+                }
+                eprintln!(
+                    "[workspace-resident-service-checkpoint] status=shutdown workspaceIdentity={} reason={:?} idleSeconds={}",
+                    checkpoint_workspace_identity,
+                    decision,
+                    now.saturating_sub(last_activity)
+                );
+                let _ = shutdown_sender.send(true);
+                break;
             }
-            eprintln!(
-                "[workspace-resident-service-checkpoint] status=shutdown workspaceIdentity={} reason={:?} idleSeconds={}",
-                checkpoint_workspace_identity,
-                decision,
-                now.saturating_sub(last_activity)
-            );
-            let _ = shutdown_sender.send(true);
-            break;
-        }
-    });
-    let serve_result = super::workspace_db_runtime::block_on(
+        });
         agent_semantic_client_db::workspace_db_ipc::serve_workspace_db_session_until_shutdown(
             &listener,
             &endpoint,
             registry,
             last_activity_epoch_seconds,
             shutdown_receiver,
-        ),
-    )?;
+        )
+        .await
+    });
     let cleanup_result = cleanup_owned_endpoint(&endpoint_path, &endpoint);
     serve_result?;
     cleanup_result
@@ -286,34 +304,11 @@ fn publish_endpoint(
     Ok(())
 }
 
-/*
-    use super::{ResidentServiceCheckpointDecision, checkpoint_decision};
-
-    #[test]
-    fn existing_active_workspace_continues() {
-        assert_eq!(
-            checkpoint_decision(true, 1_000, 1_100, std::time::Duration::from_secs(3_600),),
-            ResidentServiceCheckpointDecision::Continue
-        );
-    }
-
-    #[test]
-    fn missing_workspace_shuts_down_immediately() {
-        assert_eq!(
-            checkpoint_decision(false, 1_000, 1_001, std::time::Duration::from_secs(3_600),),
-            ResidentServiceCheckpointDecision::ShutdownWorkspaceMissing
-        );
-    }
-
-    #[test]
-    fn one_hour_idle_workspace_shuts_down() {
-        assert_eq!(
-            checkpoint_decision(true, 1_000, 4_600, std::time::Duration::from_secs(3_600),),
-            ResidentServiceCheckpointDecision::ShutdownIdle
-        );
-    }
-*/
-
 fn usage() -> String {
-    "usage: asp workspace-db resident serve --workspace <project-root>".to_owned()
+    "usage: asp workspace-db resident serve --workspace <project-root> --runtime-binary-digest <blake3-digest>"
+        .to_owned()
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/workspace_db_owner.rs"]
+mod tests;

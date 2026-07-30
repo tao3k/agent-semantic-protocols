@@ -264,7 +264,7 @@ reasonKind = "raw-broad-search"
 message = "Uncontrolled source search is denied. Route the evidence task to the resident ASP Explore agent."
 
 [rules.match]
-argvPrefixAny = [["rg"], ["ag"], ["grep"], ["fd"], ["find"], ["git", "grep"], ["git", "ls-files"], ["git", "ls-tree"]]
+argvPrefixAny = [["rg"], ["ag"], ["grep"], ["fd"], ["find"], ["git", "grep"], ["git", "ls-files"]]
 
 [[rules]]
 id = "allow-bounded-json-projection"
@@ -440,11 +440,26 @@ commandContainsAny = ["readFileSync(", ".readFile(", "readFile("]
 argvRegisteredSourceFile = true
 
 [[rules]]
+id = "deny-uncontrolled-git-metadata-reads"
+priority = 10002
+decision = "deny"
+reasonKind = "raw-broad-search"
+message = "Git metadata and tree reads are denied in the main agent. Route the exact command to the resident ASP Testing agent."
+
+[rules.dispatch]
+transport = "resident-agent"
+agent = "testing"
+receiptKind = "asp-testing-execution-v1"
+
+[rules.match]
+argvPrefixAny = [["git", "show", "--stat"], ["git", "diff", "--stat"], ["git", "diff", "--name-only"], ["git", "diff", "--check"], ["git", "ls-tree"]]
+
+[[rules]]
 id = "deny-uncontrolled-git-source-reads"
 priority = 10000
 decision = "deny"
-reasonKind = "raw-broad-search"
-message = "Git object and diff reads are denied in the main agent. Route the exact command to the resident ASP Testing agent."
+reasonKind = "bulk-source-dump"
+message = "Git object and diff source materialization is denied in the main agent. Route the exact command to the resident ASP Testing agent."
 
 [rules.dispatch]
 transport = "resident-agent"

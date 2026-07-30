@@ -54,7 +54,8 @@ pub enum MemorySearchResolutionState {
     LiveRelocated,
     Ambiguous,
     KindMismatch,
-    Missing,
+    OwnerMissing,
+    ItemMissing,
     GenerationMismatch,
 }
 

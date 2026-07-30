@@ -1,0 +1,146 @@
+#+TITLE: Evidence Obligation Planning
+#+OPTIONS: toc:2
+
+* Decision
+
+SearchLoop requires an Evidence Query Planner, not a larger node ranker.  The
+planner compiles intent and contract requirements into typed evidence
+obligations, constructs bounded acquisition plans, and leaves closure judgment
+to an independent validator.
+
+Graph ranking is an optimization input.  It cannot define which evidence is
+required, whether alternatives are sufficient, or whether the loop may close.
+
+The planner's online retrieval refinement is defined by
+[[file:00.06-clause-first-retrieval-and-graph-on-demand.org][Clause-first
+retrieval and graph-on-demand]].  Its logical query unit is defined by
+[[file:00.07-bound-evidence-clause-algebra.org][Bound evidence clause algebra]].
+
+The shared obligation and plan schema MUST be defined before any Python or
+provider-specific implementation.  A future =asp-graph-turbo= Python refactor
+implements or accelerates this contract; it does not own the contract.
+
+* Obligation algebra
+
+The initial shared algebra SHOULD represent:
+
+- owner and project identity;
+- symbol, item, or exact selector identity;
+- dependency and reachability facts;
+- policy findings and their scope;
+- test or failure reachability;
+- provider capability and route identity;
+- source snapshot freshness;
+- contradiction resolution;
+- exact materialization requirements.
+
+Obligations compose through typed =all=, =any=, and dependency nodes.
+
+For =all(children)=, every child must be discharged.  For =any(children)=, one
+child may discharge the parent only through a declared sufficiency rule.
+Ranking a branch first does not make it sufficient.
+
+An obligation carries stable identity, provenance requirement, freshness
+requirement, acceptable evidence kinds, budget class, and terminal behavior
+when it cannot be discharged.
+
+* Compilation boundary
+
+The obligation compiler consumes:
+
+- normalized intent;
+- explicit owner, selector, failure, dependency, or changed-file anchors;
+- applicable RFC and shared-schema requirements;
+- provider capabilities;
+- workspace and source generation identity;
+- policy overlay;
+- user-supplied budget or risk constraints.
+
+It emits an obligation graph plus a trace from every obligation to the intent or
+contract clause that introduced it.  It MUST NOT add a hidden closure
+requirement or silently drop an expensive obligation.
+
+* Evidence plan
+
+An evidence plan contains:
+
+- obligation identities it intends to discharge;
+- ordered, batched, or independent branches;
+- action preconditions;
+- provider and projection requirements;
+- expected evidence kinds;
+- bounded cost estimates;
+- branch and continuation identities;
+- fallback terminal states;
+- canonical transcript order.
+
+The plan is a proposal.  Execution may return different evidence, a typed miss,
+stale state, provider block, contradiction, or budget exhaustion.
+
+* Planner, scheduler, and validator separation
+
+The planner selects a sound plan from the current frontier.  The scheduler
+executes enabled branches serially or concurrently.  The validator checks
+freshness, provenance, contradiction, obligation discharge, and closure.
+
+These components MUST NOT share an unchecked mutable =closed= flag.
+
+A learned planner may choose a cheaper branch.  It may not:
+
+- redefine obligation sufficiency;
+- suppress a required branch without a proof of discharge;
+- treat command success as evidence success;
+- convert a provider failure into absence of a fact;
+- close from rank score or self-reported confidence.
+
+* Deterministic parallel projection
+
+Parallel execution is allowed when branch independence has been established.
+Branch completion order is runtime detail.  The model-facing transcript uses
+stable plan and branch identities and a canonical ordering.
+
+Canonical projection improves cache stability but cannot hide timing-dependent
+conflicts.  Incompatible generations or contradictory evidence produce a
+conflict transition.
+
+* Closure validation
+
+Closure requires:
+
+- every required obligation discharged by compatible, fresh evidence;
+- every selected =any= branch carrying its sufficiency witness;
+- no unresolved contradiction;
+- exact-evidence obligations materialized through parser-owned selectors;
+- the terminal receipt bound to the current obligation graph, workspace,
+  snapshot, provider contracts, and policy overlay.
+
+An empty scheduler queue or exhausted plan is not closure.
+
+* Typed non-success
+
+Planning and execution may terminate as:
+
+- =needs-input= for unresolved user choice;
+- =blocked= for unavailable owner, provider, or external state;
+- =budget-exhausted= with the remaining obligation frontier;
+- =stale= with required rebase identity;
+- =contradictory= with the conflicting evidence set;
+- =no-sound-plan= with the unsupported obligations.
+
+These are protocol results, not stderr-only failures.
+
+* Acceptance receipts
+
+Representative-project receipts record:
+
+- obligation count and graph shape;
+- plan branches and actual branch execution count;
+- provider and model calls;
+- evidence bytes and model-facing projected bytes;
+- closure or typed non-success reason;
+- obligations incorrectly omitted or accepted;
+- cold and warm latency;
+- deterministic projection digest;
+- counterexample and adversarial validation results.
+
+Optimization is accepted only after closure quality is unchanged or improved.

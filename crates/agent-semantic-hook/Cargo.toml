@@ -5,6 +5,9 @@ edition = "2024"
 license = "MIT"
 description = "Root semantic agent hook runtime for provider manifests and project activations."
 
+[build-dependencies]
+serde_json.workspace = true
+
 [dependencies]
 agent-semantic-command-match = { path = "../agent-semantic-command-match" }
 agent-semantic-config = { path = "../agent-semantic-config" }

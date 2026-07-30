@@ -2,9 +2,7 @@
 
 use std::path::Path;
 
-use agent_semantic_client_core::{SemanticSchemaId, SemanticSchemaVersion};
 use agent_semantic_client_db::{
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbEngine,
     ClientDbLanguageProjection, ClientDbLanguageProjectionImportRequest,
     source_index_import_from_language_projection,
 };
@@ -44,11 +42,6 @@ fn import_language_projection_inner(
     projection: ClientDbLanguageProjection,
 ) -> Result<LanguageProjectionImportReport, String> {
     projection.validate()?;
-    let db_engine = ClientDbEngine::resolve(project_root)?;
-    let client_dir = db_engine.client_dir().to_path_buf();
-    let db_session = ClientDbEngine::open_write_session_client_dir(&client_dir)?;
-    let schema_id = SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID);
-    let schema_version = SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION);
     let registry_fingerprint = language_projection_registry_fingerprint(&projection);
     let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
         projection
@@ -76,31 +69,17 @@ fn import_language_projection_inner(
         })?;
     let import = prepared.source_index;
     let source_snapshot = prepared.source_snapshot;
-    let membership_change_set = prepared.membership_change_set;
-    if db_session
-        .reusable_source_index_generation(
-            project_root,
-            &schema_id,
-            &schema_version,
-            &import.file_hashes,
-        )?
-        .is_some()
-    {
-        return Ok(LanguageProjectionImportReport {
-            reused: true,
-            node_locator_count: 0,
-        });
-    }
-    let report = ClientDbEngine::persist_language_projection_read_model_from_client_dir(
-        client_dir,
-        &import,
-        &projection,
-        &source_snapshot,
-        &membership_change_set,
-    )?;
+    let report =
+        agent_semantic_client_db::workspace_db_ipc::commit_source_index_generation_via_resident(
+            agent_semantic_client_db::ClientDbSourceIndexRefreshRequest {
+                file_count: import.file_hashes.len().min(u32::MAX as usize) as u32,
+                import,
+                source_snapshot,
+            },
+        )?;
     Ok(LanguageProjectionImportReport {
-        reused: false,
-        node_locator_count: report.node_locator_count,
+        reused: report.reused_generation,
+        node_locator_count: report.owner_count as usize + report.selector_count as usize,
     })
 }
 

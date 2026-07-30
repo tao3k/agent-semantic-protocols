@@ -1,14 +1,11 @@
 //! Provider workspace-scope packet execution and parsing.
 
-use std::collections::BTreeMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use agent_semantic_client_core::{
     ClientMethod, ClientRequest, LanguageId, ProviderId, ProviderRegistrySnapshot,
-    ResolvedProvider, project_child_path, provider_ignores_path, provider_supports_source_file,
-    scoped_child_path,
+    ResolvedProvider, scoped_child_path,
 };
 use agent_semantic_provider_transport::ProviderProcessLimits;
 use serde::Deserialize;
@@ -54,116 +51,9 @@ pub struct ProviderWorkspaceScopePathFile {
     pub provider_id: ProviderId,
 }
 
-pub fn collect_provider_source_scope_files(
-    project_root: &Path,
-    snapshot: &ProviderRegistrySnapshot,
-    limit: usize,
-) -> Result<Vec<ProviderWorkspaceScopePathFile>, String> {
-    if snapshot.providers.is_empty() {
-        return Err(missing_provider_scope_message(project_root));
-    }
-    let mut files = BTreeMap::new();
-    for provider in &snapshot.providers {
-        collect_provider_source_scope_files_for_provider(
-            project_root,
-            provider,
-            limit,
-            &mut files,
-        )?;
-        if files.len() >= limit {
-            break;
-        }
-    }
-    if files.is_empty() {
-        return Err(format!(
-            "missing provider source-scope facts: activated providers exposed no source/config files for {}; run `asp install plugin --codex .` or refresh the language provider workspace facts",
-            project_root.display()
-        ));
-    }
-    Ok(files.into_values().take(limit).collect())
-}
-
-/// Collect the source-scope facts owned by one typed provider target.
-///
-/// This preserves the original registry snapshot as the admission evidence and
-/// derives a required-provider view from it. Query/materialization callers must
-/// not be blocked by unrelated providers in the same registry snapshot.
-pub fn collect_target_provider_source_scope_files(
-    project_root: &Path,
-    snapshot: &ProviderRegistrySnapshot,
-    language_id: &agent_semantic_client_core::LanguageId,
-    provider_id: &agent_semantic_client_core::ProviderId,
-    limit: usize,
-) -> Result<Vec<ProviderWorkspaceScopePathFile>, String> {
-    let provider = target_provider_by_id(snapshot, provider_id)?;
-    if &provider.language_id != language_id {
-        return Err(format!(
-            "target provider is not present in registry evidence: languageId={} providerId={}",
-            language_id.as_str(),
-            provider_id.as_str()
-        ));
-    }
-    collect_source_scope_files_for_target_provider(project_root, provider, limit)
-}
-
-/// Collect source-scope facts for one globally unique provider id.
-///
-/// Provider-id routing is intentionally independent of unrelated providers,
-/// while a missing or ambiguous requested provider still fails closed.
-pub fn collect_target_provider_source_scope_files_by_provider_id(
-    project_root: &Path,
-    snapshot: &ProviderRegistrySnapshot,
-    provider_id: &agent_semantic_client_core::ProviderId,
-    limit: usize,
-) -> Result<Vec<ProviderWorkspaceScopePathFile>, String> {
-    let provider = target_provider_by_id(snapshot, provider_id)?;
-    collect_source_scope_files_for_target_provider(project_root, provider, limit)
-}
-
-fn target_provider_by_id<'a>(
-    snapshot: &'a ProviderRegistrySnapshot,
-    provider_id: &agent_semantic_client_core::ProviderId,
-) -> Result<&'a agent_semantic_client_core::ResolvedProvider, String> {
-    let mut providers = snapshot
-        .providers
-        .iter()
-        .filter(|provider| &provider.provider_id == provider_id);
-    let provider = providers.next().ok_or_else(|| {
-        format!(
-            "target provider is not present in registry evidence: providerId={}",
-            provider_id.as_str()
-        )
-    })?;
-    if providers.next().is_some() {
-        return Err(format!(
-            "target provider identity is ambiguous in registry evidence: providerId={}",
-            provider_id.as_str()
-        ));
-    }
-    Ok(provider)
-}
-
-fn collect_source_scope_files_for_target_provider(
-    project_root: &Path,
-    provider: &agent_semantic_client_core::ResolvedProvider,
-    limit: usize,
-) -> Result<Vec<ProviderWorkspaceScopePathFile>, String> {
-    let mut files = BTreeMap::new();
-    collect_provider_source_scope_files_for_provider(project_root, provider, limit, &mut files)?;
-    if files.is_empty() {
-        return Err(format!(
-            "target provider exposed no source-scope facts: languageId={} providerId={} projectRoot={}",
-            provider.language_id.as_str(),
-            provider.provider_id.as_str(),
-            project_root.display()
-        ));
-    }
-    Ok(files.into_values().take(limit).collect())
-}
-
 pub fn provider_workspace_scope(
-    project_root: &Path,
     provider: &ResolvedProvider,
+    project_root: &Path,
     package_root: &str,
 ) -> Result<ProviderWorkspaceScope, String> {
     let request = ClientRequest::new(ClientMethod::Search, project_root.to_path_buf())
@@ -205,14 +95,13 @@ pub fn provider_workspace_scope_files(
     package_root_path: &Path,
 ) -> Result<ProviderWorkspaceScopeFiles, String> {
     let ProviderWorkspaceScope::Supported(packet) =
-        provider_workspace_scope(project_root, provider, package_root)?
+        provider_workspace_scope(provider, project_root, package_root)?
     else {
         return Ok(ProviderWorkspaceScopeFiles::Unsupported);
     };
     Ok(ProviderWorkspaceScopeFiles::Supported(
         provider_workspace_scope_files_from_packet(
             project_root,
-            provider,
             package_root_path,
             packet,
         ),
@@ -222,7 +111,6 @@ pub fn provider_workspace_scope_files(
 #[must_use]
 pub fn provider_workspace_scope_files_from_packet(
     project_root: &Path,
-    provider: &ResolvedProvider,
     package_root_path: &Path,
     packet: ProviderWorkspaceScopePacket,
 ) -> Vec<ProviderWorkspaceScopePathFile> {
@@ -235,13 +123,11 @@ pub fn provider_workspace_scope_files_from_packet(
                 .or_else(|| {
                     scoped_child_path(project_root, &file.path).filter(|path| path.is_file())
                 })?;
-            (path.is_file() && !provider_ignores_path(project_root, provider, &path)).then_some(
-                ProviderWorkspaceScopePathFile {
-                    path,
-                    language_id: file.language_id,
-                    provider_id: file.provider_id,
-                },
-            )
+            path.is_file().then_some(ProviderWorkspaceScopePathFile {
+                path,
+                language_id: file.language_id,
+                provider_id: file.provider_id,
+            })
         })
         .collect()
 }
@@ -303,173 +189,6 @@ pub fn provider_workspace_scope_from_stdout(
 
 fn parse_workspace_scope_packet(line: &str) -> Option<RawProviderWorkspaceScopePacket> {
     serde_json::from_str::<RawProviderWorkspaceScopePacket>(line).ok()
-}
-
-fn collect_provider_source_scope_files_for_provider(
-    project_root: &Path,
-    provider: &ResolvedProvider,
-    limit: usize,
-    files: &mut BTreeMap<PathBuf, ProviderWorkspaceScopePathFile>,
-) -> Result<(), String> {
-    let package_roots = if provider.package_roots.is_empty() {
-        vec![".".to_string()]
-    } else {
-        provider.package_roots.clone()
-    };
-    let mut workspace_scope_supported = false;
-    for package_root in package_roots {
-        if files.len() >= limit {
-            break;
-        }
-        let Some(package_root_path) = project_child_path(project_root, &package_root) else {
-            continue;
-        };
-        match provider_workspace_scope_files(
-            project_root,
-            provider,
-            &package_root,
-            &package_root_path,
-        )? {
-            ProviderWorkspaceScopeFiles::Supported(provider_files) => {
-                workspace_scope_supported = true;
-                insert_provider_scope_files(files, provider_files, limit);
-            }
-            ProviderWorkspaceScopeFiles::Unsupported => {
-                if !workspace_scope_supported {
-                    collect_provider_manifest_scope_files(
-                        project_root,
-                        provider,
-                        &package_root_path,
-                        limit,
-                        files,
-                    )?;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn collect_provider_manifest_scope_files(
-    project_root: &Path,
-    provider: &ResolvedProvider,
-    package_root: &Path,
-    limit: usize,
-    files: &mut BTreeMap<PathBuf, ProviderWorkspaceScopePathFile>,
-) -> Result<(), String> {
-    collect_provider_config_files(project_root, provider, package_root, limit, files);
-    for source_root in &provider.source_roots {
-        if files.len() >= limit {
-            break;
-        }
-        let Some(source_root_path) = scoped_child_path(package_root, source_root) else {
-            continue;
-        };
-        collect_provider_source_files(project_root, provider, &source_root_path, limit, files)?;
-    }
-    Ok(())
-}
-
-fn collect_provider_config_files(
-    project_root: &Path,
-    provider: &ResolvedProvider,
-    package_root: &Path,
-    limit: usize,
-    files: &mut BTreeMap<PathBuf, ProviderWorkspaceScopePathFile>,
-) {
-    for config_file in &provider.config_files {
-        if files.len() >= limit {
-            return;
-        }
-        let Some(path) = scoped_child_path(package_root, config_file) else {
-            continue;
-        };
-        if path.is_file() && !provider_ignores_path(project_root, provider, &path) {
-            insert_provider_file(files, provider, path);
-        }
-    }
-}
-
-fn collect_provider_source_files(
-    project_root: &Path,
-    provider: &ResolvedProvider,
-    dir: &Path,
-    limit: usize,
-    files: &mut BTreeMap<PathBuf, ProviderWorkspaceScopePathFile>,
-) -> Result<(), String> {
-    if files.len() >= limit || !dir.is_dir() || provider_ignores_path(project_root, provider, dir) {
-        return Ok(());
-    }
-    let mut entries = fs::read_dir(dir)
-        .map_err(|error| {
-            format!(
-                "failed to read provider scope dir {}: {error}",
-                dir.display()
-            )
-        })?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| {
-            format!(
-                "failed to read provider scope entry under {}: {error}",
-                dir.display()
-            )
-        })?;
-    entries.sort_by_key(|entry| entry.path());
-    for entry in entries {
-        if files.len() >= limit {
-            break;
-        }
-        let path = entry.path();
-        if provider_ignores_path(project_root, provider, &path) {
-            continue;
-        }
-        let file_type = entry.file_type().map_err(|error| {
-            format!(
-                "failed to inspect provider scope path {}: {error}",
-                path.display()
-            )
-        })?;
-        if file_type.is_dir() {
-            collect_provider_source_files(project_root, provider, &path, limit, files)?;
-        } else if file_type.is_file() && provider_supports_source_file(provider, &path) {
-            insert_provider_file(files, provider, path);
-        }
-    }
-    Ok(())
-}
-
-fn insert_provider_scope_files(
-    files: &mut BTreeMap<PathBuf, ProviderWorkspaceScopePathFile>,
-    provider_files: Vec<ProviderWorkspaceScopePathFile>,
-    limit: usize,
-) {
-    for file in provider_files {
-        files.entry(file.path.clone()).or_insert(file);
-        if files.len() >= limit {
-            break;
-        }
-    }
-}
-
-fn insert_provider_file(
-    files: &mut BTreeMap<PathBuf, ProviderWorkspaceScopePathFile>,
-    provider: &ResolvedProvider,
-    path: PathBuf,
-) {
-    files
-        .entry(path.clone())
-        .or_insert_with(|| ProviderWorkspaceScopePathFile {
-            path,
-            language_id: provider.language_id.clone(),
-            provider_id: provider.provider_id.clone(),
-        });
-}
-
-fn missing_provider_scope_message(project_root: &Path) -> String {
-    format!(
-        "missing provider source-scope facts: no activated language providers for {}; run `asp install plugin --codex .` so language harnesses can expose workspace coverage to the source index",
-        project_root.display()
-    )
 }
 
 #[derive(Debug, Deserialize)]

@@ -74,11 +74,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
     })
     .expect("build source-index Turso read-model import");
     let source_index_report = engine
-        .persist_source_index_read_model(
-            &source_index_import,
-            &source_snapshot,
-            &agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
-        )
+        .persist_source_index_read_model(&source_index_import, &source_snapshot)
         .await
         .expect("persist source-index read-model through DB Engine facade");
     assert_eq!(source_index_report.search_document_count, 1);

@@ -235,7 +235,7 @@ fn default_template_round_trips_through_config_parser() {
         .expect("TOML projection matcher");
     assert_eq!(toml_projection.binary, "yq");
     assert_eq!(toml_projection.optional_subcommand_any, ["eval", "e"]);
-    assert_eq!(config.rules.len(), 16);
+    assert_eq!(config.rules.len(), 17);
     assert_eq!(
         config
             .rules
@@ -258,6 +258,7 @@ fn default_template_round_trips_through_config_parser() {
             "deny-uncontrolled-source-materialization-commands",
             "deny-uncontrolled-python-inline-source-materialization",
             "deny-uncontrolled-javascript-inline-source-materialization",
+            "deny-uncontrolled-git-metadata-reads",
             "deny-uncontrolled-git-source-reads",
         ]
     );

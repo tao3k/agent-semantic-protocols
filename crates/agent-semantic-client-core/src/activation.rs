@@ -35,10 +35,8 @@ pub struct ResolvedProvider {
     pub runtime_command_argv: Option<Vec<String>>,
     pub runtime_profile_status: Option<RuntimeProfileStatus>,
     pub package_roots: Vec<String>,
-    pub source_roots: Vec<String>,
     pub config_files: Vec<String>,
     pub source_extensions: Vec<String>,
-    pub ignored_path_prefixes: Vec<String>,
     pub search_capabilities: agent_semantic_hook::ProviderSearchCapabilities,
     pub query_pack_descriptor: agent_semantic_hook::ProviderQueryPackDescriptor,
     pub semantic_facts_descriptor: Option<agent_semantic_hook::ProviderSemanticFactsDescriptor>,
@@ -106,10 +104,8 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
             runtime_command_argv: None,
             runtime_profile_status: None,
             package_roots: provider.package_roots.clone(),
-            source_roots: provider.source_roots.clone(),
             config_files: provider.config_files.clone(),
             source_extensions: provider.source_extensions.clone(),
-            ignored_path_prefixes: provider.ignored_path_prefixes.clone(),
             search_capabilities: provider.search_capabilities.clone(),
             query_pack_descriptor: provider.query_pack_descriptor.clone(),
             semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
@@ -282,7 +278,7 @@ fn append_provider_scope_dirs(
     };
     for package_root in package_roots {
         insert_existing_scope_dir(project_root, &project_root.join(&package_root), dirs);
-        for source_root in &provider.source_roots {
+        for source_root in &provider.package_roots {
             insert_existing_scope_dir(
                 project_root,
                 &project_root.join(&package_root).join(source_root),
@@ -336,15 +332,11 @@ fn provider_fingerprint(provider: &ResolvedProvider) -> String {
                 .unwrap_or_default()
         ),
         format!("packageRoots={}", provider.package_roots.join("\u{1f}")),
-        format!("sourceRoots={}", provider.source_roots.join("\u{1f}")),
+        format!("packageRoots={}", provider.package_roots.join("\u{1f}")),
         format!("configFiles={}", provider.config_files.join("\u{1f}")),
         format!(
             "sourceExtensions={}",
             provider.source_extensions.join("\u{1f}")
-        ),
-        format!(
-            "ignoredPathPrefixes={}",
-            provider.ignored_path_prefixes.join("\u{1f}")
         ),
         format!(
             "searchCapabilities={}",

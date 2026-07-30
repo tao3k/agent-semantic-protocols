@@ -21,27 +21,6 @@ fn workspace_db_schema_contract_marker() -> String {
     )
 }
 
-async fn workspace_db_schema_is_current(connection: &turso::Connection) -> Result<bool, String> {
-    let mut rows = connection
-        .query(
-            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1 LIMIT 1",
-            (WORKSPACE_DB_SCHEMA_RECEIPT_TABLE,),
-        )
-        .await
-        .map_err(|error| format!("failed to inspect workspace DB schema receipt: {error}"))?;
-    let Some(row) = rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to read workspace DB schema receipt: {error}"))?
-    else {
-        return Ok(false);
-    };
-    let sql = row
-        .get::<String>(0)
-        .map_err(|error| format!("failed to decode workspace DB schema receipt: {error}"))?;
-    Ok(sql.contains(&workspace_db_schema_contract_marker()))
-}
-
 async fn publish_workspace_db_schema_receipt(connection: &turso::Connection) -> Result<(), String> {
     connection
         .execute(
@@ -67,9 +46,6 @@ async fn publish_workspace_db_schema_receipt(connection: &turso::Connection) -> 
 pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
     connection: &turso::Connection,
 ) -> Result<(), String> {
-    if workspace_db_schema_is_current(connection).await? {
-        return Ok(());
-    }
     for statement in [
         "CREATE TABLE IF NOT EXISTS asp_source_index_scope_v1 (
             project_root TEXT NOT NULL,

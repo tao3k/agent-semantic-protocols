@@ -501,12 +501,16 @@ fn is_digest_addressed_protocol_binary(
     identity: &Path,
     artifact_root: &Path,
 ) -> Result<bool, String> {
-    let artifact_root = fs::canonicalize(artifact_root).map_err(|error| {
-        format!(
-            "failed to resolve protocol artifact root {}: {error}",
-            artifact_root.display()
-        )
-    })?;
+    let artifact_root = match fs::canonicalize(artifact_root) {
+        Ok(artifact_root) => artifact_root,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => {
+            return Err(format!(
+                "failed to resolve protocol artifact root {}: {error}",
+                artifact_root.display()
+            ));
+        }
+    };
     let Ok(relative) = identity.strip_prefix(&artifact_root) else {
         return Ok(false);
     };

@@ -18,10 +18,11 @@ use tokio::net::UnixStream;
 
 pub use crate::workspace_db_endpoint::{
     WorkspaceDbOwnerEndpoint, bind_workspace_db_owner, prepare_workspace_db_owner_endpoint,
-    workspace_db_owner_runtime_base,
+    workspace_db_owner_runtime_base, workspace_db_owner_transport_contract_digest,
 };
 pub use crate::workspace_db_owner_election::{
-    remove_stale_workspace_db_owner_socket, try_acquire_workspace_db_owner_election,
+    WorkspaceDbOwnerRetirement, remove_stale_workspace_db_owner_socket,
+    try_acquire_workspace_db_owner_election, try_retire_workspace_db_owner_endpoint,
 };
 
 const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
@@ -31,13 +32,53 @@ fn workspace_db_ipc_read_lane_capacity() -> usize {
         .map(std::num::NonZeroUsize::get)
         .unwrap_or(1)
 }
+
+pub async fn connect_workspace_db_owner_session(
+    project_root: &std::path::Path,
+) -> Result<WorkspaceDbIpcSession, String> {
+    let resolved = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?;
+    let endpoint_path = resolved
+        .paths
+        .hooks_dir
+        .join("state")
+        .join("workspace-db-resident-service-endpoint.v1.json");
+    let bytes = tokio::fs::read(&endpoint_path).await.map_err(|error| {
+        format!(
+            "workspace resident endpoint is unavailable for {} at {}: {error}",
+            resolved.workspace.workspace_id,
+            endpoint_path.display()
+        )
+    })?;
+    let endpoint: WorkspaceDbOwnerEndpoint = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "invalid workspace resident endpoint {}: {error}",
+            endpoint_path.display()
+        )
+    })?;
+    endpoint.validate_for_workspace(resolved.workspace.workspace_id.as_str())?;
+    Ok(WorkspaceDbIpcSession::new(endpoint))
+}
+
+pub fn commit_source_index_generation_via_resident(
+    request: crate::ClientDbSourceIndexRefreshRequest,
+) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
+    crate::engine::facade::block_on_db_engine_async(async move {
+        let project_root = request.import.project_root.clone();
+        let session = connect_workspace_db_owner_session(&project_root).await?;
+        session.commit_source_index_generation(&request).await
+    })
+}
 /// Typed operation accepted by the first owner transport slice.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum WorkspaceDbIpcOperation {
     Health,
+    Shutdown,
     ReadSourceIndex {
         request: WorkspaceDbSourceIndexLookupRequest,
+    },
+    CommitSourceIndexGeneration {
+        request: crate::ClientDbSourceIndexRefreshRequest,
     },
     WriteProviderIncrementalOwner {
         request: ProviderIncrementalOwnerWrite,
@@ -78,6 +119,7 @@ pub struct WorkspaceDbIpcRequest {
     pub schema_id: String,
     pub schema_version: String,
     pub workspace_identity: String,
+    pub transport_contract_digest: String,
     pub owner_epoch: u64,
     pub binding_token: String,
     pub request_id: String,
@@ -89,8 +131,12 @@ pub struct WorkspaceDbIpcRequest {
 #[serde(tag = "state", rename_all = "kebab-case")]
 pub enum WorkspaceDbIpcResult {
     Healthy,
+    ShutdownAccepted,
     SourceIndex {
         lookup: ClientDbSourceIndexLookupResult,
+    },
+    SourceIndexGeneration {
+        receipt: crate::ClientDbSourceIndexRefreshReport,
     },
     ProviderIncrementalOwner {
         receipt: ProviderIncrementalWriteReceipt,
@@ -140,6 +186,7 @@ pub struct WorkspaceDbIpcResponse {
     pub schema_id: String,
     pub schema_version: String,
     pub workspace_identity: String,
+    pub transport_contract_digest: String,
     pub owner_epoch: u64,
     pub request_id: String,
     pub result: WorkspaceDbIpcResult,
@@ -203,6 +250,7 @@ impl WorkspaceDbIpcSession {
             schema_id: WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID.to_owned(),
             schema_version: WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
             workspace_identity: self.endpoint.workspace_identity.clone(),
+            transport_contract_digest: self.endpoint.transport_contract_digest.clone(),
             owner_epoch: self.endpoint.owner_epoch,
             binding_token: self.endpoint.binding_token.clone(),
             request_id: request_id.clone(),
@@ -264,6 +312,12 @@ impl WorkspaceDbIpcSession {
                 self.endpoint.workspace_identity, response.workspace_identity
             ));
         }
+        if response.transport_contract_digest != self.endpoint.transport_contract_digest {
+            return Err(format!(
+                "workspace owner IPC response transport_contract_digest mismatch: expected {:?}, got {:?}",
+                self.endpoint.transport_contract_digest, response.transport_contract_digest
+            ));
+        }
         if response.owner_epoch != self.endpoint.owner_epoch {
             return Err(format!(
                 "workspace owner IPC response owner_epoch mismatch: expected {}, got {}",
@@ -286,11 +340,51 @@ impl WorkspaceDbIpcSession {
         self.endpoint.workspace_identity.as_str()
     }
 
+    /// Digest of the typed transport contract bound to this resident owner.
+    pub fn transport_contract_digest(&self) -> &str {
+        self.endpoint.transport_contract_digest.as_str()
+    }
+
+    /// Epoch of the resident owner that accepted this IPC session.
+    pub fn owner_epoch(&self) -> u64 {
+        self.endpoint.owner_epoch
+    }
+
+    /// Process that owns the resident endpoint.
+    pub fn owner_pid(&self) -> u32 {
+        self.endpoint.owner_pid
+    }
+
+    /// Immutable ASP artifact used to start the resident.
+    pub fn runtime_binary_path(&self) -> &str {
+        &self.endpoint.runtime_binary_path
+    }
+
+    /// Content digest of the ASP artifact used to start the resident.
+    pub fn runtime_binary_digest(&self) -> &str {
+        &self.endpoint.runtime_binary_digest
+    }
+
     pub async fn health(&self) -> Result<(), String> {
-        match self.call_operation(WorkspaceDbIpcOperation::Health).await? {
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            self.call_operation(WorkspaceDbIpcOperation::Health),
+        )
+        .await
+        .map_err(|_| "workspace resident DB service health exceeded 50ms".to_owned())??;
+        match result {
             WorkspaceDbIpcResult::Healthy => Ok(()),
             result => Err(format!(
                 "workspace resident DB service returned an unexpected health result: {result:?}"
+            )),
+        }
+    }
+
+    pub async fn shutdown(&self) -> Result<(), String> {
+        match self.call_operation(WorkspaceDbIpcOperation::Shutdown).await? {
+            WorkspaceDbIpcResult::ShutdownAccepted => Ok(()),
+            result => Err(format!(
+                "workspace resident DB service returned an unexpected shutdown result: {result:?}"
             )),
         }
     }
@@ -307,6 +401,24 @@ impl WorkspaceDbIpcSession {
         {
             WorkspaceDbIpcResult::SourceIndex { lookup } => Ok(lookup),
             _ => Err("workspace owner IPC returned an unexpected source-index result".to_owned()),
+        }
+    }
+
+    pub async fn commit_source_index_generation(
+        &self,
+        request: &crate::ClientDbSourceIndexRefreshRequest,
+    ) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
+        match self
+            .call_operation(WorkspaceDbIpcOperation::CommitSourceIndexGeneration {
+                request: request.clone(),
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::SourceIndexGeneration { receipt } => Ok(receipt),
+            _ => Err(
+                "workspace owner IPC returned an unexpected source-index generation result"
+                    .to_owned(),
+            ),
         }
     }
 

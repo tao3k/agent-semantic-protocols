@@ -18,6 +18,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 fs2 = { workspace = true }
+fs4 = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 parking_lot.workspace = true
 turso.workspace = true

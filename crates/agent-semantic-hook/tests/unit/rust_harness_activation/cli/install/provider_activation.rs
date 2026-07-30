@@ -12,7 +12,7 @@ use crate::rust_harness_activation::support::{
 use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
 
 #[test]
-fn cli_install_uses_static_provider_manifest_without_running_guide() {
+fn hook_materializes_static_provider_manifest_after_cli_install_without_running_guide() {
     let root = git_project_root("install-static-provider-manifest");
     let asp_state_home = root.join(".asp-state-home");
     let provider_bin = write_failing_state_home_provider_binary(
@@ -35,13 +35,12 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
         .expect("run agent-semantic-protocol install");
     assert!(
         output.status.success(),
-        "root={} activation={} install stdout={} stderr={}",
+        "root={} install stdout={} stderr={}",
         root.display(),
-        std::fs::read_to_string(installed_activation_path(&asp_state_home))
-            .unwrap_or_else(|error| format!("<unreadable: {error}>")),
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+    materialize_hook_activation(&root, &asp_state_home, &path, &asp_bin_dir);
     let activation = std::fs::read_to_string(installed_activation_path(&asp_state_home))
         .expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
@@ -77,7 +76,7 @@ fn cli_install_uses_static_provider_manifest_without_running_guide() {
 }
 
 #[test]
-fn cli_install_runtime_profile_uses_state_home_provider_only() {
+fn hook_materialized_runtime_profile_uses_state_home_provider_only() {
     let root = git_project_root("install-state-home-provider");
     let asp_state_home = root.join(".asp-state-home");
     let external_root = git_project_root("install-external-provider");
@@ -95,7 +94,7 @@ fn cli_install_runtime_profile_uses_state_home_provider_only() {
     ])
     .expect("provider and asp PATH");
     let output = protocol_command()
-        .env("PATH", path)
+        .env("PATH", &path)
         .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
         .env("ASP_STATE_HOME", &asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
@@ -108,6 +107,7 @@ fn cli_install_runtime_profile_uses_state_home_provider_only() {
         String::from_utf8_lossy(&output.stderr)
     );
 
+    materialize_hook_activation(&root, &asp_state_home, &path, &asp_bin_dir);
     let activation = std::fs::read_to_string(installed_activation_path(&asp_state_home))
         .expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
@@ -134,7 +134,7 @@ fn cli_install_runtime_profile_uses_state_home_provider_only() {
 }
 
 #[test]
-fn cli_install_rejects_project_and_path_provider_without_state_home_receipt() {
+fn agent_config_sync_is_provider_independent_and_does_not_materialize_activation() {
     let root = git_project_root("install-reject-unmanaged-provider");
     let asp_state_home = root.join(".asp-state-home");
     let external_root = git_project_root("install-reject-path-provider");
@@ -152,16 +152,19 @@ fn cli_install_rejects_project_and_path_provider_without_state_home_receipt() {
         .env("PATH", path)
         .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
         .env("ASP_STATE_HOME", &asp_state_home)
-        .arg("sync")
-        .arg(&root)
+        .args(["agent", "config", "sync"])
         .output()
-        .expect("run agent-semantic-protocol sync");
+        .expect("run agent-semantic-protocol agent config sync");
 
-    assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("expected State Home runtime bin to contain at least one executable"),
-        "{stderr}"
+        output.status.success(),
+        "sync stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("orgStateSync=consumer-lazy") && stdout.contains("activationWrites=0"),
+        "{stdout}"
     );
     let mut activation_paths = Vec::new();
     collect_activation_paths(&asp_state_home, &mut activation_paths);
@@ -174,7 +177,7 @@ fn cli_install_rejects_project_and_path_provider_without_state_home_receipt() {
 }
 
 #[test]
-fn cli_install_asp_toml_can_select_state_home_provider_basename() {
+fn hook_materialization_honors_asp_toml_state_home_provider_basename() {
     let root = git_project_root("install-asp-toml-provider-config");
     let asp_state_home = root.join(".asp-state-home");
     let empty_path = root.join("empty-path");
@@ -234,14 +237,13 @@ enabled = false
         .expect("run agent-semantic-protocol install");
     assert!(
         output.status.success(),
-        "root={} activation={} install stdout={} stderr={}",
+        "root={} install stdout={} stderr={}",
         root.display(),
-        std::fs::read_to_string(installed_activation_path(&asp_state_home))
-            .unwrap_or_else(|error| format!("<unreadable: {error}>")),
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
 
+    materialize_hook_activation(&root, &asp_state_home, &path, &asp_bin_dir);
     let activation = std::fs::read_to_string(installed_activation_path(&asp_state_home))
         .expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
@@ -291,7 +293,7 @@ enabled = false
 }
 
 #[test]
-fn cli_install_writes_executable_python_ingest_route() {
+fn hook_materialization_writes_executable_python_ingest_route() {
     let root = git_project_root("install-python");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "python", "py-harness", "py-harness");
@@ -313,6 +315,7 @@ fn cli_install_writes_executable_python_ingest_route() {
         "install stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    materialize_hook_activation(&root, &asp_state_home, &path, &asp_bin_dir);
     let activation = std::fs::read_to_string(installed_activation_path(&asp_state_home))
         .expect("installed activation");
     let registry = parse_hook_activation(&activation).expect("valid installed activation");
@@ -367,6 +370,56 @@ fn installed_activation_path(root: &std::path::Path) -> std::path::PathBuf {
         "project activation paths for {expected_project_root:?}: {matches:?}"
     );
     matches.remove(0)
+}
+
+fn materialize_hook_activation(
+    root: &std::path::Path,
+    asp_state_home: &std::path::Path,
+    path: &std::ffi::OsStr,
+    asp_bin_dir: &std::path::Path,
+) {
+    let payload = serde_json::json!({
+        "cwd": root,
+        "hook_event_name": "PostToolUse",
+        "session_id": "install-provider-activation-test",
+        "tool_name": "Bash",
+        "tool_input": {"cmd": "true"},
+        "tool_result": {"status": "completed"}
+    });
+    let mut child = protocol_command()
+        .current_dir(root)
+        .env("PATH", path)
+        .env("SEMANTIC_AGENT_BIN_DIR", asp_bin_dir)
+        .env("ASP_STATE_HOME", asp_state_home)
+        .env("CODEX_HOME", root.join(".codex-home"))
+        .args([
+            "hook",
+            "--client",
+            "codex",
+            "post-tool",
+            "--emit",
+            "decision",
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("start post-tool activation materialization");
+    std::io::Write::write_all(
+        child.stdin.as_mut().expect("post-tool stdin"),
+        payload.to_string().as_bytes(),
+    )
+    .expect("write post-tool payload");
+    drop(child.stdin.take());
+    let output = child
+        .wait_with_output()
+        .expect("wait for post-tool activation materialization");
+    assert!(
+        output.status.success(),
+        "post-tool activation materialization failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::PathBuf>) {

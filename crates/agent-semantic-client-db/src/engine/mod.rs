@@ -1,7 +1,7 @@
 //! DB Engine backend facade, control adapter, and Turso backend boundary.
 
 mod contract;
-mod facade;
+pub(crate) mod facade;
 mod facade_turso_report;
 mod search_facade;
 mod session_facade;
@@ -59,6 +59,7 @@ pub use turso_search::{
     TursoClientDbSearchDocument, TursoClientDbSearchHit, TursoClientDbSearchResult,
     TursoClientDbSearchState,
 };
+pub(crate) use turso_source_index::commit_turso_source_index_generation_in_fixture;
 pub use turso_source_index::{
     ProviderOwnerBatchProbeReceipt, ProviderOwnerBatchProbeRequest, ProviderOwnerBatchProbeResult,
     ProviderTreeSitterQueryRead, ProviderTreeSitterQueryReadState,

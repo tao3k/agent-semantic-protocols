@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.local/schemas/workspace-reference.v1.schema.json",
+  "title": "ASP Workspace Reference",
+  "description": "A typed reference to either a checkout root or an already registered workspace identity.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "workspaceRoot"
+      ],
+      "properties": {
+        "kind": {
+          "const": "checkout-root"
+        },
+        "workspaceRoot": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^/"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "workspaceId"
+      ],
+      "properties": {
+        "kind": {
+          "const": "workspace-id"
+        },
+        "workspaceId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^workspace-[a-z0-9]+$"
+        }
+      }
+    }
+  ]
+}

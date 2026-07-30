@@ -14,8 +14,10 @@ fn install_language_record_installed_receipt_is_clap_owned_but_hidden() {
 
     let mut help = Vec::new();
     install_command()
+        .find_subcommand_mut("language")
+        .expect("install language subcommand")
         .write_long_help(&mut help)
-        .expect("render install help");
+        .expect("render install language help");
     let help = String::from_utf8(help).expect("utf-8 install help");
     assert!(
         !help.contains("--record-installed-receipt"),
@@ -76,10 +78,14 @@ fn install_language_scope_is_global_by_default_or_explicitly_project_local() {
         .try_get_matches_from(["install", "language", "rust", "/tmp/project"])
         .expect_err("positional project roots must not remain accepted");
 
+    let mut install = install_command();
+    let language = install
+        .find_subcommand_mut("language")
+        .expect("install language subcommand");
     let mut help = Vec::new();
-    install_command()
+    language
         .write_long_help(&mut help)
-        .expect("render install help");
+        .expect("render install language help");
     let help = String::from_utf8(help).expect("utf-8 install help");
     assert!(
         help.contains("--global"),
@@ -97,4 +103,35 @@ fn install_language_scope_is_global_by_default_or_explicitly_project_local() {
         !help.contains("--workspace"),
         "legacy --workspace scope must be absent: {help}"
     );
+}
+
+#[test]
+fn org_and_markdown_are_document_surfaces_not_language_facades() {
+    for document in ["org", "md"] {
+        let command = super::root_document_facade_command(document);
+        let subcommands = command
+            .get_subcommands()
+            .map(|subcommand| subcommand.get_name())
+            .collect::<Vec<_>>();
+        assert_eq!(subcommands, ["guide", "search", "query"]);
+        for language_only in [
+            "check",
+            "cache",
+            "info",
+            "bench",
+            "projection",
+            "agent",
+            "ast-patch",
+            "evidence",
+        ] {
+            assert!(
+                !subcommands.contains(&language_only),
+                "{document} document surface leaked language-only command {language_only}"
+            );
+        }
+    }
+    assert!(!super::is_language_facade("org"));
+    assert!(!super::is_language_facade("md"));
+    assert!(super::is_document_facade("org"));
+    assert!(super::is_document_facade("md"));
 }

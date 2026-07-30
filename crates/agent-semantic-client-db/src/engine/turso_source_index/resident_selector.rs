@@ -12,6 +12,7 @@ pub struct TursoResidentSelectorQuery {
     pub provider_id: String,
     pub parser_identity_digest: String,
     pub query_pack_digest: String,
+    pub owner_path: String,
     pub canonical_item_selector: CanonicalItemSelector,
 }
 
@@ -29,6 +30,7 @@ pub struct TursoResidentSelectorRead {
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub owner_count: u32,
     pub selector_count: u32,
+    pub requested_owner_exists: bool,
     pub candidates: Vec<TursoResidentSelectorCandidate>,
     pub actual_kinds: Vec<String>,
     pub database_query_count: u32,
@@ -52,6 +54,7 @@ pub(super) async fn read_turso_resident_selector(
             request.parser_identity_digest.as_str(),
         ),
         ("queryPackDigest", request.query_pack_digest.as_str()),
+        ("ownerPath", request.owner_path.as_str()),
     ] {
         if value.trim().is_empty() {
             return Err(format!("resident selector query {field} must not be empty"));
@@ -75,7 +78,16 @@ pub(super) async fn read_turso_resident_selector(
                     projection.item_kind,
                     projection.item_name,
                     projection.source_byte_start,
-                    projection.source_byte_end
+                    projection.source_byte_end,
+                    EXISTS (
+                        SELECT 1
+                        FROM asp_source_index_owner_v1 AS requested_owner
+                        WHERE requested_owner.project_root = active.project_root
+                          AND requested_owner.schema_id = active.schema_id
+                          AND requested_owner.schema_version = active.schema_version
+                          AND requested_owner.generation_id = active.generation_id
+                          AND requested_owner.owner_path = ?10
+                    )
              FROM asp_source_index_scope_v1 AS active
              LEFT JOIN asp_source_index_selector_v1 AS selector
                ON selector.project_root = active.project_root
@@ -114,6 +126,7 @@ pub(super) async fn read_turso_resident_selector(
                 request.canonical_item_selector.symbol.as_str(),
                 scopes_json.as_str(),
                 request.provider_id.as_str(),
+                request.owner_path.as_str(),
             ),
         )
         .await
@@ -150,15 +163,28 @@ pub(super) async fn read_turso_resident_selector(
                     })?
                     .max(0)
                     .min(i64::from(u32::MAX)) as u32,
+                row.get::<i64>(14)
+                    .map_err(|error| {
+                        format!("failed to decode requested owner membership: {error}")
+                    })?
+                    != 0,
             ));
         }
+        let owner_path = row.get::<Option<String>>(4).map_err(|error| {
+            format!("failed to decode resident Turso selector owner: {error}")
+        })?;
         let Some(item_kind) = row
             .get::<Option<String>>(6)
             .map_err(|error| format!("failed to decode resident Turso item kind: {error}"))?
         else {
             continue;
         };
-        actual_kinds.insert(item_kind.clone());
+        let owner_path = owner_path.ok_or_else(|| {
+            "resident Turso selector row has item kind without owner identity".to_owned()
+        })?;
+        if owner_path == request.owner_path {
+            actual_kinds.insert(item_kind.clone());
+        }
         if item_kind != request.canonical_item_selector.kind.as_str() {
             continue;
         }
@@ -196,9 +222,7 @@ pub(super) async fn read_turso_resident_selector(
             None => None,
         };
         candidates.push(TursoResidentSelectorCandidate {
-            owner_path: row.get::<String>(4).map_err(|error| {
-                format!("failed to decode resident Turso selector owner: {error}")
-            })?,
+            owner_path,
             owner_content_digest: row.get::<String>(5).map_err(|error| {
                 format!("failed to decode resident Turso owner digest: {error}")
             })?,
@@ -207,7 +231,14 @@ pub(super) async fn read_turso_resident_selector(
             projection,
         });
     }
-    let Some((generation_id, source_snapshot, owner_count, selector_count)) = generation else {
+    let Some((
+        generation_id,
+        source_snapshot,
+        owner_count,
+        selector_count,
+        requested_owner_exists,
+    )) = generation
+    else {
         return Ok(None);
     };
     Ok(Some(TursoResidentSelectorRead {
@@ -215,6 +246,7 @@ pub(super) async fn read_turso_resident_selector(
         source_snapshot,
         owner_count,
         selector_count,
+        requested_owner_exists,
         candidates,
         actual_kinds: actual_kinds.into_iter().collect(),
         database_query_count: 1,

@@ -1,0 +1,6 @@
+name = "asp-proofs"
+version = "0.1.0"
+defaultTargets = ["ASPProof"]
+
+[[lean_lib]]
+name = "ASPProof"

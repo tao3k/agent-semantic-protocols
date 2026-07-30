@@ -26,7 +26,6 @@ mod exact_selector_projection;
 #[path = "engine_source_index/language_projection.rs"]
 mod language_projection;
 pub use agent_semantic_client_db::ClientDbSourceIndexImport;
-use agent_semantic_client_db::ClientDbSourceIndexMembershipChangeSet;
 
 #[path = "engine_source_index/merkle_overlay_refresh.rs"]
 mod merkle_overlay_refresh;
@@ -69,13 +68,12 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
         }],
     })
     .expect("build first Turso source-index import");
-    let first = ClientDbEngine::refresh_source_index_import_from_client_dir(
+    let first = agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
             import: first_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
-            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh source-index through active Turso DB Engine path");
@@ -115,16 +113,16 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
         }],
     })
     .expect("build second Turso source-index import");
-    let second = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: second_import,
-            file_count: 1,
-            source_snapshot: source_snapshot.clone(),
-            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
-        },
-    )
-    .expect("reuse source-index generation through active Turso DB Engine path");
+    let second =
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            ClientDbSourceIndexRefreshRequest {
+                import: second_import,
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+        )
+        .expect("reuse source-index generation through active Turso DB Engine path");
     assert_eq!(second.generation_id.as_str(), "source-index-active-turso-1");
     assert!(second.reused_generation);
     assert_eq!(second.file_count, 1);
@@ -190,13 +188,12 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
     .expect("build Turso source-index payload proof import");
     let source = b"pub fn source_index_payload_proof_fixture() {}\n";
 
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
             import: source_index_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
-            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh source-index payload proof import");
@@ -316,13 +313,12 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
     )
     .expect("assemble source-index scope payload proof import");
 
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
             import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
-            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh source-index scope payload proof import");
@@ -400,16 +396,16 @@ async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generation
             }],
         })
         .expect("build Turso source-index import");
-        let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(
-            &client_dir,
-            ClientDbSourceIndexRefreshRequest {
-                membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
-                import: source_index_import,
-                file_count: 1,
-                source_snapshot: source_snapshot.clone(),
-            },
-        )
-        .expect("refresh source-index through active Turso DB Engine path");
+        let refresh =
+            agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+                &client_dir,
+                ClientDbSourceIndexRefreshRequest {
+                    import: source_index_import,
+                    file_count: 1,
+                    source_snapshot: source_snapshot.clone(),
+                },
+            )
+            .expect("refresh source-index through active Turso DB Engine path");
         assert_eq!(refresh.generation_id.as_str(), generation_id);
         assert!(!refresh.reused_generation);
     }
@@ -481,16 +477,16 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
     })
     .expect("build Turso source-index FTS import");
 
-    let refresh = ClientDbEngine::refresh_source_index_import_from_client_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: source_index_import.clone(),
-            file_count: 1,
-            source_snapshot: source_snapshot.clone(),
-            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
-        },
-    )
-    .expect("refresh source-index through Turso FTS search lane");
+    let refresh =
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            ClientDbSourceIndexRefreshRequest {
+                import: source_index_import.clone(),
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+        )
+        .expect("refresh source-index through Turso FTS search lane");
     assert_eq!(refresh.owner_count, 1);
     assert_eq!(refresh.selector_count, 1);
 
@@ -552,13 +548,12 @@ async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_fil
         }],
     })
     .expect("build concurrent Turso source-index import");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
             import: source_index_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
-            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh concurrent source-index fixture");
@@ -638,13 +633,12 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
         }],
     })
     .expect("build read-only Turso source-index import");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
             import: source_index_import,
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
-            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh read-only source-index fixture");
@@ -721,13 +715,12 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
         }],
     })
     .expect("build initial pressure source-index import");
-    ClientDbEngine::refresh_source_index_import_from_client_dir(
+    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
             import: initial_import,
             file_count: 1,
             source_snapshot: initial_source_snapshot.clone(),
-            membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
         },
     )
     .expect("refresh initial pressure source-index fixture");
@@ -739,7 +732,8 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
     let writer_client_dir = Arc::clone(&shared_client_dir);
     let writer_project_root = Arc::clone(&shared_project_root);
     let writer_language_id = rust_language_id.clone();
-    let writer = std::thread::spawn(move || -> Result<(), String> {
+    let writer = std::thread::spawn(move || {
+        let mut committed_snapshot = None;
         for round in 0_u64..6 {
             let text = format!(
                 "pub fn source_index_pressure_fixture() {{ let generation_{round} = true; }}\n"
@@ -768,19 +762,20 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
                     selectors: Vec::new(),
                 }],
             })?;
-            ClientDbEngine::refresh_source_index_import_from_client_dir(
-                writer_client_dir.as_ref(),
-                ClientDbSourceIndexRefreshRequest {
-                    membership_change_set: ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
-                    import,
-                    file_count: 1,
-                    source_snapshot: crate::snapshot_fixture::source_snapshot_evidence_for(
-                        round + 2,
-                    ),
-                },
-            )?;
+            let report =
+                agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+                    writer_client_dir.as_ref(),
+                    ClientDbSourceIndexRefreshRequest {
+                        import,
+                        file_count: 1,
+                        source_snapshot: crate::snapshot_fixture::source_snapshot_evidence_for(
+                            round + 2,
+                        ),
+                    },
+                )?;
+            committed_snapshot = Some(report.source_snapshot);
         }
-        Ok(())
+        Ok::<_, String>(committed_snapshot.expect("writer must commit at least one generation"))
     });
 
     let readers = (0..8)
@@ -828,7 +823,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
         })
         .collect::<Vec<_>>();
 
-    writer
+    let final_source_snapshot = writer
         .join()
         .expect("pressure source-index writer panicked")
         .expect("pressure source-index writer failed");
@@ -843,7 +838,6 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
         completed_lookup_count.load(Ordering::Relaxed) >= 8,
         "pressure test should complete concurrent lookup attempts"
     );
-    let final_source_snapshot = crate::snapshot_fixture::source_snapshot_evidence_for(7);
     let final_lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
         &final_source_snapshot,

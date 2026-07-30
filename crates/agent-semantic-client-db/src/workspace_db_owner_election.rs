@@ -10,6 +10,19 @@ pub struct WorkspaceDbOwnerElection {
     _file: std::fs::File,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkspaceDbOwnerRetirement {
+    Absent,
+    ElectionHeld,
+    Retired,
+}
+
+impl Drop for WorkspaceDbOwnerElection {
+    fn drop(&mut self) {
+        let _ = fs2::FileExt::unlock(&self._file);
+    }
+}
+
 pub fn try_acquire_workspace_db_owner_election(
     runtime_base: &Path,
     workspace_identity: &str,
@@ -70,6 +83,58 @@ pub fn remove_stale_workspace_db_owner_socket(
             endpoint.socket_path
         )),
     }
+}
+
+pub fn try_retire_workspace_db_owner_endpoint(
+    runtime_base: &Path,
+    workspace_identity: &str,
+    endpoint_path: &Path,
+) -> Result<WorkspaceDbOwnerRetirement, String> {
+    let Some(_election) =
+        try_acquire_workspace_db_owner_election(runtime_base, workspace_identity)?
+    else {
+        return Ok(WorkspaceDbOwnerRetirement::ElectionHeld);
+    };
+    let bytes = match std::fs::read(endpoint_path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(WorkspaceDbOwnerRetirement::Absent);
+        }
+        Err(error) => {
+            return Err(format!(
+                "failed to read stale workspace resident endpoint {}: {error}",
+                endpoint_path.display()
+            ));
+        }
+    };
+    let endpoint: WorkspaceDbOwnerEndpoint = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "stale workspace resident endpoint {} lacks recovery identity: {error}",
+            endpoint_path.display()
+        )
+    })?;
+    if endpoint.schema_id != super::workspace_db_ipc::WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID
+        || endpoint.schema_version != super::workspace_db_ipc::WORKSPACE_DB_OWNER_SCHEMA_VERSION
+        || endpoint.workspace_identity != workspace_identity
+    {
+        return Err(format!(
+            "stale workspace resident endpoint {} has an invalid recovery identity",
+            endpoint_path.display()
+        ));
+    }
+    for path in [Path::new(&endpoint.socket_path), endpoint_path] {
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "failed to remove dead workspace resident endpoint {}: {error}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    Ok(WorkspaceDbOwnerRetirement::Retired)
 }
 
 #[cfg(test)]

@@ -403,13 +403,11 @@ fn search_failure_from_last_check_reads_cache_artifact() {
     );
     let stdout = String::from_utf8(output.stdout).expect("stdout");
     assert!(
-        stdout.contains("F=failure:test-failure(cache_cli::probe::replay)!failure"),
+        stdout.contains("kind=failure action=failure value=cache_cli::probe::replay"),
         "{stdout}"
     );
     assert!(
-        stdout.contains(
-            "H=hot:fn(probe_generation_hit)@rust://src/cache_cli/probe.rs#item/fn/probe_generation_hit!code"
-        ),
+        stdout.contains("kind=hot action=code value=probe_generation_hit"),
         "{stdout}"
     );
     assert!(

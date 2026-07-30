@@ -61,8 +61,7 @@ mod tool_action;
 pub use crate::activation_store::{
     DefaultActivationSync, default_activation_path, discover_activation_path,
     language_activation_path, load_activation, load_or_refresh_default_activation,
-    load_or_sync_activation, parse_hook_activation,
-    write_activation,
+    load_or_sync_activation, parse_hook_activation, write_activation,
 };
 pub use crate::active_artifact_receipt::{
     ActiveAspArtifactInput, ActiveAspArtifactMaterialization, active_asp_artifact_receipt_path,
@@ -117,8 +116,8 @@ pub(crate) use protocol_activation::protocol_activation_manifest::SourceSelector
 pub use protocol_activation::protocol_activation_manifest::{
     ActivatedProvider, ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy,
     HookActivation, HookRuntime, ManifestSourceDefaults, ProviderExecution, ProviderManifest,
-    ProviderQueryPackDescriptor, ProviderQueryPackTermRole, ProviderSearchCapabilities,
-    ProviderSemanticFactsDescriptor, ProviderSemanticFactsIntentAxis,
+    ProviderProjectResolutionDescriptor, ProviderQueryPackDescriptor, ProviderQueryPackTermRole,
+    ProviderSearchCapabilities, ProviderSemanticFactsDescriptor, ProviderSemanticFactsIntentAxis,
 };
 pub use protocol_activation::protocol_activation_runtime::parse_activation;
 pub use provider_manifest::{

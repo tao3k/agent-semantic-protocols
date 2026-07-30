@@ -132,6 +132,7 @@ pub(super) fn provider(
             .map(|prefix| (*prefix).to_string())
             .collect(),
         search_capabilities: manifest.search_capabilities().clone(),
+        project_resolution: manifest.project_resolution().cloned(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
         query_pack_descriptor: manifest.query_pack_descriptor().clone(),
         semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),

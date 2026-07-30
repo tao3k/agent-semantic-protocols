@@ -12,6 +12,8 @@ use agent_semantic_hook::{
 use super::agent_session_registry::run_agent_command;
 use super::ast_patch::run_ast_patch_command;
 use super::dispatch_agent_session_policy::is_agent_session_control_json_command;
+use super::document_provider;
+use super::global_resident::run_global_resident_command;
 use super::graph::run_graph_command;
 use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
@@ -22,7 +24,6 @@ use super::provider_dispatch::run_language_command;
 use super::root_language_facade::run_root_language_facade;
 use super::run_protocol_version_command;
 use super::source_access::run_source_access_command;
-use super::sync::run_sync_command;
 use super::workspace_db_owner::run_workspace_db_command;
 
 pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> {
@@ -59,14 +60,21 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
         Some("hook") => run_hook_command(&args[1..]),
         Some("agent") => run_agent_command(&args[1..]),
         Some("install") => run_install_command(&args[1..]),
-        Some("sync") => run_sync_command(&args[1..]),
+        Some("sync") => Err(
+            "asp sync has no cross-domain responsibility; use `asp agent config sync` for global agent projections, `asp cache source-index refresh --workspace <path>` for incremental workspace refresh, or `asp cache source-index rebuild --workspace <path>` for explicit recovery"
+                .to_string(),
+        ),
         Some("paths") => run_paths_command(&args[1..]),
         Some("healthcheck") => run_healthcheck_command(&args[1..]),
+        Some("resident") => run_global_resident_command(&args[1..]),
         Some("live-corpus") => run_live_corpus_command(&args[1..]),
         Some("source-access") => run_source_access_command(&args[1..]),
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
         Some("graph") => run_graph_command(&args[1..]),
         Some("workspace-db") => run_workspace_db_command(&args[1..]),
+        Some(document_id) if document_provider::is_document_language(document_id) => {
+            document_provider::run_language_command(document_id, &args[1..])
+        }
         Some(language_id) => run_language_command(language_id, &args[1..]),
         _ => Err(usage()),
     }
@@ -204,7 +212,7 @@ fn option_is_present(args: &[String], option: &str) -> bool {
 }
 
 fn usage() -> String {
-    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|sync|paths|healthcheck|workspace-db|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|sync|paths|healthcheck|resident|workspace-db|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 fn run_client_command(args: Vec<String>) -> Result<(), String> {

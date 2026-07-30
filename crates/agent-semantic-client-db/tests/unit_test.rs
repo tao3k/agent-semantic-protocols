@@ -18,6 +18,10 @@ mod db_engine_source_index;
 mod db_gerbil_dependency_index;
 #[path = "unit/env.rs"]
 mod env;
+#[path = "unit/global_resident_control.rs"]
+mod global_resident_control;
+#[path = "unit/resident_query_performance.rs"]
+mod resident_query_performance;
 #[path = "unit/db/live_source_index_memory.rs"]
 mod live_source_index_memory;
 #[path = "unit/materialization_fixture.rs"]
@@ -46,3 +50,5 @@ mod workspace_db_ipc;
 mod workspace_db_owner_election;
 #[path = "unit/workspace_db_registry.rs"]
 mod workspace_db_registry;
+#[path = "unit/workspace_project_resolution.rs"]
+mod workspace_project_resolution;

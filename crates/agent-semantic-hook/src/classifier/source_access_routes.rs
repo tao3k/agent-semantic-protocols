@@ -100,7 +100,7 @@ pub(super) fn classify_direct_read_action(
             return true;
         }
 
-        provider.source_roots.iter().any(|root| {
+        provider.package_roots.iter().any(|root| {
             let Some(root) = normalize_directory_path(root) else {
                 return false;
             };

@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use crate::protocol_activation::protocol_activation_manifest::{ActivatedProvider, HookRuntime};
-use crate::runtime_profile::{RuntimeProviderHealthStatus, runtime_profiles_for_runtime};
 use crate::tool_action::ToolAction;
 
 pub(super) struct RegisteredAspMatch<'a> {
@@ -19,7 +17,6 @@ pub(super) fn match_registered_asp_command<'a>(
     if patterns.is_empty() {
         return None;
     }
-    let registered_languages = crate::registered_language_ids();
     let stages =
         crate::command_match::bash::parse_bash_command_candidates(action.command.as_deref()?)
             .ok()?;
@@ -38,11 +35,9 @@ pub(super) fn match_registered_asp_command<'a>(
                         .all(|(index, (actual, expected))| {
                             if expected == "<registered-language>" {
                                 if let Some(language_id) =
-                                    registered_languages.iter().find(|language_id| {
-                                        language_id.as_str().eq_ignore_ascii_case(actual)
-                                    })
+                                    crate::provider_registry::registered_language_id(actual)
                                 {
-                                    registered_language = Some(language_id.clone());
+                                    registered_language = Some(language_id);
                                     return true;
                                 }
                                 return false;
@@ -74,7 +69,6 @@ pub(super) fn match_registered_asp_command<'a>(
 
 pub(super) fn append_materialization_fields(
     fields: &mut BTreeMap<String, serde_json::Value>,
-    runtime: &HookRuntime,
     matched: &RegisteredAspMatch<'_>,
     lazy_provider: Option<agent_semantic_config::HookClientLazyProviderPolicy>,
 ) {
@@ -110,36 +104,8 @@ pub(super) fn append_materialization_fields(
         "providerBinary".to_string(),
         serde_json::Value::String(provider.binary.clone()),
     );
-    let profiles = runtime_profiles_for_runtime(Path::new(&runtime.project_root), runtime);
-    let profile = profiles
-        .providers
-        .iter()
-        .find(|profile| profile.language_id == matched.language_id);
-    if profile.map(|profile| profile.health.status) == Some(RuntimeProviderHealthStatus::Available)
-    {
-        fields.insert(
-            "providerMaterialization".to_string(),
-            serde_json::Value::String("available".to_string()),
-        );
-        if let Some(path) = profile.and_then(|profile| profile.resolved_binary.as_ref()) {
-            fields.insert(
-                "providerBinaryPath".to_string(),
-                serde_json::Value::String(path.clone()),
-            );
-        }
-        return;
-    }
     fields.insert(
         "providerMaterialization".to_string(),
-        serde_json::Value::String("lazy-required".to_string()),
+        serde_json::Value::String("activated".to_string()),
     );
-    if matches!(
-        lazy_provider,
-        Some(agent_semantic_config::HookClientLazyProviderPolicy::MatchedLanguage)
-    ) {
-        fields.insert(
-            "providerLazyLoadCommand".to_string(),
-            serde_json::Value::String(format!("asp install language {}", matched.language_id)),
-        );
-    }
 }

@@ -1,0 +1,388 @@
+#+TITLE: Clause-first Lean Proof Plan
+#+OPTIONS: toc:3
+
+* Scope
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-SCOPE
+:END:
+
+This module defines the RFC-to-AXLE-to-Lean workflow for Clause-first Retrieval
+and Graph-on-Demand.  It does not contain Lean implementation and does not
+declare the design ready for Rust or Python implementation.
+
+Lean theorem and counterexample sources belong to the independent
+=packages/proof= package.  AXLE extraction remains a separate producer under
+=packages/python/tools=.
+
+* Executable and mathematical artifacts
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-ARTIFACTS
+:END:
+
+The first executable model is:
+
+- =packages/proofs/ASPProof/SearchLoopClauseFirst.lean=
+
+The independent proof package manifest and ownership note are:
+
+- =packages/proof/lakefile.toml=
+- =packages/proof/README.org=
+
+The corresponding human-facing mathematical projection is:
+
+- [[file:math/searchloop-clause-first-model.typ][SearchLoop Clause-first
+  mathematical model (Typst)]]
+
+Lean is authoritative for checked derivations.  Typst explains definitions,
+counterexamples, theorem meaning, and RFC repairs.  Both artifacts use the same
+RFC clause and theorem identities.
+
+* Modeling goal
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-GOAL
+:END:
+
+The formal model must determine whether Clause-first retrieval is a sound
+refinement of the admitted graph-and-query semantics for declared scenario
+classes.
+
+It is not sufficient to prove that an implementation follows its own planner.
+The model must expose cases where:
+
+- postings cannot reconstruct the logical fact;
+- local clauses cannot justify a graph-sensitive conclusion;
+- budget or ranking hides a mandatory obligation;
+- freshness or identity changes invalidate reuse;
+- parallel execution changes meaning;
+- improvement policy widens allowed behavior.
+
+* Abstract domains
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-DOMAINS
+:END:
+
+The first AXLE bundle defines:
+
+- =WorkspaceId=, =ProjectId=, =SnapshotId=, =ProviderId=;
+- =OwnerId=, =EntityId=, =SelectorId=, =FactId=;
+- =RelationKind=, =ArgRole=, =Qualifier=, =Provenance=;
+- =LogicalFact= as a qualified n-ary relation;
+- =Posting= as a physical index observation;
+- =Variable=, =Binding=, and =AtomicEvidenceClause=;
+- =ClauseState= and =SearchAction=;
+- =Obligation=, =SufficiencyWitness=, and =ObligationGraph=;
+- =EvidenceGraph= and admitted graph projection;
+- =Budget=, =Continuation=, and =SearchLoopState=;
+- =TerminalState= and =ClosureReceipt=;
+- =CacheKey=, =CacheEntry=, =LedgerEvent=, and =ImprovementState=.
+
+Each type traces to stable RFC clause identities.
+
+* Semantic functions and relations
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-SEMANTICS
+:END:
+
+The model distinguishes:
+
+- =PostingRepresents(posting, fact)=;
+- =Reconstruct(postingSet, fact)=;
+- =Admit(fact, validationDomain)=;
+- =Binds(fact, clause, binding)=;
+- =Classify(clause, state)=;
+- =Discharges(evidence, obligation)=;
+- =ClauseStep(state, action, state')=;
+- =EscalationRequired(state, reason)=;
+- =ProjectGraph(evidence, goal, graph)=;
+- =Materializes(selector, sourceWitness)=;
+- =ValidCacheHit(entry, state)=;
+- =Closed(state, receipt)=;
+- =Independent(actionA, actionB)=;
+- =Refines(policy, baseTransitionSystem)=.
+
+No desired theorem is encoded as the definition of one of its premises.
+
+* Refinement diagram
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-REFINEMENT
+:END:
+
+The proof relation is:
+
+#+begin_example
+physical postings
+  --reconstruct/admit-->
+qualified logical facts
+  --bind/classify-->
+bound clause frontier
+  --escalate when required-->
+admitted EvidenceGraph
+  --exact selector materialization when required-->
+closure validator
+#+end_example
+
+Clause-first execution is sound when every accepted clause result has an
+equivalent admitted fact/graph interpretation and every closed result satisfies
+the same closure proposition as the reference graph-and-query semantics.
+
+Performance superiority is evaluated by receipts, not proved as a universal
+theorem.
+
+* Counterexample-first sequence
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-COUNTEREXAMPLES
+:END:
+
+Before proving the desired refinements, construct finite witnesses for:
+
+1. n-ary qualifier erasure;
+2. Cartesian reconstruction from unrelated postings;
+3. stale-snapshot binding reuse;
+4. top-k used as enumeration;
+5. absence over incomplete scope;
+6. clause dependency cycle;
+7. global-pool starvation;
+8. parallel order-dependent merge;
+9. provider-crossed cache key;
+10. cost signal suppressing mandatory escalation;
+11. provider capability asymmetry;
+12. owner alias across worktrees;
+13. selector handoff drift;
+14. multi-hop binding explosion;
+15. incomplete cross-namespace join;
+16. learned easy-clause bias;
+17. relation/source contradiction;
+18. context key overbinding and underbinding.
+
+If the current RFC permits a witness, the RFC is repaired before the theorem is
+weakened.
+
+* Theorem families
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-THEOREMS
+:END:
+
+** Representation
+
+- =posting_reconstruction_preserves_arity=;
+- =posting_reconstruction_preserves_roles=;
+- =posting_reconstruction_preserves_qualifiers=;
+- =reconstruction_never_crosses_fact_identity=.
+
+** Binding and classification
+
+- =binding_requires_admitted_fact=;
+- =binding_preserves_validation_domain=;
+- =clause_state_classification_exclusive=;
+- =clause_state_classification_exhaustive_for_well_formed_clause=;
+- =resolved_implies_atomic_obligation_discharged=;
+- =snapshot_change_may_reopen_resolved_clause=.
+
+** Search actions and progress
+
+- =same_valid_action_is_not_repeated=;
+- =changed_dependency_changes_action_identity=;
+- =nonterminal_step_changes_evidence_budget_or_terminal_state=;
+- =cyclic_frontier_without_measure_requires_escalation=.
+
+** Candidate budgeting
+
+- =sufficient_budget_gives_each_mandatory_obligation_positive_floor=;
+- =insufficient_floor_budget_produces_typed_terminal=;
+- =optional_utility_cannot_evict_proof_critical_action=;
+- =budget_is_monotone_and_bounded=.
+
+** Graph escalation
+
+- =absence_requires_closed_scope=;
+- =enumeration_requires_nontruncated_coverage=;
+- =cross_namespace_join_requires_complete_index_or_graph=;
+- =contradiction_requires_reconciliation=;
+- =cost_cannot_disable_mandatory_escalation=.
+
+** Exact handoff and closure
+
+- =materialization_uses_bound_selector_identity=;
+- =source_contradiction_blocks_closure=;
+- =closed_implies_all_required_obligations_discharged=;
+- =rank_never_establishes_discharge=;
+- =no_hit_without_coverage_never_establishes_absence=.
+
+** Cache and continuation
+
+- =valid_clause_cache_hit_preserves_classification=;
+- =stale_clause_cache_hit_cannot_discharge=;
+- =continuation_prevents_cross_branch_replay=;
+- =delta_reconstruction_is_deterministic=.
+
+** Concurrency
+
+- =independent_clause_steps_commute=;
+- =canonical_projection_ignores_completion_order=;
+- =conflicting_steps_require_conflict_or_serialization=.
+
+** Improvement
+
+- =advisory_policy_selects_only_allowed_actions=;
+- =improvement_cannot_change_sufficiency=;
+- =improvement_cannot_add_terminal_state=;
+- =ledger_replay_rebuilds_same_improvement_state=.
+
+* Liveness qualification
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-LIVENESS
+:END:
+
+The RFC does not require a planner to find evidence that does not exist or to
+solve every query within a finite positive budget.
+
+The liveness claim is qualified:
+
+For every well-formed non-terminal state, SearchLoop either has an enabled
+bounded action, requires graph escalation, needs user input, is blocked by a
+typed external condition, exhausts budget with an explicit frontier, or has no
+sound plan.
+
+This avoids assuming planner completeness while prohibiting silent deadlock.
+
+* AXLE declaration workflow
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-AXLE-WORKFLOW
+:END:
+
+1. extract stable RFC clause, claim, and risk identities;
+2. generate a declaration bundle with definitions, assumptions, desired
+   invariants, counterexample obligations, and dependencies;
+3. classify every imported premise as environmental, parser/provider contract,
+   shared-schema contract, or proposition under test;
+4. reject theorem-as-axiom cycles;
+5. emit logical Lean module boundaries without inventing implementation paths;
+6. bind the bundle to RFC and schema digests;
+7. record unmapped prose as a formalization gap.
+
+AXLE output is reviewed before Lean proof work begins.
+
+* Lean execution workflow
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-EXECUTION
+:END:
+
+1. define identities and validation-domain compatibility;
+2. define qualified facts and postings separately;
+3. implement finite counterexample models for the risk register;
+4. define clauses, bindings, and classification;
+5. define transitions without closure assumptions;
+6. prove representation and binding safety;
+7. prove bounded progress or typed terminal coverage;
+8. define graph escalation and closed-scope evidence;
+9. prove exact handoff and closure soundness;
+10. prove cache and continuation validity;
+11. prove concurrency properties;
+12. prove improvement-policy refinement;
+13. run axiom and unsafe-declaration inventory;
+14. emit proof and counterexample receipts.
+
+Proof work is incremental.  Each failed layer can revise the RFC before later
+layers accumulate dependencies.
+
+* Failure classification and RFC repair
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-REPAIR
+:END:
+
+A failed target is classified as:
+
+- contradictory RFC clauses;
+- missing premise;
+- lossy representation;
+- underspecified state transition;
+- invalid escalation boundary;
+- unprovable completeness or absence;
+- progress/fairness gap;
+- cache equivalence gap;
+- concurrency conflict;
+- unsafe improvement refinement;
+- modeling error;
+- later implementation obligation.
+
+For RFC defects, preserve the minimal witness, update the claim/risk ledger,
+revise the normative clause, regenerate the AXLE bundle, invalidate dependent
+proof receipts, and rerun the witness before continuing.
+
+* Proof receipt
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-RECEIPT
+:END:
+
+The receipt reports:
+
+- RFC, schema, and AXLE bundle digests;
+- theorem, counterexample, claim, risk, and clause identities;
+- all axioms and environmental assumptions;
+- =sorry=, =admit=, unsafe, and opaque-external inventory;
+- proof or witness status;
+- dependent receipts invalidated;
+- Lean toolchain and package identity;
+- unresolved formalization gaps.
+
+Textual alignment, successful compilation, or an empty counterexample search is
+not proof closure.
+
+* First executable proof bundle
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-FIRST-PROOF-BUNDLE
+:END:
+
+The first bundle is implemented in
+=packages/proofs/ASPProof/SearchLoopClauseFirst.lean= and built through the
+independent =packages/proofs= Lake package.
+
+It contains twenty checked theorem or finite-witness declarations covering:
+
+- posting identity;
+- clause-state overlap and ordered classification;
+- mandatory fairness and insufficient-budget disposition;
+- snapshot-bound action identity;
+- complete/fresh absence evidence;
+- rank-independent closure;
+- selector-preserving exact materialization;
+- proof-mandatory graph escalation;
+- provider-bound cache identity.
+
+The verified commands are:
+
+#+begin_src sh
+cd packages/proofs
+lake build
+lake env lean ASPProof/SearchLoopClauseFirst.lean
+#+end_src
+
+The successful run used Lean =4.32.2= and Lake =5.0.0=.  It emitted no
+=sorry=, =admit=, or =unsafe= warning.
+
+The matching Typst source is
+[[file:math/searchloop-clause-first-model.typ][SearchLoop Clause-first
+mathematical model]].  Typst =0.15.1= compiled it to a four-page A4 validation
+artifact.
+
+This is a first safety bundle, not full Clause-first proof closure.  Qualified
+n-ary reconstruction, AND/OR sufficiency, transition preservation, graph
+refinement, concurrency, and improvement-policy theorems remain open.
+
+* Implementation readiness
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-LEAN-READINESS
+:END:
+
+Clause-first implementation is not ready merely because the RFC modules exist.
+Readiness later requires:
+
+- parser-confirmed AXLE and Lean package owners;
+- versioned shared clause, posting, escalation, and receipt schemas;
+- resolved critical CFR-R01 through CFR-R20 witnesses;
+- proved representation, binding, escalation, and closure safety;
+- provider capability-alignment plan;
+- shadow equivalence scenarios and receipts;
+- explicit implementation refinement mapping.
+
+The current Session stops at RFC and proof-plan design.

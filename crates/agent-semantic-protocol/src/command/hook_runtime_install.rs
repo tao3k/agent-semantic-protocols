@@ -88,6 +88,7 @@ fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstall
 
 pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
     let request = parse_codex_plugin_install_args(args)?;
+    let install_global_resident = matches!(&request.scope, CodexPluginScope::Global);
     let runtime_state = project_runtime_state(&request.project_root)?;
     crate::command::protocol_binary::require_configured_protocol_bin_dir_on_path()?;
     let asp_binary_path = std::env::current_exe()
@@ -103,6 +104,11 @@ pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Resu
         &request.subagent_model,
         &asp_binary_path,
     )?;
+    if install_global_resident {
+        crate::command::resident_supervisor::install_global_resident_supervisor(
+            &runtime_state.protocol_home,
+        )?;
+    }
     println!(
         "[plugin-install] client=codex sourceRoot={} config={}{} userConfig={} userConfigStatus={} mode=ensured",
         display_path(&request.project_root, &request.project_root),

@@ -33,33 +33,28 @@ pub(super) fn protocol_command() -> Command {
 }
 
 pub(super) fn sync_test_state(root: &Path, state_home: &Path) {
-    let output = protocol_command()
-        .env("ASP_STATE_HOME", state_home)
-        .env("CODEX_HOME", root.join(".codex-home"))
-        .args(["sync", root.to_str().expect("utf8 temp root")])
-        .output()
-        .expect("run explicit ASP state sync");
-    assert!(
-        output.status.success(),
-        "state sync stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let _ = root;
+    materialize_test_org_state(state_home);
 }
 
 pub(super) fn prepare_project_state(project_root: &Path) {
     let state_home = project_root.join(".asp-state-home");
+    materialize_test_org_state(&state_home);
+}
+
+fn materialize_test_org_state(state_home: &Path) {
     let org_repo = local_test_org_repo();
-    let output = asp_command()
-        .env("ASP_ORG_REPO_URL", &org_repo)
-        .env("ASP_STATE_HOME", &state_home)
-        .env_remove("PRJ_CACHE_HOME")
-        .arg("sync")
-        .arg(project_root)
+    let target = state_home.join("org");
+    std::fs::create_dir_all(state_home).expect("create ASP state home");
+    let output = Command::new("git")
+        .args(["clone", "--quiet", "--local"])
+        .arg(&org_repo)
+        .arg(&target)
         .output()
-        .expect("sync test Org state");
+        .expect("clone test ASP Org state");
     assert!(
         output.status.success(),
-        "sync test Org state failed: stdout={} stderr={}",
+        "clone test ASP Org state failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );

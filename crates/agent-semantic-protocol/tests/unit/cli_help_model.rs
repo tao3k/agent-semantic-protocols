@@ -29,7 +29,6 @@ fn root_and_first_level_paths_select_their_own_commands() {
         "hook",
         "agent",
         "install",
-        "sync",
         "paths",
         "healthcheck",
         "source-access",
@@ -49,6 +48,12 @@ fn root_and_first_level_paths_select_their_own_commands() {
     ] {
         assert_selected(&[command, "--help"], command, &format!("asp {command}"));
     }
+    assert_selected(&["agent", "config", "--help"], "config", "asp agent config");
+    assert_selected(
+        &["agent", "config", "sync", "--help"],
+        "sync",
+        "asp agent config sync",
+    );
 }
 
 #[test]

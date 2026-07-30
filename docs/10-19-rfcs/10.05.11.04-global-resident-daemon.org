@@ -1,0 +1,243 @@
+#+title: Global ASP Resident Daemon
+#+status: active
+
+* Decision
+
+ASP has exactly one Global resident daemon per user installation.  The daemon is
+the long-lived owner of the Tokio runtime, provider catalog, workspace registry,
+Turso handles, Memory Search generations, read pools, writer lanes, and session
+leases.
+
+A workspace is a routing key and a lifecycle entry inside that process.  A
+workspace is never represented by a dedicated ASP process, election lock, or
+socket.
+
+The daemon follows the LSP server model:
+
+#+begin_example
+Hook / CLI / provider client
+        |
+        | typed control or data request
+        v
+Global ASP resident daemon
+        |
+        +-- workspace identity A -> DB/read pool/writer/generation/session leases
+        +-- workspace identity B -> DB/read pool/writer/generation/session leases
+        `-- workspace identity N -> lazily admitted entry
+#+end_example
+
+* Process and lifecycle authority
+
+The platform supervisor owns process liveness:
+
+- launchd on macOS
+- systemd user service on Linux
+- the corresponding user-service manager on other supported platforms
+
+The daemon owns graceful lifecycle:
+
+- endpoint publication
+- transport contract validation
+- workspace admission and eviction
+- drain
+- restart handoff
+- shutdown after the supervisor has accepted the replacement request
+
+No public receipt exposes a PID.  No Hook, CLI, healthcheck, or test instructs a
+user to inspect or signal a process.  A completely unreachable daemon is
+reconciled through the platform supervisor.  A reachable daemon is drained
+through typed control IPC.
+
+* Command surface
+
+#+begin_example
+asp resident status
+asp resident reconcile
+asp resident restart
+asp resident daemon
+#+end_example
+
+=status=, =reconcile=, and =restart= are typed clients.  =daemon= is the service
+entrypoint used by the installed supervisor definition.  It is not a
+per-workspace bootstrap command.
+
+=restart= means:
+
+1. validate endpoint epoch, binding token, runtime artifact digest, and
+   transport contract digest;
+2. stop admitting new work;
+3. drain in-flight work with bounded typed receipts;
+4. request supervisor replacement;
+5. retire only the endpoint owned by the validated epoch.
+
+It never means kill-by-PID or spawn an unmanaged child.
+
+* Control plane
+
+The control endpoint is Global and contains no workspace identity and no PID.
+Its identity is:
+
+- schema identity and schema version
+- transport contract digest
+- owner epoch
+- runtime artifact path and digest
+- binding token
+- epoch-isolated socket path
+
+Endpoint publication is an atomic generation commit.  The socket is bound
+before the endpoint becomes visible.  Retirement removes an endpoint or socket
+only after re-reading and matching the owner epoch and binding token.
+
+Election is daemon-start-only and fail-fast.  Search and query paths never
+acquire or probe an election file.
+
+* Data plane
+
+Search, query, graph, source-index, and provider requests are routed through a
+typed daemon data envelope containing:
+
+- request identity
+- workspace identity
+- operation identity
+- provider/language identity
+- generation and source authority evidence required by the operation
+- deadline/cancellation identity
+
+The daemon performs one workspace-key lookup.  The admitted workspace entry
+reuses its canonical root, Turso database handle, read pool, writer lane,
+provider generation, and Memory Search state.
+
+The data transport supports multiple in-flight requests on a long-lived
+connection.  Request identity, rather than connection order, owns correlation.
+Slow work in one workspace cannot block another workspace.
+
+* Hook boundary
+
+The Hook is a nonblocking lifecycle client.  It may:
+
+- validate the installed endpoint receipt;
+- issue a typed =status= or =reconcile= request;
+- ask the platform supervisor to reconcile a missing or unreachable daemon;
+- route the current tool request after daemon health is established.
+
+The Hook may not:
+
+- build or install an ASP artifact;
+- synchronize activation or schemas on a query path;
+- open a workspace Turso database;
+- acquire a daemon or workspace election lock;
+- spawn an unmanaged resident child;
+- wait through retry or timeout loops;
+- expose or signal a PID.
+
+* Document surfaces are not language providers
+
+Org and Markdown are document surfaces.  They do not participate in the
+programming-language registry, language harness activation, provider process
+catalog, or per-language workspace generation.
+
+Their admission pipeline is:
+
+#+begin_example
+canonical Git scope
+  - Git ignored and excluded paths
+  + document matcher (.org or .md)
+  -> document parser
+  -> parser-owned structural selector
+#+end_example
+
+The Git scope is authoritative for which document owners exist.  The extension
+matcher selects the document parser.  The parser owns heading, block, field,
+element, and other document structural identities.
+
+Document owner search must emit the exact =structuralSelector= consumed by
+=query --selector=.  A display line, =path:line= anchor, or source locator hint
+is never a selector.  Owner-search success without a consumable structural
+selector is a contract failure.
+
+This boundary is deliberately separate from programming-language providers:
+
+- Rust, Python, TypeScript, Julia, Gerbil Scheme, and future programming
+  languages use registry -> schema -> language harness/provider lazy loading;
+- Org and Markdown use Git scope -> ignore filtering -> document matcher ->
+  document parser;
+- both surfaces may share the Global daemon transport, request correlation,
+  workspace admission, graph/evidence interfaces, and performance receipts;
+- document matching never manufactures a language activation.
+
+* Tokio ownership
+
+The daemon creates one Tokio runtime for its entire process lifetime.  All
+listeners, connections, cancellation, workspace entries, read pools, writer
+lanes, and provider transports are owned by that runtime.
+
+Blocking platform and filesystem operations execute only through bounded
+=spawn_blocking= admission.  There is no process-global
+=OnceLock<Runtime>=, nested =block_on=, or synchronous filesystem/process call on
+a Tokio worker.
+
+The resident implementation uses Tokio-native filesystem, process, signal,
+stream, and standard-I/O surfaces.  Endpoint publication, artifact streaming
+digest, socket retirement, entropy reads, and control receipts remain inside the
+Tokio lifecycle.  Singleton election uses the asynchronous Tokio implementation
+of the OS advisory lock contract; it does not enter a blocking task pool.
+
+=Arc= and atomics remain valid ownership primitives.  =std::sync= is forbidden
+only where a blocking lock or condition variable can stall a Tokio worker.
+
+* Migration authority
+
+The terminal architecture removes, rather than adapts:
+
+- per-workspace resident processes;
+- per-workspace owner elections;
+- per-workspace resident sockets;
+- query-time =ensure resident= paths;
+- stable socket paths reused across epochs;
+- PID-based health, restart, or cleanup;
+- one-provider-process-per-query execution;
+- activation or provider synchronization from search/query.
+
+Compatibility warnings are not retained.  Old surfaces are breaking-deleted
+after their callers have moved to the Global control and data contracts.
+
+* Required gates
+
+** Lifecycle
+
+- exactly one daemon owns the Global election;
+- a second daemon attempt fails immediately;
+- endpoint publication is atomic and epoch-bound;
+- typed restart drains and exits without PID access;
+- the supervisor replaces a stale or exited daemon;
+- installed runtime artifact and endpoint digest agree.
+
+** Concurrency
+
+- many sessions against one workspace share one admitted entry;
+- many workspaces run concurrently in one process;
+- reads do not serialize behind unrelated reads;
+- one workspace writer lane serializes only that workspace;
+- different workspace writers execute independently;
+- cancellation and disconnect do not leak leases or DB handles.
+
+** Performance
+
+- warm control transport is sub-millisecond at the protocol layer;
+- warm exact selector lookup is sub-millisecond after workspace admission;
+- Hook endpoint validation and routing are millisecond-class with no subprocess,
+  DB open, manifest write, artifact byte read, election probe, or retry;
+- repeated requests report zero repeated canonicalization, DB open,
+  schema/bootstrap, and provider process starts;
+- every gate records phase receipts instead of increasing a timeout.
+
+** Installed end to end
+
+- Global install produces the supervisor definition, canonical daemon artifact,
+  and endpoint contract;
+- project activation never installs or starts a second daemon;
+- Rust, Python, TypeScript, Julia, Gerbil Scheme, Org, and future providers use
+  the same daemon admission and data envelope;
+- cold supervisor start, warm reconnect, multi-workspace pressure, artifact
+  replacement, drain/restart, and crash recovery are all exercised against the
+  installed artifact.

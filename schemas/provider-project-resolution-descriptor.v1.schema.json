@@ -14,7 +14,11 @@
     "supportsGitCandidates",
     "supportsProviderOnly",
     "parserId",
-    "commandBinding"
+    "commandBinding",
+    "candidateSnapshotSchema",
+    "packageGraphSchema",
+    "resolvedSourceScopeSchema",
+    "projectResolutionSchema"
   ],
   "properties": {
     "schemaId": {
@@ -63,7 +67,19 @@
       "minLength": 1
     },
     "commandBinding": {
-      "const": "projectResolution"
+      "const": "project-resolution-stdin"
+    },
+    "candidateSnapshotSchema": {
+      "const": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json"
+    },
+    "packageGraphSchema": {
+      "const": "https://schemas.agent-semantic-protocols.dev/language-package-graph.v1.schema.json"
+    },
+    "resolvedSourceScopeSchema": {
+      "const": "https://schemas.agent-semantic-protocols.dev/resolved-source-scope.v1.schema.json"
+    },
+    "projectResolutionSchema": {
+      "const": "https://schemas.agent-semantic-protocols.dev/project-resolution.v1.schema.json"
     }
   }
 }

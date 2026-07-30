@@ -1,8 +1,9 @@
 use tempfile::TempDir;
 
 use agent_semantic_client_db::workspace_db_ipc::{
-    WorkspaceDbOwnerEndpoint, prepare_workspace_db_owner_endpoint,
+    WorkspaceDbOwnerEndpoint, WorkspaceDbOwnerRetirement, prepare_workspace_db_owner_endpoint,
     remove_stale_workspace_db_owner_socket, try_acquire_workspace_db_owner_election,
+    try_retire_workspace_db_owner_endpoint,
 };
 
 #[test]
@@ -40,7 +41,13 @@ fn elected_owner_removes_only_its_stable_socket() {
         schema_id: "agent.semantic-protocols.workspace-db-owner-endpoint.v1".to_owned(),
         schema_version: "1".to_owned(),
         workspace_identity: "workspace-a".to_owned(),
+        transport_contract_digest:
+            agent_semantic_client_db::workspace_db_ipc::workspace_db_owner_transport_contract_digest(
+            ),
         owner_epoch: 1,
+        owner_pid: 7001,
+        runtime_binary_path: "/runtime/asp".to_owned(),
+        runtime_binary_digest: "runtime-digest-1".to_owned(),
         binding_token: "binding".to_owned(),
         socket_path: socket_path.to_string_lossy().into_owned(),
     };
@@ -52,19 +59,100 @@ fn elected_owner_removes_only_its_stable_socket() {
 }
 
 #[test]
-fn workspace_socket_identity_is_stable_across_owner_epochs() {
-    let temp = TempDir::new().expect("create stable socket tempfile");
+fn workspace_socket_identity_is_unique_across_owner_epochs() {
+    let temp = TempDir::new().expect("create owner epoch socket tempfile");
     let runtime_base = temp.path().join("runtime");
-    let first = prepare_workspace_db_owner_endpoint(&runtime_base, "workspace-a", 1, "binding-a")
-        .expect("prepare first endpoint");
-    let successor =
-        prepare_workspace_db_owner_endpoint(&runtime_base, "workspace-a", 2, "binding-b")
-            .expect("prepare successor endpoint");
+    let election = try_acquire_workspace_db_owner_election(&runtime_base, "workspace-a")
+        .expect("acquire owner election")
+        .expect("owner wins election");
+    let first = prepare_workspace_db_owner_endpoint(
+        &runtime_base,
+        "workspace-a",
+        1,
+        7001,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-1",
+        "binding-a",
+    )
+    .expect("prepare first endpoint");
+    let successor = prepare_workspace_db_owner_endpoint(
+        &runtime_base,
+        "workspace-a",
+        2,
+        7002,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-2",
+        "binding-b",
+    )
+    .expect("prepare successor endpoint");
 
-    assert_eq!(
+    assert_ne!(
         first.socket_path, successor.socket_path,
-        "workspace identity, not owner epoch, must own the socket address"
+        "stale cleanup for one owner epoch must not unlink its successor's listener"
     );
+    std::fs::write(&first.socket_path, b"stale").expect("write stale owner socket");
+    std::fs::write(&successor.socket_path, b"current").expect("write successor owner socket");
+    remove_stale_workspace_db_owner_socket(&election, &first)
+        .expect("remove only the stale owner epoch socket");
+    assert!(!std::path::Path::new(&first.socket_path).exists());
+    assert!(
+        std::path::Path::new(&successor.socket_path).exists(),
+        "the current owner epoch socket must survive stale cleanup"
+    );
+}
+
+#[test]
+fn endpoint_retirement_is_atomic_with_owner_election() {
+    let temp = TempDir::new().expect("create atomic retirement fixture");
+    let runtime_base = temp.path().join("runtime");
+    let endpoint_path = temp.path().join("endpoint.json");
+    let endpoint = prepare_workspace_db_owner_endpoint(
+        &runtime_base,
+        "workspace-atomic-retirement",
+        19,
+        7019,
+        std::path::Path::new("/runtime/asp"),
+        "runtime-digest-19",
+        "binding-19",
+    )
+    .expect("prepare retirement endpoint");
+    std::fs::write(&endpoint.socket_path, b"listener").expect("write socket fixture");
+    std::fs::write(
+        &endpoint_path,
+        serde_json::to_vec(&endpoint).expect("encode endpoint fixture"),
+    )
+    .expect("write endpoint fixture");
+
+    let owner = try_acquire_workspace_db_owner_election(
+        &runtime_base,
+        "workspace-atomic-retirement",
+    )
+    .expect("acquire current owner election")
+    .expect("current owner wins election");
+    assert_eq!(
+        try_retire_workspace_db_owner_endpoint(
+            &runtime_base,
+            "workspace-atomic-retirement",
+            &endpoint_path,
+        )
+        .expect("probe retirement while owner is active"),
+        WorkspaceDbOwnerRetirement::ElectionHeld
+    );
+    assert!(endpoint_path.exists());
+    assert!(std::path::Path::new(&endpoint.socket_path).exists());
+
+    drop(owner);
+    assert_eq!(
+        try_retire_workspace_db_owner_endpoint(
+            &runtime_base,
+            "workspace-atomic-retirement",
+            &endpoint_path,
+        )
+        .expect("retire endpoint after owner releases election"),
+        WorkspaceDbOwnerRetirement::Retired
+    );
+    assert!(!endpoint_path.exists());
+    assert!(!std::path::Path::new(&endpoint.socket_path).exists());
 }
 
 #[test]

@@ -4,8 +4,7 @@ use std::path::Path;
 
 use super::{
     CurrentSourceIndexSnapshot, LanguageId, ProviderId, ProviderRegistrySnapshot,
-    SourceIndexOwnerPath,
-    current_source_index_snapshot_for_owner_with_registry,
+    SourceIndexOwnerPath, current_source_index_snapshot_for_owner_with_registry,
     current_source_index_snapshot_with_registry,
 };
 use crate::source_index::{

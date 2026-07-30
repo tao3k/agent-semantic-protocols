@@ -6,16 +6,18 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 ROOT = Path(__file__).resolve().parents[2]
-LEVEL_ZERO_TEST = Path(__file__).with_name(
-    "test_level_zero_project_resolution_schemas.py"
+PROJECT_RESOLUTION_TEST = Path(__file__).with_name(
+    "test_repository_project_resolution_schemas.py"
 )
-LEVEL_ZERO_SPEC = importlib.util.spec_from_file_location(
-    "level_zero_project_resolution_schemas", LEVEL_ZERO_TEST
+PROJECT_RESOLUTION_SPEC = importlib.util.spec_from_file_location(
+    "repository_project_resolution_schemas", PROJECT_RESOLUTION_TEST
 )
-assert LEVEL_ZERO_SPEC is not None and LEVEL_ZERO_SPEC.loader is not None
-LEVEL_ZERO_MODULE = importlib.util.module_from_spec(LEVEL_ZERO_SPEC)
-LEVEL_ZERO_SPEC.loader.exec_module(LEVEL_ZERO_MODULE)
-git_candidates = LEVEL_ZERO_MODULE.git_candidates
+assert (
+    PROJECT_RESOLUTION_SPEC is not None and PROJECT_RESOLUTION_SPEC.loader is not None
+)
+PROJECT_RESOLUTION_MODULE = importlib.util.module_from_spec(PROJECT_RESOLUTION_SPEC)
+PROJECT_RESOLUTION_SPEC.loader.exec_module(PROJECT_RESOLUTION_MODULE)
+git_candidates = PROJECT_RESOLUTION_MODULE.git_candidates
 
 
 def load_schema(name: str) -> dict:

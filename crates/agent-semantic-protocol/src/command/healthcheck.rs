@@ -23,10 +23,60 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     let activation_path = project_state_paths.activation_path;
     let (activation, activation_runtime) =
         check_activation_and_runtime(Some(&activation_path), context.cwd());
-    let binary = check_binary(&activation_path);
+    let binary = check_binary(
+        &activation_path,
+        layout.state_home.join("runtime").join("bin").join("asp"),
+    );
     let skill = check_skill(&options.project_root);
+    let resident_result = binary
+        .binary_artifact_digest
+        .as_deref()
+        .ok_or_else(|| "active ASP artifact digest is unavailable".to_owned())
+        .and_then(|digest| {
+            super::workspace_db_resident::ensure_with_runtime_identity(
+                context.cwd(),
+                &binary.canonical_runtime_asp,
+                digest,
+            )
+        });
+    let resident_endpoint_identity = resident_result
+        .as_ref()
+        .err()
+        .and_then(|_| super::workspace_db_resident::inspect_endpoint_identity(context.cwd()).ok());
+    let resident = match &resident_result {
+        Ok(receipt) => WorkspaceResidentRuntimeCheck {
+            status: receipt.status.to_owned(),
+            workspace_identity: receipt.workspace_identity.clone(),
+            owner_epoch: receipt.owner_epoch,
+            transport_contract_digest: receipt.transport_contract_digest.clone(),
+            runtime_binary_path: receipt.runtime_binary_path.clone(),
+            runtime_binary_digest: receipt.runtime_binary_digest.clone(),
+            error: None,
+        },
+        Err(resident_error) => {
+            let endpoint = resident_endpoint_identity.as_ref();
+            WorkspaceResidentRuntimeCheck {
+                status: "error".to_owned(),
+                workspace_identity: endpoint.and_then(|receipt| receipt.workspace_identity.clone()),
+                owner_epoch: endpoint.and_then(|receipt| receipt.owner_epoch),
+                transport_contract_digest: endpoint
+                    .and_then(|receipt| receipt.transport_contract_digest.clone()),
+                runtime_binary_path: endpoint
+                    .and_then(|receipt| receipt.runtime_binary_path.clone()),
+                runtime_binary_digest: endpoint
+                    .and_then(|receipt| receipt.runtime_binary_digest.clone()),
+                error: Some(resident_error.clone()),
+            }
+        }
+    };
 
     let mut issues = collect_layout_issues(&layout, &skill);
+    if let Err(resident_error) = &resident_result {
+        issues.push(error(
+            "workspace-resident-runtime-degraded",
+            resident_error.clone(),
+        ));
+    }
     collect_read_issue(
         &mut issues,
         "missing-activation",
@@ -50,6 +100,7 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         activation: &activation,
         activation_runtime: &activation_runtime,
         binary: &binary,
+        resident: &resident,
         skill: &skill,
         catalog: &catalog,
         issues: &issues,
@@ -179,6 +230,8 @@ struct ActivationRuntimeCheck {
 struct BinaryCheck {
     current_asp: Option<PathBuf>,
     path_asp: Option<PathBuf>,
+    canonical_runtime_asp: PathBuf,
+    path_link_target: Option<PathBuf>,
     status: &'static str,
     receipt_path: Option<PathBuf>,
     artifact_root_digest: Option<String>,
@@ -260,13 +313,34 @@ fn check_activation_and_runtime(
     }
 }
 
-fn check_binary(activation_path: &Path) -> BinaryCheck {
+fn check_binary(activation_path: &Path, canonical_runtime_asp: PathBuf) -> BinaryCheck {
     let current_asp = env::current_exe().ok();
     let path_asp = protocol_binary_on_path();
+    let path_link_target = path_asp
+        .as_deref()
+        .and_then(|path| std::fs::read_link(path).ok());
     let receipt_path = agent_semantic_hook::active_asp_artifact_receipt_path(activation_path).ok();
-    let (status, artifact_root_digest, binary_artifact_digest, error) =
-        match (&current_asp, &path_asp) {
-            (Some(current), Some(on_path)) => {
+    let (status, artifact_root_digest, binary_artifact_digest, error) = match (
+        &current_asp,
+        &path_asp,
+    ) {
+        (Some(current), Some(on_path)) => {
+            if path_link_target.as_deref() != Some(canonical_runtime_asp.as_path()) {
+                (
+                    "path-entry-degraded",
+                    None,
+                    None,
+                    Some(format!(
+                        "global ASP PATH entry must be a direct symlink to canonical runtime: path={} expectedTarget={} actualTarget={}",
+                        on_path.display(),
+                        canonical_runtime_asp.display(),
+                        path_link_target
+                            .as_deref()
+                            .map(|path| path.display().to_string())
+                            .unwrap_or_else(|| "not-a-symlink".to_string())
+                    )),
+                )
+            } else {
                 match agent_semantic_hook::verify_active_asp_artifact_receipt(
                     activation_path,
                     &[current, on_path],
@@ -286,13 +360,16 @@ fn check_binary(activation_path: &Path) -> BinaryCheck {
                     Err(error) => ("artifact-degraded", None, None, Some(error)),
                 }
             }
-            (Some(_), None) => ("path-missing", None, None, None),
-            (None, Some(_)) => ("current-missing", None, None, None),
-            (None, None) => ("missing", None, None, None),
-        };
+        }
+        (Some(_), None) => ("path-missing", None, None, None),
+        (None, Some(_)) => ("current-missing", None, None, None),
+        (None, None) => ("missing", None, None, None),
+    };
     BinaryCheck {
         current_asp,
         path_asp,
+        canonical_runtime_asp,
+        path_link_target,
         status,
         receipt_path,
         artifact_root_digest,
@@ -406,6 +483,12 @@ fn collect_binary_issue(issues: &mut Vec<HealthIssue>, binary: &BinaryCheck) {
                 .clone()
                 .unwrap_or_else(|| "active ASP artifact receipt could not be verified".to_string()),
         )),
+        "path-entry-degraded" => issues.push(error(
+            "asp-global-path-entry-invalid",
+            binary.error.clone().unwrap_or_else(|| {
+                "global ASP PATH entry does not target the canonical State Home runtime".to_string()
+            }),
+        )),
         _ => issues.push(warn(
             "asp-binary-path-missing",
             "asp executable could not be resolved consistently".to_string(),
@@ -448,6 +531,18 @@ fn fs_status(path: Option<&Path>, kind: FsKind) -> &'static str {
     }
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceResidentRuntimeCheck {
+    status: String,
+    workspace_identity: Option<String>,
+    owner_epoch: Option<u64>,
+    transport_contract_digest: Option<String>,
+    runtime_binary_path: Option<String>,
+    runtime_binary_digest: Option<String>,
+    error: Option<String>,
+}
+
 struct HealthcheckStateLayout {
     project_root: PathBuf,
     state_home: PathBuf,
@@ -479,6 +574,7 @@ struct HealthcheckReport<'a> {
     activation: &'a ActivationCheck,
     activation_runtime: &'a ActivationRuntimeCheck,
     binary: &'a BinaryCheck,
+    resident: &'a WorkspaceResidentRuntimeCheck,
     skill: &'a SkillHealthReceipt,
     catalog: &'a CatalogReadinessReceipt,
     issues: &'a [HealthIssue],
@@ -496,6 +592,7 @@ fn print_compact(report: &HealthcheckReport<'_>) {
         activation,
         activation_runtime,
         binary,
+        resident,
         skill,
         catalog,
         issues,
@@ -532,14 +629,33 @@ fn print_compact(report: &HealthcheckReport<'_>) {
         display_count(activation_runtime.provider_count)
     );
     println!(
-        "|binary currentAsp={} pathAsp={} status={} activeArtifactReceipt={} artifactRoot={} binaryArtifactDigest={} verification=receipt-metadata subprocesses=0 dbOpens=0 manifestWrites=0 binaryByteReads=0 error={}",
+        "|binary currentAsp={} pathAsp={} canonicalRuntimeAsp={} pathLinkTarget={} status={} activeArtifactReceipt={} artifactRoot={} binaryArtifactDigest={} verification=receipt-metadata+path-link subprocesses=0 dbOpens=0 manifestWrites=0 binaryByteReads=0 error={}",
         display_opt(binary.current_asp.as_deref()),
         display_opt(binary.path_asp.as_deref()),
+        binary.canonical_runtime_asp.display(),
+        display_opt(binary.path_link_target.as_deref()),
         binary.status,
         display_opt(binary.receipt_path.as_deref()),
         binary.artifact_root_digest.as_deref().unwrap_or("none"),
         binary.binary_artifact_digest.as_deref().unwrap_or("none"),
         binary.error.as_deref().unwrap_or("none")
+    );
+    println!(
+        "|residentRuntime status={} workspaceIdentity={} ownerEpoch={} transportContractDigest={} runtimeBinaryPath={} runtimeBinaryDigest={} error={}",
+        resident.status,
+        resident.workspace_identity.as_deref().unwrap_or("none"),
+        resident
+            .owner_epoch
+            .map(|value| value.to_string())
+            .as_deref()
+            .unwrap_or("none"),
+        resident
+            .transport_contract_digest
+            .as_deref()
+            .unwrap_or("none"),
+        resident.runtime_binary_path.as_deref().unwrap_or("none"),
+        resident.runtime_binary_digest.as_deref().unwrap_or("none"),
+        resident.error.as_deref().unwrap_or("none"),
     );
     if let Some(profiles) = activation_runtime.profiles.as_ref() {
         for provider in &profiles.providers {
@@ -587,6 +703,7 @@ fn print_json(report: &HealthcheckReport<'_>) -> Result<(), String> {
         activation,
         activation_runtime,
         binary,
+        resident,
         skill,
         catalog,
         issues,
@@ -636,17 +753,20 @@ fn print_json(report: &HealthcheckReport<'_>) -> Result<(), String> {
         "binary": {
             "currentAsp": path_value(binary.current_asp.as_deref()),
             "pathAsp": path_value(binary.path_asp.as_deref()),
+            "canonicalRuntimeAsp": binary.canonical_runtime_asp.display().to_string(),
+            "pathLinkTarget": path_value(binary.path_link_target.as_deref()),
             "status": binary.status,
             "activeArtifactReceipt": path_value(binary.receipt_path.as_deref()),
             "artifactRootDigest": binary.artifact_root_digest,
             "binaryArtifactDigest": binary.binary_artifact_digest,
-            "verification": "receipt-metadata",
+            "verification": "receipt-metadata+path-link",
             "subprocessCount": 0,
             "dbOpenCount": 0,
             "manifestWriteCount": 0,
             "binaryByteReadCount": 0,
             "error": binary.error,
         },
+        "residentRuntime": resident,
         "providers": providers,
         "catalogReadiness": catalog,
         "issues": issues,

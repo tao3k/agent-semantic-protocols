@@ -32,7 +32,7 @@ pub use cache_manifest::{
 pub use config::{BackendMode, ClientConfig, PrivacyMode};
 pub use project_context::{ProjectContext, StateLayout};
 pub use provider_scope::{
-    normalize_project_path, project_child_path, provider_ignores_path,
+    normalize_project_path, project_child_path,
     provider_supports_source_file, relative_project_path, scoped_child_path,
 };
 pub use receipt::{

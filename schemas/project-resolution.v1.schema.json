@@ -26,15 +26,14 @@
     "state": {
       "enum": [
         "resolved",
-        "project-entry-missing",
-        "project-scope-conflict",
-        "manifest-invalid",
-        "unsupported"
+        "conflicted",
+        "project-entry-missing"
       ]
     },
     "completeness": {
       "enum": [
         "exact",
+        "complete",
         "partial"
       ]
     },
@@ -42,14 +41,14 @@
       "$ref": "#/$defs/projectIdentity"
     },
     "repositoryCandidates": {
-      "$ref": "repository-candidate-snapshot.v1.schema.json"
-    },
-    "packageGraph": {
-      "$ref": "language-package-graph.v1.schema.json"
+      "$ref": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json"
     },
     "resolutionGeneration": {
       "type": "string",
       "minLength": 1
+    },
+    "packageGraph": {
+      "$ref": "https://schemas.agent-semantic-protocols.dev/language-package-graph.v1.schema.json"
     },
     "resolvedSourceScopes": {
       "type": "array",
@@ -63,15 +62,19 @@
         "$ref": "#/$defs/conflict"
       }
     },
+    "metrics": {
+      "$ref": "#/$defs/metrics"
+    },
     "reasonKind": {
-      "type": "string",
-      "minLength": 1
+      "enum": [
+        "provider-project-entry-required",
+        "project-resolution-conflict",
+        "manifest-parse-failed",
+        "candidate-snapshot-unavailable"
+      ]
     },
     "recommendedNext": {
       "$ref": "#/$defs/recommendedNext"
-    },
-    "metrics": {
-      "$ref": "#/$defs/metrics"
     }
   },
   "allOf": [
@@ -89,20 +92,83 @@
       "then": {
         "required": [
           "packageGraph"
-        ]
+        ],
+        "properties": {
+          "completeness": {
+            "enum": [
+              "exact",
+              "complete"
+            ]
+          },
+          "conflicts": {
+            "maxItems": 0
+          }
+        }
       },
       "else": {
         "required": [
           "reasonKind",
           "recommendedNext"
+        ],
+        "properties": {
+          "completeness": {
+            "const": "partial"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "project-entry-missing"
+          }
+        },
+        "required": [
+          "state"
         ]
+      },
+      "then": {
+        "properties": {
+          "reasonKind": {
+            "const": "provider-project-entry-required"
+          },
+          "resolvedSourceScopes": {
+            "maxItems": 0
+          }
+        },
+        "not": {
+          "required": [
+            "packageGraph"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "conflicted"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "conflicts": {
+            "minItems": 1
+          }
+        }
       }
     }
   ],
   "$defs": {
     "path": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
     },
     "projectIdentity": {
       "type": "object",
@@ -141,27 +207,6 @@
         }
       }
     },
-    "exclusion": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "prefix",
-        "authority"
-      ],
-      "properties": {
-        "prefix": {
-          "$ref": "#/$defs/path"
-        },
-        "authority": {
-          "enum": [
-            "asp-infrastructure",
-            "package-manager",
-            "provider-default",
-            "user-policy"
-          ]
-        }
-      }
-    },
     "resolvedSourceScope": {
       "type": "object",
       "additionalProperties": false,
@@ -192,7 +237,8 @@
           "items": {
             "$ref": "#/$defs/path"
           },
-          "minItems": 1
+          "minItems": 1,
+          "uniqueItems": true
         },
         "extensions": {
           "type": "array",
@@ -200,13 +246,15 @@
             "type": "string",
             "minLength": 1
           },
-          "minItems": 1
+          "minItems": 1,
+          "uniqueItems": true
         },
         "includeAuthority": {
           "enum": [
+            "manifest-explicit",
             "package-manager",
             "provider-default",
-            "user-policy"
+            "policy-overlay"
           ]
         },
         "exclusions": {
@@ -214,6 +262,34 @@
           "items": {
             "$ref": "#/$defs/exclusion"
           }
+        },
+        "classifications": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "providerFacts": {
+          "type": "object"
+        }
+      }
+    },
+    "exclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prefix",
+        "authority"
+      ],
+      "properties": {
+        "prefix": {
+          "$ref": "#/$defs/path"
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -239,7 +315,12 @@
           "minLength": 1
         },
         "reasonKind": {
-          "const": "project-scope-conflict"
+          "enum": [
+            "explicit-source-excluded",
+            "scope-layer-conflict",
+            "target-path-missing",
+            "workspace-member-conflict"
+          ]
         }
       }
     },
@@ -285,8 +366,7 @@
           "const": 0
         },
         "fullManifestReparses": {
-          "type": "integer",
-          "minimum": 0
+          "const": 0
         },
         "dbOpens": {
           "const": 0

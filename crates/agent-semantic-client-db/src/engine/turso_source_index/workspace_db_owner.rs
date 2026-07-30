@@ -15,6 +15,7 @@ use super::{
 /// A mutation admitted by the workspace owner's only writer actor.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorkspaceDbWriteOperation {
+    CommitSourceIndexGeneration(crate::ClientDbSourceIndexRefreshRequest),
     WriteProviderOwner(ProviderIncrementalOwnerWrite),
     UpsertProviderInventory(ProviderOwnerInventoryWrite),
     WriteTreeSitterOwner {
@@ -27,6 +28,7 @@ pub enum WorkspaceDbWriteOperation {
 /// A committed result returned for one typed mutation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorkspaceDbWriteResult {
+    SourceIndexGeneration(crate::ClientDbSourceIndexRefreshReport),
     ProviderOwner(ProviderIncrementalWriteReceipt),
     ProviderInventory(ProviderOwnerInventoryWriteReceipt),
     TreeSitterOwner(ProviderTreeSitterOwnerWriteReceipt),
@@ -237,6 +239,14 @@ async fn execute_operation(
     operation: &WorkspaceDbWriteOperation,
 ) -> Result<WorkspaceDbWriteResult, String> {
     match operation {
+        WorkspaceDbWriteOperation::CommitSourceIndexGeneration(request) => {
+            super::core::refresh_turso_source_index_import_on_connection(
+                connection,
+                request.clone(),
+            )
+            .await
+            .map(WorkspaceDbWriteResult::SourceIndexGeneration)
+        }
         WorkspaceDbWriteOperation::WriteProviderOwner(request) => {
             super::provider_incremental::write_provider_incremental_owner_on_connection(
                 connection, request,

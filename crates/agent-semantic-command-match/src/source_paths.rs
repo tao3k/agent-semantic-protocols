@@ -29,12 +29,31 @@ pub fn command_source_paths(command: &str, tokens: &[String]) -> Vec<String> {
 /// This keeps interpreter `-c` payload discovery in the command parser owner
 /// while leaving language/provider classification to the caller.
 pub fn embedded_literal_candidates(tokens: &[String]) -> Vec<String> {
-    let candidates = tokens
+    let mut candidates = tokens
         .iter()
         .flat_map(|token| crate::bash_parser::quoted_literal_candidates(token))
         .collect::<Vec<_>>();
+    candidates.extend(
+        tokens
+            .iter()
+            .filter_map(|token| git_object_path_candidate(token))
+            .map(str::to_string),
+    );
     stable_unique(&candidates)
 }
+
+fn git_object_path_candidate(token: &str) -> Option<&str> {
+    let (revision, path) = token.split_once(':')?;
+    if revision.is_empty()
+        || path.is_empty()
+        || path.starts_with("//")
+        || (revision.len() == 1 && (path.starts_with('/') || path.starts_with('\\')))
+    {
+        return None;
+    }
+    Some(path)
+}
+
 
 /// Applies the caller-owned typed predicate to one parser-produced candidate.
 ///

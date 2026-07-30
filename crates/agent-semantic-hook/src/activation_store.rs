@@ -76,7 +76,6 @@ pub fn registered_language_runtime(
     activation_to_runtime(&activation)
 }
 
-
 /// Resolve the activation artifact consumed by one language-scoped command.
 pub fn language_activation_path(
     activation_path: &Path,
@@ -270,11 +269,9 @@ fn activation_matches_current_manifest_coverage(activation: &HookActivation) -> 
             .iter()
             .find(|manifest| manifest.manifest_id == provider.manifest_id)
             .is_some_and(|manifest| {
-                provider.coverage.source_roots == manifest.source.default_source_roots
+                provider.coverage.source_extensions == manifest.source.default_extensions
                     && provider.coverage.config_files == manifest.source.default_config_files
                     && provider.coverage.source_extensions == manifest.source.default_extensions
-                    && provider.coverage.ignored_path_prefixes
-                        == manifest.source.default_ignored_path_prefixes
             })
     })
 }

@@ -25,7 +25,11 @@
         "schemaId",
         "schemaVersion",
         "workspaceIdentity",
+        "transportContractDigest",
         "ownerEpoch",
+        "ownerPid",
+        "runtimeBinaryPath",
+        "runtimeBinaryDigest",
         "bindingToken",
         "socketPath"
       ],
@@ -39,9 +43,22 @@
         "workspaceIdentity": {
           "$ref": "#/$defs/identity"
         },
+        "transportContractDigest": {
+          "$ref": "#/$defs/identity"
+        },
         "ownerEpoch": {
           "type": "integer",
           "minimum": 1
+        },
+        "ownerPid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runtimeBinaryPath": {
+          "$ref": "#/$defs/identity"
+        },
+        "runtimeBinaryDigest": {
+          "$ref": "#/$defs/identity"
         },
         "bindingToken": {
           "$ref": "#/$defs/identity"
@@ -58,6 +75,7 @@
         "schemaId",
         "schemaVersion",
         "workspaceIdentity",
+        "transportContractDigest",
         "ownerEpoch",
         "bindingToken",
         "requestId",
@@ -71,6 +89,9 @@
           "const": "1"
         },
         "workspaceIdentity": {
+          "$ref": "#/$defs/identity"
+        },
+        "transportContractDigest": {
           "$ref": "#/$defs/identity"
         },
         "ownerEpoch": {
@@ -99,6 +120,18 @@
           "properties": {
             "kind": {
               "const": "health"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "shutdown"
             }
           }
         },
@@ -361,6 +394,7 @@
         "schemaId",
         "schemaVersion",
         "workspaceIdentity",
+        "transportContractDigest",
         "ownerEpoch",
         "requestId",
         "result"
@@ -373,6 +407,9 @@
           "const": "1"
         },
         "workspaceIdentity": {
+          "$ref": "#/$defs/identity"
+        },
+        "transportContractDigest": {
           "$ref": "#/$defs/identity"
         },
         "ownerEpoch": {
@@ -398,6 +435,18 @@
           "properties": {
             "state": {
               "const": "healthy"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "shutdown-accepted"
             }
           }
         },

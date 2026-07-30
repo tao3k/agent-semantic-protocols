@@ -66,6 +66,9 @@
     "source": {
       "$ref": "#/$defs/manifestSourceDefaults"
     },
+    "projectResolution": {
+      "$ref": "provider-project-resolution-descriptor.v1.schema.json"
+    },
     "searchCapabilities": {
       "$ref": "#/$defs/providerSearchCapabilities"
     },
@@ -100,21 +103,13 @@
       "additionalProperties": false,
       "required": [
         "defaultExtensions",
-        "defaultConfigFiles",
-        "defaultSourceRoots",
-        "defaultIgnoredPathPrefixes"
+        "defaultConfigFiles"
       ],
       "properties": {
         "defaultExtensions": {
           "$ref": "#/$defs/stringArray"
         },
         "defaultConfigFiles": {
-          "$ref": "#/$defs/stringArray"
-        },
-        "defaultSourceRoots": {
-          "$ref": "#/$defs/stringArray"
-        },
-        "defaultIgnoredPathPrefixes": {
           "$ref": "#/$defs/stringArray"
         },
         "defaultProjectMarkers": {

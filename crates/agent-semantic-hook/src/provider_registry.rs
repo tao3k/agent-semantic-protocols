@@ -7,7 +7,7 @@ use crate::protocol::{
     PROVIDER_MANIFEST_SCHEMA_VERSION,
 };
 use crate::protocol_activation::protocol_activation_manifest::{
-    ManifestSourceDefaults, ProviderManifest,
+    ProviderManifest,
 };
 
 // The embedded registry is the admission authority for provider-native routes.
@@ -119,21 +119,6 @@ const LANGUAGE_PROVIDER_MANIFEST_JSON: &[&str] = &[
     include_str!("../../../languages/org/provider/asp-md-provider-manifest.json"),
 ];
 
-const COMMON_IGNORED_PATH_PREFIXES: &[&str] = &[
-    ".cache",
-    ".codex/harness-state",
-    ".codex/rs-harness",
-    ".data",
-    ".devenv",
-    ".direnv",
-    ".git",
-    ".idea",
-    ".jj",
-    ".run",
-    ".vscode",
-    "node_modules",
-    "target",
-];
 
 pub fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
     let language_manifests = language_provider_manifests();
@@ -289,24 +274,36 @@ fn language_provider_manifests() -> Vec<ProviderManifest> {
         .collect()
 }
 
+include!(concat!(env!("OUT_DIR"), "/registered_language_ids.rs"));
+
 /// Return registered ASP language ids from the provider registry schema.
 pub fn registered_language_ids() -> Vec<agent_semantic_config::LanguageId> {
-    static REGISTERED_LANGUAGE_IDS: std::sync::OnceLock<Vec<agent_semantic_config::LanguageId>> =
-        std::sync::OnceLock::new();
-    REGISTERED_LANGUAGE_IDS
-        .get_or_init(|| {
-            let mut language_ids = schema_registry()
-                .languages
-                .iter()
-                .map(|registration| {
-                    agent_semantic_config::LanguageId::new(registration.language_id.clone())
-                })
-                .collect::<Vec<_>>();
-            language_ids.sort();
-            language_ids.dedup();
-            language_ids
-        })
-        .clone()
+    REGISTERED_LANGUAGE_ID_STRINGS
+        .iter()
+        .map(|language_id| agent_semantic_config::LanguageId::new(*language_id))
+        .collect()
+}
+
+pub(crate) fn registered_language_id(candidate: &str) -> Option<agent_semantic_config::LanguageId> {
+    REGISTERED_LANGUAGE_ID_STRINGS
+        .iter()
+        .find(|language_id| language_id.eq_ignore_ascii_case(candidate))
+        .map(|language_id| agent_semantic_config::LanguageId::new(*language_id))
+}
+
+#[cfg(test)]
+mod registered_language_projection_tests {
+    #[test]
+    fn build_projection_matches_the_registry_schema() {
+        let mut schema_language_ids = super::schema_registry()
+            .languages
+            .iter()
+            .map(|registration| registration.language_id.as_str())
+            .collect::<Vec<_>>();
+        schema_language_ids.sort_unstable();
+        schema_language_ids.dedup();
+        assert_eq!(schema_language_ids, super::REGISTERED_LANGUAGE_ID_STRINGS);
+    }
 }
 
 fn normalize_language_provider_manifest(manifest: &mut ProviderManifest) {
@@ -315,22 +312,8 @@ fn normalize_language_provider_manifest(manifest: &mut ProviderManifest) {
     manifest.protocol_id = HOOK_PROTOCOL_ID.to_string();
     manifest.protocol_version = HOOK_PROTOCOL_VERSION.to_string();
     manifest.manifest_version = env!("CARGO_PKG_VERSION").to_string();
-    normalize_source_defaults(&mut manifest.source);
 }
 
-fn normalize_source_defaults(source: &mut ManifestSourceDefaults) {
-    for prefix in COMMON_IGNORED_PATH_PREFIXES {
-        if !source
-            .default_ignored_path_prefixes
-            .iter()
-            .any(|seen| seen == prefix)
-        {
-            source
-                .default_ignored_path_prefixes
-                .push(prefix.to_string());
-        }
-    }
-}
 
 fn schema_registry() -> &'static SemanticLanguageRegistry {
     static REGISTRY: std::sync::OnceLock<SemanticLanguageRegistry> = std::sync::OnceLock::new();

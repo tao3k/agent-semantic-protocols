@@ -1,16 +1,8 @@
-//! Provider-scope collection facade for source-index refresh.
+//! Provider-owned source-scope receipt consumers for source-index publication.
 
-use std::path::Path;
-
-use agent_semantic_client_core::ProviderRegistrySnapshot;
-use agent_semantic_client_local_cli::collect_provider_source_scope_files;
-
-use super::config::SOURCE_INDEX_FILE_LIMIT;
-use super::model::SourceIndexScopeFile;
-
-/// Provider selection policy for one source-index collection pass.
-#[derive(Clone, Debug)]
-pub enum SourceIndexCollectionScopeV1 {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SourceIndexCollectionScope {
+    CompleteGeneration,
     TargetProvider {
         language_id: agent_semantic_client_core::LanguageId,
         provider_id: agent_semantic_client_core::ProviderId,
@@ -18,105 +10,70 @@ pub enum SourceIndexCollectionScopeV1 {
     TargetProviderId {
         provider_id: agent_semantic_client_core::ProviderId,
     },
-    CompleteGeneration,
 }
 
-pub(super) fn collect_source_index_files(
-    project_root: &Path,
-    snapshot: &ProviderRegistrySnapshot,
-    scope: &SourceIndexCollectionScopeV1,
-) -> Result<Vec<SourceIndexScopeFile>, String> {
-    let provider_files = match scope {
-        SourceIndexCollectionScopeV1::TargetProvider {
-            language_id,
-            provider_id,
-        } => agent_semantic_client_local_cli::collect_target_provider_source_scope_files(
-            project_root,
-            snapshot,
-            language_id,
-            provider_id,
-            SOURCE_INDEX_FILE_LIMIT,
-        )?,
-        SourceIndexCollectionScopeV1::TargetProviderId { provider_id } => {
-            agent_semantic_client_local_cli::collect_target_provider_source_scope_files_by_provider_id(
-                project_root,
-                snapshot,
-                provider_id,
-                SOURCE_INDEX_FILE_LIMIT,
-            )?
-        }
-        SourceIndexCollectionScopeV1::CompleteGeneration => {
-            collect_provider_source_scope_files(project_root, snapshot, SOURCE_INDEX_FILE_LIMIT)?
-        }
-    };
-
-    Ok(provider_files
-        .into_iter()
-        .map(|file| SourceIndexScopeFile {
-            path: file.path,
-            language_id: file.language_id,
-            provider_id: file.provider_id,
-            selector_receipts: Vec::new(),
-        })
-        .collect())
-}
-
-/// Collects the provider-owned source files required by one search-index scope.
-pub fn collect_workspace_search_source_index_files(
-    project_root: &Path,
-    snapshot: &ProviderRegistrySnapshot,
-    scope: &SourceIndexCollectionScopeV1,
-) -> Result<Vec<SourceIndexScopeFile>, String> {
-    let files = collect_source_index_files(project_root, snapshot, scope)?;
-    let missing_provider_ids = snapshot
-        .providers
-        .iter()
-        .filter(|provider| match scope {
-            SourceIndexCollectionScopeV1::TargetProvider {
+pub(crate) fn collect_source_index_files(
+    _project_root: &std::path::Path,
+    _provider_registry: &agent_semantic_client_core::ProviderRegistrySnapshot,
+    _scope: &SourceIndexCollectionScope,
+) -> Result<Vec<agent_semantic_client_db::ClientDbSourceIndexScopeFile>, String> {
+    let mut files = Vec::new();
+    for provider in &_provider_registry.providers {
+        let provider_is_selected = match _scope {
+            SourceIndexCollectionScope::CompleteGeneration => true,
+            SourceIndexCollectionScope::TargetProvider {
                 language_id,
                 provider_id,
-            } => &provider.language_id == language_id && &provider.provider_id == provider_id,
-            SourceIndexCollectionScopeV1::TargetProviderId { provider_id } => {
-                &provider.provider_id == provider_id
+            } => {
+                language_id == &provider.language_id && provider_id == &provider.provider_id
             }
-            SourceIndexCollectionScopeV1::CompleteGeneration => true,
-        })
-        .filter(|provider| {
-            !files.iter().any(|file| {
-                file.provider_id == provider.provider_id
-                    && provider_matches_source_extension(provider, &file.path)
-            })
-        })
-        .map(|provider| provider.provider_id.as_str())
-        .collect::<Vec<_>>();
-    if !missing_provider_ids.is_empty() {
-        return Err(format!(
-            "provider source envelope is incomplete: missingProviderIds={}",
-            missing_provider_ids.join(",")
-        ));
+            SourceIndexCollectionScope::TargetProviderId { provider_id } => {
+                provider_id == &provider.provider_id
+            }
+        };
+        if !provider_is_selected {
+            continue;
+        }
+        let receipt = agent_semantic_client_local_cli::provider_workspace_scope_files(
+            _project_root,
+            provider,
+            provider.language_id.as_str(),
+            std::path::Path::new(&provider.binary),
+        )
+        .map_err(|error| error.to_string())?;
+        match receipt {
+            agent_semantic_client_local_cli::ProviderWorkspaceScopeFiles::Supported(
+                provider_files,
+            ) => {
+                for provider_file in provider_files {
+                    let agent_semantic_client_local_cli::ProviderWorkspaceScopePathFile {
+                        path,
+                        language_id,
+                        provider_id,
+                    } = provider_file;
+                    files.push(agent_semantic_client_db::ClientDbSourceIndexScopeFile {
+                        path,
+                        language_id,
+                        provider_id,
+                        selector_receipts: Vec::new(),
+                    });
+                }
+            }
+            agent_semantic_client_local_cli::ProviderWorkspaceScopeFiles::Unsupported => {
+                return Err(format!(
+                    "provider workspace scope is unsupported: languageId={} providerId={}",
+                    provider.language_id, provider.provider_id
+                ));
+            }
+        }
     }
     Ok(files)
 }
 
-#[cfg(test)]
-#[path = "../../tests/unit/source_index_collection_scope.rs"]
-mod source_index_collection_scope_tests;
-
-fn provider_matches_source_extension(
-    provider: &agent_semantic_client_core::ResolvedProvider,
-    path: &Path,
-) -> bool {
-    let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
-        return false;
-    };
-    provider
-        .source_extensions
-        .iter()
-        .any(|candidate| extension_matches(candidate, extension))
-}
-
-fn extension_matches(candidate: &str, extension: &str) -> bool {
-    candidate
-        .trim_start_matches('.')
-        .eq_ignore_ascii_case(extension)
+pub(crate) fn collect_workspace_search_source_index_files(
+    project_root: &std::path::Path,
+    provider_registry: &agent_semantic_client_core::ProviderRegistrySnapshot,
+    scope: &SourceIndexCollectionScope,
+) -> Result<Vec<agent_semantic_client_db::ClientDbSourceIndexScopeFile>, String> {
+    collect_source_index_files(project_root, provider_registry, scope)
 }

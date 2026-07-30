@@ -285,7 +285,6 @@ impl CompiledHookRule {
         if let Some(matched) = registered_asp.as_ref() {
             crate::hook_config::core::registered_asp::append_materialization_fields(
                 &mut decision_fields,
-                runtime,
                 matched,
                 self.dispatch
                     .as_ref()

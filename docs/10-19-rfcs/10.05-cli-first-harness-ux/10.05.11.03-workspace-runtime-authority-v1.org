@@ -1,0 +1,74 @@
+#+title: Typed Workspace Reference and Canonical Runtime Authority
+#+property: ASP_SCHEMA_ID asp.typed-workspace-runtime-authority.v1
+
+* Status
+
+Required for exact owner admission, resident lifecycle, and concurrent search.
+
+* Typed workspace reference
+
+The public CLI MUST NOT overload one textual =--workspace= value with both a
+checkout path and an opaque workspace identity. Path-shape guessing is not a
+protocol.
+
+Commands that need a checkout MUST accept
+=--workspace-root <absolute-path>=. Commands that address an already registered
+resident entry MUST accept =--workspace-id <opaque-id>=. The two inputs are
+mutually exclusive and the selected form MUST be carried internally as a typed
+=WorkspaceReference= variant. Empty text is invalid for both variants.
+
+Package roots discovered beneath one repository checkout retain their package
+scope while resolving through the repository's canonical workspace identity.
+Owner paths, generation evidence, graph facts, and exact projection requests
+are normalized once against that canonical root. A consumer MUST NOT reinterpret
+an opaque workspace identity as a relative filesystem path, and MUST NOT append
+a workspace identity to a checkout path.
+
+* Generation publication
+
+Discovery publication and exact projection use the same resident entry and the
+same atomic generation receipt. A successful owner discovery therefore makes
+that generation immediately available to exact projection without =asp sync=,
+activation writes, provider startup, or a second workspace identity lookup.
+
+Concurrent readers observe either the complete previous generation or the
+complete next generation. Owner membership, selector candidates, kinds, graph
+facts, and projection bytes MUST NOT be assembled from different generations.
+Different workspace identities have independent read pools, writer lanes,
+generation roots, and admission decisions.
+
+* Canonical global runtime
+
+The global ASP executable has one authority:
+=ASP_STATE_HOME/runtime/bin/asp=. Every global PATH entry is a direct symlink to
+that canonical runtime path. Artifact-store =latest= links are internal
+publication details and MUST NOT be exposed as PATH authorities. Install,
+healthcheck, hook lifecycle, and resident replacement validate the same link
+target and artifact receipt contract.
+
+* Transport-first resident lifecycle
+
+A healthy endpoint with current binary and transport digests is retained. A
+stale endpoint receives a bounded typed shutdown or rebind request and
+relinquishes its lease before a new owner performs compare-and-swap
+registration.
+
+Correctness MUST NOT depend on the hook process having permission to send an
+operating-system termination signal to another resident process. Multi-session
+contention is resolved through endpoint identity, lease generation, and
+compare-and-swap ownership rather than PID termination.
+
+* Required gates
+
+- checkout path and opaque workspace identity are accepted only by their typed
+  flags; empty or conflicting inputs fail before filesystem or database access
+- a repository with multiple package roots publishes one canonical workspace
+  generation containing package-scoped owner envelopes
+- discovery followed by exact projection performs no sync or activation write
+- same-workspace readers observe only complete old or new generations while
+  one writer switches the generation
+- different workspaces switch generations concurrently without sharing roots,
+  owners, read pools, writer lanes, or lock retries
+- one hundred concurrent sessions reuse the resident entry and database handle
+- canonical PATH reconciliation and resident rebind complete within the
+  millisecond gate without an operating-system kill dependency

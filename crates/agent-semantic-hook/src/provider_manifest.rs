@@ -472,8 +472,92 @@ pub fn validate_provider_manifest_contract(manifest: &ProviderManifest) -> Vec<S
     ) {
         errors.push(error);
     }
+    if let Err(error) = validate_project_resolution_descriptor(manifest) {
+        errors.push(error);
+    }
 
     errors
+}
+
+fn validate_project_resolution_descriptor(manifest: &ProviderManifest) -> Result<(), String> {
+    let Some(descriptor) = manifest.project_resolution() else {
+        return Ok(());
+    };
+    if descriptor.schema_id != "agent.semantic-protocols.provider-project-resolution-descriptor"
+        || descriptor.schema_version != "1"
+    {
+        return Err(format!(
+            "provider {} projectResolution schema must be agent.semantic-protocols.provider-project-resolution-descriptor v1",
+            manifest.provider_id()
+        ));
+    }
+    if descriptor.capability_id != "project-resolution" {
+        return Err(format!(
+            "provider {} projectResolution capabilityId must be project-resolution",
+            manifest.provider_id()
+        ));
+    }
+    if !descriptor.supports_git_candidates && !descriptor.supports_provider_only {
+        return Err(format!(
+            "provider {} projectResolution must support at least one candidate mode",
+            manifest.provider_id()
+        ));
+    }
+    if descriptor.entry_markers.is_empty()
+        || descriptor
+            .entry_markers
+            .iter()
+            .any(|marker| marker.is_empty())
+    {
+        return Err(format!(
+            "provider {} projectResolution entryMarkers must be non-empty",
+            manifest.provider_id()
+        ));
+    }
+    if descriptor.parser_id.is_empty() || descriptor.command_binding != "project-resolution-stdin" {
+        return Err(format!(
+            "provider {} projectResolution requires a non-empty parserId and commandBinding=project-resolution-stdin",
+            manifest.provider_id()
+        ));
+    }
+    for (field, actual, expected) in [
+        (
+            "candidateSnapshotSchema",
+            descriptor.candidate_snapshot_schema.as_str(),
+            "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json",
+        ),
+        (
+            "packageGraphSchema",
+            descriptor.package_graph_schema.as_str(),
+            "https://schemas.agent-semantic-protocols.dev/language-package-graph.v1.schema.json",
+        ),
+        (
+            "resolvedSourceScopeSchema",
+            descriptor.resolved_source_scope_schema.as_str(),
+            "https://schemas.agent-semantic-protocols.dev/resolved-source-scope.v1.schema.json",
+        ),
+        (
+            "projectResolutionSchema",
+            descriptor.project_resolution_schema.as_str(),
+            "https://schemas.agent-semantic-protocols.dev/project-resolution.v1.schema.json",
+        ),
+    ] {
+        if actual != expected {
+            return Err(format!(
+                "provider {} projectResolution {field} must be {expected}",
+                manifest.provider_id()
+            ));
+        }
+    }
+    for marker in &descriptor.entry_markers {
+        if !manifest.source().default_project_markers.contains(marker) {
+            return Err(format!(
+                "provider {} projectResolution entry marker {marker} is not registered in source.defaultProjectMarkers",
+                manifest.provider_id()
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_source_snapshot_capability(
@@ -586,10 +670,8 @@ fn activate_provider(
         routes,
         coverage: ActivationCoverage {
             package_roots,
-            source_roots: manifest.source.default_source_roots.clone(),
             config_files: manifest.source.default_config_files.clone(),
             source_extensions: manifest.source.default_extensions.clone(),
-            ignored_path_prefixes: manifest.source.default_ignored_path_prefixes.clone(),
         },
     })
 }

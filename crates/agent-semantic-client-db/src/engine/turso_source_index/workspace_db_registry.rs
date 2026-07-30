@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use agent_semantic_client_core::state_core::ResolvedState;
 use parking_lot::Mutex;
@@ -143,10 +143,13 @@ pub struct ProviderSearchWorkspaceSession {
 }
 
 impl WorkspaceDbRegistry {
-    /// Return the process registry. Entries remain partitioned by workspace identity.
-    pub fn process() -> &'static Self {
-        static REGISTRY: OnceLock<WorkspaceDbRegistry> = OnceLock::new();
-        REGISTRY.get_or_init(Self::default)
+    pub fn workspace_entry_counts(&self) -> (usize, usize) {
+        let slots = self.slots.lock();
+        let loaded = slots
+            .values()
+            .filter(|slot| slot.entry.get().is_some())
+            .count();
+        (slots.len(), loaded)
     }
 
     /// Resolve and validate canonical workspace ownership before any database open.
@@ -323,6 +326,25 @@ impl WorkspaceDbRegistry {
         Ok(Arc::clone(entry))
     }
 
+    pub async fn finish_loaded_writes(
+        &self,
+        mode: crate::WorkspaceDbWriteFinishMode,
+    ) -> Result<(), String> {
+        let loaded_entries = {
+            let slots = self.slots.lock();
+            slots
+                .values()
+                .filter_map(|slot| slot.entry.get().cloned())
+                .collect::<Vec<_>>()
+        };
+        for entry in loaded_entries {
+            ProviderSearchWorkspaceSession { entry }
+                .finish_writes(mode)
+                .await?;
+        }
+        Ok(())
+    }
+
     pub fn counters(&self) -> WorkspaceDbRegistryCounters {
         let (writer_transaction_count, max_active_writer_count) = {
             let slots = self.slots.lock();
@@ -393,6 +415,23 @@ impl ProviderSearchWorkspaceSession {
             .await?;
         *cached = Some((cache_key, result.clone()));
         Ok(result)
+    }
+
+    pub async fn commit_source_index_generation(
+        &self,
+        request: crate::ClientDbSourceIndexRefreshRequest,
+    ) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
+        match self
+            .submit_write(WorkspaceDbWriteOperation::CommitSourceIndexGeneration(
+                request,
+            ))
+            .await?
+        {
+            WorkspaceDbWriteResult::SourceIndexGeneration(receipt) => Ok(receipt),
+            _ => Err(
+                "workspace writer returned an unexpected source-index generation result".to_owned(),
+            ),
+        }
     }
 
     pub async fn write_provider_incremental_owner(

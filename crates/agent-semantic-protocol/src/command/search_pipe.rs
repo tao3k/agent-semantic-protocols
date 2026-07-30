@@ -819,12 +819,20 @@ fn run_search_lexical_command(
         context.locator_root,
         pipe_args.workspace.as_deref(),
     );
-    let current_snapshot =
-        agent_semantic_client::source_index::current_source_index_snapshot(&project_root)?;
+    if project_root != context.project_root {
+        return Err(format!(
+            "search lexical workspace identity mismatch: context={} requested={}",
+            context.project_root.display(),
+            project_root.display()
+        ));
+    }
+    let current_snapshot = context.source_index_snapshot.ok_or_else(|| {
+        "search lexical requires the provider-dispatch source-index snapshot".to_string()
+    })?;
     let acquisition = collect_search_pipe_candidates(CollectSearchPipeCandidatesRequest {
         language_id: context.language_id,
         project_root: &project_root,
-        current_snapshot: &current_snapshot,
+        current_snapshot,
         locator_root: context.locator_root,
         intent: &pipe_args.query,
         scopes: &pipe_args.owners,

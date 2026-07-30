@@ -142,45 +142,110 @@ fn source_index_db_trace(stage: &str, started: std::time::Instant) {
 use super::facts::write_turso_source_index_rows;
 use super::readiness::turso_source_index_projection_ready;
 
-pub async fn refresh_turso_source_index_import(
-    db_path: &Path,
+pub async fn refresh_turso_source_index_import_on_connection(
+    connection: &mut turso::Connection,
     request: ClientDbSourceIndexRefreshRequest,
 ) -> Result<ClientDbSourceIndexRefreshReport, String> {
-    let _source_index_write_guard = turso_source_index_access_lock(db_path).write_owned().await;
     let trace_started = std::time::Instant::now();
-    let source_snapshot_json =
-        serde_json::to_string(&request.source_snapshot).map_err(|error| {
-            format!("failed to serialize Turso source-index source snapshot evidence: {error}")
-        })?;
-    super::membership::validate_source_index_membership_change_set(&request)?;
-    let membership_change_set = request.membership_change_set;
+    let requested_source_snapshot = request.source_snapshot;
     let import = request.import;
+    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
+        import.file_hashes.iter().map(|file| {
+            (
+                file.path.as_str().to_owned(),
+                file.sha256.as_str().to_owned(),
+            )
+        }),
+    );
+    let mut source_snapshot = workspace_snapshot.evidence(
+        requested_source_snapshot.source_kind.clone(),
+        requested_source_snapshot.provider_digest.clone(),
+    );
     if import.file_hashes.is_empty() {
         return Err("source index import requires file hash evidence".to_string());
     }
-    source_index_db_trace("operation-lock-acquired", trace_started);
-    crate::engine::turso_bootstrap::bootstrap_turso_source_index_db(db_path).await?;
-    source_index_db_trace("base-bootstrap-complete", trace_started);
-    let mut connection = connect_turso_client_db(db_path).await?;
-    source_index_db_trace("write-connection-open", trace_started);
-    let source_index_schema_rebuilt = ensure_turso_source_index_schema(&connection).await?;
-    source_index_db_trace(
-        if source_index_schema_rebuilt {
-            "source-index-schema-rebuilt"
-        } else {
-            "source-index-schema-verified"
-        },
-        trace_started,
-    );
+    source_index_db_trace("resident-writer-admitted", trace_started);
+    ensure_turso_source_index_schema(connection).await?;
+    source_index_db_trace("source-index-schema-verified", trace_started);
     let file_hashes_json = serde_json::to_string(&import.file_hashes)
         .map_err(|error| format!("failed to serialize Turso source-index file hashes: {error}"))?;
     let project_root = normalized_project_root(&import.project_root);
+    let current_file_hashes = import
+        .file_hashes
+        .iter()
+        .map(|file| {
+            (
+                file.path.as_str().to_owned(),
+                file.sha256.as_str().to_owned(),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let current_owner_paths = import
+        .owners
+        .iter()
+        .map(|owner| owner.owner_path.as_str().to_owned())
+        .collect::<std::collections::BTreeSet<_>>();
+    let membership_change_set = if let Some(previous) =
+        super::generation_snapshot::load_turso_source_index_generation_snapshot(
+            connection,
+            &project_root,
+            import.schema_id.as_str(),
+            import.schema_version.as_str(),
+        )
+        .await?
+    {
+        let changed_owner_paths = current_owner_paths
+            .iter()
+            .filter(|path| {
+                previous.file_hashes.get(path.as_str()) != current_file_hashes.get(path.as_str())
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let removed_owner_paths = previous
+            .owners
+            .iter()
+            .map(|owner| owner.owner_path.clone())
+            .filter(|path| !current_owner_paths.contains(path))
+            .collect::<Vec<_>>();
+        if changed_owner_paths.is_empty() && removed_owner_paths.is_empty() {
+            crate::ClientDbSourceIndexMembershipChangeSet::FullSnapshot
+        } else {
+            source_snapshot = workspace_snapshot.overlay_evidence(
+                agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+                requested_source_snapshot.provider_digest.clone(),
+                previous.source_snapshot.root_digest,
+                changed_owner_paths.iter().cloned(),
+                removed_owner_paths.iter().cloned(),
+            )?;
+            crate::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay {
+                changed_owner_paths: changed_owner_paths
+                    .into_iter()
+                    .map(crate::ClientDbSourceIndexPath::new)
+                    .collect(),
+                removed_owner_paths: removed_owner_paths
+                    .into_iter()
+                    .map(crate::ClientDbSourceIndexPath::new)
+                    .collect(),
+            }
+        }
+    } else {
+        crate::ClientDbSourceIndexMembershipChangeSet::FullSnapshot
+    };
+    super::membership::validate_source_index_membership_change_set(
+        &import,
+        &source_snapshot,
+        &membership_change_set,
+    )?;
+    let source_snapshot_json = serde_json::to_string(&source_snapshot).map_err(|error| {
+        format!("failed to serialize Turso source-index source snapshot evidence: {error}")
+    })?;
     if let Some(refresh) = reusable_turso_source_index_generation(
-        &connection,
+        connection,
         &import,
         &project_root,
         &file_hashes_json,
         &source_snapshot_json,
+        &source_snapshot,
         request.file_count,
     )
     .await?
@@ -190,7 +255,7 @@ pub async fn refresh_turso_source_index_import(
     }
     source_index_db_trace("reuse-probe-missed", trace_started);
     let write_stats = write_turso_source_index_rows(
-        &mut connection,
+        connection,
         &import,
         &membership_change_set,
         &project_root,
@@ -200,7 +265,7 @@ pub async fn refresh_turso_source_index_import(
     .await?;
     source_index_db_trace("rows-written", trace_started);
     let (owner_count, selector_count) = turso_source_index_scope_row_counts(
-        &connection,
+        connection,
         &project_root,
         import.schema_id.as_str(),
         import.schema_version.as_str(),
@@ -223,12 +288,31 @@ pub async fn refresh_turso_source_index_import(
         generation_id: write_stats.physical_generation_id.clone().into(),
         reused_generation: false,
         file_count: request.file_count,
+        source_snapshot,
         owner_count,
         selector_count,
         changed_owner_count: write_stats.changed_owner_count,
         removed_owner_count: write_stats.removed_owner_count,
         posting_write_count: write_stats.posting_write_count,
     })
+}
+
+pub async fn commit_turso_source_index_generation_via_resident(
+    request: ClientDbSourceIndexRefreshRequest,
+) -> Result<ClientDbSourceIndexRefreshReport, String> {
+    let project_root = request.import.project_root.clone();
+    let session =
+        crate::workspace_db_ipc::connect_workspace_db_owner_session(&project_root).await?;
+    session.commit_source_index_generation(&request).await
+}
+
+pub(crate) async fn commit_turso_source_index_generation_in_fixture(
+    db_path: &Path,
+    request: ClientDbSourceIndexRefreshRequest,
+) -> Result<ClientDbSourceIndexRefreshReport, String> {
+    crate::engine::turso_bootstrap::bootstrap_turso_client_db(db_path).await?;
+    let mut connection = connect_turso_client_db(db_path).await?;
+    refresh_turso_source_index_import_on_connection(&mut connection, request).await
 }
 
 pub async fn latest_turso_source_index_file_hashes(
@@ -471,6 +555,7 @@ async fn reusable_turso_source_index_generation(
     project_root: &str,
     file_hashes_json: &str,
     source_snapshot_json: &str,
+    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     file_count: u32,
 ) -> Result<Option<ClientDbSourceIndexRefreshReport>, String> {
     let selector_fingerprint = turso_source_index_selector_fingerprint(import)?;
@@ -575,6 +660,7 @@ async fn reusable_turso_source_index_generation(
         generation_id: generation_id.into(),
         reused_generation: true,
         file_count,
+        source_snapshot: source_snapshot.clone(),
         owner_count,
         selector_count,
         changed_owner_count: 0,

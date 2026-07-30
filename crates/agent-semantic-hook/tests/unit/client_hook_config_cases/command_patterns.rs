@@ -207,7 +207,7 @@ fn configured_git_diff_routes_to_testing_resident() {
             .fields
             .get("configRuleId")
             .and_then(serde_json::Value::as_str),
-        Some("deny-uncontrolled-git-source-reads")
+        Some("deny-uncontrolled-git-metadata-reads")
     );
     assert_eq!(
         decision

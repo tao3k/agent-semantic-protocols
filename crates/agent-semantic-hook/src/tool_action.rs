@@ -630,20 +630,22 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
         }
     }
     let operation = OperationIntent::from_action(surface, command.as_deref(), &paths);
-    let mut actions = vec![ToolAction {
+    let envelope_action = ToolAction {
         tool_name: tool_name.to_string(),
         surface,
         operation,
         command,
         command_tokens,
         paths,
-    }];
+    };
+    let mut actions = Vec::new();
     if scans_nested_actions {
         actions.extend(codex_command_actions(tool_name, tool_input));
         for nested in nested_tool_actions(tool_name, tool_input) {
             actions.extend(collect_tool_actions(&nested.tool_name, &nested.input));
         }
     }
+    push_unique_action(&mut actions, envelope_action);
     actions
 }
 

@@ -120,6 +120,7 @@ impl TursoMemorySearchBackend {
             provider_id: self.binding.provider_id.clone(),
             parser_identity_digest: self.binding.parser_identity_digest.clone(),
             query_pack_digest: self.binding.query_pack_digest.clone(),
+            owner_path: request.requested_owner_path.clone(),
             canonical_item_selector: request.canonical_item_selector.clone(),
         };
         let read = match &self.session {
@@ -165,8 +166,13 @@ impl TursoMemorySearchBackend {
                     MemorySearchResolutionState::LiveRelocated,
                     Some(candidate.clone()),
                 ),
-                [] if read.actual_kinds.is_empty() => (MemorySearchResolutionState::Missing, None),
-                [] => (MemorySearchResolutionState::KindMismatch, None),
+                [] if !read.actual_kinds.is_empty() => {
+                    (MemorySearchResolutionState::KindMismatch, None)
+                }
+                [] if read.requested_owner_exists => {
+                    (MemorySearchResolutionState::ItemMissing, None)
+                }
+                [] => (MemorySearchResolutionState::OwnerMissing, None),
                 _ => (MemorySearchResolutionState::Ambiguous, None),
             }
         };

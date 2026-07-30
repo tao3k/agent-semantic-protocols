@@ -103,7 +103,6 @@ pub(crate) fn require_materialized_org_state(project_root: &Path) -> Result<OrgS
     }
     ensure_flow_dirs(&paths.artifacts_dir.join("org"))?;
     Ok(OrgStateSync {
-        source: default_org_repo_url(),
         status: "reused",
         source_index_status: "not-requested".to_string(),
         source_index_generation: None,
@@ -116,7 +115,6 @@ pub(crate) fn org_artifacts_root_for_project(project_root: &Path) -> Result<Path
 
 #[derive(Debug, Clone)]
 pub(crate) struct OrgStateSync {
-    pub(crate) source: String,
     pub(crate) status: &'static str,
     pub(crate) source_index_status: String,
     pub(crate) source_index_generation: Option<String>,
@@ -143,7 +141,6 @@ fn sync_org_state_repo(state_root: &Path, repo_url: &str) -> Result<OrgStateSync
         {
             ensure_org_repo_local_excludes(state_root)?;
             return Ok(OrgStateSync {
-                source: repo_url.to_string(),
                 status: "dirty-skipped",
                 source_index_status: "pending".to_string(),
                 source_index_generation: None,
@@ -152,7 +149,6 @@ fn sync_org_state_repo(state_root: &Path, repo_url: &str) -> Result<OrgStateSync
         run_git(&["pull", "--ff-only"], Some(state_root))?;
         ensure_org_repo_local_excludes(state_root)?;
         return Ok(OrgStateSync {
-            source: repo_url.to_string(),
             status: "updated",
             source_index_status: "pending".to_string(),
             source_index_generation: None,
@@ -174,7 +170,6 @@ fn sync_org_state_repo(state_root: &Path, repo_url: &str) -> Result<OrgStateSync
     run_git(&["clone", repo_url, &state_root_string], None)?;
     ensure_org_repo_local_excludes(state_root)?;
     Ok(OrgStateSync {
-        source: repo_url.to_string(),
         status: "cloned",
         source_index_status: "pending".to_string(),
         source_index_generation: None,

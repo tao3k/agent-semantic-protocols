@@ -58,6 +58,13 @@ pub(crate) fn write_activation(root: &Path, providers: &[ProviderSpec]) {
 pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers: &[ProviderSpec]) {
     let activation_dir = activation_path.parent().expect("activation parent");
     std::fs::create_dir_all(activation_dir).expect("create activation dir");
+    let runtime_bin = state_runtime_bin(root);
+    std::fs::create_dir_all(&runtime_bin).expect("create fixture runtime bin");
+    let runtime_asp = runtime_bin.join("asp");
+    if !runtime_asp.exists() {
+        std::fs::copy(env!("CARGO_BIN_EXE_asp"), &runtime_asp)
+            .expect("install fixture canonical ASP runtime");
+    }
     let providers: Vec<_> = providers
         .iter()
         .map(|spec| {
@@ -135,6 +142,7 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
         "protocolVersion": agent_semantic_hook::HOOK_PROTOCOL_VERSION,
         "projectRoot": root.display().to_string(),
         "generatedBy": { "runtime": "asp", "version": "test" },
+        "rankers": [],
         "providers": providers
     });
     std::fs::write(

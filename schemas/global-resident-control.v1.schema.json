@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/global-resident-control.v1.schema.json",
+  "title": "ASP Global Resident Control",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/endpoint"
+    },
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/receipt"
+    }
+  ],
+  "$defs": {
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "transportContractDigest",
+        "ownerEpoch",
+        "runtimeArtifactPath",
+        "runtimeArtifactDigest",
+        "bindingToken",
+        "socketPath"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.global-resident-endpoint.v1"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "transportContractDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerEpoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "runtimeArtifactPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtimeArtifactDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bindingToken": {
+          "type": "string",
+          "minLength": 1
+        },
+        "socketPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "operation",
+        "requestId"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.global-resident-control-request.v1"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "operation": {
+          "enum": [
+            "status",
+            "reconcile",
+            "restart"
+          ]
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "requestId",
+        "state",
+        "runtimeArtifactDigest",
+        "transportContractDigest",
+        "workspaceEntryCount"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.global-resident-control-receipt.v1"
+        },
+        "schemaVersion": {
+          "const": "1"
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "enum": [
+            "healthy",
+            "starting",
+            "draining",
+            "degraded"
+          ]
+        },
+        "runtimeArtifactDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transportContractDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceEntryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
