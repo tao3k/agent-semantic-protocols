@@ -1,4 +1,4 @@
-use agent_semantic_hook::{DecisionKind, DecisionRouteKind, ReasonKind, classify_hook};
+use agent_semantic_hook::{DecisionKind, ReasonKind, classify_hook};
 use serde_json::json;
 
 use crate::classifier::routes::registry_with_rust_and_python as registry;
@@ -31,9 +31,8 @@ fn codex_listfiles_absolute_paths_respect_configured_project_root() {
             }
         }),
     );
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::SourceDirectoryEnumeration);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Ingest);
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.reason_kind, ReasonKind::None);
 
     let decision = classify_hook(
         &registry,
@@ -96,9 +95,8 @@ fn codex_listfiles_absolute_paths_respect_current_dir_project_root() {
             }
         }),
     );
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::SourceDirectoryEnumeration);
-    assert_eq!(decision.routes[0].kind, DecisionRouteKind::Ingest);
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.reason_kind, ReasonKind::None);
 
     let current_shadow_path = format!(
         "{}-shadow/crates/agent-semantic-hook/src",
@@ -160,8 +158,8 @@ fn codex_listfiles_traversal_paths_are_normalized_before_source_matching() {
             }
         }),
     );
-    assert_eq!(decision.decision, DecisionKind::Deny);
-    assert_eq!(decision.reason_kind, ReasonKind::SourceDirectoryEnumeration);
+    assert_eq!(decision.decision, DecisionKind::Allow);
+    assert_eq!(decision.reason_kind, ReasonKind::None);
 
     let decision = classify_hook(
         &registry,

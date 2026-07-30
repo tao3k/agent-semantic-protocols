@@ -1,0 +1,102 @@
+#+title: Provider Command Contract Admission
+#+author: ASP
+#+options: toc:2
+
+* Status
+
+Proposed for immediate P0 implementation.
+
+* Problem
+
+An installed provider binary can be present and executable while implementing a
+different command surface from the active ASP runtime.  A presence-only catalog
+check admits that artifact, so exact query and owner discovery can fail later
+with errors such as unknown =--projection= or unknown
+=--asp-provider-id=.  The exact failure packet can then escape directly as JSON
+even when the caller requested the default source projection.
+
+This is contract drift, not an item-missing diagnostic.
+
+* Contract authority
+
+Each provider registration SHALL publish one typed command contract.  The
+contract SHALL identify every provider-owned operation used by ASP, its typed
+request transport, supported projection formats, and contract digest.  The
+activation receipt, Global provider catalog entry, and running provider
+artifact SHALL agree on that digest.
+
+Binary existence, executable permission, and provider ID equality are
+insufficient admission evidence.
+
+Project resolution SHALL publish parser-owned source roots, not a list inferred
+from whichever source files happened to appear in the repository candidate
+snapshot.  For Rust, Cargo target entry paths determine roots such as =src/=,
+=tests/=, =examples/=, and custom target parents.  Candidate snapshots qualify
+project anchors; they are not source-scope authority.
+
+* Admission and reconciliation
+
+The Global runtime supervisor SHALL validate the provider command contract
+before publishing a catalog generation.  An incompatible artifact SHALL NOT be
+published as =runtime=available=.  Reconciliation SHALL build or select a
+compatible immutable artifact, validate it, and atomically switch the catalog
+generation.
+
+Readers holding the previous catalog generation may finish.  New readers SHALL
+observe either the old complete generation or the new complete generation,
+never a mixed runtime/provider pair.
+
+* Exact query flow
+
+Exact query SHALL resolve:
+
+#+begin_example
+workspace identity
+  -> resident workspace entry
+  -> current MemoryBackend generation
+  -> exact selector resolution
+  -> independent diagnostic renderer
+#+end_example
+
+A missing resident generation is a writer-lane bootstrap request.  It SHALL NOT
+authorize a query-time provider-direct fallback, activation write, provider
+process compatibility path, or raw packet passthrough.
+
+* Diagnostic output
+
+Exact resolution produces a typed diagnostic value independent of command
+dispatch.  The default CLI renderer is human/source-oriented.  JSON is emitted
+only when the caller explicitly selects JSON output.
+
+Provider stdout is an internal transport envelope.  It SHALL NOT become public
+CLI output merely because resolution failed.
+
+* Exact projection surface
+
+The only public exact projection option is
+=--projection source|callable-skeleton=.  Omitting it selects =source=.
+
+The former =--code= and =--names-only= tokens SHALL be physically absent from
+production parsers, help, guides, recommended-next commands, hook guidance,
+conversion helpers, and compatibility diagnostics.  An agent must not be
+taught that a removed surface ever existed.  Unknown arguments use the single
+ordinary parser error path.
+
+* Required gates
+
+The implementation is incomplete until all of the following pass:
+
+1. A provider lacking one required operation or option is rejected before
+   catalog publication.
+2. Healthcheck reports command-contract mismatch and never reports that
+   provider as available.
+3. Cold exact query creates one resident workspace generation through its
+   writer lane and then resolves a newly added owner and item.
+4. Concurrent cold queries share that generation bootstrap.
+5. Item-missing, owner-missing, and kind-mismatch use the independent diagnostic
+   service and default to human output.
+6. JSON output appears only under an explicit JSON format request.
+7. Warm exact query performs no activation load, provider spawn, database open,
+   manifest write, or control-socket round trip.
+8. Production artifacts contain no =--code=, =--names-only=, direct-source-read
+   query compatibility route, or Legacy-specific recovery message.

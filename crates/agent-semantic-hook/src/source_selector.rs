@@ -77,24 +77,33 @@ fn infer_agent_action_subject_kind(
 
     let normalized = normalize_source_selector(value);
     let leaf = value.rsplit(['/', '\\']).next().unwrap_or(value);
-    let registered_source_scope = registry.providers.iter().any(|provider| {
-        let ignored = std::iter::empty::<&String>().any(|prefix| {
-            normalized == prefix
-                || normalized
-                    .strip_prefix(prefix)
-                    .is_some_and(|suffix| suffix.starts_with('/'))
-        });
-        !ignored
-            && provider.package_roots.iter().any(|root| {
-                root == "."
-                    || normalized == root
+    let candidate_path = std::path::Path::new(value);
+    let project_root = std::path::Path::new(&registry.project_root);
+    let is_project_path = !candidate_path.is_absolute()
+        || (project_root.is_absolute() && candidate_path.starts_with(project_root));
+    let is_path_shaped = value.contains(['/', '\\']) && !value.chars().any(char::is_whitespace);
+    let registered_source_scope = is_project_path
+        && registry.providers.iter().any(|provider| {
+            let ignored = std::iter::empty::<&String>().any(|prefix| {
+                normalized == prefix
                     || normalized
-                        .strip_prefix(root)
+                        .strip_prefix(prefix)
                         .is_some_and(|suffix| suffix.starts_with('/'))
-                    || contains_path_component_sequence(&normalized, root)
-            })
-    });
-    if registered_source_scope && (value.ends_with(['/', '\\']) || !leaf.contains('.')) {
+            });
+            !ignored
+                && provider.package_roots.iter().any(|root| {
+                    root == "."
+                        || normalized == root
+                        || normalized
+                            .strip_prefix(root)
+                            .is_some_and(|suffix| suffix.starts_with('/'))
+                        || contains_path_component_sequence(&normalized, root)
+                })
+        });
+    if registered_source_scope
+        && is_path_shaped
+        && (value.ends_with(['/', '\\']) || !leaf.contains('.'))
+    {
         return AgentActionSubjectKind::RegisteredLanguageSourcePattern;
     }
     if value.ends_with(['/', '\\']) {

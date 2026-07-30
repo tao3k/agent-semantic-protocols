@@ -39,12 +39,18 @@ impl ActivatedProvider {
         &self,
         selector: &SourceSelectorMatcher<'_>,
     ) -> Option<SourceSelectorKind> {
-        if self.glob_matches_source_selector(selector) {
+        if selector.has_glob && self.glob_matches_source_selector(selector) {
             return Some(if selector.has_glob {
                 SourceSelectorKind::Pattern
             } else {
                 SourceSelectorKind::ExactPath
             });
+        }
+        if self.source_paths.iter().any(|path| {
+            normalize_route_path(path) == selector.normalized
+                || selector.normalized.ends_with(&normalize_route_path(path))
+        }) {
+            return Some(SourceSelectorKind::ExactPath);
         }
         if self
             .config_files

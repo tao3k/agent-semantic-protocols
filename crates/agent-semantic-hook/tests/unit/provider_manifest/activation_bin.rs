@@ -46,6 +46,7 @@ fn default_activation_uses_state_home_runtime_provider_receipt() {
         "[package]\nname = \"state-home-runtime-provider\"\nversion = \"0.1.0\"\n",
     )
     .expect("write Cargo.toml");
+    fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
     install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
 
     let activation = build_default_activation(&root).expect("build activation");
@@ -133,6 +134,8 @@ fn asp_toml_can_disable_document_language_hook_activation() {
     let root = temp_root("document-provider-disable");
     let state_home = root.join(".asp-state-home");
     let _state_home_guard = StateHomeEnvGuard::set(&state_home);
+    git_init(&root);
+    fs::write(root.join("README.md"), "# fixture\n").expect("write Markdown candidate");
     install_state_home_provider(&state_home, "md", "orgize", "orgize");
     write_agent_config(
         &root,
@@ -173,6 +176,10 @@ enabled = false
     assert_eq!(md.binary, "orgize");
     assert_eq!(md.execution.as_str(), "external-process");
     assert!(
+        md.coverage.package_roots.is_empty(),
+        "document resolution must not invent a package-manager root"
+    );
+    assert!(
         md.provider_command_prefix.is_empty(),
         "document activation must not persist the receipt-resolved provider path"
     );
@@ -188,6 +195,9 @@ fn top_level_asp_toml_no_longer_configures_provider_activation() {
     let root = temp_root("top-level-ignored");
     let state_home = root.join(".asp-state-home");
     let _state_home_guard = StateHomeEnvGuard::set(&state_home);
+    git_init(&root);
+    fs::write(root.join("README.md"), "# fixture\n").expect("write Markdown candidate");
+    fs::write(root.join("fixture.org"), "* Fixture\n").expect("write Org candidate");
     install_state_home_provider(&state_home, "org", "orgize", "orgize");
     install_state_home_provider(&state_home, "md", "orgize", "orgize");
     fs::write(root.join("asp.toml"), "[providers.org]\nenabled = false\n")
@@ -215,7 +225,29 @@ pub(crate) fn install_state_home_provider(
     let provider_bin = state_home.join("runtime").join("bin").join(binary);
     fs::create_dir_all(provider_bin.parent().expect("provider bin parent"))
         .expect("create State Home runtime bin");
-    fs::write(&provider_bin, "#!/bin/sh\nexit 0\n").expect("write provider bin");
+    let project_contract = match language_id {
+        "rust" => Some(("Cargo.toml", ".rs")),
+        "typescript" => Some(("package.json", ".ts")),
+        "python" => Some(("pyproject.toml", ".py")),
+        "julia" => Some(("Project.toml", ".jl")),
+        "gerbil-scheme" => Some(("gerbil.pkg", ".ss")),
+        "org" | "md" => None,
+        other => panic!("unsupported provider fixture language: {other}"),
+    };
+    let script = project_contract.map_or_else(
+        || "#!/bin/sh\nexit 0\n".to_string(),
+        |(project_entry, extension)| {
+            format!(
+                r#"#!/bin/sh
+if [ "$1" != "project-resolution-stdin" ]; then
+  exit 64
+fi
+printf '%s\n' '{{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","state":"resolved","languageId":"{language_id}","providerId":"{provider_id}","resolution":{{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","projectIdentity":{{"projectEntry":"{project_entry}"}},"resolvedSourceScopes":[{{"roots":["src"],"extensions":["{extension}"],"exclusions":[]}}],"resolutionGeneration":"fixture:v1"}}}}'
+"#
+            )
+        },
+    );
+    fs::write(&provider_bin, script).expect("write provider bin");
     make_executable(&provider_bin);
 
     let entrypoint_digest = agent_semantic_content_identity::file_content_digest_v1(&provider_bin)

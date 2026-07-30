@@ -15,6 +15,96 @@ The canonical runtime entry is =ASP_STATE_HOME/runtime/bin/asp=. Every control
 request carries the expected SHA-256 of that canonical runtime. The server
 receipt carries the SHA-256 of the artifact that is currently executing.
 
+* Bootstrap and recovery
+Workspace admission is explicitly two-phase. The admission phase accepts a
+checkout path once, resolves the canonical repository and workspace identities
+through the registered language/project harnesses, validates the active
+generation, opens the Turso database, and installs the workspace session in the
+Runtime Server registry. The request phase accepts only the admitted workspace
+identity plus the immutable generation identity. It must not canonicalize
+paths, inspect Git or package manifests, probe file locks, open a database,
+bootstrap a schema, or spawn a provider process. Concurrent sessions for the
+same workspace share read leases and one writer lane; different workspace
+identities remain independently schedulable.
+
+The Runtime Server MUST reject a request carrying an unknown workspace identity
+or generation mismatch with a typed admission-required receipt. It MUST NOT
+reconstruct a checkout path or perform an implicit sync from the request path.
+This keeps =rootDepth=0= live overlays explicit: the parser publishes a new
+immutable overlay epoch through the admitted writer lane, while readers continue
+against the previous complete epoch until the atomic publication becomes
+visible.
+
+
+Runtime lifecycle and search state have separate authorities. A minimal stable
+launcher owns the canonical entry, active runtime slot, artifact verification,
+and supervisor handshake. It does not link the search engine, open a workspace
+database, load an activation, or require an active workspace generation.
+
+Runtime artifacts use two immutable slots. Publication writes and verifies the
+inactive slot, starts it with a typed takeover token, waits for a healthy
+Runtime Server receipt whose artifact and transport digests match, and only
+then atomically switches the active-slot receipt. The previous slot remains
+routable until takeover succeeds and remains available for automatic rollback.
+Neither hook nor healthcheck kills a disclosed PID or mutates a workspace
+generation to repair runtime lifecycle.
+
+The Runtime Server is the only owner of workspace checkout. Each canonical
+workspace identity has one state machine:
+
+- =absent=;
+- =loading-persistent=;
+- =ready=;
+- =publishing-next=;
+- =recovering-owner-overlay=.
+
+Server startup needs only the Global Provider Catalog and the Turso catalog. It
+must not depend on activation, a provider subprocess, or an already-active
+workspace generation. Checkout first restores the last complete immutable
+generation from its mmap checkpoint and verifies it against the Turso MVCC
+receipt. If the checkpoint is unavailable, the writer lane reconstructs the
+MemoryBackend from the durable Turso generation. A broken next generation can
+never make the last complete generation unreadable.
+
+An exact selector with an owner path remains admissible when no complete
+workspace generation exists. The registered provider parses only that owner
+into the =rootDepth=0= live/untracked overlay, and the writer lane publishes the
+validated overlay as a new immutable epoch. This is the primary live-edit path,
+not a compatibility fallback. It must not invoke =asp sync=, write activation
+state, or scan the whole workspace.
+
+The MemoryBackend is the primary search/query data plane. It holds the current
+canonical generation, selector graph, owner bytes, and live overlay for one
+workspace. Turso remains the persistent MVCC authority. =memmap2= exposes an
+immutable cross-process generation segment plus an atomic epoch pointer.
+Readers acquire an epoch lease and continue reading the old segment while the
+single workspace writer lane builds and validates the next segment. Publication
+is one pointer swap; reclamation waits for all old-epoch leases to drain.
+
+* Tokio lifecycle
+
+The Runtime Server process, listener, signal handling, supervisor takeover,
+workspace writer lanes, checkpoint I/O, file and directory sync, and graceful
+shutdown are owned by one Tokio runtime. Every spawned lane has a retained
+=JoinHandle= and a typed shutdown acknowledgement. Normal shutdown closes
+admission, drains queued publications, awaits every lane, flushes the active
+generation pointer, and then releases the server endpoint. Task abortion is
+only an abnormal destructor safety net and is never the normal lifecycle.
+
+CPU-only ownership primitives remain outside the async scheduler when they do
+not cross an =await=: =Arc= generation leases, atomic epoch/seqlock words, and
+immutable mmap reads. Replacing those hot-path primitives with async mutexes
+would create scheduler work in the zero-I/O query path and is forbidden.
+Publication-side mmap mutation may use a Tokio mutex because it occurs only in
+the cold single-writer lane.
+
+CLI command and supervisor modules select a typed =daemon= or =client= runtime
+profile but never construct a Tokio runtime. Runtime construction, driver
+enablement, =block_on= ownership, and shutdown all remain inside the Runtime
+Server owner module. The daemon profile is multi-threaded and adaptive; client
+control calls use a bounded current-thread profile without creating a second
+server lifecycle.
+
 * Health reconciliation
 
 Healthcheck performs one typed Runtime Server status request. When the running
@@ -32,6 +122,24 @@ Restart is idempotent at the Runtime Server boundary:
 
 The health path never kills a PID, deletes an election file, opens a workspace
 database, starts a provider process, or creates a per-workspace socket.
+
+* Recovery acceptance gates
+
+The Runtime Server data-plane gate, not merely a warmed socket gate, is the
+acceptance boundary. After checkout, status, owner discovery, and exact
+selector projection must use the resident MemoryBackend or its mapped immutable
+generation. Receipts must report zero filesystem reads, database opens,
+provider process spawns, schema bootstraps, lock probes, manifest reads,
+workspace canonicalizations, activation loads, and control-socket roundtrips.
+
+Cold fixtures separately prove launcher selection, checkpoint mapping, Turso
+reconstruction, and owner-only overlay recovery. Warm fixtures prove
+sub-millisecond p99 against several workspaces and sessions. Fault-injection
+fixtures cover a missing generation, a truncated mmap segment, a stale
+active-slot receipt, a failed takeover, concurrent recovery of the same
+workspace, and read leases held across epoch publication. A passing fixture
+must expose typed counters and epoch/generation receipts; elapsed time without
+those receipts is not evidence.
 
 * Performance and pressure gate
 
@@ -59,3 +167,30 @@ and report zero filesystem reads, database opens, provider process spawns,
 schema bootstraps, lock probes, manifest reads, and workspace
 canonicalizations. Digest computation belongs to atomic runtime publication,
 not the warm health path.
+* Control, admission, and query planes
+
+The typed exact-resolution packet is an internal/provider and explicit JSON
+contract.  A successful =--projection source= query writes source bytes by
+default.  An exact miss in the human/default interface exits non-zero with a
+stable diagnostic and =recommendedNext=; it must not leak the JSON packet to
+stdout.  Only explicit =--json= preserves the typed JSON resolution packet.
+
+The Runtime Server owns three distinct latency and authority boundaries:
+
+- The control plane uses the control socket only for =status=, =reconcile=,
+  and =restart=. Status remains an mmap fast path after the endpoint has been
+  admitted.
+- The admission/write plane uses the Runtime Server data-plane socket. Every
+  request carries the canonical workspace identity and is dispatched to that
+  workspace's single writer lane. A workspace request cannot shut down the
+  shared Runtime Server.
+- The query read plane uses the immutable active-generation mmap through
+  =WorkspaceGenerationDataPlaneClient=. Warm search and exact projection must
+  not use either socket and must report zero filesystem reads, database opens,
+  provider spawns, schema bootstraps, lock probes, manifest reads, workspace
+  canonicalizations, activation loads, and control-socket round trips.
+
+The admission socket is not a compatibility route for query reads. Its
+concurrency gate proves one daemon can isolate multiple workspace identities
+and drain all connections. The sub-millisecond performance gate belongs to the
+mmap read lease and is measured independently.

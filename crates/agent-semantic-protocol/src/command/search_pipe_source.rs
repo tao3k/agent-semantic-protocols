@@ -234,19 +234,19 @@ fn auto_candidates(request: AutoCandidateRequest<'_>) -> Result<CandidateAcquisi
     let source_index_query_gated = scopes.is_empty()
         && agent_semantic_search::search_pipe_source_index_query_gate(query_terms).is_some();
     let source_index_lookup = if scopes.is_empty() && !source_index_query_gated {
-        let session = super::workspace_db_resident::session(project_root)
+        let session = super::runtime_server::runtime_server_workspace_session(project_root)?;
+        let lookup =
+            super::runtime_server::block_on_runtime_server_client(session.read_source_index(
+                &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest {
+                    project_root: project_root.to_path_buf(),
+                    indexed_project_root: project_root.to_path_buf(),
+                    source_snapshot: current_snapshot.source_snapshot.clone(),
+                    query: source_index_query.clone(),
+                    language_id: Some(language),
+                    limit: PIPE_CANDIDATE_LINE_LIMIT as u32,
+                },
+            ))?
             .map_err(|error| error.to_string())?;
-        let lookup = super::workspace_db_runtime::block_on(session.read_source_index(
-            &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest {
-                project_root: project_root.to_path_buf(),
-                indexed_project_root: project_root.to_path_buf(),
-                source_snapshot: current_snapshot.source_snapshot.clone(),
-                query: source_index_query.clone(),
-                language_id: Some(language),
-                limit: PIPE_CANDIDATE_LINE_LIMIT as u32,
-            },
-        ))
-        .map_err(|error| error.to_string())??;
         Some(
             agent_semantic_search::search_pipe_source_index_lookup_from_client_result(
                 agent_semantic_search::rank_source_index_lookup_result(lookup, &source_index_query),

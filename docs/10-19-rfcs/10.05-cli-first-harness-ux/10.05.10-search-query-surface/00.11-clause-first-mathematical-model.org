@@ -384,6 +384,16 @@ The full admission boundary, typed conflict rules, finite permutation proof,
 and scoped Lean-to-AXLE receipts are normative in
 [[file:00.13-searchloop-merge-algebra.org][SearchLoop clause-result merge algebra]].
 
+The minimal semantic cache key, false-reuse and false-invalidation
+countermodels, tier-scoped model identity, and reconciliation safety are
+specified in
+[[file:00.15-searchloop-cache-minimal-identity-refinement.org][SearchLoop cache minimal-identity refinement]].
+
+The complete semantic cache key, typed invalidation boundary, selector
+relocation proof, tier-sensitive model identity, and scoped audit receipts are
+normative in
+[[file:00.14-searchloop-cache-invalidation-identity.org][SearchLoop semantic cache identity and invalidation]].
+
 * Receipt requirements
 :PROPERTIES:
 :ID: ASP-RFC-10.05-CFR-MATH-RECEIPT

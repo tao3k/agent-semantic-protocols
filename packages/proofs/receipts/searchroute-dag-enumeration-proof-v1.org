@@ -1,0 +1,212 @@
+#+title: SearchRoute DAG Enumeration Proof Receipt v1
+#+startup: overview
+
+* Scope
+
+This receipt covers the constructive ranked-DAG walk enumerator,
+budget-derived finite step-instance catalog, bounded route-catalog
+construction, the unconditional bounded candidate-completeness theorem, and
+the Lean-discovered requirement for an independent SearchLoop transition
+bound.
+
+Lean owner:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteDAGEnumeration.lean
+#+end_example
+
+RFC owner:
+
+#+begin_example
+docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.18-searchroute-constructive-enumeration.org
+#+end_example
+
+The RFC contains the named Org-Babel Typst source
+=searchroute-constructive-enumeration-model=.  It is compiled through standard
+input and has no independent =.typ= source file.
+
+* Lean build
+
+Command:
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake build
+#+end_src
+
+Result:
+
+#+begin_example
+Build completed successfully (15 jobs).
+#+end_example
+
+Direct owner check:
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake env lean ASPProof/SearchRouteDAGEnumeration.lean
+#+end_src
+
+Result: exit status 0 with no diagnostics.
+
+Lean source SHA-256:
+
+#+begin_example
+15c177b434e518f84a7d10b77cd7dc06cdd9785ef1535fcfc3f4d9cf779c92b8
+#+end_example
+
+* Lean JSON audit
+
+Command:
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake env lean audit/SearchRouteDAGEnumerationAudit.lean
+#+end_src
+
+Artifact:
+
+#+begin_example
+packages/proofs/receipts/searchroute-dag-enumeration-audit-v1.json
+#+end_example
+
+Artifact SHA-256:
+
+#+begin_example
+53b2bb2ffa3c6a570ab3ed2251bd529eca87bb84b0c4d669d0661b70f217065e
+#+end_example
+
+The audit contains 19 declarations.  No declaration contains =sorryAx=.  The
+declaration dependency inventory is:
+
+#+begin_example
+Classical.choice
+Quot.sound
+propext
+#+end_example
+
+* AXLE fail-closed audit
+
+The default policy was exercised first:
+
+#+begin_src sh
+uv run --project packages/python/tools --frozen \
+  python -m tools.axle_lean_audit \
+  packages/proofs/receipts/searchroute-dag-enumeration-audit-v1.json
+#+end_src
+
+Expected result:
+
+#+begin_example
+exit status 2
+axle lean audit: axioms are not admitted by policy:
+['Classical.choice', 'Quot.sound', 'propext']
+#+end_example
+
+The second run explicitly admitted exactly that inventory and required all
+seven RFC clauses and all fifteen theorem families.  It produced:
+
+#+begin_example
+packages/proofs/receipts/searchroute-dag-enumeration-axle-audit-v1.json
+#+end_example
+
+AXLE receipt SHA-256:
+
+#+begin_example
+87d2fd4f501b30c3d34525bacddf9693c425ca6e92c71196946c0daf60bc0d61
+#+end_example
+
+The AXLE canonical audit digest is:
+
+#+begin_example
+d898d87fe64418abfd390853026c37946acec1b5f6b3af3dbcce547ee54446fa
+#+end_example
+
+* Schema validation
+
+The Lean audit validates against:
+
+#+begin_example
+schemas/lean-proof-audit.v1.schema.json
+#+end_example
+
+The AXLE receipt validates against:
+
+#+begin_example
+schemas/axle-lean-audit-receipt.v1.schema.json
+#+end_example
+
+Both validation commands exited with status 0.  The =jsonschema= command
+reported only its upstream CLI deprecation warning.
+
+* Org-Babel Typst validation
+
+Command:
+
+#+begin_src sh
+asp org query --workspace . exact \
+  --kind block \
+  --term searchroute-constructive-enumeration-model \
+  --content |
+  typst compile - /tmp/searchroute-constructive-enumeration.pdf
+#+end_src
+
+Result:
+
+#+begin_example
+exit status 0
+67,708 bytes
+#+end_example
+
+RFC SHA-256:
+
+#+begin_example
+c524f0db985aa15c76d46b2647013419ca167681e5dae1ef8e85cbfeb1a1572b
+#+end_example
+
+Rendered PDF SHA-256:
+
+#+begin_example
+bba97795db4db7285c9ef8806fc531ddc449fd6f1734d4dbc096e60b6f5890e3
+#+end_example
+
+RFC 10.05.17 was also recompiled after adding =maxTransitions= to its graph
+budget model:
+
+#+begin_example
+65,663 bytes
+be79a3721db41e645817fba1e74334b3d10e60ff27e5c5a1e3c3ef95f4faa3c6
+#+end_example
+
+* Verified claims
+
+- The recursive endpoint enumerator emits only valid graph walks.
+- Every walk whose hop count is within fuel appears in the enumerator output.
+- =maxRank - rank(source)= is sufficient fuel for every ranked-DAG walk from
+  the source.
+- Every step list within =maxTransitions= is enumerated when its steps occur in
+  the finite step-instance catalog.
+- Every step in a feasible route is bounded by the route totals; cache
+  soundness additionally bounds =cachedPromptTokens= by =promptTokens=.
+- The finite =StepKind= enumeration and numeric budget ranges construct a step
+  catalog satisfying =StepCatalogComplete=.
+- Feasible route metadata is covered by four Boolean variants after the
+  requirement fixes domain, closure digest, and closure state.
+- Filtering bounded route variants with =feasibleB= constructs a complete
+  route catalog under =StepCatalogComplete=.
+- The graph-walk and constructed route catalogs jointly generate a complete
+  graph-candidate list.
+- Graph-walk completeness alone does not imply graph-candidate completeness.
+- The old token and round budget admits routes with arbitrarily many zero-cost
+  transitions.
+- =GraphRouteBudget.maxTransitions= rejects routes that exceed the explicit
+  transition ceiling.
+
+* Open boundary
+
+The finite step-instance and route catalogs are now constructed without an
+external completeness premise.  The next proof layer must prove that a lazy
+branch-and-bound frontier preserves the complete enumerator's optimum and
+coverage receipt without materializing the full Cartesian product.  Route
+normalization must also preserve feasibility, cache soundness, realization,
+and optimizer cost.

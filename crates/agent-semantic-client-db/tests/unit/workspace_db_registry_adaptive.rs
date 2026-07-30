@@ -7,9 +7,10 @@ use tempfile::TempDir;
 use super::{
     Mutex, ProviderSearchWorkspaceSession, WorkspaceDbEntry, run_workspace_db_writer_actor,
     workspace_db_reader_connection_limit, workspace_db_writer_channel,
+    workspace_db_writer_concurrency_plan,
 };
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread")]
 async fn reader_pool_grows_to_runtime_demand_and_reuses_connections() {
     let temp = TempDir::new().expect("create adaptive reader tempfile");
     let client_db_path = temp.path().join("facts.turso");
@@ -24,11 +25,12 @@ async fn reader_pool_grows_to_runtime_demand_and_reuses_connections() {
     let read_connection = Arc::new(database.connect().expect("create initial read connection"));
     let writer_connection = database.connect().expect("create writer connection");
     let connection_create_count = Arc::new(AtomicU64::new(2));
-    let (writer_client, writer_actor) = workspace_db_writer_channel(1024);
+    let (writer_queue_capacity, writer_batch_limit) = workspace_db_writer_concurrency_plan();
+    let (writer_client, writer_actor) = workspace_db_writer_channel(writer_queue_capacity);
     let writer_task = tokio::spawn(run_workspace_db_writer_actor(
         writer_actor,
         writer_connection,
-        64,
+        writer_batch_limit,
     ));
     let reader_limit = workspace_db_reader_connection_limit();
     let session = ProviderSearchWorkspaceSession {
@@ -52,7 +54,7 @@ async fn reader_pool_grows_to_runtime_demand_and_reuses_connections() {
         }),
     };
 
-    let reader_count = 32;
+    let reader_count = reader_limit.saturating_mul(2);
     let barrier = Arc::new(tokio::sync::Barrier::new(reader_count + 1));
     let mut readers = tokio::task::JoinSet::new();
     for _ in 0..reader_count {
@@ -68,9 +70,15 @@ async fn reader_pool_grows_to_runtime_demand_and_reuses_connections() {
         reader.expect("adaptive reader task must join");
     }
 
-    assert_eq!(connection_create_count.load(Ordering::Relaxed), 5);
+    assert_eq!(
+        connection_create_count.load(Ordering::Relaxed),
+        reader_limit as u64 + 1
+    );
     {
         let _read_lease = session.read_connection();
     }
-    assert_eq!(connection_create_count.load(Ordering::Relaxed), 5);
+    assert_eq!(
+        connection_create_count.load(Ordering::Relaxed),
+        reader_limit as u64 + 1
+    );
 }

@@ -273,9 +273,9 @@ fn priority_overlaps_have_explicit_winners() {
             "deny-raw-registered-source-search-action",
         ),
         (
-            "python inline over generic materialization",
+            "action-first read over legacy python inline materialization",
             shell("python -c 'from pathlib import Path; print(Path(\"src/app.ts\").read_text())'"),
-            "deny-uncontrolled-python-inline-source-materialization",
+            "materialize-source-access-policy",
         ),
         (
             "javascript inline over generic materialization",

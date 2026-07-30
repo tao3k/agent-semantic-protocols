@@ -16,7 +16,9 @@ structure SemanticKey where
   workspace : Digest
   witnessSet : Digest
   domain : ValidationIdentity
+  providerArtifact : Digest
   selector : Digest
+  rfc : Digest
   projection : Digest
   budgetClass : Digest
   deriving DecidableEq, Repr
@@ -66,9 +68,11 @@ structure KeyWithoutProvider where
   workspace : Digest
   witnessSet : Digest
   sourceSnapshot : Digest
+  providerArtifact : Digest
   schema : Digest
   policy : Digest
   selector : Digest
+  rfc : Digest
   projection : Digest
   budgetClass : Digest
   deriving DecidableEq, Repr
@@ -78,9 +82,11 @@ def omitProvider (key : SemanticKey) : KeyWithoutProvider :=
     workspace := key.workspace
     witnessSet := key.witnessSet
     sourceSnapshot := key.domain.sourceSnapshot
+    providerArtifact := key.providerArtifact
     schema := key.domain.schema
     policy := key.domain.policy
     selector := key.selector
+    rfc := key.rfc
     projection := key.projection
     budgetClass := key.budgetClass }
 
@@ -90,8 +96,10 @@ structure KeyWithoutPolicy where
   witnessSet : Digest
   sourceSnapshot : Digest
   provider : Digest
+  providerArtifact : Digest
   schema : Digest
   selector : Digest
+  rfc : Digest
   projection : Digest
   budgetClass : Digest
   deriving DecidableEq, Repr
@@ -102,8 +110,10 @@ def omitPolicy (key : SemanticKey) : KeyWithoutPolicy :=
     witnessSet := key.witnessSet
     sourceSnapshot := key.domain.sourceSnapshot
     provider := key.domain.provider
+    providerArtifact := key.providerArtifact
     schema := key.domain.schema
     selector := key.selector
+    rfc := key.rfc
     projection := key.projection
     budgetClass := key.budgetClass }
 
@@ -130,9 +140,11 @@ def baseSemanticKey : SemanticKey :=
     workspace := 11
     witnessSet := 12
     domain := baseDomain
-    selector := 13
-    projection := 14
-    budgetClass := 15 }
+    providerArtifact := 13
+    selector := 14
+    rfc := 15
+    projection := 16
+    budgetClass := 17 }
 
 def providerDriftKey : SemanticKey :=
   { baseSemanticKey with domain := providerDriftDomain }
@@ -149,6 +161,69 @@ theorem omitting_provider_allows_false_reuse :
 theorem omitting_policy_allows_false_reuse :
     omitPolicy baseSemanticKey = omitPolicy policyDriftKey ∧
       decideSemanticReuse baseSemanticKey policyDriftKey =
+        CacheDecision.invalidate := by
+  decide
+
+structure KeyWithoutProviderArtifact where
+  obligation : Digest
+  workspace : Digest
+  witnessSet : Digest
+  domain : ValidationIdentity
+  selector : Digest
+  rfc : Digest
+  projection : Digest
+  budgetClass : Digest
+  deriving DecidableEq, Repr
+
+def omitProviderArtifact
+    (key : SemanticKey) :
+    KeyWithoutProviderArtifact :=
+  { obligation := key.obligation
+    workspace := key.workspace
+    witnessSet := key.witnessSet
+    domain := key.domain
+    selector := key.selector
+    rfc := key.rfc
+    projection := key.projection
+    budgetClass := key.budgetClass }
+
+structure KeyWithoutRfc where
+  obligation : Digest
+  workspace : Digest
+  witnessSet : Digest
+  domain : ValidationIdentity
+  providerArtifact : Digest
+  selector : Digest
+  projection : Digest
+  budgetClass : Digest
+  deriving DecidableEq, Repr
+
+def omitRfc (key : SemanticKey) : KeyWithoutRfc :=
+  { obligation := key.obligation
+    workspace := key.workspace
+    witnessSet := key.witnessSet
+    domain := key.domain
+    providerArtifact := key.providerArtifact
+    selector := key.selector
+    projection := key.projection
+    budgetClass := key.budgetClass }
+
+def providerArtifactDriftKey : SemanticKey :=
+  { baseSemanticKey with providerArtifact := 130 }
+
+def rfcDriftKey : SemanticKey :=
+  { baseSemanticKey with rfc := 150 }
+
+theorem omitting_provider_artifact_allows_false_reuse :
+    omitProviderArtifact baseSemanticKey =
+        omitProviderArtifact providerArtifactDriftKey ∧
+      decideSemanticReuse baseSemanticKey providerArtifactDriftKey =
+        CacheDecision.invalidate := by
+  decide
+
+theorem omitting_rfc_allows_false_reuse :
+    omitRfc baseSemanticKey = omitRfc rfcDriftKey ∧
+      decideSemanticReuse baseSemanticKey rfcDriftKey =
         CacheDecision.invalidate := by
   decide
 

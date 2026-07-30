@@ -1,0 +1,78 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteEvidenceGraphRouter.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteEvidenceGraphRouter",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteDAG.GraphRouteBudget}\n  {snapshot : SearchRouteEvidenceGraphRouter.EvidenceGraphSnapshot}\n  {candidate : SearchRouteEvidenceGraphRouter.ExecutableGraphCandidate},\n  SearchRouteEvidenceGraphRouter.CertifiedFeasible requirement budget snapshot candidate →\n    SearchRouteEvidenceGraphRouter.RuntimeReady candidate",
+   "theoremFamily": "runtime-readiness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-EGR-CAPABILITY", "ASP-RFC-10.05-EGR-CERTIFIED"],
+   "name": "SearchRouteEvidenceGraphRouter.certified_feasible_is_runtime_ready",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteDAG.GraphRouteBudget}\n  {snapshot : SearchRouteEvidenceGraphRouter.EvidenceGraphSnapshot}\n  {candidate : SearchRouteEvidenceGraphRouter.ExecutableGraphCandidate},\n  candidate.evidenceRootDigest ≠ snapshot.rootDigest →\n    ¬SearchRouteEvidenceGraphRouter.CertifiedFeasible requirement budget snapshot candidate",
+   "theoremFamily": "receipt-binding",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-EGR-CERTIFIED", "ASP-RFC-10.05-EGR-SNAPSHOT"],
+   "name": "SearchRouteEvidenceGraphRouter.root_mismatch_rejects_candidate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {candidate : SearchRouteEvidenceGraphRouter.ExecutableGraphCandidate},\n  candidate.capabilityState = SearchRouteEvidenceGraphRouter.CapabilityState.recoverable →\n    ¬SearchRouteEvidenceGraphRouter.RuntimeReady candidate",
+   "theoremFamily": "recovery-exclusion",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-EGR-CAPABILITY", "ASP-RFC-10.05-EGR-RECOVERY"],
+   "name":
+   "SearchRouteEvidenceGraphRouter.recoverable_candidate_is_not_runtime_ready",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteDAG.GraphRouteBudget}\n  {snapshot : SearchRouteEvidenceGraphRouter.EvidenceGraphSnapshot}\n  {candidate : SearchRouteEvidenceGraphRouter.ExecutableGraphCandidate},\n  candidate.projectionCompatible = false →\n    ¬SearchRouteEvidenceGraphRouter.CertifiedFeasible requirement budget snapshot candidate",
+   "theoremFamily": "projection-compatibility",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-EGR-CERTIFIED", "ASP-RFC-10.05-EGR-PROJECTION"],
+   "name":
+   "SearchRouteEvidenceGraphRouter.incompatible_projection_rejects_candidate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (requirement : SearchRouteCost.RouteRequirement) (budget : SearchRouteDAG.GraphRouteBudget)\n  (candidate : SearchRouteDAG.GraphCandidate),\n  SearchRouteDAG.graphFeasibleB requirement budget candidate = true →\n    ∃ snapshot wrapped,\n      wrapped.graphCandidate = candidate ∧\n        SearchRouteEvidenceGraphRouter.ReceiptBound snapshot wrapped ∧\n          SearchRouteDAG.graphFeasibleB requirement budget wrapped.graphCandidate = true ∧\n            ¬SearchRouteEvidenceGraphRouter.RuntimeReady wrapped",
+   "theoremFamily": "static-feasibility-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-EGR-CAPABILITY", "ASP-RFC-10.05-EGR-STATIC-GAP"],
+   "name":
+   "SearchRouteEvidenceGraphRouter.graph_feasibility_does_not_imply_runtime_readiness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteDAG.GraphRouteBudget}\n  {snapshot : SearchRouteEvidenceGraphRouter.EvidenceGraphSnapshot}\n  {catalog : List SearchRouteEvidenceGraphRouter.ExecutableGraphCandidate}\n  (selection : SearchRouteEvidenceGraphRouter.CertifiedSelection requirement budget snapshot catalog)\n  (candidate : SearchRouteEvidenceGraphRouter.ExecutableGraphCandidate),\n  candidate ∈ catalog →\n    SearchRouteEvidenceGraphRouter.CertifiedFeasible requirement budget snapshot candidate →\n      SearchRouteDAG.graphLexNoWorse selection.selected.graphCandidate candidate.graphCandidate",
+   "theoremFamily": "catalog-optimality",
+   "rfcClauseIds": ["ASP-RFC-10.05-EGR-CATALOG", "ASP-RFC-10.05-EGR-CERTIFIED"],
+   "name":
+   "SearchRouteEvidenceGraphRouter.certified_selection_is_catalog_optimal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteDAG.GraphRouteBudget}\n  {snapshot : SearchRouteEvidenceGraphRouter.EvidenceGraphSnapshot}\n  {candidateUniverse catalog : List SearchRouteEvidenceGraphRouter.ExecutableGraphCandidate}\n  (selection : SearchRouteEvidenceGraphRouter.CertifiedSelection requirement budget snapshot catalog),\n  SearchRouteEvidenceGraphRouter.CertifiedCatalogComplete requirement budget snapshot candidateUniverse catalog →\n    ∀ (candidate : SearchRouteEvidenceGraphRouter.ExecutableGraphCandidate),\n      candidate ∈ candidateUniverse →\n        SearchRouteEvidenceGraphRouter.CertifiedFeasible requirement budget snapshot candidate →\n          SearchRouteDAG.graphLexNoWorse selection.selected.graphCandidate candidate.graphCandidate",
+   "theoremFamily": "universe-optimality",
+   "rfcClauseIds": ["ASP-RFC-10.05-EGR-CATALOG", "ASP-RFC-10.05-EGR-GLOBAL"],
+   "name":
+   "SearchRouteEvidenceGraphRouter.complete_certified_selection_is_universe_optimal",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 7,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 4,
+ "axiomDependentDeclarationCount": 3}

@@ -355,3 +355,6 @@ The following remain outside this module:
 5. soundness of provider-produced evidence itself.
 
 Those obligations must not be inferred from the merge receipt.
+
+The adjacent minimal cache-identity and invalidation proof is specified in
+[[file:00.15-searchloop-cache-minimal-identity-refinement.org][SearchLoop cache minimal-identity refinement]].

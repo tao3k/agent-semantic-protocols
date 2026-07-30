@@ -34,6 +34,32 @@ fn missing_receipt_is_a_typed_bootstrap_state() {
 }
 
 #[test]
+fn stale_receipt_without_activation_does_not_block_global_binary_install() {
+    let root = fixture_root("stale-receipt");
+    let binary = root.join("runtime/bin/asp");
+    let activation = root.join("hooks/state/activation.json");
+    let receipt = activation
+        .parent()
+        .expect("activation parent")
+        .join("active-asp-artifact-receipt.v1.json");
+    std::fs::create_dir_all(binary.parent().expect("binary parent")).expect("create binary parent");
+    std::fs::create_dir_all(receipt.parent().expect("receipt parent"))
+        .expect("create receipt parent");
+    std::fs::write(&binary, b"asp-current").expect("write binary");
+    std::fs::write(&receipt, b"{\"stale\":true}").expect("write stale receipt");
+    let binary_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&binary).expect("binary digest");
+
+    assert_eq!(
+        rebind_active_asp_binary_receipt_if_present(&binary, &binary_digest, &activation)
+            .expect("missing project activation is not a global install failure"),
+        ActiveAspArtifactReconciliationV1::NotMaterialized
+    );
+
+    std::fs::remove_dir_all(root).expect("remove fixture");
+}
+
+#[test]
 fn materialized_receipt_is_reconciled_after_activation_changes() {
     let root = fixture_root("updated");
     let binary = root.join("runtime/bin/asp");

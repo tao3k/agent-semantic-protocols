@@ -1,0 +1,236 @@
+#+title: RFC 10.05.22 — SearchRoute Total Inspect Driver
+#+status: Draft
+#+options: toc:2
+
+* Status
+
+This RFC is the liveness layer above [[file:00.21-searchroute-repeated-inspect-loop.org][RFC 10.05.21 — SearchRoute Repeated Inspect Loop]].
+RFC 10.05.21 proves safety, strict progress for every valid decision, coverage
+conservation, and zero-work closure. This RFC specifies the additional premise
+needed to prove that a driver can actually reach such a closed state.
+
+This session does not authorize Rust implementation. The normative artifacts
+are this Org RFC, its embedded Typst model, the Lean proof under
+=packages/proofs=, and the Lean JSON plus AXLE audit receipts.
+
+* Safety is not liveness
+
+** Early-stop defect
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SID-SAFETY-LIVENESS
+:END:
+
+The inductive =InspectLoopTrace= relation includes a zero-step =stop=
+constructor. That constructor is correct for finite trace prefixes, but it can
+stop at a state whose pending frontier is not empty.
+
+Consequently the proposition “a trace exists” does not imply:
+
+- the driver produced a next decision;
+- the search closed;
+- the candidate universe was exhausted or safely pruned; or
+- the selected candidate is globally optimal.
+
+Lean exhibits this defect directly: for every non-closed state, the zero-step
+trace from the state to itself still exists. The protocol therefore needs a
+typed =ClosedTraceReceipt= rather than an unqualified trace-existence claim.
+
+* Total decision source
+
+** Decision availability
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SID-DECISION-TOTAL
+:END:
+
+A decision source is total when, for every well-formed non-closed loop state,
+it produces at least one =LoopDecision= satisfying =DecisionValid=.
+
+#+begin_example
+DecisionTotal :=
+  for every state:
+    LoopWellFormed(state)
+    and not LoopClosed(state)
+    implies exists decision: DecisionValid(state, decision)
+#+end_example
+
+This premise is intentionally separate from decision validity:
+
+- =DecisionValid= proves that one returned decision is semantically safe;
+- =DecisionTotal= proves that the provider/driver does not become silent while
+  certified work remains.
+
+A timeout, missing parser capability, unavailable materialization owner, or
+provider failure must therefore be represented as a typed terminal failure or
+an explicit loss of totality. It must not be projected as a successful
+zero-step trace.
+
+The totality contract is semantic, not a requirement to expose another complex
+CLI command. The agent-facing surface can remain one progressive =inspect=
+operation whose receipt is either a valid decision or a typed failure.
+
+* Constructive closed trace
+
+** Strong-induction driver theorem
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SID-CLOSED-TRACE
+:END:
+
+Let =W(state)= be the sum of positive pending-frontier credits from RFC
+10.05.21. Lean constructs a =ClosedTraceReceipt= by strong induction on
+=W(state)=:
+
+1. If the state is already closed, return the zero-step closed receipt.
+2. Otherwise, =DecisionTotal= supplies a valid decision.
+3. =DecisionValid= and RFC 10.05.21 prove that the successor has strictly
+   smaller work.
+4. The induction hypothesis returns a closed receipt for that successor.
+5. Prefixing the chosen decision returns a closed receipt for the original
+   state.
+
+The receipt contains:
+
+- the final state;
+- the exact number of loop decisions;
+- the complete typed =InspectLoopTrace=; and
+- proof that the final state is closed.
+
+Every such receipt satisfies:
+
+#+begin_example
+receipt.steps <= loopWork(initial)
+#+end_example
+
+This is a liveness bound on agent/LLM interaction decisions. It is not yet a
+proof that the driver uses the least graph hops, uncached tokens, rounds, or
+transitions among all possible total drivers.
+
+* Bounded global result
+
+** Liveness plus conserved coverage
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SID-GLOBAL
+:END:
+
+Assume:
+
+- a total decision source;
+- a well-formed initial state; and
+- the snapshot-bound candidate-universe coverage invariant from RFC 10.05.21.
+
+Lean then constructs a closed trace receipt satisfying all of the following:
+
+- its length is bounded by the initial work;
+- its final selected candidate is no worse than the initial selection; and
+- its final selected candidate is no worse than every candidate in the bound
+  universe.
+
+This theorem closes the safety-to-liveness gap, but it remains conditional on
+=DecisionTotal=. The proof does not manufacture parser availability,
+materialization evidence, or provider health.
+
+The theorem also does not establish *driver-cost optimality*. It proves that a
+total driver reaches a globally optimal candidate, not that its trace is the
+cheapest way to reach that candidate. The next proof layer must lift complete
+inspect traces into =SearchRoute= cost candidates and compare graph hops,
+uncached tokens, model/tool rounds, transitions, semantic-search cache effects,
+and model prefix-cache effects without collapsing those axes.
+
+* Embedded mathematical model
+
+The named Org-Babel Typst block is evaluated through =typst eval --in -= using
+the parser-owned block body over standard input. It needs no standalone
+=.typ= file, no =:file= argument, and no PDF compilation.
+
+#+name: searchroute-total-inspect-driver-model
+#+begin_src typst
+#set document(
+  title: "SearchRoute Total Inspect Driver",
+  author: "Agent Semantic Protocols",
+)
+#set page(margin: 22mm)
+#set text(font: "New Computer Modern", size: 10.5pt)
+#set heading(numbering: "1.")
+#let Good = math.op("Good")
+#let Closed = math.op("Closed")
+#let Valid = math.op("Valid")
+#let Cover = math.op("Cover")
+
+= Safety relation
+
+The finite trace relation permits a zero-step constructor:
+
+$ S arrow.r.long S. $
+
+Therefore trace existence alone does not imply $Closed(S)$. A non-closed state
+can still have the trivial trace to itself.
+
+= Total decision premise
+
+A decision source is total when
+
+$ forall S, quad Good(S) and not Closed(S)
+  arrow.r exists d: Valid(S, d). $
+
+Here $Good$ includes positive work credits and the loop invariants required by
+the semantic decision rules.
+
+= Work induction
+
+Let
+
+$ W(S) = sum_(F in P(S)) c(F). $
+
+Every valid decision satisfies
+
+$ Valid(S, d) arrow.r W(d(S)) < W(S). $
+
+Strong induction on $W(S)$ constructs a final state $S_f$ and a trace of
+$n$ decisions such that
+
+$ S arrow.r.long S_f, quad Closed(S_f), quad n <= W(S). $
+
+= Coverage and result
+
+If $Cover(C, S)$ holds for the snapshot-bound candidate universe $C$, every
+valid decision preserves it. Closure removes the pending alternative:
+
+$ Closed(S_f) and Cover(C, S_f)
+  arrow.r forall x in C: s_f prec.eq x. $
+
+Thus totality plus semantic validity yields bounded closure and global
+candidate optimality over $C$.
+
+= Remaining optimization obligation
+
+The liveness theorem minimizes no operational cost. Two total drivers can both
+close within $W(S)$ while using different graph hops, uncached tokens,
+model/tool rounds, transitions, search-cache reuse, and model prefix-cache
+reuse. Complete traces must next be lifted into costed route candidates before
+the protocol can claim the cheapest driver.
+#+end_src
+
+* Lean and AXLE ownership
+
+The Lean owner is
+=packages/proofs/ASPProof/SearchRouteInspectDriver.lean=. The audit entry is
+=packages/proofs/audit/SearchRouteInspectDriverAudit.lean=.
+
+The Lean JSON audit binds theorem names and types to the four RFC clause IDs in
+this document. AXLE rejects missing theorem families, missing clause IDs,
+unexpected axioms, and any audit that does not validate against the shared
+schema.
+
+* Agent-facing result
+
+The public interaction remains small:
+
+#+begin_example
+inspect(state)
+  -> valid prune or inspect decision
+  -> next state with lower work
+  -> repeat
+  -> closed receipt
+#+end_example
+
+The liveness contract belongs in receipts and provider capability evidence,
+not in an expanded human-oriented search-command grammar.

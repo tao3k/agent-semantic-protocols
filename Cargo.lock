@@ -225,6 +225,8 @@ dependencies = [
  "agent-semantic-tree-sitter",
  "aho-corasick",
  "asp-rust-project-harness-policy",
+ "base64",
+ "blake3",
  "clap",
  "globset",
  "ignore",

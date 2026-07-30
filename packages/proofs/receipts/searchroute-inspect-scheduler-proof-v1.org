@@ -1,0 +1,150 @@
+#+title: SearchRoute Partial-Route Inspect Scheduler Proof Receipt v1
+#+startup: overview
+
+* Scope
+
+This receipt covers:
+
+- partial-route uncached-token, round, and transition lower bounds;
+- monotonicity under one-step route extension;
+- executable Boolean lexicographic comparison;
+- finite =pruned=/=inspect= scheduling partition;
+- safe pruning and mandatory inspection classification;
+- completed-schedule coverage; and
+- global candidate optimality for a completed snapshot-bound schedule.
+
+RFC owner:
+
+#+begin_example
+docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.20-searchroute-partial-route-inspect-scheduler.org
+#+end_example
+
+Lean owner:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteInspectScheduler.lean
+#+end_example
+
+* Lean result
+
+Commands:
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake env lean ASPProof/SearchRouteInspectScheduler.lean
+/opt/homebrew/bin/lake build
+/opt/homebrew/bin/lake env lean audit/SearchRouteInspectSchedulerAudit.lean
+#+end_src
+
+Result:
+
+#+begin_example
+direct owner check: exit status 0
+Lake build: 17 jobs passed
+audited declarations: 10
+axiom-free declarations: 0
+axiom-dependent declarations: 10
+hasSorryAx: false for every declaration
+#+end_example
+
+Lean source SHA-256:
+
+#+begin_example
+474d7580cc89a0a19e44fc2d79531cd11fac61b882c4421d9cfc2a79f3d41579
+#+end_example
+
+Lean audit SHA-256:
+
+#+begin_example
+5a9695af002091dc39a58fca12f54c8d654be9e1bca3539ac50c43b4609ba157
+#+end_example
+
+* AXLE result
+
+The default policy failed closed:
+
+#+begin_example
+exit status 2
+axle lean audit: axioms are not admitted by policy:
+['Classical.choice', 'Quot.sound', 'propext']
+#+end_example
+
+The admitted run allowed exactly that inventory and required all four RFC
+clauses and all nine theorem families.
+
+Canonical AXLE audit digest:
+
+#+begin_example
+e5832d85050086160203fdb5c5dfd85ac54429bf76a81718ee149f003938f484
+#+end_example
+
+AXLE receipt SHA-256:
+
+#+begin_example
+30b2c6c8a09d979c5d4269183738b161a7e2227959b845815b171ef90debea3a
+#+end_example
+
+* Schema validation
+
+The Lean audit validates against
+=schemas/lean-proof-audit.v1.schema.json=.  The AXLE receipt validates against
+=schemas/axle-lean-audit-receipt.v1.schema.json=.
+
+Both commands exited with status 0.  The only output was the upstream
+=jsonschema= CLI deprecation warning.
+
+* Org-Babel Typst result
+
+The named block =searchroute-partial-route-inspect-scheduler-model= compiled
+through standard input:
+
+#+begin_src sh
+asp org query --workspace . exact \
+  --kind block \
+  --term searchroute-partial-route-inspect-scheduler-model \
+  --content |
+  typst compile - /tmp/searchroute-partial-route-inspect-scheduler.pdf
+#+end_src
+
+Result:
+
+#+begin_example
+exit status 0
+40,514 bytes
+#+end_example
+
+RFC SHA-256:
+
+#+begin_example
+201aeca6d6f371c1a8b3192df2f278c4e9ea8aaa2b05ea519d94de5629cecb73
+#+end_example
+
+PDF SHA-256:
+
+#+begin_example
+02c9e1906fc9e6f4bda94803faf870a7b00b646af4e4df8068ae5f694cf9093a
+#+end_example
+
+* Verified claims
+
+- Appending a route step adds exactly that step's uncached-token and round
+  costs.
+- A valid extension increases transition count by one and does not decrease
+  the graph-hop lower bound.
+- The partial-route lexicographic lower bound is monotone.
+- The executable Boolean order is equivalent to the propositional order.
+- The scheduler covers every input frontier with exactly one decision class.
+- Every scheduled prune is safe for all candidates represented by the
+  frontier.
+- Every scheduled inspection is currently not prunable.
+- An empty inspection list implies every input frontier was pruned.
+- A completed schedule plus snapshot-bound coverage lifts visible optimality to
+  global no-worse ordering.
+- Allowing graph-hop lower bounds to decrease breaks extension monotonicity.
+
+* Remaining boundary
+
+The scheduler currently classifies frontiers against a fixed selected
+candidate.  The next proof layer must model repeated inspection,
+materialization, selected-candidate updates, and rescheduling under a decreasing
+fuel measure.

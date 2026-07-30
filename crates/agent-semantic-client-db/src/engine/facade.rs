@@ -254,6 +254,7 @@ where
 pub struct ClientDbEngineSourceIndexReadModelReport {
     pub node_locator_count: usize,
     pub search_document_count: usize,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
 }
 
 /// DB Engine receipt for projecting a structural-index import into Turso read models.

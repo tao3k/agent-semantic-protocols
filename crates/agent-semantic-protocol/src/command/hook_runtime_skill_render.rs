@@ -10,12 +10,10 @@ use orgize::{
 use std::path::Path;
 
 const ASP_SKILL_CONTRACT_SOURCE_PATH: &str = "org/contracts/asp.skill.v1.org";
-const ASP_SKILL_CONTRACT_ORG: &str =
-    include_str!("../../../../org/contracts/asp.skill.v1.org");
+const ASP_SKILL_CONTRACT_ORG: &str = include_str!("../../../../org/contracts/asp.skill.v1.org");
 const ASP_SKILL_CONTRACT_REFERENCE: &str = "org/contracts/asp.skill.v1.org#asp.skill.v1";
 const ASP_SKILL_TEMPLATE_SOURCE_PATH: &str = "org/templates/ASP_ORG_SKILL.org";
-const ASP_SKILL_TEMPLATE_ORG: &str =
-    include_str!("../../../../org/templates/ASP_ORG_SKILL.org");
+const ASP_SKILL_TEMPLATE_ORG: &str = include_str!("../../../../org/templates/ASP_ORG_SKILL.org");
 
 pub(crate) fn render_agent_semantic_protocols_installed_skill(
     _project_root: &Path,

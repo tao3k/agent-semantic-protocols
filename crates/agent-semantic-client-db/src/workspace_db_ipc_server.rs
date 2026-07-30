@@ -1,16 +1,16 @@
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::net::{UnixListener, UnixStream};
 
-use crate::WorkspaceDbRegistry;
 use crate::workspace_db_ipc::{
     WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID, WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID,
     WORKSPACE_DB_OWNER_SCHEMA_VERSION, WorkspaceDbIpcOperation, WorkspaceDbIpcRequest,
-    WorkspaceDbIpcResponse, WorkspaceDbIpcResult, WorkspaceDbOwnerEndpoint, read_frame,
-    read_optional_frame, write_frame,
+    WorkspaceDbIpcResponse, WorkspaceDbIpcResult, WorkspaceDbOwnerEndpoint,
 };
+use crate::{ProviderSearchWorkspaceSession, WorkspaceDbRegistry};
 
 /// Serve one framed health request, validating workspace, epoch, and binding token.
 pub async fn serve_one_workspace_db_ipc_request(
@@ -102,7 +102,12 @@ async fn serve_workspace_db_session_stream(
         } else if shutdown_requested {
             WorkspaceDbIpcResult::ShutdownAccepted
         } else {
-            dispatch_workspace_db_session_operation(registry, request.operation).await
+            dispatch_workspace_db_session_operation(
+                registry,
+                &request.workspace_identity,
+                request.operation,
+            )
+            .await
         };
         let shutdown_accepted =
             shutdown_requested && matches!(&result, WorkspaceDbIpcResult::ShutdownAccepted);
@@ -176,7 +181,7 @@ pub async fn serve_workspace_db_session_until_shutdown(
                     Some(Ok(Ok(false))) => {}
                     Some(Ok(Err(client_error))) => {
                         eprintln!(
-                            "[workspace-resident-service-client] status=failed workspaceIdentity={} error={client_error}",
+                            "[runtime-server-workspace-client] status=failed workspaceIdentity={} error={client_error}",
                             endpoint.workspace_identity
                         );
                     }
@@ -192,13 +197,19 @@ pub async fn serve_workspace_db_session_until_shutdown(
 
 async fn dispatch_workspace_db_session_operation(
     registry: &WorkspaceDbRegistry,
+    workspace_identity: &str,
     operation: WorkspaceDbIpcOperation,
 ) -> WorkspaceDbIpcResult {
     let dispatched = match operation {
         WorkspaceDbIpcOperation::Health => return WorkspaceDbIpcResult::Healthy,
         WorkspaceDbIpcOperation::Shutdown => return WorkspaceDbIpcResult::ShutdownAccepted,
         WorkspaceDbIpcOperation::ReadSourceIndex { request } => {
-            let session = registry.bootstrap_workspace(&request.project_root).await;
+            let session = admitted_or_bootstrap_workspace(
+                registry,
+                workspace_identity,
+                Path::new(&request.project_root),
+            )
+            .await;
             match session {
                 Ok(session) => session
                     .read_source_index(
@@ -213,17 +224,14 @@ async fn dispatch_workspace_db_session_operation(
                 Err(error) => Err(error),
             }
         }
-        WorkspaceDbIpcOperation::CommitSourceIndexGeneration { request } => {
-            let project_root = request.import.project_root.clone();
-            let session = registry.bootstrap_workspace(&project_root).await;
-            match session {
-                Ok(session) => session
-                    .commit_source_index_generation(request)
-                    .await
-                    .map(|receipt| WorkspaceDbIpcResult::SourceIndexGeneration { receipt }),
-                Err(error) => Err(error),
-            }
-        }
+        WorkspaceDbIpcOperation::CommitSourceIndexGeneration { .. } => Err(
+            "canonical source-index generation publication is only accepted by the Runtime Server data plane"
+                .to_owned(),
+        ),
+        WorkspaceDbIpcOperation::EnsureRuntimeGeneration { .. } => Err(
+            "canonical generation restore is only accepted by the Runtime Server data plane"
+                .to_owned(),
+        ),
         WorkspaceDbIpcOperation::WriteProviderIncrementalOwner { request } => {
             let session = registry
                 .acquire(&request.scope.project_root, &request.scope)
@@ -271,7 +279,12 @@ async fn dispatch_workspace_db_session_operation(
             }
         }
         WorkspaceDbIpcOperation::ReadResidentSelector { request } => {
-            let session = registry.bootstrap_workspace(&request.project_root).await;
+            let session = admitted_or_bootstrap_workspace(
+                registry,
+                workspace_identity,
+                Path::new(&request.project_root),
+            )
+            .await;
             match session {
                 Ok(session) => session
                     .read_resident_selector(&request)
@@ -324,9 +337,212 @@ async fn dispatch_workspace_db_session_operation(
                 Err(error) => Err(error),
             }
         }
+        WorkspaceDbIpcOperation::PublishRuntimeOwner { .. } => Err(
+            "Runtime owner publication is only accepted by the Runtime Server data plane"
+                .to_owned(),
+        ),
     };
     dispatched.unwrap_or_else(|message| WorkspaceDbIpcResult::Failed {
         code: "workspace-owner-operation-failed".to_owned(),
         message,
     })
 }
+
+async fn admitted_or_bootstrap_workspace(
+    registry: &WorkspaceDbRegistry,
+    workspace_identity: &str,
+    project_root: &Path,
+) -> Result<ProviderSearchWorkspaceSession, String> {
+    if workspace_identity.trim().is_empty() {
+        return Err("workspace admission requires a non-empty workspace identity".to_owned());
+    }
+    if let Some(session) = registry.loaded_session(workspace_identity) {
+        return Ok(session);
+    }
+    let session = registry.bootstrap_workspace(project_root).await?;
+    if session.workspace_identity() != workspace_identity {
+        return Err(format!(
+            "workspace admission identity mismatch: requested={workspace_identity} resolved={}",
+            session.workspace_identity()
+        ));
+    }
+    Ok(session)
+}
+/// Serve workspace-scoped data-plane requests through the single Runtime Server.
+///
+/// Unlike the removed per-workspace owner transport, the endpoint authenticates
+/// the daemon while each request carries the workspace identity used to select
+/// the server-resident registry entry.
+pub async fn serve_runtime_server_workspace_stream(
+    stream: &mut UnixStream,
+    endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
+    registry: &WorkspaceDbRegistry,
+    memory_registry: &crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    mut drain: tokio::sync::watch::Receiver<bool>,
+) -> Result<(), String> {
+    loop {
+        let request = tokio::select! {
+            request = read_optional_frame::<WorkspaceDbIpcRequest>(&mut *stream) => request?,
+            changed = drain.changed() => {
+                let _ = changed;
+                return Ok(());
+            }
+        };
+        let Some(request) = request else {
+            return Ok(());
+        };
+        let result = if request.schema_id != WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID {
+            WorkspaceDbIpcResult::Failed {
+                code: "runtime-server-data-request-schema-id-mismatch".to_owned(),
+                message: format!(
+                    "request schema_id must be {:?}, got {:?}",
+                    WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID, request.schema_id
+                ),
+            }
+        } else if request.schema_version != WORKSPACE_DB_OWNER_SCHEMA_VERSION {
+            WorkspaceDbIpcResult::Failed {
+                code: "runtime-server-data-request-schema-version-mismatch".to_owned(),
+                message: format!(
+                    "request schema_version must be {:?}, got {:?}",
+                    WORKSPACE_DB_OWNER_SCHEMA_VERSION, request.schema_version
+                ),
+            }
+        } else if request.workspace_identity.trim().is_empty() {
+            WorkspaceDbIpcResult::Failed {
+                code: "runtime-server-workspace-identity-missing".to_owned(),
+                message: "request workspace identity must be non-empty text".to_owned(),
+            }
+        } else if request.transport_contract_digest != endpoint.transport_contract_digest
+            || request.owner_epoch != endpoint.owner_epoch
+            || request.binding_token != endpoint.binding_token
+        {
+            WorkspaceDbIpcResult::Failed {
+                code: "runtime-server-data-binding-mismatch".to_owned(),
+                message:
+                    "request transport contract, epoch, or token does not match Runtime Server"
+                        .to_owned(),
+            }
+        } else if matches!(request.operation, WorkspaceDbIpcOperation::Shutdown) {
+            WorkspaceDbIpcResult::Failed {
+                code: "runtime-server-shutdown-control-required".to_owned(),
+                message: "workspace requests cannot stop the shared Runtime Server".to_owned(),
+            }
+        } else {
+            match request.operation {
+                WorkspaceDbIpcOperation::EnsureRuntimeGeneration { project_root } => {
+                    let restoration = async {
+                        let session = admitted_or_bootstrap_workspace(
+                            registry,
+                            &request.workspace_identity,
+                            Path::new(&project_root),
+                        )
+                        .await?;
+                        crate::runtime_server_workspace::restore_active_turso_generation(
+                            memory_registry,
+                            &session,
+                            request.request_id.clone(),
+                            &request.workspace_identity,
+                        )
+                        .await
+                    }
+                    .await;
+                    match restoration {
+                        Ok(receipt) => WorkspaceDbIpcResult::RuntimeGeneration { receipt },
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-canonical-generation-restore-failed".to_owned(),
+                            message,
+                        },
+                    }
+                }
+                WorkspaceDbIpcOperation::CommitSourceIndexGeneration {
+                    request: refresh,
+                    materialization,
+                } => {
+                    let publication = async {
+                        materialization
+                            .validate_refresh_request(&request.workspace_identity, &refresh)?;
+                        let project_root = refresh.import.project_root.clone();
+                        let session = admitted_or_bootstrap_workspace(
+                            registry,
+                            &request.workspace_identity,
+                            Path::new(&project_root),
+                        )
+                        .await?;
+                        let durable = session
+                            .commit_source_index_generation(refresh, materialization)
+                            .await?;
+                        let materialization = session
+                            .load_active_workspace_generation_materialization()
+                            .await?
+                            .ok_or_else(|| {
+                                "durable source-index commit published no canonical materialization"
+                                    .to_owned()
+                            })?;
+                        materialization.validate_persisted(&request.workspace_identity)?;
+                        if durable.source_snapshot != materialization.source_snapshot {
+                            return Err(format!(
+                                "Turso generation evidence differs from canonical materialization: durableRoot={} materializedRoot={}",
+                                durable.source_snapshot.root_digest,
+                                materialization.source_snapshot.root_digest
+                            ));
+                        }
+                        memory_registry
+                            .ensure_canonical_generation(
+                                request.request_id.clone(),
+                                &request.workspace_identity,
+                                materialization,
+                            )
+                            .await?;
+                        Ok::<_, String>(durable)
+                    }
+                    .await;
+                    match publication {
+                        Ok(receipt) => WorkspaceDbIpcResult::SourceIndexGeneration { receipt },
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-canonical-generation-publish-failed".to_owned(),
+                            message,
+                        },
+                    }
+                }
+                WorkspaceDbIpcOperation::PublishRuntimeOwner { owner } => {
+                    let publication = memory_registry
+                        .publish_owner_overlay(
+                            request.request_id.clone(),
+                            request.workspace_identity.clone(),
+                            owner,
+                        )
+                        .await;
+                    match publication {
+                        Ok(receipt) => WorkspaceDbIpcResult::RuntimeGeneration { receipt },
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-generation-publish-failed".to_owned(),
+                            message,
+                        },
+                    }
+                }
+                operation => {
+                    dispatch_workspace_db_session_operation(
+                        registry,
+                        &request.workspace_identity,
+                        operation,
+                    )
+                    .await
+                }
+            }
+        };
+        write_frame(
+            &mut *stream,
+            &WorkspaceDbIpcResponse {
+                schema_id: WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID.to_owned(),
+                schema_version: WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),
+                workspace_identity: request.workspace_identity,
+                transport_contract_digest: endpoint.transport_contract_digest.clone(),
+                owner_epoch: endpoint.owner_epoch,
+                request_id: request.request_id,
+                result,
+            },
+        )
+        .await?;
+    }
+}
+use crate::workspace_db_ipc::transport::{read_frame, read_optional_frame, write_frame};

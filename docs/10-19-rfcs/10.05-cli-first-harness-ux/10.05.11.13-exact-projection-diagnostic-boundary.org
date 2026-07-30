@@ -1,0 +1,50 @@
+#+title: Exact Projection Diagnostic Boundary
+#+startup: overview
+
+* Status
+
+Implemented in the worktree. Installed-artifact and full regression evidence
+remain required before closure.
+
+* Decision
+
+Exact projection diagnostics are an independent protocol domain. The direct
+provider transport does not own diagnostic construction, validation,
+rendering, or output policy.
+
+The dependency direction is:
+
+#+begin_example
+provider direct transport
+        |
+        v
+exact projection diagnostic async adapter
+        |
+        v
+exact projection diagnostic pure model
+#+end_example
+
+The pure model owns typed resolution receipts, validation, recommended next
+actions, and human/JSON render decisions. The Tokio adapter owns stdout and
+trace effects. Direct transport may only provide typed inputs and consume the
+adapter result.
+
+* Rejected designs
+
+- Diagnostic helpers implemented inside =provider_direct_exact.rs=.
+- A =command/provider_exact_diagnostic_io.rs= sibling that makes diagnostics
+  appear to be command-private direct-provider behavior.
+- Parsing provider stderr to reconstruct a semantic resolution.
+- Compatibility fallbacks that turn a typed resolution failure into raw source
+  access.
+
+* Required gates
+
+1. The diagnostic pure model compiles without importing the command layer.
+2. The async adapter is crate-level and does not import direct transport.
+3. Direct transport contains no diagnostic receipt construction or human
+   diagnostic renderer.
+4. Focused tests cover owner-missing construction, typed resolution
+   validation, human rendering, JSON passthrough, and Tokio output behavior.
+5. Installed exact query evidence must preserve the same typed diagnostic
+   contract for Rust and every registered provider.

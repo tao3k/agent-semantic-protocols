@@ -68,6 +68,18 @@ pub struct ActivatedProviderConfig {
     pub coverage: ActivationCoverage,
 }
 
+/// Provider-parsed project scope captured from a typed project-resolution receipt.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivationCoverage {
+    pub package_roots: Vec<String>,
+    pub config_files: Vec<String>,
+    pub source_extensions: Vec<String>,
+    pub source_paths: Vec<String>,
+    pub repository_candidate_generation: String,
+    pub project_resolution_generation: String,
+}
+
 /// Execution mode used to invoke a provider from ASP.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -90,15 +102,6 @@ impl ProviderExecution {
     }
 }
 
-/// Coverage defaults activated from a provider manifest for hook routing.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ActivationCoverage {
-    pub package_roots: Vec<String>,
-    pub config_files: Vec<String>,
-    pub source_extensions: Vec<String>,
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 /// Static provider-owned hook manifest.
@@ -118,10 +121,11 @@ pub struct ProviderManifest {
     pub(crate) binary: String,
     #[serde(default)]
     pub(crate) execution: ProviderExecution,
-    pub(crate) source: ManifestSourceDefaults,
     pub(crate) search_capabilities: ProviderSearchCapabilities,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) project_resolution: Option<ProviderProjectResolutionDescriptor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) document_resolution: Option<ProviderDocumentResolutionDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
     pub(crate) query_pack_descriptor: ProviderQueryPackDescriptor,
@@ -174,16 +178,16 @@ impl ProviderManifest {
         self.execution
     }
 
-    pub fn source(&self) -> &ManifestSourceDefaults {
-        &self.source
-    }
-
     pub fn search_capabilities(&self) -> &ProviderSearchCapabilities {
         &self.search_capabilities
     }
 
     pub fn project_resolution(&self) -> Option<&ProviderProjectResolutionDescriptor> {
         self.project_resolution.as_ref()
+    }
+
+    pub fn document_resolution(&self) -> Option<&ProviderDocumentResolutionDescriptor> {
+        self.document_resolution.as_ref()
     }
 
     pub fn semantic_facts_descriptor(&self) -> Option<&ProviderSemanticFactsDescriptor> {
@@ -211,7 +215,6 @@ pub struct ProviderSearchCapabilities {
     pub semantic_facts: bool,
     pub dependency_topology: bool,
     pub dependency_topology_metadata: bool,
-    pub workspace_scope: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_snapshot: Option<ProviderSourceSnapshotDescriptor>,
 }
@@ -340,6 +343,19 @@ pub struct ProviderProjectResolutionDescriptor {
     pub package_graph_schema: String,
     pub resolved_source_scope_schema: String,
     pub project_resolution_schema: String,
+}
+
+/// Document parser scope resolved only from Git candidates and registered
+/// parser-owned document extensions.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderDocumentResolutionDescriptor {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub capability_id: String,
+    pub extensions: Vec<String>,
+    pub parser_id: String,
+    pub supports_git_candidates: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -497,18 +513,6 @@ pub struct ProviderQueryPackClause {
     pub intent_axes: Vec<String>,
 }
 
-/// Source matching defaults declared by a provider manifest.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ManifestSourceDefaults {
-    pub default_extensions: Vec<String>,
-    pub default_config_files: Vec<String>,
-    #[serde(default)]
-    pub default_project_markers: Vec<String>,
-    #[serde(default)]
-    pub default_dependency_markers: Vec<String>,
-}
-
 #[derive(Debug)]
 /// In-memory runtime resolved from activation plus static provider manifests.
 pub struct HookRuntime {
@@ -532,8 +536,12 @@ pub struct ActivatedProvider {
     pub package_roots: Vec<String>,
     pub source_extensions: Vec<String>,
     pub config_files: Vec<String>,
+    pub source_paths: Vec<String>,
+    pub repository_candidate_generation: String,
+    pub project_resolution_generation: String,
     pub search_capabilities: ProviderSearchCapabilities,
     pub project_resolution: Option<ProviderProjectResolutionDescriptor>,
+    pub document_resolution: Option<ProviderDocumentResolutionDescriptor>,
     pub semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
     pub query_pack_descriptor: ProviderQueryPackDescriptor,
     pub semantic_registry_digest: String,

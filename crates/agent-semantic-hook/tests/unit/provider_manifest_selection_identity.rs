@@ -76,6 +76,7 @@ fn activation_reuses_selection_manifest_identity_in_milliseconds() {
         .to_string();
     let providers = provider_manifests()
         .into_iter()
+        .filter(|manifest| manifest.document_resolution().is_some())
         .enumerate()
         .map(|(index, manifest)| ProviderCommandSelection {
             manifest_id: manifest.manifest_id.clone(),
@@ -94,13 +95,14 @@ fn activation_reuses_selection_manifest_identity_in_milliseconds() {
         .collect::<Vec<_>>();
     let graph_turbo = test_graph_turbo_selection();
     let selections = DefaultActivationSelections::new(providers, graph_turbo.clone());
+    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("repository workspace root");
 
     let started = std::time::Instant::now();
-    let activation = build_default_activation_from_selections(
-        std::path::Path::new("/activation-selection-identity-gate"),
-        &selections,
-    )
-    .expect("build activation from typed provider selections");
+    let activation = build_default_activation_from_selections(workspace_root, &selections)
+        .expect("build activation from typed provider selections");
     let elapsed = started.elapsed();
 
     for provider in &activation.providers {
@@ -146,7 +148,14 @@ fn activation_reuses_selection_manifest_identity_in_milliseconds() {
 #[test]
 fn activation_parser_preserves_configured_logical_basename() {
     let manifests = provider_manifests();
-    let manifest = manifests.first().expect("builtin provider manifest");
+    let manifest = manifests
+        .iter()
+        .find(|manifest| manifest.document_resolution().is_some())
+        .expect("built-in document provider manifest");
+    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("repository workspace root");
     let selected_binary = "custom-provider-basename";
     let selection = ProviderCommandSelection {
         manifest_id: manifest.manifest_id.clone(),
@@ -165,11 +174,8 @@ fn activation_parser_preserves_configured_logical_basename() {
     };
     let selections =
         DefaultActivationSelections::new(vec![selection], test_graph_turbo_selection());
-    let activation = build_default_activation_from_selections(
-        std::path::Path::new("/activation-selected-basename-gate"),
-        &selections,
-    )
-    .expect("build activation with configured logical basename");
+    let activation = build_default_activation_from_selections(workspace_root, &selections)
+        .expect("build activation with configured logical basename");
     let serialized = serde_json::to_string(&activation).expect("serialize activation");
 
     let runtime =

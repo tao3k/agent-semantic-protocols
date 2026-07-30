@@ -73,7 +73,7 @@ pub(super) fn render_search_pipe_plan(request: SearchPipePlanRequest<'_>) -> Str
 {next_command_line}\
 nextClasses=search-deps,owner-items,treesitter-query,query-selector\n\
 omit=source,full-candidate-list,raw-search-overlay-output,long-field-signatures\n\
-avoid=repeat-search-pipe,broad-lexical,raw-rg,manual-window-scan,direct-source-read,raw-read\n",
+avoid=repeat-search-pipe,broad-lexical,raw-rg,manual-window-scan,raw-read\n",
     )
 }
 
@@ -366,7 +366,7 @@ fn parse_selector_action(value: &str) -> Option<PipeAction> {
 
 fn parse_query_code_action(value: &str) -> Option<PipeAction> {
     let rest = value.strip_prefix('C')?;
-    let (index, rest) = rest.split_once(".query-code(")?;
+    let (index, rest) = rest.split_once(".query-projection(")?;
     let index = index.parse::<usize>().ok()?;
     let fields = rest.split_once(")!")?.0;
     let selector = executable_structural_selector_from_action_fields(fields)?;

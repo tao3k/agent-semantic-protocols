@@ -95,12 +95,16 @@ fn db_engine_write_session_imports_manifest_without_exposing_retired_db_handle()
     assert_eq!(miss, None);
 }
 
-#[test]
-fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
+#[tokio::test(flavor = "multi_thread")]
+async fn db_engine_cache_status_survives_concurrent_read_write_smoke() {
     let project_root = temp_root("db-engine-cache-status-concurrent-project");
     let state_home = temp_root("db-engine-cache-status-concurrent-state-home");
     let state = ResolvedState::resolve_with_state_home(&project_root, &state_home)
         .expect("resolve state with explicit state home");
+    ClientDbEngine::from_resolved_state(&state)
+        .bootstrap_active_turso()
+        .await
+        .expect("bootstrap the Turso 0.7 format receipt before concurrent admission");
     fs::create_dir_all(project_root.join("src")).expect("create src dir");
     fs::write(
         project_root.join("src/lib.rs"),

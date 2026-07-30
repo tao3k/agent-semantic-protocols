@@ -20,6 +20,9 @@ pub fn command_source_paths(command: &str, tokens: &[String]) -> Vec<String> {
         });
 
     let mut candidates = parsed_words.unwrap_or_else(|| tokens.to_vec());
+    let embedded_candidates = embedded_literal_candidates(&candidates);
+    candidates.extend(embedded_candidates);
+    candidates.extend(crate::bash_parser::quoted_literal_candidates(command));
     candidates.extend(crate::bash_parser::bash_heredoc_literal_candidates(command));
     stable_unique(&candidates)
 }

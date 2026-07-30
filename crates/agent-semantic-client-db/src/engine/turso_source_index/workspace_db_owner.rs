@@ -15,7 +15,10 @@ use super::{
 /// A mutation admitted by the workspace owner's only writer actor.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum WorkspaceDbWriteOperation {
-    CommitSourceIndexGeneration(crate::ClientDbSourceIndexRefreshRequest),
+    CommitSourceIndexGeneration {
+        request: crate::ClientDbSourceIndexRefreshRequest,
+        materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
+    },
     WriteProviderOwner(ProviderIncrementalOwnerWrite),
     UpsertProviderInventory(ProviderOwnerInventoryWrite),
     WriteTreeSitterOwner {
@@ -222,13 +225,13 @@ pub async fn run_workspace_db_writer_actor(
             ]);
             continue;
         }
-        let operations = batch
+        let requests = batch
             .requests()
-            .map(|(request, _)| request.operation.clone())
+            .map(|(request, _)| request.clone())
             .collect::<Vec<_>>();
         let mut completed = Vec::with_capacity(batch_size);
-        for operation in &operations {
-            completed.push(execute_operation(&mut connection, operation).await);
+        for request in &requests {
+            completed.push(execute_operation(&mut connection, request).await);
         }
         batch.complete(completed);
     }
@@ -236,13 +239,23 @@ pub async fn run_workspace_db_writer_actor(
 
 async fn execute_operation(
     connection: &mut turso::Connection,
-    operation: &WorkspaceDbWriteOperation,
+    request: &WorkspaceDbWriteRequest,
 ) -> Result<WorkspaceDbWriteResult, String> {
-    match operation {
-        WorkspaceDbWriteOperation::CommitSourceIndexGeneration(request) => {
+    match &request.operation {
+        WorkspaceDbWriteOperation::CommitSourceIndexGeneration {
+            request: refresh,
+            materialization,
+        } => {
+            if materialization.workspace_identity != request.workspace_identity {
+                return Err(format!(
+                    "workspace generation materialization writer identity mismatch: admitted={} materialized={}",
+                    request.workspace_identity, materialization.workspace_identity
+                ));
+            }
             super::core::refresh_turso_source_index_import_on_connection(
                 connection,
-                request.clone(),
+                refresh.clone(),
+                materialization.clone(),
             )
             .await
             .map(WorkspaceDbWriteResult::SourceIndexGeneration)

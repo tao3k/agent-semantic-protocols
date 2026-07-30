@@ -35,18 +35,24 @@ async fn db_engine_source_index_lookup_reads_canonical_snapshot() {
         }],
     })
     .expect("build canonical source-index import");
-    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: source_index_import,
-            file_count: 1,
-            source_snapshot: source_snapshot.clone(),
-        },
-    )
-    .expect("write canonical source-index snapshot");
+    let source_blobs = crate::materialization_fixture::source_blobs_fixture([(
+        "src/canonical_snapshot.rs",
+        b"pub fn canonical_snapshot_fixture() {}\n".as_slice(),
+    )]);
+    let refresh =
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            ClientDbSourceIndexRefreshRequest {
+                import: source_index_import,
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+            &source_blobs,
+        )
+        .expect("write canonical source-index snapshot");
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
-        &source_snapshot,
+        &refresh.source_snapshot,
         "canonical_snapshot_fixture",
         Some(&LanguageId::from("rust")),
         8,
@@ -112,15 +118,25 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
         }],
     })
     .expect("build project B source-index import");
-    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: import_a,
-            file_count: 1,
-            source_snapshot: source_snapshot_a.clone(),
-        },
-    )
-    .expect("write project A scoped source-index snapshot");
+    let source_blobs_a = crate::materialization_fixture::source_blobs_fixture([(
+        "src/scope_a.rs",
+        b"pub fn scope_a_symbol() {}\n".as_slice(),
+    )]);
+    let source_blobs_b = crate::materialization_fixture::source_blobs_fixture([(
+        "src/scope_b.rs",
+        b"pub fn scope_b_symbol() {}\n".as_slice(),
+    )]);
+    let refresh_a =
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            ClientDbSourceIndexRefreshRequest {
+                import: import_a,
+                file_count: 1,
+                source_snapshot: source_snapshot_a.clone(),
+            },
+            &source_blobs_a,
+        )
+        .expect("write project A scoped source-index snapshot");
     agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
@@ -128,6 +144,7 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
             file_count: 1,
             source_snapshot: source_snapshot_b,
         },
+        &source_blobs_b,
     )
     .expect("write project B scoped source-index snapshot");
     let expected_index_artifact_digest =
@@ -135,8 +152,8 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
             agent_semantic_content_identity::DerivedArtifactKeyInput {
                 artifact_kind: "source-index",
                 schema_id: "asp.source-index-artifact.v1",
-                snapshot_root: &source_snapshot_a.root_digest,
-                provider_digest: &source_snapshot_a.provider_digest,
+                snapshot_root: &refresh_a.source_snapshot.root_digest,
+                provider_digest: &refresh_a.source_snapshot.provider_digest,
                 parameters: &[],
             },
         )
@@ -150,7 +167,7 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
             language_id: Some(&language_id),
             query_keys: vec!["scope_a_symbol".into()],
             limit: 8,
-            expected_snapshot_root: source_snapshot_a.root_digest.as_str(),
+            expected_snapshot_root: refresh_a.source_snapshot.root_digest.as_str(),
             expected_index_artifact_digest: expected_index_artifact_digest.as_str(),
             live_facts: None,
         },

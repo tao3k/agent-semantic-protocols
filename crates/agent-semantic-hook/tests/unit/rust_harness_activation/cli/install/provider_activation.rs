@@ -12,7 +12,7 @@ use crate::rust_harness_activation::support::{
 use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
 
 #[test]
-fn hook_materializes_static_provider_manifest_after_cli_install_without_running_guide() {
+fn cli_install_does_not_materialize_hook_activation_before_pre_tool() {
     let root = git_project_root("install-static-provider-manifest");
     let asp_state_home = root.join(".asp-state-home");
     let provider_bin = write_failing_state_home_provider_binary(

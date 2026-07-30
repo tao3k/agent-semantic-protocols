@@ -343,7 +343,7 @@ fn classify_apply_patch_paths(
         .collect::<Vec<_>>()
         .join("; ");
     let message = format!(
-        "source apply_patch denied; handwritten source hunks are not a supported workflow for protected source. Locator route: {route_guide}. Treat path-only locator output as a frontier/read-plan, not patch preimage; exact patch context must come from normal selector/code stdout: `asp {language} query --selector <path:start:end> --workspace {project_root} --code`. Build semantic-ast-patch.json with `asp ast-patch template --language {language} --owner <owner-path> --read <path:start:end> --op <operation> --field <key=value> {project_root}`; verify with `asp {language} ast-patch dry-run --packet semantic-ast-patch.json {project_root}`; apply with provider-native `asp {language} ast-patch apply --packet semantic-ast-patch.json {project_root}` when the receipt reports mutationSource=provider-native. Codex text patching is only a codex-text-fallback or controlled maintenance policy path, not the normal AST patch route."
+        "source apply_patch denied; handwritten source hunks are not a supported workflow for protected source. Locator route: {route_guide}. Treat path-only locator output as a frontier, not patch preimage; exact patch context must come from `asp {language} query --selector <exact-structural-selector> --workspace {project_root}`. Build semantic-ast-patch.json with `asp ast-patch template --language {language} --owner <owner-path> --read <exact-structural-selector> --op <operation> --field <key=value> {project_root}`; verify with `asp {language} ast-patch dry-run --packet semantic-ast-patch.json {project_root}`; apply with provider-native `asp {language} ast-patch apply --packet semantic-ast-patch.json {project_root}` when the receipt reports mutationSource=provider-native. Codex text patching is only a codex-text-fallback or controlled maintenance policy path, not the normal AST patch route."
     );
     Some(deny_for_action(
         platform,
@@ -366,7 +366,7 @@ pub(crate) fn materialize_agent_search_json_decision(
     action: &ToolAction,
     tokens: &[String],
 ) -> Option<HookDecision> {
-    if asp_command_tokens(tokens) {
+    if asp_command_tokens(tokens) || crate::command::is_asp_facade_command(tokens) {
         return None;
     }
     if !tokens.iter().any(|token| token == "--json") {

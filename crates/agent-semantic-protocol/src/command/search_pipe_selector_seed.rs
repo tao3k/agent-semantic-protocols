@@ -83,9 +83,7 @@ pub fn render_selector_seeded_search_pipe(request: SelectorSeededSearchPipeReque
     output.push_str(&render_recommended_next_line(&actions));
     output.push_str(&render_next_command_line(&actions));
     output.push_str("nextClasses=query-selector,owner-items\n");
-    output.push_str(
-        "avoid=shell-and,manual-command-join,repeat-search-pipe,raw-read,direct-source-read\n",
-    );
+    output.push_str("avoid=shell-and,manual-command-join,repeat-search-pipe,raw-read\n");
     output.push_str(&format!(
         "sourceTrace=selectorSeed:used[owner={owner};symbol={symbol};workspace={workspace}]\n"
     ));
@@ -135,9 +133,9 @@ fn selector_seed_actions(
         let language_id = selector.language_id.as_str();
         actions.push(ActionNode {
             id: "A1".to_string(),
-            kind: "query-code".to_string(),
+            kind: "query-projection".to_string(),
             suffix: "selector-seed".to_string(),
-            route: ActionRoute::QueryCode {
+            route: ActionRoute::QueryProjection {
                 language_id: language_id.to_string(),
                 selector: selector.clone(),
                 owner: owner.to_string(),

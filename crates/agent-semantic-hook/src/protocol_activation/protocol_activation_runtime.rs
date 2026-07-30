@@ -132,10 +132,17 @@ fn resolve_activation(
             execution_command_digest: activated.execution_command_digest.clone(),
             namespace: manifest.namespace.clone(),
             package_roots: activated.coverage.package_roots.clone(),
-            source_extensions: manifest.source.default_extensions.clone(),
+            source_extensions: activated.coverage.source_extensions.clone(),
             config_files: activated.coverage.config_files.clone(),
+            source_paths: activated.coverage.source_paths.clone(),
+            repository_candidate_generation: activated
+                .coverage
+                .repository_candidate_generation
+                .clone(),
+            project_resolution_generation: activated.coverage.project_resolution_generation.clone(),
             search_capabilities: activated.search_capabilities.clone(),
             project_resolution: manifest.project_resolution.clone(),
+            document_resolution: manifest.document_resolution.clone(),
             semantic_facts_descriptor: activated.semantic_facts_descriptor.clone(),
             query_pack_descriptor: activated.query_pack_descriptor.clone(),
             policy: manifest.policy.clone(),

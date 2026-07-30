@@ -1,4 +1,4 @@
-use agent_semantic_config::source_extensions_support_file;
+use agent_semantic_config::source_extension::source_extensions_support_file;
 use std::path::Path;
 
 #[test]

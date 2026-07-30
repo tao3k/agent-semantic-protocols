@@ -47,3 +47,42 @@ fn evidence_uses_versioned_schema_ids() {
     assert_eq!(evidence.leaf_count, 1);
     assert_eq!(resolution.schema_id, SOURCE_RESOLUTION_SCHEMA_ID);
 }
+
+#[test]
+fn chained_live_overlays_fold_into_one_canonical_root_depth() {
+    let base =
+        WorkspaceSnapshot::from_file_hashes([("src/lib.rs", "lib-v1"), ("src/main.rs", "main-v1")]);
+    let first = base.with_overlay([("src/lib.rs", "lib-v2")]);
+    let chained = first.with_overlay([("src/main.rs", "main-v2")]);
+    let combined = base.with_overlay([("src/lib.rs", "lib-v2"), ("src/main.rs", "main-v2")]);
+
+    assert_eq!(chained, combined);
+    let evidence = chained.evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::DerivedOverlay,
+        "provider-digest",
+    );
+    assert_eq!(
+        evidence.base_root_digest.as_deref(),
+        Some(base.root_digest())
+    );
+    assert!(evidence.dirty_paths_digest.is_some());
+}
+
+#[test]
+fn an_untracked_path_added_then_removed_collapses_to_the_canonical_snapshot() {
+    let base = WorkspaceSnapshot::from_file_hashes([("src/lib.rs", "lib-v1")]);
+    let added = base.with_overlay([("src/generated.rs", "generated-v1")]);
+    let restored =
+        added.with_overlay_delta(std::iter::empty::<(&str, &str)>(), ["src/generated.rs"]);
+
+    assert_eq!(restored, base);
+}
+
+#[test]
+fn a_modified_path_reverted_to_its_base_digest_clears_overlay_evidence() {
+    let base = WorkspaceSnapshot::from_file_hashes([("src/lib.rs", "lib-v1")]);
+    let modified = base.with_overlay([("src/lib.rs", "lib-v2")]);
+    let restored = modified.with_overlay([("src/lib.rs", "lib-v1")]);
+
+    assert_eq!(restored, base);
+}

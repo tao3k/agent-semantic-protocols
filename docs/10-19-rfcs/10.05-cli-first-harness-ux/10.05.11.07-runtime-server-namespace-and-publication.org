@@ -1,0 +1,103 @@
+#+title: 10.05.11.07 Runtime Server Namespace and Atomic Publication
+#+startup: overview
+
+* Status
+
+This module defines the canonical namespace and publication boundary for the
+single ASP Runtime Server.  It is part of the v1 runtime contract.
+
+* Canonical namespace
+
+=global= is an installation scope only.  It MUST NOT identify a daemon,
+service, endpoint, workspace process, or data-plane protocol.
+
+#+begin_example
+$ASP_STATE_HOME/
+  runtime/
+    bin/asp
+    server/endpoint.v1.json
+  catalog/providers/
+  projects/by-id/<project-id>/workspaces/<workspace-id>/
+#+end_example
+
+The public command is =asp server=.  Rust owners use =runtime_server=,
+=RuntimeServer=, =RuntimeServerEndpoint=, and =RuntimeServerWorkspaceEntry=.
+Provider discovery belongs to =ProviderCatalog=.  A workspace does not own a
+daemon; it owns one entry in the single Runtime Server.
+
+* Runtime ownership
+
+There is one Runtime Server per user installation.  It multiplexes project,
+workspace, and session traffic by canonical workspace identity:
+
+#+begin_example
+WorkspaceIdentity -> RuntimeServerWorkspaceEntry
+#+end_example
+
+Each entry owns one adaptive read side and one serialized writer lane.
+Different workspace entries may execute concurrently.  No workspace-specific
+process, process lock, Turso open, or schema bootstrap is permitted on a warm
+query.
+
+* Atomic ready publication
+
+The endpoint receipt is a readiness boundary, not a startup intention.
+Startup MUST complete these operations in order:
+
+1. acquire the single Runtime Server election;
+2. derive and validate the v1 endpoint;
+3. bind the control socket;
+4. bind the workspace data socket;
+5. create and publish the healthy status mmap;
+6. atomically rename the complete endpoint receipt into place;
+7. begin accepting requests.
+
+If any operation before endpoint publication fails, every socket and mmap
+artifact created by that attempt MUST be removed.  A client that can read the
+endpoint may therefore assume that both transports and the status snapshot
+belong to the same owner epoch and transport contract.
+
+Schema drift, runtime artifact drift, or transport-contract drift causes a
+graceful Runtime Server restart.  It MUST NOT be handled by a compatibility
+decoder, a per-workspace resident process, or a query-time activation write.
+
+* Installation reconciliation
+
+A Global Codex plugin installation is one reconciliation transaction:
+
+#+begin_example
+binary -> provider catalog -> activation/config -> plugin/skill ->
+active artifact receipt -> Runtime Server supervisor
+#+end_example
+
+There is no second daemon installation command.  The supervisor may start or
+restart the Runtime Server only after the canonical binary and active artifact
+receipt are complete.  A Project plugin installation does not install or
+restart the user-level Runtime Server.
+
+* Generation publication
+
+Turso remains the durable canonical-generation and MVCC authority.
+MemoryBackend is the current query data plane for a workspace.  A writer lane
+constructs and validates the next complete MemoryBackend and mmap generation,
+then atomically publishes its epoch.  Readers retain leases on the previous
+generation until they finish.
+
+An owner overlay with the same owner path and content digest accumulates
+canonical selectors.  It MUST NOT discard selectors already proven for the
+same immutable owner bytes.  When owner bytes change, the complete owner
+projection is replaced so stale byte ranges cannot survive.
+
+* Required gates
+
+The v1 implementation MUST provide fixtures that prove:
+
+- endpoint publication occurs only after both sockets and status mmap exist;
+- failed publication removes all artifacts from the failed attempt;
+- concurrent workspace sessions share one writer lane and monotonic epochs;
+- same-owner overlays preserve every selector for unchanged bytes;
+- warm exact projection has zero filesystem, database, provider, manifest, and
+  control-socket operations;
+- multi-workspace warm exact projection remains below one millisecond at p99;
+- lifecycle control uses a persistent Tokio connection lane and remains within
+  its millisecond gate without increasing a timeout.

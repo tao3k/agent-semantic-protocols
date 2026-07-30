@@ -98,18 +98,25 @@ async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() 
         }],
     })
     .expect("build canonical source-index import");
-    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: source_index_import,
-            file_count: 1,
-            source_snapshot: source_snapshot.clone(),
-        },
-    )
-    .expect("bootstrap canonical source-index schema");
+    let source_blobs =
+        agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized([(
+            agent_semantic_client_db::ClientDbSourceIndexPath::new("src/canonical_schema.rs"),
+            b"fn canonical_schema() {}\n".to_vec(),
+        )]);
+    let refresh =
+        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
+            &client_dir,
+            ClientDbSourceIndexRefreshRequest {
+                import: source_index_import,
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+            &source_blobs,
+        )
+        .expect("bootstrap canonical source-index schema");
     let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
         &client_dir,
-        &source_snapshot,
+        &refresh.source_snapshot,
         "canonical_schema",
         Some(&LanguageId::from("rust")),
         1,

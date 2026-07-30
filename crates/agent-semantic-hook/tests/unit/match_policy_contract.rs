@@ -146,10 +146,8 @@ fn production_match_policy_contract() {
             reason: ReasonKind::BulkSourceDump,
         },
         MatchCase {
-            name: "python inline source materialization",
-            payload: shell(
-                "python -c 'from pathlib import Path; print(Path(\"src/app.ts\").read_text())'",
-            ),
+            name: "legacy python inline source materialization",
+            payload: shell("python -c 'print(open(\"src/app.ts\").read())'"),
             rule_id: "deny-uncontrolled-python-inline-source-materialization",
             decision: DecisionKind::Deny,
             reason: ReasonKind::BulkSourceDump,

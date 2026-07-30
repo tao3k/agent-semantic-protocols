@@ -1,0 +1,267 @@
+#+title: RFC 10.05.10.00.33 — Cache-Parametric Graph-Cost Certificate
+#+startup: overview
+
+* Status
+
+Draft research specification.
+
+This RFC refines the canonical graph-cost vector from RFC 00.32. It does not
+change the public CLI and does not authorize a provider implementation. Its
+purpose is to make cache-dependent search cost explicit before the Python Turbo
+Graph runtime is implemented.
+
+* Problem
+
+The token component of a route cost is not an intrinsic property of an evidence
+path. It depends on at least two independent reuse mechanisms:
+
+1. a semantic-search cache may reuse evidence acquisition and projection
+   results; and
+2. a model prefix cache may reuse prompt computation for a particular model,
+   tokenizer, and prompt prefix.
+
+These mechanisms have different identities, failure modes, and proof
+obligations. Combining them into one =cache_hit= flag is unsound.
+
+A frontier lower bound computed while a model prefix is a verified cache hit can
+be false after the prefix becomes a miss. The route order can then reverse even
+though the evidence graph has not changed. Consequently, a static
+=GraphCostVector= cannot be reused merely because its evidence root still
+matches.
+
+* Design decision
+
+A cost certificate MUST be parameterized by a =CostContext= containing:
+
+- a semantic-search cache key;
+- a model prefix-cache key;
+- the observed prefix-cache state; and
+- the cost-model version.
+
+The semantic-search key and model prefix key MUST remain distinct fields.
+Equality of one MUST NOT imply equality of the other.
+
+A semantic-search cache key binds:
+
+- evidence-root digest;
+- normalized-query digest; and
+- projection version.
+
+A model prefix-cache key binds:
+
+- model digest;
+- tokenizer digest; and
+- prompt-prefix digest.
+
+The prefix state is either =verified-hit= or =miss=. An unverified or predicted
+hit is treated as =miss= for proof-carrying cost. Providers MAY use a predicted
+hit to generate candidates, but MUST NOT use it to close an omitted frontier or
+prove global optimality.
+
+* Prompt-cost witness
+
+A prompt-cost witness contains:
+
+- evidence tokens;
+- total prompt tokens;
+- cached prompt tokens; and
+- a proof that cached prompt tokens do not exceed total prompt tokens.
+
+For a verified hit, effective tokens are:
+
+#+name: cache-parametric-graph-cost-math
+#+begin_src typst
+#let effective(state, evidence, prompt, cached) = {
+  if state == "verified-hit" {
+    evidence + prompt - cached
+  } else {
+    evidence + prompt
+  }
+}
+
+#let conservative(evidence, prompt) = evidence + prompt
+
+#let cache-bound(active, claimed) = (
+  active.semantic-key == claimed.semantic-key
+  and active.prefix-key == claimed.prefix-key
+  and active.prefix-state == claimed.prefix-state
+  and active.cost-model-version == claimed.cost-model-version
+)
+
+#let semantic-receipt-bound(active, receipt) = (
+  active.semantic-key == receipt.semantic-key
+  and receipt.validated
+)
+
+#let valid-cost(active, receipt, certificate) = (
+  cache-bound(active, certificate.context)
+  and semantic-receipt-bound(active, receipt)
+  and certificate.vector.uncached-tokens
+    == effective(
+      active.prefix-state,
+      certificate.witness.evidence-tokens,
+      certificate.witness.prompt-tokens,
+      certificate.witness.cached-prompt-tokens,
+    )
+)
+
+#let conservative-bound(state, evidence, prompt, cached) = (
+  effective(state, evidence, prompt, cached)
+  <= conservative(evidence, prompt)
+)
+
+#let ranking-flip = (
+  effective("verified-hit", 0, 100, 90)
+    < effective("verified-hit", 0, 20, 0),
+  effective("miss", 0, 20, 0)
+    < effective("miss", 0, 100, 90),
+)
+
+(
+  effective: effective,
+  conservative: conservative,
+  cache-bound: cache-bound,
+  semantic-receipt-bound: semantic-receipt-bound,
+  valid-cost: valid-cost,
+  conservative-bound: conservative-bound,
+  ranking-flip: ranking-flip,
+)
+#+end_src
+
+The final tuple is the executable mathematical surface consumed by
+=orgize eval plan --json cache-parametric-graph-cost-math ...= and
+=typst eval --in -=. No generated =.typ= source or PDF is part of this RFC.
+
+* Cache-bound validity
+
+A cost certificate is usable only when all of the following hold:
+
+1. the active semantic-search key equals the claimed semantic-search key;
+2. the active prefix-cache key equals the claimed prefix-cache key;
+3. the active prefix-cache state equals the claimed state;
+4. the active cost-model version equals the claimed version;
+5. an independently produced semantic evidence receipt is bound to the active
+   semantic-search key and records successful validation; and
+6. the token component equals the effective-token function for that context.
+
+Any mismatch invalidates the cost certificate. It does not necessarily
+invalidate the evidence itself. In particular:
+
+- semantic-key drift requires evidence reacquisition or revalidation;
+- prefix-key or prefix-state drift requires cost recomputation;
+- model or tokenizer drift is prefix-key drift;
+- cost-model-version drift requires all derived costs and frontier lower bounds
+  to be recomputed.
+
+The semantic validation bit MUST NOT be self-asserted by the cost certificate.
+It belongs to a separate =SemanticEvidenceReceipt= produced by the Evidence
+Graph owner. The Graph Router consumes that receipt alongside the cost
+certificate. This distinction prevents an inexpensive cost refresh from being
+confused with an expensive semantic evidence refresh, and prevents the route
+cost from certifying its own evidence premise.
+
+* Conservative fallback
+
+The miss-side cost
+
+#+begin_quote
+evidence tokens + total prompt tokens
+#+end_quote
+
+is a conservative upper bound for both a verified hit and a miss. When a prefix
+hit cannot be verified, the router MUST use this conservative cost for
+proof-carrying comparisons.
+
+This upper bound is safe for admission and budgeting, but it is not by itself a
+lower-bound certificate for an omitted frontier. A global-optimality proof still
+requires a context-bound lower bound for every omitted candidate family.
+
+* Ranking-flip counterexample
+
+Consider two routes with equal graph hops, rounds, and transitions:
+
+| Route | Prompt | Cached on verified hit | Hit cost | Miss cost |
+|-------+--------+------------------------+----------+-----------|
+| A     |    100 |                     90 |       10 |       100 |
+| B     |     20 |                      0 |       20 |        20 |
+
+Under a verified hit, A is cheaper than B. Under a miss, B is cheaper than A.
+Therefore, the evidence-root identity alone cannot preserve route order. A
+frontier certificate generated under A's hit context is unusable after a miss.
+
+* Consequences for Evidence Graph and Graph Router
+
+The Evidence Graph owns semantic identity and evidence validity. The Graph
+Router owns route comparison under an explicit cost context. Neither owner may
+silently infer the other cache's validity.
+
+For the Python Turbo Graph design:
+
+- cached graph neighborhoods carry semantic-search cache keys;
+- semantic evidence validation is emitted as an independent receipt bound to
+  the semantic-search cache key;
+- route-cost and omitted-frontier certificates carry model prefix-cache keys,
+  states, and cost-model versions;
+- a semantic cache hit MAY coexist with a prefix-cache miss;
+- a prefix-cache hit MUST NOT excuse stale semantic evidence;
+- cost-context drift invalidates ranking and frontier closure without deleting
+  otherwise valid graph evidence; and
+- diagnostic receipts report the two cache outcomes separately.
+
+* Required receipt shape
+
+A future runtime receipt for a proof-carrying route SHOULD expose:
+
+#+begin_src json
+{
+  "semanticCache": {
+    "evidenceRootDigest": "...",
+    "queryDigest": "...",
+    "projectionVersion": "...",
+    "validated": true
+  },
+  "modelPrefixCache": {
+    "modelDigest": "...",
+    "tokenizerDigest": "...",
+    "promptPrefixDigest": "...",
+    "state": "verified-hit"
+  },
+  "costModelVersion": "...",
+  "effectiveTokens": 10,
+  "conservativeTokens": 100
+}
+#+end_src
+
+This is a receipt requirement, not a CLI flag set. SearchLoop remains
+interactive and agent-facing; the CLI does not gain a combinatorial cache
+configuration surface.
+
+* Lean obligations
+
+The companion Lean model MUST establish:
+
+- cache-bound reflexivity;
+- rejection when the independent semantic receipt is bound to another key;
+- rejection on semantic-search identity drift;
+- rejection on model prefix identity drift;
+- rejection on prefix-state drift;
+- rejection on cost-model-version drift;
+- effective cost never exceeds conservative miss-side cost;
+- a verified-hit certificate is unusable under a miss context; and
+- the concrete route-order reversal.
+
+The modular audit MUST enumerate these declaration families without adding them
+to the historical monolithic audit module.
+
+* Open questions
+
+- Which runtime component provides the authoritative verified-hit observation?
+- Can a provider obtain a stable tokenizer digest without initializing the
+  model runtime?
+- Should frontier lower bounds use only conservative miss-side costs, or allow
+  shorter-lived verified-hit leases?
+- Which receipt fields are safe to expose without leaking prompt-prefix
+  contents?
+
+These questions do not weaken the invariant: a cache-dependent cost proof is
+valid only in the cache context to which it is bound.

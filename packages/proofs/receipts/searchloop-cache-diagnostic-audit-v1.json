@@ -1,0 +1,49 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchLoopCacheDiagnostics.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchLoopCacheDiagnostics",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (cached current : SearchLoopCacheIdentity.SemanticKey),\n  SearchLoopCacheDiagnostics.diagnoseSemantic cached current = none ↔ cached = current",
+   "theoremFamily": "typed-invalidation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheDiagnostics.no_diagnostic_iff_exact_key",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (cached current : SearchLoopCacheIdentity.SemanticKey) (reason : SearchLoopCacheDiagnostics.InvalidationReason),\n  SearchLoopCacheDiagnostics.diagnoseSemantic cached current = some reason →\n    SearchLoopCacheIdentity.decideSemanticReuse cached current = SearchLoopCacheIdentity.CacheDecision.invalidate",
+   "theoremFamily": "typed-invalidation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheDiagnostics.diagnostic_implies_invalidate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "SearchLoopCacheDiagnostics.diagnoseSemantic SearchLoopCacheIdentity.baseSemanticKey\n    SearchLoopCacheIdentity.providerArtifactDriftKey =\n  some SearchLoopCacheDiagnostics.InvalidationReason.providerArtifact",
+   "theoremFamily": "typed-invalidation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name":
+   "SearchLoopCacheDiagnostics.provider_artifact_drift_has_typed_reason",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "SearchLoopCacheDiagnostics.diagnoseSemantic SearchLoopCacheIdentity.baseSemanticKey\n    SearchLoopCacheIdentity.policyDriftKey =\n  some SearchLoopCacheDiagnostics.InvalidationReason.policy",
+   "theoremFamily": "typed-invalidation",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SCI-KEY-IDENTITY", "ASP-RFC-10.05-SCI-TYPED-INVALIDATION"],
+   "name": "SearchLoopCacheDiagnostics.policy_drift_has_typed_reason",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 4,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 2,
+ "axiomDependentDeclarationCount": 2}

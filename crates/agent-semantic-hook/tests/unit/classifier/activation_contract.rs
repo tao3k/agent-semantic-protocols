@@ -54,7 +54,7 @@ fn activation_rejects_manifest_digest_drift() {
 fn activation_resolves_provider_manifest_and_project_coverage() {
     let manifest = provider_manifest();
     let digest = provider_manifest_digest(&manifest).expect("manifest digest");
-    let expected_package_roots = vec![".".to_string()];
+    let expected_package_roots = vec!["src".to_string()];
     let expected_guide_argv = agent_semantic_hook::materialize_provider_routes(&manifest)
         .expect("materialize TypeScript routes")
         .guide
@@ -73,10 +73,7 @@ fn activation_resolves_provider_manifest_and_project_coverage() {
     assert_eq!(runtime.providers.len(), 1);
     assert_eq!(runtime.providers[0].language_id, "typescript");
     assert_eq!(runtime.providers[0].provider_id, "ts-harness");
-    assert_eq!(
-        runtime.providers[0].package_roots,
-        expected_package_roots
-    );
+    assert_eq!(runtime.providers[0].package_roots, expected_package_roots);
     assert_eq!(
         runtime.providers[0].routes.guide.as_ref().unwrap().argv,
         expected_guide_argv
@@ -115,9 +112,16 @@ fn activation_value(manifest: &ProviderManifest, manifest_digest: &str) -> Value
         semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
         routes,
         coverage: ActivationCoverage {
-            package_roots: vec![".".to_string()],
-            config_files: manifest.source().default_config_files.clone(),
-            source_extensions: manifest.source().default_extensions.clone(),
+            package_roots: vec!["src".to_string()],
+            config_files: manifest
+                .project_resolution()
+                .expect("TypeScript project resolution")
+                .entry_markers
+                .clone(),
+            source_extensions: vec![".ts".to_string()],
+            source_paths: vec!["src/index.ts".to_string()],
+            repository_candidate_generation: "test-candidate-generation".to_string(),
+            project_resolution_generation: "test-project-resolution-generation".to_string(),
         },
     };
     json!({

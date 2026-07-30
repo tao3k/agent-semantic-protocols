@@ -33,7 +33,6 @@ pub(super) fn effective_project_root_and_args(
 ) -> Result<(PathBuf, Vec<String>), String> {
     validate_facade_view_args(args)?;
     let args = args.to_vec();
-    validate_code_flag_boundary(&args)?;
     if let Some((workspace_root, normalized_args)) =
         explicit_workspace_project_root(language_id, &args, invocation_root)?
     {
@@ -228,21 +227,6 @@ pub(super) fn validate_explicit_workspace_project_root(
     invocation_root: &Path,
 ) -> Result<(), String> {
     explicit_workspace_project_root(language_id, args, invocation_root).map(|_| ())
-}
-
-fn validate_code_flag_boundary(args: &[String]) -> Result<(), String> {
-    if !matches!(args.first().map(String::as_str), Some("query" | "search")) {
-        return Ok(());
-    }
-    for window in args.windows(2) {
-        if window[0] == "--code" && !window[1].starts_with('-') {
-            return Err(
-                "query/search --code does not accept a trailing PROJECT_ROOT; use --workspace PROJECT_ROOT"
-                    .to_string(),
-            );
-        }
-    }
-    Ok(())
 }
 
 pub(super) fn explicit_workspace_project_root(
@@ -560,7 +544,7 @@ fn arg_is_option_value(args: &[String], index: usize) -> bool {
     }
     !matches!(
         previous.as_str(),
-        "--changed" | "--code" | "--full" | "--json" | "--names-only" | "--receipt-json"
+        "--changed" | "--full" | "--json" | "--receipt-json"
     )
 }
 
@@ -569,10 +553,7 @@ fn arg_contains_value(arg: &str) -> bool {
 }
 
 fn option_takes_value(arg: &str) -> bool {
-    !matches!(
-        arg,
-        "--changed" | "--code" | "--full" | "--json" | "--names-only" | "--receipt-json"
-    )
+    !matches!(arg, "--changed" | "--full" | "--json" | "--receipt-json")
 }
 
 fn invocation_root_is_provider_project(language_id: &str, invocation_root: &Path) -> bool {

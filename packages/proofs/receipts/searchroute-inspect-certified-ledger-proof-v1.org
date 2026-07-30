@@ -1,0 +1,128 @@
+#+title: SearchRoute Certified Search Ledger Proof Receipt
+
+* Scope
+
+This receipt binds RFC 10.05.25 to:
+
+- =ASPProof.SearchRouteInspectCertifiedLedger=
+- =packages/proofs/ASPProof/SearchRouteInspectCertifiedLedger.lean=
+- =packages/proofs/audit/SearchRouteInspectCertifiedLedgerAudit.lean=
+- =searchroute-inspect-certified-ledger-audit-v1.json=
+- =searchroute-inspect-certified-ledger-axle-audit-v1.json=
+
+* Lean build
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake build
+#+end_src
+
+Result:
+
+#+begin_example
+Build completed successfully (22 jobs).
+#+end_example
+
+* Lean JSON audit
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake env lean \
+  audit/SearchRouteInspectCertifiedLedgerAudit.lean
+#+end_src
+
+Result:
+
+#+begin_example
+wrote receipts/searchroute-inspect-certified-ledger-audit-v1.json
+#+end_example
+
+* AXLE verification
+
+#+begin_src sh
+uv run --project packages/python/tools --frozen \
+  python -m tools.axle_lean_audit \
+  packages/proofs/receipts/searchroute-inspect-certified-ledger-audit-v1.json \
+  --allow-axiom Classical.choice \
+  --allow-axiom Quot.sound \
+  --allow-axiom propext \
+  --require-family snapshot-binding \
+  --require-family visible-optimality \
+  --require-family trace-provenance \
+  --require-family trace-realization \
+  --require-family ledger-global-optimality \
+  --require-family scheduler-boundary \
+  --require-family counterexample \
+  --require-rfc-clause ASP-RFC-10.05-SCL-SNAPSHOT \
+  --require-rfc-clause ASP-RFC-10.05-SCL-VISIBLE \
+  --require-rfc-clause ASP-RFC-10.05-SCL-UNIVERSE \
+  --require-rfc-clause ASP-RFC-10.05-SCL-COVERAGE \
+  --require-rfc-clause ASP-RFC-10.05-SCL-CLOSURE \
+  --require-rfc-clause ASP-RFC-10.05-SCL-GLOBAL \
+  --require-rfc-clause ASP-RFC-10.05-SCL-NONIMPLICATION
+#+end_src
+
+Result:
+
+#+begin_example
+declarationCount=7
+axiomFreeDeclarationCount=2
+axiomDependentDeclarationCount=5
+axiomInventory=Classical.choice,Quot.sound,propext
+auditSha256=86e5edd0cb1baa357b31973b8bcc60a6d2822ea4acaca9b7db8e02c9b7768e8d
+#+end_example
+
+=Classical.choice= is inherited through the existing generic selector and
+scheduler optimality proofs.  The snapshot equality and empty-schedule
+boundary declarations remain axiom-free where their proof terms permit it.
+
+* Org-Babel Typst ownership
+
+RFC 10.05.24 and RFC 10.05.25 contain no raw LaTeX display or inline
+delimiters.  Each document has one named Org-Babel Typst model:
+
+- =searchroute-realized-trace-catalog-global-driver-model=
+- =searchroute-certified-search-ledger-model=
+
+For each model, the executor runs =orgize eval plan --json NAME PATH= and
+forwards the returned =.body= value to:
+
+#+begin_src sh
+typst eval --in - '"ok"'
+#+end_src
+
+Both evaluations returned:
+
+#+begin_example
+"ok"
+#+end_example
+
+No standalone =.typ= source, =:file= header, compile step, or PDF is part of
+this receipt.
+
+* Lean-discovered protocol correction
+
+Lean proved that scheduler closure and candidate completeness are independent:
+
+- an empty inspect frontier satisfies =ScheduleComplete=;
+- the existing graph-only catalog still omits a feasible realized route;
+- therefore =ScheduleComplete= does not imply =CandidateComplete=.
+
+RFC 10.05.25 replaces full trace-catalog materialization with a certified
+ledger containing:
+
+- a snapshot-bound complete candidate universe;
+- visible feasible realized trace entries;
+- coverage by visible candidates or deferred certified frontiers;
+- a successful selector;
+- scheduler closure.
+
+The global theorem retains full provenance for the selected trace without
+requiring every safely pruned candidate to carry a materialized closed trace.
+
+* Remaining boundary
+
+The formal candidate universe is still a finite list of =GraphCandidate=
+values.  A later proof must replace that list with a content-addressed or
+symbolic universe commitment while preserving membership, coverage, snapshot,
+and global optimality receipts.

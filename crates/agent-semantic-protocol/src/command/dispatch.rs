@@ -13,7 +13,6 @@ use super::agent_session_registry::run_agent_command;
 use super::ast_patch::run_ast_patch_command;
 use super::dispatch_agent_session_policy::is_agent_session_control_json_command;
 use super::document_provider;
-use super::runtime_server::run_runtime_server_command;
 use super::graph::run_graph_command;
 use super::healthcheck::run_healthcheck_command;
 use super::hook::run_hook_command;
@@ -23,8 +22,8 @@ use super::paths::run_paths_command;
 use super::provider_dispatch::run_language_command;
 use super::root_language_facade::run_root_language_facade;
 use super::run_protocol_version_command;
+use super::runtime_server::run_runtime_server_command;
 use super::source_access::run_source_access_command;
-use super::workspace_db_owner::run_workspace_db_command;
 
 pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> {
     normalize_agent_session_command_args(&mut args)?;
@@ -52,7 +51,13 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
         Some("search") if args.get(1).is_some_and(|arg| arg == "history") => {
             run_client_command(args)
         }
-        Some(command @ ("search" | "query")) => run_root_language_facade(command, &args[1..]),
+        Some("search") => run_root_language_facade("search", &args[1..]),
+        Some("query") => {
+            match super::provider_selector::root_structural_selector_language(&args[1..])? {
+                Some(language_id) => run_language_command(&language_id, &args[1..]),
+                None => run_root_language_facade("query", &args[1..]),
+            }
+        }
         Some("check") => Err(
             "asp check is not a public command surface; use asp <rust|typescript|python|julia> check ..."
                 .to_string(),
@@ -71,7 +76,6 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
         Some("source-access") => run_source_access_command(&args[1..]),
         Some("ast-patch") => run_ast_patch_command(&args[1..]),
         Some("graph") => run_graph_command(&args[1..]),
-        Some("workspace-db") => run_workspace_db_command(&args[1..]),
         Some(document_id) if document_provider::is_document_language(document_id) => {
             document_provider::run_language_command(document_id, &args[1..])
         }

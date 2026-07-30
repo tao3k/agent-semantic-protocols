@@ -1,0 +1,111 @@
+#+title: SearchRoute Total Inspect Driver Proof Receipt v1
+#+options: toc:nil
+
+* Owners
+
+- RFC owner:
+  =docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.22-searchroute-total-inspect-driver.org=
+- Lean owner:
+  =packages/proofs/ASPProof/SearchRouteInspectDriver.lean=
+- Lean audit:
+  =packages/proofs/receipts/searchroute-inspect-driver-audit-v1.json=
+- AXLE receipt:
+  =packages/proofs/receipts/searchroute-inspect-driver-axle-audit-v1.json=
+
+The Lean audit validates against
+=schemas/lean-proof-audit.v1.schema.json=. The AXLE receipt validates against
+=schemas/axle-lean-audit-receipt.v1.schema.json=.
+
+* Proof boundary
+
+The proof separates a safety-only trace relation from a liveness receipt.
+Given =DecisionTotal= and a well-formed state, strong induction on remaining
+loop work constructs a typed closed trace. The trace length is bounded by
+initial work. With snapshot-bound coverage, its final selected candidate is
+globally optimal over the candidate universe.
+
+The proof does not derive provider availability, does not hide a typed provider
+failure as successful closure, and does not claim that the constructed total
+driver has minimum operational route cost.
+
+* Lean build and audit
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake build
+/opt/homebrew/bin/lake env lean audit/SearchRouteInspectDriverAudit.lean
+#+end_src
+
+Observed:
+
+- full build: exit =0=, =19= jobs;
+- audit emission: exit =0=;
+- declarations: =5=;
+- axiom-free declarations: =1=;
+- axiom-dependent declarations: =4=;
+- =sorryAx=: absent;
+- axiom inventory: =Classical.choice=, =Quot.sound=, =propext=.
+
+* AXLE fail-closed audit
+
+#+begin_src sh
+uv run --project packages/python/tools --frozen \
+  python -m tools.axle_lean_audit \
+  packages/proofs/receipts/searchroute-inspect-driver-audit-v1.json \
+  --allow-axiom Classical.choice \
+  --allow-axiom Quot.sound \
+  --allow-axiom propext \
+  --require-family liveness-existence \
+  --require-family bounded-liveness \
+  --require-family selected-non-regression \
+  --require-family liveness-global-optimality \
+  --require-family counterexample \
+  --require-rfc-clause ASP-RFC-10.05-SID-DECISION-TOTAL \
+  --require-rfc-clause ASP-RFC-10.05-SID-CLOSED-TRACE \
+  --require-rfc-clause ASP-RFC-10.05-SID-GLOBAL \
+  --require-rfc-clause ASP-RFC-10.05-SID-SAFETY-LIVENESS
+#+end_src
+
+Observed:
+
+- exit =0=;
+- canonical audit digest:
+  =b47306b86b85d7d0172b6e2928268d0936d6a6ff377fa35edbb99801ebe29006=;
+- all =5= required theorem families present;
+- all =4= RFC clause IDs present;
+- no unexpected axiom.
+
+* Embedded Typst validation
+
+The RFC owns the named block =searchroute-total-inspect-driver-model=. No
+standalone =.typ= source, =:file= header argument, or PDF compilation was used.
+
+#+begin_src sh
+orgize eval plan --json \
+  searchroute-total-inspect-driver-model \
+  docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.22-searchroute-total-inspect-driver.org
+
+typst eval --in - '"ok"'
+#+end_src
+
+The parser-owned plan returned the named =typst= block body and implicit
+Org-Babel defaults. That body was sent directly to =typst eval --in -= over
+standard input.
+
+Observed:
+
+- Orgize block plan: exit =0=;
+- Typst stdin eval: exit =0=, JSON result ="ok"=.
+
+Native Orgize Typst lint/runtime integration remains owned by the concurrent
+Rust work and is not claimed by this receipt.
+
+* Lean-discovered RFC defects
+
+1. =InspectLoopTrace.stop= permits a zero-step trace at a non-closed state.
+   Trace existence is therefore not liveness.
+2. Strict work decrease proves boundedness only after a next valid decision is
+   available. =DecisionTotal= is an independent protocol premise.
+3. A total driver can reach a globally optimal candidate without being the
+   cheapest driver. Cost-optimality requires a separate trace-to-SearchRoute
+   lifting theorem.

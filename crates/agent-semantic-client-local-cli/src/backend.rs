@@ -102,6 +102,9 @@ impl LocalNativeCliBackend {
 
     fn push_method(invocation: &mut Vec<String>, method: &ClientMethod) -> Result<(), String> {
         match method {
+            ClientMethod::ProjectResolution => {
+                invocation.push("project-resolution-stdin".to_string());
+            }
             ClientMethod::Search => invocation.push("search".to_string()),
             ClientMethod::Query => invocation.push("query".to_string()),
             ClientMethod::Check => invocation.push("check".to_string()),

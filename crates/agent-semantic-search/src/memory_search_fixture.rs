@@ -24,6 +24,8 @@ pub struct MemorySearchFixture {
     pub project_root: std::path::PathBuf,
     pub scope: ProviderIncrementalScoped,
     pub refresh_request: ClientDbSourceIndexRefreshRequest,
+    pub materialization:
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization,
     pub binding: TursoMemorySearchBinding,
 }
 
@@ -32,6 +34,7 @@ impl MemorySearchFixture {
         project_root: std::path::PathBuf,
         scope: ProviderIncrementalScoped,
         refresh_request: ClientDbSourceIndexRefreshRequest,
+        materialization: agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization,
         binding: TursoMemorySearchBinding,
     ) -> Self {
         Self {
@@ -40,6 +43,7 @@ impl MemorySearchFixture {
             project_root,
             scope,
             refresh_request,
+            materialization,
             binding,
         }
     }
@@ -55,7 +59,10 @@ impl MemorySearchFixture {
         }
         let engine = ClientDbEngine::resolve_for_write(&self.project_root)?;
         let refresh = engine
-            .refresh_source_index_generation(self.refresh_request.clone())
+            .refresh_source_index_generation(
+                self.refresh_request.clone(),
+                self.materialization.clone(),
+            )
             .await?;
         let session = registry.acquire(&self.project_root, &self.scope).await?;
         let backend = TursoMemorySearchBackend::new_fixture(

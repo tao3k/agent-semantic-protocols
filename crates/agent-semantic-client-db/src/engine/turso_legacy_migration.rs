@@ -8,7 +8,7 @@ use super::turso_migration::{ClientDbTurso07ReplayCoverage, ClientDbTurso07Repla
 
 const EMPTY_FAMILY_DIGEST_V1: &str =
     "blake3:af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262";
-const FAMILY_COUNT: usize = 8;
+const FAMILY_COUNT: usize = 9;
 const MIGRATION_BATCH_PARAMETER_BUDGET: usize = 768;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -20,7 +20,8 @@ enum MigrationFamily {
     ProviderCommand = 4,
     ArtifactEvent = 5,
     ArtifactPointer = 6,
-    RetiredDerivedProjection = 7,
+    WorkspaceRuntime = 7,
+    RetiredDerivedProjection = 8,
 }
 
 #[derive(Clone, Debug)]
@@ -494,6 +495,11 @@ fn table_family(name: &str) -> Option<MigrationFamily> {
         Some(MigrationFamily::SyntaxQuery)
     } else if name.starts_with("asp_source_index_") || name == "asp_exact_selector_projection_v1" {
         Some(MigrationFamily::SourceIndex)
+    } else if matches!(
+        name,
+        "asp_workspace_db_schema_receipt_v1" | "asp_workspace_generation_materialization_v1"
+    ) {
+        Some(MigrationFamily::WorkspaceRuntime)
     } else if name == "asp_provider_command_selection" {
         Some(MigrationFamily::ProviderCommand)
     } else if matches!(name, "asp_artifact_event" | "asp_failed_artifact_attempt") {

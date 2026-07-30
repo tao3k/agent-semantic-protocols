@@ -35,6 +35,23 @@ fn command_model_is_configured_instead_of_binary_hardcoded() {
 }
 
 #[test]
+fn bounded_projection_survives_generic_command_wrappers() {
+    let no_subcommands = Vec::new();
+    let options = vec!["-r".to_string()];
+    let option_values = BTreeMap::new();
+    assert!(matches!(
+        classify_single_bounded_path_command(
+            "direnv exec . project-json -r .package.name package.json",
+            spec("project-json", &no_subcommands, &options, &option_values),
+        ),
+        StructuredFilterClassificationV1::BoundedPath {
+            source_operands,
+            ..
+        } if source_operands == ["package.json"]
+    ));
+}
+
+#[test]
 fn rejects_identity_multiple_inputs_and_multi_stage_commands() {
     let subcommands = vec!["eval".to_string(), "e".to_string()];
     let options = Vec::new();

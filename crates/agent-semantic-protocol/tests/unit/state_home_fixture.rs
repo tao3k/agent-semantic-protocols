@@ -107,10 +107,8 @@ pub(crate) fn write_activation(root: &Path, state_home: &Path, language_ids: &[&
                 routes: materialize_provider_routes(&manifest).expect("provider routes"),
                 coverage: ActivationCoverage {
                     package_roots: vec![canonical_root.display().to_string()],
-                    source_roots: manifest.source().default_source_roots.clone(),
                     config_files: manifest.source().default_config_files.clone(),
                     source_extensions: manifest.source().default_extensions.clone(),
-                    ignored_path_prefixes: manifest.source().default_ignored_path_prefixes.clone(),
                 },
             }
         })

@@ -1,9 +1,7 @@
 use super::connection_pool::connection_pool;
-use super::endpoint::runtime_server_connection_pool_size;
 use super::model::{
-    RECEIPT_SCHEMA_ID, REQUEST_SCHEMA_ID, RuntimeServerControlReceipt,
-    RuntimeServerControlRequest, RuntimeServerEndpoint, RuntimeServerOperation, RuntimeServerState,
-    SCHEMA_VERSION,
+    RECEIPT_SCHEMA_ID, REQUEST_SCHEMA_ID, RuntimeServerControlReceipt, RuntimeServerControlRequest,
+    RuntimeServerEndpoint, RuntimeServerOperation, SCHEMA_VERSION,
 };
 use super::status_memory::read_runtime_server_status;
 
@@ -38,25 +36,4 @@ pub async fn call_runtime_server(
         return Err("Runtime Server control receipt identity mismatch".to_owned());
     }
     Ok(receipt)
-}
-
-pub async fn prewarm_runtime_server_connections(
-    endpoint: &RuntimeServerEndpoint,
-) -> Result<(), String> {
-    for lane_index in 0..runtime_server_connection_pool_size() {
-        let receipt = call_runtime_server(
-            endpoint,
-            RuntimeServerOperation::Status,
-            endpoint.runtime_artifact_digest.clone(),
-            format!("prewarm-lane-{lane_index}"),
-        )
-        .await?;
-        if receipt.state != RuntimeServerState::Healthy {
-            return Err(format!(
-                "Runtime Server prewarm returned non-healthy state: {:?}",
-                receipt.state
-            ));
-        }
-    }
-    Ok(())
 }

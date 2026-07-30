@@ -63,19 +63,33 @@ fn import_language_projection_inner(
     let prepared =
         source_index_import_from_language_projection(ClientDbLanguageProjectionImportRequest {
             project_root: project_root.to_path_buf(),
-            source_blobs,
+            source_blobs: source_blobs.clone(),
             registry_fingerprint: registry_fingerprint.clone(),
             projection: projection.clone(),
         })?;
     let import = prepared.source_index;
     let source_snapshot = prepared.source_snapshot;
+    let workspace_identity =
+        agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?
+            .workspace
+            .workspace_id
+            .to_string();
+    let materialization =
+        agent_semantic_client_db::runtime_server_workspace::
+            WorkspaceCanonicalMaterialization::from_source_index(
+                workspace_identity,
+                &source_snapshot,
+                &import,
+                &source_blobs,
+            )?;
     let report =
-        agent_semantic_client_db::workspace_db_ipc::commit_source_index_generation_via_resident(
+        agent_semantic_client_db::workspace_db_ipc::commit_source_index_generation_via_runtime_server(
             agent_semantic_client_db::ClientDbSourceIndexRefreshRequest {
                 file_count: import.file_hashes.len().min(u32::MAX as usize) as u32,
                 import,
                 source_snapshot,
             },
+            materialization,
         )?;
     Ok(LanguageProjectionImportReport {
         reused: report.reused_generation,

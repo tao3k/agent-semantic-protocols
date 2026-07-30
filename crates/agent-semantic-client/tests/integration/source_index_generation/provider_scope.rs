@@ -1,6 +1,6 @@
 use agent_semantic_client::source_index::{
-    ProviderSourceEnvelopeLookupRequestV1, SourceIndexCollectionScopeV1,
-    TargetProviderSourceEnvelopePublicationRequestV1, collect_workspace_search_source_index_files,
+    ProviderSourceEnvelopeLookupRequestV1, SourceIndexCollectionScope,
+    TargetProviderSourceEnvelopePublicationRequestV1,
     current_provider_source_index_snapshot_at_artifact_root_with_registry as current_provider_snapshot,
     ensure_provider_source_index_snapshot_at_artifact_root_with_registry as ensure_provider_snapshot,
     publish_target_provider_source_envelope_v1,
@@ -22,7 +22,7 @@ fn test_root(label: &str) -> std::path::PathBuf {
 fn provider(
     language_id: &str,
     provider_id: &str,
-    source_root: &str,
+    _source_root: &str,
     source_extension: &str,
 ) -> ResolvedProvider {
     let manifest = agent_semantic_hook::builtin_provider_manifests()
@@ -42,10 +42,8 @@ fn provider(
         runtime_command_argv: None,
         runtime_profile_status: None,
         package_roots: Vec::new(),
-        source_roots: vec![source_root.to_string()],
         config_files: Vec::new(),
         source_extensions: vec![source_extension.to_string()],
-        ignored_path_prefixes: Vec::new(),
         search_capabilities: manifest.search_capabilities().clone(),
         query_pack_descriptor: manifest.query_pack_descriptor().clone(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
@@ -85,105 +83,12 @@ fn ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
 }
 
 #[test]
-fn rust_target_scope_requires_only_rs_harness() {
-    let root = test_root("rust");
-    std::fs::create_dir_all(root.join("rust-src")).expect("create rust source root");
-    std::fs::write(root.join("rust-src/lib.rs"), "pub fn rust_owner() {}\n")
-        .expect("write rust owner");
-    let rust = provider("rust", "rs-harness", "rust-src", "rs");
-    let mut irrelevant = rust.clone();
-    irrelevant.language_id = "julia".into();
-    irrelevant.provider_id = "julia-lang-project-harness".into();
-    irrelevant.source_roots = vec!["missing-julia-src".to_string()];
-    irrelevant.source_extensions = vec!["jl".to_string()];
-    let snapshot = ProviderRegistrySnapshot {
-        activation_path: root.join("activation.json"),
-        providers: vec![rust, irrelevant],
-    };
-
-    let files = collect_workspace_search_source_index_files(
-        &root,
-        &snapshot,
-        &SourceIndexCollectionScopeV1::TargetProvider {
-            language_id: "rust".into(),
-            provider_id: "rs-harness".into(),
-        },
-    )
-    .expect("target rust provider scope");
-
-    assert_eq!(files.len(), 1);
-    assert_eq!(files[0].language_id.as_str(), "rust");
-    assert_eq!(files[0].provider_id.as_str(), "rs-harness");
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn org_target_scope_requires_only_orgize() {
-    let root = test_root("org");
-    std::fs::create_dir_all(root.join("org-src")).expect("create org source root");
-    std::fs::write(root.join("org-src/notes.org"), "* Owner\n").expect("write org owner");
-    let org = provider("org", "orgize", "org-src", "org");
-    let irrelevant = provider("rust", "rs-harness", "missing-rust-src", "rs");
-    let snapshot = ProviderRegistrySnapshot {
-        activation_path: root.join("activation.json"),
-        providers: vec![irrelevant, org],
-    };
-
-    let files = collect_workspace_search_source_index_files(
-        &root,
-        &snapshot,
-        &SourceIndexCollectionScopeV1::TargetProvider {
-            language_id: "org".into(),
-            provider_id: "orgize".into(),
-        },
-    )
-    .expect("target org provider scope");
-
-    assert_eq!(files.len(), 1);
-    assert_eq!(files[0].language_id.as_str(), "org");
-    assert_eq!(files[0].provider_id.as_str(), "orgize");
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn complete_generation_rejects_missing_relevant_provider() {
-    let root = test_root("complete");
-    std::fs::create_dir_all(root.join("rust-src")).expect("create rust source root");
-    std::fs::write(root.join("rust-src/lib.rs"), "pub fn rust_owner() {}\n")
-        .expect("write rust owner");
-    let rust = provider("rust", "rs-harness", "rust-src", "rs");
-    let mut missing = rust.clone();
-    missing.language_id = "julia".into();
-    missing.provider_id = "julia-lang-project-harness".into();
-    missing.source_roots = vec!["missing-julia-src".to_string()];
-    missing.source_extensions = vec!["jl".to_string()];
-    let snapshot = ProviderRegistrySnapshot {
-        activation_path: root.join("activation.json"),
-        providers: vec![rust, missing],
-    };
-
-    let error = collect_workspace_search_source_index_files(
-        &root,
-        &snapshot,
-        &SourceIndexCollectionScopeV1::CompleteGeneration,
-    )
-    .expect_err("complete generation must reject missing provider coverage");
-
-    assert_eq!(
-        error,
-        "provider source envelope is incomplete: missingProviderIds=julia-lang-project-harness"
-    );
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
 fn target_provider_publication_does_not_require_complete_generation() {
     let root = test_root("target-publication");
     std::fs::create_dir_all(root.join("rust-src")).expect("create rust source root");
     std::fs::write(root.join("rust-src/lib.rs"), "pub fn rust_owner() {}\n")
         .expect("write rust owner");
     let mut rust = provider("rust", "rs-harness", "rust-src", "rs");
-    rust.source_roots.clear();
     rust.source_extensions.clear();
     rust.config_files = vec!["rust-src/lib.rs".to_string()];
     let missing = provider(
@@ -198,20 +103,9 @@ fn target_provider_publication_does_not_require_complete_generation() {
     };
     let artifact_root = root.join("artifacts");
 
-    let circular_error = collect_workspace_search_source_index_files(
-        &root,
-        &provider_registry,
-        &SourceIndexCollectionScopeV1::TargetProvider {
-            language_id: "rust".into(),
-            provider_id: "rs-harness".into(),
-        },
-    )
-    .expect_err("workspace envelope validation cannot precede target publication");
-    assert!(circular_error.contains("missingProviderIds=rs-harness"));
-
     let envelope = publish_target_provider_source_envelope_v1(
         TargetProviderSourceEnvelopePublicationRequestV1 {
-            collection_scope: SourceIndexCollectionScopeV1::TargetProvider {
+            collection_scope: SourceIndexCollectionScope::TargetProvider {
                 language_id: "rust".into(),
                 provider_id: "rs-harness".into(),
             },
@@ -343,7 +237,7 @@ fn target_provider_gerbil_envelope_shape_publishes_source_owner() {
 
     let envelope = publish_target_provider_source_envelope_v1(
         TargetProviderSourceEnvelopePublicationRequestV1 {
-            collection_scope: SourceIndexCollectionScopeV1::TargetProvider {
+            collection_scope: SourceIndexCollectionScope::TargetProvider {
                 language_id: "gerbil-scheme".into(),
                 provider_id: "gerbil-scheme-harness".into(),
             },
@@ -389,7 +283,7 @@ fn target_provider_id_publication_materializes_only_the_registered_provider() {
 
     let envelope = publish_target_provider_source_envelope_v1(
         TargetProviderSourceEnvelopePublicationRequestV1 {
-            collection_scope: SourceIndexCollectionScopeV1::TargetProviderId {
+            collection_scope: SourceIndexCollectionScope::TargetProviderId {
                 provider_id: "gerbil-scheme-harness".into(),
             },
             provider_registry: &provider_registry,
@@ -445,7 +339,7 @@ fn same_provider_workspaces_publish_order_independent_envelopes() {
     let publish = |provider_workspace_root: &std::path::Path| {
         publish_target_provider_source_envelope_v1(
             TargetProviderSourceEnvelopePublicationRequestV1 {
-                collection_scope: SourceIndexCollectionScopeV1::TargetProvider {
+                collection_scope: SourceIndexCollectionScope::TargetProvider {
                     language_id: "rust".into(),
                     provider_id: "rs-harness".into(),
                 },
@@ -561,7 +455,7 @@ fn target_provider_id_publication_fails_closed_when_provider_is_missing() {
 
     let error = publish_target_provider_source_envelope_v1(
         TargetProviderSourceEnvelopePublicationRequestV1 {
-            collection_scope: SourceIndexCollectionScopeV1::TargetProviderId {
+            collection_scope: SourceIndexCollectionScope::TargetProviderId {
                 provider_id: "missing-harness".into(),
             },
             provider_registry: &provider_registry,

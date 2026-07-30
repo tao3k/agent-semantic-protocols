@@ -60,6 +60,7 @@ pub use turso_search::{
     TursoClientDbSearchState,
 };
 pub(crate) use turso_source_index::commit_turso_source_index_generation_in_fixture;
+pub(crate) use turso_source_index::load_active_workspace_generation_materialization_in_fixture;
 pub use turso_source_index::{
     ProviderOwnerBatchProbeReceipt, ProviderOwnerBatchProbeRequest, ProviderOwnerBatchProbeResult,
     ProviderTreeSitterQueryRead, ProviderTreeSitterQueryReadState,

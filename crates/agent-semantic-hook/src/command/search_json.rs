@@ -38,6 +38,10 @@ pub(crate) fn search_json_route<'a>(
     None
 }
 
+pub(crate) fn is_asp_facade_command(tokens: &[String]) -> bool {
+    tokens.iter().any(|token| command_name(token) == "asp")
+}
+
 fn provider_command_index(
     provider: &ActivatedProvider,
     tokens: &[String],

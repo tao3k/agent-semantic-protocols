@@ -530,3 +530,24 @@ syntax.
 This is a protocol deletion, not a deprecation window.  Installed provider
 artifacts and workspace-resident daemons MUST publish the same help digest and
 projection vocabulary before they may report healthy.
+* SearchRoute proof module
+
+The route optimizer, semantic search-cache cost, model prefix-cache cost, and
+bounded graph-escalation proof are specified in
+[[file:10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.16-searchroute-bounded-shortest-path.org][SearchRoute bounded shortest paths and two cache layers]].
+
+The graph-distance refinement, ranked-DAG proof, and conditional
+local-to-global optimality theorem are specified in
+[[file:10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.17-searchroute-ranked-dag-global-optimality.org][SearchRoute ranked DAG and conditional global optimality]].
+
+The constructive fuel-bounded walk enumerator, two-stage completeness boundary,
+and Lean-discovered transition-bound correction are specified in
+[[file:10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.18-searchroute-constructive-enumeration.org][Constructive SearchRoute enumeration]].
+
+The snapshot-bound lazy frontier, certified lower-bound pruning, and coverage
+receipt theorem are specified in
+[[file:10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.19-searchroute-certified-lazy-frontier.org][Certified lazy SearchRoute frontier]].
+
+The monotone partial-route lower bound and executable inspect scheduler are
+specified in
+[[file:10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.20-searchroute-partial-route-inspect-scheduler.org][Partial-route inspect scheduler]].

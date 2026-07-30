@@ -54,10 +54,8 @@ fn activation_provider(
             .expect("materialize canonical builtin provider routes"),
         coverage: ActivationCoverage {
             package_roots: vec![".".to_string()],
-            source_roots: Vec::new(),
             config_files: Vec::new(),
             source_extensions: Vec::new(),
-            ignored_path_prefixes: Vec::new(),
         },
     }
 }
@@ -129,7 +127,7 @@ fn rendered_skill_satisfies_org_contract() {
 
 #[test]
 fn skill_contract_template_keeps_repo_local_refer_org() {
-    let contract = include_str!("../../../../languages/org/contracts/asp.skill.v1.org");
+    let contract = include_str!("../../../../org/contracts/asp.skill.v1.org");
 
     assert!(
         contract.contains(":SKILL_ID: asp-org"),

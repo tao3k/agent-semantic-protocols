@@ -209,7 +209,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     run_pre_activation_search_command_preflight(language_id, &command_args, &invocation_root)?;
     reject_search_file_workspace(&command_args, &invocation_root)?;
     validate_explicit_workspace_project_root(language_id, &command_args, &invocation_root)?;
-    reject_manifest_source_selector_query_code(language_id, &command_args)?;
     if is_provider_owned_structural_selector_query(language_id, &command_args) {
         let (exact_project_root, exact_provider_args) =
             super::provider_roots::explicit_workspace_project_root(
@@ -218,18 +217,12 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 &invocation_root,
             )?
             .unwrap_or_else(|| (invocation_root.clone(), command_args.clone()));
-        if super::provider_resident_exact::try_run_resident_turso_exact_query(
+        return super::provider_resident_exact::run_resident_exact_query(
             language_id,
             &exact_provider_args,
             &exact_project_root,
             exact_query_started,
-        )? {
-            return Ok(());
-        }
-        return Err(format!(
-            "exact source query state=source-unavailable reasonKind=active-workspace-generation-required language={language_id} workspace={}",
-            exact_project_root.display()
-        ));
+        );
     }
     let canonical_activation_path = provider_activation_path(&invocation_root);
     let activation_path = canonical_activation_path.clone();
@@ -295,7 +288,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         &runtime,
     )?;
     exact_query_trace("owner-preflight-complete", exact_query_started);
-
     let tree_sitter_runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
     if !is_provider_owned_structural_selector_query(language_id, &provider_args)
         && super::workspace_tree_sitter_query::try_run_workspace_tree_sitter_query(
@@ -463,17 +455,11 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             );
         }
         exact_query_trace("ranker-admitted", exact_query_started);
-        let search_language_id = language_id.into();
-        let search_provider_id = provider.provider_id.as_str().into();
         let current_snapshot =
             super::search_pipe::fast_search_requires_source_index_snapshot(&provider_args)
                 .then(|| {
-                    agent_semantic_client::source_index::current_provider_source_index_snapshot_from_activation(
+                    super::runtime_server::runtime_server_current_source_index_snapshot(
                         &project_root,
-                        &activation_path,
-                        &runtime,
-                        &search_language_id,
-                        &search_provider_id,
                     )
                 })
                 .transpose()?;
@@ -578,6 +564,5 @@ fn is_guide_help(args: &[String]) -> bool {
 use super::provider_activation::{load_activation_for_language_message, provider_activation_path};
 use super::provider_execution::provider_process_args;
 use super::provider_selector::{
-    is_provider_owned_structural_selector_query, reject_manifest_source_selector_query_code,
-    reject_search_file_workspace,
+    is_provider_owned_structural_selector_query, reject_search_file_workspace,
 };

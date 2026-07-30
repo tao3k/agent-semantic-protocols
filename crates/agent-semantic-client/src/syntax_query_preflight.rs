@@ -53,7 +53,7 @@ fn validate_code_selector_target(request: &ClientRequest) -> Result<(), String> 
     if tree_sitter_query_source(request)?.is_some() {
         return Ok(());
     }
-    if let Some(language_id) = registered_source_selector_language(request, selector) {
+    if let Some(language_id) = non_structural_selector_language(request, selector) {
         let workspace_arg = query_workspace_arg(request).unwrap_or(".");
         return Err(format!(
             "invalid query --code selector `{selector}`: file selectors are not executable code selectors; query an exact parser-owned item selector such as {language_id}://path#item/function/name; recover with search owner <path> items\nselectorState=file-selector\nprojection=code\nallowed=false\nreason=file-selectors-are-not-code-selectors\nnextAction=materialize-owner-items\nnextCommand=asp {language_id} search owner {selector} items --workspace {workspace_arg} --view seeds\nrequiredSelector={language_id}://{selector}#item/<kind>/<name>"
@@ -94,36 +94,24 @@ fn selector_path_before_range(selector: &str) -> &str {
         .map_or(selector, |(path, _range)| path)
 }
 
-fn registered_source_selector_language<'a>(
+fn non_structural_selector_language<'a>(
     request: &'a ClientRequest,
     selector: &str,
 ) -> Option<&'a str> {
-    if selector.contains("://") {
-        return None;
-    }
     if selector_path_before_range(selector) != selector {
         return None;
     }
-    let language_id = request.language_id.as_ref()?.as_str();
-    let selector_path = selector_path_before_range(selector);
-    let extension = Path::new(selector_path)
-        .extension()
-        .and_then(|extension| extension.to_str())?;
-    agent_semantic_hook::builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id().as_str() == language_id)
-        .and_then(|manifest| {
-            manifest
-                .source()
-                .default_extensions
-                .iter()
-                .any(|source| {
-                    source
-                        .trim_start_matches('.')
-                        .eq_ignore_ascii_case(extension)
-                })
-                .then_some(language_id)
-        })
+    if agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+        selector,
+    )
+    .is_ok()
+    {
+        return None;
+    }
+    request
+        .language_id
+        .as_ref()
+        .map(|language| language.as_str())
 }
 
 fn validate_code_flag_boundary(request: &ClientRequest) -> Result<(), String> {

@@ -1,6 +1,6 @@
 use agent_semantic_hook::{
-    builtin_provider_manifests, provider_manifest_digest, HOOK_ACTIVATION_SCHEMA_ID,
-    HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID, HOOK_PROTOCOL_VERSION,
+    HOOK_ACTIVATION_SCHEMA_ID, HOOK_ACTIVATION_SCHEMA_VERSION, HOOK_PROTOCOL_ID,
+    HOOK_PROTOCOL_VERSION, builtin_provider_manifests, provider_manifest_digest,
 };
 use std::{
     ffi::{OsStr, OsString},

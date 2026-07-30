@@ -4,8 +4,7 @@ use std::sync::OnceLock;
 use serde::{Deserialize, Serialize};
 
 pub(super) const SCHEMA_VERSION: &str = "1";
-pub(super) const ENDPOINT_SCHEMA_ID: &str =
-    "agent.semantic-protocols.runtime-server-endpoint.v1";
+pub(super) const ENDPOINT_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-endpoint.v1";
 pub(super) const REQUEST_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-control-request.v1";
 pub(super) const RECEIPT_SCHEMA_ID: &str =
@@ -26,6 +25,7 @@ pub struct RuntimeServerEndpoint {
     pub runtime_artifact_digest: String,
     pub binding_token: String,
     pub socket_path: String,
+    pub data_plane_socket_path: String,
     pub status_memory_path: String,
 }
 
@@ -46,12 +46,16 @@ impl RuntimeServerEndpoint {
             || self.runtime_artifact_digest.is_empty()
             || self.binding_token.is_empty()
             || self.socket_path.is_empty()
+            || self.data_plane_socket_path.is_empty()
             || self.status_memory_path.is_empty()
         {
             return Err("Runtime Server endpoint is incomplete".to_owned());
         }
         if !Path::new(&self.socket_path).is_absolute() {
             return Err("Runtime Server socket path must be absolute".to_owned());
+        }
+        if !Path::new(&self.data_plane_socket_path).is_absolute() {
+            return Err("Runtime Server data-plane socket path must be absolute".to_owned());
         }
         if !Path::new(&self.status_memory_path).is_absolute() {
             return Err("Runtime Server status memory path must be absolute".to_owned());

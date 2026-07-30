@@ -378,6 +378,12 @@ pub fn rebind_active_asp_binary_receipt_if_present(
     binary_digest: &str,
     activation_path: &Path,
 ) -> Result<ActiveAspArtifactReconciliationV1, String> {
+    if !activation_path
+        .try_exists()
+        .map_err(|error| format!("failed to inspect {}: {error}", activation_path.display()))?
+    {
+        return Ok(ActiveAspArtifactReconciliationV1::NotMaterialized);
+    }
     let receipt_path = active_asp_artifact_receipt_path(activation_path)?;
     if !receipt_path
         .try_exists()

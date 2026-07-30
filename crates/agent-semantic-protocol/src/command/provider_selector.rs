@@ -109,38 +109,6 @@ pub(super) fn reject_search_file_workspace(
     Ok(())
 }
 
-pub(super) fn invalid_source_selector_query_message(
-    language_id: &str,
-    selector: &str,
-    args: &[String],
-) -> String {
-    let workspace = option_value(args, "--workspace").unwrap_or(".");
-    format!(
-        "invalid query selector `{selector}`: file selectors are not executable query selectors; query an exact parser-owned item selector such as {language_id}://path#item/<kind>/<symbol>; recover with search owner <path> items\nselectorState=file-selector\nprojection=query\nallowed=false\nreason=file-selectors-are-not-query-selectors\nnextAction=materialize-owner-items\nnextCommand=asp {language_id} search owner {selector} items --workspace {workspace} --view seeds\nrequiredSelector={language_id}://{selector}#item/<kind>/<symbol>"
-    )
-}
-
-pub(super) fn is_plain_file_selector_code_query(args: &[String]) -> bool {
-    if !matches!(args.first().map(String::as_str), Some("query"))
-        || !args.iter().any(|arg| arg == "--code")
-        || args.iter().any(|arg| {
-            matches!(
-                arg.as_str(),
-                "--json" | "--term" | "--treesitter-query" | "--names-only"
-            )
-        })
-        || args
-            .iter()
-            .any(|arg| arg == "--from-hook" || arg.starts_with("--from-hook="))
-    {
-        return false;
-    }
-    let Some(selector) = option_value(args, "--selector") else {
-        return false;
-    };
-    !selector.contains("://") && selector.split_once(':').is_none()
-}
-
 pub(super) fn is_provider_owned_structural_selector_query(
     language_id: &str,
     args: &[String],
@@ -159,20 +127,6 @@ pub(super) fn is_provider_owned_structural_selector_query(
         .is_ok_and(|selector| selector.language_id.as_str() == language_id)
 }
 
-pub(super) fn provider_owned_structural_owner_path<'a>(
-    language_id: &str,
-    args: &'a [String],
-) -> Option<&'a str> {
-    if !is_provider_owned_structural_selector_query(language_id, args) {
-        return None;
-    }
-    provider_owned_structural_selector(language_id, args)?
-        .split_once("://")?
-        .1
-        .split_once('#')
-        .map(|(owner_path, _)| owner_path)
-}
-
 pub(super) fn provider_owned_structural_selector<'a>(
     language_id: &str,
     args: &'a [String],
@@ -183,44 +137,6 @@ pub(super) fn provider_owned_structural_selector<'a>(
     option_value(args, "--selector")
 }
 
-pub(super) fn reject_manifest_source_selector_query_code(
-    language_id: &str,
-    args: &[String],
-) -> Result<(), String> {
-    if !is_plain_file_selector_code_query(args) {
-        return Ok(());
-    }
-    let Some(selector) = option_value(args, "--selector") else {
-        return Ok(());
-    };
-    let selector_path = selector
-        .split_once(':')
-        .map_or(selector, |(path, _range)| path);
-    let Some(extension) = Path::new(selector_path)
-        .extension()
-        .and_then(|extension| extension.to_str())
-    else {
-        return Ok(());
-    };
-    let registered_source = agent_semantic_hook::builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id().as_str() == language_id)
-        .is_some_and(|manifest| {
-            manifest.source().default_extensions.iter().any(|source| {
-                source
-                    .trim_start_matches('.')
-                    .eq_ignore_ascii_case(extension)
-            })
-        });
-    if !registered_source {
-        return Ok(());
-    }
-    Err(invalid_source_selector_query_message(
-        language_id,
-        selector,
-        args,
-    ))
-}
 use std::path::{Path, PathBuf};
 pub(super) fn option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     let prefix = format!("{flag}=");
@@ -230,4 +146,16 @@ pub(super) fn option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str
             args.windows(2)
                 .find_map(|window| (window[0] == flag).then_some(window[1].as_str()))
         })
+}
+
+pub(super) fn root_structural_selector_language(args: &[String]) -> Result<Option<String>, String> {
+    let Some(selector) = option_value(args, "--selector") else {
+        return Ok(None);
+    };
+    let selector =
+        agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+            selector,
+        )
+        .map_err(|_| format!("invalid structural selector `{selector}`"))?;
+    Ok(Some(selector.language_id.as_str().to_string()))
 }

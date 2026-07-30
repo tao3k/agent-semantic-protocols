@@ -1,0 +1,474 @@
+#+title: RFC 10.05.18 — Constructive SearchRoute Enumeration
+#+startup: overview
+#+options: toc:3
+
+* Status
+
+Draft.
+
+This RFC advances the ranked-DAG model from an existence theorem to an
+executable, fuel-bounded candidate generator.  Lean verifies the graph-walk
+enumerator, derives a finite step-instance catalog from the route budget,
+constructs the bounded route catalog, and proves bounded candidate
+completeness.  It also exposes a missing finiteness condition in the route
+model: token and round budgets alone do not bound the number of zero-cost
+transitions.  The corrected graph-route budget therefore includes an explicit
+transition ceiling.
+
+This RFC is an amendment to:
+
+- [[file:00.16-searchroute-bounded-shortest-path.org][RFC 10.05.16 — SearchRoute as a Bounded Shortest-Path Problem]]
+- [[file:00.17-searchroute-ranked-dag-global-optimality.org][RFC 10.05.17 — Ranked-DAG Global Optimality]]
+
+It does not authorize a Rust implementation.  The current scope is the RFC,
+Lean model, executable proof audit, AXLE receipt, and Org-Babel Typst
+exposition.
+
+* Problem
+
+RFC 10.05.17 proves that a locally selected candidate is globally no worse
+when the generated candidate list is complete and the selected candidate is a
+realization of the requested source-target pair.  That theorem is logically
+sound, but its =CandidateComplete= premise was abstract.
+
+Making that premise constructive reveals two independent enumeration problems:
+
+1. enumerate every bounded graph walk from the current source;
+2. enumerate every admissible SearchLoop route that may realize an endpoint.
+
+A finite ranked graph solves only the first problem.  It does not imply that
+the route space is finite.
+
+* Design decision
+
+** Graph enumeration is fuel-bounded and executable
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SRE-WALK-ENUMERATOR
+:END:
+
+For a ranked DAG =G=, source =s=, and fuel =f=,
+=enumerateWalkEndpoints G s f= emits the stop case =(s, 0)= and recursively
+extends every outgoing edge while decreasing fuel.
+
+The result is a finite list of endpoint and graph-hop-count pairs.  It is
+suitable for an agent-facing SearchLoop because the generator exposes only the
+current bounded frontier; it does not require a human-oriented CLI command
+language for predeclaring a complete search plan.
+
+** The enumerator is sound
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SRE-WALK-SOUNDNESS
+:END:
+
+Every emitted pair =(t, h)= has a corresponding =Walk G s t h=.  The
+enumerator cannot manufacture an endpoint, an edge, or a hop receipt that is
+absent from the ranked graph.
+
+This property is the formal boundary between a router hint and a validated
+graph path.  Only sound enumerator output may set =pathValidated = true=.
+
+** The enumerator is complete for bounded walks
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SRE-WALK-COMPLETENESS
+:END:
+
+Every walk from =s= to =t= using =h <= f= graph hops appears as =(t, h)= in
+the enumerator output.
+
+Because every edge strictly increases rank, any walk starting at =s= has at
+most =maxRank - rank(s)= hops.  Therefore the canonical fuel
+
+#+begin_example
+maxRank - rank(source)
+#+end_example
+
+is sufficient to enumerate every graph walk reachable from =source=.
+
+** Candidate generation has two stages
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS
+:END:
+
+The constructive candidate set is the product of:
+
+- enumerated endpoint-hop receipts; and
+- a finite route catalog.
+
+The product is globally candidate-complete only when both stages are complete.
+Graph-walk completeness cannot substitute for route-catalog completeness.
+
+** A finite step catalog constructs the route catalog
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SRE-ROUTE-CATALOG
+:END:
+
+A finite =stepCatalog= and =maxTransitions= construct every bounded step list.
+The recursive enumerator emits the empty list at every fuel level and prepends
+each catalog step to every list emitted with one less unit of fuel.  Lean proves
+that every step list of length at most =maxTransitions= whose elements occur in
+=stepCatalog= is emitted.
+
+For each step list, the route generator constructs the four combinations of
+=graphEscalated= and =semanticCacheValidated=.  The other metadata fields are
+fixed by feasibility:
+
+- =domain = requirement.activeDomain=;
+- =closureDigest = requirement.expectedClosure=;
+- =closed = true=.
+
+Filtering these variants with =feasibleB= produces
+=enumerateFeasibleRoutes=.  Lean proves that this list satisfies
+=RouteCatalogComplete=.
+
+The transition premise is part of the completeness interface, not merely a
+later candidate filter.  An earlier draft added =maxTransitions= to
+=graphFeasibleB= but left it out of =RouteCatalogComplete=; Lean review exposed
+that mismatch.  Without the premise, the catalog would still have to contain
+every arbitrarily padded route admitted by the old =RouteBudget=.
+
+The graph and route enumerators combine into a constructive
+=CandidateComplete= theorem.
+
+*** Budget-derived step-instance coverage
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SRE-STEP-INSTANCE-CATALOG
+:END:
+
+The route budget already bounds every field of a step appearing in a feasible
+route:
+
+- =evidenceTokens <= maxEvidenceTokens=;
+- =promptTokens <= maxRawTokens=;
+- =cachedPromptTokens <= promptTokens <= maxRawTokens=;
+- =roundCost <= maxRounds=.
+
+The first, second, and fourth bounds follow because a member's non-negative
+cost cannot exceed the corresponding route total.  The cached-prompt bound
+also uses =prefixCacheSoundB=.  =StepKind= is a finite eight-constructor type.
+
+=enumerateRouteSteps= therefore constructs the finite Cartesian product of all
+step kinds and all numeric fields within those bounds.  Lean proves:
+
+#+begin_example
+StepCatalogComplete
+  requirement
+  routeBudget
+  (enumerateRouteSteps routeBudget)
+#+end_example
+
+Substituting this theorem into the route and graph enumerators removes the last
+external catalog-completeness premise from bounded =CandidateComplete=.
+
+** Completeness does not require eager materialization
+
+The Lean list enumerators define finite extensional semantics.  They are a
+specification oracle, not a requirement to dump the Cartesian product into an
+agent context.
+
+An online SearchLoop may implement the same candidate set as a lazy frontier:
+
+- enumerate only the currently selected graph branch;
+- expose a compact count, lower bound, and continuation receipt;
+- materialize a route candidate only when its lower bound can still improve
+  the current optimum;
+- retain a coverage receipt for pruned or deferred branches; and
+- stop when every remaining lower bound is no better than the selected route.
+
+This preserves the constructive completeness theorem while minimizing search
+commands, graph transitions, uncached model tokens, and agent/model rounds.
+The interactive =inspect= operation should reveal the next bounded frontier,
+not serialize every proof-level candidate.
+
+** Transition count is a first-class budget
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SRE-TRANSITION-BOUND
+:END:
+
+=GraphRouteBudget= includes =maxTransitions= in addition to =maxGraphHops= and
+the existing token and round budgets.
+
+The distinction is mandatory:
+
+- =graphHops= counts validated semantic-graph edges;
+- =transitionCount= counts SearchLoop route steps;
+- =roundCost= counts agent/model interaction rounds.
+
+These quantities may correlate in a particular implementation, but none is a
+definition of either of the others.
+
+The transition ceiling serves two purposes:
+
+1. it makes finite route enumeration possible when the step alphabet and step
+   fields are finite;
+2. it prevents zero-token internal actions from creating an unbounded loop
+   whose token receipt appears harmless.
+
+* Lean-discovered counterexamples
+
+** Zero-cost padding defeats the old route budget
+
+Let =z= be an inspect step with zero evidence tokens, prompt tokens, cached
+prompt tokens, and round cost.  Let =R(n)= be a valid router-jump route with =n=
+copies of =z= inserted before closure.
+
+Lean proves:
+
+#+begin_example
+forall n, feasibleB requirement generousRouteBudget (R n) = true
+transitionCount (R n) = n + 2
+#+end_example
+
+Consequently, for every proposed transition ceiling =L=, the old route budget
+admits a route with more than =L= transitions.  Token and round bounds do not
+imply route-space finiteness.
+
+** Graph completeness does not imply candidate completeness
+
+A one-node ranked graph has a trivially complete graph-walk enumeration.  A
+candidate generator that pairs its sole endpoint only with =routerJumpRoute=
+still omits a feasible realization using =baselineLoopRoute=.
+
+Lean proves both that the omitted candidate is feasible and that the resulting
+candidate list is not =CandidateComplete=.
+
+** The corrected budget rejects excess padding
+
+For =R(maxTransitions + 1)=, =graphFeasibleB= evaluates to =false= even though
+the route's token and round costs remain within the underlying =RouteBudget=.
+The rejection is caused specifically by the transition ceiling.
+
+* Mathematical model
+
+The following named Org-Babel Typst block is the mathematical source.  It is
+compiled from standard input for lint and rendering; no independent =.typ=
+source is maintained.
+
+#+name: searchroute-constructive-enumeration-model
+#+begin_src typst
+#set page(width: 8.5in, height: 11in, margin: 0.72in)
+#set text(font: "New Computer Modern", size: 10.2pt)
+#set heading(numbering: "1.")
+
+= Constructive SearchRoute Enumeration
+
+Let $G = (V, E, rho, rho_max)$ be a finite ranked DAG:
+
+$ forall u, v in V: E(u, v) => rho(u) < rho(v), quad
+  forall v in V: rho(v) <= rho_max. $
+
+For a source $s$, define the canonical fuel
+
+$ F(s) = rho_max - rho(s). $
+
+== Fuel-bounded graph enumeration
+
+Let $"Enum"(s, f)$ be a finite multiset of endpoint-hop pairs:
+
+$ "Enum"(s, 0) = {(s, 0)}, $
+
+$ "Enum"(s, f + 1)
+    = {(s, 0)}
+      union union_(E(s, v)) {(t, h + 1) | (t, h) in "Enum"(v, f)}. $
+
+Soundness:
+
+$ (t, h) in "Enum"(s, f) => "Walk"_G(s, t, h). $
+
+Bounded completeness:
+
+$ "Walk"_G(s, t, h) and h <= f => (t, h) in "Enum"(s, f). $
+
+Rank progress gives
+
+$ "Walk"_G(s, t, h) => rho(s) + h <= rho(t) <= rho_max, $
+
+therefore
+
+$ "Walk"_G(s, t, h) => h <= F(s). $
+
+Thus $"Enum"(s, F(s))$ contains every walk reachable from $s$.
+
+== Two-stage candidate construction
+
+Let $B_R = (E_"max", T_"raw", T_"uncached", R_"max")$ be a route budget.
+The finite budget-derived step-instance catalog is
+
+$ C_S(B_R)
+    = "StepKind"
+      times [0, E_"max"]
+      times [0, T_"raw"]
+      times [0, T_"raw"]
+      times [0, R_"max"]. $
+
+For every feasible route $r$ and every step $x in "Steps"(r)$,
+
+$ x."evidence" <= E_"max", $
+$ x."prompt" <= T_"raw", $
+$ x."cached" <= x."prompt" <= T_"raw", $
+$ x."rounds" <= R_"max". $
+
+Therefore
+
+$ "StepCatalogComplete"(C_S(B_R), q, B_R). $
+
+Let $N_"max"$ be the explicit transition ceiling.  Define the finite bounded
+step-list enumerator:
+
+$ "Seq"(C_S, 0) = {[]}, $
+
+$ "Seq"(C_S, n + 1)
+    = {[]} union
+      {x :: "xs" | x in C_S and "xs" in "Seq"(C_S, n)}. $
+
+Its completeness theorem is
+
+$ "len"("xs") <= n
+  and (forall x in "xs": x in C_S)
+  => "xs" in "Seq"(C_S, n). $
+
+For each emitted step list, enumerate the four Boolean metadata variants.  The
+domain, closure digest, and closed flag are fixed by the requirement.  Filter
+the result by route feasibility:
+
+$ C_R =
+  {r in "Variants"_q("Seq"(C_S, N_"max")) |
+   "RouteFeasible"(B_G, r)}. $
+
+Lean derives
+
+$ "RouteCatalogComplete"(C_R, B_G). $
+
+Now define the graph-candidate product:
+
+$ "Gen"(G, s, F(s), C_R)
+    = { (r, h, "true") |
+        exists t: (t, h) in "Enum"(s, F(s)) and r in C_R }. $
+
+Both enumeration stages are constructive.  Therefore
+
+$ "Walk"_G(s, t, h)
+  and "Realizes"(r, s, t)
+  and "GraphFeasible"(B_G, r, h)
+  => (r, h, "true") in "Gen"(G, s, F(s), C_R). $
+
+== Why token and round budgets are insufficient
+
+Let $z$ be a zero-cost inspect transition and let
+
+$ R(n) = ["router"] ++ "repeat"(z, n) ++ ["close"]. $
+
+For every $n in bb(N)$,
+
+$ "Evidence"(R(n)) = 5, $
+$ "Prompt"(R(n)) = 8, $
+$ "Uncached"(R(n)) = 13, $
+$ "Rounds"(R(n)) = 2, $
+$ "Transitions"(R(n)) = n + 2. $
+
+Hence
+
+$ forall L in bb(N), exists n in bb(N):
+  "Feasible"("RouteBudget", R(n))
+  and "Transitions"(R(n)) > L. $
+
+The route space is not bounded by token and round costs.  The corrected budget
+must contain an independent transition ceiling:
+
+$ B_G = (B_"route", H_"max", N_"max"), $
+
+$ "GraphFeasible"(B_G, r, h)
+    := "PathValidated"(r)
+       and h <= H_"max"
+       and "Transitions"(r) <= N_"max"
+       and "Feasible"(B_"route", r). $
+
+For $n = N_"max" + 1$,
+
+$ "GraphFeasible"(B_G, R(n), 0) = "false". $
+
+== Optimization consequence
+
+Only after both enumeration stages are complete may a local finite optimizer
+justify a global claim:
+
+$ "Selected"(c, "Gen") and "CandidateComplete"("Gen")
+  => forall c': "GraphFeasible"(c') => c <=_"lex" c'. $
+
+The lexicographic objective remains
+
+$ ("graph-hops", "uncached-tokens", "rounds", "transitions"), $
+
+so validated semantic distance is optimized before model-context cost,
+interaction rounds, or SearchLoop command count.
+#+end_src
+
+* Agent-facing SearchLoop consequence
+
+This model supports a small interactive surface instead of a large
+human-oriented search command grammar:
+
+1. the router presents a bounded, parser-owned frontier;
+2. the agent selects or refines one frontier clause;
+3. the system emits a validated endpoint-hop receipt;
+4. the route catalog supplies a bounded interaction realization;
+5. the optimizer selects the lexicographically shortest feasible candidate;
+6. the loop either closes with evidence or exposes the next bounded frontier.
+
+The protocol minimizes four different costs without conflating them:
+
+- semantic graph distance;
+- SearchLoop transition count;
+- uncached model-context tokens, including model prefix-cache effects;
+- agent/model interaction rounds.
+
+The semantic search cache and the model prefix cache remain separate:
+
+- a semantic search cache may reduce retrieval evidence tokens or avoid a
+  repeated graph query only when its identity and freshness are validated;
+- a model prefix-cache hit reduces uncached prompt tokens but does not validate
+  semantic evidence or shorten the semantic graph path.
+
+* Proof correspondence
+
+| RFC clause | Lean declaration |
+|---+---|
+| =ASP-RFC-10.05-SRE-WALK-ENUMERATOR= | =SearchRouteDAGEnumeration.enumerateWalkEndpoints= |
+| =ASP-RFC-10.05-SRE-WALK-SOUNDNESS= | =enumerateWalkEndpoints_sound= |
+| =ASP-RFC-10.05-SRE-WALK-COMPLETENESS= | =enumerateWalkEndpoints_complete=, =rankedDagFuel_is_complete= |
+| =ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS= | =complete_walks_and_route_catalog_generate_complete_candidates=, =finite_step_catalog_generates_complete_candidates= |
+| =ASP-RFC-10.05-SRE-ROUTE-CATALOG= | =enumerateStepLists_complete=, =feasible_route_mem_requirement_variants=, =bounded_feasible_route_catalog_is_complete= |
+| =ASP-RFC-10.05-SRE-STEP-INSTANCE-CATALOG= | =member_measure_le_foldl=, =feasible_step_mem_enumerateRouteSteps=, =budget_step_catalog_is_complete=, =budget_catalog_generates_complete_candidates= |
+| =ASP-RFC-10.05-SRE-TRANSITION-BOUND= | =zero_padding_cost_receipt=, =route_budget_has_no_transition_ceiling=, =graph_route_budget_rejects_excess_zero_padding= |
+
+The machine-readable proof audit is:
+
+#+begin_example
+packages/proofs/receipts/searchroute-dag-enumeration-audit-v1.json
+#+end_example
+
+The AXLE receipt is:
+
+#+begin_example
+packages/proofs/receipts/searchroute-dag-enumeration-axle-audit-v1.json
+#+end_example
+
+* Remaining proof obligations
+
+The following claims are deliberately not made yet:
+
+1. normalization preserves every admissibility, cache-soundness, token-cost,
+   and realization property needed by the optimizer;
+2. a lazy branch-and-bound frontier is extensionally equivalent to the complete
+   list enumerator and retains a machine-checkable coverage receipt;
+3. an enumerated endpoint is cryptographically or structurally bound to the
+   exact graph snapshot used by the candidate receipt;
+4. the interactive router policy minimizes expected cost under uncertain
+   branch probabilities;
+5. semantic search-cache identity and model prefix-cache identity compose
+   without allowing one cache receipt to impersonate the other.
+
+These are the next Lean-to-RFC research boundary.  The next iteration should
+prove that lazy lower-bound pruning preserves the complete enumerator's optimum
+without materializing its potentially large Cartesian product.
+
+See [[file:00.19-searchroute-certified-lazy-frontier.org][Certified lazy SearchRoute frontier]].

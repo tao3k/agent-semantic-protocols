@@ -1,0 +1,134 @@
+#+title: SearchRoute Cost Proof Receipt v1
+#+date: 2026-07-30
+#+options: toc:nil num:nil
+
+* Scope
+
+This receipt covers the bounded SearchRoute optimizer, semantic search-cache
+cost, model prefix-cache cost, mandatory graph escalation, and interaction
+round compression.
+
+RFC owner:
+
+=docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.16-searchroute-bounded-shortest-path.org=
+
+Lean owner:
+
+=packages/proofs/ASPProof/SearchRouteCost.lean=
+
+* Lean Result
+
+The focused Lean module compiled successfully:
+
+#+begin_src sh
+/opt/homebrew/bin/lake env lean ASPProof/SearchRouteCost.lean
+#+end_src
+
+The audit runner compiled and wrote the Lean-owned JSON:
+
+#+begin_src sh
+/opt/homebrew/bin/lake env lean audit/SearchRouteCostAudit.lean
+#+end_src
+
+Result:
+
+- declaration count: 19
+- axiom-free declarations: 13
+- axiom-dependent declarations: 6
+- =hasSorryAx=false=
+- axiom inventory: =Classical.choice=, =Quot.sound=, =propext=
+
+The general finite-candidate optimizer theorems prove:
+
+- a selected route belongs to the candidate set;
+- a selected route is admissible and within budget;
+- the selected route is lexicographically no worse than every feasible
+  candidate under =(hops, uncached model tokens, LLM rounds)=.
+
+* Executable Cost Receipt
+
+The concrete routes prove:
+
+| Route | Hops | Evidence | Raw | Uncached | Rounds |
+|-
+| CLI-style loop | 5 | 37 | 63 | 63 | 5 |
+| Router plus materialization | 3 | 15 | 29 | 29 | 3 |
+| Router plus model prefix hit | 3 | 15 | 29 | 17 | 3 |
+| Router plus validated search miss | 4 | 25 | 45 | 29 | 4 |
+| Router plus both cache hits | 3 | 7 | 21 | 9 | 3 |
+
+The search cache and model cache are independently validated:
+
+- semantic search caching changes the route and avoids repeated semantic work;
+- model prefix caching preserves the logical route and raw tokens while
+  reducing uncached prompt tokens;
+- the joint route is admissible only when both receipts are independently
+  sound.
+
+Relative to a validated semantic-cache miss, the search hit reduces route
+hops from 4 to 3, LLM rounds from 4 to 3, evidence tokens from 25 to 7, raw
+tokens from 45 to 21, and uncached tokens from 29 to 9.
+
+* Counterexamples
+
+Lean rejects:
+
+- a two-hop route that omits mandatory graph escalation;
+- an admissible full-graph route that exceeds the token budget;
+- a semantic search-cache hit without cache validation;
+- a model cache receipt with cached prompt tokens greater than prompt tokens.
+
+These counterexamples require the RFC to optimize over the feasible set rather
+than all routes.
+
+* AXLE Result
+
+The first AXLE run omitted an axiom allowlist and failed closed:
+
+#+begin_src text
+axle lean audit: axioms are not admitted by policy:
+['Classical.choice', 'Quot.sound', 'propext']
+#+end_src
+
+The admitted run explicitly allowed those axioms and required the optimizer,
+two cache families, counterexample family, and core RFC clauses.
+
+Canonical AXLE audit digest:
+
+=ec1110983c9de9aa75dfb9db2763024a362f3b73e1e3a81fb76de40accbc83a8=
+
+* Org-Babel Typst Result
+
+The mathematical source is embedded in the RFC as the named block
+=searchroute-bounded-shortest-path-model=. It compiled through stdin without an
+independent =.typ= source:
+
+#+begin_src sh
+asp org query \
+  --workspace docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.16-searchroute-bounded-shortest-path.org \
+  --kind block \
+  --term 'counts SearchLoop transitions' \
+  --content |
+  typst compile - /tmp/searchroute-bounded-shortest-path-v4.pdf
+#+end_src
+
+Compiled PDF size: 92,947 bytes.
+
+* Artifact Digests
+
+- Lean source SHA-256:
+  =0f37f2469faaaa6ccd04a3f3a6dfc73ce57e9c4c89aca29642f985ed3ba81fa0=
+- Lean JSON file SHA-256:
+  =92b212b28437b5585ec262b6efeb644445dc94e39feaf75de9f09a2cd32b8209=
+- AXLE receipt file SHA-256:
+  =b4448e7e75b38d4adc7538478f6e27ee8a857ffff720fffc158c16444c43e5aa=
+- RFC SHA-256:
+  =29d7c51064eb4b825bff15f42b7e46268b5ab3f22c62cdf3fb8ebafebb433428=
+- Compiled PDF SHA-256:
+  =d253c8a4940ef2579ae9c06d466a5e84bb1657d5e171136faaa73acac4e3b344=
+
+* Remaining Boundary
+
+This iteration proves finite-candidate selection optimality. It does not yet
+prove that candidate generation enumerates every admissible path in an
+arbitrary workspace DAG. That is the next proof boundary.

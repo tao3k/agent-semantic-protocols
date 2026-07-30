@@ -29,6 +29,8 @@ pub struct WorkspaceDbRegistryCounters {
     pub connection_create_count: u64,
     pub schema_bootstrap_count: u64,
     pub registry_hit_count: u64,
+    pub workspace_resolution_count: u64,
+    pub project_root_canonicalization_count: u64,
     pub workspace_lock_retry_count: u64,
     pub writer_transaction_count: u64,
     pub max_active_writer_count: u64,
@@ -55,10 +57,13 @@ pub struct WorkspaceDbWriteFinishReceipt {
 #[derive(Debug, Default)]
 pub struct WorkspaceDbRegistry {
     slots: Mutex<HashMap<String, Arc<WorkspaceDbSlot>>>,
+    admission_sessions: Mutex<HashMap<String, Arc<OnceCell<ProviderSearchWorkspaceSession>>>>,
     database_open_count: AtomicU64,
     connection_create_count: Arc<AtomicU64>,
     schema_bootstrap_count: AtomicU64,
     registry_hit_count: AtomicU64,
+    workspace_resolution_count: AtomicU64,
+    project_root_canonicalization_count: AtomicU64,
 }
 
 #[derive(Debug)]
@@ -73,11 +78,9 @@ struct WorkspaceDbEntry {
     workspace_identity: String,
     client_db_path: PathBuf,
     _database: turso::Database,
-    read_connections: Mutex<Vec<Arc<turso::connection::Connection>>>,
+    read_connections: Vec<Arc<turso::connection::Connection>>,
     active_reader_count: AtomicU64,
-    max_reader_connection_count: usize,
     next_read_connection: AtomicU64,
-    connection_create_count: Arc<AtomicU64>,
     source_index_read_cache: Vec<
         tokio::sync::Mutex<
             Option<(
@@ -144,12 +147,18 @@ pub struct ProviderSearchWorkspaceSession {
 
 impl WorkspaceDbRegistry {
     pub fn workspace_entry_counts(&self) -> (usize, usize) {
-        let slots = self.slots.lock();
-        let loaded = slots
-            .values()
-            .filter(|slot| slot.entry.get().is_some())
-            .count();
-        (slots.len(), loaded)
+        let (slot_count, loaded) = {
+            let slots = self.slots.lock();
+            (
+                slots.len(),
+                slots
+                    .values()
+                    .filter(|slot| slot.entry.get().is_some())
+                    .count(),
+            )
+        };
+        let admission_count = self.admission_sessions.lock().len();
+        (slot_count.max(admission_count), loaded)
     }
 
     /// Resolve and validate canonical workspace ownership before any database open.
@@ -158,15 +167,44 @@ impl WorkspaceDbRegistry {
         project_root: impl AsRef<Path>,
         scope: &ProviderIncrementalScoped,
     ) -> Result<ProviderSearchWorkspaceSession, String> {
+        let workspace_identity = scope.workspace_identity.trim();
+        if workspace_identity.is_empty() {
+            return Err("workspace admission requires a non-empty workspace identity".to_owned());
+        }
         let project_root = project_root.as_ref();
-        let resolved = ResolvedState::resolve(project_root)?;
-        self.acquire_resolved(project_root, scope, resolved).await
+        let (admission, reused_admission) = {
+            let mut admissions = self.admission_sessions.lock();
+            if let Some(admission) = admissions.get(workspace_identity) {
+                (Arc::clone(admission), true)
+            } else {
+                let admission = Arc::new(OnceCell::new());
+                admissions.insert(workspace_identity.to_owned(), Arc::clone(&admission));
+                (admission, false)
+            }
+        };
+        if reused_admission {
+            self.registry_hit_count.fetch_add(1, Ordering::Relaxed);
+        }
+        if let Some(session) = admission.get() {
+            return Ok(session.clone());
+        }
+        let session = admission
+            .get_or_try_init(|| async {
+                self.workspace_resolution_count
+                    .fetch_add(1, Ordering::Relaxed);
+                let resolved = ResolvedState::resolve(project_root)?;
+                self.acquire_resolved(project_root, scope, resolved).await
+            })
+            .await?;
+        Ok(session.clone())
     }
 
     pub async fn bootstrap_workspace(
         &self,
         project_root: impl AsRef<Path>,
     ) -> Result<ProviderSearchWorkspaceSession, String> {
+        self.workspace_resolution_count
+            .fetch_add(1, Ordering::Relaxed);
         let resolved = ResolvedState::resolve(project_root)?;
         let entry = self
             .entry_for_resolved(
@@ -177,6 +215,32 @@ impl WorkspaceDbRegistry {
         Ok(ProviderSearchWorkspaceSession { entry })
     }
 
+    pub fn loaded_session(
+        &self,
+        workspace_identity: &str,
+    ) -> Option<ProviderSearchWorkspaceSession> {
+        let admitted = {
+            let admissions = self.admission_sessions.lock();
+            admissions
+                .get(workspace_identity)
+                .and_then(|admission| admission.get())
+                .cloned()
+        };
+        if let Some(session) = admitted {
+            self.registry_hit_count.fetch_add(1, Ordering::Relaxed);
+            return Some(session);
+        }
+        let entry = {
+            let slots = self.slots.lock();
+            slots
+                .get(workspace_identity)
+                .and_then(|slot| slot.entry.get())
+                .cloned()
+        }?;
+        self.registry_hit_count.fetch_add(1, Ordering::Relaxed);
+        Some(ProviderSearchWorkspaceSession { entry })
+    }
+
     async fn acquire_resolved(
         &self,
         project_root: &Path,
@@ -184,21 +248,36 @@ impl WorkspaceDbRegistry {
         resolved: ResolvedState,
     ) -> Result<ProviderSearchWorkspaceSession, String> {
         let resolved_workspace_identity = resolved.workspace.workspace_id.as_str();
-        let canonical_project_root = project_root.canonicalize().map_err(|error| {
-            format!(
-                "failed to canonicalize provider search project root {}: {error}",
-                project_root.display()
-            )
-        })?;
-        let canonical_scope_root =
-            Path::new(&scope.project_root)
-                .canonicalize()
+        if scope.workspace_identity != resolved_workspace_identity {
+            return Err(format!(
+                "provider incremental scope workspace identity mismatch: resolved={} requested={}",
+                resolved_workspace_identity, scope.workspace_identity
+            ));
+        }
+        self.project_root_canonicalization_count
+            .fetch_add(1, Ordering::Relaxed);
+        let canonical_project_root =
+            tokio::fs::canonicalize(project_root)
+                .await
                 .map_err(|error| {
                     format!(
-                        "failed to canonicalize provider incremental scope root {}: {error}",
-                        scope.project_root
+                        "failed to canonicalize provider search project root {}: {error}",
+                        project_root.display()
                     )
                 })?;
+        let scope_root = Path::new(&scope.project_root);
+        let canonical_scope_root = if scope_root == project_root {
+            canonical_project_root.clone()
+        } else {
+            self.project_root_canonicalization_count
+                .fetch_add(1, Ordering::Relaxed);
+            tokio::fs::canonicalize(scope_root).await.map_err(|error| {
+                format!(
+                    "failed to canonicalize provider incremental scope root {}: {error}",
+                    scope.project_root
+                )
+            })?
+        };
         if !canonical_project_root.starts_with(&resolved.workspace.root)
             || !canonical_scope_root.starts_with(&resolved.workspace.root)
         {
@@ -210,13 +289,6 @@ impl WorkspaceDbRegistry {
                 canonical_scope_root.display(),
             ));
         }
-        if scope.workspace_identity != resolved_workspace_identity {
-            return Err(format!(
-                "provider incremental scope workspace identity mismatch: resolved={} requested={}",
-                resolved_workspace_identity, scope.workspace_identity
-            ));
-        }
-
         let entry = self
             .entry_for_resolved(resolved_workspace_identity, resolved.paths.client_db_path)
             .await?;
@@ -257,7 +329,7 @@ impl WorkspaceDbRegistry {
             .entry
             .get_or_try_init(|| async {
                 if let Some(parent) = client_db_path.parent() {
-                    std::fs::create_dir_all(parent).map_err(|error| {
+                    tokio::fs::create_dir_all(parent).await.map_err(|error| {
                         format!(
                             "failed to create canonical workspace client DB directory {}: {error}",
                             parent.display()
@@ -280,37 +352,44 @@ impl WorkspaceDbRegistry {
                         )
                     })?;
                 self.database_open_count.fetch_add(1, Ordering::Relaxed);
-                let read_connection = Arc::new(database.connect().map_err(|error| {
-                    format!(
-                        "failed to create canonical workspace Turso read connection {}: {error}",
-                        client_db_path.display()
-                    )
-                })?);
+                let read_parallelism = workspace_db_reader_connection_limit();
+                let mut read_connections = Vec::with_capacity(read_parallelism);
+                for _ in 0..read_parallelism {
+                    read_connections.push(Arc::new(database.connect().map_err(|error| {
+                        format!(
+                            "failed to create canonical workspace Turso read connection {}: {error}",
+                            client_db_path.display()
+                        )
+                    })?));
+                }
                 let writer_connection = database.connect().map_err(|error| {
                     format!(
                         "failed to create canonical workspace Turso writer connection {}: {error}",
                         client_db_path.display()
                     )
                 })?;
-                self.connection_create_count.fetch_add(2, Ordering::Relaxed);
+                self.connection_create_count.fetch_add(
+                    u64::try_from(read_parallelism.saturating_add(1)).unwrap_or(u64::MAX),
+                    Ordering::Relaxed,
+                );
                 super::bootstrap_turso_source_index_schema(&writer_connection).await?;
                 self.schema_bootstrap_count.fetch_add(1, Ordering::Relaxed);
-                let (writer_client, writer_actor) = workspace_db_writer_channel(1024);
+                let (writer_queue_capacity, writer_batch_limit) =
+                    workspace_db_writer_concurrency_plan();
+                let (writer_client, writer_actor) =
+                    workspace_db_writer_channel(writer_queue_capacity);
                 let writer_task = tokio::spawn(run_workspace_db_writer_actor(
                     writer_actor,
                     writer_connection,
-                    64,
+                    writer_batch_limit,
                 ));
-                let read_parallelism = workspace_db_reader_connection_limit();
                 Ok::<_, String>(Arc::new(WorkspaceDbEntry {
                     workspace_identity: resolved_workspace_identity.to_owned(),
                     client_db_path: client_db_path.clone(),
                     _database: database,
-                    read_connections: Mutex::new(vec![read_connection]),
+                    read_connections,
                     active_reader_count: AtomicU64::new(0),
-                    max_reader_connection_count: read_parallelism,
                     next_read_connection: AtomicU64::new(0),
-                    connection_create_count: Arc::clone(&self.connection_create_count),
                     source_index_read_cache: (0..read_parallelism)
                         .map(|_| tokio::sync::Mutex::new(None))
                         .collect(),
@@ -363,6 +442,10 @@ impl WorkspaceDbRegistry {
             connection_create_count: self.connection_create_count.load(Ordering::Relaxed),
             schema_bootstrap_count: self.schema_bootstrap_count.load(Ordering::Relaxed),
             registry_hit_count: self.registry_hit_count.load(Ordering::Relaxed),
+            workspace_resolution_count: self.workspace_resolution_count.load(Ordering::Relaxed),
+            project_root_canonicalization_count: self
+                .project_root_canonicalization_count
+                .load(Ordering::Relaxed),
             workspace_lock_retry_count: 0,
             writer_transaction_count,
             max_active_writer_count,
@@ -380,11 +463,7 @@ impl ProviderSearchWorkspaceSession {
         limit: u32,
     ) -> Result<crate::ClientDbSourceIndexLookupResult, String> {
         let cache_key = WorkspaceDbSourceIndexReadKey {
-            indexed_project_root: indexed_project_root
-                .canonicalize()
-                .unwrap_or_else(|_| indexed_project_root.to_path_buf())
-                .display()
-                .to_string(),
+            indexed_project_root: indexed_project_root.display().to_string(),
             snapshot_root: source_snapshot.root_digest.clone(),
             provider_digest: source_snapshot.provider_digest.clone(),
             query: query.to_owned(),
@@ -420,11 +499,13 @@ impl ProviderSearchWorkspaceSession {
     pub async fn commit_source_index_generation(
         &self,
         request: crate::ClientDbSourceIndexRefreshRequest,
+        materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
     ) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
         match self
-            .submit_write(WorkspaceDbWriteOperation::CommitSourceIndexGeneration(
+            .submit_write(WorkspaceDbWriteOperation::CommitSourceIndexGeneration {
                 request,
-            ))
+                materialization,
+            })
             .await?
         {
             WorkspaceDbWriteResult::SourceIndexGeneration(receipt) => Ok(receipt),
@@ -432,6 +513,18 @@ impl ProviderSearchWorkspaceSession {
                 "workspace writer returned an unexpected source-index generation result".to_owned(),
             ),
         }
+    }
+
+    pub async fn load_active_workspace_generation_materialization(
+        &self,
+    ) -> Result<Option<crate::runtime_server_workspace::WorkspaceCanonicalMaterialization>, String>
+    {
+        let read_lease = self.read_connection();
+        super::materialization::load_active_workspace_generation_materialization(
+            read_lease.shared_connection().as_ref(),
+            self.workspace_identity(),
+        )
+        .await
     }
 
     pub async fn write_provider_incremental_owner(
@@ -577,30 +670,15 @@ impl ProviderSearchWorkspaceSession {
     }
 
     pub(super) fn read_connection(&self) -> WorkspaceDbReadLease<'_> {
-        let active_reader_count = self
-            .entry
+        self.entry
             .active_reader_count
-            .fetch_add(1, Ordering::Relaxed)
-            + 1;
-        let mut read_connections = self.entry.read_connections.lock();
-        let desired_reader_count =
-            (active_reader_count as usize).min(self.entry.max_reader_connection_count);
-        while read_connections.len() < desired_reader_count {
-            let Ok(connection) = self.entry._database.connect() else {
-                break;
-            };
-            read_connections.push(Arc::new(connection));
-            self.entry
-                .connection_create_count
-                .fetch_add(1, Ordering::Relaxed);
-        }
+            .fetch_add(1, Ordering::Relaxed);
         let index = self
             .entry
             .next_read_connection
             .fetch_add(1, Ordering::Relaxed) as usize
-            % read_connections.len();
-        let connection = Arc::clone(&read_connections[index]);
-        drop(read_connections);
+            % self.entry.read_connections.len();
+        let connection = Arc::clone(&self.entry.read_connections[index]);
         WorkspaceDbReadLease {
             entry: &self.entry,
             connection,
@@ -609,14 +687,12 @@ impl ProviderSearchWorkspaceSession {
 }
 
 fn workspace_db_reader_connection_limit() -> usize {
-    tokio::runtime::Handle::try_current()
-        .map(|runtime| runtime.metrics().num_workers())
-        .unwrap_or_else(|_| {
-            std::thread::available_parallelism()
-                .map(std::num::NonZeroUsize::get)
-                .unwrap_or(1)
-        })
-        .max(1)
+    crate::runtime_concurrency::RuntimeConcurrencyPlan::current().reader_limit()
+}
+
+fn workspace_db_writer_concurrency_plan() -> (usize, usize) {
+    let plan = crate::runtime_concurrency::RuntimeConcurrencyPlan::current();
+    (plan.writer_queue_capacity(), plan.writer_batch_limit())
 }
 
 #[cfg(test)]

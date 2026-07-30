@@ -7,6 +7,7 @@ edition.workspace = true
 doctest = false
 
 [dependencies]
+blake3.workspace = true
 agent-semantic-context-product = { path = "../agent-semantic-context-product" }
 clap = "4.6.1"
 agent-semantic-search-projection = { path = "../agent-semantic-search-projection" }
@@ -36,6 +37,7 @@ ignore = { workspace = true }
 libc.workspace = true
 which = { workspace = true }
 globset.workspace = true
+base64 = "0.22"
 
 [[bin]]
 name = "asp"

@@ -125,10 +125,8 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                 "routes": routes,
                 "coverage": {
                     "packageRoots": ["."],
-                    "sourceRoots": manifest.source().default_source_roots,
                     "configFiles": manifest.source().default_config_files,
-                    "sourceExtensions": manifest.source().default_extensions,
-                    "ignoredPathPrefixes": manifest.source().default_ignored_path_prefixes
+                    "sourceExtensions": manifest.source().default_extensions
                 }
             });
             provider

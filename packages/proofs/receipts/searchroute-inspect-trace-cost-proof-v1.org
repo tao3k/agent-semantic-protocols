@@ -1,0 +1,113 @@
+#+title: SearchRoute Costed Inspect Trace Proof Receipt v1
+#+options: toc:nil
+
+* Owners
+
+- RFC owner:
+  =docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.23-searchroute-costed-inspect-trace.org=
+- Lean owner:
+  =packages/proofs/ASPProof/SearchRouteInspectTraceCost.lean=
+- Lean audit:
+  =packages/proofs/receipts/searchroute-inspect-trace-cost-audit-v1.json=
+- AXLE receipt:
+  =packages/proofs/receipts/searchroute-inspect-trace-cost-axle-audit-v1.json=
+
+The Lean audit validates against
+=schemas/lean-proof-audit.v1.schema.json=. The AXLE receipt validates against
+=schemas/axle-lean-audit-receipt.v1.schema.json=.
+
+* Proof boundary
+
+The proof binds one operational cost receipt to every inspect-loop decision,
+projects the costed trace into =SearchRoute= and =GraphCandidate=, proves exact
+token/round/transition fidelity, and proves separate accounting equations for
+semantic-search cache savings and model prefix-cache savings.
+
+It does not claim a complete catalog of total-driver traces, full
+=admissibleB= for a route requirement, or global driver-cost optimality.
+
+* Lean build and audit
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake build
+/opt/homebrew/bin/lake env lean audit/SearchRouteInspectTraceCostAudit.lean
+#+end_src
+
+Observed:
+
+- full build: exit =0=, =20= jobs;
+- audit emission: exit =0=;
+- declarations: =14=;
+- axiom-free declarations: =1=;
+- axiom-dependent declarations: =13=;
+- =sorryAx=: absent;
+- axiom inventory: =Quot.sound=, =propext=.
+
+* AXLE fail-closed audit
+
+#+begin_src sh
+uv run --project packages/python/tools --frozen \
+  python -m tools.axle_lean_audit \
+  packages/proofs/receipts/searchroute-inspect-trace-cost-audit-v1.json \
+  --allow-axiom Quot.sound \
+  --allow-axiom propext \
+  --require-family trace-alignment \
+  --require-family route-projection \
+  --require-family cost-fidelity \
+  --require-family cache-accounting \
+  --require-family projection-validity \
+  --require-family cache-soundness \
+  --require-family counterexample \
+  --require-rfc-clause ASP-RFC-10.05-SIT-COST-STEP \
+  --require-rfc-clause ASP-RFC-10.05-SIT-PROJECTION \
+  --require-rfc-clause ASP-RFC-10.05-SIT-COST-FIDELITY \
+  --require-rfc-clause ASP-RFC-10.05-SIT-CACHE-SEPARATION \
+  --require-rfc-clause ASP-RFC-10.05-SIT-CACHE-COLLISION \
+  --require-rfc-clause ASP-RFC-10.05-SIT-OPTIMALITY-BOUNDARY
+#+end_src
+
+Observed:
+
+- exit =0=;
+- canonical audit digest:
+  =81abbc4b0c33753f6a5889fe33f218e2dfd67e98aca15fe8e7cec96eef9d359a=;
+- all =7= required theorem families present;
+- all =6= RFC clause IDs present;
+- no unexpected axiom.
+
+* Embedded Typst validation
+
+The RFC owns the named block =searchroute-costed-inspect-trace-model=. No
+standalone =.typ= source, =:file= header argument, or PDF compilation was used.
+
+#+begin_src sh
+orgize eval plan --json \
+  searchroute-costed-inspect-trace-model \
+  docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.23-searchroute-costed-inspect-trace.org
+
+typst eval --in - '"ok"'
+#+end_src
+
+The parser-owned plan returned the named =typst= block body. That body was sent
+directly to =typst eval --in -= over standard input.
+
+Observed:
+
+- Orgize block plan: exit =0=;
+- Typst stdin eval: exit =0=, JSON result ="ok"=.
+
+Native Orgize Typst lint/runtime integration remains owned by the concurrent
+Rust work and is not claimed by this receipt.
+
+* Lean-discovered RFC defects
+
+1. Semantic-cache identity must be bound to
+   =RouteStep.kind = semanticCacheHit=; a free Boolean is insufficient.
+2. Loop closure does not imply graph-path validation. Projection needs an
+   independent path-validation receipt.
+3. Total uncached tokens combine actual evidence and uncached prompt tokens.
+   Equal totals do not identify whether semantic-search cache or model
+   prefix-cache produced the saving.
+4. Cost fidelity does not imply catalog completeness or optimizer globality.
+   Those remain the next proof layer.

@@ -1,0 +1,37 @@
+#+title: Resident Immutable Generation Recovery
+#+startup: overview
+
+* Status
+
+Implemented in the worktree. Installed cold-to-warm and concurrency evidence
+remain required.
+
+* Decision
+
+An inter-process generation pointer has exactly three typed open states:
+
+- =Ready=: the pointer, immutable mmap segment, generation evidence, and memory
+  backend all validate.
+- =Missing=: no generation has been published for the workspace.
+- =RecoveryRequired=: a pointer exists but its bytes, segment, schema, epoch, or
+  generation evidence cannot be validated.
+
+=RecoveryRequired= is not decoded with defaults and is not returned directly
+as a permanent CLI failure. The single resident workspace owner submits a
+canonical restore through that workspace's writer lane. The writer constructs
+and validates the complete next MemoryBackend and mmap segment before
+atomically replacing the active pointer.
+
+After publication, the consumer opens the new generation again under the full
+validation contract. A second invalid result is a hard failure carrying both
+the initial and restored states.
+
+* Concurrency invariants
+
+1. A stale generation never becomes a partially decoded backend.
+2. Concurrent consumers share the resident workspace recovery operation.
+3. Publication switches one pointer only after the new immutable generation is
+   complete.
+4. Existing reader leases retain the previous generation.
+5. Different workspace identities recover independently.
+6. Warm queries do not open Turso, spawn a provider, or use the control socket.

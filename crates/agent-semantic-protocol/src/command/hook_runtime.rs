@@ -99,16 +99,6 @@ fn run_paths(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn hook_workspace_candidate(payload: &serde_json::Value, project_root: &Path) -> PathBuf {
-    payload
-        .get("tool_input")
-        .and_then(|tool_input| tool_input.get("workdir"))
-        .and_then(serde_json::Value::as_str)
-        .or_else(|| payload.get("cwd").and_then(serde_json::Value::as_str))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| project_root.to_path_buf())
-}
-
 #[cfg(test)]
 #[path = "../../tests/unit/command/hook_workspace_candidate.rs"]
 mod hook_workspace_candidate_tests;
@@ -185,14 +175,10 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             }
         }
     };
-    let project_root = hook_runtime_project_root(&activation_path, &runtime.project_root);
+    let activation_project_root =
+        hook_runtime_project_root(&activation_path, &runtime.project_root);
+    let project_root = hook_workspace_candidate(&payload, &activation_project_root);
     runtime.project_root = project_root.display().to_string();
-    let workspace_resident_service_ensure = if classification_event == "pre-tool" {
-        let hook_cwd = hook_workspace_candidate(&payload, &project_root);
-        Some(super::workspace_db_resident::ensure(&hook_cwd))
-    } else {
-        None
-    };
     let config_path = flag_value(args, "--config")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
@@ -336,62 +322,6 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             "activationRecoveryStatus".to_string(),
             serde_json::Value::String("reloaded-and-classified".to_string()),
         );
-    }
-    if let Some(ensure) = workspace_resident_service_ensure {
-        match ensure {
-            Ok(receipt) => {
-                decision.fields.insert(
-                    "workspaceResidentServiceStatus".to_string(),
-                    serde_json::Value::String(receipt.status.to_string()),
-                );
-                if let Some(workspace_identity) = receipt.workspace_identity {
-                    decision.fields.insert(
-                        "workspaceResidentServiceIdentity".to_string(),
-                        serde_json::Value::String(workspace_identity),
-                    );
-                }
-                if let Some(workspace_root) = receipt.workspace_root {
-                    decision.fields.insert(
-                        "workspaceResidentServiceRoot".to_string(),
-                        serde_json::Value::String(workspace_root.display().to_string()),
-                    );
-                }
-                if let Some(transport_contract_digest) = receipt.transport_contract_digest {
-                    decision.fields.insert(
-                        "workspaceResidentServiceTransportContractDigest".to_string(),
-                        serde_json::Value::String(transport_contract_digest),
-                    );
-                }
-                if let Some(owner_epoch) = receipt.owner_epoch {
-                    decision.fields.insert(
-                        "workspaceResidentServiceOwnerEpoch".to_string(),
-                        serde_json::json!(owner_epoch),
-                    );
-                }
-                if let Some(runtime_binary_path) = receipt.runtime_binary_path {
-                    decision.fields.insert(
-                        "workspaceResidentServiceRuntimeBinaryPath".to_string(),
-                        serde_json::Value::String(runtime_binary_path),
-                    );
-                }
-                if let Some(runtime_binary_digest) = receipt.runtime_binary_digest {
-                    decision.fields.insert(
-                        "workspaceResidentServiceRuntimeBinaryDigest".to_string(),
-                        serde_json::Value::String(runtime_binary_digest),
-                    );
-                }
-            }
-            Err(error) => {
-                decision.fields.insert(
-                    "workspaceResidentServiceStatus".to_string(),
-                    serde_json::Value::String("unavailable".to_string()),
-                );
-                decision.fields.insert(
-                    "workspaceResidentServiceError".to_string(),
-                    serde_json::Value::String(error),
-                );
-            }
-        }
     }
     if matches!(event, "subagent-start" | "subagent-stop") {
         let mut payload_keys = payload
@@ -928,6 +858,31 @@ fn activation_root_is_global_hook_state(activation_path: &Path, activation_root:
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name == "hooks")
         })
+}
+
+pub(super) fn hook_workspace_candidate(
+    payload: &serde_json::Value,
+    project_root: &Path,
+) -> PathBuf {
+    let payload_cwd = payload
+        .get("cwd")
+        .and_then(serde_json::Value::as_str)
+        .map(PathBuf::from);
+    let Some(workdir) = payload
+        .get("tool_input")
+        .and_then(|tool_input| tool_input.get("workdir"))
+        .and_then(serde_json::Value::as_str)
+        .map(PathBuf::from)
+    else {
+        return payload_cwd.unwrap_or_else(|| project_root.to_path_buf());
+    };
+    if workdir.is_absolute() {
+        workdir
+    } else {
+        payload_cwd
+            .unwrap_or_else(|| project_root.to_path_buf())
+            .join(workdir)
+    }
 }
 
 fn project_root_arg(args: &[String]) -> Result<PathBuf, String> {

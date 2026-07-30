@@ -51,21 +51,49 @@ fn classify_single_bounded_path_command_impl(
     if stages.len() != 1 {
         return StructuredFilterClassificationV1::Compound;
     }
-    classify_bounded_path_stage(&stages[0], spec)
+    let stage = &stages[0];
+    if stage
+        .executable()
+        .is_some_and(|executable| executable.rsplit('/').next() == Some(spec.binary))
+    {
+        return classify_bounded_path_stage(stage, &spec);
+    }
+    if crate::command_match::command_stages_match_wrapped_prefix(
+        &stages,
+        &[spec.binary.to_string()],
+    ) != crate::command_match::PrefixMatch::Matched
+    {
+        return StructuredFilterClassificationV1::Invalid;
+    }
+    stage
+        .words()
+        .iter()
+        .enumerate()
+        .filter(|(_, word)| word.rsplit('/').next() == Some(spec.binary))
+        .map(|(index, _)| classify_bounded_path_words(&stage.words()[index..], &spec))
+        .find(|classification| *classification != StructuredFilterClassificationV1::Invalid)
+        .unwrap_or(StructuredFilterClassificationV1::Invalid)
 }
 
 fn classify_bounded_path_stage(
     stage: &CommandStageV1,
-    spec: BoundedPathCommandSpecV1<'_>,
+    spec: &BoundedPathCommandSpecV1<'_>,
 ) -> StructuredFilterClassificationV1 {
-    let Some(executable) = stage.executable() else {
+    classify_bounded_path_words(stage.words(), spec)
+}
+
+fn classify_bounded_path_words(
+    words: &[String],
+    spec: &BoundedPathCommandSpecV1<'_>,
+) -> StructuredFilterClassificationV1 {
+    let Some(executable) = words.first() else {
         return StructuredFilterClassificationV1::Invalid;
     };
     if executable.rsplit('/').next() != Some(spec.binary) {
         return StructuredFilterClassificationV1::Invalid;
     }
 
-    let mut words = stage.words().iter().skip(1).peekable();
+    let mut words = words.iter().skip(1).peekable();
     if words.peek().is_some_and(|word| {
         spec.optional_subcommand_any
             .iter()

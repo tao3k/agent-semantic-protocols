@@ -71,10 +71,6 @@ pub fn build_default_activation_from_selections(
             Ok((manifest, selection))
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let package_roots = discover_package_roots_for_manifests(
-        project_root,
-        selected_providers.iter().map(|(manifest, _)| *manifest),
-    );
     let registry_started = std::time::Instant::now();
     let semantic_registry_digest = crate::provider_registry::semantic_registry_digest();
     if std::env::var_os("ASP_HOOK_INSTALL_TIMINGS").is_some() {
@@ -85,16 +81,13 @@ pub fn build_default_activation_from_selections(
     }
     let mut providers = Vec::new();
     for (manifest, selection) in selected_providers {
-        let roots = package_roots
-            .get(&manifest.manifest_id)
-            .cloned()
-            .unwrap_or_else(|| vec![".".to_string()]);
+        let coverage = resolve_activation_coverage(project_root, manifest, selection)?;
         providers.push(activate_provider(
             manifest,
             selection.manifest_digest.clone(),
             selection.execution_command_digest.clone(),
             selection.binary.clone(),
-            roots,
+            coverage,
             &semantic_registry_digest,
         )?);
     }
@@ -481,8 +474,14 @@ pub fn validate_provider_manifest_contract(manifest: &ProviderManifest) -> Vec<S
 
 fn validate_project_resolution_descriptor(manifest: &ProviderManifest) -> Result<(), String> {
     let Some(descriptor) = manifest.project_resolution() else {
-        return Ok(());
+        return validate_document_resolution_descriptor(manifest);
     };
+    if manifest.document_resolution().is_some() {
+        return Err(format!(
+            "provider {} must declare exactly one of projectResolution or documentResolution",
+            manifest.provider_id()
+        ));
+    }
     if descriptor.schema_id != "agent.semantic-protocols.provider-project-resolution-descriptor"
         || descriptor.schema_version != "1"
     {
@@ -549,13 +548,31 @@ fn validate_project_resolution_descriptor(manifest: &ProviderManifest) -> Result
             ));
         }
     }
-    for marker in &descriptor.entry_markers {
-        if !manifest.source().default_project_markers.contains(marker) {
-            return Err(format!(
-                "provider {} projectResolution entry marker {marker} is not registered in source.defaultProjectMarkers",
-                manifest.provider_id()
-            ));
-        }
+    Ok(())
+}
+
+fn validate_document_resolution_descriptor(manifest: &ProviderManifest) -> Result<(), String> {
+    let descriptor = manifest.document_resolution().ok_or_else(|| {
+        format!(
+            "provider {} must declare exactly one of projectResolution or documentResolution",
+            manifest.provider_id()
+        )
+    })?;
+    if descriptor.schema_id != "agent.semantic-protocols.provider-document-resolution-descriptor"
+        || descriptor.schema_version != "1"
+        || descriptor.capability_id != "document-resolution"
+        || !descriptor.supports_git_candidates
+        || descriptor.parser_id.is_empty()
+        || descriptor.extensions.is_empty()
+        || descriptor
+            .extensions
+            .iter()
+            .any(|extension| !extension.starts_with('.'))
+    {
+        return Err(format!(
+            "provider {} has an invalid documentResolution descriptor",
+            manifest.provider_id()
+        ));
     }
     Ok(())
 }
@@ -633,12 +650,303 @@ fn validate_source_snapshot_capability(
     Ok(())
 }
 
+fn resolve_document_activation_coverage(
+    project_root: &Path,
+    manifest: &ProviderManifest,
+) -> Result<ActivationCoverage, String> {
+    let descriptor = manifest.document_resolution().ok_or_else(|| {
+        format!(
+            "provider {} omitted documentResolution",
+            manifest.provider_id()
+        )
+    })?;
+    let snapshot =
+        agent_semantic_runtime::git::discover_repository_candidate_snapshot(project_root)
+            .map_err(|error| format!("discover document repository candidates: {error}"))?
+            .ok_or_else(|| {
+                format!(
+                    "document resolution requires a Git candidate snapshot: workspace={}",
+                    project_root.display()
+                )
+            })?;
+    let candidate_generation = snapshot.candidate_generation.digest.clone();
+    let snapshot = serde_json::to_value(snapshot)
+        .map_err(|error| format!("encode document repository candidates: {error}"))?;
+    let source_paths = snapshot
+        .get("candidates")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "repository candidate snapshot omitted candidates".to_string())?
+        .iter()
+        .filter_map(|candidate| candidate.get("path").and_then(serde_json::Value::as_str))
+        .filter(|path| {
+            descriptor
+                .extensions
+                .iter()
+                .any(|extension| path.ends_with(extension))
+        })
+        .map(str::to_string)
+        .collect::<std::collections::BTreeSet<_>>();
+    if source_paths.is_empty() {
+        return Err(format!(
+            "document resolution found no Git candidate documents: providerId={}",
+            manifest.provider_id()
+        ));
+    }
+    Ok(ActivationCoverage {
+        package_roots: Vec::new(),
+        config_files: Vec::new(),
+        source_extensions: descriptor.extensions.clone(),
+        source_paths: source_paths.into_iter().collect(),
+        repository_candidate_generation: candidate_generation.clone(),
+        project_resolution_generation: format!(
+            "document:{}:{}",
+            candidate_generation, descriptor.parser_id
+        ),
+    })
+}
+
+fn resolve_activation_coverage(
+    project_root: &Path,
+    manifest: &ProviderManifest,
+    selection: &ProviderCommandSelection,
+) -> Result<ActivationCoverage, String> {
+    use std::io::Write as _;
+    use std::process::Stdio;
+
+    if manifest.document_resolution().is_some() {
+        return resolve_document_activation_coverage(project_root, manifest);
+    }
+    let descriptor = manifest.project_resolution().ok_or_else(|| {
+        format!(
+            "provider {} omitted projectResolution",
+            manifest.provider_id()
+        )
+    })?;
+    let snapshot =
+        agent_semantic_runtime::git::discover_repository_candidate_snapshot(project_root)
+            .map_err(|error| format!("discover provider repository candidates: {error}"))?
+            .ok_or_else(|| {
+                format!(
+                    "provider project resolution requires a Git candidate snapshot: workspace={}",
+                    project_root.display()
+                )
+            })?;
+    let repository_candidate_generation = snapshot.candidate_generation.digest.clone();
+    let snapshot_value = serde_json::to_value(&snapshot)
+        .map_err(|error| format!("encode repository candidate snapshot: {error}"))?;
+    let request = serde_json::to_vec(&serde_json::json!({
+        "schemaId": "agent.semantic-protocols.provider-project-resolution-request",
+        "schemaVersion": "1",
+        "languageId": manifest.language_id(),
+        "providerId": manifest.provider_id(),
+        "workspaceRoot": project_root,
+        "repositoryCandidates": snapshot_value,
+    }))
+    .map_err(|error| format!("encode provider project-resolution request: {error}"))?;
+
+    let executable = selection.provider_command_prefix.first().ok_or_else(|| {
+        format!(
+            "provider {} resolved an empty command prefix",
+            manifest.provider_id()
+        )
+    })?;
+    let mut command = std::process::Command::new(executable);
+    command
+        .args(selection.provider_command_prefix.iter().skip(1))
+        .arg(&descriptor.command_binding)
+        .current_dir(project_root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().map_err(|error| {
+        format!(
+            "spawn provider project-resolution command for {}: {error}",
+            manifest.provider_id()
+        )
+    })?;
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| {
+            format!(
+                "provider project-resolution stdin unavailable for {}",
+                manifest.provider_id()
+            )
+        })?
+        .write_all(&request)
+        .map_err(|error| {
+            format!(
+                "write provider project-resolution request for {}: {error}",
+                manifest.provider_id()
+            )
+        })?;
+    let output = child.wait_with_output().map_err(|error| {
+        format!(
+            "wait for provider project-resolution command for {}: {error}",
+            manifest.provider_id()
+        )
+    })?;
+    if !output.status.success() {
+        return Err(format!(
+            "provider project-resolution failed: languageId={} providerId={} status={} stderr={}",
+            manifest.language_id(),
+            manifest.provider_id(),
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let response: serde_json::Value = serde_json::from_slice(&output.stdout).map_err(|error| {
+        format!(
+            "decode provider project-resolution response for {}: {error}",
+            manifest.provider_id()
+        )
+    })?;
+    let response_string = |field: &str| {
+        response
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "provider project-resolution response omitted string field {field}: providerId={}",
+                    manifest.provider_id()
+                )
+            })
+    };
+    if response_string("schemaId")?
+        != "agent.semantic-protocols.provider-project-resolution-response"
+        || response_string("schemaVersion")? != "1"
+        || response_string("state")? != "resolved"
+        || response_string("languageId")? != manifest.language_id().as_str()
+        || response_string("providerId")? != manifest.provider_id().as_str()
+    {
+        return Err(format!(
+            "provider project-resolution response identity/state mismatch: providerId={}",
+            manifest.provider_id()
+        ));
+    }
+    let resolution = response
+        .get("resolution")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| {
+            format!(
+                "resolved provider project-resolution omitted resolution: providerId={}",
+                manifest.provider_id()
+            )
+        })?;
+    let resolution_string = |field: &str| {
+        resolution
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "project-resolution omitted string field {field}: providerId={}",
+                    manifest.provider_id()
+                )
+            })
+    };
+    if resolution_string("schemaId")? != "agent.semantic-protocols.project-resolution"
+        || resolution_string("schemaVersion")? != "1"
+        || resolution_string("state")? != "resolved"
+        || resolution_string("completeness")? != "exact"
+    {
+        return Err(format!(
+            "provider project-resolution contract is not exact/resolved: providerId={}",
+            manifest.provider_id()
+        ));
+    }
+
+    let candidate_paths = snapshot_value
+        .get("candidates")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "repository candidate snapshot omitted candidates".to_string())?
+        .iter()
+        .filter_map(|candidate| candidate.get("path").and_then(serde_json::Value::as_str))
+        .collect::<Vec<_>>();
+    let scopes = resolution
+        .get("resolvedSourceScopes")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "project-resolution omitted resolvedSourceScopes".to_string())?;
+    let mut package_roots = std::collections::BTreeSet::new();
+    let mut source_extensions = std::collections::BTreeSet::new();
+    let mut source_paths = std::collections::BTreeSet::new();
+    for scope in scopes {
+        let roots = scope
+            .get("roots")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "resolved source scope omitted roots".to_string())?
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect::<Vec<_>>();
+        let extensions = scope
+            .get("extensions")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "resolved source scope omitted extensions".to_string())?
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .collect::<Vec<_>>();
+        let exclusions = scope
+            .get("exclusions")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| "resolved source scope omitted exclusions".to_string())?
+            .iter()
+            .filter_map(|exclusion| exclusion.get("prefix").and_then(serde_json::Value::as_str))
+            .collect::<Vec<_>>();
+        if roots.is_empty() || extensions.is_empty() {
+            return Err(format!(
+                "resolved source scope must declare roots and extensions: providerId={}",
+                manifest.provider_id()
+            ));
+        }
+        package_roots.extend(roots.iter().map(|root| (*root).to_string()));
+        source_extensions.extend(extensions.iter().map(|extension| (*extension).to_string()));
+        for candidate in &candidate_paths {
+            let within_root = roots.iter().any(|root| {
+                *candidate == *root
+                    || candidate
+                        .strip_prefix(root)
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+            });
+            let has_extension = extensions
+                .iter()
+                .any(|extension| candidate.ends_with(extension));
+            let excluded = exclusions.iter().any(|prefix| {
+                *candidate == *prefix
+                    || candidate
+                        .strip_prefix(prefix)
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+            });
+            if within_root && has_extension && !excluded {
+                source_paths.insert((*candidate).to_string());
+            }
+        }
+    }
+    if source_paths.is_empty() {
+        return Err(format!(
+            "provider project-resolution resolved no Git candidate source files: providerId={}",
+            manifest.provider_id()
+        ));
+    }
+    let project_entry = resolution
+        .get("projectIdentity")
+        .and_then(|identity| identity.get("projectEntry"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "project-resolution omitted projectIdentity.projectEntry".to_string())?;
+    Ok(ActivationCoverage {
+        package_roots: package_roots.into_iter().collect(),
+        config_files: vec![project_entry.to_string()],
+        source_extensions: source_extensions.into_iter().collect(),
+        source_paths: source_paths.into_iter().collect(),
+        repository_candidate_generation,
+        project_resolution_generation: resolution_string("resolutionGeneration")?.to_string(),
+    })
+}
+
 fn activate_provider(
     manifest: &ProviderManifest,
     manifest_digest: String,
     execution_command_digest: String,
     binary: String,
-    package_roots: Vec<String>,
+    coverage: ActivationCoverage,
     semantic_registry_digest: &str,
 ) -> Result<ActivatedProviderConfig, String> {
     validate_source_snapshot_capability(
@@ -668,11 +976,7 @@ fn activate_provider(
         provider_command_prefix: Vec::new(),
         semantic_registry_digest: semantic_registry_digest.to_string(),
         routes,
-        coverage: ActivationCoverage {
-            package_roots,
-            config_files: manifest.source.default_config_files.clone(),
-            source_extensions: manifest.source.default_extensions.clone(),
-        },
+        coverage,
     })
 }
 
@@ -776,27 +1080,4 @@ fn provider_command_prefix(
         binary: configured_binary.to_string(),
         command_prefix: vec![path.display().to_string()],
     }))
-}
-
-fn discover_package_roots_for_manifests<'a>(
-    project_root: &Path,
-    manifests: impl IntoIterator<Item = &'a ProviderManifest>,
-) -> BTreeMap<String, Vec<String>> {
-    let mut roots_by_manifest = BTreeMap::new();
-    for manifest in manifests {
-        roots_by_manifest.insert(
-            manifest.manifest_id.clone(),
-            vec![relative_package_root(project_root, project_root)],
-        );
-    }
-    roots_by_manifest
-}
-
-fn relative_package_root(project_root: &Path, package_root: &Path) -> String {
-    package_root
-        .strip_prefix(project_root)
-        .ok()
-        .filter(|relative| !relative.as_os_str().is_empty())
-        .map(|relative| relative.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|| ".".to_string())
 }

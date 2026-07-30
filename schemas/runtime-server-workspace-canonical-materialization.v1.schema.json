@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.runtime-server-workspace-canonical-materialization.v1",
+  "title": "Runtime Server Workspace Canonical Materialization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "workspaceSnapshot",
+    "sourceSnapshot",
+    "workspaceGeneration",
+    "importDigest",
+    "fileCount",
+    "rootDepth",
+    "owners"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-workspace-canonical-materialization.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workspaceSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root_digest",
+        "leaves",
+        "base_root_digest",
+        "dirty_paths_digest",
+        "overlay_base_leaves"
+      ],
+      "properties": {
+        "root_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "leaves": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "base_root_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "dirty_paths_digest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "overlay_base_leaves": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[^\\s]+$"
+          }
+        }
+      }
+    },
+    "sourceSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "algorithm",
+        "rootDigest",
+        "sourceKind",
+        "leafCount",
+        "providerDigest"
+      ],
+      "properties": {
+        "schemaId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "algorithm": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rootDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sourceKind": {
+          "enum": [
+            "filesystem",
+            "editor-buffer",
+            "git-tree",
+            "derived-overlay"
+          ]
+        },
+        "leafCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "baseRootDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "providerDigest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dirtyPathsDigest": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "workspaceGeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootDigest",
+        "rootDepth",
+        "leafCount",
+        "ownerCount"
+      ],
+      "properties": {
+        "rootDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "rootDepth": {
+          "type": "integer",
+          "enum": [
+            0,
+            1
+          ]
+        },
+        "leafCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ownerCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "importDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "fileCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "rootDepth": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": 1
+        },
+        {
+          "const": 0
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "owners": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ownerPath",
+          "contentDigest",
+          "bytes",
+          "selectors"
+        ],
+        "properties": {
+          "ownerPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contentDigest": {
+            "type": "string",
+            "pattern": "^blake3-256:[0-9a-f]{64}$"
+          },
+          "bytes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          },
+          "selectors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "selector",
+                "byteStart",
+                "byteEnd"
+              ],
+              "properties": {
+                "selector": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "byteStart": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "byteEnd": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -142,6 +142,26 @@ fn rejects_query_code_file_selector_before_provider_execution() {
 }
 
 #[test]
+fn rejects_non_structural_selector_without_manifest_extension_defaults() {
+    let request = query_request(vec![
+        "--selector".to_string(),
+        "src/lib.future-language".to_string(),
+        "--workspace".to_string(),
+        ".".to_string(),
+        "--code".to_string(),
+    ]);
+
+    let error =
+        validate_syntax_query_request(&request).expect_err("non-structural selector should fail");
+
+    assert!(
+        error.contains("invalid query --code selector `src/lib.future-language`"),
+        "{error}"
+    );
+    assert!(error.contains("requiredSelector=rust://"), "{error}");
+}
+
+#[test]
 fn rejects_stale_exact_selector_path_before_provider_execution() {
     let request = query_request(vec![
         "--selector".to_string(),

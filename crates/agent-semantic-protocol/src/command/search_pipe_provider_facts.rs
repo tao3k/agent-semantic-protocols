@@ -61,7 +61,9 @@ pub(super) fn collect_provider_workspace_scope(
     let Some(context) = context else {
         return Ok(None);
     };
-    if !context.provider.search_capabilities.workspace_scope {
+    if context.provider.project_resolution.is_none()
+        && context.provider.document_resolution.is_none()
+    {
         return Ok(None);
     }
     if let Some(scope) = load_cached_provider_workspace_scope(project_root, context) {

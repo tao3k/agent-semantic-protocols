@@ -86,7 +86,6 @@ fn provider_and_activation_v1_require_query_pack_descriptors() {
         "semanticFacts",
         "dependencyTopology",
         "dependencyTopologyMetadata",
-        "workspaceScope",
     ];
     let provider_capabilities_required =
         provider_schema["$defs"]["providerSearchCapabilities"]["required"]
@@ -102,6 +101,26 @@ fn provider_and_activation_v1_require_query_pack_descriptors() {
         Some(&Value::String(
             "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-query-pack-descriptor.v1.schema.json".to_string()
         ))
+    );
+    assert_eq!(
+        provider_schema.pointer("/properties/projectResolution/$ref"),
+        Some(&Value::String(
+            "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-descriptor.v1.schema.json".to_string()
+        ))
+    );
+    assert_eq!(
+        provider_schema.pointer("/properties/documentResolution/$ref"),
+        Some(&Value::String(
+            "https://schemas.agent-semantic-protocols.dev/provider-document-resolution-descriptor.v1.schema.json".to_string()
+        ))
+    );
+    assert_eq!(
+        provider_schema["oneOf"]
+            .as_array()
+            .expect("provider resolution ownership branches")
+            .len(),
+        2,
+        "provider manifest must select exactly one typed resolution owner"
     );
 
     let activation_schema: Value = serde_json::from_str(include_str!(
@@ -249,9 +268,16 @@ fn activation_rejects_search_capabilities_drift() {
             semantic_registry_digest,
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
-                package_roots: vec![".".to_string()],
-                config_files: manifest.source().default_config_files.clone(),
-                source_extensions: manifest.source().default_extensions.clone(),
+                package_roots: vec!["src".to_string()],
+                config_files: manifest
+                    .project_resolution()
+                    .expect("programming-language project resolution")
+                    .entry_markers
+                    .clone(),
+                source_extensions: vec![".test".to_string()],
+                source_paths: vec!["src/provider.test".to_string()],
+                repository_candidate_generation: "test-candidate-generation".to_string(),
+                project_resolution_generation: "test-project-resolution-generation".to_string(),
             },
         }],
     };
@@ -310,9 +336,16 @@ fn activation_rejects_semantic_facts_descriptor_drift() {
             semantic_registry_digest,
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
-                package_roots: vec![".".to_string()],
-                config_files: manifest.source().default_config_files.clone(),
-                source_extensions: manifest.source().default_extensions.clone(),
+                package_roots: vec!["src".to_string()],
+                config_files: manifest
+                    .project_resolution()
+                    .expect("programming-language project resolution")
+                    .entry_markers
+                    .clone(),
+                source_extensions: vec![".test".to_string()],
+                source_paths: vec!["src/provider.test".to_string()],
+                repository_candidate_generation: "test-candidate-generation".to_string(),
+                project_resolution_generation: "test-project-resolution-generation".to_string(),
             },
         }],
     };

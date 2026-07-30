@@ -6,7 +6,7 @@ mod unix {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const ASP_ORG_SKILL_TEMPLATE: &str =
-        include_str!("../../../../languages/org/templates/ASP_ORG_SKILL.org");
+        include_str!("../../../../org/templates/ASP_ORG_SKILL.org");
 
     #[test]
     fn install_plugin_codex_runs_project_installer() {

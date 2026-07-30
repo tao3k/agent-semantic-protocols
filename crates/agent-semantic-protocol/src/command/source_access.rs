@@ -105,7 +105,6 @@ impl SourceAccessArgs {
                     );
                 }
                 "--json" => parsed.json = true,
-                "--code" => parsed.json = false,
                 value if value.starts_with('-') => {
                     return Err(format!("unknown source-access flag `{value}`\n{}", usage()));
                 }

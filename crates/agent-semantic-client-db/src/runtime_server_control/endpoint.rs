@@ -27,8 +27,41 @@ pub fn runtime_server_runtime_base() -> PathBuf {
 pub fn runtime_server_endpoint_path(state_home: &Path) -> PathBuf {
     state_home
         .join("runtime")
-        .join("state")
-        .join("runtime-server-endpoint.v1.json")
+        .join("server")
+        .join("endpoint.v1.json")
+}
+
+pub async fn publish_runtime_server_endpoint(
+    endpoint_path: &Path,
+    endpoint: &RuntimeServerEndpoint,
+) -> Result<(), String> {
+    let parent = endpoint_path
+        .parent()
+        .ok_or_else(|| "Runtime Server endpoint path has no parent".to_owned())?;
+    tokio::fs::create_dir_all(parent).await.map_err(|error| {
+        format!(
+            "failed to create Runtime Server endpoint directory {}: {error}",
+            parent.display()
+        )
+    })?;
+    let bytes = serde_json::to_vec(endpoint)
+        .map_err(|error| format!("failed to encode Runtime Server endpoint: {error}"))?;
+    let temporary = endpoint_path.with_extension(format!("tmp-{}", endpoint.owner_epoch));
+    if let Err(error) = tokio::fs::write(&temporary, bytes).await {
+        let _ = tokio::fs::remove_file(&temporary).await;
+        return Err(format!(
+            "failed to write Runtime Server endpoint temporary file {}: {error}",
+            temporary.display()
+        ));
+    }
+    if let Err(error) = tokio::fs::rename(&temporary, endpoint_path).await {
+        let _ = tokio::fs::remove_file(&temporary).await;
+        return Err(format!(
+            "failed to publish Runtime Server endpoint {}: {error}",
+            endpoint_path.display()
+        ));
+    }
+    Ok(())
 }
 
 pub fn runtime_server_listener_backlog() -> u32 {
@@ -152,11 +185,18 @@ pub async fn prepare_runtime_server_endpoint_in(
     )
     .to_hex();
     let socket_path = runtime_base.join(format!("r-{}.sock", &digest[..16]));
+    let data_plane_socket_path = runtime_base.join(format!("r-{}.data.sock", &digest[..16]));
     let status_memory_path = runtime_base.join(format!("r-{}.status", &digest[..16]));
     if socket_path.as_os_str().as_bytes().len() > MAX_UNIX_SOCKET_PATH_BYTES {
         return Err(format!(
             "Runtime Server socket path exceeds Unix sun_path budget: {}",
             socket_path.display()
+        ));
+    }
+    if data_plane_socket_path.as_os_str().as_bytes().len() > MAX_UNIX_SOCKET_PATH_BYTES {
+        return Err(format!(
+            "Runtime Server data-plane socket path exceeds Unix sun_path budget: {}",
+            data_plane_socket_path.display()
         ));
     }
     Ok(RuntimeServerEndpoint {
@@ -168,6 +208,7 @@ pub async fn prepare_runtime_server_endpoint_in(
         runtime_artifact_digest: runtime_artifact_digest.to_owned(),
         binding_token: binding_token.to_owned(),
         socket_path: socket_path.to_string_lossy().into_owned(),
+        data_plane_socket_path: data_plane_socket_path.to_string_lossy().into_owned(),
         status_memory_path: status_memory_path.to_string_lossy().into_owned(),
     })
 }

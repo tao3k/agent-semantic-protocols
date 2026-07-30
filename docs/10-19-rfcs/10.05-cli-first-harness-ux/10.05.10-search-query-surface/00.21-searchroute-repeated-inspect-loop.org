@@ -1,0 +1,301 @@
+#+title: RFC 10.05.21 — SearchRoute Repeated Inspect Loop
+#+status: Draft
+#+options: toc:2
+
+* Status
+
+This RFC is a proof-driven extension of [[file:00.20-searchroute-partial-route-inspect-scheduler.org][RFC 10.05.20 — Partial-Route Inspect Scheduler]].
+It specifies the repeated agent-facing inspect loop that consumes the
+=inspect= frontier, materializes bounded evidence, may update the selected
+candidate, and reschedules remaining work.
+
+This session does not authorize Rust implementation. The normative artifacts
+are this Org RFC, its embedded Typst model, the Lean model under
+=packages/proofs=, and the Lean JSON plus AXLE audit receipts.
+
+* Why a single scheduler pass is insufficient
+
+RFC 10.05.20 proves that one scheduler pass safely partitions certified
+frontiers into =pruned= and =inspect=. It intentionally leaves four dynamic
+questions open:
+
+1. how an inspected frontier is replaced by child frontiers;
+2. how a newly discovered candidate may replace the current selection;
+3. why repeated materialization and rescheduling cannot stutter forever; and
+4. why loop termination does not silently discard candidates.
+
+The Lean construction found that a fuel counter alone answers only the third
+question. A loop may strictly consume fuel and still delete an unresolved
+frontier. Such a loop terminates, but its selected candidate is not proven
+globally optimal. Therefore every inspect step needs two independent
+certificates:
+
+- a *progress certificate* that strictly decreases remaining work; and
+- a *refinement coverage certificate* that conserves the candidate universe.
+
+These certificates must not be collapsed into one opaque implementation
+status.
+
+* State and agent-facing decision
+
+** Work-bearing frontier
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SIL-DECISION
+:END:
+
+A pending entry is a pair =(frontier, work-credit)=. The frontier is the
+certified partial frontier of RFC 10.05.20. Its credit is a positive natural
+number. A loop state contains exactly:
+
+- the currently selected complete graph candidate; and
+- an ordered list of work-bearing pending frontiers.
+
+The agent-facing loop exposes only two typed decisions for the head frontier:
+
+- =prune=, when the selected candidate is no worse than the head lower bound;
+- =inspect(new-selected, children)=, when materialization returns a
+  non-regressing selected candidate and zero or more certified child
+  frontiers.
+
+The protocol does not expose a growing grammar of search subcommands. A small
+inspect response carries the next typed decision and only the evidence needed
+for that decision. Router movement and model/tool turns remain explicit costs
+of the routes represented by the candidates.
+
+* Strict work decrease
+
+** Progress certificate
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SIL-WORK-DECREASE
+:END:
+
+Let =credit(F)= be the positive work credit of a pending frontier and let
+=W(S)= be the sum of pending credits in state =S=.
+
+A valid prune removes the head frontier. A valid inspect replaces the head
+with =children= whose total credit is *strictly less* than the removed head
+credit:
+
+#+begin_example
+sum(map credit children) < credit(head)
+#+end_example
+
+Consequently every valid decision satisfies =W(next(S)) < W(S)=. Non-strict
+credit is forbidden. If equality were accepted, an inspect decision could
+replace a one-credit frontier with itself, leave the complete state unchanged,
+and create an infinite one-state loop.
+
+Credit is a proof-relevant upper bound on remaining inspect work. It is not a
+latency estimate, semantic-search cache hit, model prefix-cache hit, token
+count, or graph distance. Those remain separate route-cost axes. A provider
+may derive credit from a finite catalog or DAG rank, but the receipt must make
+that derivation auditable.
+
+* Candidate-universe conservation
+
+** Refinement coverage
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SIL-COVERAGE
+:END:
+
+For a fixed candidate-universe snapshot, the loop coverage invariant says that
+every candidate is either:
+
+1. already no better than the current selected candidate; or
+2. contained in at least one pending certified frontier.
+
+A prune preserves this invariant through the certified lower-bound pruning
+theorem from RFC 10.05.19 and RFC 10.05.20.
+
+An inspect must provide a =RefinementCovers= receipt. For every candidate in
+the removed head frontier, the receipt proves that the candidate is either no
+better than =new-selected= or appears in one of the child frontiers. Candidates
+covered by the untouched tail remain pending. The new selected candidate must
+also be no worse than the old selected candidate.
+
+This is the conservation law that a fuel-only design was missing. An empty
+child list is valid only when the new selected candidate dominates every
+candidate covered by the removed head.
+
+The candidate universe and its snapshot identity remain owned by the
+=CandidateUniverse= and coverage receipts of RFC 10.05.19. Reusing a loop
+receipt against a different source/index snapshot is invalid.
+
+* Trace bound
+
+** Finite repeated inspection
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SIL-TRACE-BOUND
+:END:
+
+For a valid trace of =n= decisions from =S0= to =Sn=, Lean proves:
+
+#+begin_example
+W(Sn) + n <= W(S0)
+n <= W(S0)
+#+end_example
+
+The bound counts loop decisions, not raw parser operations. A concrete cost
+policy may additionally price each decision in model/tool rounds, router hops,
+uncached tokens, semantic-search cache misses, and model prefix-cache misses.
+Those costs must be accumulated without changing the termination measure.
+
+This separation prevents a cache hit from being misreported as logical
+progress. Search-result cache reuse can reduce evidence retrieval cost, while
+model prefix-cache reuse can reduce prompt recomputation; neither by itself
+removes a pending frontier.
+
+* Typed terminal closure
+
+** Closure and global optimality
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SIL-TERMINAL
+:END:
+
+A well-formed state with zero remaining work has an empty pending list. A
+closed state whose coverage invariant still holds has a selected candidate no
+worse than every candidate in the bound universe.
+
+For a valid trace whose final work is zero, Lean combines strict work
+decrease, positivity, invariant preservation, and coverage conservation to
+prove both:
+
+- the final state is closed; and
+- the final selected candidate is globally optimal for the bound candidate
+  universe.
+
+The theorem does not claim global optimality for candidates outside that
+universe, for a stale snapshot, or for a provider that cannot emit the required
+lower-bound and refinement receipts.
+
+Using the complete initial work budget is a sufficient diagnostic corollary,
+not the operational definition of completion. A single inspect may consume
+more than one credit, so a successfully closed trace may be strictly shorter
+than its initial work bound.
+
+* Embedded mathematical model
+
+The following named Org-Babel Typst block is the mathematical documentation
+owner. Its execution contract is implicit: Orgize identifies the =typst=
+language, formats the block through the configured Typst formatter, and lints
+it by sending the block body to =typst eval --in -= over standard input. It
+does not require compilation, a standalone =.typ= source, or a =:file= header
+argument.
+
+#+name: searchroute-repeated-inspect-loop-model
+#+begin_src typst
+#set document(
+  title: "SearchRoute Repeated Inspect Loop",
+  author: "Agent Semantic Protocols",
+)
+#set page(margin: 22mm)
+#set text(font: "New Computer Modern", size: 10.5pt)
+#set heading(numbering: "1.")
+#let Cover = math.op("Cover")
+
+= State and measure
+
+Let $C$ be a finite, snapshot-bound candidate universe. A loop state is
+$S = (s, P)$, where $s in C$ is the selected complete candidate and $P$ is an
+ordered list of certified pending frontiers. Each $F in P$ has a positive
+credit $c(F) in NN_(> 0)$.
+
+$ W(S) = sum_(F in P) c(F) $
+
+The candidate order $prec.eq$ is lexicographic in validated graph hops,
+uncached tokens, model/tool rounds, and loop transitions.
+
+= Valid decisions
+
+For $P = [F] + P_r$, a prune is valid when $s prec.eq L(F)$, where $L(F)$ is
+the certified lower bound. Its successor is $(s, P_r)$.
+
+An inspect returns $(s', K)$ and is valid only when
+
+$ s' prec.eq s, quad sum_(G in K) c(G) < c(F). $
+
+It must also carry refinement coverage:
+
+$ forall x in F, quad s' prec.eq x quad or quad exists G in K: x in G. $
+
+The successor is $(s', K + P_r)$.
+
+= Progress theorem
+
+For either valid decision,
+
+$ W(S') < W(S). $
+
+Therefore a valid trace $S_0 arrow.r.long S_n$ of $n$ decisions satisfies
+
+$ W(S_n) + n <= W(S_0), quad n <= W(S_0). $
+
+This is a bound on inspect-loop decisions. Graph hops, uncached tokens, rounds,
+semantic-search cache misses, and model prefix-cache misses remain independent
+cost coordinates.
+
+= Coverage conservation
+
+Define the loop invariant
+
+$ Cover(C, S) := forall x in C:
+  (s prec.eq x) or (exists F in P: x in F). $
+
+Safe lower-bound pruning preserves $Cover$. Inspect preserves $Cover$ only
+because its refinement receipt maps every candidate removed with $F$ either to
+the improved selection $s'$ or to a child frontier in $K$.
+
+= Terminal theorem
+
+If credits are positive and $W(S_n) = 0$, then $P_n = emptyset$. If
+$Cover(C, S_n)$ also holds, then
+
+$ forall x in C, quad s_n prec.eq x. $
+
+Thus closure plus conserved coverage proves global optimality over the bound
+snapshot, not over an unstated open world.
+
+= Counterexample to non-strict credit
+
+If inspect were allowed to satisfy only
+
+$ sum_(G in K) c(G) <= c(F), $
+
+choose $K = [F]$, $c(F) = 1$, and $s' = s$. Then $S' = S$ and
+$W(S') = W(S)$. The loop can repeat forever. Strict decrease is therefore a
+protocol obligation, not an implementation optimization.
+#+end_src
+
+* Lean and AXLE ownership
+
+The executable model is
+=packages/proofs/ASPProof/SearchRouteInspectLoop.lean=. Its audit entry is
+=packages/proofs/audit/SearchRouteInspectLoopAudit.lean=.
+
+The Lean JSON audit binds theorem names and types to the five RFC clause IDs in
+this document. AXLE independently consumes that JSON, rejects unexpected
+axioms, missing theorem families, or missing clause IDs, and emits the compact
+=asp.axle-lean-audit-receipt.v1= receipt.
+
+The audit is intentionally fail-closed. A prose claim, successful Typst
+compile, or successful Lean build does not substitute for the theorem-family
+and RFC-clause checks.
+
+* Agent-facing implication
+
+The default interaction is a progressive =inspect= loop, not a complex public
+search command grammar:
+
+#+begin_example
+inspect state
+  -> prune(head, lower-bound receipt)
+  -> or inspect(head, bounded evidence, refinement receipt)
+  -> update selected
+  -> reschedule children
+  -> typed closed result
+#+end_example
+
+The loop optimizes for the shortest validated route to sufficient evidence:
+fewer graph hops, fewer uncached tokens, fewer model/tool rounds, and fewer
+loop transitions. It does not hide these axes behind one cache or one scalar
+score.

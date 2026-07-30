@@ -1,0 +1,110 @@
+#+title: SearchRoute Evidence Graph Router executability proof receipt
+
+* Scope
+
+This receipt binds RFC 10.05.28 to:
+
+=packages/proofs/ASPProof/SearchRouteEvidenceGraphRouter.lean=
+
+=packages/proofs/ASPProof/Audit/Core.lean=
+
+=packages/proofs/ASPProof/Audit/Receipt.lean=
+
+=packages/proofs/ASPProof/Audit/SearchRouteEvidenceGraphRouter.lean=
+
+=packages/proofs/audit/SearchRouteEvidenceGraphRouterAudit.lean=
+
+=searchroute-evidence-graph-router-audit-v1.json=
+
+=searchroute-evidence-graph-router-axle-audit-v1.json=
+
+* Lean build
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake build
+#+end_src
+
+Result:
+
+#+begin_example
+Build completed successfully (25 jobs).
+#+end_example
+
+* Lean JSON audit
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake env lean \
+  audit/SearchRouteEvidenceGraphRouterAudit.lean
+#+end_src
+
+Result:
+
+#+begin_example
+wrote receipts/searchroute-evidence-graph-router-audit-v1.json
+#+end_example
+
+* AXLE verification
+
+#+begin_src sh
+uv run --project packages/python/tools --frozen \
+  python -m tools.axle_lean_audit \
+  packages/proofs/receipts/searchroute-evidence-graph-router-audit-v1.json \
+  --allow-axiom Classical.choice \
+  --allow-axiom Quot.sound \
+  --allow-axiom propext \
+  --require-family runtime-readiness \
+  --require-family receipt-binding \
+  --require-family recovery-exclusion \
+  --require-family projection-compatibility \
+  --require-family static-feasibility-counterexample \
+  --require-family catalog-optimality \
+  --require-family universe-optimality \
+  --require-rfc-clause ASP-RFC-10.05-EGR-SNAPSHOT \
+  --require-rfc-clause ASP-RFC-10.05-EGR-CAPABILITY \
+  --require-rfc-clause ASP-RFC-10.05-EGR-CERTIFIED \
+  --require-rfc-clause ASP-RFC-10.05-EGR-RECOVERY \
+  --require-rfc-clause ASP-RFC-10.05-EGR-PROJECTION \
+  --require-rfc-clause ASP-RFC-10.05-EGR-STATIC-GAP \
+  --require-rfc-clause ASP-RFC-10.05-EGR-CATALOG \
+  --require-rfc-clause ASP-RFC-10.05-EGR-GLOBAL
+#+end_src
+
+Result:
+
+#+begin_example
+{"auditSha256":"cbdb637aed9672ec8699b174c039c867953f562b15e94706cfe509e0917cc511","axiomDependentDeclarationCount":3,"axiomFreeDeclarationCount":4,"axiomInventory":["propext"],"declarationCount":7,"schemaId":"asp.axle-lean-audit-receipt.v1","schemaVersion":"1"}
+#+end_example
+
+* Org-Babel Typst ownership
+
+RFC 10.05.28 owns one named Typst block:
+
+=evidence-graph-router-executability-certificate-model=
+
+The executor obtains the block through =orgize eval plan --json NAME PATH=
+and sends =.body= to:
+
+#+begin_src sh
+typst eval --in - '"ok"'
+#+end_src
+
+No =:file= header, standalone =.typ= file, compile step, or PDF is part of
+this receipt.
+
+* Lean-discovered protocol corrections
+
+- Static graph feasibility does not imply runtime readiness.
+- Receipt binding does not repair an unresolved or projection-incompatible
+  provider route.
+- Recoverable capability state cannot participate in route selection.
+- Catalog optimality is conditional on certified feasibility.
+- Universe optimality additionally requires completeness over executable
+  candidates, not merely semantic paths.
+
+* Remaining boundary
+
+Python Graph Turbo does not yet implement the new shared certificate.  The next
+proof layer must cover capability expiry, bounded retry termination,
+warm-index identity, and canonical route-digest binding.

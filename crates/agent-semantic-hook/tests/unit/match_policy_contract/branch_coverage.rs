@@ -437,7 +437,7 @@ fn command_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> String {
             let contains = if matcher.ends_with("commandContainsAny") {
                 alt
             } else {
-                ".read_text("
+                ".read("
             };
             format!("{prefix} -c 'from pathlib import Path; print(Path(\"src/app.ts\"){contains})'")
         }

@@ -104,7 +104,7 @@ pub(super) fn provider(
         provider_command_prefix: Vec::new(),
         execution_command_digest: "test-execution-command-digest".to_string(),
         namespace: manifest.namespace().to_string(),
-        package_roots: vec![".".to_string()],
+        package_roots: vec!["src".to_string()],
         source_extensions: layout
             .source_extensions
             .iter()
@@ -115,8 +115,16 @@ pub(super) fn provider(
             .iter()
             .map(|config| (*config).to_string())
             .collect(),
+        source_paths: layout
+            .source_extensions
+            .first()
+            .map(|extension| vec![format!("src/test{extension}")])
+            .unwrap_or_default(),
+        repository_candidate_generation: "test-candidate-generation".to_string(),
+        project_resolution_generation: "test-project-resolution-generation".to_string(),
         search_capabilities: manifest.search_capabilities().clone(),
         project_resolution: manifest.project_resolution().cloned(),
+        document_resolution: manifest.document_resolution().cloned(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
         query_pack_descriptor: manifest.query_pack_descriptor().clone(),
         semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
@@ -143,7 +151,6 @@ pub(super) fn provider_routes(binary: &str, query: Option<CommandTemplate>) -> H
             StdinMode::PipeCandidates,
         ),
         check_changed: command(&[binary, "check", "--changed", "."]),
-        workspace_scope: None,
         dependency_topology: None,
         dependency_topology_metadata: None,
         export_index: None,

@@ -11,8 +11,11 @@ fn merkle_import(
     project_root: &Path,
     generation_id: &str,
     files: &[(&str, &str, &str)],
-) -> ClientDbSourceIndexImport {
-    build_source_index_import(ClientDbSourceIndexImportRequest {
+) -> (
+    ClientDbSourceIndexImport,
+    agent_semantic_client_db::ClientDbSourceIndexSourceBlobs,
+) {
+    let import = build_source_index_import(ClientDbSourceIndexImportRequest {
         generation_id: CacheGenerationId::from(generation_id),
         project_root: project_root.to_path_buf(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
@@ -38,11 +41,20 @@ fn merkle_import(
             })
             .collect(),
     })
-    .expect("build Merkle source-index import")
+    .expect("build Merkle source-index import");
+    let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+        files.iter().map(|(path, _, symbol)| {
+            (
+                agent_semantic_client_db::ClientDbSourceIndexPath::new(*path),
+                format!("pub fn {symbol}() {{}}\n").into_bytes(),
+            )
+        }),
+    );
+    (import, source_blobs)
 }
 
 #[test]
-fn merkle_overlay_reuses_active_generation_and_applies_only_changed_membership() {
+fn merkle_overlay_publishes_an_immutable_generation_for_changed_membership() {
     let project_root = temp_root("db-engine-merkle-overlay-project");
     let fixture = agent_semantic_client_db::fixture::SourceIndexFixture::default();
     let base_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([
@@ -53,7 +65,7 @@ fn merkle_overlay_reuses_active_generation_and_applies_only_changed_membership()
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         "d".repeat(64),
     );
-    let base_import = merkle_import(
+    let (base_import, base_source_blobs) = merkle_import(
         &project_root,
         "merkle-generation-base",
         &[
@@ -62,11 +74,14 @@ fn merkle_overlay_reuses_active_generation_and_applies_only_changed_membership()
         ],
     );
     let base_report = fixture
-        .commit_source_index_generation(ClientDbSourceIndexRefreshRequest {
-            import: base_import,
-            file_count: 2,
-            source_snapshot: base_evidence,
-        })
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: base_import,
+                file_count: 2,
+                source_snapshot: base_evidence,
+            },
+            &base_source_blobs,
+        )
         .expect("publish Merkle base snapshot");
     assert_eq!(base_report.changed_owner_count, 2);
 
@@ -76,21 +91,24 @@ fn merkle_overlay_reuses_active_generation_and_applies_only_changed_membership()
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         "d".repeat(64),
     );
-    let overlay_import = merkle_import(
+    let (overlay_import, overlay_source_blobs) = merkle_import(
         &project_root,
         "merkle-generation-next",
         &[("src/a.rs", &"c".repeat(64), "merkle_a_changed")],
     );
     let overlay_report = fixture
-        .commit_source_index_generation(ClientDbSourceIndexRefreshRequest {
-            import: overlay_import.clone(),
-            file_count: 1,
-            source_snapshot: overlay_evidence,
-        })
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: overlay_import.clone(),
+                file_count: 1,
+                source_snapshot: overlay_evidence,
+            },
+            &overlay_source_blobs,
+        )
         .expect("apply Merkle owner delta");
     assert_eq!(
         overlay_report.generation_id.as_str(),
-        "merkle-generation-base"
+        "merkle-generation-next"
     );
     assert_eq!(overlay_report.changed_owner_count, 1);
     assert_eq!(overlay_report.removed_owner_count, 1);
@@ -106,11 +124,14 @@ fn merkle_overlay_reuses_active_generation_and_applies_only_changed_membership()
         )
         .expect("construct mismatched overlay evidence");
     let receipt = fixture
-        .commit_source_index_generation(ClientDbSourceIndexRefreshRequest {
-            import: overlay_import,
-            file_count: 1,
-            source_snapshot: invalid_evidence,
-        })
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: overlay_import,
+                file_count: 1,
+                source_snapshot: invalid_evidence,
+            },
+            &overlay_source_blobs,
+        )
         .expect("resident writer must derive membership instead of trusting client overlay");
     let forged_base_root = "f".repeat(64);
     assert_ne!(
@@ -129,39 +150,46 @@ fn merkle_overlay_models_rename_as_one_added_and_one_removed_leaf() {
         "src/old.rs",
         "a".repeat(64),
     )]);
-    let base_import = merkle_import(
+    let (base_import, base_source_blobs) = merkle_import(
         &project_root,
         "merkle-rename-base",
         &[("src/old.rs", &"a".repeat(64), "old_symbol")],
     );
     fixture
-        .commit_source_index_generation(ClientDbSourceIndexRefreshRequest {
-            import: base_import,
-            file_count: 1,
-            source_snapshot: base_snapshot.evidence(
-                agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-                "d".repeat(64),
-            ),
-        })
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: base_import,
+                file_count: 1,
+                source_snapshot: base_snapshot.evidence(
+                    agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+                    "d".repeat(64),
+                ),
+            },
+            &base_source_blobs,
+        )
         .expect("publish rename base snapshot");
 
     let renamed_snapshot =
         base_snapshot.with_overlay_delta([("src/new.rs", "b".repeat(64))], ["src/old.rs"]);
+    let (renamed_import, renamed_source_blobs) = merkle_import(
+        &project_root,
+        "merkle-rename-next",
+        &[("src/new.rs", &"b".repeat(64), "new_symbol")],
+    );
     let report = fixture
-        .commit_source_index_generation(ClientDbSourceIndexRefreshRequest {
-            import: merkle_import(
-                &project_root,
-                "merkle-rename-next",
-                &[("src/new.rs", &"b".repeat(64), "new_symbol")],
-            ),
-            file_count: 1,
-            source_snapshot: renamed_snapshot.evidence(
-                agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-                "d".repeat(64),
-            ),
-        })
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: renamed_import,
+                file_count: 1,
+                source_snapshot: renamed_snapshot.evidence(
+                    agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+                    "d".repeat(64),
+                ),
+            },
+            &renamed_source_blobs,
+        )
         .expect("apply Merkle rename delta");
-    assert_eq!(report.generation_id.as_str(), "merkle-rename-base");
+    assert_eq!(report.generation_id.as_str(), "merkle-rename-next");
     assert_eq!(report.changed_owner_count, 1);
     assert_eq!(report.removed_owner_count, 1);
     assert_eq!(report.owner_count, 1);

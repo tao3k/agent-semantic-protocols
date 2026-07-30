@@ -115,7 +115,7 @@ pub use protocol_activation::digest::provider_manifest_digest;
 pub(crate) use protocol_activation::protocol_activation_manifest::SourceSelectorKind;
 pub use protocol_activation::protocol_activation_manifest::{
     ActivatedProvider, ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy,
-    HookActivation, HookRuntime, ManifestSourceDefaults, ProviderExecution, ProviderManifest,
+    HookActivation, HookRuntime, ProviderExecution, ProviderManifest,
     ProviderProjectResolutionDescriptor, ProviderQueryPackDescriptor, ProviderQueryPackTermRole,
     ProviderSearchCapabilities, ProviderSemanticFactsDescriptor, ProviderSemanticFactsIntentAxis,
 };

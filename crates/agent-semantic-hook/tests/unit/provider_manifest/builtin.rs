@@ -12,16 +12,13 @@ fn builtin_manifests_include_julia_juliac_provider() {
 
     assert_eq!(julia.provider_id().as_str(), "julia-lang-project-harness");
     assert_eq!(julia.binary(), "asp-julia-harness");
+    let julia_project_resolution = julia
+        .project_resolution()
+        .expect("Julia project resolution");
+    assert_eq!(julia_project_resolution.parser_id, "julia.pkg-project-toml");
     assert!(
-        julia
-            .source()
-            .default_extensions
-            .contains(&".jl".to_string())
-    );
-    assert!(
-        julia
-            .source()
-            .default_config_files
+        julia_project_resolution
+            .entry_markers
             .contains(&"Project.toml".to_string())
     );
     assert_eq!(
@@ -54,12 +51,6 @@ fn builtin_manifests_include_julia_juliac_provider() {
             "--view",
             "seeds"
         ]
-    );
-    assert!(
-        julia
-            .source()
-            .default_project_markers
-            .contains(&"Project.toml".to_string())
     );
 }
 
@@ -205,8 +196,9 @@ fn builtin_manifests_include_document_language_providers() {
     assert_eq!(org.execution().as_str(), "external-process");
     assert!(org.search_capabilities().owner_items);
     assert!(
-        org.source()
-            .default_extensions
+        org.document_resolution()
+            .expect("Org document resolution")
+            .extensions
             .contains(&".org".to_string())
     );
     assert_eq!(
@@ -258,7 +250,12 @@ fn builtin_manifests_include_document_language_providers() {
     assert_eq!(md.binary(), "orgize");
     assert_eq!(md.execution().as_str(), "external-process");
     assert!(md.search_capabilities().owner_items);
-    assert!(md.source().default_extensions.contains(&".md".to_string()));
+    assert!(
+        md.document_resolution()
+            .expect("Markdown document resolution")
+            .extensions
+            .contains(&".md".to_string())
+    );
     assert_eq!(
         md_routes.query.as_ref().expect("md query route").argv,
         [

@@ -9,8 +9,18 @@ fn root_owned_rust_activation_tracks_rust_harness_default_scope() {
     let provider = &runtime.providers[0];
 
     assert_eq!(provider.package_roots, ["."]);
-    assert!(provider.source_extensions.iter().any(|value| value == ".rs"));
-    assert!(provider.config_files.iter().any(|value| value == "Cargo.toml"));
+    assert!(
+        provider
+            .source_extensions
+            .iter()
+            .any(|value| value == ".rs")
+    );
+    assert!(
+        provider
+            .config_files
+            .iter()
+            .any(|value| value == "Cargo.toml")
+    );
 }
 
 #[test]

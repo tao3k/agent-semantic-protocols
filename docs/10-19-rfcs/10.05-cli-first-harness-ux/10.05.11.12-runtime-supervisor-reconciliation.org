@@ -1,0 +1,54 @@
+#+title: Runtime Supervisor Reconciliation
+#+startup: overview
+
+* Status
+
+Active v1 architecture contract.
+
+* Ownership
+
+The Global Runtime Server is one Tokio daemon supervised by the operating
+system.  The daemon owns all workspace-keyed resident sessions.  A project
+install must not create a second project daemon.
+
+The canonical executable is the content-addressed artifact selected by
+=ASP_STATE_HOME/runtime/bin/asp=.  The endpoint receipt records the executable
+path and SHA-256 used by the running daemon.
+
+* Reconciliation decision
+
+Supervisor reconciliation has exactly two outcomes:
+
+1. =Noop=: the resident endpoint is healthy, its executable identity is
+   current, and the rendered supervisor definition is byte-identical.
+2. =Reconcile=: the endpoint is absent or unhealthy, the executable identity
+   drifted, or the supervisor definition changed.
+
+=Noop= performs no service-definition write and invokes no =launchctl= or
+=systemctl= command.  =Reconcile= atomically publishes a changed definition and
+then asks the platform supervisor to replace the daemon.  Callers never kill a
+PID directly.
+
+Health admission and reconciliation always receive an explicit state-home
+path.  They must not accidentally inspect a different Global runtime through a
+process-wide environment lookup.
+
+* Tokio lifecycle
+
+Endpoint reads, executable identity checks, definition comparison, atomic
+publication, and platform-command execution are asynchronous Tokio operations.
+The Runtime Server drains through its typed control protocol before the
+platform supervisor starts the latest canonical artifact.
+
+* Gates
+
+The v1 gate set must prove:
+
+- healthy plus unchanged definition chooses =Noop=
+- changed definition chooses =Reconcile=
+- unhealthy or missing endpoint chooses =Reconcile=
+- warm =Noop= performs zero definition writes and zero platform subprocesses
+- an executable digest change produces one drain/restart transition
+- the replacement daemon publishes a healthy receipt with the latest digest
+- concurrent callers converge on one Global daemon and one owner epoch
+

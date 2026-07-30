@@ -218,7 +218,7 @@ fn reusable_activation(
         return Ok(None);
     }
     if activation_matches_provider_command_selections(&activation, current_selections)
-        && activation_matches_current_manifest_coverage(&activation)
+        && activation_matches_current_candidate_generation(&activation, project_root)?
     {
         Ok(Some(activation))
     } else {
@@ -262,18 +262,29 @@ fn activation_matches_provider_command_selections(
         })
 }
 
-fn activation_matches_current_manifest_coverage(activation: &HookActivation) -> bool {
-    let manifests = provider_manifests();
-    activation.providers.iter().all(|provider| {
-        manifests
-            .iter()
-            .find(|manifest| manifest.manifest_id == provider.manifest_id)
-            .is_some_and(|manifest| {
-                provider.coverage.source_extensions == manifest.source.default_extensions
-                    && provider.coverage.config_files == manifest.source.default_config_files
-                    && provider.coverage.source_extensions == manifest.source.default_extensions
-            })
-    })
+fn activation_matches_current_candidate_generation(
+    activation: &HookActivation,
+    project_root: &Path,
+) -> Result<bool, String> {
+    let snapshot =
+        agent_semantic_runtime::git::discover_repository_candidate_snapshot(project_root)
+            .map_err(|error| format!("discover current repository candidates: {error}"))?
+            .ok_or_else(|| {
+                format!(
+                    "provider activation requires a Git candidate snapshot: workspace={}",
+                    project_root.display()
+                )
+            })?;
+    let generation = serde_json::to_value(snapshot)
+        .map_err(|error| format!("encode current repository candidate snapshot: {error}"))?
+        .get("candidateGeneration")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "repository candidate snapshot omitted candidateGeneration".to_string())?
+        .to_string();
+    Ok(activation
+        .providers
+        .iter()
+        .all(|provider| provider.coverage.repository_candidate_generation == generation))
 }
 
 fn sync_activation(project_root: &Path, activation_path: &Path) -> Result<HookRuntime, String> {

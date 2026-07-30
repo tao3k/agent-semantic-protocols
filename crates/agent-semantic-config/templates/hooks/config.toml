@@ -215,7 +215,7 @@ authority = "parser-owned-exact-evidence"
 
 [[rules]]
 id = "deny-agent-search-json"
-priority = 1100
+priority = 110000
 decision = "deny"
 reasonKind = "agent-search-json"
 decisionMaterializer = "agent-search-json"
@@ -233,7 +233,7 @@ message = "Apply-patch policy is derived by the configured hook materializer."
 
 [[rules]]
 id = "materialize-registered-source-read-action"
-priority = 950
+priority = 40000
 decision = "deny"
 decisionMaterializer = "source-access"
 message = "Registered source read actions are derived from action and provider-owned source patterns."
@@ -246,7 +246,7 @@ authorityAny = ["raw-host-action"]
 
 [[rules]]
 id = "materialize-source-access-policy"
-priority = 900
+priority = 30000
 decision = "deny"
 decisionMaterializer = "source-access"
 message = "Source-access policy is derived by the configured hook materializer."
@@ -296,6 +296,7 @@ binary = "yq"
 documentFormat = "toml"
 filterGrammar = "bounded-path-v1"
 optionalSubcommandAny = ["eval", "e"]
+optionAny = ["-p=toml"]
 
 [[rules]]
 id = "deny-unbounded-structured-projection"
@@ -424,7 +425,7 @@ message = "Inline Python source materialization is permanently denied. Consume p
 
 [rules.match]
 argvPrefixAny = [["python"], ["python3"], ["uv", "run", "python"], ["uv", "run", "python3"], ["bash"], ["sh"], ["zsh"]]
-commandContainsAny = [".read_text(", ".read_bytes(", "open(", ".read("]
+commandContainsAny = ["open(", ".read("]
 argvRegisteredSourceFile = true
 
 [[rules]]
@@ -436,7 +437,7 @@ message = "Inline JavaScript source materialization is permanently denied. Consu
 
 [rules.match]
 argvPrefixAny = [["node"], ["bun"], ["deno"], ["bash"], ["sh"], ["zsh"]]
-commandContainsAny = ["readFileSync(", ".readFile(", "readFile("]
+commandContainsAny = ["readFileSync(", ".readFile(", "readFile(", ".text()"]
 argvRegisteredSourceFile = true
 
 [[rules]]

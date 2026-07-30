@@ -1,0 +1,43 @@
+#+title: Canonical Root and Live Overlay
+#+startup: overview
+
+* Status
+
+Implemented in the worktree. Full cross-provider and installed performance
+evidence remain required.
+
+* Invariant
+
+The active workspace snapshot has one canonical persisted base and one
+accumulated live overlay:
+
+#+begin_example
+rootDepth = [1, 0]
+currentRoot = merkle(canonical leaves - tombstones + overlay leaves)
+#+end_example
+
+Repeated edits must not turn the previous overlay root into a new base. For
+each dirty path the snapshot records the digest that existed when that path was
+first touched. Later upserts, deletes, untracked-file creation, and reverts are
+folded against that same canonical base.
+
+The dirty-path digest is recomputed deterministically from the complete current
+overlay set. Applying independent updates sequentially therefore produces the
+same snapshot and evidence as applying them together.
+
+* Required behavior
+
+1. Sequential live edits preserve the original canonical base root.
+2. An untracked file added and then removed leaves no overlay evidence.
+3. A modified file reverted to its canonical digest leaves no overlay evidence.
+4. A base file deleted in the overlay remains an explicit tombstone.
+5. The writer publishes the next immutable MemoryBackend and mmap segment only
+   after workspace, source-snapshot, and generation roots agree.
+6. Readers holding the previous epoch remain valid throughout publication.
+
+* Persistence
+
+The v1 workspace snapshot schema includes the per-dirty-path canonical base
+digest map. It is required state, not an optional compatibility field. An old
+mmap generation that lacks it is classified as =RecoveryRequired= and rebuilt
+from the active Turso generation through the resident writer lane.

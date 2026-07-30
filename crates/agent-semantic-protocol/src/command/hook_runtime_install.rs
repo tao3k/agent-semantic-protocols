@@ -88,7 +88,15 @@ fn parse_codex_plugin_install_args(args: &[String]) -> Result<CodexPluginInstall
 
 pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Result<(), String> {
     let request = parse_codex_plugin_install_args(args)?;
-    let install_global_resident = matches!(&request.scope, CodexPluginScope::Global);
+    if matches!(&request.scope, CodexPluginScope::Global) {
+        return run_install_for_client(
+            "codex",
+            request.project_root,
+            CodexPluginScope::Global,
+            request.subagent_model,
+            "plugin-install",
+        );
+    }
     let runtime_state = project_runtime_state(&request.project_root)?;
     crate::command::protocol_binary::require_configured_protocol_bin_dir_on_path()?;
     let asp_binary_path = std::env::current_exe()
@@ -104,11 +112,6 @@ pub(in crate::command) fn run_codex_plugin_install_args(args: &[String]) -> Resu
         &request.subagent_model,
         &asp_binary_path,
     )?;
-    if install_global_resident {
-    crate::command::runtime_server_supervisor::install_runtime_server_supervisor(
-            &runtime_state.protocol_home,
-        )?;
-    }
     println!(
         "[plugin-install] client=codex sourceRoot={} config={}{} userConfig={} userConfigStatus={} mode=ensured",
         display_path(&request.project_root, &request.project_root),
@@ -138,20 +141,6 @@ fn run_install_for_client(
     let binary_install_plan =
         ProtocolBinaryInstallPlan::capture(runtime_state.protocol_home.join("runtime/artifacts"))?;
     timings.mark("runtime-state");
-    let client_db_migration =
-        agent_semantic_client_db::ClientDbEngine::migrate_active_project_client_dir_to_turso_0_7(
-            &runtime_state.client_cache_dir,
-        )?;
-    let client_db_migration_status = match client_db_migration {
-        agent_semantic_client_db::engine::ClientDbTurso07ActiveMigration::Absent { .. } => "absent",
-        agent_semantic_client_db::engine::ClientDbTurso07ActiveMigration::AlreadyCurrent {
-            ..
-        } => "current",
-        agent_semantic_client_db::engine::ClientDbTurso07ActiveMigration::Migrated { .. } => {
-            "migrated"
-        }
-    };
-    timings.mark("client-db-migration");
     let org_state_sync =
         crate::command::org_capture::require_materialized_org_state(&project_root)?;
     timings.mark("org-state");
@@ -258,6 +247,12 @@ fn run_install_for_client(
         &provider_artifacts,
     )?;
     timings.mark("active-artifact-receipt");
+    if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Global) {
+        crate::command::runtime_server_supervisor::install_runtime_server_supervisor(
+            &runtime_state.protocol_home,
+        )?;
+        timings.mark("runtime-server");
+    }
     let project_skill_receipt = installed_skill
         .as_ref()
         .and_then(|installed_skill| installed_skill.skill_path.as_ref())
@@ -285,7 +280,7 @@ fn run_install_for_client(
         user_config_status.as_str()
     );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} clientDbMigration={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
@@ -298,7 +293,6 @@ fn run_install_for_client(
         display_path(&project_root, &runtime_state.protocol_home.join("org")),
         org_state_sync.status,
         org_state_sync.source_index_status,
-        client_db_migration_status,
         display_path(&project_root, &config_path),
         extra_config_receipt,
         project_skill_receipt,

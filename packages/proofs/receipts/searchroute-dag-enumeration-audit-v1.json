@@ -1,0 +1,212 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteDAGEnumeration.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteDAGEnumeration",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {graph : SearchRouteDAG.RankedDAG} {source target : Fin graph.nodeCount} {hops fuel : Nat},\n  SearchRouteDAG.Walk graph source target hops →\n    hops ≤ fuel → (target, hops) ∈ SearchRouteDAGEnumeration.enumerateWalkEndpoints graph source fuel",
+   "theoremFamily": "walk-enumeration-completeness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-WALK-COMPLETENESS",
+    "ASP-RFC-10.05-SRE-WALK-ENUMERATOR",
+    "ASP-RFC-10.05-SRE-WALK-SOUNDNESS"],
+   "name": "SearchRouteDAGEnumeration.enumerateWalkEndpoints_complete",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {graph : SearchRouteDAG.RankedDAG} {source target : Fin graph.nodeCount} {hops fuel : Nat},\n  (target, hops) ∈ SearchRouteDAGEnumeration.enumerateWalkEndpoints graph source fuel →\n    SearchRouteDAG.Walk graph source target hops ∧ hops ≤ fuel",
+   "theoremFamily": "walk-enumeration-soundness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-WALK-COMPLETENESS",
+    "ASP-RFC-10.05-SRE-WALK-ENUMERATOR",
+    "ASP-RFC-10.05-SRE-WALK-SOUNDNESS"],
+   "name": "SearchRouteDAGEnumeration.enumerateWalkEndpoints_sound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {graph : SearchRouteDAG.RankedDAG} {source target : Fin graph.nodeCount} {hops : Nat},\n  SearchRouteDAG.Walk graph source target hops →\n    (target, hops) ∈ SearchRouteDAGEnumeration.enumerateWalkEndpoints graph source (graph.maxRank - graph.rank source)",
+   "theoremFamily": "ranked-dag-fuel",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-WALK-COMPLETENESS",
+    "ASP-RFC-10.05-SRE-WALK-ENUMERATOR",
+    "ASP-RFC-10.05-SRE-WALK-SOUNDNESS"],
+   "name": "SearchRouteDAGEnumeration.rankedDagFuel_is_complete",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {graph : SearchRouteDAG.RankedDAG} {source target : Fin graph.nodeCount}\n  {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteDAG.GraphRouteBudget}\n  {routeCatalog : List SearchRouteCost.SearchRoute},\n  SearchRouteDAGEnumeration.RouteCatalogComplete requirement budget routeCatalog →\n    SearchRouteDAG.CandidateComplete graph source target requirement budget\n      (SearchRouteDAGEnumeration.enumerateGraphCandidates graph source target (graph.maxRank - graph.rank source)\n        routeCatalog)",
+   "theoremFamily": "two-stage-completeness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS"],
+   "name":
+   "SearchRouteDAGEnumeration.complete_walks_and_route_catalog_generate_complete_candidates",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {stepCatalog steps : List SearchRouteCost.RouteStep} {fuel : Nat},\n  steps.length ≤ fuel →\n    (∀ (step : SearchRouteCost.RouteStep), step ∈ steps → step ∈ stepCatalog) →\n      steps ∈ SearchRouteDAGEnumeration.enumerateStepLists stepCatalog fuel",
+   "theoremFamily": "route-enumeration-completeness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS"],
+   "name": "SearchRouteDAGEnumeration.enumerateStepLists_complete",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteCost.RouteBudget}\n  {route : SearchRouteCost.SearchRoute},\n  SearchRouteCost.feasibleB requirement budget route = true →\n    route ∈ SearchRouteDAGEnumeration.requirementRouteVariants requirement route.steps",
+   "theoremFamily": "metadata-enumeration-completeness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS"],
+   "name": "SearchRouteDAGEnumeration.feasible_route_mem_requirement_variants",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteDAG.GraphRouteBudget}\n  {stepCatalog : List SearchRouteCost.RouteStep},\n  SearchRouteDAGEnumeration.StepCatalogComplete requirement budget.routeBudget stepCatalog →\n    SearchRouteDAGEnumeration.RouteCatalogComplete requirement budget\n      (SearchRouteDAGEnumeration.enumerateFeasibleRoutes requirement budget stepCatalog)",
+   "theoremFamily": "route-catalog-construction",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS"],
+   "name":
+   "SearchRouteDAGEnumeration.bounded_feasible_route_catalog_is_complete",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {graph : SearchRouteDAG.RankedDAG} {source target : Fin graph.nodeCount}\n  {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteDAG.GraphRouteBudget}\n  {stepCatalog : List SearchRouteCost.RouteStep},\n  SearchRouteDAGEnumeration.StepCatalogComplete requirement budget.routeBudget stepCatalog →\n    SearchRouteDAG.CandidateComplete graph source target requirement budget\n      (SearchRouteDAGEnumeration.enumerateGraphCandidates graph source target (graph.maxRank - graph.rank source)\n        (SearchRouteDAGEnumeration.enumerateFeasibleRoutes requirement budget stepCatalog))",
+   "theoremFamily": "constructive-candidate-completeness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS"],
+   "name":
+   "SearchRouteDAGEnumeration.finite_step_catalog_generates_complete_candidates",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {α : Type} (measure : α → Nat) {item : α} {items : List α},\n  item ∈ items → measure item ≤ List.foldl (fun total current => total + measure current) 0 items",
+   "theoremFamily": "per-step-budget-bound",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-STEP-INSTANCE-CATALOG",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS"],
+   "name": "SearchRouteDAGEnumeration.member_measure_le_foldl",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteCost.RouteBudget}\n  {route : SearchRouteCost.SearchRoute} {step : SearchRouteCost.RouteStep},\n  SearchRouteCost.feasibleB requirement budget route = true →\n    step ∈ route.steps → step ∈ SearchRouteDAGEnumeration.enumerateRouteSteps budget",
+   "theoremFamily": "step-instance-coverage",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-STEP-INSTANCE-CATALOG",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS"],
+   "name": "SearchRouteDAGEnumeration.feasible_step_mem_enumerateRouteSteps",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (requirement : SearchRouteCost.RouteRequirement) (budget : SearchRouteCost.RouteBudget),\n  SearchRouteDAGEnumeration.StepCatalogComplete requirement budget\n    (SearchRouteDAGEnumeration.enumerateRouteSteps budget)",
+   "theoremFamily": "step-catalog-construction",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-STEP-INSTANCE-CATALOG",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS"],
+   "name": "SearchRouteDAGEnumeration.budget_step_catalog_is_complete",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ {graph : SearchRouteDAG.RankedDAG} {source target : Fin graph.nodeCount}\n  {requirement : SearchRouteCost.RouteRequirement} {budget : SearchRouteDAG.GraphRouteBudget},\n  SearchRouteDAG.CandidateComplete graph source target requirement budget\n    (SearchRouteDAGEnumeration.enumerateGraphCandidates graph source target (graph.maxRank - graph.rank source)\n      (SearchRouteDAGEnumeration.enumerateFeasibleRoutes requirement budget\n        (SearchRouteDAGEnumeration.enumerateRouteSteps budget.routeBudget)))",
+   "theoremFamily": "unconditional-bounded-completeness",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-STEP-INSTANCE-CATALOG",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS"],
+   "name":
+   "SearchRouteDAGEnumeration.budget_catalog_generates_complete_candidates",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (padding : Nat),\n  SearchRouteCost.evidenceTokenCost (SearchRouteDAGEnumeration.zeroPaddedRoute padding) = 5 ∧\n    SearchRouteCost.promptTokenCost (SearchRouteDAGEnumeration.zeroPaddedRoute padding) = 8 ∧\n      SearchRouteCost.rawTokenCost (SearchRouteDAGEnumeration.zeroPaddedRoute padding) = 13 ∧\n        SearchRouteCost.uncachedTokenCost (SearchRouteDAGEnumeration.zeroPaddedRoute padding) = 13 ∧\n          SearchRouteCost.roundCost (SearchRouteDAGEnumeration.zeroPaddedRoute padding) = 2",
+   "theoremFamily": "cost-receipt",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG", "ASP-RFC-10.05-SRE-TRANSITION-BOUND"],
+   "name": "SearchRouteDAGEnumeration.zero_padding_cost_receipt",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (padding : Nat), SearchRouteCost.transitionCount (SearchRouteDAGEnumeration.zeroPaddedRoute padding) = padding + 2",
+   "theoremFamily": "cost-receipt",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG", "ASP-RFC-10.05-SRE-TRANSITION-BOUND"],
+   "name": "SearchRouteDAGEnumeration.zero_padding_transition_receipt",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ (padding : Nat),\n  SearchRouteCost.feasibleB SearchRouteCost.nonGraphRequirement SearchRouteDAG.generousRouteBudget\n      (SearchRouteDAGEnumeration.zeroPaddedRoute padding) =\n    true",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG", "ASP-RFC-10.05-SRE-TRANSITION-BOUND"],
+   "name":
+   "SearchRouteDAGEnumeration.route_budget_allows_unbounded_zero_cost_transitions",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "∀ (limit : Nat),\n  ∃ route,\n    SearchRouteCost.feasibleB SearchRouteCost.nonGraphRequirement SearchRouteDAG.generousRouteBudget route = true ∧\n      SearchRouteCost.transitionCount route > limit",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG", "ASP-RFC-10.05-SRE-TRANSITION-BOUND"],
+   "name": "SearchRouteDAGEnumeration.route_budget_has_no_transition_ceiling",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "SearchRouteDAG.graphFeasibleB SearchRouteCost.nonGraphRequirement SearchRouteDAG.generousGraphBudget\n    { route := SearchRouteDAGEnumeration.zeroPaddedRoute (SearchRouteDAG.generousGraphBudget.maxTransitions + 1),\n      graphHops := 0, pathValidated := true } =\n  false",
+   "theoremFamily": "transition-bound",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG", "ASP-RFC-10.05-SRE-TRANSITION-BOUND"],
+   "name":
+   "SearchRouteDAGEnumeration.graph_route_budget_rejects_excess_zero_padding",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "SearchRouteDAG.Realizes SearchRouteDAGEnumeration.oneNodeGraph SearchRouteDAGEnumeration.onlyNode\n    SearchRouteDAGEnumeration.onlyNode SearchRouteDAGEnumeration.omittedRouteRealization ∧\n  SearchRouteDAG.graphFeasibleB SearchRouteCost.nonGraphRequirement SearchRouteDAG.generousGraphBudget\n        SearchRouteDAGEnumeration.omittedRouteRealization =\n      true ∧\n    ¬SearchRouteDAGEnumeration.omittedRouteRealization ∈ SearchRouteDAGEnumeration.graphOnlyCandidates",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS"],
+   "name":
+   "SearchRouteDAGEnumeration.graph_walk_completeness_does_not_imply_route_completeness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "¬SearchRouteDAG.CandidateComplete SearchRouteDAGEnumeration.oneNodeGraph SearchRouteDAGEnumeration.onlyNode\n    SearchRouteDAGEnumeration.onlyNode SearchRouteCost.nonGraphRequirement SearchRouteDAG.generousGraphBudget\n    SearchRouteDAGEnumeration.graphOnlyCandidates",
+   "theoremFamily": "counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-SRE-ROUTE-CATALOG",
+    "ASP-RFC-10.05-SRE-TWO-STAGE-COMPLETENESS"],
+   "name":
+   "SearchRouteDAGEnumeration.graph_only_candidates_are_not_candidate_complete",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]}],
+ "declarationCount": 19,
+ "axiomInventory": ["Classical.choice", "Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 0,
+ "axiomDependentDeclarationCount": 19}

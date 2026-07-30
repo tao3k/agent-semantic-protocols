@@ -1,0 +1,117 @@
+#+title: SearchRoute Repeated Inspect Loop Proof Receipt v1
+#+options: toc:nil
+
+* Owners
+
+- RFC owner:
+  =docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.21-searchroute-repeated-inspect-loop.org=
+- Lean owner:
+  =packages/proofs/ASPProof/SearchRouteInspectLoop.lean=
+- Lean audit:
+  =packages/proofs/receipts/searchroute-inspect-loop-audit-v1.json=
+- AXLE receipt:
+  =packages/proofs/receipts/searchroute-inspect-loop-axle-audit-v1.json=
+
+The Lean audit validates against
+=schemas/lean-proof-audit.v1.schema.json=. The AXLE receipt validates against
+=schemas/axle-lean-audit-receipt.v1.schema.json=.
+
+* Proof boundary
+
+The model proves that every valid prune or inspect decision strictly decreases
+the sum of positive frontier credits. It separately proves that safe pruning
+and inspect refinement conserve candidate-universe coverage. A full-budget
+valid trace therefore closes and returns a selected candidate that is globally
+optimal over the bound candidate-universe snapshot.
+
+It does not claim optimality for an open world, a stale snapshot, or an inspect
+step without a refinement coverage receipt.
+
+* Lean build and audit
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake build
+/opt/homebrew/bin/lake env lean audit/SearchRouteInspectLoopAudit.lean
+#+end_src
+
+Observed:
+
+- full build: exit =0=, =18= jobs;
+- audit emission: exit =0=;
+- declarations: =14=;
+- =sorryAx=: absent;
+- axiom inventory: =Classical.choice=, =Quot.sound=, =propext=.
+
+* AXLE fail-closed audit
+
+#+begin_src sh
+uv run --project packages/python/tools --frozen \
+  python -m tools.axle_lean_audit \
+  packages/proofs/receipts/searchroute-inspect-loop-audit-v1.json \
+  --allow-axiom Classical.choice \
+  --allow-axiom Quot.sound \
+  --allow-axiom propext \
+  --require-family loop-work-decrease \
+  --require-family loop-invariant \
+  --require-family selected-non-regression \
+  --require-family safe-pruning \
+  --require-family coverage-conservation \
+  --require-family trace-bound \
+  --require-family trace-invariant \
+  --require-family terminal-closure \
+  --require-family terminal-optimality \
+  --require-family terminal-global-optimality \
+  --require-family bounded-global-optimality \
+  --require-family counterexample \
+  --require-rfc-clause ASP-RFC-10.05-SIL-DECISION \
+  --require-rfc-clause ASP-RFC-10.05-SIL-WORK-DECREASE \
+  --require-rfc-clause ASP-RFC-10.05-SIL-COVERAGE \
+  --require-rfc-clause ASP-RFC-10.05-SIL-TRACE-BOUND \
+  --require-rfc-clause ASP-RFC-10.05-SIL-TERMINAL
+#+end_src
+
+Observed:
+
+- exit =0=;
+- canonical audit digest:
+  =c44e4977ad85003ff190d409f5905a1bb0abdafa4f178d8a54bf2bc757434fa5=;
+- all =12= required theorem families present;
+- all =5= RFC clause IDs present;
+- no unexpected axiom.
+
+* Embedded Typst validation
+
+The named block =searchroute-repeated-inspect-loop-model= is embedded in the
+RFC. No standalone =.typ= source and no =:file= header argument were used.
+
+#+begin_src sh
+orgize eval plan --json \
+  searchroute-repeated-inspect-loop-model \
+  docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.21-searchroute-repeated-inspect-loop.org
+
+typst eval --in - '"ok"'
+#+end_src
+
+The parser-owned plan returned the named =typst= block body and implicit
+Org-Babel defaults. That body was sent directly to =typst eval --in -= over
+standard input. Observed:
+
+- Orgize block plan: exit =0=;
+- Typst stdin eval: exit =0=, JSON result ="ok"=.
+
+The installed Orgize =eval run= command still reports that it supports only
+shell source blocks. Therefore this receipt does not claim native Typst
+execution by =orgize eval run=; it records parser-owned block extraction
+followed by Typst stdin evaluation. The separate Orgize lint/runtime integration
+remains owned by the concurrent Rust work and is not claimed by this receipt.
+
+* Lean-discovered RFC defects
+
+1. A non-strict credit rule permits an exact self-replacement with unchanged
+   state and unchanged work. Strict decrease is normative.
+2. Strict decrease alone proves termination but not search correctness. An
+   inspect step can consume work while dropping unresolved candidates.
+   =RefinementCovers= is therefore a separate normative receipt.
+3. A closed loop proves global optimality only when candidate-universe coverage
+   has been conserved for the same snapshot.

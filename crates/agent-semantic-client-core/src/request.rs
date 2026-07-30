@@ -39,6 +39,7 @@ pub enum ClientMethod {
     CacheImport,
     CacheInvalidate,
     CacheFlush,
+    ProjectResolution,
     Search,
     Query,
     Check,

@@ -85,8 +85,8 @@ negativeCommands = [
 
 [[rules]]
 id = "deny-agent-search-json"
-positiveCommands = ["asp healthcheck --json", "asp paths --json"]
-negativeCommands = ["asp healthcheck", "asp paths"]
+positiveCommands = ["rs-harness search pipe Effect --workspace . --json", "ts-harness search pipe Effect --workspace . --json"]
+negativeCommands = ["asp healthcheck --json", "asp paths --json"]
 
 [[rules]]
 id = "materialize-apply-patch-policy"
@@ -169,10 +169,10 @@ negativeCommands = ["cat Cargo.lock", "wc -l Cargo.lock"]
 [[rules]]
 id = "deny-uncontrolled-python-inline-source-materialization"
 positiveCommands = [
-  "python3 -c \"from pathlib import Path; Path('crates/agent-semantic-hook/src/lib.rs').read_text()\"",
   "uv run python -c \"open('crates/agent-semantic-hook/src/lib.rs').read()\"",
 ]
 negativeCommands = [
+  "python3 -c \"from pathlib import Path; Path('crates/agent-semantic-hook/src/lib.rs').read_text()\"",
   "python3 -c \"from pathlib import Path; Path('Cargo.lock').read_text()\"",
 ]
 

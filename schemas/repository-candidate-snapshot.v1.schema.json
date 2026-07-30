@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json",
-  "title": "Repository Candidate Snapshot",
+  "title": "Repository Candidate Snapshot v1",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -31,25 +31,13 @@
       "$ref": "#/$defs/worktreeIdentity"
     },
     "candidateGeneration": {
-      "type": "string",
-      "minLength": 1
+      "$ref": "#/$defs/candidateGeneration"
     },
     "candidates": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/candidate"
       }
-    },
-    "infrastructureExcludedPrefixes": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/path"
-      },
-      "uniqueItems": true
-    },
-    "snapshotDigest": {
-      "type": "string",
-      "minLength": 1
     },
     "metrics": {
       "$ref": "#/$defs/metrics"
@@ -59,33 +47,30 @@
     "path": {
       "type": "string",
       "minLength": 1,
-      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+      "not": {
+        "pattern": "^(?:/|[A-Za-z]:[\\\\/])"
+      }
     },
     "repositoryIdentity": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "kind",
         "repositoryId",
-        "root"
+        "identityBasis",
+        "gitCommonDir"
       ],
       "properties": {
-        "kind": {
-          "const": "git"
-        },
         "repositoryId": {
           "type": "string",
           "minLength": 1
         },
-        "root": {
+        "identityBasis": {
           "type": "string",
           "minLength": 1
         },
         "gitCommonDir": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string",
+          "minLength": 1
         },
         "remoteUrl": {
           "type": [
@@ -99,39 +84,57 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "workspaceId",
-        "checkoutRoot",
-        "sparseCheckout"
+        "worktreeId",
+        "worktreeRoot",
+        "gitDir"
       ],
       "properties": {
-        "workspaceId": {
+        "worktreeId": {
           "type": "string",
           "minLength": 1
         },
-        "checkoutRoot": {
+        "worktreeRoot": {
           "type": "string",
           "minLength": 1
         },
         "gitDir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headId": {
           "type": [
             "string",
             "null"
           ]
+        }
+      }
+    },
+    "candidateGeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "digest",
+        "authorities"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "blake3-path-set-v1"
         },
-        "headOid": {
-          "type": [
-            "string",
-            "null"
-          ]
+        "digest": {
+          "type": "string",
+          "pattern": "^blake3:[0-9a-f]{64}$"
         },
-        "indexDigest": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "sparseCheckout": {
-          "type": "boolean"
+        "authorities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "git-index",
+              "git-worktree"
+            ]
+          }
         }
       }
     },
@@ -149,31 +152,14 @@
         },
         "state": {
           "enum": [
-            "indexed",
-            "unchanged",
-            "added",
-            "modified",
-            "deleted",
-            "renamed",
-            "untracked",
-            "submodule-boundary"
+            "tracked",
+            "untracked"
           ]
         },
         "authority": {
           "enum": [
             "git-index",
-            "git-worktree",
-            "git-status",
-            "git-untracked",
-            "git-submodule"
-          ]
-        },
-        "indexMode": {
-          "enum": [
-            "regular",
-            "executable",
-            "symlink",
-            "gitlink"
+            "git-worktree"
           ]
         }
       }
@@ -182,32 +168,23 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "indexEntryCount",
+        "worktreeAdditionCount",
         "candidateCount",
-        "trackedCount",
-        "changedCount",
-        "untrackedCount",
-        "deletedCount",
         "fullWorkspaceReads",
-        "elapsedMicros"
+        "fullMerkleRebuilds",
+        "directDbOpens"
       ],
       "properties": {
+        "indexEntryCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "worktreeAdditionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
         "candidateCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "trackedCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "changedCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "untrackedCount": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "deletedCount": {
           "type": "integer",
           "minimum": 0
         },
@@ -219,10 +196,6 @@
         },
         "directDbOpens": {
           "const": 0
-        },
-        "elapsedMicros": {
-          "type": "integer",
-          "minimum": 0
         }
       }
     }

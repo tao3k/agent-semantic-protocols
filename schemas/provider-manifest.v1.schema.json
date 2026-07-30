@@ -15,7 +15,6 @@
     "providerId",
     "namespace",
     "binary",
-    "source",
     "searchCapabilities",
     "queryPackDescriptor",
     "policy",
@@ -63,11 +62,11 @@
     "execution": {
       "$ref": "#/$defs/providerExecution"
     },
-    "source": {
-      "$ref": "#/$defs/manifestSourceDefaults"
-    },
     "projectResolution": {
-      "$ref": "provider-project-resolution-descriptor.v1.schema.json"
+      "$ref": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-descriptor.v1.schema.json"
+    },
+    "documentResolution": {
+      "$ref": "https://schemas.agent-semantic-protocols.dev/provider-document-resolution-descriptor.v1.schema.json"
     },
     "searchCapabilities": {
       "$ref": "#/$defs/providerSearchCapabilities"
@@ -85,6 +84,28 @@
       "$ref": "#/$defs/hookRouteBindings"
     }
   },
+  "oneOf": [
+    {
+      "required": [
+        "projectResolution"
+      ],
+      "not": {
+        "required": [
+          "documentResolution"
+        ]
+      }
+    },
+    {
+      "required": [
+        "documentResolution"
+      ],
+      "not": {
+        "required": [
+          "projectResolution"
+        ]
+      }
+    }
+  ],
   "$defs": {
     "stringArray": {
       "type": "array",
@@ -98,28 +119,6 @@
         "embedded"
       ]
     },
-    "manifestSourceDefaults": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "defaultExtensions",
-        "defaultConfigFiles"
-      ],
-      "properties": {
-        "defaultExtensions": {
-          "$ref": "#/$defs/stringArray"
-        },
-        "defaultConfigFiles": {
-          "$ref": "#/$defs/stringArray"
-        },
-        "defaultProjectMarkers": {
-          "$ref": "#/$defs/stringArray"
-        },
-        "defaultDependencyMarkers": {
-          "$ref": "#/$defs/stringArray"
-        }
-      }
-    },
     "providerSearchCapabilities": {
       "type": "object",
       "additionalProperties": false,
@@ -127,8 +126,7 @@
         "ownerItems",
         "semanticFacts",
         "dependencyTopology",
-        "dependencyTopologyMetadata",
-        "workspaceScope"
+        "dependencyTopologyMetadata"
       ],
       "properties": {
         "ownerItems": {
@@ -141,9 +139,6 @@
           "type": "boolean"
         },
         "dependencyTopologyMetadata": {
-          "type": "boolean"
-        },
-        "workspaceScope": {
           "type": "boolean"
         },
         "sourceSnapshot": {
@@ -193,6 +188,10 @@
           "minLength": 1
         },
         "derivedArtifactEvidenceSchemaId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonicalItemSelectorSchemaId": {
           "type": "string",
           "minLength": 1
         },
@@ -335,9 +334,6 @@
           "$ref": "#/$defs/methodId"
         },
         "dependencyTopologyMetadata": {
-          "$ref": "#/$defs/methodId"
-        },
-        "workspaceScope": {
           "$ref": "#/$defs/methodId"
         },
         "exportIndex": {

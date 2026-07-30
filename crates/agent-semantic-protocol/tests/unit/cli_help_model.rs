@@ -1,6 +1,3 @@
-#[path = "../../src/command/cli_help.rs"]
-mod help_model;
-
 fn owned_args(parts: &[&str]) -> Vec<String> {
     parts.iter().map(|part| (*part).to_owned()).collect()
 }
@@ -161,3 +158,4 @@ fn non_help_invocations_are_not_intercepted() {
         );
     }
 }
+use super as help_model;

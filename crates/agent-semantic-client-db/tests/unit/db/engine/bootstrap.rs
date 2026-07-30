@@ -73,13 +73,29 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
         }],
     })
     .expect("build source-index Turso read-model import");
+    let source_index_blobs =
+        agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized([(
+            agent_semantic_client_db::ClientDbSourceIndexPath::from(
+                "src/source_index_fixture.rs",
+            ),
+            b"pub fn source_index_turso_fixture() {}\n".to_vec(),
+        )]);
     let source_index_report = engine
-        .persist_source_index_read_model(&source_index_import, &source_snapshot)
+        .persist_source_index_read_model(
+            &source_index_import,
+            &source_snapshot,
+            &source_index_blobs,
+        )
         .await
         .expect("persist source-index read-model through DB Engine facade");
     assert_eq!(source_index_report.search_document_count, 1);
+    let active_source_index_snapshot = source_index_report.source_snapshot.clone();
     let source_index_hits = engine
-        .search_source_index_documents(&source_snapshot, "source_index_turso_fixture", 8)
+        .search_source_index_documents(
+            &active_source_index_snapshot,
+            "source_index_turso_fixture",
+            8,
+        )
         .await
         .expect("search Turso source-index documents through DB Engine facade");
     assert_eq!(
@@ -94,7 +110,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
     let python_language_id = LanguageId::from("python");
     let source_index_lookup = engine
         .lookup_source_index_read_model(
-            &source_snapshot,
+            &active_source_index_snapshot,
             "source_index_turso_fixture",
             Some(&rust_language_id),
             8,
@@ -119,7 +135,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
     let source_index_client_dir_lookup =
         ClientDbEngine::lookup_source_index_read_model_from_client_dir(
             &state.paths.client_dir,
-            &source_snapshot,
+            &active_source_index_snapshot,
             "source_index_turso_fixture",
             Some(&rust_language_id),
             8,
@@ -143,7 +159,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
     );
     let source_index_language_miss = engine
         .lookup_source_index_read_model(
-            &source_snapshot,
+            &active_source_index_snapshot,
             "source_index_turso_fixture",
             Some(&python_language_id),
             8,

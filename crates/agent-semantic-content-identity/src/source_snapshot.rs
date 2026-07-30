@@ -189,6 +189,7 @@ pub struct WorkspaceSnapshot {
     leaves: BTreeMap<String, String>,
     base_root_digest: Option<String>,
     dirty_paths_digest: Option<String>,
+    overlay_base_leaves: BTreeMap<String, Option<String>>,
 }
 
 impl WorkspaceSnapshot {
@@ -209,6 +210,7 @@ impl WorkspaceSnapshot {
             leaves,
             base_root_digest: None,
             dirty_paths_digest: None,
+            overlay_base_leaves: BTreeMap::new(),
         }
     }
 
@@ -227,6 +229,63 @@ impl WorkspaceSnapshot {
     /// Report whether the workspace-relative path belongs to this snapshot.
     pub fn contains_path(&self, workspace_relative_path: &str) -> bool {
         self.file_digest(workspace_relative_path).is_some()
+    }
+
+    /// Validate the complete canonical-root plus accumulated-overlay evidence.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.root_digest != merkle_root(&self.leaves) {
+            return Err("workspace snapshot root digest does not match its leaves".to_owned());
+        }
+        if self
+            .leaves
+            .keys()
+            .chain(self.overlay_base_leaves.keys())
+            .any(|path| normalize_snapshot_path(path) != *path)
+        {
+            return Err("workspace snapshot contains a non-normalized path".to_owned());
+        }
+        if self.overlay_base_leaves.is_empty() {
+            if self.base_root_digest.is_some() || self.dirty_paths_digest.is_some() {
+                return Err(
+                    "workspace snapshot without dirty paths cannot carry overlay evidence"
+                        .to_owned(),
+                );
+            }
+            return Ok(());
+        }
+        if self.base_root_digest.is_none() || self.dirty_paths_digest.is_none() {
+            return Err(
+                "workspace snapshot dirty paths require base and dirty digests".to_owned(),
+            );
+        }
+        if self.overlay_base_leaves.iter().any(|(path, base)| {
+            self.leaves.get(path).map(String::as_str) == base.as_deref()
+        }) {
+            return Err("workspace snapshot overlay contains a reverted path".to_owned());
+        }
+        let changed_leaves = self
+            .overlay_base_leaves
+            .keys()
+            .filter_map(|path| {
+                self.leaves
+                    .get(path)
+                    .map(|digest| (path.clone(), digest.clone()))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let removed_paths = self
+            .overlay_base_leaves
+            .keys()
+            .filter(|path| !self.leaves.contains_key(*path))
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        if self.dirty_paths_digest.as_deref()
+            != Some(overlay_dirty_paths_digest(&changed_leaves, &removed_paths).as_str())
+        {
+            return Err(
+                "workspace snapshot dirty-path digest does not match its overlay".to_owned(),
+            );
+        }
+        Ok(())
     }
 
     /// Materialize schema and digest evidence for this snapshot and provider binding.
@@ -315,21 +374,7 @@ impl WorkspaceSnapshot {
         P: Into<String>,
         H: Into<String>,
     {
-        let overlay_leaves = file_hashes
-            .into_iter()
-            .map(|(path, hash)| (normalize_snapshot_path(&path.into()), hash.into()))
-            .collect::<BTreeMap<_, _>>();
-        let dirty_paths_digest = merkle_root(&overlay_leaves);
-        let mut leaves = self.leaves.clone();
-        leaves.extend(overlay_leaves);
-        let root_digest = merkle_root(&leaves);
-
-        Self {
-            root_digest,
-            leaves,
-            base_root_digest: Some(self.root_digest.clone()),
-            dirty_paths_digest: Some(dirty_paths_digest),
-        }
+        self.with_overlay_delta(file_hashes, std::iter::empty::<String>())
     }
 
     /// Derive a snapshot from upserted blob digests and deleted paths.
@@ -351,19 +396,57 @@ impl WorkspaceSnapshot {
             .map(|path| normalize_snapshot_path(&path))
             .collect::<BTreeSet<_>>();
 
-        let dirty_paths_digest = overlay_dirty_paths_digest(&overlay_leaves, &deleted_paths);
         let mut leaves = self.leaves.clone();
-        for path in deleted_paths {
-            leaves.remove(&path);
+        let mut overlay_base_leaves = self.overlay_base_leaves.clone();
+        for (path, digest) in overlay_leaves {
+            if !overlay_base_leaves.contains_key(&path) {
+                overlay_base_leaves.insert(path.clone(), self.leaves.get(&path).cloned());
+            }
+            leaves.insert(path.clone(), digest);
+            if leaves.get(&path) == overlay_base_leaves.get(&path).and_then(Option::as_ref) {
+                overlay_base_leaves.remove(&path);
+            }
         }
-        leaves.extend(overlay_leaves);
+        for path in deleted_paths {
+            if !overlay_base_leaves.contains_key(&path) {
+                overlay_base_leaves.insert(path.clone(), self.leaves.get(&path).cloned());
+            }
+            leaves.remove(&path);
+            if overlay_base_leaves.get(&path).is_some_and(Option::is_none) {
+                overlay_base_leaves.remove(&path);
+            }
+        }
         let root_digest = merkle_root(&leaves);
+        let changed_leaves = overlay_base_leaves
+            .keys()
+            .filter_map(|path| {
+                leaves
+                    .get(path)
+                    .map(|digest| (path.clone(), digest.clone()))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let removed_paths = overlay_base_leaves
+            .keys()
+            .filter(|path| !leaves.contains_key(*path))
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let (base_root_digest, dirty_paths_digest) = if overlay_base_leaves.is_empty() {
+            (None, None)
+        } else {
+            (
+                self.base_root_digest
+                    .clone()
+                    .or_else(|| Some(self.root_digest.clone())),
+                Some(overlay_dirty_paths_digest(&changed_leaves, &removed_paths)),
+            )
+        };
 
         Self {
             root_digest,
             leaves,
-            base_root_digest: Some(self.root_digest.clone()),
-            dirty_paths_digest: Some(dirty_paths_digest),
+            base_root_digest,
+            dirty_paths_digest,
+            overlay_base_leaves,
         }
     }
 

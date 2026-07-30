@@ -725,7 +725,7 @@ impl SourceIndexRefreshContext {
                 registry_fingerprint: request.registry.fingerprint.clone(),
                 extra_scope_dirs: request.registry.scope_dirs.iter().cloned().collect(),
                 files: request.files.to_vec(),
-                source_blobs,
+                source_blobs: source_blobs.clone(),
             },
             file_hashes,
         )?;
@@ -735,9 +735,25 @@ impl SourceIndexRefreshContext {
             file_count: client_db_source_index_file_count(request.files.len()),
             source_snapshot: source_snapshot.clone(),
         };
+        let workspace_identity =
+            agent_semantic_client_core::state_core::ResolvedState::resolve(request.index_root)?
+                .workspace
+                .workspace_id
+                .to_string();
+        let materialization =
+            agent_semantic_client_db::runtime_server_workspace::
+                WorkspaceCanonicalMaterialization::from_source_index(
+                    workspace_identity,
+                    &source_snapshot,
+                    &refresh_request.import,
+                    &source_blobs,
+                )?;
         let report =
             agent_semantic_client_db::workspace_db_ipc::
-                commit_source_index_generation_via_resident(refresh_request)?;
+                commit_source_index_generation_via_runtime_server(
+                    refresh_request,
+                    materialization,
+                )?;
         source_index_trace("generation-turso-imported", trace_started);
         Ok(SourceIndexRefreshReport::from_report(
             self.db_path.clone(),

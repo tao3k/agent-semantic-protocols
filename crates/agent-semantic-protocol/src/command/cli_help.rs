@@ -423,13 +423,13 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
                 |command| document_subcommand(document, command),
             ),
         [language, leaf, ..] if is_language_facade(language) => {
-            facade_leaf_help(language, leaf).unwrap_or_else(|| selected_command_legacy(args))
+            facade_leaf_help(language, leaf).unwrap_or_else(|| selected_command_default(args))
         }
-        _ => selected_command_legacy(args),
+        _ => selected_command_default(args),
     }
 }
 
-fn selected_command_legacy(args: &[String]) -> Command {
+fn selected_command_default(args: &[String]) -> Command {
     let first = args.first().map(String::as_str);
     let second = args.get(1).map(String::as_str);
     match (first, second) {
@@ -448,6 +448,7 @@ fn selected_command_legacy(args: &[String]) -> Command {
         (Some("cloud"), _) => cloud_command(),
         (Some("paths"), _) => paths_command(),
         (Some("healthcheck"), _) => healthcheck_command(),
+        (Some("server"), _) => super::runtime_server::runtime_server_command(),
         (Some("live-corpus"), _) => live_corpus_command(),
         (Some("source-access"), _) => source_access_command(),
         (Some("ast-patch"), _) => ast_patch_command(),
@@ -532,3 +533,6 @@ fn print_help_if_requested_unchecked(args: &[String]) -> Result<bool, String> {
 pub(crate) fn print_install_plugin_help() -> Result<(), String> {
     print_command_help(install_plugin_command())
 }
+#[cfg(test)]
+#[path = "../../tests/unit/cli_help_model.rs"]
+mod tests;

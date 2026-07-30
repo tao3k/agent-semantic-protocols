@@ -14,7 +14,7 @@ struct DependencySeedSelector<'a> {
 pub(super) fn is_search_dependency_seed(args: &[String]) -> bool {
     matches!(args.first().map(String::as_str), Some("search"))
         && matches!(args.get(1).map(String::as_str), Some("deps" | "dependency"))
-        && !args.iter().any(|arg| arg == "--json" || arg == "--code")
+        && !args.iter().any(|arg| arg == "--json")
 }
 
 pub(super) fn run_search_dependency_seed_command(

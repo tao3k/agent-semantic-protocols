@@ -44,19 +44,19 @@ fn query_projection_uses_content_mode_for_document_languages() {
         "content"
     );
     assert_eq!(
-        search_pipe_projection::query_projection_flag("org"),
-        "--content"
+        search_pipe_projection::query_projection_suffix("org"),
+        " --projection content"
     );
 }
 
 #[test]
-fn query_projection_uses_code_mode_for_source_languages() {
+fn query_projection_uses_default_source_mode_for_programming_languages() {
     assert_eq!(
         search_pipe_projection::query_projection_kind("rust"),
-        "code"
+        "source"
     );
     assert_eq!(
-        search_pipe_projection::query_projection_flag("rust"),
-        "--code"
+        search_pipe_projection::query_projection_suffix("rust"),
+        ""
     );
 }

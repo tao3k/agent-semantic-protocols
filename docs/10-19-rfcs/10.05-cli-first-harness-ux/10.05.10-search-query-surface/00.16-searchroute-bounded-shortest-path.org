@@ -1,0 +1,597 @@
+#+title: 10.05.10.16 SearchRoute Bounded Shortest Paths, Two Cache Layers, and Model Interaction Cost
+#+subtitle: An auditable RFC -> Lean -> AXLE -> Org-Babel Typst model
+#+author: ASP
+#+date: 2026-07-30
+#+startup: overview
+#+options: toc:3 num:nil
+
+* Status
+
+- Status: Draft / proof-backed
+- Scope: agent-facing SearchLoop routing, search cost, cache layers, and proof boundaries
+- Non-goal: this RFC does not implement Rust or prescribe provider internals
+- Lean owner: =packages/proofs/ASPProof/SearchRouteCost.lean=
+- Lean audit owner: =packages/proofs/ASPProof/Audit.lean=
+- Lean JSON: =packages/proofs/receipts/searchroute-cost-audit-v1.json=
+- AXLE receipt: =packages/proofs/receipts/searchroute-cost-axle-audit-v1.json=
+
+* Abstract
+
+The central SearchLoop optimization is not a renamed complex CLI, and it is
+not an unconstrained minimum-hop graph search. The property that matters is:
+
+#+begin_quote
+Among candidate routes that preserve closure, validation domain, mandatory
+graph escalation, search-cache validity, model-prefix-cache soundness, and
+resource budgets, the router selects a route with fewer SearchLoop
+transitions, fewer uncached model tokens, and fewer LLM interaction rounds.
+#+end_quote
+
+The model distinguishes two cache layers:
+
+1. A *semantic search cache hit* reuses a witness-bound validated search
+   result. It can avoid provider, planner, graph, materialization, and model
+   work.
+2. A *model prefix cache hit* reuses a stable system/tool-schema/canonical
+   projection prefix. It does not prove that search evidence remains valid,
+   but it reduces uncached model input, compute cost, and latency.
+
+The layers may compose, but they must not be collapsed into one ambiguous
+=tokenCost= field.
+
+* Relationship to Existing RFC Modules
+
+This RFC refines:
+
+- =00.01-search-loop-architecture.org=: agent-facing SearchLoop, compact
+  deltas, bounded actions, and fewer model turns;
+- =00.04-semantic-cache-hierarchy.org=: semantic work is cached before
+  model-prefix reuse, and prefix stability is derived from canonical
+  projection;
+- =00.06-clause-first-retrieval-and-graph-on-demand.org=: mandatory graph
+  escalation, evidence gain, provider dispatches, model-facing bytes, and
+  closure outcome;
+- =00.14-searchloop-cache-invalidation-identity.org= and
+  =00.15-searchloop-cache-minimal-identity-refinement.org=: fail-closed
+  semantic-cache identity.
+
+It does not replace those modules. It supplies the route-cost model shared by
+them.
+
+=00.17-searchroute-ranked-dag-global-optimality.org= refines this module by
+separating graph-edge hops from SearchLoop transition count. Consequently,
+=hopCount= in this file is interpreted only as =transitionCount=.
+
+* Core Design Corrections
+
+** Global minimum transition count is not sufficient
+
+An unconstrained minimum-hop route may:
+
+- skip graph escalation required by an enumeration or absence proof;
+- use an unvalidated or stale semantic search cache;
+- claim more cached model tokens than the prompt contains;
+- replace several commands with one full-graph dump that consumes far more
+  tokens;
+- close under the wrong validation domain or closure digest.
+
+The optimizer must first restrict the domain with =admissible= and
+=withinBudget=. Cost comparison is defined only over the resulting feasible
+set.
+
+** Token cost must be decomposed
+
+Receipts must distinguish at least:
+
+- evidence tokens returned by provider, graph, or materialization work;
+- raw model tokens, including evidence and prompt input;
+- cached prompt tokens confirmed by the model runtime;
+- uncached model tokens, including dynamic evidence and the prompt miss.
+
+Raw tokens alone hide the value of a prefix-cache hit. Uncached tokens alone
+can hide repeated transmission of a large context. The protocol therefore
+records both.
+
+** Interaction rounds are not command count
+
+=roundCost= counts boundaries where the agent or LLM must observe evidence and
+choose another action. A host-native router jump may collapse the traditional
+orient/discover/inspect command sequence. Pure provider computation does not
+automatically create another LLM round.
+
+* Normative Clauses
+
+** ASP-RFC-10.05-SRC-ADMISSIBLE-ROUTE
+
+A route enters the optimization set only when all of the following hold:
+
+- its domain equals the active validation domain;
+- its closure digest equals the expected obligation closure;
+- it is closed and contains a close step;
+- it contains a valid orient step or router jump;
+- every prefix-cache claim satisfies
+  =cachedPromptTokens <= promptTokens=;
+- any semantic search-cache hit has a validated cache identity;
+- when graph escalation is mandatory, the route has an escalation receipt and
+  contains a graph step.
+
+** ASP-RFC-10.05-SRC-FAIL-CLOSED-CACHE
+
+Both cache layers are fail-closed:
+
+- an unvalidated semantic cache hit is not an admissible route;
+- when the runtime cannot confirm cached prompt tokens, the value is zero;
+- =cachedPromptTokens > promptTokens= is an invalid receipt;
+- a prefix hit does not imply that semantic evidence remains valid;
+- a semantic hit does not fabricate a model-runtime prefix hit.
+
+** ASP-RFC-10.05-SRC-LEX-OPTIMAL
+
+For a finite candidate set, the normative router order is:
+
+1. minimum SearchLoop transition count;
+2. minimum uncached model tokens when transition count ties;
+3. minimum LLM round count when both previous dimensions tie.
+
+Raw and evidence tokens remain budget and Pareto-dominance constraints. The
+router must not grow raw context without bound merely to lower uncached tokens.
+
+This clause proves optimality over the supplied finite candidate set. It does
+not yet claim that the current Lean model proves a globally shortest route
+over every unknown workspace graph.
+
+** ASP-RFC-10.05-SRC-ROUTER-JUMP
+
+A router jump is a typed transition, not a shell alias. It preserves:
+
+- active validation domain;
+- expected closure digest;
+- mandatory graph-escalation obligations;
+- semantic-cache validation receipt;
+- canonical projection and prefix identity;
+- the next bounded action.
+
+** ASP-RFC-10.05-SRC-ROUND-COMPRESSION
+
+SearchLoop may collapse several navigation-only rounds into one bounded router
+jump. It must not collapse a contradiction, ambiguity, relocation, or closure
+decision that requires model judgment.
+
+** ASP-RFC-10.05-SRC-SEARCH-CACHE
+
+A semantic search-cache hit is a search-path event. It may replace repeated
+provider, graph, or materialization work, but it carries the complete semantic
+identity and validation result required by =00.14= and =00.15=.
+
+** ASP-RFC-10.05-SRC-MODEL-PREFIX-CACHE
+
+A model prefix-cache hit is a runtime-cost event. It reports the prompt tokens
+actually cached by the runtime. The stable prefix is derived from canonical
+packet projection. The protocol must not resend unnecessary large context
+solely to preserve a prefix hit.
+
+** ASP-RFC-10.05-SRC-TOKEN-COST
+
+Every route receipt includes:
+
+- =evidenceTokenCost=;
+- =promptTokenCost=;
+- =cachedPromptTokenCost=;
+- =rawTokenCost=;
+- =uncachedTokenCost=.
+
+** ASP-RFC-10.05-SRC-GRAPH-ESCALATION
+
+Graph escalation is an admissibility condition when the obligation involves
+enumeration or absence, a cross-owner/provider join, high relation degree or
+hop count, a cycle, a contradiction, ambiguous relocation,
+completeness-sensitive reachability, or insufficient local justification.
+The cost optimizer cannot delete a mandatory graph step.
+
+** ASP-RFC-10.05-SRC-TOKEN-BOUND
+
+A full-graph dump may reduce command count and still be infeasible because it
+exceeds evidence, raw, or uncached token budgets. The router selects a bounded
+graph projection instead.
+
+* Complete Mathematical Model in Org-Babel Typst
+
+This block is the documentation authority for the mathematical explanation.
+No independent =.typ= source is maintained. Lint and compilation consume this
+Org block through stdin.
+
+#+name: searchroute-bounded-shortest-path-model
+#+begin_src typst
+#set page(width: 210mm, height: 297mm, margin: 18mm)
+#set text(font: "New Computer Modern", size: 10.5pt)
+#set heading(numbering: "1.")
+
+= SearchRoute: bounded shortest path with two cache layers
+
+== Route and step costs
+
+Let a candidate route be
+
+$ r = (s_1, s_2, dots, s_n). $
+
+Each step carries
+
+$ s_i = (k_i, e_i, p_i, c_i, rho_i), $
+
+where $k_i$ is the typed step kind, $e_i$ is dynamic evidence tokens,
+$p_i$ is raw prompt input, $c_i$ is runtime-confirmed cached prompt input,
+and $rho_i$ is the number of LLM decision rounds.
+
+The prefix-cache soundness condition is
+
+$ 0 <= c_i <= p_i quad "for every" i. $
+
+Define the route costs
+
+$ H(r) = n, $
+
+$ E(r) = sum_(i=1)^n e_i, $
+
+$ P(r) = sum_(i=1)^n p_i, $
+
+$ C(r) = sum_(i=1)^n c_i, $
+
+$ T_"raw"(r) = E(r) + P(r), $
+
+$ T_"uncached"(r) = sum_(i=1)^n (e_i + p_i - c_i), $
+
+$ R(r) = sum_(i=1)^n rho_i. $
+
+$H$ counts SearchLoop transitions, while $R$ counts boundaries at which
+the model must observe evidence and choose the next action. They are related
+but not definitionally equal.
+
+== Admissibility
+
+For requirement $q$, define:
+
+$ D(q,r) &: "route domain equals active domain", $
+$ Z(q,r) &: "route closure digest equals expected closure", $
+$ X(r) &: "route is closed and contains a close step", $
+$ J(r) &: "route contains orient or router-jump", $
+$ P_s(r) &: "every prefix-cache claim is sound", $
+$ S(r) &: "route uses a semantic search-cache hit", $
+$ V_s(r) &: "semantic cache identity is validated", $
+$ G_m(q) &: "graph escalation is mandatory", $
+$ G(r) &: "route contains a graph step and escalation receipt". $
+
+Then
+
+$ A(q,r) =
+  D(q,r) and Z(q,r) and X(r) and J(r) and P_s(r)
+  and (not S(r) or V_s(r))
+  and (not G_m(q) or G(r)). $
+
+Optimization is undefined for an inadmissible route.
+
+== Budget and feasible set
+
+Let
+
+$ B = (B_E, B_"raw", B_"uncached", B_R). $
+
+A route is within budget exactly when
+
+$ W(B,r) =
+  E(r) <= B_E
+  and T_"raw"(r) <= B_"raw"
+  and T_"uncached"(r) <= B_"uncached"
+  and R(r) <= B_R. $
+
+For finite candidate set $cal(C)$,
+
+$ cal(F)(q,B,cal(C)) =
+  { r in cal(C) | A(q,r) and W(B,r) }. $
+
+== Router order
+
+Define the lexicographic routing key
+
+$ K(r) = (H(r), T_"uncached"(r), R(r)). $
+
+For two feasible routes,
+
+$ r_1 <=_K r_2 $
+
+iff
+
+$ H(r_1) < H(r_2), $
+
+or
+
+$ H(r_1) = H(r_2)
+  and T_"uncached"(r_1) < T_"uncached"(r_2), $
+
+or
+
+$ H(r_1) = H(r_2)
+  and T_"uncached"(r_1) = T_"uncached"(r_2)
+  and R(r_1) <= R(r_2). $
+
+The bounded router result is
+
+$ r^* = arg min_(r in cal(F)(q,B,cal(C))) K(r). $
+
+Whenever the executable Lean selector returns $r^*$:
+
+$ r^* in cal(C), $
+
+$ A(q,r^*) and W(B,r^*), $
+
+$ "and for every" r in cal(F)(q,B,cal(C)), quad r^* <=_K r. $
+
+This is finite-candidate optimality. A later graph theorem must connect
+candidate generation to every reachable admissible DAG path before a global
+workspace-optimality claim is valid.
+
+== The two cache layers
+
+Semantic search caching changes the route:
+
+$ "semantic hit" => "skip repeated provider/graph/materialize work". $
+
+Model prefix caching changes effective model input:
+
+$ "prefix hit" => C(r) > 0 => T_"uncached"(r) < T_"raw"(r), $
+
+but it does not imply semantic validity:
+
+$ C(r) > 0 quad not arrow.r quad V_s(r). $
+
+Likewise, semantic validity does not imply a runtime prefix hit:
+
+$ V_s(r) quad not arrow.r quad C(r) > 0. $
+
+The joint route is valid only when both receipts are independently true.
+
+== Concrete proof receipt
+
+#table(
+  columns: 6,
+  inset: 5pt,
+  align: (left, right, right, right, right, right),
+  [Route], [Transitions], [Evidence], [Raw], [Uncached], [Rounds],
+  [CLI-style loop], [5], [37], [63], [63], [5],
+  [Router + materialize], [3], [15], [29], [29], [3],
+  [Router + model prefix hit], [3], [15], [29], [17], [3],
+  [Router + validated search miss], [4], [25], [45], [29], [4],
+  [Router + both cache hits], [3], [7], [21], [9], [3],
+)
+
+The router jump proves
+
+$ (5, 37, 63, 63, 5) -> (3, 15, 29, 29, 3). $
+
+On the same logical route, the model prefix hit proves
+
+$ (H, T_"raw", R) = (3, 29, 3) quad "unchanged", $
+
+$ T_"uncached": 29 -> 17. $
+
+Against a validated semantic-cache miss, the semantic search hit proves
+
+$ H: 4 -> 3, quad R: 4 -> 3, quad E: 25 -> 7, $
+
+$ T_"raw": 45 -> 21, quad T_"uncached": 29 -> 9. $
+
+== Counterexamples discovered by formalization
+
+=== Unconstrained shortest route
+
+There is a two-hop shortcut $r_u$ and a three-hop graph route $r_g$ such that
+
+$ H(r_u) < H(r_g), $
+
+but under mandatory graph escalation
+
+$ not A(q_g,r_u) quad "and" quad A(q_g,r_g). $
+
+Minimizing hop count before admissibility is therefore unsound.
+
+=== Full graph dump
+
+A full dump may satisfy graph admissibility while violating token budget:
+
+$ A(q_g,r_"dump") quad "and" quad not W(B,r_"dump"). $
+
+A bounded graph projection can satisfy both:
+
+$ A(q_g,r_"bounded") quad "and" quad W(B,r_"bounded"). $
+
+=== Unvalidated semantic cache
+
+Two routes can have identical hop and token shape while only one has a valid
+semantic-cache identity:
+
+$ not V_s(r_"stale") => not A(q,r_"stale"). $
+
+=== Impossible prefix-cache claim
+
+If a receipt states $c_i > p_i$, then
+
+$ not P_s(r) => not A(q,r). $
+
+This prevents saturating subtraction or optimistic runtime estimates from
+manufacturing an artificial zero-token route.
+
+== Dominance
+
+Define Pareto no-worse:
+
+$ r_1 <=_"Pareto" r_2 $
+
+iff
+
+$ H(r_1) <= H(r_2), $
+
+$ E(r_1) <= E(r_2), $
+
+$ T_"raw"(r_1) <= T_"raw"(r_2), $
+
+$ T_"uncached"(r_1) <= T_"uncached"(r_2), $
+
+$ R(r_1) <= R(r_2). $
+
+Strict dominance requires at least one strict inequality. The Lean concrete
+receipt proves that the joint-cache router route strictly dominates the
+CLI-style loop.
+
+== Proven and not yet proven
+
+Proven:
+
+- admissibility is fail-closed for both cache layers;
+- the selector returns a feasible member of the finite candidate set;
+- the selected member is lexicographically no worse than every feasible
+  candidate;
+- router jump, search-cache hit, model-prefix hit, graph budget, and unsafe
+  shortcuts have executable receipts.
+
+Not yet proven:
+
+- candidate generation enumerates every admissible path in an arbitrary
+  workspace DAG;
+- batching independent provider actions preserves the same evidence set and
+  closure digest as sequential execution;
+- measured provider latency follows from the symbolic token/round model;
+- runtime-reported cached tokens are bound to the canonical projection digest.
+#+end_src
+
+* Lean Mapping
+
+| RFC obligation | Lean declaration | Kind |
+|-
+| No selected route when every candidate is infeasible | =chooseShortestFeasible_none_implies_infeasible= | general theorem |
+| A selected route is a feasible candidate member | =chooseShortestFeasible_mem_and_feasible= | general theorem |
+| The selected route is lexicographically optimal | =chooseShortestFeasible_is_lex_optimal= | general theorem |
+| Router jump preserves admissibility | =router_jump_preserves_admissibility= | executable |
+| Router route dominates the CLI loop | =router_jump_strictly_dominates_baseline= | executable |
+| 5/37/63/63/5 becomes 3/15/29/29/3 | =router_jump_cost_receipt= | executable |
+| Prefix hit reduces only uncached tokens | =model_prefix_cache_reduces_uncached_tokens= | executable |
+| Semantic hit reduces transitions, rounds, and evidence/raw/uncached tokens | =semantic_search_cache_reduces_route_tokens= | executable |
+| Joint cache route dominates the baseline | =joint_cache_route_strictly_dominates_baseline= | executable |
+| A shortest route that omits graph escalation is unsafe | =unconstrained_shortest_path_is_unsound= | counterexample |
+| A full graph dump exceeds budget | =full_graph_dump_violates_token_budget= | counterexample |
+| An unvalidated semantic cache is rejected | =unvalidated_search_cache_is_rejected= | counterexample |
+| Cached tokens greater than prompt tokens are rejected | =impossible_model_cache_claim_is_rejected= | counterexample |
+| A graph requirement selects the bounded graph route | =bounded_router_selects_graph_route= | executable |
+| The joint cache route is selected | =joint_cache_route_is_selected= | executable |
+
+* Lean and AXLE Audit Result
+
+The Lean JSON audit currently contains 19 declarations:
+
+- 13 declarations are axiom-free;
+- six general order/optimizer proofs use =Classical.choice=, =Quot.sound=,
+  and =propext= through the current Lean tactic implementation;
+- =hasSorryAx=false=.
+
+AXLE is fail-closed:
+
+- it rejects the audit without an axiom allowlist;
+- it accepts the audit only after those three axioms are explicitly admitted
+  and the =route-optimizer=, =model-prefix-cache=,
+  =semantic-search-cache=, and =counterexample= families and core RFC clauses
+  are required.
+
+The split makes the dependency of general mathematical results visible rather
+than hiding it behind executable examples. A later constructive rewrite may
+reduce this allowlist.
+
+* Consequences for the SearchLoop Interaction Surface
+
+** Agents should not operate a complex command pipeline
+
+The agent-facing surface needs only:
+
+- the current obligation;
+- a compact evidence delta;
+- a typed next proposal;
+- graph-escalation requirements;
+- semantic-cache validation receipt;
+- model-prefix runtime receipt;
+- closure state and the cost vector.
+
+A human-oriented CLI may remain for debugging, but it is not the state machine
+an agent must memorize.
+
+** The router jumps to the proof-relevant frontier
+
+A router jump is valuable because it moves from current evidence state to the
+next unsatisfied proof obligation. Orient or discovery facts already covered
+by a canonical receipt should not be reintroduced into model context.
+
+** DAG and loop interaction is closure-delta driven
+
+SearchLoop does not resend the entire accumulated packet every round. Each
+transition returns:
+
+- new or invalidated witnesses;
+- validation-domain or closure-digest changes;
+- one bounded next action;
+- evidence, raw, cached, uncached, and round deltas.
+
+When the delta is empty and the obligation is unchanged, the planner treats a
+repeated loop as no progress instead of spending another model round.
+
+* RFC Defects Exposed by Lean
+
+1. "Shorter path" lacked an admissibility restriction and accepted shortcuts
+   that omitted mandatory graph work.
+2. One =tokenCost= mixed dynamic evidence, raw prompt input, and cache-adjusted
+   input.
+3. Semantic search caching and model prefix caching lacked independent truth
+   conditions, allowing one hit to be confused with both hits.
+4. Saturating natural-number subtraction can make =cached > prompt= appear to
+   have zero cost, so prefix-cache soundness must be checked first.
+5. Graph escalation and budget are independent: a mandatory graph operation
+   does not authorize a full-graph dump.
+6. The current proof establishes finite-candidate selection optimality, not
+   complete candidate generation over an arbitrary workspace DAG.
+7. ASP currently has no Lean facade while source-access policy blocks direct
+   inspection of the Lean audit owner. This iteration used a compiler-owned
+   Lean environment projection. The durable toolchain needs a Lean facade or
+   a dedicated compiler-owned audit inspection route.
+
+* Remaining Proof Obligations
+
+** DAG completeness
+
+Model workspace nodes, typed edges, reachable paths, and candidate generation.
+Prove that every admissible reachable path is represented before upgrading
+finite-candidate optimality to global workspace-graph optimality.
+
+** Batch and parallel round compression
+
+Prove that independent clause batches or parallel actions produce the same
+normalized evidence set, closure digest, and contradiction result as
+sequential execution.
+
+** Cache-identity composition
+
+Connect =SearchLoopCache= and =SearchLoopCacheIdentity= to the route-level
+=semanticCacheValidated= field with a refinement theorem. The route Boolean
+must not become an independent source of truth.
+
+** Runtime receipt binding
+
+Bind =cachedPromptTokens= to canonical projection digest and model/runtime
+identity so estimated cache hits cannot enter the proof.
+
+** Empirical calibration
+
+Calibrate the symbolic model with real-project receipts:
+
+- provider, graph, exact, and model call counts;
+- candidate, evidence, raw, cached, and uncached tokens;
+- graph-escalation count and reason;
+- LLM turns and SearchLoop transitions;
+- latency, closure outcome, and repeated-trigger rate.
+
+Lower latency or a higher cache-hit rate is not accepted when closure or
+fail-closed behavior regresses.

@@ -63,6 +63,19 @@ pub(crate) fn materialization_proof(
     }
 }
 
+pub(crate) fn source_blobs_fixture<'a>(
+    sources: impl IntoIterator<Item = (&'a str, &'a [u8])>,
+) -> agent_semantic_client_db::ClientDbSourceIndexSourceBlobs {
+    agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+        sources.into_iter().map(|(owner_path, bytes)| {
+            (
+                agent_semantic_client_db::ClientDbSourceIndexPath::new(owner_path),
+                bytes.to_vec(),
+            )
+        }),
+    )
+}
+
 fn owner_subtree_digest(owner_path: &str, source_blob_digest: &[u8; 32]) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"asp.exact-selector.owner-merkle-leaf.v1\0");

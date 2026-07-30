@@ -60,6 +60,25 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
             updated_at_ms INTEGER NOT NULL,
             PRIMARY KEY (project_root, schema_id, schema_version)
         )",
+        "CREATE TABLE IF NOT EXISTS asp_workspace_generation_materialization_v1 (
+            workspace_identity TEXT NOT NULL,
+            project_root TEXT NOT NULL,
+            materialization_schema_id TEXT NOT NULL,
+            materialization_schema_version TEXT NOT NULL,
+            source_index_schema_id TEXT NOT NULL,
+            source_index_schema_version TEXT NOT NULL,
+            generation_id TEXT NOT NULL,
+            source_snapshot_root_digest TEXT NOT NULL,
+            import_digest TEXT NOT NULL,
+            materialization_json BLOB NOT NULL,
+            updated_at_ms INTEGER NOT NULL,
+            PRIMARY KEY (
+                workspace_identity,
+                source_index_schema_id,
+                source_index_schema_version,
+                generation_id
+            )
+        )",
         "CREATE TABLE IF NOT EXISTS asp_source_index_owner_v1 (
             project_root TEXT NOT NULL,
             schema_id TEXT NOT NULL,

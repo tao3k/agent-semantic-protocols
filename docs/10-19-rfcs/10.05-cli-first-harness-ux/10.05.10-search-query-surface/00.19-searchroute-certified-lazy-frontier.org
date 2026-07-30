@@ -1,0 +1,298 @@
+#+title: RFC 10.05.19 — Certified Lazy SearchRoute Frontier
+#+startup: overview
+#+options: toc:3
+
+* Status
+
+Draft.
+
+RFC 10.05.18 constructs a complete finite graph-route candidate set.  This RFC
+proves when an agent may avoid materializing that complete Cartesian product.
+The online SearchLoop may expose a lazy =inspect= frontier only when every
+deferred branch carries a valid lower bound, the visible and deferred branches
+cover the full candidate set, and the coverage receipt is bound to the current
+source/index snapshot.
+
+This RFC does not authorize a Rust implementation.
+
+* Motivation
+
+Complete enumeration is a proof-level semantic oracle.  Eagerly serializing all
+candidates would increase:
+
+- retrieval and projection tokens;
+- uncached model-context tokens;
+- SearchLoop transitions;
+- agent/model rounds; and
+- latency before the first useful decision.
+
+A lazy frontier is safe only if omitted candidates are either deferred with a
+valid lower bound or explicitly covered by the visible set.  A small packet is
+not evidence of completeness by itself.
+
+During development of this RFC, parser-owned Org search returned the obsolete
+claim that =StepCatalogComplete= remained an external premise after Lean and
+the live RFC had already eliminated it.  This is a concrete freshness failure:
+a search-cache or source-index result cannot authorize pruning unless its
+snapshot identity matches the current candidate universe.
+
+* Candidate key and lower bound
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SBB-LOWER-BOUND
+:END:
+
+The graph candidate key remains:
+
+#+begin_example
+(graphHops, uncachedTokens, rounds, transitions)
+#+end_example
+
+ordered lexicographically.
+
+A frontier lower bound is valid when it is lexicographically no worse than the
+key of every candidate represented by that frontier.  It is not a heuristic
+score.  The receipt must make the universal bound claim explicit.
+
+* Safe pruning
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SBB-SAFE-PRUNING
+:END:
+
+Let =selected= be the best visible candidate and =lowerBound= be a valid bound
+for a deferred frontier.  The frontier is prunable when:
+
+#+begin_example
+candidateKey selected <=lex lowerBound
+#+end_example
+
+Transitivity then proves that =selected= is no worse than every candidate in
+the frontier.
+
+An optimistic but invalid lower bound can discard a genuinely shorter graph
+path.  Lean provides an executable counterexample: a selected five-hop route
+appears to dominate a falsely reported six-hop lower bound, while the deferred
+frontier actually contains a two-hop route.
+
+* Coverage receipt
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SBB-COVERAGE
+:END:
+
+A =CandidateUniverse= contains the complete candidate list and the digest of
+the source/index snapshot from which that list was constructed.
+
+A =CoverageReceipt universe visible= contains:
+
+- a claimed snapshot digest and a proof that it equals the universe digest;
+- a finite list of certified deferred frontiers;
+- a proof that every candidate in =full= is either in =visible= or in one of
+  the deferred frontiers.
+
+The global theorem requires:
+
+1. the selected candidate is no worse than every visible candidate;
+2. every deferred frontier has a valid lower bound;
+3. every deferred frontier is prunable by the selected candidate;
+4. the coverage receipt covers the full candidate set.
+
+Under these obligations, Lean proves that the selected candidate is no worse
+than every candidate in the complete enumeration.
+
+Visible optimality without coverage is unsound.  A singleton visible list may
+make its only candidate locally optimal while omitting a globally better route.
+
+* Snapshot binding
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SBB-SNAPSHOT
+:END:
+
+The first Lean draft compared a receipt digest with the current digest but did
+not connect that digest to the covered candidate list.  The snapshot premise
+was therefore logically irrelevant to the global-optimality proof.  Lean review
+forced the correction: =CoverageReceipt= is now indexed by a
+=CandidateUniverse=, and construction requires
+=claimedSnapshotDigest = universe.snapshotDigest=.
+
+The bound coverage receipt is accepted only when:
+
+#+begin_example
+receipt.snapshotDigest == currentSnapshotDigest
+#+end_example
+
+The digest must identify the source/index snapshot that owns:
+
+- graph nodes and edges;
+- route-step catalog bounds;
+- semantic search-cache identity and freshness;
+- candidate projection facts; and
+- lower-bound receipts.
+
+A model prefix-cache hit is not a snapshot identity receipt.  It may reduce
+uncached prompt tokens but cannot validate semantic evidence, graph coverage,
+or a search-cache entry.
+
+Lean proves that a receipt for snapshot =41= is rejected against current
+snapshot =42=.
+
+* Agent-facing inspect protocol
+
+The online operation should remain small:
+
+#+begin_example
+inspect(frontier-id, current-best-key, snapshot-digest)
+#+end_example
+
+It returns one of:
+
+- a materialized candidate that may improve the current best key;
+- a certified deferred frontier with a valid lower bound;
+- a safe-pruning receipt;
+- a typed stale-snapshot rejection; or
+- a completion receipt showing that all visible and deferred branches are
+  covered.
+
+The agent does not need a large human-oriented CLI search grammar.  It advances
+one proof-relevant frontier decision at a time.
+
+* Mathematical model
+
+The following named Org-Babel Typst block is the mathematical source.  It is
+compiled through standard input and has no independent =.typ= source file.
+
+#+name: searchroute-certified-lazy-frontier-model
+#+begin_src typst
+#set page(width: 8.5in, height: 11in, margin: 0.72in)
+#set text(font: "New Computer Modern", size: 10.2pt)
+#set heading(numbering: "1.")
+
+= Certified Lazy SearchRoute Frontier
+
+For candidate $c$, define the lexicographic key
+
+$ K(c) =
+  (G(c), U(c), R(c), N(c)), $
+
+where $G$ is validated graph hops, $U$ is uncached model tokens, $R$ is
+agent/model rounds, and $N$ is SearchLoop transitions.
+
+== Certified lower bound
+
+For a deferred frontier $F$, a lower bound $L(F)$ is valid iff
+
+$ "BoundValid"(F, L)
+  := forall c in F: L(F) <=_"lex" K(c). $
+
+Given visible optimum $s$, the frontier is prunable iff
+
+$ "Prunable"(s, F)
+  := K(s) <=_"lex" L(F). $
+
+Lexicographic transitivity yields safe pruning:
+
+$ "BoundValid"(F, L)
+  and "Prunable"(s, F)
+  => forall c in F: K(s) <=_"lex" K(c). $
+
+== Coverage
+
+Let $C_"full"$ be the complete finite enumeration, $C_"visible"$ the
+materialized candidates, and $F_1, ..., F_m$ the deferred frontiers.
+
+$ "Coverage"
+  := C_"full"
+     subset.eq
+     C_"visible" union F_1 union dots.c union F_m. $
+
+If
+
+$ forall c in C_"visible": K(s) <=_"lex" K(c), $
+
+$ forall i in {1, ..., m}:
+  "BoundValid"(F_i, L_i)
+  and K(s) <=_"lex" L_i, $
+
+and coverage holds, then
+
+$ forall c in C_"full": K(s) <=_"lex" K(c). $
+
+Thus lazy inspection preserves the optimum order of complete enumeration
+without serializing the entire candidate set.
+
+== Snapshot identity
+
+Let the candidate universe be
+
+$ cal(U) = (D_U, C_"full"), $
+
+where $D_U$ is the source/index digest that owns the complete candidate list.
+Let $D_R$ be the claimed digest in the coverage receipt and $D_C$ the current
+source/index snapshot digest.  A certified receipt contains the binding proof
+
+$ D_R = D_U. $
+
+$ "Accept"(R, cal(U), D_C)
+  := (D_R = D_U) and (D_R = D_C). $
+
+The runtime theorem requires both acceptance and certified coverage:
+
+$ "Accept"(R, cal(U), D_C)
+  and "Coverage"(R)
+  and "VisibleOptimal"(s, R)
+  and "DeferredPrunable"(s, R)
+  => "GlobalOptimal"(s, C_"full"). $
+
+For $D_R = D_U = 41$ and $D_C = 42$,
+
+$ "Accept"(R, cal(U), D_C) = "false". $
+#+end_src
+
+* Lean correspondence
+
+| RFC clause | Lean declaration |
+|---+---|
+| =ASP-RFC-10.05-SBB-LOWER-BOUND= | =keyLexNoWorse_trans= |
+| =ASP-RFC-10.05-SBB-SAFE-PRUNING= | =valid_lower_bound_pruning_is_safe=, =invalid_lower_bound_can_prune_a_better_candidate= |
+| =ASP-RFC-10.05-SBB-COVERAGE= | =certified_lazy_frontier_is_globally_optimal=, =visible_optimality_without_coverage_is_unsound= |
+| =ASP-RFC-10.05-SBB-SNAPSHOT= | =snapshotMatchesB_true_iff=, =snapshot_accepted_lazy_frontier_is_globally_optimal=, =stale_snapshot_coverage_receipt_is_rejected= |
+
+Lean owner:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteBranchBound.lean
+#+end_example
+
+Lean audit:
+
+#+begin_example
+packages/proofs/receipts/searchroute-branch-bound-audit-v1.json
+#+end_example
+
+AXLE receipt:
+
+#+begin_example
+packages/proofs/receipts/searchroute-branch-bound-axle-audit-v1.json
+#+end_example
+
+Proof receipt:
+
+#+begin_example
+packages/proofs/receipts/searchroute-branch-bound-proof-v1.org
+#+end_example
+
+* Remaining proof boundary
+
+This RFC proves the extensional safety rule for certified deferred frontiers.
+It does not yet define:
+
+1. an executable incremental scheduler that chooses which frontier to inspect;
+2. admissible lower-bound functions derived directly from partially assigned
+   route-step fields;
+3. a proof that the scheduler minimizes expected token or round cost;
+4. a cryptographic snapshot format shared by graph, provider, and semantic
+   search-cache receipts; or
+5. bounded receipt size and serialization cost.
+
+The next Lean layer should define a partial-route lower-bound function and prove
+that each route extension can only preserve or increase its key.
+
+See [[file:00.20-searchroute-partial-route-inspect-scheduler.org][Partial-route inspect scheduler]].

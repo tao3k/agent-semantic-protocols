@@ -1,0 +1,592 @@
+#+title: RFC 10.05.28 — Evidence Graph Router Core Admission
+#+subtitle: Value, bounded externality, isolation, and deletability obligations
+#+startup: overview
+
+* Status
+
+Draft proof-first search RFC.
+
+This RFC extends:
+
+- [[file:00.24-searchroute-inspect-trace-catalog.org][RFC 10.05.24 — SearchRoute Inspect Trace Catalog]]
+- [[file:00.25-searchroute-certified-search-ledger.org][RFC 10.05.25 — SearchRoute Certified Search Ledger]]
+- [[file:00.26-searchroute-committed-candidate-universe.org][RFC 10.05.26 — SearchRoute Committed Candidate Universe]]
+- [[file:00.27-searchroute-finite-canonical-manifest-commitment.org][RFC 10.05.27 — Finite Canonical Manifest Commitment]]
+
+The Lean owner is:
+
+- =packages/proofs/ASPProof/SearchRouteEvidenceGraphAdmission.lean=
+
+No Python or Rust implementation is authorized by this RFC.
+
+* Problem
+
+Evidence Graph, Graph Router, and Turbo Graph changes can be locally correct
+while still being wrong for the shared search core.
+
+A new graph edge may reduce hop count while increasing serialized evidence,
+model input tokens, or agent interaction rounds.  A router state may improve
+one company's workload while changing unrelated workloads.  A feature may be
+easy to add but impossible to remove because its state, schema, cache identity,
+and receipts become shared protocol commitments.
+
+Implementation quality, passing CI, and local route improvement do not establish
+shared value.
+
+* Decision
+
+An Evidence Graph or Graph Router extension MUST remain downstream or
+experimental until it carries a =CoreAdmissionCertificate=.
+
+The certificate proves all of:
+
+1. independent shared value;
+2. preserved reachability and evidence soundness;
+3. bounded runtime and shared-complexity externality;
+4. isolation from workloads that do not request the extension;
+5. an explicit deletion retraction that restores baseline routing;
+6. authorization of the policy that defines independence, affected scope, and
+   budgets;
+7. binding of evidence validity to an independently authorized verifier;
+8. a bounded lifecycle with explicit review, expiry, and authorized renewal.
+
+Core admission is therefore a proof obligation, not a reward for implementation
+completeness.
+
+* Evidence route
+
+An evidence route contains:
+
+- the evidence objects exposed to the agent;
+- whether the route reaches the requested semantic goal;
+- whether the exposed evidence is valid;
+- graph-hop cost;
+- serialized token cost;
+- agent interaction-round cost.
+
+The initial cost model is:
+
+#+name: evidence-graph-router-core-admission-model
+#+begin_src typst
+#let RouteCost = $ K(r) = (h(r), t(r), q(r)) $
+
+#let MeasurementContext = $ M(r) = (
+  d_"graph-snapshot",
+  i_"model-profile",
+  i_"semantic-search-cache",
+  i_"model-prefix-cache",
+  i_"measurement-protocol",
+) $
+
+#let NoWorse = $ "NoWorse"(r_1, r_0) "iff" cases(
+  h(r_1) <= h(r_0),
+  t(r_1) <= t(r_0),
+  q(r_1) <= q(r_0),
+) $
+
+#let StrictlyBetter = $ "StrictlyBetter"(r_1, r_0) "iff" cases(
+  "NoWorse"(r_1, r_0),
+  K(r_1) != K(r_0),
+) $
+
+#let CertifiedImprovement = $ "CertifiedImprovement"(r_1, r_0) "iff" cases(
+  M(r_1) = M(r_0),
+  "ReachesGoal"(r_0),
+  "ReachesGoal"(r_1),
+  "EvidenceValid"(r_1),
+  "StrictlyBetter"(r_1, r_0),
+) $
+
+#let IndependentValue = $ exists w_1, w_2, cases(
+  "AdmittedWorkload"(w_1),
+  "AdmittedWorkload"(w_2),
+  "IndependentOwner"("Owner"(w_1), "Owner"(w_2)),
+  "CertifiedImprovement"("Extended"(w_1), "Baseline"(w_1)),
+  "CertifiedImprovement"("Extended"(w_2), "Baseline"(w_2)),
+) $
+
+#let Reachability = $ forall w,
+  "ReachesGoal"("Baseline"(w))
+  "implies" "ReachesGoal"("Extended"(w)) $
+
+#let EvidenceSoundness = $ forall w,
+  "ReachesGoal"("Extended"(w))
+  "implies" "EvidenceValid"("Extended"(w)) $
+
+#let EvidenceVerifierBinding = $ forall w,
+  "EvidenceValid"("Extended"(w)) "iff"
+  "VerifyEvidence"(
+    M("Extended"(w)),
+    "Evidence"("Extended"(w)),
+  ) $
+
+#let EvidenceVerifierAuthorized =
+  $ "AuthorizedVerifier"("VerifyEvidence") $
+
+#let RuntimeExternality = $ forall w, cases(
+  h("Extended"(w)) <= h("Baseline"(w)) + B_h,
+  t("Extended"(w)) <= t("Baseline"(w)) + B_t,
+  q("Extended"(w)) <= q("Baseline"(w)) + B_q,
+) $
+
+#let SharedComplexity = $ Delta_C = (
+  Delta_"schema",
+  Delta_"router-state",
+  Delta_"maintenance",
+) $
+
+#let ComplexityBound = $ Delta_C <=_"componentwise" B_C $
+
+#let Isolation = $ forall w,
+  "not" "Affected"(w)
+  "implies" "Extended"(w) = "Baseline"(w) $
+
+#let DeletionRetraction = $ cases(
+  "remove"("embed"(s)) = s,
+  "remove"(e^*) = s^*,
+  "erase"("erase"(e^*)) = "erase"(e^*),
+  "BaselineRoute"(s^*, w) = "Baseline"(w),
+  "ExtendedRoute"(e^*, w) = "Extended"(w),
+  "ExtendedRoute"("erase"(e^*), w) = "Baseline"(w),
+) $
+
+#let FeatureCausalClosure = $ C_f = cases(
+  S_"router",
+  S_"semantic-cache",
+  S_"learned-preference",
+  S_"derived-graph-index",
+) $
+
+#let CompleteErase = $ "erase"(C_f) = C_"baseline" $
+
+#let LifecyclePolicy = $ L_f = (
+  t_"admitted",
+  t_"review",
+  t_"expires",
+) $
+
+#let WellFormedLifecycle = $ t_"admitted" < t_"review"
+  <= t_"expires" $
+
+#let ValidRenewal = $ "ValidRenewal"(u, L_f) "iff" cases(
+  t_"issued"(u) <= t_"expires",
+  t_"expires" < t_"new-expires"(u),
+  "CurrentValueEvidence"(u),
+  "ActiveMaintenanceOwner"(u),
+  "AuthorizedRenewal"(u),
+) $
+
+#let LifecycleValid = $ "LifecycleValid"(t, L_f, u) "iff" cases(
+  t <= t_"expires",
+  cases(
+    "ValidRenewal"(u, L_f),
+    t <= t_"new-expires"(u),
+  ),
+) $
+
+#let PolicyAuthorized = $ "AuthorizedPolicy"(
+  "IndependentOwner",
+  "Affected",
+  (B_h, B_t, B_q),
+  B_C,
+) $
+
+#let IndependenceLaws = $ cases(
+  forall o, "not" "IndependentOwner"(o, o),
+  forall o_1, o_2,
+    "IndependentOwner"(o_1, o_2)
+    "implies" "IndependentOwner"(o_2, o_1),
+) $
+
+#let CoreAdmission = $ cases(
+  PolicyAuthorized,
+  IndependenceLaws,
+  IndependentValue,
+  Reachability,
+  EvidenceSoundness,
+  EvidenceVerifierBinding,
+  EvidenceVerifierAuthorized,
+  RuntimeExternality,
+  ComplexityBound,
+  Isolation,
+  DeletionRetraction,
+  CompleteErase,
+  WellFormedLifecycle,
+) $
+
+#let HopCounterexample = $ cases(
+  h(r_1) < h(r_0),
+  t(r_1) > t(r_0),
+  q(r_1) > q(r_0),
+) "implies" "not" "NoWorse"(r_1, r_0) $
+
+#let Main = (
+  RouteCost,
+  MeasurementContext,
+  NoWorse,
+  StrictlyBetter,
+  CertifiedImprovement,
+  IndependentValue,
+  Reachability,
+  EvidenceSoundness,
+  EvidenceVerifierBinding,
+  EvidenceVerifierAuthorized,
+  RuntimeExternality,
+  SharedComplexity,
+  ComplexityBound,
+  Isolation,
+  DeletionRetraction,
+  FeatureCausalClosure,
+  CompleteErase,
+  LifecyclePolicy,
+  WellFormedLifecycle,
+  ValidRenewal,
+  LifecycleValid,
+  PolicyAuthorized,
+  IndependenceLaws,
+  CoreAdmission,
+  HopCounterexample,
+)
+#+end_src
+
+The componentwise admission relation is intentionally conservative.  A
+trade-off that increases one component to improve another requires an explicit
+policy profile and MUST NOT be silently described as a globally better route.
+
+* Comparable measurement context
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-MEASUREMENT
+:END:
+
+A baseline and extension measurement are comparable only when they bind the
+same:
+
+- committed evidence-graph snapshot;
+- model profile;
+- semantic-search cache state;
+- model prefix-cache state;
+- measurement protocol.
+
+Semantic-search caching and model prefix caching are distinct dimensions.
+Receipts MUST NOT collapse them into an undifferentiated =cacheHit= field.
+
+Cold and warm cohorts MAY both be measured, but each claimed improvement MUST
+compare routes inside one cohort.  A warm extension compared with a cold
+baseline is not certified evidence of router improvement.
+
+* Independent shared value
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-VALUE
+:END:
+
+At least two admitted workloads whose owners satisfy an explicit independence
+relation MUST receive a certified route improvement.
+
+One internal workload, multiple benchmarks owned by the same organization, or
+multiple prompts generated from one private use case do not establish
+independent shared value.
+
+A certified improvement requires baseline success, extended-route success,
+valid extended evidence, and strict componentwise cost improvement.  A cheaper
+failed route does not establish value.
+
+This is a minimal admission rule, not proof that two users are sufficient for
+permanent standardization.  Governance MAY require stronger adoption evidence.
+
+* Admission-policy authority
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-POLICY
+:END:
+
+The certificate MUST bind an independently authorized policy covering:
+
+- the owner-independence relation;
+- the affected-workload domain;
+- graph-hop, token, and interaction-round budgets;
+- the shared-complexity budget.
+
+The feature proposer MUST NOT satisfy this obligation merely by choosing a
+larger budget, minting additional owner identifiers, or marking every workload
+as affected.  Authorization is external evidence consumed by the proof.
+
+The owner-independence relation MUST be irreflexive and symmetric.  The Lean
+certificate therefore derives that the two beneficiary owners are distinct
+instead of trusting identifier inequality as the definition of independence.
+
+* Evidence-verifier binding
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-EVIDENCE
+:END:
+
+The extension MUST bind its =evidenceValid= proposition to an independently
+authorized verifier over:
+
+- the complete measurement context, including graph snapshot identity;
+- the exact evidence objects exposed by the route.
+
+The binding is bidirectional.  A route cannot set =evidenceValid= to =True=
+without satisfying the verifier, and the receipt cannot silently discard a
+successful verifier result.
+
+Verifier authorization is distinct from feature-policy authorization.  A
+feature proposer MUST NOT define both the new evidence semantics and the only
+verifier allowed to approve those semantics.
+
+* Search correctness preservation
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-CORRECTNESS
+:END:
+
+For every baseline workload that reaches its semantic goal, the extended router
+MUST still reach that goal.
+
+Every extended route that claims success MUST expose valid evidence.  A shorter
+path to an unsupported conclusion is not an optimization.
+
+* Bounded runtime externality
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-RUNTIME
+:END:
+
+Every workload, including a workload that does not benefit, MUST remain within
+explicit hop, token, and interaction-round budgets relative to baseline.
+
+The budget is contract-visible.  It MUST NOT be hidden in router heuristics or
+provider-private thresholds.
+
+* Shared-complexity budget
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-COMPLEXITY
+:END:
+
+The certificate records added:
+
+- schema concepts;
+- router states or transitions;
+- long-lived maintenance obligations.
+
+All components MUST remain within a declared shared-complexity budget.  Runtime
+speed does not compensate automatically for permanent protocol complexity.
+
+* Isolation
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-ISOLATION
+:END:
+
+For workloads outside the declared affected domain, the extended route cost
+MUST equal baseline.
+
+The production contract SHOULD strengthen cost equality to packet, evidence,
+cache-identity, and selected-route equality.  This RFC begins with the smallest
+mathematical boundary needed to expose leakage.
+
+* Deletion witness
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-DELETION
+:END:
+
+Every admitted extension MUST define:
+
+- the baseline and active extended states being certified;
+- an embedding from baseline state into extended state;
+- a removal projection from extended state to baseline state;
+- an erasure operation on the actual extended state;
+- a proof that removing an embedded baseline state returns that state;
+- proofs binding the witness to the same baseline and extended routers used by
+  the admission certificate;
+- idempotent erasure;
+- proof that the actual extended router restores baseline behavior after
+  erasure.
+
+The deletion state MUST cover the transitive causal closure of the feature,
+including:
+
+- router configuration and feature flags;
+- semantic-search cache entries;
+- learned route preferences or self-improvement state;
+- derived graph indices and materialized shortcut edges.
+
+“No current user complained” is not a deletion witness.
+
+An unrelated retraction over unrelated states is also not a deletion witness.
+Deleting code while leaving feature-derived state able to influence routing is
+not deletion.
+
+* Sunset and renewal
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-SUNSET
+:END:
+
+Every core admission MUST include:
+
+- admission time;
+- mandatory review time;
+- expiry time.
+
+The ordering MUST satisfy:
+
+#+begin_quote
+admission time < review time <= expiry time
+#+end_quote
+
+Silence does not extend expiry.  After expiry the feature MUST enter deletion
+or full re-admission unless a renewal receipt was issued within the previous
+lifecycle.
+
+A valid renewal receipt binds:
+
+- current independent-value evidence;
+- an active maintenance owner;
+- the old and new expiry;
+- external renewal authorization.
+
+An arbitrary receipt, a receipt issued after expiry, or a longer date chosen by
+the feature owner does not renew admission.
+
+* Lean-discovered non-implications
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-NONIMPLICATION
+:END:
+
+The Lean model MUST preserve counterexamples showing:
+
+- fewer graph hops do not imply lower token or interaction cost;
+- improvement for one owner does not establish independent shared value;
+- bounded runtime regression does not imply isolation;
+- an unchanged router is removable but has no admission value;
+- lower measured cost under a different semantic-search or model-prefix cache
+  context is not a certified improvement;
+- deleting router code while retaining semantic cache, learned preference, or
+  derived graph-index state does not restore baseline routing;
+- silence and an unauthorized renewal receipt do not extend an expired feature.
+
+These are protocol-design failures, not implementation bugs.
+
+Lean model review also exposed two specification holes before compilation:
+
+- cost improvement alone could count a failed or evidence-invalid route as
+  value, so admission now requires =CertifiedImprovement=;
+- a deletion witness could be constructed over routers unrelated to the
+  admitted baseline and extension, so the witness now binds the active states,
+  both router interpretations, and the actual erasure behavior;
+- self-declared budgets and affected scopes could make externality and isolation
+  obligations vacuous, so the certificate now requires an externally authorized
+  admission policy;
+- a route-local =evidenceValid= proposition could be set to =True= without
+  validating the evidence, so the certificate now binds it to an independently
+  authorized snapshot-aware verifier;
+- code-only deletion could leave feature-derived caches, learned preferences,
+  and graph indices active, so deletion now covers the feature's transitive
+  causal state closure;
+- a one-time admission could otherwise survive indefinitely through silence,
+  so every certificate now carries a bounded lifecycle and renewal authority.
+
+* Graph Router consequence
+
+A Graph Router MUST optimize a declared route-cost relation.  Hop count alone
+is not an admissible global objective.
+
+The router receipt MUST distinguish:
+
+- selected route;
+- alternatives considered or their committed frontier;
+- evidence validity;
+- hop, token, and interaction-round costs;
+- policy profile when a non-componentwise trade-off is accepted;
+- admission-certificate identity for any core extension used by the route.
+
+* Python Turbo Graph boundary
+
+The future Python Turbo Graph implementation owns efficient graph materialization,
+ranking, and route execution.  It does not own the meaning of core admission.
+
+Python MUST eventually emit sufficient inputs for independent verification:
+
+- workload and owner identity class;
+- committed evidence-graph snapshot identity;
+- model-profile identity;
+- semantic-search cache identity;
+- model prefix-cache identity;
+- measurement-protocol identity;
+- baseline and extended route costs;
+- evidence validity receipt;
+- evidence-verifier identity and authorization evidence;
+- affected-domain decision;
+- runtime and complexity budgets;
+- deletion-witness version;
+- feature-derived cache, learned-state, and graph-index deletion footprint;
+- lifecycle policy and renewal-receipt identity;
+- router policy identity.
+
+Until that implementation exists, Lean proves the shared semantic boundary and
+counterexamples only.
+
+* Audit ownership
+
+The Lean audit follows the modular architecture:
+
+- =ASPProof.Audit.Core= owns generic environment and JSON extraction;
+- =ASPProof.Audit.SearchRouteEvidenceGraphAdmission= owns only this RFC's
+  theorem inventory and clause mapping;
+- the executable receipt entry imports that RFC audit module and
+  =ASPProof.Audit.Receipt=;
+- no theorem target or writer command is added to the historical audit
+  compatibility module.
+
+Required theorem families:
+
+- =independent-value=
+- =search-correctness=
+- =bounded-externality=
+- =isolation-deletion=
+- =policy-authority=
+- =evidence-verifier-binding=
+- =bounded-lifecycle=
+- =silence-sunset=
+- =renewal-authority=
+- =authorized-renewal=
+- =hop-counterexample=
+- =single-owner-counterexample=
+- =isolation-counterexample=
+- =no-value-counterexample=
+- =measurement-context-counterexample=
+- =deletion-footprint-counterexample=
+- =deletion-causal-closure=
+
+* Non-goals
+
+- Implement Python Turbo Graph.
+- Modify Rust search providers.
+- Choose a permanent weighted route objective.
+- Claim that two owners alone guarantee long-term value.
+- Treat tests, CI, or implementation polish as core-admission evidence.
+- Require every downstream experiment to satisfy core-admission obligations.
+- Use raw LaTeX, standalone Typst, =:file=, or Typst compilation.
+
+* Remaining proof boundary
+
+The next layers should formalize:
+
+- equality of unaffected evidence packets, not only route cost;
+- evidence required to justify the declared owner-independence relation;
+- multi-cycle renewal, maintenance-owner disappearance, and mandatory
+  transition from expiry to causal-closure erasure;
+- observational equivalence after deletion;
+- a formal causal-closure witness proving that every persistent state capable
+  of influencing routing is included in erasure;
+- graph-frontier completeness under the declared route objective;
+- statistical confidence for empirical token and latency estimates;
+- cold/warm cohort aggregation without mixing incomparable cache contexts;
+- authenticated binding between Python measurements and the committed evidence
+  graph snapshot.

@@ -78,7 +78,11 @@ impl LanguageFileSpec {
     }
 }
 
-/// Build a language-specific file matcher from provider manifest defaults.
+/// Build a Git-scoped document matcher from a registered provider descriptor.
+///
+/// Programming-language owners are admitted only by their provider-owned
+/// source snapshot. This matcher intentionally consumes only document
+/// resolution extensions and never reconstructs harness scope from filenames.
 #[must_use]
 pub fn language_file_spec(language_id: impl AsRef<str>) -> LanguageFileSpec {
     let language_id = language_id.as_ref();
@@ -87,39 +91,27 @@ pub fn language_file_spec(language_id: impl AsRef<str>) -> LanguageFileSpec {
         manifests
             .iter()
             .filter(|manifest| manifest.language_id().as_str() == language_id)
-            .flat_map(|manifest| manifest.source().default_extensions.iter()),
-        manifests
-            .iter()
-            .filter(|manifest| manifest.language_id().as_str() == language_id)
-            .flat_map(|manifest| manifest.source().default_config_files.iter()),
-        manifests
-            .iter()
-            .filter(|manifest| manifest.language_id().as_str() == language_id)
-            .flat_map(|manifest| manifest.source().default_project_markers.iter()),
-        manifests
-            .iter()
-            .filter(|manifest| manifest.language_id().as_str() == language_id)
-            .flat_map(|manifest| manifest.source().default_dependency_markers.iter()),
+            .filter_map(|manifest| manifest.document_resolution())
+            .flat_map(|descriptor| descriptor.extensions.iter()),
+        std::iter::empty(),
+        std::iter::empty(),
+        std::iter::empty(),
     )
 }
 
-/// Build a language-neutral matcher from all provider manifest defaults.
+/// Build a language-neutral Git-scoped matcher from registered document
+/// providers.
 #[must_use]
 pub fn language_neutral_search_file_spec() -> LanguageFileSpec {
     let manifests = builtin_provider_manifests();
     LanguageFileSpec::from_provider_defaults(
         manifests
             .iter()
-            .flat_map(|manifest| manifest.source().default_extensions.iter()),
-        manifests
-            .iter()
-            .flat_map(|manifest| manifest.source().default_config_files.iter()),
-        manifests
-            .iter()
-            .flat_map(|manifest| manifest.source().default_project_markers.iter()),
-        manifests
-            .iter()
-            .flat_map(|manifest| manifest.source().default_dependency_markers.iter()),
+            .filter_map(|manifest| manifest.document_resolution())
+            .flat_map(|descriptor| descriptor.extensions.iter()),
+        std::iter::empty(),
+        std::iter::empty(),
+        std::iter::empty(),
     )
 }
 

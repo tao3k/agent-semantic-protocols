@@ -70,8 +70,8 @@ impl<'a> OwnerItemsSearchState<'a> {
             .map_err(|error| format!("failed to create provider incremental runtime: {error}"))?;
         owner_items_trace("runtime-build", runtime_started);
         let session_started = Instant::now();
-        let session = super::workspace_db_resident::session(&self.owner_project_root)
-            .map_err(|error| error.to_string())?;
+        let session =
+            super::runtime_server::runtime_server_workspace_session(&self.owner_project_root)?;
         owner_items_trace("workspace-session-acquire", session_started);
         let normalized_owner_started = Instant::now();
         let (owner_path, owner_key) = normalized_owner_path(&self.owner_project_root, self.owner)?;

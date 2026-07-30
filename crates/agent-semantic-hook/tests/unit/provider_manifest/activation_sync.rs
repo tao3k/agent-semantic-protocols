@@ -13,6 +13,8 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("stale-coverage-defaults");
+    super::git_init(&root);
+    fs::create_dir_all(root.join("src")).expect("create Rust source root");
     let state_home = root.join(".asp-state-home");
     let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
     fs::write(
@@ -20,6 +22,7 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
         "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
     )
     .expect("write cargo manifest");
+    fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
     super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
 
     let activation_path = test_activation_path(&root, &root);
@@ -76,6 +79,8 @@ fn generated_activation_with_unknown_field_and_valid_receipt_rebuilds() {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("generated-unknown-field");
+    super::git_init(&root);
+    fs::create_dir_all(root.join("src")).expect("create Rust source root");
     let state_home = root.join(".asp-state-home");
     let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
     fs::write(
@@ -83,6 +88,7 @@ fn generated_activation_with_unknown_field_and_valid_receipt_rebuilds() {
         "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
     )
     .expect("write cargo manifest");
+    fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
     super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
 
     let activation_path = test_activation_path(&root, &root);
@@ -131,6 +137,8 @@ fn non_generated_activation_with_unknown_field_fails_closed() {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = temp_root("custom-unknown-field");
+    super::git_init(&root);
+    fs::create_dir_all(root.join("src")).expect("create Rust source root");
     let state_home = root.join(".asp-state-home");
     let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
     fs::write(
@@ -138,6 +146,7 @@ fn non_generated_activation_with_unknown_field_fails_closed() {
         "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
     )
     .expect("write cargo manifest");
+    fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
     super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
     let activation_path = root.join("custom-activation.json");
     let activation = build_default_activation(&root).expect("build activation");

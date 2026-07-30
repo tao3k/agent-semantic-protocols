@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent-semantic-protocols.dev/schemas/global-resident-control.v1.schema.json",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-control.v1.schema.json",
   "title": "ASP Runtime Server Control",
   "oneOf": [
     {
@@ -14,6 +14,21 @@
     },
     {
       "$ref": "#/$defs/statusSnapshot"
+    },
+    {
+      "$ref": "#/$defs/workspaceGenerationSnapshot"
+    },
+    {
+      "$ref": "#/$defs/workspaceRecoveryReceipt"
+    },
+    {
+      "$ref": "#/$defs/runtimeSlotReceipt"
+    },
+    {
+      "$ref": "#/$defs/workspaceDataPlanePerformanceReceipt"
+    },
+    {
+      "$ref": "#/$defs/runtimeShutdownReceipt"
     }
   ],
   "$defs": {
@@ -28,6 +43,7 @@
         "runtimeArtifactPath",
         "runtimeArtifactDigest",
         "bindingToken",
+        "dataPlaneSocketPath",
         "socketPath"
         ,"statusMemoryPath"
       ],
@@ -62,10 +78,221 @@
           "type": "string",
           "minLength": 1
         },
+        "dataPlaneSocketPath": {
+          "type": "string",
+          "minLength": 1
+        },
         "statusMemoryPath": {
           "type": "string",
           "minLength": 1
         }
+      }
+    },
+    "dataPlaneCounters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filesystemReads",
+        "filesystemWrites",
+        "databaseOpens",
+        "providerSpawns",
+        "schemaBootstraps",
+        "lockProbes",
+        "manifestReads",
+        "workspaceCanonicalizations",
+        "activationLoads",
+        "controlSocketRoundtrips"
+      ],
+      "properties": {
+        "filesystemReads": { "type": "integer", "minimum": 0 },
+        "filesystemWrites": { "type": "integer", "minimum": 0 },
+        "databaseOpens": { "type": "integer", "minimum": 0 },
+        "providerSpawns": { "type": "integer", "minimum": 0 },
+        "schemaBootstraps": { "type": "integer", "minimum": 0 },
+        "lockProbes": { "type": "integer", "minimum": 0 },
+        "manifestReads": { "type": "integer", "minimum": 0 },
+        "workspaceCanonicalizations": { "type": "integer", "minimum": 0 },
+        "activationLoads": { "type": "integer", "minimum": 0 },
+        "controlSocketRoundtrips": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "workspaceGenerationSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "workspaceIdentity",
+        "state",
+        "activeEpoch",
+        "generationDigest",
+        "rootDepth",
+        "memoryBackendDigest",
+        "mmapSegmentPath",
+        "previousEpochReadable"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.runtime-server-workspace-generation-snapshot.v1"
+        },
+        "schemaVersion": { "const": "1" },
+        "workspaceIdentity": { "type": "string", "minLength": 1 },
+        "state": {
+          "enum": [
+            "absent",
+            "loading-persistent",
+            "ready",
+            "publishing-next",
+            "recovering-owner-overlay"
+          ]
+        },
+        "activeEpoch": { "type": "integer", "minimum": 1 },
+        "generationDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "rootDepth": {
+          "type": "array",
+          "prefixItems": [
+            { "const": 1 },
+            { "const": 0 }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "memoryBackendDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "mmapSegmentPath": { "type": "string", "minLength": 1 },
+        "previousEpochReadable": { "type": "boolean" }
+      }
+    },
+    "workspaceRecoveryReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "requestId",
+        "workspaceIdentity",
+        "source",
+        "state",
+        "activeEpoch",
+        "targetEpoch",
+        "oldGenerationReadable",
+        "counters"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.runtime-server-workspace-recovery-receipt.v1"
+        },
+        "schemaVersion": { "const": "1" },
+        "requestId": { "type": "string", "minLength": 1 },
+        "workspaceIdentity": { "type": "string", "minLength": 1 },
+        "source": {
+          "enum": [
+            "mmap-checkpoint",
+            "turso-generation",
+            "provider-owner-overlay",
+            "provider-generation-rebuild"
+          ]
+        },
+        "state": {
+          "enum": [
+            "loading-persistent",
+            "ready",
+            "publishing-next",
+            "recovering-owner-overlay"
+          ]
+        },
+        "activeEpoch": { "type": "integer", "minimum": 0 },
+        "targetEpoch": { "type": "integer", "minimum": 1 },
+        "oldGenerationReadable": { "type": "boolean" },
+        "counters": { "$ref": "#/$defs/dataPlaneCounters" }
+      }
+    },
+    "runtimeSlotReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "activeSlot",
+        "activeArtifactDigest",
+        "previousArtifactDigest",
+        "takeoverState",
+        "rollbackAvailable"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.runtime-server-slot-receipt.v1"
+        },
+        "schemaVersion": { "const": "1" },
+        "activeSlot": { "enum": ["a", "b"] },
+        "activeArtifactDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "previousArtifactDigest": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "takeoverState": {
+          "enum": ["preparing", "verified", "active", "rolled-back"]
+        },
+        "rollbackAvailable": { "type": "boolean" }
+      }
+    },
+    "workspaceDataPlanePerformanceReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "workspaceCount",
+        "sessionCount",
+        "sampleCount",
+        "p50Micros",
+        "p99Micros",
+        "maxMicros",
+        "counters"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.runtime-server-workspace-data-plane-performance-receipt.v1"
+        },
+        "schemaVersion": { "const": "1" },
+        "workspaceCount": { "type": "integer", "minimum": 2 },
+        "sessionCount": { "type": "integer", "minimum": 2 },
+        "sampleCount": { "type": "integer", "minimum": 1 },
+        "p50Micros": { "type": "integer", "minimum": 0 },
+        "p99Micros": { "type": "integer", "minimum": 0, "exclusiveMaximum": 1000 },
+        "maxMicros": { "type": "integer", "minimum": 0 },
+        "counters": { "$ref": "#/$defs/dataPlaneCounters" }
+      }
+    },
+    "runtimeShutdownReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaId",
+        "schemaVersion",
+        "workspaceCount",
+        "writerLaneCount",
+        "queuedPublicationsDrained",
+        "forcedAbortCount"
+      ],
+      "properties": {
+        "schemaId": {
+          "const": "agent.semantic-protocols.runtime-server-shutdown-receipt.v1"
+        },
+        "schemaVersion": { "const": "1" },
+        "workspaceCount": { "type": "integer", "minimum": 0 },
+        "writerLaneCount": { "type": "integer", "minimum": 0 },
+        "queuedPublicationsDrained": { "const": true },
+        "forcedAbortCount": { "const": 0 }
       }
     },
     "statusSnapshot": {

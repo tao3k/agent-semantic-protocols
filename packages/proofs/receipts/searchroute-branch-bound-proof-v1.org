@@ -1,0 +1,174 @@
+#+title: SearchRoute Certified Lazy Frontier Proof Receipt v1
+#+startup: overview
+
+* Scope
+
+This receipt covers:
+
+- lexicographic lower-bound transitivity;
+- safe pruning of a certified deferred frontier;
+- visible and deferred coverage of the complete candidate set;
+- snapshot-bound acceptance of coverage receipts;
+- global no-worse ordering without eager candidate materialization; and
+- counterexamples for invalid bounds, missing coverage, and stale snapshots.
+
+RFC owner:
+
+#+begin_example
+docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.19-searchroute-certified-lazy-frontier.org
+#+end_example
+
+Lean owner:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteBranchBound.lean
+#+end_example
+
+* Freshness observation
+
+The parser-owned owner search used to open this proof iteration returned the
+obsolete claim that =StepCatalogComplete= remained an external premise.  The
+live RFC and Lean owner had already eliminated that premise.
+
+This observation is not used as formal proof evidence.  It is the motivating
+runtime counterexample for requiring a coverage receipt to match the current
+source/index snapshot digest.
+
+An initial Lean model still left the receipt digest independent of the covered
+candidate list.  The snapshot premise was consequently unused by the
+global-optimality proof.  The corrected model introduces =CandidateUniverse=
+with both digest and complete candidates; =CoverageReceipt= is indexed by that
+universe and proves its claimed digest equals the universe digest.
+
+* Lean result
+
+Commands:
+
+#+begin_src sh
+cd packages/proofs
+/opt/homebrew/bin/lake env lean ASPProof/SearchRouteBranchBound.lean
+/opt/homebrew/bin/lake build
+/opt/homebrew/bin/lake env lean audit/SearchRouteBranchBoundAudit.lean
+#+end_src
+
+Result:
+
+#+begin_example
+direct owner check: exit status 0
+Lake build: 16 jobs passed
+audited declarations: 8
+axiom-free declarations: 1
+axiom-dependent declarations: 7
+hasSorryAx: false for every declaration
+#+end_example
+
+Lean source SHA-256:
+
+#+begin_example
+34ef9b9107866524be7988a6d38cc9afed0b84bad1c8cbb31fae57f8b6282eb6
+#+end_example
+
+Lean audit SHA-256:
+
+#+begin_example
+644d3fc48700bde862308a9bae723297dffe91812da3a336cd84bfb8e2f1da0d
+#+end_example
+
+* AXLE result
+
+The default AXLE policy failed closed:
+
+#+begin_example
+exit status 2
+axle lean audit: axioms are not admitted by policy:
+['Classical.choice', 'Quot.sound', 'propext']
+#+end_example
+
+The admitted run allowed exactly that inventory and required all four RFC
+clauses and all six theorem families.
+
+Canonical AXLE audit digest:
+
+#+begin_example
+d843b3f4184d6c31d88b5b9067ff24bd17064ef954875b9868258ce0dbee7e58
+#+end_example
+
+AXLE receipt SHA-256:
+
+#+begin_example
+9351c36f2d5a08acfe079a80b8380b8b69fa87548dc99b0f54825ce013ba2fee
+#+end_example
+
+* Schema validation
+
+The Lean audit validates against:
+
+#+begin_example
+schemas/lean-proof-audit.v1.schema.json
+#+end_example
+
+The AXLE receipt validates against:
+
+#+begin_example
+schemas/axle-lean-audit-receipt.v1.schema.json
+#+end_example
+
+Both commands exited with status 0.  The only output was the upstream
+=jsonschema= CLI deprecation warning.
+
+* Org-Babel Typst result
+
+The named block =searchroute-certified-lazy-frontier-model= compiled through
+standard input:
+
+#+begin_src sh
+asp org query --workspace . exact \
+  --kind block \
+  --term searchroute-certified-lazy-frontier-model \
+  --content |
+  typst compile - /tmp/searchroute-certified-lazy-frontier.pdf
+#+end_src
+
+Result:
+
+#+begin_example
+exit status 0
+42,830 bytes
+#+end_example
+
+RFC SHA-256:
+
+#+begin_example
+a2590328cfea5f2bbc7b9bf9c3e175105e87ab6b6806b8f3969d78ca501de493
+#+end_example
+
+PDF SHA-256:
+
+#+begin_example
+6b4a202e06d23b308ea70212f5489c1fb47d51941e3ad75447963c43c236a932
+#+end_example
+
+* Verified claims
+
+- Lexicographic candidate-key ordering is transitive.
+- A selected key that dominates a valid frontier lower bound dominates every
+  candidate represented by that frontier.
+- Visible optimality plus certified deferred-frontier coverage implies global
+  no-worse ordering over the complete enumeration.
+- A coverage receipt's claimed digest is proof-bound to the complete candidate
+  universe digest.
+- Snapshot acceptance is equivalent to equality between the current digest and
+  that universe digest.
+- The snapshot-bound theorem exposes snapshot acceptance as a protocol
+  precondition for the lazy global-optimality result.
+- An invalid lower bound can prune a better two-hop route behind a selected
+  five-hop route.
+- Visible optimality without coverage does not imply global optimality.
+- A coverage receipt for snapshot =41= is rejected for snapshot =42=.
+
+* Remaining boundary
+
+The next proof layer must define lower bounds for partial routes and prove that
+every route extension preserves or increases the lower-bound key.  After that,
+an executable scheduler can be verified against the complete candidate
+enumerator while exposing only a bounded =inspect= frontier.

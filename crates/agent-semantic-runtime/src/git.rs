@@ -143,7 +143,8 @@ pub struct RepositoryCandidateMetrics {
     pub worktree_addition_count: usize,
     pub candidate_count: usize,
     pub full_workspace_reads: usize,
-    pub database_opens: usize,
+    pub full_merkle_rebuilds: usize,
+    pub direct_db_opens: usize,
 }
 
 #[derive(Debug)]
@@ -365,7 +366,8 @@ pub fn discover_repository_candidate_snapshot(
             worktree_addition_count,
             candidate_count: candidates.len(),
             full_workspace_reads: 0,
-            database_opens: 0,
+            full_merkle_rebuilds: 0,
+            direct_db_opens: 0,
         },
         candidates,
     }))

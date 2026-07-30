@@ -79,12 +79,6 @@ impl WorkspaceTreeSitterRequest {
             }
             _ => return Ok(None),
         }
-        if args.iter().any(|argument| argument == "--code") {
-            return Err(
-                "tree-sitter search returns a capture frontier and does not accept --code; use `query --selector <exact-selector> --code` for deterministic source projection"
-                    .to_string(),
-            );
-        }
         Ok(Some(Self {
             query_source,
             json: args.iter().any(|argument| argument == "--json"),
@@ -203,8 +197,7 @@ fn run_incremental_workspace_query(
         .enable_all()
         .build()
         .map_err(|error| format!("failed to create incremental Tree-sitter runtime: {error}"))?;
-    let client_db_session =
-        super::workspace_db_resident::session(project_root).map_err(|error| error.to_string())?;
+    let client_db_session = super::runtime_server::runtime_server_workspace_session(project_root)?;
     tree_sitter_trace("resolve-state", phase_started, None);
     let query_identity = agent_semantic_client_db::ProviderTreeSitterQueryIdentity {
         scope: state.scope.clone(),

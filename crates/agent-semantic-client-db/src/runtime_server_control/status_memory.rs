@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::os::unix::fs::PermissionsExt;
-use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 
 use memmap2::{Mmap, MmapMut, MmapOptions};
 use tokio::sync::OnceCell;
@@ -29,6 +29,15 @@ pub(crate) struct RuntimeServerStatusMemoryWriter {
 struct RuntimeServerStatusMemoryReader {
     mapping: Mmap,
     cached_snapshot: RwLock<Option<(u64, Arc<RuntimeServerStatusSnapshot>)>>,
+    snapshot_decode_count: AtomicU64,
+    snapshot_cache_hit_count: AtomicU64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RuntimeServerStatusMemoryMetrics {
+    pub reader_open_count: u64,
+    pub snapshot_decode_count: u64,
+    pub snapshot_cache_hit_count: u64,
 }
 
 impl RuntimeServerStatusMemoryWriter {
@@ -46,9 +55,7 @@ impl RuntimeServerStatusMemoryWriter {
             .map_err(|error| format!("failed to size Runtime Server status memory: {error}"))?;
         file.set_permissions(std::fs::Permissions::from_mode(0o600))
             .await
-            .map_err(|error| {
-                format!("failed to protect Runtime Server status memory: {error}")
-            })?;
+            .map_err(|error| format!("failed to protect Runtime Server status memory: {error}"))?;
         let file = file.into_std().await;
         // SAFETY: the file is exclusively initialized by the elected Runtime Server,
         // has a stable non-zero length, and the mapping is retained for the writer lifetime.
@@ -81,8 +88,7 @@ impl RuntimeServerStatusMemoryWriter {
             return Err("Runtime Server status memory payload exceeds fixed mapping".to_owned());
         }
         generation(&self.mapping).store(committed_generation - 1, Ordering::Release);
-        self.mapping[PAYLOAD_LENGTH_OFFSET..PAYLOAD_OFFSET]
-            .fill(0);
+        self.mapping[PAYLOAD_LENGTH_OFFSET..PAYLOAD_OFFSET].fill(0);
         self.mapping[PAYLOAD_LENGTH_OFFSET..PAYLOAD_LENGTH_OFFSET + 4]
             .copy_from_slice(&(payload.len() as u32).to_le_bytes());
         self.mapping[PAYLOAD_OFFSET..PAYLOAD_OFFSET + payload.len()].copy_from_slice(&payload);
@@ -110,6 +116,8 @@ impl RuntimeServerStatusMemoryReader {
         Ok(Self {
             mapping,
             cached_snapshot: RwLock::new(None),
+            snapshot_decode_count: AtomicU64::new(0),
+            snapshot_cache_hit_count: AtomicU64::new(0),
         })
     }
 
@@ -126,10 +134,15 @@ impl RuntimeServerStatusMemoryReader {
             return Err("Runtime Server status memory is not initialized".to_owned());
         }
         if before % 2 != 0 {
-            return cached().ok_or_else(|| {
-                "Runtime Server status publication is in progress before the first snapshot"
-                    .to_owned()
-            });
+            return cached()
+                .inspect(|_| {
+                    self.snapshot_cache_hit_count
+                        .fetch_add(1, Ordering::Relaxed);
+                })
+                .ok_or_else(|| {
+                    "Runtime Server status publication is in progress before the first snapshot"
+                        .to_owned()
+                });
         }
         if let Some((cached_generation, snapshot)) = self
             .cached_snapshot
@@ -139,6 +152,20 @@ impl RuntimeServerStatusMemoryReader {
             && *cached_generation == before
             && generation(&self.mapping).load(Ordering::Acquire) == before
         {
+            self.snapshot_cache_hit_count
+                .fetch_add(1, Ordering::Relaxed);
+            return Ok(Arc::clone(snapshot));
+        }
+        let mut cached_snapshot = self
+            .cached_snapshot
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some((cached_generation, snapshot)) = cached_snapshot.as_ref()
+            && *cached_generation == before
+            && generation(&self.mapping).load(Ordering::Acquire) == before
+        {
+            self.snapshot_cache_hit_count
+                .fetch_add(1, Ordering::Relaxed);
             return Ok(Arc::clone(snapshot));
         }
         let length = u32::from_le_bytes(
@@ -156,25 +183,39 @@ impl RuntimeServerStatusMemoryReader {
                 "Runtime Server status publication changed during the first snapshot".to_owned()
             });
         }
-        let snapshot: RuntimeServerStatusSnapshot =
-            serde_json::from_slice(&payload).map_err(|error| {
-                format!("failed to decode Runtime Server status memory: {error}")
-            })?;
+        let snapshot: RuntimeServerStatusSnapshot = serde_json::from_slice(&payload)
+            .map_err(|error| format!("failed to decode Runtime Server status memory: {error}"))?;
         snapshot.validate(after)?;
         let snapshot = Arc::new(snapshot);
-        *self
-            .cached_snapshot
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-            Some((after, Arc::clone(&snapshot)));
+        *cached_snapshot = Some((after, Arc::clone(&snapshot)));
+        self.snapshot_decode_count.fetch_add(1, Ordering::Relaxed);
         Ok(snapshot)
+    }
+
+    fn metrics(&self) -> RuntimeServerStatusMemoryMetrics {
+        RuntimeServerStatusMemoryMetrics {
+            reader_open_count: 1,
+            snapshot_decode_count: self.snapshot_decode_count.load(Ordering::Relaxed),
+            snapshot_cache_hit_count: self.snapshot_cache_hit_count.load(Ordering::Relaxed),
+        }
     }
 }
 
-pub(crate) async fn read_runtime_server_status(
+pub fn runtime_server_status_memory_metrics(
     endpoint: &RuntimeServerEndpoint,
-    request_id: String,
-) -> Result<RuntimeServerControlReceipt, String> {
+) -> Option<RuntimeServerStatusMemoryMetrics> {
+    let readers = STATUS_MEMORY_READERS.get()?;
+    let reader_slot = readers
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(&endpoint.status_memory_path)
+        .cloned()?;
+    reader_slot.get().map(|reader| reader.metrics())
+}
+
+async fn runtime_server_status_memory_reader(
+    endpoint: &RuntimeServerEndpoint,
+) -> Result<Arc<RuntimeServerStatusMemoryReader>, String> {
     let readers = STATUS_MEMORY_READERS
         .get_or_init(|| async { RwLock::new(HashMap::new()) })
         .await;
@@ -204,6 +245,22 @@ pub(crate) async fn read_runtime_server_status(
                 .map(Arc::new)
         })
         .await?;
+    Ok(Arc::clone(reader))
+}
+
+pub async fn prewarm_runtime_server_status_memory(
+    endpoint: &RuntimeServerEndpoint,
+) -> Result<RuntimeServerStatusMemoryMetrics, String> {
+    let reader = runtime_server_status_memory_reader(endpoint).await?;
+    reader.read()?;
+    Ok(reader.metrics())
+}
+
+pub(crate) async fn read_runtime_server_status(
+    endpoint: &RuntimeServerEndpoint,
+    request_id: String,
+) -> Result<RuntimeServerControlReceipt, String> {
+    let reader = runtime_server_status_memory_reader(endpoint).await?;
     let snapshot = reader.read()?;
     snapshot.receipt(request_id, endpoint)
 }

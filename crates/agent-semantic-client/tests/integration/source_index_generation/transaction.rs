@@ -1,5 +1,5 @@
 use agent_semantic_client::source_index::{
-    PublishedSourceIndexGenerationV1, SourceIndexCollectionScopeV1,
+    PublishedSourceIndexGenerationV1, SourceIndexCollectionScope,
     WorkspaceSearchGenerationPublicationRequestV1, publish_workspace_search_generation_v1,
 };
 
@@ -14,9 +14,9 @@ fn publication_has_one_typed_transaction_entry() {
 fn publication_request_carries_explicit_collection_scope() {
     fn consume_scope(request: WorkspaceSearchGenerationPublicationRequestV1<'_>) {
         match request.collection_scope {
-            SourceIndexCollectionScopeV1::CompleteGeneration => {}
-            SourceIndexCollectionScopeV1::TargetProvider { .. } => {}
-            SourceIndexCollectionScopeV1::TargetProviderId { .. } => {}
+            SourceIndexCollectionScope::CompleteGeneration => {}
+            SourceIndexCollectionScope::TargetProvider { .. } => {}
+            SourceIndexCollectionScope::TargetProviderId { .. } => {}
         }
     }
 

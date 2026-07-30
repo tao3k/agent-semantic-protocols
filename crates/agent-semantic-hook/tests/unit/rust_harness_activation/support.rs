@@ -181,9 +181,16 @@ pub(super) fn root_owned_rust_activation_json() -> String {
             semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
-                package_roots: vec![".".to_string()],
-                config_files: manifest.source().default_config_files.clone(),
-                source_extensions: manifest.source().default_extensions.clone(),
+                package_roots: vec!["src".to_string()],
+                config_files: manifest
+                    .project_resolution()
+                    .expect("Rust project resolution")
+                    .entry_markers
+                    .clone(),
+                source_extensions: vec![".rs".to_string()],
+                source_paths: vec!["src/lib.rs".to_string()],
+                repository_candidate_generation: "test-candidate-generation".to_string(),
+                project_resolution_generation: "test-project-resolution-generation".to_string(),
             },
         }],
     };

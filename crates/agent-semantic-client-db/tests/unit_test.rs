@@ -18,8 +18,6 @@ mod db_engine_source_index;
 mod db_gerbil_dependency_index;
 #[path = "unit/env.rs"]
 mod env;
-#[path = "unit/runtime_server_control.rs"]
-mod runtime_server_control;
 #[path = "unit/db/live_source_index_memory.rs"]
 mod live_source_index_memory;
 #[path = "unit/materialization_fixture.rs"]
@@ -30,8 +28,16 @@ mod project_scoped_turso_performance;
 mod provider_incremental_probe_batch;
 #[path = "unit/provider_treesitter_read.rs"]
 mod provider_treesitter_read;
-#[path = "unit/resident_query_performance.rs"]
-mod resident_query_performance;
+#[path = "unit/runtime_server_control.rs"]
+mod runtime_server_control;
+#[path = "unit/runtime_server_overlay_admission.rs"]
+mod runtime_server_overlay_admission;
+#[path = "unit/runtime_server_runtime.rs"]
+mod runtime_server_runtime;
+#[path = "unit/runtime_server_workspace.rs"]
+mod runtime_server_workspace;
+#[path = "unit/runtime_server_workspace_recovery.rs"]
+mod runtime_server_workspace_recovery;
 #[path = "unit/selector_generation_evidence.rs"]
 mod selector_generation_evidence;
 #[path = "unit/db/snapshot_fixture.rs"]
@@ -44,6 +50,8 @@ mod test_support;
 mod turso_mvcc_benchmark;
 #[path = "unit/turso_mvcc_partition.rs"]
 mod turso_mvcc_partition;
+#[path = "unit/turso_source_index_materialization.rs"]
+mod turso_source_index_materialization;
 #[path = "unit/workspace_db_ipc.rs"]
 mod workspace_db_ipc;
 #[path = "unit/workspace_db_owner_election.rs"]

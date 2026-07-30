@@ -1,6 +1,6 @@
 //! Typed search-pipe action frontier facts and display materialization.
 
-use super::search_pipe_projection::query_projection_flag;
+use super::search_pipe_projection::query_projection_suffix;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ActionNode {
@@ -12,7 +12,7 @@ pub(super) struct ActionNode {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum ActionRoute {
-    QueryCode {
+    QueryProjection {
         language_id: String,
         selector: agent_semantic_content_identity::CanonicalItemSelector,
         owner: String,
@@ -41,15 +41,15 @@ pub(super) enum ActionRoute {
 impl ActionNode {
     pub(super) fn materialized_command(&self) -> Option<String> {
         match &self.route {
-            ActionRoute::QueryCode {
+            ActionRoute::QueryProjection {
                 language_id,
                 selector,
                 workspace,
                 ..
             } => {
-                let projection_flag = query_projection_flag(language_id);
+                let projection_suffix = query_projection_suffix(language_id);
                 Some(format!(
-                    "asp {language_id} query --selector {} --workspace {workspace} {projection_flag}",
+                    "asp {language_id} query --selector {} --workspace {workspace}{projection_suffix}",
                     shell_arg(selector.structural_selector())
                 ))
             }

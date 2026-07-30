@@ -218,7 +218,7 @@ fn is_search_failure(args: &[String]) -> bool {
     matches!(args.first().map(String::as_str), Some("search"))
         && matches!(args.get(1).map(String::as_str), Some("failure"))
         && explicit_view(args).is_some_and(|view| matches!(view, "seeds" | "graph-turbo-request"))
-        && !args.iter().any(|arg| arg == "--json" || arg == "--code")
+        && !args.iter().any(|arg| arg == "--json")
 }
 
 fn is_reasoning_owner_query(args: &[String]) -> bool {
@@ -242,7 +242,7 @@ pub(super) fn is_search_owner_items_query(args: &[String]) -> bool {
         && matches!(args.get(1).map(String::as_str), Some("owner"))
         && matches!(args.get(3).map(String::as_str), Some("items"))
         && has_supported_owner_items_view(args)
-        && !args.iter().any(|arg| arg == "--json" || arg == "--code")
+        && !args.iter().any(|arg| arg == "--json")
 }
 
 fn has_supported_owner_items_view(args: &[String]) -> bool {

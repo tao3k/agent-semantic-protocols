@@ -1,11 +1,13 @@
 mod canonical;
 pub(in crate::engine) mod core;
+pub(in crate::engine) mod exact_projection_store;
 pub(in crate::engine) mod generation_snapshot;
 pub use generation_snapshot::{
     ClientDbSourceIndexGenerationOwner, ClientDbSourceIndexGenerationSnapshot,
     ClientDbSourceIndexSelectorFact, latest_turso_source_index_generation_snapshot,
 };
 mod facts;
+mod materialization;
 mod membership;
 mod prepare;
 mod projection;
@@ -22,9 +24,10 @@ mod schema;
 mod trace;
 
 pub(crate) use core::commit_turso_source_index_generation_in_fixture;
+pub(crate) use core::load_active_workspace_generation_materialization_in_fixture;
 pub(super) use core::turso_source_index_access_lock;
 pub use core::{
-    commit_turso_source_index_generation_via_resident, latest_turso_source_index_file_hashes,
+    commit_turso_source_index_generation_via_runtime_server, latest_turso_source_index_file_hashes,
     latest_turso_source_index_scope_files, latest_turso_source_index_stats,
     lookup_reusable_turso_source_index_generation,
 };

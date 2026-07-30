@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+from tools.schema_reference_closure import load_json, schema_profile_contract_closure as contract_closure
 import shutil
 import sys
 from collections.abc import Iterable, Sequence
@@ -72,7 +72,7 @@ def _profile_changes(
 ) -> tuple[SchemaProfileChange, ...]:
     schema_dir = repo_root / profile.package_root / "schemas"
     present = {path.name for path in schema_dir.glob("*.json")}
-    allowed = set(profile.allowed_schema_files)
+    allowed = set(contract_closure(repo_root, profile.allowed_schema_files))
     return (
         *_missing_schema_changes(profile, allowed - present),
         *_extra_schema_changes(profile, present - allowed),
@@ -198,7 +198,7 @@ def _profile_by_language(
 
 
 def _load_json(path: Path) -> object:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return load_json(path)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

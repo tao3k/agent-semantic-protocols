@@ -31,6 +31,30 @@ fn prepares_registry_owned_provider_command() {
 }
 
 #[test]
+fn project_resolution_method_is_not_a_positional_project_root() {
+    let home = install_home_provider("project-resolution-method", "py-harness", "");
+    let backend = LocalNativeCliBackend::new(snapshot(vec![provider("python", "py-harness")]));
+    let project_root = temp_project_root("project-resolution-method");
+    let canonical_project_root =
+        std::fs::canonicalize(&project_root).expect("canonical project root");
+    let request = ClientRequest::new(ClientMethod::ProjectResolution, project_root.clone())
+        .with_language("python")
+        .with_stdin(br#"{"schemaId":"test.project-resolution-request"}"#.to_vec());
+
+    let command = backend.prepare(&request).expect("prepare command");
+
+    assert_eq!(command.program, home.provider_path.to_string_lossy());
+    assert_eq!(command.args, vec!["project-resolution-stdin"]);
+    assert_eq!(command.project_root, canonical_project_root);
+    assert_ne!(
+        command.args.first().map(String::as_str),
+        Some(command.project_root.to_string_lossy().as_ref())
+    );
+
+    std::fs::remove_dir_all(project_root).expect("remove temp project root");
+}
+
+#[test]
 fn requires_language_for_multi_provider_route() {
     let backend = LocalNativeCliBackend::new(snapshot(vec![
         provider("rust", "rs-harness"),

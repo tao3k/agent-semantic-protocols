@@ -12,8 +12,6 @@ mod command_build_profile;
 
 #[path = "unit/ast_patch.rs"]
 mod ast_patch;
-#[path = "unit/cli_help_model.rs"]
-mod cli_help_model;
 #[path = "unit/client_hook_claude_smoke.rs"]
 mod client_hook_claude_smoke;
 #[path = "unit/client_hook_codex_cli_e2e.rs"]
@@ -66,14 +64,22 @@ mod install_provider_cli;
 mod paths_command;
 #[path = "unit/provider_command/mod.rs"]
 mod provider_command;
+#[path = "unit/provider_exact_diagnostic.rs"]
+mod provider_exact_diagnostic;
 #[path = "unit/command/provider_language_facade.rs"]
 mod provider_language_facade;
+#[path = "unit/provider_selector.rs"]
+mod provider_selector;
 #[path = "unit/query_owner_freshness.rs"]
 mod query_owner_freshness;
 #[path = "unit/rfc_search_frame.rs"]
 mod rfc_search_frame;
 #[path = "unit/rs_harness_attribute.rs"]
 mod rs_harness_attribute;
+#[path = "unit/runtime_server_artifact.rs"]
+mod runtime_server_artifact;
+#[path = "unit/runtime_server_service_catalog.rs"]
+mod runtime_server_service_catalog;
 #[path = "../../agent-semantic-hook/tests/unit/rust_harness_activation/mod.rs"]
 mod rust_harness_activation;
 #[path = "unit/sandtable_fixtures.rs"]
@@ -88,7 +94,5 @@ mod state_home_fixture;
 mod sync_command;
 #[path = "unit/tree_sitter_query_diagnostics.rs"]
 mod tree_sitter_query_diagnostics;
-#[path = "unit/command/workspace_db_resident_service.rs"]
-mod workspace_db_resident_service;
 #[path = "unit/workspace_tree_sitter_query_diagnostics.rs"]
 mod workspace_tree_sitter_query_diagnostics;

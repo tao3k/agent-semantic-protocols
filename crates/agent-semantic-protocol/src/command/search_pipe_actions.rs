@@ -132,9 +132,9 @@ fn query_code_action(request: &SearchPipeActionRequest<'_>, action: &PipeAction)
     );
     ActionNode {
         id: String::new(),
-        kind: "query-code".to_string(),
+        kind: "query-projection".to_string(),
         suffix: "terminal-code".to_string(),
-        route: ActionRoute::QueryCode {
+        route: ActionRoute::QueryProjection {
             language_id: selector.language_id.as_str().to_string(),
             selector,
             owner: action.owner.clone(),

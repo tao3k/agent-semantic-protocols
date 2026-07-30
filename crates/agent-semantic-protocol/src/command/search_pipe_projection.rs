@@ -14,14 +14,14 @@ pub(super) fn query_projection_kind(language_id: &str) -> &'static str {
     if is_document_language(language_id) {
         "content"
     } else {
-        "code"
+        "source"
     }
 }
 
-pub(super) fn query_projection_flag(language_id: &str) -> &'static str {
+pub(super) fn query_projection_suffix(language_id: &str) -> &'static str {
     if query_projection_kind(language_id) == "content" {
-        "--content"
+        " --projection content"
     } else {
-        "--code"
+        ""
     }
 }

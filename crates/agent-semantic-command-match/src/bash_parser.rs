@@ -135,8 +135,9 @@ fn collect_quoted_literals(text: &str, candidates: &mut Vec<String>) {
     let mut quote = None;
     let mut literal = String::new();
     let mut escaped = false;
+    let mut heredoc_delimiter = false;
 
-    for character in text.chars() {
+    for (index, character) in text.char_indices() {
         match quote {
             Some(delimiter) => {
                 if escaped {
@@ -145,15 +146,23 @@ fn collect_quoted_literals(text: &str, candidates: &mut Vec<String>) {
                 } else if character == '\\' && delimiter == '"' {
                     escaped = true;
                 } else if character == delimiter {
-                    if !literal.is_empty() {
+                    if !literal.is_empty() && !heredoc_delimiter {
                         candidates.push(std::mem::take(&mut literal));
+                    } else {
+                        literal.clear();
                     }
                     quote = None;
+                    heredoc_delimiter = false;
                 } else {
                     literal.push(character);
                 }
             }
-            None if matches!(character, '\'' | '"') => quote = Some(character),
+            None if matches!(character, '\'' | '"') => {
+                let prefix = text[..index].trim_end();
+                heredoc_delimiter =
+                    prefix.ends_with("<<-") || (prefix.ends_with("<<") && !prefix.ends_with("<<<"));
+                quote = Some(character);
+            }
             None => {}
         }
     }

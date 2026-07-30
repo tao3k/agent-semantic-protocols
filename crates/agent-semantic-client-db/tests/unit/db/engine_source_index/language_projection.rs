@@ -51,17 +51,17 @@ async fn harness_projection_imports_without_source_text_projection() {
         serde_json::to_string(&projection_value).expect("encode projection fixture");
     let projection = ClientDbLanguageProjection::from_json(&projection_text)
         .expect("decode language projection");
+    let source_blobs =
+        agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized([(
+            agent_semantic_client_db::ClientDbSourceIndexPath::new("src/projection.ss"),
+            b"(def (run) 1)\n".to_vec(),
+        )]);
     let import =
         source_index_import_from_language_projection(ClientDbLanguageProjectionImportRequest {
             project_root: project_root.clone(),
             registry_fingerprint: "language-projection-registry".to_string(),
             projection: projection.clone(),
-            source_blobs: agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
-                [(
-                    agent_semantic_client_db::ClientDbSourceIndexPath::new("src/projection.ss"),
-                    b"(def (run) 1)\n".to_vec(),
-                )],
-            ),
+            source_blobs: source_blobs.clone(),
         })
         .expect("assemble language projection import");
     let source_snapshot = import.source_snapshot.clone();
@@ -119,6 +119,7 @@ async fn harness_projection_imports_without_source_text_projection() {
                 import: import.source_index.clone(),
                 source_snapshot: source_snapshot.clone(),
             },
+            &source_blobs,
         )
         .expect("persist language projection import");
     let language_id = LanguageId::from("gerbil-scheme");

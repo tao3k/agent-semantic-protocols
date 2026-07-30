@@ -1,0 +1,125 @@
+#+title: SearchLoop cache identity refinement proof receipt v1
+#+startup: overview
+
+* SearchLoop cache identity refinement proof receipt
+:PROPERTIES:
+:ID:       ASP-PROOF-RECEIPT-SEARCHLOOP-CACHE-IDENTITY-REFINEMENT-V1
+:END:
+
+** Status
+
+- Status: verified refinement
+- Date: 2026-07-29
+- Lean module: =ASPProof.SearchLoopCacheIdentity=
+- RFC:
+  =docs/10-19-rfcs/10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.15-searchloop-cache-minimal-identity-refinement.org=
+
+An independently evolving =ASPProof.SearchLoopCache= module and cache audit
+already existed in the shared workspace.  This receipt does not claim ownership
+of or completion for that module.  The verified refinement is isolated under
+the =SearchLoopCacheIdentity= namespace and owns only the obligations listed
+below.
+
+** Verified obligations
+
+1. Semantic reuse is equivalent to exact semantic-key equality.
+2. Stable semantic keys reuse.
+3. Semantic-key drift invalidates.
+4. Removing provider identity creates a false-reuse collision.
+5. Removing policy identity creates a false-reuse collision.
+6. Removing provider artifact digest creates a false-reuse collision.
+7. Removing RFC contract digest creates a false-reuse collision.
+8. Whole-workspace-generation invalidation can cause false invalidation when
+   the minimal witness key is unchanged.
+9. Model/prompt drift invalidates L4 model judgment.
+10. The same model/prompt drift preserves semantic-cache reuse.
+11. Reconciliation makes a drifted entry stale.
+12. A reconciled valid entry implies exact key equality.
+
+** Lean evidence
+
+Direct module command:
+
+#+begin_src sh
+/opt/homebrew/bin/lake env lean ASPProof/SearchLoopCacheIdentity.lean
+#+end_src
+
+Result: exit =0=.
+
+Package command:
+
+#+begin_src sh
+/opt/homebrew/bin/lake build
+#+end_src
+
+The isolated module and audit target compile.  The package also contains an
+independent =SearchLoopCache= implementation; its ownership and proof status
+must be reported separately rather than inferred from this receipt.
+
+** Lean JSON audit
+
+Generation command:
+
+#+begin_src sh
+/opt/homebrew/bin/lake env lean audit/SearchLoopCacheIdentityAudit.lean
+#+end_src
+
+Artifact:
+[[file:searchloop-cache-identity-refinement-audit-v1.json][searchloop-cache-identity-refinement-audit-v1.json]]
+
+- schema: =asp.lean-proof-audit.v1=
+- declarations: =12=
+- axiom-free: =6=
+- axiom-dependent: =6=
+- axiom inventory: =propext=
+- =sorryAx=: false
+- raw SHA-256:
+  =09341b0c4d829e57fadb6fb949298456ecb54eb96c7c9a3769ef305d59224807=
+
+Two consecutive generations produced the same raw digest.
+
+** AXLE admission
+
+Artifact:
+[[file:searchloop-cache-identity-refinement-axle-audit-v1.json][searchloop-cache-identity-refinement-axle-audit-v1.json]]
+
+- exit: =0=
+- canonical audit SHA-256:
+  =2ab3a9ff7eccc12bc2a19e82818005a777ce50bf21b79bafd80319fa198e871a=
+- allowed axiom: =propext=
+- required families: =cache-identity=, =invalidation-safety=,
+  =cache-tier-scope=, =counterexample=
+- required RFC clauses: all four =ASP-RFC-10.05-SCI-*= clauses
+
+Negative policy gate:
+
+- with no allowed axioms, AXLE exited =2=;
+- diagnostic:
+  =axioms are not admitted by policy: ['propext']=.
+
+** Org Babel Typst
+
+The mathematical projection is the named =searchloop-cache-identity-model=
+source block inside the RFC.  Validation used parser-owned Org block extraction
+and Typst stdin:
+
+#+begin_src sh
+asp org query ... --content | typst compile - /tmp/searchloop-cache-identity-model.pdf
+#+end_src
+
+Result:
+
+- pipeline exit: =0=
+- detached =.typ= authority file: none
+- compiled PDF size: =64,553 bytes=
+
+** Proof boundary
+
+This receipt does not prove:
+
+- typed invalidation-reason precedence;
+- selector relocation soundness;
+- dependency-graph invalidation closure;
+- persistence-layer transaction atomicity;
+- provider witness freshness; or
+- equivalence with the independent =ASPProof.SearchLoopCache= model.

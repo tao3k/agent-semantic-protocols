@@ -18,6 +18,7 @@ use crate::engine::turso_statement::execute_turso_operation;
 pub(super) async fn write_turso_source_index_rows(
     connection: &mut turso::Connection,
     import: &ClientDbSourceIndexImport,
+    materialization: &crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
     membership_change_set: &crate::source_index::ClientDbSourceIndexMembershipChangeSet,
     project_root: &str,
     file_hashes_json: &str,
@@ -40,7 +41,7 @@ pub(super) async fn write_turso_source_index_rows(
             import.schema_version.as_str(),
         )
         .await?;
-        let (membership_changed_owner_paths, removed_owner_paths) = match membership_change_set {
+        let (_membership_changed_owner_paths, removed_owner_paths) = match membership_change_set {
             crate::source_index::ClientDbSourceIndexMembershipChangeSet::FullSnapshot => {
                 stage_turso_source_index_import_membership(connection, file_hashes_json).await?;
                 turso_source_index_membership_changes(
@@ -91,19 +92,8 @@ pub(super) async fn write_turso_source_index_rows(
                 )
             }
         };
-        let prepared = super::prepare::prepare_turso_source_index_rows(
-            connection,
-            import,
-            project_root,
-            &imported_membership,
-            membership_changed_owner_paths,
-            projection_ready,
-            matches!(
-                membership_change_set,
-                crate::source_index::ClientDbSourceIndexMembershipChangeSet::MerkleOverlay { .. }
-            ),
-        )
-        .await?;
+        let prepared =
+            super::prepare::prepare_turso_source_index_rows(import, &imported_membership).await?;
         let physical_generation_id = prepared.physical_generation_id.as_str();
         let selector_fingerprint = prepared.selector_fingerprint;
         let changed_owner_paths = prepared.changed_owner_paths;
@@ -195,6 +185,16 @@ pub(super) async fn write_turso_source_index_rows(
         )
         .await?;
         source_index_db_trace_posting_projection(cold_write_started, posting_count);
+        super::materialization::persist_workspace_generation_materialization(
+            connection,
+            project_root,
+            import.schema_id.as_str(),
+            import.schema_version.as_str(),
+            physical_generation_id,
+            materialization,
+        )
+        .await?;
+        source_index_db_trace("snapshot-materialization-written", cold_write_started);
         super::publish::publish_turso_source_index_scope(
             super::publish::PublishTursoSourceIndexScopeRequest {
                 transaction: &transaction,
