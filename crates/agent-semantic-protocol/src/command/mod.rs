@@ -57,6 +57,7 @@ mod provider_usage;
 mod root_language_facade;
 mod runtime_server;
 mod runtime_server_artifact;
+mod runtime_server_definition;
 mod runtime_server_service_catalog;
 mod runtime_server_supervisor;
 mod search_config;

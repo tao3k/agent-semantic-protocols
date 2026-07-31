@@ -1,0 +1,324 @@
+#+title: SearchRoute vector-coverage semantic identity and generation fence
+#+property: rfc_layer evidence-graph-routing
+
+* Status and authority
+
+This RFC is canonical for admission and reuse of Pareto cost-vector coverage
+certificates across graph generations.
+
+It refines
+[[file:01.10-searchroute-pareto-frontier-vector-completeness.org][Pareto frontier cost-vector completeness]]
+and composes with the existing temporal-certificate and registry-epoch proof
+families.
+
+The Lean implementation and modular audit artifacts are:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteVectorCoverageIdentityFence.lean][SearchRouteVectorCoverageIdentityFence.lean]]
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteVectorCoverageIdentityFence.lean][Lean JSON audit]]
+- [[file:../../../../packages/proofs/receipts/searchroute-vector-coverage-identity-fence-audit-v1.json][Lean audit receipt]]
+- [[file:../../../../packages/proofs/receipts/searchroute-vector-coverage-identity-fence-axle-audit-v1.json][AXLE admission receipt]]
+
+* Lean-discovered identity error
+
+One =graphGeneration= field cannot serve simultaneously as semantic identity
+and as a publication fence.
+
+Lean establishes both counterdirections:
+
+1. equal graph generations do not imply equal semantic coverage identity;
+2. different graph generations do not imply different semantic coverage
+   identity.
+
+A generation number may stay constant while the route policy or candidate
+catalog changes incorrectly.  Conversely, reconciliation may publish a new
+generation while preserving the same workspace snapshot, query, policy,
+completion key, candidate catalog, frontier, and cost dimensions.
+
+Therefore generation equality is neither necessary nor sufficient for semantic
+coverage identity.
+
+* Two-layer identity
+
+** Semantic coverage identity
+
+The certificate semantic identity is:
+
+#+begin_example
+SemanticCoverageIdentity {
+  workspaceSnapshotDigest,
+  queryDigest,
+  routePolicyDigest,
+  completionKeyDigest,
+  globalCatalogDigest,
+  frontierDigest,
+  costDimensionDigest
+}
+#+end_example
+
+Every field changes what the global Pareto theorem means.  Exact equality of
+this structure is required before a vector-coverage proof can be reused.
+
+** Publication fence
+
+The publication fence contains:
+
+#+begin_example
+CoverageHeader {
+  semanticIdentity,
+  issuedGeneration
+}
+
+CoverageContext {
+  semanticIdentity,
+  graphGeneration,
+  transitionAuthorityDigest
+}
+#+end_example
+
+=issuedGeneration= and =graphGeneration= prevent a stale publication from
+being served directly.  They do not replace semantic identity.
+
+* Normative clauses
+
+** ASP-RFC-10.05-VCIF-SEMANTIC-BOUND
+
+Every directly or transition-admitted coverage certificate MUST equal the
+current context in all semantic identity fields.  Fieldwise omission is
+fail-closed.
+
+** ASP-RFC-10.05-VCIF-GENERATION-NONIDENTITY
+
+The implementation MUST NOT infer semantic equality from generation equality,
+and MUST NOT infer semantic inequality solely from generation inequality.
+
+** ASP-RFC-10.05-VCIF-DIRECT-FENCE
+
+Direct service of a coverage certificate requires both:
+
+- exact semantic identity equality;
+- =issuedGeneration == graphGeneration=.
+
+Semantic equality without the current direct fence MUST NOT authorize direct
+service.
+
+** ASP-RFC-10.05-VCIF-POLICY-IDENTITY
+
+=routePolicyDigest= and =costDimensionDigest= are semantic identity.  Changing
+the order, dimensions, cache-lane interpretation, or feasibility policy rejects
+the old coverage certificate even when graph generation is unchanged.
+
+** ASP-RFC-10.05-VCIF-TRANSITION-FENCE
+
+A certificate may cross graph generations only with an explicit transition
+certificate satisfying:
+
+- the transition semantic identity equals both the old header and current
+  context;
+- =fromGeneration == issuedGeneration=;
+- =toGeneration == graphGeneration=;
+- =fromGeneration < toGeneration=;
+- the transition authority equals the current authority;
+- the transition is explicitly authorized.
+
+** ASP-RFC-10.05-VCIF-GLOBAL-LIFT
+
+Only directly admitted or transition-admitted vector coverage may participate
+in the theorem lifting frontier-local Pareto minimality to global Pareto
+minimality.
+
+* Two admission paths
+
+** Direct admission
+
+Direct admission is the hot path:
+
+#+begin_example
+semanticIdentity(header) == semanticIdentity(context)
+and
+issuedGeneration(header) == graphGeneration(context)
+#+end_example
+
+It requires no transition lookup.
+
+** Transition admission
+
+Transition admission is the reconciliation path.  It proves that a new
+publication generation preserves the exact semantic coverage identity.
+
+An unauthorized, backward, wrong-authority, or semantic-changing transition
+MUST be rejected.
+
+This transition is different from a registry epoch transition that changes the
+registry snapshot.  A semantic-preserving generation transition transports an
+unchanged coverage fact; a registry epoch transition establishes a different
+authority domain and cannot silently preserve new-decision authorization.
+
+* Receipt contract
+
+The agent-facing receipt requires:
+
+#+begin_example
+{
+  semanticIdentity: {
+    workspaceSnapshotDigest: "...",
+    queryDigest: "...",
+    routePolicyDigest: "...",
+    completionKeyDigest: "...",
+    globalCatalogDigest: "...",
+    frontierDigest: "...",
+    costDimensionDigest: "..."
+  },
+  issuedGeneration: 8,
+  servedGeneration: 9,
+  admissionKind: "certified-transition",
+  transitionCertificateDigest: "...",
+  transitionAuthorityDigest: "...",
+  coverageKind: "cost-vector"
+}
+#+end_example
+
+The receipt MUST distinguish =direct= from =certified-transition=.  A plain
+=cacheHit=true= or =generationValid=true= field is insufficient.
+
+* Org-Babel Typst mathematical model
+
+Org owns this source block.  Validation uses =typst eval= over the exact
+parser-owned block through standard input.
+
+#+name: vector-coverage-identity-fence-math
+#+begin_src typst
+#let base-identity = (
+  workspace: 11,
+  query: 12,
+  policy: 13,
+  completion: 14,
+  catalog: 15,
+  frontier: 16,
+  dimensions: 17,
+)
+
+#let changed-policy-identity = (
+  workspace: 11,
+  query: 12,
+  policy: 99,
+  completion: 14,
+  catalog: 15,
+  frontier: 16,
+  dimensions: 17,
+)
+
+#let header = (
+  semantic: base-identity,
+  generation: 8,
+)
+
+#let current = (
+  semantic: base-identity,
+  generation: 8,
+  authority: 77,
+)
+
+#let next = (
+  semantic: base-identity,
+  generation: 9,
+  authority: 77,
+)
+
+#let changed-policy = (
+  semantic: changed-policy-identity,
+  generation: 8,
+  authority: 77,
+)
+
+#let transition = (
+  semantic: base-identity,
+  from-generation: 8,
+  to-generation: 9,
+  authority: 77,
+  authorized: true,
+)
+
+#let semantic-bound(ctx, certificate) = (
+  ctx.semantic == certificate.semantic
+)
+
+#let direct-admitted(ctx, certificate) = (
+  semantic-bound(ctx, certificate)
+  and ctx.generation == certificate.generation
+)
+
+#let transition-admitted(ctx, certificate, step) = (
+  semantic-bound(ctx, certificate)
+  and step.semantic == certificate.semantic
+  and step.from-generation == certificate.generation
+  and step.to-generation == ctx.generation
+  and step.from-generation < step.to-generation
+  and step.authority == ctx.authority
+  and step.authorized
+)
+
+#metadata((
+  schema-id: "asp.searchroute.vector-coverage-identity-fence.v1",
+  direct-current: direct-admitted(current, header),
+  direct-next: direct-admitted(next, header),
+  transition-next: transition-admitted(next, header, transition),
+  same-generation-changed-policy:
+    header.generation == changed-policy.generation,
+  changed-policy-bound:
+    semantic-bound(changed-policy, header),
+)) <vector-coverage-identity-fence>
+
+$ I_"sem"(c) =
+  (w(c), q(c), p(c), k(c), g(c), f(c), d(c)) $
+
+$ "Direct"(c, x) =
+  (I_"sem"(c) = I_"sem"(x)) and (e(c) = e(x)) $
+
+$ e(c) != e(x) and I_"sem"(c) = I_"sem"(x)
+  ⇒ not "Direct"(c, x) $
+
+$ "Transition"(c, x, tau)
+  ⇒ I_"sem"(c) = I_"sem"(x) $
+#+end_src
+
+* Machine-checked consequences
+
+Lean proves ten obligations:
+
+- direct and transition admission both imply semantic binding;
+- either admitted vector-coverage path lifts frontier Pareto minimality to the
+  global catalog;
+- equal generation does not imply semantic identity;
+- changed generation does not imply semantic change;
+- semantic equality without a current fence rejects direct service;
+- changed policy rejects admission;
+- an authorized same-semantic transition admits coverage;
+- an unauthorized transition rejects coverage.
+
+Five declarations are axiom-free.  Five depend only on =propext=.  No theorem
+contains =sorryAx=.
+
+* SearchLoop consequence
+
+SearchLoop may reuse a global Pareto proof without another graph search when the
+semantic identity is unchanged and either the direct fence is current or a
+certified semantic-preserving transition is available.
+
+Otherwise it must reopen the frontier.  The next action should identify the
+first mismatched semantic field or missing transition evidence instead of
+emitting a generic cache miss.
+
+* Implementation boundary
+
+The future Python graph router must preserve the split between semantic identity
+and generation fencing.  Generation may remain useful for atomic publication
+and stale-reader rejection, but it cannot replace Merkle/catalog/policy
+identity.
+
+No Python or Rust implementation is authorized in this RFC-only session.
+
+* Remaining proof boundary
+
+This RFC models one certified generation transition.  The next proof layer must
+cover transition-chain composition, prevent forks, and retain the exact
+semantic identity across every intermediate generation.

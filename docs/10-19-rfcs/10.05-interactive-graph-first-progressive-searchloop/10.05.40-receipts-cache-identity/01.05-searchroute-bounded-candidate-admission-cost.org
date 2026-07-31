@@ -1,0 +1,466 @@
+#+title: RFC 10.05.40.01.05 - Bounded Candidate Admission and Search Cost
+#+startup: overview
+
+* Status
+
+Draft, proof-backed.
+
+This module bounds candidate registration work, admitted-set size, selection
+proof size, evidence-graph expansion, and end-to-end recovery search cost. It
+refines RFCs 01.03 and 01.04. It changes protocol and receipt semantics only.
+It does not authorize Rust or Python implementation.
+
+* Abstract
+
+Bounded retry rounds do not bound recovery cost when one round can process or
+admit an unbounded number of candidates.
+
+Two independent capacities are required:
+
+- \(P\): maximum registrations processed in one round;
+- \(C\): maximum candidates admitted into the selection proof.
+
+#+name: searchroute-bounded-candidate-admission-cost-model
+#+begin_src typst
+#let processing-authorized(processed, capacity) = processed < capacity
+#let admission-authorized(admitted, capacity) = admitted < capacity
+#let comparison-count(candidates) = if candidates == 0 {
+  0
+} else {
+  candidates - 1
+}
+#assert(processing-authorized(3, 4))
+#assert(not processing-authorized(4, 4))
+#assert(admission-authorized(2, 3))
+#assert(comparison-count(0) == 0)
+#assert(comparison-count(4) == 3)
+"ok"
+#+end_src
+
+Per-principal quota is also required, but it does not replace either global
+capacity.
+
+* Proof-discovered capacity separation
+
+** Admission capacity alone is insufficient
+
+If only admitted candidates are capped, a round may still parse, authenticate,
+canonicalize, and reject an unbounded registration stream. The winner proof is
+bounded, but registration processing, receipts, graph nodes, and tokens remain
+unbounded.
+
+** Processing capacity alone is insufficient
+
+A processing cap bounds ingress work, but without an admitted-set cap the
+selection proof can still consume every processed registration.
+
+** Per-principal quota alone is insufficient
+
+A quota of one candidate per principal permits arbitrarily many candidates
+when arbitrarily many principals exist. The Lean counterexample chooses
+\(C+1\) principals for any proposed global capacity \(C\).
+
+The protocol therefore requires all three:
+
+- registration-processing capacity;
+- admitted-candidate capacity;
+- canonical per-principal quota.
+
+* Round capacity contract
+
+A round binds:
+
+- =registrationProcessingCapacity=;
+- =admittedCandidateCapacity=;
+- =perPrincipalQuota=;
+- =processedRegistrationCount=;
+- =admittedCandidateCount=;
+- =overflowRegistrationCount=;
+- =admissionPolicyVersion=;
+- =principalCanonicalizationVersion=;
+- =selectionPolicyVersion=;
+- =costModelVersion=.
+
+The invariant is:
+
+\[
+\mathsf{processedRegistrationCount}\le P
+\]
+
+and:
+
+\[
+\mathsf{admittedCandidateCount}\le C.
+\]
+
+Policy SHOULD also require \(C\le P\). A deployment choosing \(C>P\) is valid
+only as unused capacity; it does not enlarge the processed candidate set.
+
+* Registration pipeline
+
+The logical order is:
+
+#+begin_example
+cheap envelope and transport gate
+  -> check registration-processing capacity
+  -> authenticate candidate
+  -> canonicalize principal and candidate identity
+  -> check per-principal quota
+  -> evaluate eligibility
+  -> apply deterministic admission policy
+  -> check admitted-candidate capacity
+  -> append admitted candidate
+#+end_example
+
+Once processing capacity is exhausted, the round MUST stop expensive
+registration work. Later requests receive a compact pointer to the round-level
+=registration-processing-capacity-exhausted= receipt.
+
+The protocol does not claim to solve unbounded network traffic before the cheap
+transport gate. It bounds parser-owned recovery work after that gate.
+
+* Canonical principal quota
+
+Quota accounting MUST use canonical principal identity. Service aliases,
+endpoints, keys, or process IDs resolving to the same principal share one
+quota.
+
+The quota receipt binds:
+
+- canonical principal identity;
+- round identity;
+- previous principal count;
+- committed principal count;
+- quota;
+- admitted or rejected candidate identity;
+- canonicalization evidence.
+
+Changing principal canonicalization policy invalidates the round.
+
+* Deterministic admission under capacity
+
+When eligible registrations exceed \(C\), arrival order MUST NOT silently
+determine the admitted set unless arrival order is the explicitly versioned
+policy.
+
+A deterministic admission key SHOULD be:
+
+#+begin_example
+admissionOrderKey = (
+  admissionPriority,
+  canonicalPrincipalId,
+  canonicalCandidateId
+)
+#+end_example
+
+This key is distinct from the RFC 01.03 winner-selection key. Admission chooses
+who enters the proof; selection chooses the winner among admitted candidates.
+
+The closed admitted-set digest binds exactly the candidates entering
+comparison.
+
+* Comparison and proof-size bound
+
+For \(n>0\), a direct minimum certificate requires \(n-1\) comparisons. For
+\(n=0\), it requires zero.
+
+\[
+\mathsf{ComparisonCount}(n)\le n\le C.
+\]
+
+Let:
+
+- \(F\) be fixed proof cost;
+- \(c_r\) be per-registration processing cost;
+- \(c_c\) be per-comparison proof cost;
+- \(A\) be consumed retry attempts;
+- \(M\) be maximum attempts.
+
+The round search cost is:
+
+\[
+K_{\mathrm{round}}
+=
+F + P_{\mathrm{used}}c_r
+  + \mathsf{ComparisonCount}(C_{\mathrm{used}})c_c.
+\]
+
+The end-to-end bound is:
+
+#+name: searchroute-bounded-candidate-admission-cost-proposition
+#+begin_src typst
+#let round-bound = $
+  P_"used" <= P
+  and C_"used" <= C
+  arrow.r.double
+  K_"round" <= F + P c_r + C c_c
+$
+#let recovery-bound = $
+  A <= M
+  arrow.r.double
+  K_"recovery" <= M (F + P c_r + C c_c)
+$
+#let quota-not-global = $
+  Q = 1
+  and N_"principals" = C + 1
+  arrow.r.double
+  N_"candidates" > C
+$
+#assert(type(round-bound) == content)
+#assert(type(recovery-bound) == content)
+#assert(type(quota-not-global) == content)
+"ok"
+#+end_src
+
+* Cost vector
+
+The scalar Lean theorem is instantiated independently for each cost dimension:
+
+#+begin_example
+RecoveryCostVector {
+  candidateGraphNodes
+  comparisonGraphEdges
+  verificationOperations
+  receiptBytes
+  projectedPromptTokens
+  agentInteractionUnits
+}
+#+end_example
+
+Each dimension has:
+
+- fixed round cost;
+- per-processed-registration cost;
+- per-admitted-comparison cost;
+- maximum attempt multiplier;
+- cost-model version.
+
+The protocol MUST NOT add incomparable dimensions into one undocumented scalar.
+A scalar score is allowed only as a versioned projection of this vector.
+
+* Compact selection proof
+
+The default agent-facing proof packet contains:
+
+- round and capacity identities;
+- processed, admitted, and overflow counts;
+- admitted-set digest;
+- winner identity and order key;
+- comparison count;
+- cost vector and bound;
+- audit receipt identity;
+- typed inspect continuations.
+
+It does not render every candidate or comparison.
+
+An =inspect comparison-proof= transition MAY expose:
+
+- a tournament path;
+- a chunked comparison list;
+- a proof aggregation object;
+- Merkle-resolved comparison witnesses.
+
+The protocol MUST NOT claim a sublinear proof merely because comparisons are
+stored behind a Merkle root. A Merkle commitment reduces default projection
+size, not the logical number of comparisons, unless a separate aggregation
+proof establishes that property.
+
+* Overflow evidence
+
+The round records:
+
+- =registrationAccumulatorRoot= for processed registration envelopes;
+- =admittedCandidateSetDigest=;
+- =overflowRegistrationCount=;
+- =capacityExhaustionReceiptId=;
+- optional chunked rejected-registration receipts.
+
+The default packet renders counts and roots, not one graph node per rejected
+request.
+
+A caller can inspect its own rejection by receipt identity. Full overflow
+enumeration is a progressive diagnostic path, not the normal recovery route.
+
+* Round and cache identity
+
+#+begin_example
+candidateAdmissionRoundId = H(
+  transitionId,
+  roundNumber,
+  registrationProcessingCapacity,
+  admittedCandidateCapacity,
+  perPrincipalQuota,
+  registrationAccumulatorRoot,
+  admittedCandidateSetDigest,
+  admissionPolicyVersion,
+  principalCanonicalizationVersion,
+  selectionPolicyVersion,
+  costModelVersion
+)
+#+end_example
+
+Changing capacity, quota, candidate set, policy, canonicalization, or cost model
+invalidates the round and search cache.
+
+Equal admitted count, equal winner, or equal projected token count does not
+make two rounds compatible.
+
+A model prefix-cache hit on identical compact rendering does not establish
+round identity or remaining capacity.
+
+* SearchLoop and graph-router consequences
+
+The bounded graph path is:
+
+#+begin_example
+open bounded registration
+  -> process at most P registrations
+  -> admit at most C candidates under quota
+  -> close admitted set
+  -> verify at most C comparison units
+  -> emit compact winner/cost receipt
+  -> commit or retry within M attempts
+#+end_example
+
+The default next actions are:
+
+- =register-candidate=;
+- =registration-capacity-exhausted=;
+- =principal-quota-exhausted=;
+- =close-admitted-set=;
+- =verify-compact-selection=;
+- =inspect-cost-bound=;
+- =inspect-overflow=.
+
+This bounds evidence-graph width as well as loop depth. The agent no longer
+needs to discover or issue a complex CLI command for every registration,
+comparison, or overflow item.
+
+* Search cache and model cache
+
+Search-result cache validity binds:
+
+- complete round identity;
+- capacity and quota state;
+- admitted-set digest;
+- cost-model version;
+- winner and selection proof;
+- validity interval.
+
+Model caching benefits from stable compact ordering:
+
+- fixed field order;
+- counts before optional details;
+- deterministic digest rendering;
+- progressive comparison chunks;
+- stable continuation names.
+
+A model cache hit is a performance observation. It does not restore capacity,
+admit a candidate, or verify a selection proof.
+
+* Failure receipts
+
+The protocol adds:
+
+- =registration-processing-capacity-exhausted=;
+- =admitted-candidate-capacity-exhausted=;
+- =principal-candidate-quota-exhausted=;
+- =principal-canonicalization-mismatch=;
+- =admission-policy-mismatch=;
+- =admitted-set-digest-mismatch=;
+- =comparison-count-bound-violation=;
+- =round-proof-cost-bound-violation=;
+- =recovery-search-cost-bound-violation=;
+- =cost-model-version-mismatch=.
+
+Every capacity failure binds used count, maximum count, round identity, and
+typed next action.
+
+* Proof-discovered gaps
+
+** Bounded admitted set does not bound ingress work
+
+Registration-processing capacity is a separate protocol field and proof
+obligation.
+
+** Per-principal quota is not global capacity
+
+More principals can always exceed a fixed global candidate count.
+
+** Merkle commitment is not proof compression
+
+Hiding comparisons behind a root reduces projection bytes but does not reduce
+logical verification work.
+
+** Retry depth and round width multiply
+
+End-to-end cost is bounded only when both maximum attempts and both per-round
+capacities are bounded.
+
+** Cost coefficients are protocol semantics
+
+Changing per-registration or per-comparison accounting changes the cost receipt
+identity even when execution is unchanged.
+
+* Lean realization
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.lean
+#+end_example
+
+It proves:
+
+- authorized admission remains within global capacity;
+- full rounds reject admission;
+- principal admission remains within quota;
+- authorized registration processing remains within its capacity;
+- exhausted processing capacity blocks further work;
+- per-principal quota alone does not bound global count;
+- comparison count is bounded by candidate count and round capacity;
+- proof cost is bounded by admitted capacity;
+- recovery proof cost is bounded by attempt and admission capacity;
+- round search cost is bounded by processing and admission capacities;
+- total recovery search cost is bounded by attempts and both capacities;
+- round compatibility binds capacity;
+- capacity or candidate-set changes invalidate the round;
+- equal admitted count does not imply compatible rounds.
+
+The modular audit owner and executable entry are:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCost.lean
+
+packages/proofs/audit/
+  SearchRouteAdmissionRetryCacheRejoinBoundedCandidateAdmissionCostAudit.lean
+#+end_example
+
+The generated receipt is:
+
+#+begin_example
+packages/proofs/receipts/
+  searchroute-admission-retry-cache-rejoin-bounded-candidate-admission-cost-audit-v1.json
+#+end_example
+
+* Non-goals
+
+This module does not yet prove:
+
+- actual JSON or text encoding size;
+- bytes-to-token conversion bounds;
+- fixed maximum size of one candidate receipt;
+- cryptographic aggregation of comparisons;
+- transport-layer denial-of-service resistance;
+- optimal capacity selection.
+
+* Next proof boundary
+
+The next module should realize the abstract cost coefficients against the
+actual compact projection. It must bound candidate receipt bytes, comparison
+receipt bytes, JSON framing, and projected model tokens.
+
+That proof should also distinguish deterministic rendering that improves model
+prefix-cache hits from search-result cache validity.

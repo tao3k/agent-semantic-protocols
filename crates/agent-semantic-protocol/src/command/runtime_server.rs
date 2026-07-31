@@ -105,8 +105,12 @@ pub(super) async fn runtime_server_workspace_generation_client_async(
         ensure
     {
         return Err(format!(
-            "cold-index-required workspaceIdentity={} state={:?} accepted={} attempt={}",
-            receipt.workspace_identity, receipt.state, receipt.accepted, receipt.attempt
+            "cold-index-required workspaceIdentity={} state={:?} accepted={} attempt={} error={}",
+            receipt.workspace_identity,
+            receipt.state,
+            receipt.accepted,
+            receipt.attempt,
+            receipt.error.as_deref().unwrap_or("none")
         ));
     }
     match agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient::open_state(

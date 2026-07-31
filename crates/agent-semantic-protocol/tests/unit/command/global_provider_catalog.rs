@@ -322,6 +322,31 @@ fn catalog_loads_once_and_fails_closed_for_invalid_or_drifted_entries() {
             .len(),
         64
     );
+    let manifests = agent_semantic_hook::schema_registry_provider_manifests();
+    let current_catalog: catalog::GlobalProviderCatalog =
+        serde_json::from_value(catalog_document.clone()).expect("decode current provider catalog");
+    let catalog_identities = agent_semantic_hook::registered_provider_catalog_identities();
+    assert!(catalog::active_catalog_matches_receipts(
+        &current_catalog,
+        &manifests,
+        &receipts,
+        catalog_identities,
+    ));
+    let mut stale_manifest_catalog_document = catalog_document.clone();
+    stale_manifest_catalog_document["providers"][0]["manifestDigest"] =
+        serde_json::Value::String(format!("sha256:{:064x}", 0));
+    let stale_manifest_catalog: catalog::GlobalProviderCatalog =
+        serde_json::from_value(stale_manifest_catalog_document)
+            .expect("decode manifest-drift provider catalog");
+    assert!(
+        !catalog::active_catalog_matches_receipts(
+            &stale_manifest_catalog,
+            &manifests,
+            &receipts,
+            catalog_identities,
+        ),
+        "warm catalog reuse must reject manifest identity drift"
+    );
     let warm = catalog::publish_global_provider_catalog(&receipts)
         .expect("reuse unchanged receipt catalog");
     assert_eq!(warm.catalog_generation, changed.catalog_generation);

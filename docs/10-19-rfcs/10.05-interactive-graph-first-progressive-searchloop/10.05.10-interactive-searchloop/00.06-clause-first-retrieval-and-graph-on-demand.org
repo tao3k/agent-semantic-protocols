@@ -1,0 +1,318 @@
+#+TITLE: Clause-first Retrieval and Graph-on-Demand
+#+OPTIONS: toc:3
+
+#+property: rfc_layer 10.05.10-interactive-searchloop
+
+* Status
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-STATUS
+:END:
+
+This module records the design decision and its constraints before any Python,
+Rust, or Lean implementation.  It refines SearchLoop retrieval; it does not
+replace the evidence obligation, exact query, graph projection, or closure
+contracts.
+
+* Problem
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-PROBLEM
+:END:
+
+Always materializing and ranking a graph is too expensive for selective,
+anchored, shallow searches.  Replacing the graph with unqualified triples would
+be faster but logically weaker: code relations are role-sensitive, qualified,
+provenance-bound, and often n-ary.
+
+The design problem is therefore not “triple store or graph.”  It is how to use
+factorized relation indexes and partially bound logical clauses on the online
+hot path while preserving the evidence and closure semantics that require a
+graph or exact materialization.
+
+* Decision
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-DECISION
+:END:
+
+ASP adopts =Clause-first Retrieval + Graph-on-Demand=:
+
+1. intent and contract clauses compile into typed evidence obligations;
+2. obligations lower into qualified =AtomicEvidenceClause= values;
+3. clauses with admitted bindings perform direct relation-posting lookups;
+4. returned facts create new bindings and clause-state deltas;
+5. a global planner selects the next bounded action;
+6. ambiguous, completeness-sensitive, contradictory, or join-heavy frontiers
+   escalate to an admitted =EvidenceGraph= projection;
+7. exact source is materialized only from parser-owned selectors;
+8. an independent closure validator decides terminal success.
+
+The hot path is lighter than full graph construction, but it is not a separate
+truth system.
+
+* Three representations, not one
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-REPRESENTATIONS
+:END:
+
+** Physical relation postings
+
+Storage indexes qualified fact identifiers by predicate, argument role, bound
+entity, context, and source generation.  Postings optimize forward and inverse
+lookup.  They are not the logical fact by themselves.
+
+** Logical bound evidence clauses
+
+The online planner reasons over role-labeled arguments, variables,
+qualifications, scope, provenance requirements, freshness, and obligation
+identity.  This is more expressive than a bare subject-predicate-object triple.
+
+** Admitted evidence graph
+
+The graph joins admitted facts and their provenance into the representation
+needed for route reasoning, multi-hop relations, contradictions, enumeration,
+absence, and closure-sensitive projection.
+
+No representation may silently erase information required by the next.
+
+* Online algorithm
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-ONLINE-ALGORITHM
+:END:
+
+For one SearchLoop continuation:
+
+1. validate workspace, project, source snapshot, provider contracts, policy,
+   and continuation identity;
+2. compile unresolved obligations into clauses;
+3. classify every clause as =resolved=, =searchable=, =fuzzy=, or =stalled=;
+4. invalidate searched digests whose dependency identity changed;
+5. identify newly searchable clauses;
+6. produce bounded posting actions for admitted providers;
+7. allocate a global candidate budget with fairness floors for mandatory
+   obligations;
+8. execute independent actions in serial, batch, or parallel form;
+9. admit returned facts only after provenance and freshness checks;
+10. extend bindings and reclassify affected clauses;
+11. detect contradiction, cycle, ambiguity, join, enumeration, or absence
+    conditions requiring graph escalation;
+12. project a canonical delta and typed next-action proposals;
+13. run closure validation when all required obligations appear discharged;
+14. return a terminal receipt or the next bounded frontier.
+
+The model-facing packet omits unchanged clauses, previously accepted evidence,
+and raw postings.
+
+* Online applicability
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-APPLICABILITY
+:END:
+
+Clause-first retrieval is preferred when:
+
+- at least one canonical owner, entity, selector, or relation argument is bound;
+- the required relation is provider-declared and posting-addressable;
+- the query is local or shallow;
+- candidate degree is bounded;
+- no complete enumeration or absence proof is required;
+- joins remain within a compatible identity and namespace;
+- freshness can be checked without graph-wide reconstruction.
+
+It is an optimization choice, not a semantic weakening.
+
+* Mandatory graph escalation
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-ESCALATION
+:END:
+
+SearchLoop MUST escalate when any of these conditions holds:
+
+- an enumeration or absence obligation lacks a closed admitted scope;
+- a required join spans independent owners, namespaces, providers, or source
+  generations;
+- relation degree, unresolved variable count, or hop depth exceeds the bounded
+  clause plan;
+- clauses form a dependency cycle without a decreasing measure;
+- admitted facts contradict each other;
+- provider capabilities cannot preserve required argument roles or qualifiers;
+- selector relocation or alias resolution is ambiguous;
+- completeness-sensitive policy or test reachability is requested;
+- the planner cannot justify that a local alternative is sufficient;
+- exact-source verification contradicts a relation fact.
+
+Cost and rank may recommend earlier escalation.  They cannot suppress a
+mandatory escalation.
+
+* EvidenceGraph authority refinement
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-GRAPH-AUTHORITY
+:END:
+
+The EvidenceGraph is the authoritative admitted evidence representation for
+graph-dependent reasoning.  It is not self-proving truth.  Closure authority
+belongs to the validator operating over:
+
+- the obligation graph;
+- admitted evidence and graph facts;
+- exact selector materializations where required;
+- freshness, provenance, contradiction, and scope proofs;
+- the current RFC, schema, provider, and policy identities.
+
+This distinction prevents both postings and graph rank from becoming an
+unchecked success oracle.
+
+* Global candidate budgeting
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-GLOBAL-BUDGET
+:END:
+
+Per-clause fixed top-k is rejected.  It can spend most of the budget on a
+high-degree weak clause while starving a low-ranked mandatory obligation.
+
+The global pool accounts for:
+
+- obligation criticality;
+- expected information gain;
+- owner and selector diversity;
+- provider dispatches;
+- projected evidence and model-facing bytes;
+- materialization and graph-escalation cost;
+- prior attempts and searched digests;
+- fairness floors for every mandatory searchable obligation.
+
+Marginal utility orders allowed actions.  It never changes which obligations
+are mandatory or which evidence is sufficient.  The planner reserves mandatory
+floors before allocating optional utility budget.  If the available budget
+cannot satisfy the declared minimum floors, it returns a typed
+=budget-exhausted= or =needs-budget= state with the unserved obligations; it
+does not assign a silent zero share.
+
+* Continuation and once-only search
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-CONTINUATION
+:END:
+
+A clause action is “searched once” only relative to a validation key containing:
+
+- clause semantic digest;
+- bound argument and qualifier digest;
+- workspace, project, and source generation;
+- provider and parser artifact identity;
+- query-pack and shared-schema identity;
+- policy overlay;
+- relevant budget and projection class.
+
+Changing any dependency creates a new admissible search action.  A stable
+digest prevents redundant rescans; it does not suppress fresh evidence.
+
+* Parallel execution and canonical projection
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-PARALLELISM
+:END:
+
+Independent posting actions may execute concurrently.  Independence requires
+compatible identity domains and no read-after-write dependency between their
+bindings.
+
+Runtime completion order is not semantic order.  Receipts use stable plan,
+obligation, clause, and branch identities and a total canonical projection
+order.  Conflicting or generation-incompatible results produce an explicit
+conflict transition.
+
+* Failure semantics
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-FAILURES
+:END:
+
+The online path returns typed states for:
+
+- =no-bound-anchor=;
+- =unsupported-relation=;
+- =provider-capability-gap=;
+- =binding-budget-exhausted=;
+- =stale-clause=;
+- =ambiguous-owner=;
+- =join-required=;
+- =graph-required=;
+- =closed-scope-required=;
+- =contradictory-evidence=;
+- =no-sound-plan=.
+
+None of these is equivalent to “fact absent.”
+
+* Cache integration
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-CACHE
+:END:
+
+Clause classification, posting actions, branch evidence, graph projection, and
+terminal receipts may be cached at separate layers.  Every entry is
+witness-bound.  A cached clause resolution cannot survive a changed source
+snapshot merely because its text is unchanged.
+
+The semantic-cache contract is defined in
+[[file:../10.05.40-receipts-cache-identity/00.04-semantic-cache-hierarchy.org][Semantic cache hierarchy]].
+
+* Improvement integration
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-IMPROVEMENT
+:END:
+
+Improvement state may learn branch ordering, cost estimates, graph-escalation
+hints, and cache admission policy.  It cannot change clause meaning,
+sufficiency, mandatory escalation, closure, or provider authority.
+
+Policy evaluation optimizes independently validated closure and downstream
+task success, not easy-clause hit rate.
+
+* Compatibility and migration
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-MIGRATION
+:END:
+
+The migration is additive:
+
+1. define shared clause, posting, escalation, and receipt schemas;
+2. generate clause plans alongside the existing graph path;
+3. run shadow comparison without controlling retrieval;
+4. enable bounded anchored relation classes;
+5. add branch-cache and deterministic transcript receipts;
+6. enable graph-on-demand only for scenario classes with equal evidence
+   closure;
+7. retain direct graph execution as a typed recovery and conformance path;
+8. widen relation classes only after provider alignment and Lean obligations.
+
+Existing graph, router, selector, and closure machinery is not discarded.
+
+* Performance and quality gates
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-GATES
+:END:
+
+Receipts compare clause-first and graph-first execution on identical intents:
+
+- provider, graph, exact-query, and model call count;
+- unique owners, selectors, facts, and clause actions;
+- candidate and model-facing bytes;
+- clause rescans and cache validated-hit rate;
+- graph escalation count and reason;
+- cold, warm, and invalidation latency;
+- closure-validator outcome;
+- missing, stale, contradictory, or incorrectly accepted evidence;
+- deterministic transcript digest;
+- downstream task correctness.
+
+Lower latency is not accepted when closure quality or fail-closed behavior
+regresses.
+
+* Non-goals
+:PROPERTIES:
+:ID: ASP-RFC-10.05-CFR-GOD-NON-GOALS
+:END:
+
+- replacing qualified relations with bare triples;
+- proving absence from ranked or truncated postings;
+- using graph rank as closure;
+- removing exact parser-owned query;
+- making Python planner output semantic authority;
+- requiring concurrency for correctness;
+- hiding provider asymmetry behind silent fallback;
+- changing RFC semantics through learned policy.

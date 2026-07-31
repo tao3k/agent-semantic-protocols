@@ -1,0 +1,411 @@
+#+title: RFC 10.05.40.01.01 - Atomic Joint Decision Publication
+#+startup: overview
+
+* Status
+
+Draft, proof-backed.
+
+This module governs durable publication of the RFC 01.00 joint decision and
+advancement from =joint= to =newOnly=. It changes state-machine, receipt, and
+recovery semantics only. It does not authorize Rust or Python implementation.
+
+* Abstract
+
+A correct joint decision is not sufficient if the transition phase can advance
+before that decision is durable. The publication protocol must preserve:
+
+\[
+\mathsf{phase}=\mathsf{newOnly}
+\Longrightarrow
+\mathsf{decisionDurability}=\mathsf{durable}.
+\]
+
+The state machine uses three decision durability states:
+
+#+name: searchroute-atomic-joint-decision-publication-model
+#+begin_src typst
+#let absent = 0
+#let intent = 1
+#let durable = 2
+#let joint = 1
+#let new-only = 2
+#let safe-state(phase, decision) = (
+  phase != new-only
+  or decision == durable
+)
+#assert(safe-state(joint, absent))
+#assert(safe-state(joint, intent))
+#assert(safe-state(joint, durable))
+#assert(safe-state(new-only, durable))
+#assert(not safe-state(new-only, intent))
+"ok"
+#+end_src
+
+The required order is:
+
+#+begin_example
+joint/absent
+  -> joint/intent
+  -> joint/durable
+  -> newOnly/durable
+#+end_example
+
+An invalid intent may return to =joint/absent=. No transition may produce
+=newOnly/absent= or =newOnly/intent=.
+
+* State model
+
+The persistent transition state contains:
+
+- =transitionId=;
+- =phase=;
+- =decisionDurability=;
+- =jointDecisionReceiptId= when present;
+- =verificationSnapshotId= when present;
+- =revision=.
+
+The proof model separates:
+
+- =absent=: no publication attempt is active;
+- =intent=: a durable command identity exists, but the joint decision record is
+  not yet committed;
+- =durable=: the complete joint decision record is durable and recoverable.
+
+The state =intent= MUST NOT be interpreted as a published decision.
+
+* Publication protocol
+
+** Prepare intent
+
+The publisher writes a durable intent containing:
+
+- =transitionId=;
+- =jointDecisionReceiptId=;
+- =expectedRevision=;
+- =verificationSnapshotId=;
+- input old/new verification receipt identities;
+- command idempotency key;
+- creation and expiry time.
+
+The transition remains in =joint=.
+
+** Persist decision
+
+Before persistence, the publisher MUST revalidate:
+
+- both input verification receipts;
+- transition phase;
+- verification snapshot;
+- decision policy;
+- intent identity and expiry.
+
+If validation succeeds, it persists the complete joint decision record and
+sets =decisionDurability= to =durable=.
+
+If validation fails, it appends an abort receipt and returns to
+=joint/absent= with a new revision. It MUST NOT advance phase.
+
+** Advance phase
+
+The phase compare-and-swap is authorized only when:
+
+#+begin_example
+expectedRevision == currentRevision
+currentPhase == joint
+decisionDurability == durable
+decision.verificationSnapshotId == currentVerificationSnapshotId
+#+end_example
+
+The successful mutation produces:
+
+#+begin_example
+phase = newOnly
+decisionDurability = durable
+revision = previousRevision + 1
+#+end_example
+
+** Publish advancement receipt
+
+After CAS, the publisher emits a phase-advancement receipt. If a crash occurs
+after CAS but before this receipt is emitted, recovery reconstructs it from the
+durable decision record and transition revision. The phase is not rolled back.
+
+* Mathematical invariant
+
+Let \(R(s)\) mean state \(s\) is reachable through the publication transition
+relation, \(P(s)\) its phase, and \(D(s)\) its durability.
+
+#+name: searchroute-atomic-joint-decision-publication-proposition
+#+begin_src typst
+#let reachable-safety = $
+  R(s)
+  and P(s) = "newOnly"
+  arrow.r.double
+  D(s) = "durable"
+$
+#let cas-fence = $
+  r_"expected" = r_"current"
+  and D(s) = "durable"
+  and V_"decision" = V_"current"
+$
+#let replay-identity = $
+  K = (
+    T,
+    J,
+    r_"expected",
+    V_"decision",
+  )
+$
+#assert(type(reachable-safety) == content)
+#assert(type(cas-fence) == content)
+#assert(type(replay-identity) == content)
+"ok"
+#+end_src
+
+Every publication step preserves the invariant. Therefore induction over all
+reachable states establishes that =newOnly= always implies a durable decision.
+
+* Crash and recovery matrix
+
+| Crash point | Durable state | Recovery action | Phase |
+|-
+| Before intent | =absent= | Start a new attempt | =joint= |
+| After intent | =intent= | Revalidate, then persist or abort | =joint= |
+| After decision persistence | =durable= | Retry phase CAS | =joint= |
+| After successful CAS | =durable= | Reconstruct advancement receipt | =newOnly= |
+| After advancement receipt | =durable= | Return the existing receipt | =newOnly= |
+
+Recovery MUST inspect persistent state. It MUST NOT infer completion from the
+presence of a process-local response, model message, log line, or cached
+selected value.
+
+* CAS and verification fences
+
+** Revision fence
+
+The expected revision prevents two publishers from advancing the same
+transition based on different prior states.
+
+If =expectedRevision != currentRevision=, the command fails with
+=stale-publication-revision=. It may inspect the current state and replay only
+when command identity is compatible.
+
+** Verification snapshot fence
+
+The revision fence does not prove that input verification remains current. The
+decision record also binds =verificationSnapshotId=.
+
+If the current verification snapshot changes after decision persistence but
+before CAS:
+
+- phase remains =joint=;
+- the durable decision is marked superseded or invalid for advancement;
+- a new publication attempt must reverify both inputs;
+- the stale decision remains historical evidence.
+
+The publisher MUST NOT update the old decision record in place with the new
+snapshot identity.
+
+** Durability fence
+
+Matching revision and snapshot are still insufficient when the decision is
+only =intent=. CAS requires =durable= explicitly.
+
+* Idempotency and conflicting replay
+
+The publication command key is:
+
+#+begin_example
+publicationCommandKey = H(
+  transitionId,
+  jointDecisionReceiptId,
+  expectedRevision,
+  verificationSnapshotId
+)
+#+end_example
+
+Replaying the exact key:
+
+- in =joint/durable= returns or retries the same phase CAS;
+- in =newOnly/durable= returns the existing advancement result;
+- does not increment revision merely for reading the existing result.
+
+A command with the same transition but a different decision receipt,
+verification snapshot, or expected revision is a conflicting command. It MUST
+NOT be treated as an idempotent replay.
+
+Idempotency is equality of command identity, not equality of fused numeric
+value.
+
+* Receipt identities
+
+** Durable decision record
+
+#+begin_example
+durableJointDecisionRecordId = H(
+  transitionId,
+  jointDecisionReceiptId,
+  oldVerificationReceiptId,
+  newVerificationReceiptId,
+  verificationSnapshotId,
+  decisionPolicyVersion,
+  expectedRevision,
+  persistedAt
+)
+#+end_example
+
+** Advancement receipt
+
+#+begin_example
+phaseAdvancementReceiptId = H(
+  transitionId,
+  durableJointDecisionRecordId,
+  previousPhase,
+  nextPhase,
+  previousRevision,
+  committedRevision,
+  verificationSnapshotId,
+  committedAt
+)
+#+end_example
+
+The advancement receipt MUST reference the durable decision record. A
+=newOnly= phase record without that reference is invalid.
+
+* Search and model cache semantics
+
+A search-result cache MAY reuse the phase advancement only when:
+
+- command identity matches;
+- transition revision matches;
+- verification snapshot remains current;
+- decision and advancement receipts remain valid.
+
+A model prefix-cache hit on a previously rendered advancement receipt does not
+prove any of these conditions.
+
+Cache invalidation MUST occur when:
+
+- either input verification receipt changes;
+- the joint decision receipt changes;
+- revision changes unexpectedly;
+- verification snapshot changes;
+- transition is superseded or revoked.
+
+* SearchLoop and graph-router consequences
+
+The normal graph path is:
+
+#+begin_example
+load compact joint decision
+  -> prepare durable publication intent
+  -> revalidate input snapshot
+  -> persist decision record
+  -> CAS joint to newOnly
+  -> emit advancement receipt
+  -> route under newOnly
+#+end_example
+
+Recovery uses the same nodes and edges. It does not create a separate
+operator-only recovery CLI.
+
+Progressive inspect transitions include:
+
+- =inspect publication-intent=;
+- =inspect durable-decision=;
+- =inspect cas-fence=;
+- =inspect verification-snapshot=;
+- =inspect advancement-receipt=.
+
+The compact path carries identities, durability, revision, and next action.
+Full old/new report lists remain behind their existing inspect edges, reducing
+token cost and interaction rounds.
+
+* Proof-discovered gaps
+
+** A correct decision can still be unpublished
+
+The mathematical fusion proof does not imply durability. Phase advancement
+must consume a durable record, not an in-memory theorem result.
+
+** Durable intent is not durable decision
+
+An intent supports recovery and deduplication but does not authorize
+=newOnly=. Treating it as completion exposes the exact forbidden state.
+
+** Revision CAS is not a verification fence
+
+The transition revision can remain unchanged while an input verification
+snapshot is revoked or expires. Both fences are required.
+
+** Same fused value is not idempotency
+
+Two commands can publish equal fused values from different input receipts.
+Only the complete publication command key defines replay compatibility.
+
+** Abort is a state transition
+
+Discarding an invalid intent without incrementing revision makes stale
+publishers unable to observe that recovery changed state. Abort MUST be durable
+and revision-producing.
+
+* Lean realization
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.lean
+#+end_example
+
+It proves:
+
+- every publication step preserves the safety invariant;
+- every reachable state is safe;
+- every reachable =newOnly= state has a durable decision;
+- an intent cannot advance phase;
+- a durable joint state can advance;
+- an invalid intent can abort without phase advancement;
+- revisions are monotone;
+- stale revision and non-durable state block CAS;
+- a changed verification snapshot blocks advancement;
+- durable replay is idempotent;
+- command compatibility binds the decision receipt;
+- a changed decision rejects replay compatibility.
+
+The modular audit owner and executable entry are:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublication.lean
+
+packages/proofs/audit/
+  SearchRouteAdmissionRetryCacheRejoinAtomicJointDecisionPublicationAudit.lean
+#+end_example
+
+The generated receipt is:
+
+#+begin_example
+packages/proofs/receipts/
+  searchroute-admission-retry-cache-rejoin-atomic-joint-decision-publication-audit-v1.json
+#+end_example
+
+* Non-goals
+
+This module does not yet prove:
+
+- garbage collection of superseded durable decisions;
+- bounded recovery attempts;
+- lease expiry while a publisher is paused;
+- multi-region replication consistency;
+- implementation-specific transaction boundaries;
+- phase advancement beyond =newOnly=.
+
+* Next proof boundary
+
+The next module should prove bounded recovery and lease ownership. A crashed or
+partitioned publisher must not hold the transition indefinitely, while a new
+publisher must not race an unexpired owner.
+
+The proof must combine lease epoch, holder identity, expiry, publication
+revision, and verification snapshot into one recovery authorization fence.

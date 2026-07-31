@@ -1,0 +1,327 @@
+#+title: RFC 10.05.23 — SearchRoute Costed Inspect Trace
+#+status: Draft
+#+options: toc:2
+
+#+property: rfc_layer progressive-projection-cost
+
+* Status
+
+This RFC is the operational-cost layer above [[file:00.22-searchroute-total-inspect-driver.org][RFC 10.05.22 — SearchRoute Total Inspect Driver]].
+RFC 10.05.22 proves that a total decision source constructs a bounded closed
+trace. This RFC specifies how every decision in such a trace is assigned an
+auditable operational cost and projected into the existing =SearchRoute= and
+=GraphCandidate= model.
+
+This session does not authorize Rust implementation. The normative artifacts
+are this Org RFC, its embedded Typst model, the Lean proof under
+=packages/proofs=, and the Lean JSON plus AXLE audit receipts.
+
+* Cost-bearing decision
+
+** Sound step receipt
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SIT-COST-STEP
+:END:
+
+A =CostedInspectStep= binds one semantic =LoopDecision= to:
+
+- one =RouteStep=;
+- the graph-hop contribution of the decision;
+- semantic-search baseline evidence tokens;
+- semantic-search cache-saved evidence tokens;
+- semantic-search cache-hit identity; and
+- semantic-search cache validation.
+
+The cost receipt is sound only when all of the following hold:
+
+1. model prefix-cache tokens do not exceed prompt tokens;
+2. semantic baseline evidence equals actual evidence plus semantic-cache
+   savings;
+3. a semantic-cache miss has zero semantic-cache savings;
+4. positive semantic-cache savings imply a semantic-cache hit;
+5. a semantic-cache hit is validated; and
+6. semantic-cache-hit identity is equivalent to
+   =RouteStep.kind = semanticCacheHit=.
+
+The final identity condition is necessary. Without it, a receipt could claim a
+semantic-search cache hit while the projected route records an ordinary
+inspect step, or vice versa.
+
+* Costed trace and SearchRoute projection
+
+** Trace alignment
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SIT-PROJECTION
+:END:
+
+A =CostedInspectTrace= carries one sound cost receipt for every valid loop
+decision. Its list of cost receipts is an index of the trace, not an
+independently mutable report.
+
+Lean erases the cost annotations back to an =InspectLoopTrace= and proves that:
+
+#+begin_example
+costs.length = loop decision count
+#+end_example
+
+A =CostedClosedTraceReceipt= additionally contains:
+
+- the final state and proof that it is loop-closed;
+- a path-validation Boolean; and
+- proof that the Boolean is =true=.
+
+Projection constructs:
+
+- =SearchRoute.steps= from the ordered =RouteStep= annotations;
+- route domain and closure digest from an explicit projection context;
+- route =closed=true= from the typed closed receipt;
+- graph hops as the sum of per-step graph hops; and
+- =GraphCandidate.pathValidated=true= only from the path-validation receipt.
+
+Projection does not silently infer path validation from loop closure. Loop
+closure is about candidate coverage; graph path validation is an independent
+obligation.
+
+* Cost fidelity
+
+** Projection equations
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SIT-COST-FIDELITY
+:END:
+
+Lean proves that the projected =SearchRoute= preserves the trace costs:
+
+#+begin_example
+transitionCount(project(trace)) = trace.costs.length
+evidenceTokenCost(project(trace)) = trace.actualEvidenceTokens
+promptTokenCost(project(trace)) = trace.promptTokens
+uncachedTokenCost(project(trace)) = trace.uncachedTokenCost
+roundCost(project(trace)) = trace.roundCost
+graphHops(project(trace)) = sum(trace.stepGraphHops)
+#+end_example
+
+These are equality theorems, not approximate metrics. A provider receipt whose
+reported trace totals disagree with the projected route is invalid.
+
+The existing graph route order remains lexicographic in:
+
+1. validated graph hops;
+2. total uncached tokens;
+3. model/tool rounds; and
+4. route transitions.
+
+That order can compare the projected candidates only after cost and validation
+receipts have been checked.
+
+* Two independent cache layers
+
+** Cache accounting
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SIT-CACHE-SEPARATION
+:END:
+
+Semantic-search cache and model prefix cache are different mechanisms and have
+different accounting equations.
+
+For semantic-search evidence:
+
+#+begin_example
+semanticBaselineEvidence
+  = actualEvidenceTokens + semanticSearchCacheSavings
+#+end_example
+
+For the model prompt:
+
+#+begin_example
+promptTokens
+  = uncachedPromptTokens + prefixCacheSavings
+#+end_example
+
+The projected route inherits both soundness properties:
+
+- every =cachedPromptTokens= value is bounded by its prompt tokens; and
+- every projected semantic-cache hit is backed by validated semantic-cache
+  identity.
+
+The total =uncachedTokenCost= is:
+
+#+begin_example
+actualEvidenceTokens + uncachedPromptTokens
+#+end_example
+
+It is useful for route comparison, but it does not reveal which cache layer
+produced the saving.
+
+* Cache-layer collision
+
+** Equal scalar cost is not equal provenance
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SIT-CACHE-COLLISION
+:END:
+
+Lean constructs two sound one-step routes:
+
+- a semantic-search-cache route with =2= actual evidence tokens and =8= saved
+  semantic evidence tokens;
+- a model-prefix-cache route with =10= prompt tokens, =8= cached prompt tokens,
+  and zero evidence tokens.
+
+Both routes have:
+
+- zero graph hops;
+- total uncached token cost =2=;
+- zero rounds; and
+- one transition.
+
+Therefore the current =graphLexNoWorse= relation considers each route no worse
+than the other. Nevertheless their cache receipts are different:
+
+#+begin_example
+semantic route: semantic saving = 8, prefix saving = 0
+prefix route:   semantic saving = 0, prefix saving = 8
+#+end_example
+
+This is not evidence that one cache layer should always outrank the other. It
+proves that a scalar uncached-token key cannot support claims about per-layer
+cache efficiency. Choosing between equal-token routes requires an additional
+policy axis such as retrieval latency, model recomputation latency, or an
+explicit Pareto policy. The protocol must not invent an arbitrary ordering.
+
+* Optimizer boundary
+
+** What is and is not proven
+:PROPERTIES:
+:ID:       ASP-RFC-10.05-SIT-OPTIMALITY-BOUNDARY
+:END:
+
+This RFC proves trace-to-route cost fidelity and cache-layer provenance. It
+does not yet prove that:
+
+- every total driver emits a costed trace receipt;
+- the generated costed trace catalog is complete;
+- every projection is fully =admissibleB= for a particular route requirement;
+  routing and close-step presence remain explicit requirements; or
+- =chooseBestGraphCandidate= selects the globally cheapest complete driver
+  trace.
+
+The next proof layer must define a finite, complete catalog of costed closed
+trace projections, bind each projection to its route requirement and budget,
+and then reuse the existing graph-candidate optimizer theorem. Cache-layer
+provenance must survive selection even when it is not an ordering axis.
+
+* Embedded mathematical model
+
+The named Org-Babel Typst block is evaluated through =typst eval --in -= using
+the parser-owned block body over standard input. It needs no standalone
+=.typ= file, no =:file= argument, and no PDF compilation.
+
+#+name: searchroute-costed-inspect-trace-model
+#+begin_src typst
+#set document(
+  title: "SearchRoute Costed Inspect Trace",
+  author: "Agent Semantic Protocols",
+)
+#set page(margin: 22mm)
+#set text(font: "New Computer Modern", size: 10.5pt)
+#set heading(numbering: "1.")
+#let Base = math.op("Base")
+#let Actual = math.op("Actual")
+#let SemSave = math.op("SemSave")
+#let Prompt = math.op("Prompt")
+#let PrefixSave = math.op("PrefixSave")
+#let UncachedPrompt = math.op("UncachedPrompt")
+#let Project = math.op("Project")
+#let Transitions = math.op("Transitions")
+#let GraphHops = math.op("GraphHops")
+#let Uncached = math.op("Uncached")
+#let Rounds = math.op("Rounds")
+
+= Costed trace
+
+A costed trace is an ordered list $T = [k_1, dots, k_n]$ aligned with a valid
+inspect trace. Each $k_i$ binds one decision to a route step and a graph-hop
+contribution.
+
+$ Transitions(Project(T)) = n. $
+
+The projected graph hops are additive:
+
+$ GraphHops(Project(T)) = sum_(i=1)^n GraphHops(k_i). $
+
+= Route-cost fidelity
+
+Projection preserves operational totals:
+
+$ Uncached(Project(T))
+  = sum_(i=1)^n (
+    e_i + p_i - h_i
+  ). $
+
+$ Rounds(Project(T)) = sum_(i=1)^n r_i. $
+
+= Independent cache equations
+
+Semantic-search cache accounting is
+
+$ Base(T) = Actual(T) + SemSave(T). $
+
+Model prefix-cache accounting is
+
+$ Prompt(T) = UncachedPrompt(T) + PrefixSave(T). $
+
+These equations have different baselines and different evidence owners. They
+must not be merged into one anonymous cache-hit field.
+
+= Scalar collision
+
+Consider two one-step traces with the same total uncached cost:
+
+$ Actual(T_s) = 2, quad SemSave(T_s) = 8,
+  quad PrefixSave(T_s) = 0. $
+
+$ Actual(T_p) = 0, quad UncachedPrompt(T_p) = 2,
+  quad PrefixSave(T_p) = 8. $
+
+Both satisfy
+
+$ Uncached(Project(T_s)) = Uncached(Project(T_p)) = 2. $
+
+The current route key therefore ties them when graph hops, rounds, and
+transitions also agree. Cache provenance remains distinct even when the scalar
+objective is equal.
+
+= Remaining theorem
+
+Cost fidelity does not imply optimizer completeness. A global driver-cost
+theorem additionally needs a finite complete catalog of admissible projected
+traces and a selection proof over that catalog.
+#+end_src
+
+* Lean and AXLE ownership
+
+The Lean owner is
+=packages/proofs/ASPProof/SearchRouteInspectTraceCost.lean=. The audit entry is
+=packages/proofs/audit/SearchRouteInspectTraceCostAudit.lean=.
+
+The Lean JSON audit binds theorem names and types to the five RFC clause IDs in
+this document. AXLE rejects missing theorem families, missing clause IDs,
+unexpected axioms, or a schema-invalid audit.
+
+* Agent-facing result
+
+The public search surface remains one progressive inspect loop. Cost
+annotations and cache provenance live in typed receipts:
+
+#+begin_example
+inspect decision
+  + semantic validity receipt
+  + graph-hop contribution
+  + actual route-step cost
+  + semantic-search cache receipt
+  + model prefix-cache receipt
+  -> costed closed trace
+  -> validated SearchRoute projection
+#+end_example
+
+The agent does not need a larger human-oriented command grammar to obtain this
+evidence.

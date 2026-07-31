@@ -1,0 +1,6 @@
+#+title: Compatibility locator: SearchRoute certified search ledger
+
+* Canonicalization pending
+
+The canonical receipt RFC is
+[[file:../10.05.40-receipts-cache-identity/00.25-searchroute-certified-search-ledger.org][SearchRoute certified search ledger]].

@@ -22,6 +22,20 @@
 #+  fact ontology, feedback memory, and context precision benchmark plan.
 
 
+* Architecture status and canonical successor
+
+This document is no longer the architectural root of agent search.  The
+canonical search architecture is
+[[file:10.05-interactive-graph-first-progressive-searchloop.org][Interactive,
+graph-first, progressive SearchLoop]].
+
+This RFC retains ownership of CLI adapters, harness behavior, activation,
+diagnostics, installation, compatibility input, and human-oriented command
+rendering.  Existing search/query sections remain historical locators until
+their semantic modules migrate.  Their location MUST NOT be interpreted as
+making CLI syntax the agent-facing protocol, and new SearchLoop semantics MUST
+NOT be added under this tree.
+
 * One-sentence summary
 
 The =SearchLoop= contract is the agent-facing public protocol.  Search and
@@ -77,7 +91,7 @@ search/query capabilities, provider contracts, hook guidance, and historical
 readiness notes can evolve without growing one large always-read document.
 
 The search architecture starts at
-[[file:10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.01-search-loop-architecture.org][SearchLoop architecture]].
+[[file:10.05-interactive-graph-first-progressive-searchloop.org][Interactive graph-first progressive SearchLoop]].
 The existing search/query modules remain the lower-level capability contracts.
 They MUST NOT require an agent to construct a long CLI command sequence in
 order to make one bounded search transition.
@@ -160,7 +174,12 @@ The shared =ProjectResolution= binds =RepositoryIdentity=,
 path, =LanguagePackageGraph=, =ResolvedSourceScope= records, candidate
 generation, manifest and lock digests, and the resolution generation.  A
 =ResolvedSourceScope= names its owning package and target, admitted extensions,
-source and generated roots, inclusion authority, and exclusion authority.
+source and generated roots, inclusion authority, exact =explicitPaths=, and
+exclusion authority.  =explicitPaths= MUST contain only manifest-declared
+source roots and target entrypoints for =manifest-explicit= scopes and MUST be
+empty for package-manager-conventional scopes.  ASP expands an explicit
+directory only over the Git candidate universe and uses those exact admitted
+paths when detecting a user-policy conflict with an explicit target.
 Flat =packageRoots=, =sourceRoots=, and =sourceExtensions= arrays are derived
 receipt projections; they are not provider configuration and are not
 independently executable inventory authority.  Provider-owned
@@ -218,8 +237,11 @@ owner set from the Git worktree and index file scope: tracked files plus current
 working-tree additions required to observe live edits.  It MUST then intersect
 those candidates with the activated provider project scope, including project
 markers, configuration files, package roots, declared source roots, registered
-source extensions, and ignored path prefixes.  A Git workspace MUST NOT perform
-an unbounded recursive walk from the workspace root.
+source extensions, and package-manager-owned exclusions.  It then applies the
+ASP-owned infrastructure and user-policy exclusions already normalized into the
+=RepositoryCandidateSnapshot= exactly once.  Provider-private ignored path
+prefixes are not an inventory input.  A Git workspace MUST NOT perform an
+unbounded recursive walk from the workspace root.
 
 For a non-Git workspace, ASP MUST use an explicitly labeled =provider-only=
 candidate scope derived from finite project-marker probing followed by
@@ -227,13 +249,12 @@ package-manager-declared members and source roots.  It MUST NOT silently widen
 that scope into a generic workspace-root crawl.
 
 Inventory enumeration consumes the already-normalized ASP candidate snapshot;
-it MUST NOT apply a second provider-private ignore pass.
-
-Ignored directories and their descendants MUST never become inventory owners
-and MUST never be published to the incremental workspace database.  Symlink
-skipping and registered source-extension filtering remain mandatory after
-prefix pruning.  This enumeration contract is parser/provider owned and MUST
-NOT require =asp sync=, use a legacy fallback, or defer ignored-owner removal to
+it MUST NOT apply a second provider-private ignore pass.  Paths excluded by the
+single ASP policy projection MUST never become inventory owners or be published
+to the incremental workspace database.  Symlink skipping and registered
+source-extension filtering remain mandatory after that projection.  This
+enumeration contract is parser/provider owned and MUST NOT require =asp sync=,
+use a legacy fallback, or defer excluded-owner removal to
 a later database cleanup.
 
 * Exact-selector miss is a typed discovery result
@@ -272,7 +293,8 @@ control flow by parsing provider stderr.
 * Module map
 
 - [[file:10.05-cli-first-harness-ux/10.05.00-overview.org][Overview And Non-Goals]] :: One-sentence summary through What NOT to build: the anti-patterns.
-- [[file:10.05-cli-first-harness-ux/10.05.10-search-query-surface.org][Search Query Surface]] :: CLI is the protocol: search plus query surface.
+- [[file:10.05-interactive-graph-first-progressive-searchloop.org][Interactive graph-first progressive SearchLoop]] :: canonical agent-facing search architecture.
+- [[file:10.05-cli-first-harness-ux/10.05.10-search-query-surface.org][Legacy Search Query Surface]] :: compatibility locator for modules awaiting semantic migration.
 Exact =query --selector= is a direct parser operation because its canonical selector already names both the grammar and one owner path. The exact path MUST validate that the owner is contained by the requested provider workspace, read exactly that one live file, and ask the provider parser to project the selected item from those in-memory bytes. It returns parser-owned byte spans, the requested code projection, and the live file digest without opening Turso, CAS, a source envelope, a workspace Merkle tree, or requiring =asp sync .=. The provider-native v1 response MUST echo the request selector byte-for-byte as =requestedStructuralSelector= and MUST report its parser-resolved identity separately as =structuralSelector=. ASP validates the request echo, owner, source digest, byte span, and projected bytes exactly; it MUST NOT infer provider canonicalization through prefix or substring matching. Source envelopes and incremental generation belong only to reasoning =search=: an unchanged owner reads its published index, while a missing or changed owner updates only that owner and the minimum dependency closure rather than scanning or materializing the full crate. A complete =asp sync .= remains the explicit full-generation and recovery boundary for search. The v1 search envelope requires =providerWorkspaceRoot= and =providerWorkspaceIdentityDigest= so one provider can publish several semantic workspaces without last-writer-wins aliasing; this is a v1 contract completion, not a compatibility v2.
 
 * Incremental reasoning-search source authority

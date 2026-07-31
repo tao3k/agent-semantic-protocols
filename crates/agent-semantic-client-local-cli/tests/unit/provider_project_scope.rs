@@ -5,6 +5,25 @@ use super::{
 };
 
 #[test]
+fn project_resolution_request_carries_typed_candidate_generation_identity() {
+    let provider = rust_project_resolution_provider();
+    let project_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("workspace root");
+    let (_, request) = super::provider_project_scope_invocation(&provider, project_root)
+        .expect("build provider project-resolution request");
+    let stdin = request.stdin.expect("project-resolution stdin");
+    let value: serde_json::Value =
+        serde_json::from_slice(&stdin).expect("parse project-resolution request");
+
+    assert_eq!(
+        value["repositoryCandidates"]["candidateGeneration"]["algorithm"],
+        "blake3-path-set-v1"
+    );
+}
+
+#[test]
 fn provider_project_scope_packet_is_the_only_file_scope_input() {
     let scope = provider_project_scope_files_from_packet(
         Path::new("."),
@@ -34,6 +53,36 @@ fn provider_project_scope_packet_does_not_materialize_missing_files() {
         },
     );
     assert!(files.is_empty());
+}
+
+fn rust_project_resolution_provider() -> agent_semantic_client_core::ResolvedProvider {
+    let manifest = agent_semantic_hook::builtin_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id().as_str() == "rust")
+        .expect("Rust provider manifest");
+    agent_semantic_client_core::ResolvedProvider {
+        scope_authority: agent_semantic_client_core::ProviderScopeAuthority::ProjectResolution,
+        manifest_id: "rs-harness-test-manifest".to_string(),
+        manifest_digest: "sha256:rs-harness-test-manifest".to_string(),
+        namespace: "rust".to_string(),
+        language_id: "rust".into(),
+        provider_id: "rs-harness".into(),
+        binary: "rs-harness".to_string(),
+        execution: agent_semantic_hook::ProviderExecution::ExternalProcess,
+        provider_command_prefix: vec!["rs-harness".to_string()],
+        execution_command_digest: "test-execution-command-digest".to_string(),
+        runtime_command_argv: None,
+        runtime_profile_status: None,
+        package_roots: vec![".".to_string()],
+        config_files: Vec::new(),
+        source_extensions: vec![".rs".to_string()],
+        source_paths: Vec::new(),
+        repository_candidate_generation: "gix-index-status-v1".to_string(),
+        project_resolution_generation: "cargo-project-resolution-v1".to_string(),
+        search_capabilities: manifest.search_capabilities().clone(),
+        query_pack_descriptor: manifest.query_pack_descriptor().clone(),
+        semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+    }
 }
 
 #[tokio::test]
@@ -112,6 +161,7 @@ fn project_resolution_scope_resolves_only_git_candidates() {
         "resolvedSourceScopes":[
           {
             "roots":["src"],
+            "explicitPaths":[],
             "extensions":[".rs"],
             "includeAuthority":"package-manager",
             "exclusions":[{"prefix":"src/generated.rs","authority":"package-manager"}]
@@ -163,6 +213,7 @@ fn project_resolution_scope_applies_typed_policy_exclusions_once() {
         "resolvedSourceScopes":[
           {
             "roots":["src"],
+            "explicitPaths":[],
             "extensions":[".rs"],
             "includeAuthority":"package-manager",
             "exclusions":[]
@@ -211,6 +262,7 @@ fn explicit_package_target_and_policy_exclusion_fail_closed() {
         "resolvedSourceScopes":[
           {
             "roots":["generated"],
+            "explicitPaths":["generated/lib.rs"],
             "extensions":[".rs"],
             "includeAuthority":"manifest-explicit",
             "exclusions":[]
@@ -228,4 +280,44 @@ fn explicit_package_target_and_policy_exclusion_fail_closed() {
     assert!(error.contains("project-scope-conflict"), "{error}");
     assert!(error.contains("path=generated/lib.rs"), "{error}");
     assert!(error.contains("excludeAuthority=user-policy"), "{error}");
+}
+
+#[test]
+fn provider_cannot_inject_asp_owned_policy_exclusions() {
+    let stdout = br#"{
+      "schemaId":"agent.semantic-protocols.provider-project-resolution-response",
+      "schemaVersion":"1",
+      "languageId":"rust",
+      "providerId":"rs-harness",
+      "state":"resolved",
+      "resolution":{
+        "schemaId":"agent.semantic-protocols.project-resolution",
+        "schemaVersion":"1",
+        "state":"resolved",
+        "completeness":"exact",
+        "repositoryCandidates":{
+          "candidates":[{"path":"src/lib.rs"}],
+          "policyExclusions":[]
+        },
+        "resolvedSourceScopes":[{
+          "roots":["src"],
+          "explicitPaths":[],
+          "extensions":[".rs"],
+          "includeAuthority":"package-manager",
+          "exclusions":[{"prefix":"src/lib.rs","authority":"user-policy"}]
+        }]
+      }
+    }"#;
+
+    let error = super::project_resolution_scope_from_stdout(
+        stdout,
+        &super::LanguageId::from("rust"),
+        &super::ProviderId::from("rs-harness"),
+    )
+    .expect_err("provider must not inject ASP-owned user policy");
+
+    assert!(
+        error.contains("provider-project-resolution-invalid-exclusion-authority"),
+        "{error}"
+    );
 }

@@ -9,6 +9,7 @@
     "packageId",
     "targetId",
     "roots",
+    "explicitPaths",
     "extensions",
     "includeAuthority",
     "exclusions"

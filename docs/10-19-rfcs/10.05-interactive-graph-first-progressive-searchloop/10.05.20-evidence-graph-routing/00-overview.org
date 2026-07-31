@@ -1,0 +1,33 @@
+#+title: Evidence graph and routing
+#+property: rfc_layer evidence-graph-routing
+
+* Ownership
+
+This layer owns evidence-graph topology, relation postings, graph-router
+escalation, bounded path selection, and the conditions under which a loop may
+pay for additional graph expansion.
+
+It does not own presentation syntax, cache invalidation, or Lean audit
+mechanics.
+
+* Canonical RFCs
+
+- [[file:00.08-relation-postings-and-graph-escalation.org][Relation postings and graph escalation]]
+- [[file:00.18-searchroute-constructive-enumeration.org][SearchRoute constructive enumeration]]
+- [[file:00.19-searchroute-certified-lazy-frontier.org][SearchRoute certified lazy frontier]]
+- [[file:00.26-searchroute-committed-candidate-universe.org][SearchRoute committed candidate universe]]
+- [[file:00.27-searchroute-finite-canonical-manifest-commitment.org][Finite canonical manifest commitment]]
+- [[file:00.28-evidence-graph-router-executability-certificate.org][Evidence-graph router executability certificate]]
+- [[file:00.29-evidence-graph-temporal-capability-lease.org][Evidence-graph temporal capability lease]]
+- [[file:00.30-certified-sparse-evidence-graph-projection.org][Certified sparse evidence-graph projection]]
+- [[file:00.31-lexicographic-omitted-frontier-certificate.org][Lexicographic omitted-frontier certificate]]
+- [[file:00.32-canonical-graph-cost-vector.org][Canonical graph cost vector]]
+- [[file:00.35-feasibility-first-route-admission.org][Feasibility-first route admission]]
+- [[file:00.62-completion-equivalent-pareto-router.org][Completion-equivalent Pareto router]]
+- [[file:00.94-semantic-path-cache-execution-separation.org][Semantic path and cache execution separation]]
+- [[file:01.08-searchroute-graph-router-pareto-cost-selection.org][Graph-router Pareto cost selection]]
+- [[file:01.09-searchroute-evidence-graph-shortest-path-frontier-completeness.org][Evidence-graph shortest-path frontier completeness]]
+- [[file:01.10-searchroute-pareto-frontier-vector-completeness.org][Pareto frontier cost-vector completeness]]
+- [[file:01.11-searchroute-vector-coverage-identity-fence.org][Vector-coverage semantic identity and generation fence]]
+- [[file:01.12-searchroute-deterministic-frontier-merge-fanout-fanin.org][Deterministic frontier merge for fan-out/fan-in]]
+- [[file:10.05.88-lexical-search-frame-graph-router.org][Lexical SearchFrame and GraphRouter]]

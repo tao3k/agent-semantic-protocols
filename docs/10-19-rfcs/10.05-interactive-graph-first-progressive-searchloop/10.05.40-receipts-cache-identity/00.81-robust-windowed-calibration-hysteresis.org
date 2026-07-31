@@ -1,0 +1,212 @@
+#+title: 00.81 Robust Windowed Calibration and Hysteresis
+
+#+property: rfc_layer 10.05.40-receipts-cache-identity
+
+* Status
+
+Research draft.  This RFC extends 00.80 without changing its append-only
+historical ledger or forecast-snapshot identity.
+
+* Problem
+
+Append-only calibration prevents retroactive history rewriting, but it does
+not by itself make calibration robust.  A single extreme realization can
+dominate cumulative regret.  Repeated observations from one authority can
+fill a bounded decision window.  A mode rule with one threshold can oscillate
+between exploitation and exploration.  Finally, a calibration mechanism that
+requires another provider query or LLM turn can erase the SearchLoop savings
+that the forecast is intended to produce.
+
+The router therefore needs a bounded decision view over the immutable ledger,
+not a mutable replacement for the ledger.  It also needs cache-lane separation:
+
+- graph and semantic search facts are independent of the forecast version;
+- the stable model-prefix identity is independent of calibration suffix data;
+- forecast-bound plan estimates are versioned and may be invalidated;
+- calibration is computed from already emitted realization receipts.
+
+* Logical findings
+
+Clipping alone is insufficient.  It limits one observation but does not stop
+one source from filling every slot.  A bounded window alone is also
+insufficient because an attacker can replace old evidence by issuing many new
+observations.  The robust window MUST therefore combine:
+
+1. a fixed capacity;
+2. a fixed per-observation regret cap;
+3. verified realization receipts;
+4. unique =(authority, epoch)= source keys inside the decision window.
+
+Hysteresis also requires two separated thresholds.  Entering exploration uses
+the high threshold.  Leaving exploration uses the low threshold plus a
+recovery streak.  Without both conditions, the router can thrash at a single
+boundary and add avoidable agent turns.
+
+* Contract
+
+** ASP-RFC-10.05-RWCH-WINDOW
+
+The append-only ledger remains authoritative.  A robust calibration window is
+a bounded view over ledger observations and MUST NOT delete or rewrite the
+ledger.
+
+** ASP-RFC-10.05-RWCH-CLIP
+
+The contribution of one observation is
+=min(regret-cap, observation-regret)=.  Consequently, one observation cannot
+add more than =regret-cap= to the decision score.
+
+** ASP-RFC-10.05-RWCH-DIVERSITY
+
+Source keys inside one decision window MUST be unique.  A source key is the
+pair =(authority-id, authority-epoch)=, not merely an authority name.
+
+** ASP-RFC-10.05-RWCH-VERIFIED
+
+Every observation in a robust decision window MUST bind a verified
+realization receipt.  Unverified observations remain auditable in the global
+ledger but are ineligible for the robust decision window.
+
+** ASP-RFC-10.05-RWCH-HYSTERESIS
+
+The hysteresis policy MUST satisfy =low-threshold < high-threshold= and MUST
+use a positive recovery-streak limit.
+
+** ASP-RFC-10.05-RWCH-ENTER
+
+Any mode enters or remains in =explore= when the robust window score reaches
+the high threshold.
+
+** ASP-RFC-10.05-RWCH-EXIT
+
+An =explore= state may leave exploration only when the score is at or below
+the low threshold and the recovery streak reaches its limit.
+
+** ASP-RFC-10.05-RWCH-CACHE
+
+A calibration refresh MUST preserve the graph/search cache key.  It MUST
+advance the forecast-plan version so that forecast-bound estimates cannot be
+reused under a new calibration snapshot.
+
+** ASP-RFC-10.05-RWCH-PREFIX
+
+A calibration refresh MUST preserve the stable model-prefix cache key.
+Calibration evidence belongs to a suffix or tool-result lane and MUST NOT
+rewrite stable protocol instructions merely to report a new forecast.
+
+** ASP-RFC-10.05-RWCH-OVERHEAD
+
+Passive calibration consumes existing realization receipts.  Its incremental
+graph-hop, provider-command, LLM-round, and disclosed-token costs MUST all be
+zero.  This clause measures calibration itself; ordinary receipt production
+remains charged to the search action that produced the receipt.
+
+** ASP-RFC-10.05-RWCH-AUTHORIZATION
+
+An exploitation batch requires a valid robust window, verified transition
+chain, valid selective disclosure, feasible forecast-bound plan, non-explore
+mode, and zero incremental calibration overhead.
+
+** ASP-RFC-10.05-RWCH-ROUTER
+
+The router MUST use the robust score and hysteresis transition locally.  It
+MUST NOT add a CLI round trip, provider command, or LLM turn merely to choose
+the calibration mode.
+
+* Org-Babel Typst model
+
+#+name: robust-windowed-calibration-hysteresis-math
+#+begin_src typst
+#let regret-cap = 40
+#let window-capacity = 3
+#let low-threshold = 30
+#let high-threshold = 80
+#let recovery-limit = 2
+
+#let observations = (
+  (source: (authority: 1, epoch: 7), regret: 12, verified: true),
+  (source: (authority: 2, epoch: 7), regret: 95, verified: true),
+  (source: (authority: 1, epoch: 8), regret: 18, verified: true),
+)
+
+#let clipped = observations.map(
+  observation => calc.min(regret-cap, observation.regret)
+)
+#let score = clipped.sum()
+#let source-keys = observations.map(observation => observation.source)
+
+#let before-cache = (
+  search-key: 700,
+  model-prefix-key: 701,
+  forecast-version: 7,
+)
+#let after-cache = (
+  search-key: before-cache.search-key,
+  model-prefix-key: before-cache.model-prefix-key,
+  forecast-version: before-cache.forecast-version + 1,
+)
+
+#let model = (
+  score: score,
+  bounded-score: score <= window-capacity * regret-cap,
+  high-threshold-reached: high-threshold <= score,
+  separated-thresholds: low-threshold < high-threshold,
+  positive-recovery: 0 < recovery-limit,
+  unique-source-keys:
+    source-keys.dedup().len() == source-keys.len(),
+  search-cache-stable:
+    before-cache.search-key == after-cache.search-key,
+  model-prefix-stable:
+    before-cache.model-prefix-key == after-cache.model-prefix-key,
+  forecast-advanced:
+    after-cache.forecast-version == before-cache.forecast-version + 1,
+  incremental-overhead: (
+    graph-hops: 0,
+    provider-commands: 0,
+    llm-rounds: 0,
+    disclosed-tokens: 0,
+  ),
+)
+
+#metadata(model) <robust-windowed-calibration-model>
+#+end_src
+
+The block is queried with =typst eval --in -
+'query(<robust-windowed-calibration-model>).first().value'=.  The stdin
+document defines the mathematical environment and exports one labeled metadata
+value as the explicit serialized result.  No compilation target or generated
+source file is involved.
+
+* Machine-checked evidence
+
+The Lean model contains 20 theorem families.  Thirteen are axiom-free; seven
+use only the audited kernel dependencies =propext= and =Quot.sound=.  No
+theorem uses =sorryAx=.  The modular Lean JSON audit covers every one of the 12
+=ASP-RFC-10.05-RWCH-*= clauses.
+
+The AXLE receipt is bound to the Lean audit by SHA-256
+=f592a460fecea1edc615059437241d60b3f3e2c2520c980e5dcd8cef38ecaf0d=.
+The consumer requires the exact theorem-family set, exact RFC-clause set,
+exact allowed axiom inventory, consistent declaration counts, and absence of
+=sorryAx=.
+
+Lean rejected three weaker formulations during development:
+
+1. A nonlinear arithmetic tactic could not infer the window bound.  The final
+   proof constructs the bound by adding the cap for each entry, so the theorem
+   depends on the actual per-observation clipping invariant.
+2. Bare Boolean authorization labels did not form proof obligations.  The
+   final model uses explicit =AuthorizationFacts= and a validity predicate
+   binding chain verification, disclosure validity, and feasibility.
+3. A convenience simplification introduced =Classical.choice= into the
+   exploration-exit theorem.  Explicit branch elimination removed that
+   dependency; hysteresis exit is now constructive.
+
+* SearchLoop consequence
+
+Robust calibration remains a local state transition over existing receipts.
+It does not become another public search command.  Only the forecast-plan cache
+lane changes identity; graph facts and the model's stable instruction prefix
+remain reusable.  This keeps the adaptive router sensitive to realized cost
+without increasing graph path length, CLI complexity, or LLM interaction
+rounds.

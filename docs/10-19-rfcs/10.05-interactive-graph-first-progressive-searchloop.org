@@ -168,6 +168,50 @@ Owns:
 - schema transition; and
 - removal criteria for historical paths.
 
+* Canonical ownership and write policy
+
+This RFC tree is now the canonical owner for all new SearchLoop, evidence
+graph, router, progressive projection, search-cost, receipt, cache-identity,
+Lean, Typst, and proof-audit work.
+
+The =10.05-cli-first-harness-ux= tree is not a competing search architecture.
+It owns CLI adapters, harness compatibility, diagnostics, installation and
+activation behavior, plus historical locators that have not yet completed
+semantic classification.  New search semantics MUST NOT be added there.
+
+Physical migration is semantic rather than chronological:
+
+- forecast-bound plan cost and Pareto scheduling belong to
+  =10.05.30-progressive-projection-cost=;
+- forecast calibration, cache-lane identity, replay, and realization receipts
+  belong to =10.05.40-receipts-cache-identity=;
+- proof methodology and cross-RFC audit infrastructure belong to
+  =10.05.60-lean-typst-audit=;
+- CLI spelling remains in =10.05.70-migration-compatibility= only when it is
+  necessary to specify an adapter acceptance boundary.
+
+The first physical migration batch is:
+
+- [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.30-progressive-projection-cost/00.79-forecast-bound-pareto-batch-scheduling.org][00.79 Forecast-bound Pareto batch scheduling]];
+- [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.80-append-only-forecast-calibration.org][00.80 Append-only forecast calibration]];
+- [[file:10.05-interactive-graph-first-progressive-searchloop/10.05.40-receipts-cache-identity/00.81-robust-windowed-calibration-hysteresis.org][00.81 Robust windowed calibration and hysteresis]].
+
+Later batches MUST use parser-owned inbound-link receipts and MUST preserve
+relative links or rewrite them atomically.
+
+The second physical migration batch moves the SearchLoop foundations out of
+the CLI compatibility tree:
+
+- =10.05.00-foundations-invariants= owns =00.03=, =00.07=, and =00.09=;
+- =10.05.10-interactive-searchloop= owns =00.01=, =00.06=, and =00.13=;
+- =10.05.20-evidence-graph-routing= owns =00.08=;
+- =10.05.40-receipts-cache-identity= owns =00.04=, =00.05=, =00.14=, and
+  =00.15=;
+- =10.05.60-lean-typst-audit= owns =00.02=, =00.10=, =00.11=, and =00.12=.
+
+The old =10.05-cli-first-harness-ux/10.05.10-search-query-surface= copies are
+thin compatibility locators. They MUST NOT receive new normative semantics.
+
 * Existing RFC migration map
 
 The existing tree is reclassified as follows:

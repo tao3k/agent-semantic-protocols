@@ -1,0 +1,360 @@
+#+title: RFC 10.05.29 — Evidence Graph Temporal Capability Lease
+
+#+property: rfc_layer evidence-graph-routing
+
+* Status
+
+This RFC extends [[file:00.28-evidence-graph-router-executability-certificate.org][RFC 10.05.28 — Evidence Graph Router Executability Certificate]]
+with time, generation identity, and bounded recovery.
+
+It is proof-first.  It does not implement Python Graph Turbo or modify Rust
+provider code.
+
+Current validation state is =blocked-by-activation=.  The Lean model and
+modular audit inventory are authored, but no build, Lean JSON audit, AXLE
+receipt, Org lint receipt, or Typst evaluation receipt may be claimed until the
+workspace activation is repaired.  The blocking activation reports:
+
+- =activation must include at least one provider=;
+- automatic refresh failure =resolved source scope omitted roots=.
+
+Lean ownership:
+
+- =packages/proofs/ASPProof/SearchRouteTemporalCapabilityLease.lean=;
+- =packages/proofs/ASPProof/Audit/SearchRouteTemporalCapabilityLease.lean=.
+
+* Problem
+
+RFC 10.05.28 proves that static graph feasibility is insufficient without a
+runtime executability certificate.  A second gap remains: a certificate that
+was executable when issued can become stale.
+
+The following changes can invalidate a previously ready route:
+
+- Evidence Graph root changes;
+- provider artifact or configuration changes;
+- query identity changes;
+- warm source-index generation changes;
+- provider runtime generation changes;
+- exact-selector projection version changes;
+- the lease expires.
+
+A Boolean =ready= field has no temporal meaning by itself.  Reusing it after a
+generation change can admit a route whose provider no longer resolves or whose
+projection response no longer decodes.
+
+* Observed activation failure
+
+During parser-owned discovery for this RFC, the workspace activation file was
+missing and automatic regeneration failed with:
+
+=resolved source scope omitted roots=
+
+The hook then denied both Org discovery and session bootstrap.  A previously
+working search session therefore became non-executable without any change to
+the semantic route itself.
+
+This is a concrete temporal-capability transition:
+
+- earlier state: search capability observed as ready;
+- current state: activation unavailable;
+- old route semantics: unchanged;
+- current executability: false;
+- required disposition: bounded recovery, never silent reuse.
+
+* Generation identity
+
+Every capability lease MUST bind:
+
+- evidence root digest;
+- provider digest;
+- query digest;
+- source-index generation;
+- runtime generation;
+- projection version;
+- route digest.
+
+These fields form =GenerationIdentity= plus the candidate route identity.
+
+The source-index and runtime generations are intentionally separate.  A warm
+index may remain unchanged while the provider binary or dynamic module lane
+changes, and the provider may remain unchanged while the indexed Evidence
+Graph changes.
+
+* Runtime observation
+
+A =RuntimeObservation= contains:
+
+- current logical time;
+- current generation identity.
+
+Logical time may be a monotone counter, receipt sequence, or another
+deterministic clock chosen by the implementation.  Wall-clock time is not
+required by the abstract proof.
+
+* Capability lease
+
+A =CapabilityLease= contains:
+
+- =issuedAt=;
+- =expiresAt=;
+- bound generation identity;
+- bound route digest.
+
+A lease is =LeaseBound= when generation and route identities match the current
+observation and candidate.
+
+A lease is =LeaseFresh= when:
+
+- it has already become valid;
+- it has not expired.
+
+A route is =LeaseUsable= only when:
+
+- the lease is bound;
+- the lease is fresh;
+- the RFC 10.05.28 candidate is runtime-ready.
+
+Runtime readiness alone MUST NOT imply lease usability.
+
+* Drift rejection
+
+Any mismatch in these dimensions rejects the lease:
+
+- source-index generation;
+- runtime generation;
+- projection version.
+
+Evidence root, provider, and query mismatches are already rejected through
+generation equality.
+
+The router MUST perform this comparison before ranking cached routes.  Cache
+presence does not override drift.
+
+* Recovery budget
+
+Recovery is modeled with explicit state:
+
+- attempts remaining;
+- cumulative recovery tokens;
+- cumulative recovery rounds;
+- current capability state.
+
+Every recovery transition MUST:
+
+- strictly decrease attempts remaining;
+- charge at least one interaction round;
+- add its token charge to cumulative recovery tokens;
+- add its round charge to cumulative recovery rounds.
+
+A recovery transition is not a successful graph edge and is not included in
+the selected route as zero-cost work.
+
+* Bounded termination
+
+A =RecoveryRun= is a finite chain of charged recovery steps.
+
+Because every transition strictly decreases a natural-number retry budget, the
+number of recovery steps is at most the initial attempts remaining.
+
+Consequences:
+
+- a zero-budget state cannot make recovery progress;
+- a recoverable self-loop is invalid;
+- repeated bootstrap, index rebuild, or projection negotiation cannot continue
+  without consuming budget;
+- budget exhaustion yields an explicit terminal failure receipt.
+
+This theorem prevents a Graph Router from encoding an unbounded SearchLoop
+inside =recommendedNext=.
+
+* Cost accounting
+
+The observed search cost is:
+
+- certified route cost;
+- plus every recovery token charge;
+- plus every recovery round charge;
+- plus fallback route cost when recovery does not produce a usable lease.
+
+The existing graph cost order remains unchanged for usable candidates.
+Temporal admission decides whether a cached candidate is eligible for that
+comparison.
+
+* Cache boundary
+
+Capability-lease caching is a third cache concern and MUST NOT be merged with:
+
+- semantic-search evidence cache;
+- model prefix cache.
+
+A capability-lease cache key includes generation identity, route digest,
+projection version, and expiry boundary.
+
+A hit only avoids capability preflight while the lease remains usable.  It
+does not alter evidence-token or prompt-token accounting owned by the other
+cache layers.
+
+* Python Graph Turbo boundary
+
+The future Python implementation must provide:
+
+- monotone source-index generation identity;
+- runtime/provider generation identity;
+- projection contract version;
+- capability lease issuance and expiry;
+- pre-ranking lease validation;
+- explicit charged recovery transitions;
+- retry-budget exhaustion receipts.
+
+Python may choose sparse storage and warm-index mechanisms, but it may not
+replace generation equality with timestamps or implicit process liveness.
+
+* Mathematical model
+
+#+name: evidence-graph-temporal-capability-lease-model
+#+begin_src typst
+#let GenerationIdentity = $ gamma = cases(
+  rho_"evidence",
+  pi_"provider",
+  q_"query",
+  g_"index",
+  g_"runtime",
+  v_"projection",
+) $
+
+#let Observation = $ O = (tau_"now", gamma_"now") $
+
+#let Lease = $ L = cases(
+  tau_"issued",
+  tau_"expires",
+  gamma_"lease",
+  d_"route",
+) $
+
+#let LeaseBound = $ "Bound"(O, L, c) "iff" cases(
+  gamma_"lease" = gamma_"now",
+  d_"route"(L) = d_"route"(c),
+) $
+
+#let LeaseFresh = $ "Fresh"(O, L) "iff"
+  tau_"issued" <= tau_"now" <= tau_"expires" $
+
+#let LeaseUsable = $ "Usable"(O, L, c) "iff" cases(
+  "Bound"(O, L, c),
+  "Fresh"(O, L),
+  "Ready"(c),
+) $
+
+#let ReadyGap = $ exists O, L, c, cases(
+  "Ready"(c),
+  tau_"expires" < tau_"now",
+  "not" "Usable"(O, L, c),
+) $
+
+#let DriftRejection = $ gamma_"lease" != gamma_"now"
+  "implies" "not" "Usable"(O, L, c) $
+
+#let RecoveryState = $ R_i = cases(
+  b_i,
+  T_i,
+  A_i,
+  "Capability"_i,
+) $
+
+#let RecoveryProgress = $ R_i -> R_(i+1) "implies" cases(
+  b_(i+1) < b_i,
+  A_(i+1) - A_i >= 1,
+  T_(i+1) = T_i + Delta T_i,
+  A_(i+1) = A_i + Delta A_i,
+) $
+
+#let BoundedTermination = $ "RecoveryRun"(R_0, R_n)
+  "implies" n <= b_0 $
+
+#let ObservedCost = $ K_"observed" =
+  K_"route" + sum_(i=0)^(n-1) cases(
+    Delta T_i,
+    Delta A_i,
+  ) + K_"fallback" $
+
+#let Main = (
+  GenerationIdentity,
+  Observation,
+  Lease,
+  LeaseBound,
+  LeaseFresh,
+  LeaseUsable,
+  ReadyGap,
+  DriftRejection,
+  RecoveryState,
+  RecoveryProgress,
+  BoundedTermination,
+  ObservedCost,
+)
+
+"ok"
+#+end_src
+
+The executor obtains the block through =orgize eval plan --json NAME PATH= and
+sends =.body= to =typst eval --in -=.  This RFC does not own a =:file= header,
+standalone Typst file, compile step, or PDF.
+
+* Lean theorem mapping
+
+=SearchRouteTemporalCapabilityLease.lean= defines and proves:
+
+- =usable_lease_is_bound=;
+- =usable_lease_is_fresh=;
+- =expired_lease_is_not_usable=;
+- =future_lease_is_not_usable=;
+- =source_index_generation_drift_rejects_lease=;
+- =runtime_generation_drift_rejects_lease=;
+- =projection_version_drift_rejects_lease=;
+- =runtime_ready_does_not_imply_lease_usable=;
+- =recovery_run_length_is_bounded=;
+- =zero_budget_has_no_recovery_progress=;
+- =recoverable_self_loop_has_no_progress=.
+
+* Audit requirements
+
+The modular Lean audit MUST classify:
+
+- lease binding;
+- lease freshness;
+- expiry rejection;
+- future-lease rejection;
+- source-index drift;
+- runtime drift;
+- projection drift;
+- ready-not-sufficient counterexample;
+- bounded recovery;
+- zero-budget termination;
+- self-loop rejection.
+
+The audit target inventory belongs only to
+=ASPProof.Audit.SearchRouteTemporalCapabilityLease= and imports
+=ASPProof.Audit.Core=.
+
+* Non-goals
+
+This RFC does not:
+
+- repair the current workspace activation;
+- implement Python Graph Turbo;
+- modify Rust provider code;
+- use wall-clock time as proof authority;
+- merge the three cache identities;
+- allow uncharged recovery;
+- claim that a ready lease remains valid indefinitely;
+- use raw LaTeX or standalone Typst.
+
+* Remaining proof boundary
+
+The next proof layer should connect:
+
+- recovery disposition to a deterministic =recommendedNext= action;
+- terminal failure to fail-closed search history;
+- lease invalidation to committed Evidence Graph snapshot transitions;
+- Python sparse-graph generation receipts to the shared generation identity;
+- concurrent provider/index updates to atomic observation semantics.

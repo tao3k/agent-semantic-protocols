@@ -1,0 +1,380 @@
+#+title: RFC 10.05.40.00.99 - Joint Weight-Schedule Transition
+#+startup: overview
+
+* Status
+
+Draft, proof-backed.
+
+This module governs authority-set rotation for weighted authority aggregation.
+It refines RFCs 00.97 and 00.98. It changes the receipt, cache, and SearchLoop
+transition contract only. It does not authorize Rust or Python implementation.
+
+* Abstract
+
+An authority report has no schedule-independent voting weight. During
+authority-set rotation, the same report evidence may refer to an authority
+present in both the old and new snapshots, but its resolved weight can differ.
+
+The transition has three monotone phases:
+
+#+name: searchroute-joint-weight-schedule-transition-model
+#+begin_src typst
+#let old-only = 0
+#let joint = 1
+#let new-only = 2
+#let valid-transition(from, to) = from <= to
+#assert(valid-transition(old-only, joint))
+#assert(valid-transition(joint, new-only))
+#assert(valid-transition(old-only, new-only))
+#assert(not valid-transition(new-only, old-only))
+"ok"
+#+end_src
+
+The joint phase authorizes two schedule-specific aggregation lanes. It does not
+authorize one mixed-weight aggregation.
+
+* Transition phases
+
+** Old-only
+
+Only the old authority-set snapshot and old weight schedule are authorized.
+Reports resolved under the new schedule MUST be rejected with
+=unauthorized-schedule-for-phase=.
+
+** Joint
+
+Both old and new schedules are authorized, but they remain separate proof
+domains:
+
+#+begin_example
+old report materialization
+  -> old admitted set
+  -> old total weight
+  -> old cut
+  -> old weighted receipt
+
+new report materialization
+  -> new admitted set
+  -> new total weight
+  -> new cut
+  -> new weighted receipt
+#+end_example
+
+A joint transition receipt MAY reference both weighted receipts. It MUST NOT
+sum old and new weights into one total or use an old weight inside the new
+ledger.
+
+** New-only
+
+Only the new authority-set snapshot and new weight schedule are authorized.
+An old receipt can remain historical evidence, but cannot authorize a current
+aggregation or cache hit.
+
+** Monotonicity
+
+Phase transitions MUST be monotone:
+
+\[
+\mathsf{oldOnly} \preceq \mathsf{joint}
+  \preceq \mathsf{newOnly}.
+\]
+
+A transition from =newOnly= to =oldOnly= requires a new transition identity
+and policy epoch. It MUST NOT be represented as regression within the same
+transition.
+
+* Schedule-bound report materialization
+
+The signed report evidence and its weighted materialization are different
+objects.
+
+The evidence identity binds what the authority reported:
+
+#+begin_example
+reportEvidenceId = H(
+  canonicalAuthorityId,
+  reportValue,
+  reportEpoch,
+  signatureEvidence
+)
+#+end_example
+
+The materialization identity additionally binds how that evidence is interpreted:
+
+#+begin_example
+weightedReportMaterializationId = H(
+  reportEvidenceId,
+  authoritySetSnapshotId,
+  weightScheduleDigest,
+  resolvedVotingWeight,
+  aggregationPolicyVersion
+)
+#+end_example
+
+The same =reportEvidenceId= MAY appear in both joint lanes when authorized.
+The =weightedReportMaterializationId= MUST differ whenever the snapshot,
+schedule, resolved weight, or policy differs.
+
+One materialized report cannot simultaneously realize two different weights.
+Reusing its old serialized weight under a new schedule is a typed identity
+error, not a cache optimization.
+
+* Weighted receipt compatibility
+
+A weighted receipt key contains:
+
+- =authoritySetSnapshotId=;
+- =weightScheduleDigest=;
+- =epoch=;
+- =admittedReportSetDigest=;
+- =totalCollectedWeight=;
+- =faultWeightBudget=;
+- =cutWeight=;
+- =selectedValue=.
+
+Compatibility requires equality of every field. In particular:
+
+#+name: searchroute-joint-weight-schedule-transition-proposition
+#+begin_src typst
+#let receipt-separation = $
+  S_"old" != S_"new"
+  or D_"old" != D_"new"
+  arrow.r.double
+  R_"old" != R_"new"
+$
+#let same-value-not-enough = $
+  V_"old" = V_"new"
+  and D_"old" != D_"new"
+  arrow.r.double
+  R_"old" != R_"new"
+$
+#let joint-ledgers = $
+  W_"old" = sum_i w_i^"old"
+  and W_"new" = sum_i w_i^"new"
+$
+#assert(type(receipt-separation) == content)
+#assert(type(same-value-not-enough) == content)
+#assert(type(joint-ledgers) == content)
+"ok"
+#+end_src
+
+Here \(S\) is the authority-set snapshot identity, \(D\) is the weight-schedule
+digest, \(V\) is the selected bound value, and \(R\) is the weighted receipt
+identity.
+
+Equal selected values do not make old and new receipts compatible.
+
+* Proof-discovered gaps
+
+** Authorization is not compatibility
+
+During =joint=, both schedules are authorized. This means either schedule may
+produce a receipt. It does not mean:
+
+- their weights may be mixed;
+- one receipt may satisfy the other's quorum;
+- one cache entry may be reused for the other;
+- equal selected values collapse them into one identity.
+
+The protocol MUST represent authorization and compatibility as distinct
+predicates.
+
+** A joint total is invalid
+
+The expression:
+
+\[
+W_{\mathrm{joint}} =
+  W_{\mathrm{old}} + W_{\mathrm{new}}
+\]
+
+usually double-counts shared authorities and combines weights from different
+semantic domains. It MUST NOT be used for quorum, cut selection, or fault
+budget comparison.
+
+A joint composite contains two totals; it does not invent a third total.
+
+** Shared report evidence is not shared materialization
+
+If authority \(a\) has weight three in the old schedule and weight five in the
+new schedule, one materialized =votingWeight= field cannot prove both. The
+evidence payload may be shared by digest, but each lane must independently
+resolve and commit the schedule-owned weight.
+
+** Phase alone is not sufficient cache identity
+
+Two transitions can both be in =joint= while using different old/new snapshot
+pairs. The transition identity and both snapshot identities must be bound.
+
+* Normative joint transition receipt
+
+A joint transition receipt MUST include:
+
+- =transitionId=;
+- =transitionPolicyVersion=;
+- =transitionPhase = "joint"=;
+- =oldAuthoritySetSnapshotId=;
+- =newAuthoritySetSnapshotId=;
+- =oldWeightScheduleDigest=;
+- =newWeightScheduleDigest=;
+- =oldWeightedReceiptId=;
+- =newWeightedReceiptId=;
+- =oldReceiptVerificationStatus=;
+- =newReceiptVerificationStatus=;
+- =jointDecisionPolicyVersion=;
+- =issuedAt= and =expiresAt=.
+
+The two weighted receipts MUST remain independently retrievable and
+independently auditable.
+
+The joint receipt MUST NOT copy a single =totalCollectedWeight=,
+=faultWeightBudget=, or =cutWeight= into a field that appears to govern both
+schedules.
+
+If both lanes are required by policy, absence or failure of either lane MUST
+produce =incomplete-joint-receipt-pair=. If policy permits one lane to remain
+advisory, that asymmetry MUST be explicit in =jointDecisionPolicyVersion=.
+
+* Receipt and cache identity
+
+The joint composite identity MUST bind:
+
+#+begin_example
+jointTransitionReceiptId = H(
+  transitionId,
+  transitionPolicyVersion,
+  transitionPhase,
+  oldAuthoritySetSnapshotId,
+  newAuthoritySetSnapshotId,
+  oldWeightScheduleDigest,
+  newWeightScheduleDigest,
+  oldWeightedReceiptId,
+  newWeightedReceiptId,
+  jointDecisionPolicyVersion,
+  issuedAt,
+  expiresAt
+)
+#+end_example
+
+Cache rules:
+
+- an old-only receipt cannot satisfy a new-only lookup;
+- an old weighted receipt cannot satisfy the new lane of a joint lookup;
+- a joint composite hit requires exact old and new receipt identities;
+- advancing phase invalidates phase-authorizing cache entries;
+- equal =selectedValue= does not relax any identity comparison.
+
+Search-result cache validity remains distinct from model prefix-cache reuse.
+The compact rendering of two receipts may obtain a model cache hit, but the
+runtime must still verify phase, transition identity, schedule, and expiry.
+
+* SearchLoop and graph-router consequences
+
+The progressive graph path is:
+
+#+begin_example
+resolve transition identity and phase
+  -> select authorized schedule lane
+  -> materialize schedule-owned report weights
+  -> verify lane-specific weighted receipt
+  -> during joint, verify the other required lane
+  -> emit compact joint composite
+  -> apply joint decision policy
+  -> route
+#+end_example
+
+The compact joint projection SHOULD expose:
+
+- transition and phase;
+- old/new snapshot and schedule identities;
+- old/new selected values and margins;
+- old/new receipt verification states;
+- the joint decision result;
+- inspect transitions for either lane.
+
+=inspect old-lane= and =inspect new-lane= progressively open the corresponding
+00.98 concrete cut certificate. The default route does not dump both report
+lists, preserving token efficiency and model prefix stability.
+
+No complex transition-specific CLI family is required. These are typed
+interactive transitions that a CLI adapter may render.
+
+* Failure receipts
+
+The protocol adds:
+
+- =phase-regression=;
+- =unauthorized-schedule-for-phase=;
+- =mixed-weight-schedule=;
+- =stale-transition-identity=;
+- =weight-materialization-snapshot-mismatch=;
+- =incomplete-joint-receipt-pair=;
+- =joint-receipt-policy-mismatch=.
+
+Every failure receipt MUST bind =transitionId=, phase, expected schedule
+identity, observed schedule identity, and a typed continuation or terminal
+reason.
+
+* Lean realization
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.lean
+#+end_example
+
+It proves:
+
+- old-only to joint to new-only is a valid monotone progression;
+- new-only cannot regress to old-only within one transition;
+- old-only rejects the new schedule;
+- new-only rejects the old schedule;
+- joint authorizes both schedules as separate lanes;
+- receipt compatibility binds the weight-schedule digest;
+- changing schedules invalidates receipt compatibility;
+- equal selected values do not imply compatible receipts;
+- a joint pair remains two receipts even when selected values match;
+- one materialized weight cannot realize two different schedule weights.
+
+The modular audit owner and executable entry are:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransition.lean
+
+packages/proofs/audit/
+  SearchRouteAdmissionRetryCacheRejoinJointWeightScheduleTransitionAudit.lean
+#+end_example
+
+The generated receipt is:
+
+#+begin_example
+packages/proofs/receipts/
+  searchroute-admission-retry-cache-rejoin-joint-weight-schedule-transition-audit-v1.json
+#+end_example
+
+* Non-goals
+
+This module does not yet prove:
+
+- how two valid lane results are fused into one routing bound;
+- safety or liveness when old and new selected values differ;
+- transition completion conditions;
+- garbage collection of expired old receipts;
+- recovery after a crash between old and new lane publication;
+- fractional voting-weight schedules.
+
+* Next proof boundary
+
+The next module should prove the joint decision policy. If both old and new
+receipts independently certify values in the honest interval \([A,L]\), a
+deterministic fusion such as their maximum remains in that interval:
+
+\[
+A \le \max(S_{\mathrm{old}}, S_{\mathrm{new}}) \le L.
+\]
+
+The proof must preserve both input receipt identities and produce a new joint
+decision receipt. It must not overwrite either input receipt or pretend the
+maximum was selected by one weight schedule.

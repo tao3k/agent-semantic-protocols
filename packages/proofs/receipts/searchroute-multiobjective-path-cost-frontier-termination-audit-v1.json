@@ -1,0 +1,121 @@
+{"sourcePath":
+ "ASPProof/SearchRouteMultiobjectivePathCostFrontierTermination.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (Edge : Nat → Nat → Prop)\n  (edgeCost :\n    {source target : Nat} →\n      Edge source target → ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.PathLocalCost)\n  (node : Nat),\n  ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.PathLocalCostOf (fun {source target} => edgeCost)\n      (ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath.stay node) =\n    ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.ZeroPathLocalCost",
+   "theoremFamily": "stay-path-zero-local-cost",
+   "rfcClauseIds": ["MOPC-PATH", "MOPC-ZERO"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.stay_path_has_zero_local_cost",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Edge : Nat → Nat → Prop}\n  (edgeCost :\n    {source target : Nat} →\n      Edge source target → ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.PathLocalCost)\n  {source next target : Nat} (edge : Edge source next)\n  (tail : ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath Edge next target),\n  ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.PathLocalCostOf (fun {source target} => edgeCost)\n      (ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath.step edge tail) =\n    ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.AddPathLocalCost\n      (ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.PathLocalCostOf (fun {source target} => edgeCost)\n        tail)\n      (edgeCost edge)",
+   "theoremFamily": "step-path-local-accumulation",
+   "rfcClauseIds": ["MOPC-ADDITIVE", "MOPC-PATH"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.step_path_accumulates_local_cost",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Edge : Nat → Nat → Prop} {source target : Nat}\n  (path : ASPProof.SearchRouteEvidenceGraphShortestPathFrontierCompleteness.EvidencePath Edge source target)\n  (pathLocal : ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.PathLocalCost)\n  (schedule : ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.ExecutionScheduleCost),\n  (ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.AssemblePathRouteCost path pathLocal\n        schedule).graphHops =\n    path.hopCount",
+   "theoremFamily": "assembled-route-derived-hops",
+   "rfcClauseIds": ["MOPC-HOPS", "MOPC-PATH"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.assembled_path_route_derives_graph_hops",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (base cycle : ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.PathLocalCost),\n  ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.LocalNoWorse base\n    (ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.AddPathLocalCost base cycle)",
+   "theoremFamily": "local-cycle-removal-no-worse",
+   "rfcClauseIds": ["MOPC-CYCLE", "MOPC-LOCAL"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.local_cost_is_no_worse_before_cycle_addition",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (baseHops cycleHops : Nat)\n  (baseLocal cycleLocal : ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.PathLocalCost)\n  (withoutCycle withCycle : ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.ExecutionScheduleCost),\n  ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.ExecutionNoWorse withoutCycle withCycle →\n    ASPProof.SearchRouteGraphRouterParetoCostSelection.NoWorse\n      (ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.AssembleRouteCostFromParts baseHops baseLocal\n        withoutCycle)\n      (ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.AssembleRouteCostFromParts (baseHops + cycleHops)\n        (ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.AddPathLocalCost baseLocal cycleLocal) withCycle)",
+   "theoremFamily": "full-cycle-removal-schedule-contract",
+   "rfcClauseIds": ["MOPC-CYCLE", "MOPC-SCHEDULE"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.full_route_cycle_removal_requires_schedule_monotonicity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (baseHops cycleHops : Nat)\n  (baseLocal cycleLocal : ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.PathLocalCost)\n  (withoutCycle withCycle : ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.ExecutionScheduleCost),\n  0 < cycleHops →\n    ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.ExecutionNoWorse withoutCycle withCycle →\n      ASPProof.SearchRouteGraphRouterParetoCostSelection.StrictlyDominates\n        (ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.AssembleRouteCostFromParts baseHops baseLocal\n          withoutCycle)\n        (ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.AssembleRouteCostFromParts (baseHops + cycleHops)\n          (ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.AddPathLocalCost baseLocal cycleLocal)\n          withCycle)",
+   "theoremFamily": "positive-cycle-removal-dominates",
+   "rfcClauseIds": ["MOPC-CYCLE", "MOPC-PARETO"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.positive_hop_cycle_removal_strictly_dominates",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "have shorterButMoreRounds :=\n  { graphHops := 1, interactionRounds := 10, projectedTokens := 0, verificationOps := 0, searchExecutions := 0,\n    modelPrefixRecomputations := 0 };\nhave longerButFewerRounds :=\n  { graphHops := 2, interactionRounds := 0, projectedTokens := 0, verificationOps := 0, searchExecutions := 0,\n    modelPrefixRecomputations := 0 };\nASPProof.SearchRouteGraphRouterParetoCostSelection.ParetoIncomparable shorterButMoreRounds longerButFewerRounds",
+   "theoremFamily": "local-improvement-insufficient",
+   "rfcClauseIds": ["MOPC-COUNTEREXAMPLE", "MOPC-SCHEDULE"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.path_local_improvement_alone_does_not_imply_full_route_order",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.SaturatingTokenCount 2 <\n  ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.SaturatingTokenCount 1 +\n    ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.SaturatingTokenCount 1",
+   "theoremFamily": "token-count-not-edge-additive",
+   "rfcClauseIds": ["MOPC-COUNTEREXAMPLE", "MOPC-TOKEN"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.projected_token_count_has_strict_nonadditive_witness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.FrontierAntichain\n    ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.ExpensiveOnly ∧\n  ¬ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.ParetoCovers\n      ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.ExpensiveOnly\n      ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.CheapOrExpensive",
+   "theoremFamily": "antichain-not-frontier-complete",
+   "rfcClauseIds": ["MOPC-COMPLETE", "MOPC-FRONTIER"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.singleton_antichain_does_not_imply_pareto_coverage",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (remaining : Nat),\n  ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.ConsumeExpansionFuel remaining.succ < remaining.succ",
+   "theoremFamily": "expansion-fuel-decreases",
+   "rfcClauseIds": ["MOPC-FUEL", "MOPC-TERMINATION"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.positive_expansion_consumes_fuel",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.CanExpand 0",
+   "theoremFamily": "zero-fuel-fail-closed",
+   "rfcClauseIds": ["MOPC-FAIL-CLOSED", "MOPC-TERMINATION"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.zero_expansion_fuel_blocks_expansion",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (usedFuel totalFuel branchingMaximum : Nat),\n  usedFuel ≤ totalFuel →\n    ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.MaximumGeneratedPaths usedFuel branchingMaximum ≤\n      ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.MaximumGeneratedPaths totalFuel branchingMaximum",
+   "theoremFamily": "generated-path-capacity-bound",
+   "rfcClauseIds": ["MOPC-BRANCHING", "MOPC-TERMINATION"],
+   "name":
+   "ASPProof.SearchRouteMultiobjectivePathCostFrontierTermination.generated_path_bound_is_monotone_in_fuel",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 12,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 12,
+ "axiomDependentDeclarationCount": 0}

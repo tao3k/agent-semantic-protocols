@@ -118,8 +118,30 @@ pub(super) fn temp_project_root(name: &str) -> PathBuf {
         .as_nanos();
     let root = std::env::temp_dir().join(format!("agent-semantic-hook-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
-    std::fs::create_dir_all(root.join(".git")).expect("create temp git marker");
+    let output = Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(&root)
+        .output()
+        .expect("initialize temporary Git workspace");
+    assert!(
+        output.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     root
+}
+
+pub(super) fn stage_project_candidates(root: &Path) {
+    let output = Command::new("git")
+        .args(["add", "."])
+        .current_dir(root)
+        .output()
+        .expect("stage temporary project candidates");
+    assert!(
+        output.status.success(),
+        "git add failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 pub(super) fn root_owned_rust_activation_json() -> String {
@@ -181,7 +203,7 @@ pub(super) fn root_owned_rust_activation_json() -> String {
             semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
-                package_roots: vec!["src".to_string()],
+                package_roots: vec![".".to_string()],
                 config_files: manifest
                     .project_resolution()
                     .expect("Rust project resolution")
@@ -246,6 +268,39 @@ fn write_state_home_provider_file(
     let script = if fail_on_execute {
         "#!/bin/sh\nprintf 'provider process should not be executed\\n' >&2\nexit 42\n".to_string()
     } else {
+        let (project_entry, source_extension) = match language_id {
+            "rust" => ("Cargo.toml", ".rs"),
+            "typescript" => ("package.json", ".ts"),
+            "python" => ("pyproject.toml", ".py"),
+            "julia" => ("Project.toml", ".jl"),
+            "gerbil-scheme" => ("gerbil.pkg", ".ss"),
+            other => panic!("test provider omitted project fixture mapping: {other}"),
+        };
+        let project_resolution = serde_json::json!({
+            "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
+            "schemaVersion": "1",
+            "languageId": language_id,
+            "providerId": provider_id,
+            "state": "resolved",
+            "resolution": {
+                "schemaId": "agent.semantic-protocols.project-resolution",
+                "schemaVersion": "1",
+                "state": "resolved",
+                "completeness": "exact",
+                "projectIdentity": {
+                    "projectEntry": project_entry
+                },
+                "resolvedSourceScopes": [{
+                    "roots": ["."],
+                    "explicitPaths": [],
+                    "extensions": [source_extension],
+                    "includeAuthority": "package-manager",
+                    "exclusions": []
+                }],
+                "resolutionGeneration": format!("test-{language_id}-project-resolution")
+            }
+        })
+        .to_string();
         let guide_marker = match binary {
             "rs-harness" => {
                 "[agent-guide] runtime=agent-semantic-hook language=rust provider=rs-harness"
@@ -255,8 +310,8 @@ fn write_state_home_provider_file(
             _ => "[agent-guide]",
         };
         format!(
-            "#!/bin/sh\nif [ \"$1\" = \"guide\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nexit 0\n",
-            guide_marker
+            "#!/bin/sh\nif [ \"$1\" = \"guide\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nif [ \"$1\" = \"project-resolution-stdin\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nexit 0\n",
+            guide_marker, project_resolution
         )
     };
     std::fs::write(&path, script).expect("write State Home provider binary");

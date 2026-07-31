@@ -268,6 +268,7 @@ fn auto_candidates(request: AutoCandidateRequest<'_>) -> Result<CandidateAcquisi
         limit: PIPE_CANDIDATE_LINE_LIMIT,
         source_index_lookup: source_index_lookup.as_ref(),
         base_snapshot: &current_snapshot.workspace_snapshot,
+        base_source_snapshot: &current_snapshot.source_snapshot,
         provider_digest: &current_snapshot.source_snapshot.provider_digest,
     })?;
     Ok(candidate_acquisition_from_search(acquisition))

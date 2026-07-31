@@ -106,6 +106,22 @@ def test_unknown_axiom_fails_closed() -> None:
         validate_lean_audit(document, policy())
 
 
+def test_repeated_family_with_distinct_theorem_names_is_valid() -> None:
+    document = copy.deepcopy(audit_document())
+    declarations = document["declarations"]
+    assert isinstance(declarations, list)
+    repeated = copy.deepcopy(declarations[0])
+    repeated["name"] = "ASPProof.BoundEvidenceClause.second_family_obligation"
+    declarations.append(repeated)
+    document["declarationCount"] = len(declarations)
+    if repeated["axioms"]:
+        document["axiomDependentDeclarationCount"] += 1
+    else:
+        document["axiomFreeDeclarationCount"] += 1
+
+    validate_lean_audit(document, policy())
+
+
 def test_missing_family_and_clause_fail_closed() -> None:
     document = copy.deepcopy(audit_document())
     declaration = document["declarations"][0]

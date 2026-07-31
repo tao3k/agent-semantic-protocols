@@ -72,8 +72,8 @@ pub enum RuntimeServerOperation {
     Restart,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeServerControlRequest {
     pub schema_id: String,
     pub schema_version: String,

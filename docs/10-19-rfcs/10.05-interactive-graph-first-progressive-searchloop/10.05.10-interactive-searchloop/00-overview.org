@@ -1,0 +1,19 @@
+#+title: Interactive SearchLoop
+#+property: rfc_layer interactive-searchloop
+
+* Ownership
+
+This layer owns agent-facing progressive transitions: discovery, compact
+inspection, focused expansion, exact materialization, merge, stop, and reroute.
+The CLI is one adapter and is not the protocol state machine.
+
+It does not own graph ranking internals, cache identity, or formal audit
+execution.
+
+* Canonical RFCs
+
+- [[file:00.01-search-loop-architecture.org][SearchLoop architecture]]
+- [[file:00.06-clause-first-retrieval-and-graph-on-demand.org][Clause-first retrieval and graph on demand]]
+- [[file:00.13-searchloop-merge-algebra.org][SearchLoop merge algebra]]
+- [[file:00.20-searchroute-partial-route-inspect-scheduler.org][SearchRoute partial-route inspect scheduler]]
+- [[file:00.22-searchroute-total-inspect-driver.org][SearchRoute total inspect driver]]

@@ -216,7 +216,7 @@ fn registered_language_facade_query_source_selector_code_is_rejected() {
             manifest.execution() == agent_semantic_hook::ProviderExecution::ExternalProcess
         })
         .filter_map(|manifest| {
-            let extension = manifest.source().default_extensions.first()?.clone();
+            let extension = manifest.document_resolution()?.extensions.first()?.clone();
             let selector = format!("src/core{}", extension);
             Some((manifest.language_id().clone(), selector))
         })

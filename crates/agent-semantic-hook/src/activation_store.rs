@@ -76,35 +76,6 @@ pub fn registered_language_runtime(
     activation_to_runtime(&activation)
 }
 
-/// Resolve the activation artifact consumed by one language-scoped command.
-pub fn language_activation_path(
-    activation_path: &Path,
-    project_root: &Path,
-    language_id: &str,
-) -> PathBuf {
-    if !is_generated_activation_path_for_project(activation_path, project_root) {
-        return activation_path.to_path_buf();
-    }
-    generated_language_activation_path(activation_path, project_root, language_id)
-}
-
-fn generated_language_activation_path(
-    activation_path: &Path,
-    project_root: &Path,
-    language_id: &str,
-) -> PathBuf {
-    debug_assert!(is_generated_activation_path_for_project(
-        activation_path,
-        project_root
-    ));
-    activation_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("languages")
-        .join(language_id)
-        .join("activation.json")
-}
-
 /// Result of syncing the generated default activation during install.
 pub struct DefaultActivationSync {
     pub activation: HookActivation,

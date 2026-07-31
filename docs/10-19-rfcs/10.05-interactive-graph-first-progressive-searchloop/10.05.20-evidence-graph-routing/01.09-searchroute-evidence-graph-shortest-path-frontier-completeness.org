@@ -1,0 +1,308 @@
+#+title: SearchRoute Evidence Graph Shortest Paths and Frontier Completeness
+#+subtitle: RFC 10.05.40 / Proof stage 01.09
+#+startup: overview
+
+#+property: rfc_layer evidence-graph-routing
+
+* Status
+
+Draft proof-bearing RFC.
+
+This stage derives =graphHops= from proof-carrying evidence paths. It separates
+global shortest-path claims from authorization-constrained, budget-constrained,
+and truncated-frontier claims. It does not define a Rust or Python
+implementation.
+
+* Abstract
+
+A graph router cannot establish global optimality merely by selecting the
+shortest route among the paths it happened to discover or project.
+
+A sound shortest-path receipt requires:
+
+- a path whose every edge is valid;
+- a hop count derived from that path;
+- the exact edge relation under which alternatives are quantified;
+- either complete frontier coverage or a valid lower bound for every unexpanded
+  alternative;
+- a typed distinction between unreachable and unknown because search stopped.
+
+This stage formalizes those boundaries.
+
+* Proof-carrying evidence path
+
+An evidence path is inductive:
+
+#+begin_example
+stay(node)                         has 0 hops
+step(validEdge, remainingPath)     has 1 + remainingPath.hops
+#+end_example
+
+The route receipt MUST carry edge identities sufficient to verify every
+=validEdge= proof. =graphHops= MUST be derived from the path constructor count,
+not accepted as an unrelated scalar supplied by the router.
+
+#+name: evidence-path-hop-and-frontier-model
+#+begin_src typst
+#let hop-count(node-count) = if node-count == 0 { 0 } else { node-count - 1 }
+#let frontier-shortest(candidate, frontier-lower) = candidate <= frontier-lower
+#let global-shortest(candidate, global-lower) = candidate <= global-lower
+
+#assert(hop-count(1) == 0)
+#assert(hop-count(4) == 3)
+#assert(frontier-shortest(2, 2))
+#assert(not global-shortest(2, 1))
+"ok"
+#+end_src
+
+Mapping a path from a restricted edge relation into a sound superset preserves
+its hop count.
+
+* Four different shortest-path claims
+
+The protocol distinguishes:
+
+1. =global-shortest=: quantified over every valid path in the evidence graph;
+2. =authorized-shortest=: quantified over paths whose edges are authorized for
+   the current principal;
+3. =budget-feasible-shortest=: quantified over authorized paths satisfying the
+   published cost caps;
+4. =frontier-shortest=: quantified only over paths represented by the current
+   search frontier.
+
+These claims are not interchangeable.
+
+A global shortest path is also shortest in any sound restricted frontier that
+contains it. The converse requires a completeness witness.
+
+* Hop-complete frontier
+
+For source =s= and target =t=, a frontier is hop-complete when:
+
+#+begin_example
+for every global path p : s -> t,
+there exists a frontier path q : s -> t
+such that hops(q) <= hops(p)
+#+end_example
+
+This formulation is sufficient for lifting frontier minimality to global
+minimality. It does not require the frontier to reproduce every global path;
+it requires the frontier to contain an alternative at least as short as every
+omitted one.
+
+The completeness receipt MUST bind:
+
+- graph snapshot digest;
+- source and target identities;
+- authorization policy, when applicable;
+- expansion policy and heuristic identity;
+- frontier root and exhaustion/lower-bound evidence.
+
+* Proof-discovered correction: frontier minimum is not a global minimum
+
+Consider the costs:
+
+#+begin_example
+published frontier costs = {2}
+global path costs        = {1, 2}
+#+end_example
+
+The route of cost 2 is minimal in the frontier and not minimal globally. The
+fact that the shorter path was not projected is not evidence that it does not
+exist.
+
+Therefore a decision receipt MUST label the scope:
+
+#+begin_example
+optimalityScope =
+  global
+  | authorized
+  | budget-feasible
+  | frontier-only
+#+end_example
+
+=frontier-only= MUST be the default whenever completeness has not been proven.
+
+* Semantic hop interpretation
+
+=EvidencePath.hopCount= counts semantic evidence edges in the certified path.
+It is invariant under search-result or model-prefix cache application.  A
+realization trace may execute fewer graph traversals, but that trace does not
+change the path whose global minimality is claimed.  The formal separation is
+specified by
+[[file:00.94-semantic-path-cache-execution-separation.org][Semantic path and cache execution separation]].
+
+* Authorization and budget constraints
+
+An authorized edge is the conjunction:
+
+#+begin_example
+graphEdge(source, target)
+and authorized(principal, source, target)
+#+end_example
+
+Authorization filtering can remove a globally shorter route. The resulting
+path may be correctly =authorized-shortest= while not globally shortest.
+
+Budget feasibility is evaluated using the stage 01.08 component caps. A path
+excluded by token, interaction, verification, or cache-work caps is not an
+alternative in the =budget-feasible= scope.
+
+The receipt MUST retain the broader graph identity and record which policy
+removed each unavailable edge or path. It MUST NOT rewrite a constrained claim
+as an unconstrained one.
+
+* Admissible lower-bound certificate
+
+An unfinished frontier can still prove optimality when the router has a valid
+lower bound for every unseen route:
+
+#+name: evidence-path-admissible-lower-bound-model
+#+begin_src typst
+#let admissible(estimate, actual-remaining) = estimate <= actual-remaining
+#let candidate-beats-unseen(candidate, unseen-lower) = candidate <= unseen-lower
+
+#assert(admissible(3, 3))
+#assert(admissible(2, 3))
+#assert(not admissible(4, 3))
+#assert(candidate-beats-unseen(5, 5))
+#assert(not candidate-beats-unseen(6, 5))
+"ok"
+#+end_src
+
+The certificate is valid only if:
+
+#+begin_example
+candidateCost <= minimumOpenLowerBound
+and
+minimumOpenLowerBound <= cost(every unseen path)
+#+end_example
+
+An overestimating heuristic is not admissible and MUST NOT authorize a global
+optimality claim. Heuristic version and admissibility proof identity MUST be
+part of the receipt.
+
+* Proof-discovered correction: truncated is not unreachable
+
+Search can stop because:
+
+- the frontier is exhausted;
+- the step budget is exhausted;
+- the encoded-byte budget is exhausted;
+- the interaction budget is exhausted;
+- a provider or authorization boundary blocks further expansion.
+
+Only complete frontier exhaustion under the relevant edge relation can support
+a global unreachable claim. Budget or policy exhaustion produces:
+
+#+begin_example
+reachability = unknown-truncated
+#+end_example
+
+It MUST NOT produce:
+
+#+begin_example
+reachability = unreachable
+#+end_example
+
+The continuation receipt SHOULD expose the remaining frontier root, stop
+reason, and the exact budget or policy boundary without projecting all omitted
+nodes.
+
+* Shortest-path decision receipt
+
+The receipt MUST contain:
+
+- graph, source, and target identities;
+- ordered edge identities for the selected path;
+- derived hop count;
+- authorization and component-cap identities;
+- optimality scope;
+- frontier root;
+- frontier completeness or unseen lower-bound proof;
+- heuristic identity and admissibility evidence, when used;
+- typed reachability result;
+- linkage to the stage 01.08 Pareto cost vector.
+
+A claimed hop count that differs from the path-derived count invalidates the
+receipt.
+
+* Interactive SearchLoop consequences
+
+The default projection SHOULD expose the selected route and one compact
+optimality certificate. Progressive =inspect= can request:
+
+- one path edge and its evidence;
+- one removed alternative and its policy reason;
+- one frontier lower-bound witness;
+- the continuation root for =unknown-truncated=.
+
+The model should not need to reconstruct shortest-path correctness from a
+large CLI result. The graph router supplies a small proof-carrying transition,
+and the agent chooses whether deeper evidence is worth another bounded round.
+
+* Lean obligations
+
+The Lean owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteEvidenceGraphShortestPathFrontierCompleteness.lean
+#+end_example
+
+It proves:
+
+- path constructors determine hop count;
+- mapping through a sound edge subset preserves hop count;
+- global shortest implies shortest in a sound frontier;
+- hop-complete frontier minimality implies global minimality;
+- frontier minimality alone does not imply global minimality;
+- authorized edges are valid graph edges;
+- shortest paths inherit a hop budget from any feasible alternative;
+- hop-count claims must equal the derived path count;
+- exact and underestimating lower bounds are admissible;
+- overestimation is not admissible;
+- candidate cost below an unseen lower bound beats every unseen route;
+- complete and truncated frontiers authorize different reachability claims.
+
+* Modular JSON audit
+
+The audit owner is:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteEvidenceGraphShortestPathFrontierCompleteness.lean
+#+end_example
+
+The generated receipt MUST enumerate all stage theorems, report an empty axiom
+inventory, and report =hasSorryAx: false=.
+
+* Acceptance criteria
+
+This stage is accepted only when:
+
+- the Lean proof and audit modules build;
+- every audited theorem is axiom-free;
+- the audit contains no =sorryAx=;
+- Org lint accepts the RFC;
+- Orgize extracts both named Typst blocks;
+- both exact Typst bodies pass =typst eval --in -=;
+- no Rust or Python implementation is added.
+
+* Pareto cost-vector refinement
+
+Hop completeness does not cover equal-hop candidates with lower interaction,
+token, verification, or cache-lane cost.  The stronger certificate and its
+global-lift theorem are specified by
+[[file:01.10-searchroute-pareto-frontier-vector-completeness.org][Pareto frontier cost-vector completeness]].
+
+* Next proof boundary
+
+Stage 01.10 should combine stage 01.08 vector costs with stage 01.09 graph
+paths. It should define componentwise path-cost accumulation, Pareto-shortest
+paths, cycle elimination under non-negative costs, and completeness of a finite
+multiobjective frontier.
+
+The next proof must determine the exact finiteness and monotonicity assumptions
+required for termination. A router MUST NOT claim that its Pareto frontier is
+complete merely because no currently queued route dominates another.

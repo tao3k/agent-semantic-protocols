@@ -107,8 +107,14 @@ pub(crate) fn write_activation(root: &Path, state_home: &Path, language_ids: &[&
                 routes: materialize_provider_routes(&manifest).expect("provider routes"),
                 coverage: ActivationCoverage {
                     package_roots: vec![canonical_root.display().to_string()],
-                    config_files: manifest.source().default_config_files.clone(),
-                    source_extensions: manifest.source().default_extensions.clone(),
+                    config_files: crate::provider_manifest_scope::project_entries(&manifest),
+                    source_extensions:
+                        crate::provider_manifest_scope::document_extensions(&manifest),
+                    source_paths: Vec::new(),
+                    repository_candidate_generation:
+                        "test-repository-candidate-generation".to_string(),
+                    project_resolution_generation:
+                        "test-project-resolution-generation".to_string(),
                 },
             }
         })

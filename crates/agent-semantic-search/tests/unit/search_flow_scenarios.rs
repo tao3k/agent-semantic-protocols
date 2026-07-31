@@ -60,6 +60,7 @@ fn search_flow_source_index_owner_item_graph_chain_is_executable() {
         limit: 5,
         source_index_lookup: Some(&lookup),
         base_snapshot: &fixture.workspace,
+        base_source_snapshot: &fixture.evidence,
         provider_digest: fixture.provider_digest.as_str(),
     })
     .expect("source-index evidence graph chain acquisition");
@@ -300,12 +301,14 @@ fn search_flow_busy_source_index_miss_returns_overlay_skipped() {
         limit: 5,
         source_index_lookup: Some(&lookup),
         base_snapshot: &fixture.workspace,
+        base_source_snapshot: &fixture.evidence,
         provider_digest: fixture.provider_digest.as_str(),
     })
     .expect("busy source-index should short-circuit without overlay");
 
     assert_eq!(acquisition.candidate_sources, vec!["source-index"]);
     assert!(acquisition.candidates.is_empty());
+    assert_eq!(acquisition.source_snapshot, Some(fixture.evidence.clone()));
     assert!(
         acquisition
             .source_trace
@@ -354,12 +357,14 @@ fn search_flow_cold_required_source_index_returns_overlay_skipped() {
         limit: 5,
         source_index_lookup: Some(&lookup),
         base_snapshot: &fixture.workspace,
+        base_source_snapshot: &fixture.evidence,
         provider_digest: fixture.provider_digest.as_str(),
     })
     .expect("cold-required source-index should short-circuit without overlay");
 
     assert_eq!(acquisition.candidate_sources, vec!["source-index"]);
     assert!(acquisition.candidates.is_empty());
+    assert_eq!(acquisition.source_snapshot, Some(fixture.evidence.clone()));
     assert!(
         acquisition
             .source_trace

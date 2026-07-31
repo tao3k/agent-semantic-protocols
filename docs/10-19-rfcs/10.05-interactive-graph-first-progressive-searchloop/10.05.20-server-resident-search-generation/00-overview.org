@@ -1,0 +1,337 @@
+#+title: 10.05.20 Server-Resident Search Generation Authority
+#+startup: overview
+#+property: header-args:typst :eval yes :session none :results replace :exports code :cache no :noweb no :hlines no :tangle no
+
+* Status
+
+Draft. The architecture and Lean statements are proposed. The failure
+observations in this document were reproduced locally; they do not imply that
+the proposed Rust server transaction is implemented.
+
+* Decision
+
+=ASP-RFC-10.05-SRSG-AUTHORITY=: The resident workspace server is the only
+writer of search-index state.
+
+=ASP-RFC-10.05-SRSG-READ-WRITE=: Reader readiness and writer readiness are
+independent.  A failed or paused
+writer lane MUST reject staging and publication, but it MUST NOT make the last
+committed immutable generation unreadable.  SearchLoop availability depends on
+the resident read plane and at least one ready provider partition, not on the
+writer lane being online.
+
+=ASP-RFC-10.05-SRSG-AVAILABILITY=: SearchLoop remains available exactly when
+the resident read plane is online and at least one provider partition is ready.
+
+The CLI, hooks, providers, SearchLoop, and agents may:
+
+- submit source observations or provider deltas;
+- request a generation lease;
+- query a server-pinned generation;
+- release a lease;
+- inspect receipts.
+
+They may not independently rebuild, activate, invalidate, or publish a search
+generation.
+
+This replaces the accidental multi-writer design in which the CLI source-index
+cache, provider incremental owner cache, resident query generation, and
+workspace-owner endpoint can advance independently.
+
+* Observed counterexample
+
+The local audit produced three simultaneous identities:
+
+- a CLI rebuild published =source-index-6f7d...=;
+- provider owner ingestion remained warm on =b4e0...=;
+- exact query remained pinned to root =e5d9...=.
+
+The rebuild reported =files=1633=, =owners=1633=, and =selectors=0=. A later
+owner ingestion could discover a canonical selector, while exact query still
+reported that the item was missing from its live owner generation.
+
+This is not a cache-eviction problem. It is a missing single-writer and atomic
+publication boundary.
+
+The same audit also exposed adjacent lifecycle faults:
+
+- =asp-explore=, =/root/asp_explore=, and =/root/asp_explorer= denoted
+  different names or targets;
+- a provider manifest containing =workspaceScope= was rejected by an older
+  activation DTO;
+- a project-resolution request and reader disagreed about a required
+  =algorithm= field;
+- a valid native child could be reachable while the ASP registry retained an
+  unbound or stale target.
+
+These observations motivate strict separation between host-native agent
+addressing and server-owned search generation.
+
+* Authority model
+
+** Workspace server
+
+For each canonical workspace identity, the server owns:
+
+- the active generation;
+- at most one staged generation per publication transaction;
+- source-snapshot and provider-delta ingestion;
+- parser and structural-selector materialization;
+- generation compare-and-swap;
+- retained-generation leases;
+- publication, recovery, and garbage-collection receipts.
+
+The server must persist the publication record before exposing a new active
+generation.
+
+** Provider
+
+A provider parses language-owned input and returns a typed delta plus its
+source-snapshot evidence. A provider does not choose the active generation.
+
+A failed provider marks only its provider partition unavailable. It must not
+invalidate unrelated ready partitions or the server generation itself.
+
+** CLI and SearchLoop
+
+The CLI is a thin adapter. SearchLoop sends clauses and consumes a lease-bound
+evidence graph. Neither surface owns an index cache.
+
+Commands such as =cache source-index rebuild= may remain as operator repair
+tools, but they must submit a server rebuild transaction. They must not write a
+parallel local generation.
+
+** Host-native agent route
+
+A registered subagent name is resolved by the host to a live DeepLink or native
+message target. ASP records and verifies the host attestation; it must not
+derive a target path from punctuation or role spelling.
+
+An =@registeredSubagentName= dispatch therefore takes one host routing hop:
+
+The same local run produced four hook/router counterexamples:
+
+- a live registered =asp_explorer= resident was replaced by a legacy
+  =asp-explore bootstrap= instruction instead of receiving a native follow-up;
+- =asp org query= emitted a lexical =recommendedNext= that the Org facade
+  rejected as =unsupported view lexical=;
+- a Rust owner route was recommended for an Org owner and then failed with
+  =owner-language-mismatch=; and
+- an exact named =orgize eval plan= piped to =typst eval --in -=, and a bounded
+  JSON receipt projection, were misclassified as =bulk-source-dump=.
+
+=ASP-RFC-10.05-SRSG-HOOK-ROUTE=: The hook MUST preserve parser-owner identity,
+exact block/receipt boundedness,
+and registered resident liveness.  It MUST NOT insert a bootstrap pane when a
+verified native target already exists.  A generated =recommendedNext= is part
+of the protocol contract and MUST be grammar-checked against the selected
+facade before publication.
+
+#+name: server-native-agent-route
+#+begin_src typst
+$ "RegisteredName"
+  arrow.r
+  "HostResolve"
+  arrow.r
+  "DeepLink"
+  arrow.r
+  "NativeDispatch" $
+
+$ "ASP" = "verify(authority, generation, receipt)" $
+
+$ "ResidentLive"
+arrow.r.double
+"HookRoute" = "NativeResident" $
+
+$ not "ResidentLive"
+and not "GrammarValid(recommendedNext)"
+arrow.r.double
+"HookRoute" = "Reject" $
+
+$ not "ResidentLive"
+and not "OwnerLanguageMatches"
+arrow.r.double
+"HookRoute" = "Reject" $
+
+"ok"
+#+end_src
+
+ASP session state remains responsible for generation safety, leases, and
+receipts. It is not an additional interactive router in front of the host.
+
+* Server transaction
+
+Let server state be:
+
+#+name: server-generation-state
+#+begin_src typst
+$ S = (r, g_a, g_s, d_a, R, W) $
+
+#table(
+  columns: 2,
+  [Field], [Meaning],
+  [$r$], [authority revision],
+  [$g_a$], [active generation],
+  [$g_s$], [optional staged generation],
+  [$d_a$], [active snapshot digest],
+  [$R$], [resident read plane is online],
+  [$W$], [single writer lane is online],
+)
+
+"ok"
+#+end_src
+
+Publication is a compare-and-swap transaction:
+
+=ASP-RFC-10.05-SRSG-CAS=: publication is a writer-online,
+revision-matching, monotone compare-and-swap.
+
+#+name: server-generation-cas
+#+begin_src typst
+$ "PublishCAS"(S, r_e, g_n, d_n)
+:=
+W
+and (r_e = r)
+and (g_a < g_n)
+and "Validated"(g_n, d_n) $
+
+$ "commit"(S, g_n, d_n)
+=
+(r + 1, g_n, "none", d_n, R, W) $
+
+$ r_e != r
+arrow.r.double
+"PublishCAS"(S, r_e, g_n, d_n) = "none" $
+
+$ not W
+arrow.r.double
+"PublishCAS"(S, r_e, g_n, d_n) = "none" $
+
+"ok"
+#+end_src
+
+A staged generation is never query-visible. A query is valid only with a
+server-issued lease:
+
+=ASP-RFC-10.05-SRSG-LEASE=: every query is bound to one published generation
+and authority revision.
+
+#+name: server-generation-lease
+#+begin_src typst
+$ L = (w, g_l, r_l) $
+
+$ "CanQuery"(S, L)
+:=
+R
+and (g_l = g_a)
+and (r_l <= r) $
+
+$ g_s = "some"(g_n)
+arrow.r.double
+not "CanQueryGeneration"(S, g_n) $
+
+$ R and not W
+arrow.r.double
+"CanQuery"(S, (w, g_a, r)) $
+
+"ok"
+#+end_src
+
+Retained generations may be queried only by an unexpired lease. They cannot
+receive new writes. Garbage collection must preserve every leased generation.
+
+* Safety requirements
+
+1. Single writer: only the workspace server changes active generation.
+2. Unique active generation: one workspace has at most one active generation.
+3. =ASP-RFC-10.05-SRSG-STAGING=: Staged invisibility: staged data cannot answer queries.
+4. CAS publication: a stale authority revision cannot publish.
+5. Monotone generation: successful publication strictly increases generation.
+6. Lease consistency: every answer identifies the exact generation and
+   revision used.
+7. Provider isolation: one failed provider cannot erase unrelated ready
+   partitions.
+8. Crash safety: recovery exposes the last committed active generation, never
+   a partially staged generation.
+9. No inferred native target: ASP accepts only a host-attested DeepLink or
+   message target.
+
+* Cost model
+
+The resident server moves parsing and incremental maintenance off the
+agent/LLM foreground path.
+
+=ASP-RFC-10.05-SRSG-COST=: cost comparison is component-wise over graph hops,
+agent/LLM rounds, and exposed tokens.
+
+#+name: server-generation-cost
+#+begin_src typst
+#table(
+  columns: 4,
+  [Path], [Graph hops], [Agent/LLM rounds], [Exposed tokens],
+  [Server-pinned warm query], [2], [1], [180],
+  [CLI rebuild and retry], [7], [4], [1100],
+  [Bootstrap, claim, execute, retry], [9], [6], [1500],
+)
+
+$ C_"server" = (2, 1, 180) $
+$ C_"cli-rebuild" = (7, 4, 1100) $
+
+$ C_"server" prec C_"cli-rebuild" $
+
+"ok"
+#+end_src
+
+The numerical values are observed design targets, not universal benchmarks.
+The proved property is component-wise dominance for these declared costs.
+
+* Recovery
+
+Recovery order is:
+
+1. identify the canonical workspace server;
+2. load the last committed publication record;
+3. discard or resume an uncommitted staged transaction;
+4. restore provider partitions independently;
+5. publish a fresh generation only after selector and snapshot validation;
+6. issue new leases;
+7. resume SearchLoop.
+
+CLI cache deletion is not a recovery primitive.
+
+* Implementation calibration
+
+| Surface | Current evidence | Required state |
+|-
+| Rust provider manifest | =workspaceScope= can be emitted | reader and generator share one versioned DTO |
+| Project resolution | request/reader =algorithm= drift observed | versioned request with compatible defaults |
+| Source-index rebuild | rebuilt owners with zero selectors | server transaction validates non-vacuous selector coverage |
+| Provider incremental owner | independent warm generation observed | delta commits into server staging generation |
+| Exact query | stale active root observed | server lease pins the published generation |
+| Native subagent dispatch | host follow-up is routable | registered name resolves to host-attested DeepLink |
+| ASP session | bootstrap/claim loop adds foreground rounds | verify native receipt; do not duplicate host routing |
+
+* Lean correspondence
+
+The Lean model =ASPProof.ServerResidentSearchGeneration= proves:
+
+- CLI write authority is empty;
+- staged generations are not queryable;
+- stale revision publication is rejected;
+- successful publication is monotone and clears staging;
+- an offline writer cannot publish;
+- stopping the writer preserves a lease-bound read of the active generation;
+- a lease-bound query uses the active generation;
+- one ready provider preserves partial SearchLoop availability;
+- declared server cost strictly dominates the CLI rebuild path.
+
+The Lean model does not prove parser correctness, storage durability, operating
+system liveness, or the measured cost constants.
+
+* Non-goals
+
+- preserving the existing complex cache CLI as an agent-facing API;
+- making provider activation a global all-or-nothing gate;
+- deriving a native agent target from a normalized string;
+- treating a successful build, manifest parse, or =Ready= pane as end-to-end
+  search closure.

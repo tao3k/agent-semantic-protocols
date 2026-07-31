@@ -27,7 +27,7 @@ pub(super) struct GlobalProviderCatalogProvider {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct GlobalProviderCatalog {
+pub(super) struct GlobalProviderCatalog {
     schema_id: String,
     schema_version: String,
     catalog_generation: String,
@@ -378,6 +378,23 @@ fn provider_registry_snapshot_from_catalog(
                 source_paths: Vec::new(),
                 repository_candidate_generation: String::new(),
                 project_resolution_generation: String::new(),
+                scope_authority: match (
+                    manifest.project_resolution().is_some(),
+                    manifest.document_resolution().is_some(),
+                ) {
+                    (true, false) => {
+                        agent_semantic_client_core::ProviderScopeAuthority::ProjectResolution
+                    }
+                    (false, true) => {
+                        agent_semantic_client_core::ProviderScopeAuthority::DocumentResolution
+                    }
+                    _ => {
+                        return Err(format!(
+                            "provider manifest must declare exactly one scope authority: manifestId={}",
+                            manifest.manifest_id()
+                        ));
+                    }
+                },
                 search_capabilities: manifest.search_capabilities().clone(),
                 query_pack_descriptor: manifest.query_pack_descriptor().clone(),
                 semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
@@ -410,7 +427,9 @@ pub(super) fn publish_global_provider_catalog(
         .read()
         .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?
         .as_ref()
-        .filter(|active| active_catalog_matches_receipts(active, &manifests, receipts))
+        .filter(|active| {
+            active_catalog_matches_receipts(active, &manifests, receipts, catalog_identities)
+        })
         .map(|active| active.catalog_generation.clone());
     if let Some(catalog_generation) = active_generation {
         return Ok(GlobalProviderCatalogPublication {
@@ -653,10 +672,11 @@ pub(super) fn publish_global_provider_catalog(
     })
 }
 
-fn active_catalog_matches_receipts(
+pub(super) fn active_catalog_matches_receipts(
     active: &GlobalProviderCatalog,
     manifests: &[agent_semantic_hook::ProviderManifest],
     receipts: &[super::install_provider_reconcile::ProviderInstallReceipt],
+    catalog_identities: &[agent_semantic_hook::RegisteredProviderCatalogIdentity],
 ) -> bool {
     active.providers.len() == manifests.len()
         && manifests.iter().all(|manifest| {
@@ -682,7 +702,18 @@ fn active_catalog_matches_receipts(
             else {
                 return false;
             };
+            let Some(identity) = catalog_identities
+                .iter()
+                .find(|identity| identity.language_id == manifest.language_id().as_str())
+            else {
+                return false;
+            };
             provider.provider_id == manifest.provider_id().as_str()
+                && provider.manifest_digest == identity.manifest_digest
+                && provider.provider_registry_digest == identity.provider_registry_digest
+                && provider.query_pack_digest == identity.query_pack_digest
+                && provider.exact_query_pack_identity_digest
+                    == identity.exact_query_pack_identity_digest
                 && provider.artifact_digest
                     == blake3_integrity_ref(&receipt.installed_entrypoint_digest)
                 && provider.artifact_metadata_digest

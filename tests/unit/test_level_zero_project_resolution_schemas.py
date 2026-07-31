@@ -37,38 +37,38 @@ def git_candidates() -> dict[str, object]:
         "schemaVersion": "1",
         "mode": "git",
         "repositoryIdentity": {
-            "kind": "git",
             "repositoryId": "repo-1",
-            "root": "/workspace",
+            "identityBasis": "git-common-dir:/workspace/.git",
             "gitCommonDir": "/workspace/.git",
         },
         "worktreeIdentity": {
-            "workspaceId": "workspace-1",
-            "checkoutRoot": "/workspace",
+            "worktreeId": "workspace-1",
+            "worktreeRoot": "/workspace",
             "gitDir": "/workspace/.git",
-            "headOid": "abc",
-            "indexDigest": "index-1",
-            "sparseCheckout": False,
+            "headId": "abc",
         },
-        "candidateGeneration": "candidate-1",
+        "candidateGeneration": {
+            "algorithm": "blake3-path-set-v1",
+            "digest": "blake3:" + ("0" * 64),
+            "authorities": ["git-index"],
+        },
         "candidates": [
             {
                 "path": "Cargo.toml",
-                "state": "indexed",
+                "state": "tracked",
                 "authority": "git-index",
-                "indexMode": "regular",
             }
         ],
+        "policyOverlayDigest": "blake3:" + ("1" * 64),
+        "policyExclusions": [],
         "metrics": {
+            "indexEntryCount": 1,
+            "worktreeAdditionCount": 0,
             "candidateCount": 1,
-            "trackedCount": 1,
-            "changedCount": 0,
-            "untrackedCount": 0,
-            "deletedCount": 0,
+            "policyExclusionCount": 0,
             "fullWorkspaceReads": 0,
             "fullMerkleRebuilds": 0,
             "directDbOpens": 0,
-            "elapsedMicros": 100,
         },
     }
 

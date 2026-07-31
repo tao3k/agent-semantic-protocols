@@ -1,13 +1,14 @@
 #[path = "../../src/command/runtime_server_artifact.rs"]
 mod implementation;
+#[path = "../../src/command/runtime_server_definition.rs"]
+mod definition_implementation;
 
-use implementation::{RuntimeServerArtifactAction, runtime_server_artifact_action};
-use std::path::Path;
-
-use crate::command::runtime_server_artifact::{
-    RuntimeServerSupervisorAction, runtime_server_supervisor_action,
+use definition_implementation::atomic_write_if_changed;
+use implementation::{
+    RuntimeServerArtifactAction, RuntimeServerSupervisorAction, runtime_server_artifact_action,
+    runtime_server_supervisor_action,
 };
-use crate::command::runtime_server_supervisor::atomic_write_if_changed;
+use std::path::Path;
 
 #[test]
 fn same_path_and_digest_uses_status() {

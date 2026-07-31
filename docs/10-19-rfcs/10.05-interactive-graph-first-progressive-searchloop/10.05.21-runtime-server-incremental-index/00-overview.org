@@ -1,0 +1,322 @@
+#+title: RFC 10.05.21 — Runtime Server Incremental Index Authority
+#+startup: overview
+
+* Status
+
+Draft.
+
+This RFC refines [[file:../10.05.20-server-resident-search-generation/00-overview.org][RFC 10.05.20]].  It specifies how the resident Runtime
+Server admits, orders, coalesces, repairs, and publishes incremental search
+index deltas.  It does not authorize Rust implementation in this session.
+
+* Decision
+
+Index caching and incremental maintenance are background server work.
+
+The Runtime Server owns one ordered writer lane per canonical workspace.  CLI
+commands, hooks, providers, SearchLoop, and agents submit observations or typed
+deltas; they do not own a writable index cache, an active-generation pointer,
+or an independent invalidation clock.
+
+The foreground agent path reads a lease-bound immutable generation.  It never
+waits for an incremental batch, repair, provider parse, database transaction,
+or cache rebuild when a complete active generation is already available.
+
+* Formalization findings
+
+Moving work into a daemon is insufficient by itself.  The first Lean model
+exposed four missing contracts:
+
+1. A delta needs both a base generation and a provider snapshot revision.
+   Workspace identity alone cannot prevent a stale parse from entering a new
+   generation.
+2. Deltas from different provider partitions may be commutative, but two
+   different snapshots from the same provider are not commutative.  Treating
+   every queued delta as a mergeable set can create a generation that no parser
+   ever observed.  Provider disjointness is still insufficient unless both
+   deltas bind the same workspace, base generation, and workspace snapshot
+   digest.
+3. Publication completeness is relative to the required provider set for the
+   admitted workspace, not every provider in the global catalog and not merely
+   every provider that happened to return successfully.
+4. A semantic search-cache hit and a model prefix-cache hit have independent
+   validity authorities.  Neither receipt proves the other.
+
+These are correctness boundaries, not optional performance heuristics.
+
+* Delta admission
+
+=ASP-RFC-10.05-SRII-DELTA=: A provider delta MUST bind:
+
+- canonical workspace identity;
+- provider partition identity;
+- active generation used as its base;
+- workspace source-snapshot digest;
+- monotonically newer provider snapshot revision;
+- facts digest; and
+- source-snapshot evidence sufficient to reproduce the parser observation.
+
+The server admits a delta only when its writer lane is online, its workspace
+and base generation match the current workspace entry, and its provider
+snapshot revision is newer than the last admitted revision for that provider.
+
+A rejected delta does not trigger a CLI rebuild, activation mutation, implicit
+provider fallback, or active-generation invalidation.  The server returns a
+typed stale-base, stale-provider-revision, writer-unavailable, or
+workspace-mismatch receipt.
+
+#+name: server-incremental-delta-admission
+#+begin_src typst
+$ delta = (w_delta, p, g_b, s_delta, r_delta, d_delta) $
+
+$ "AdmitDelta"(S, delta)
+:=
+W
+and (w_delta = w_S)
+and (g_b = g_a)
+and (r_p < r_delta) $
+
+$ r_delta <= r_p
+arrow.r.double
+not "AdmitDelta"(S, delta) $
+
+$ not W
+arrow.r.double
+not "AdmitDelta"(S, delta) $
+
+"ok"
+#+end_src
+
+* Ordered coalescing
+
+=ASP-RFC-10.05-SRII-COALESCE=: The writer lane may coalesce two deltas without
+an ordering edge only when:
+
+- they bind the same canonical workspace, base generation, and workspace
+  source-snapshot digest; and
+- they update distinct provider partitions; or
+- they have the same provider, snapshot revision, and facts digest and are
+  therefore the same idempotent observation.
+
+Two deltas for the same provider with different snapshot revisions MUST be
+ordered.  The later revision may supersede the earlier revision only after its
+base-generation and source-snapshot evidence are revalidated.  It MUST NOT be
+implemented as an unordered map overwrite.
+
+Cross-provider coalescing still produces one staged batch and one publication
+receipt.  It does not allow each provider to publish its own workspace
+generation.
+
+#+name: server-incremental-coalescing
+#+begin_src typst
+$ "CanCoalesce"(delta_1, delta_2)
+:=
+(w_1 = w_2)
+and (g_(b_1) = g_(b_2))
+and (s_1 = s_2)
+and
+(
+(p_1 != p_2)
+or
+(
+  p_1 = p_2
+  and r_1 = r_2
+  and d_1 = d_2
+)
+) $
+
+$ w_1 != w_2
+or g_(b_1) != g_(b_2)
+or s_1 != s_2
+arrow.r.double
+not "CanCoalesce"(delta_1, delta_2) $
+
+$ p_1 = p_2
+and r_1 != r_2
+arrow.r.double
+not "CanCoalesce"(delta_1, delta_2) $
+
+"ok"
+#+end_src
+
+* Publication completeness
+
+=ASP-RFC-10.05-SRII-COMPLETE=: A staged batch is publishable only when:
+
+- its base generation equals the current active generation;
+- its next generation is strictly newer;
+- the workspace writer lane is online;
+- every provider partition required by the admitted workspace is covered by a
+  validated old or new partition snapshot; and
+- the durable publication transaction binds the complete batch digest.
+
+Unrelated inactive providers do not block publication.  A required failed
+provider does block a new complete generation, but it does not erase or make
+the previous complete generation unreadable.
+
+#+name: server-incremental-completeness
+#+begin_src typst
+$ "Complete"(Q, B)
+:=
+forall p in Q: "Covered"(B, p) $
+
+$ "CanPublish"(S, Q, B)
+:=
+W
+and (g_b = g_a)
+and (g_a < g_n)
+and "Complete"(Q, B) $
+
+$ p in Q
+and not "Covered"(B, p)
+arrow.r.double
+not "CanPublish"(S, Q, B) $
+
+"ok"
+#+end_src
+
+* Repair and evolution
+
+=ASP-RFC-10.05-SRII-REPAIR=: Repair operates on the staged writer state.  It
+MUST NOT mutate the active generation before a complete compare-and-swap
+publication succeeds.
+
+Repair may:
+
+- restart or replace the workspace writer lane;
+- replay durable uncommitted delta intents;
+- discard an invalid staged batch;
+- re-request a provider partition with the same typed base contract; or
+- reconstruct staged state from the active immutable generation.
+
+Repair does not:
+
+- clear the active search cache;
+- force foreground SearchLoop to wait;
+- re-run activation as an implicit side effect;
+- publish a partial provider set; or
+- convert a model prefix-cache hit into semantic search evidence.
+
+#+name: server-incremental-repair
+#+begin_src typst
+$ "BeginRepair"(S) = S_R $
+
+$ g_a(S_R) = g_a(S) $
+
+$ "RepairFailed"
+arrow.r.double
+"ReadableGeneration"(S_R) = g_a(S) $
+
+"ok"
+#+end_src
+
+* Two cache authorities
+
+=ASP-RFC-10.05-SRII-CACHE=: A semantic search-cache receipt binds the canonical
+workspace, active search generation, provider identities, query/projection
+identity, and source-snapshot authority.
+
+A model prefix-cache receipt binds the runtime-observed stable prompt prefix
+and its cached token count.  It reduces model compute and uncached input cost,
+but it is not search evidence.
+
+Therefore:
+
+- model prefix hit does not validate a stale search generation;
+- valid search generation does not imply that the model runtime hit its prefix
+  cache;
+- receipts and cost fields remain separate; and
+- route optimization may use both only after validating each independently.
+
+#+name: server-incremental-cache-separation
+#+begin_src typst
+$ M := "ModelPrefixHit"(rho) $
+$ V := "SearchGenerationValid"(S, rho) $
+
+$ M
+not arrow.r.double
+V $
+
+$ V
+not arrow.r.double
+M $
+
+$ "Reusable"(S, rho)
+:=
+V and "QueryIdentityValid"(rho) $
+
+"ok"
+#+end_src
+
+* Performance and precision consequences
+
+The resident design improves precision because the server can retain:
+
+- the exact active provider revisions;
+- pending delta causality;
+- owner and selector identity across edits;
+- parser-specific incremental state;
+- staged coverage of the required provider set; and
+- lease counts for retained immutable generations.
+
+The performance gain is not merely process reuse.  The agent-visible path
+eliminates rebuild commands, repeated activation reads, provider startup,
+generation reconciliation, and retry decisions.  Background batching is
+allowed to reduce parser and database work, but it MUST NOT add an agent/LLM
+round or delay an active-generation query.
+
+* Lean correspondence
+
+The executable model is:
+
+=packages/proofs/ASPProof/RuntimeServerIncrementalIndex.lean=
+
+The modular audit is:
+
+=packages/proofs/ASPProof/Audit/RuntimeServerIncrementalIndex.lean=
+
+The JSON receipt is:
+
+=packages/proofs/receipts/runtime-server-incremental-index-v1.json=
+
+The Lean model proves:
+
+- stale and offline-writer deltas are rejected;
+- distinct-provider deltas can coalesce;
+- different-workspace, different-base-generation, and different-snapshot
+  deltas cannot coalesce;
+- same-provider different-snapshot deltas cannot coalesce;
+- a missing required provider prevents publication;
+- beginning repair preserves the active generation;
+- a model prefix-cache hit does not validate search cache; and
+- valid search cache does not imply a model prefix-cache hit.
+
+It does not prove parser correctness, storage durability, fairness of the
+writer scheduler, or completeness of a concrete provider registry.
+
+* Acceptance gates
+
+1. One workspace server owns one active generation and one ordered writer lane.
+2. Foreground warm query reports zero provider spawns, activation writes,
+   database opens, cache writes, and writer waits.
+3. A stale provider revision returns a typed rejection without invalidating the
+   active generation.
+4. Cross-workspace, cross-generation, cross-snapshot, and same-provider
+   different-revision deltas cannot enter an unordered batch.
+5. A missing required partition prevents publication while the old generation
+   remains readable.
+6. Repair cannot change the active generation without successful complete
+   publication.
+7. Search-cache and model-prefix-cache receipts are emitted and validated
+   independently.
+8. Every named Typst block is extracted with =orgize eval plan= and validated
+   by sending its body through stdin to =typst eval --in - '"ok"'=.
+
+* Rejected alternatives
+
+- a writable CLI-local source-index cache;
+- provider-owned active generation publication;
+- unordered last-write-wins coalescing across provider snapshots;
+- blocking warm reads until background indexing becomes idle;
+- invalidating the last complete generation when repair starts; and
+- treating model prefix caching as semantic search-cache validity.

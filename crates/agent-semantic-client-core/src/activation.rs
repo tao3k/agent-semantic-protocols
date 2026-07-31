@@ -21,6 +21,13 @@ use crate::types::{LanguageId, ProviderId};
 pub const ASP_PROVIDER_ACTIVATION_PATH_ENV: &str = "ASP_PROVIDER_ACTIVATION_PATH";
 
 /// Provider resolved from the project hook activation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ProviderScopeAuthority {
+    ProjectResolution,
+    DocumentResolution,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResolvedProvider {
     pub manifest_id: String,
@@ -40,6 +47,7 @@ pub struct ResolvedProvider {
     pub source_paths: Vec<String>,
     pub repository_candidate_generation: String,
     pub project_resolution_generation: String,
+    pub scope_authority: ProviderScopeAuthority,
     pub search_capabilities: agent_semantic_hook::ProviderSearchCapabilities,
     pub query_pack_descriptor: agent_semantic_hook::ProviderQueryPackDescriptor,
     pub semantic_facts_descriptor: Option<agent_semantic_hook::ProviderSemanticFactsDescriptor>,
@@ -94,6 +102,32 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
     type Error = String;
 
     fn try_from(provider: &ActivatedProvider) -> Result<Self, Self::Error> {
+        let manifest = builtin_provider_manifests()
+            .into_iter()
+            .find(|manifest| {
+                manifest.manifest_id() == provider.manifest_id
+                    && manifest.language_id() == &provider.language_id
+                    && manifest.provider_id() == &provider.provider_id
+            })
+            .ok_or_else(|| {
+                format!(
+                    "activated provider has no registered manifest: manifestId={} languageId={} providerId={}",
+                    provider.manifest_id, provider.language_id, provider.provider_id
+                )
+            })?;
+        let scope_authority = match (
+            manifest.project_resolution().is_some(),
+            manifest.document_resolution().is_some(),
+        ) {
+            (true, false) => ProviderScopeAuthority::ProjectResolution,
+            (false, true) => ProviderScopeAuthority::DocumentResolution,
+            _ => {
+                return Err(format!(
+                    "provider manifest must declare exactly one scope authority: manifestId={}",
+                    provider.manifest_id
+                ));
+            }
+        };
         Ok(Self {
             manifest_id: provider.manifest_id.clone(),
             manifest_digest: provider.manifest_digest.clone(),
@@ -112,6 +146,7 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
             source_paths: provider.source_paths.clone(),
             repository_candidate_generation: provider.repository_candidate_generation.clone(),
             project_resolution_generation: provider.project_resolution_generation.clone(),
+            scope_authority,
             search_capabilities: provider.search_capabilities.clone(),
             query_pack_descriptor: provider.query_pack_descriptor.clone(),
             semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),

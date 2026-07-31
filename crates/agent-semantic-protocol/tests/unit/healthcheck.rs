@@ -255,8 +255,11 @@ fn write_activation(root: &Path, provider: &Path) {
             "routes": routes,
             "coverage": {
                 "packageRoots": ["."],
-                "configFiles": manifest.source().default_config_files,
-                "sourceExtensions": manifest.source().default_extensions
+                "configFiles": crate::provider_manifest_scope::project_entries(&manifest),
+                "sourceExtensions": crate::provider_manifest_scope::document_extensions(&manifest),
+                "sourcePaths": [],
+                "repositoryCandidateGeneration": "test-repository-candidate-generation",
+                "projectResolutionGeneration": "test-project-resolution-generation"
             }
         }]
     });

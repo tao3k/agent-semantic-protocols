@@ -242,7 +242,7 @@ pub(crate) fn install_state_home_provider(
 if [ "$1" != "project-resolution-stdin" ]; then
   exit 64
 fi
-printf '%s\n' '{{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","state":"resolved","languageId":"{language_id}","providerId":"{provider_id}","resolution":{{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","projectIdentity":{{"projectEntry":"{project_entry}"}},"resolvedSourceScopes":[{{"roots":["src"],"extensions":["{extension}"],"exclusions":[]}}],"resolutionGeneration":"fixture:v1"}}}}'
+printf '%s\n' '{{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","state":"resolved","languageId":"{language_id}","providerId":"{provider_id}","resolution":{{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","projectIdentity":{{"projectEntry":"{project_entry}"}},"resolvedSourceScopes":[{{"roots":["src"],"explicitPaths":[],"extensions":["{extension}"],"includeAuthority":"package-manager","exclusions":[]}}],"resolutionGeneration":"fixture:v1"}}}}'
 "#
             )
         },

@@ -1,0 +1,7 @@
+#+title: Compatibility locator: graph-router Pareto cost selection
+
+* Canonical RFC
+
+This path is retained as a compatibility locator.  The canonical graph-routing
+RFC is
+[[file:../10.05.20-evidence-graph-routing/01.08-searchroute-graph-router-pareto-cost-selection.org][SearchRoute graph-router Pareto cost selection]].

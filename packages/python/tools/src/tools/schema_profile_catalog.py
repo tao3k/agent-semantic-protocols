@@ -103,6 +103,11 @@ _AGENT_REASONING_SCHEMAS = (
     "semantic-ast-patch-receipt.v1.schema.json",
 )
 
+_PROJECT_RESOLUTION_IPC_SCHEMAS = (
+    "provider-project-resolution-request.v1.schema.json",
+    "provider-project-resolution-response.v1.schema.json",
+)
+
 
 LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
     LanguageSchemaProfile(
@@ -110,6 +115,7 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
         package_root="languages/rust-lang-project-harness",
         shared_schema_files=(
             *_CORE_QUERY_SCHEMAS,
+            *_PROJECT_RESOLUTION_IPC_SCHEMAS,
             "semantic-invariant-candidate.v1.schema.json",
             *_AGENT_REASONING_SCHEMAS,
             "semantic-compare-packet.v1.schema.json",
@@ -124,6 +130,7 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
         package_root="languages/typescript-lang-project-harness",
         shared_schema_files=(
             *_CORE_QUERY_SCHEMAS,
+            *_PROJECT_RESOLUTION_IPC_SCHEMAS,
             *_AGENT_REASONING_SCHEMAS,
         ),
         provider_schema_files=("typescript-semantic-capabilities.v1.schema.json",),
@@ -133,6 +140,7 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
         package_root="languages/python-lang-project-harness",
         shared_schema_files=(
             *_CORE_QUERY_SCHEMAS,
+            *_PROJECT_RESOLUTION_IPC_SCHEMAS,
             *_AGENT_REASONING_SCHEMAS,
         ),
         provider_schema_files=("python-semantic-capabilities.v1.schema.json",),
@@ -142,6 +150,7 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
         package_root="languages/JuliaLangProjectHarness.jl",
         shared_schema_files=(
             *_CORE_QUERY_SCHEMAS,
+            *_PROJECT_RESOLUTION_IPC_SCHEMAS,
             *_AGENT_REASONING_SCHEMAS,
         ),
         provider_schema_files=(),
@@ -166,6 +175,7 @@ LANGUAGE_SCHEMA_PROFILES: tuple[LanguageSchemaProfile, ...] = (
             "exact-structural-selector.v1.schema.json",
             "provider-native-exact-request.v1.schema.json",
             "provider-native-exact-response.v1.schema.json",
+            *_PROJECT_RESOLUTION_IPC_SCHEMAS,
             "semantic-query-packet.v1.schema.json",
         "semantic-exact-selector-receipt.v1.schema.json",
         "semantic-read-packet.v1.schema.json",

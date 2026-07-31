@@ -1,0 +1,17 @@
+#+title: SearchLoop foundations and invariants
+#+property: rfc_layer foundations-invariants
+
+* Ownership
+
+This layer owns the logical units that every SearchLoop implementation and
+adapter must preserve: evidence obligations, bound-clause algebra, feasibility,
+and the risk register for clause-first search.
+
+It does not own online loop transitions, graph traversal policy, cache
+identity, or proof execution.
+
+* Canonical RFCs
+
+- [[file:00.03-evidence-obligation-planning.org][Evidence obligation planning]]
+- [[file:00.07-bound-evidence-clause-algebra.org][Bound evidence clause algebra]]
+- [[file:00.09-clause-first-design-rationale-and-risk-register.org][Clause-first design rationale and risk register]]

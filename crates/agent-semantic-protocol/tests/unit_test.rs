@@ -98,3 +98,5 @@ mod sync_command;
 mod tree_sitter_query_diagnostics;
 #[path = "unit/workspace_tree_sitter_query_diagnostics.rs"]
 mod workspace_tree_sitter_query_diagnostics;
+#[path = "unit/provider_manifest_scope.rs"]
+mod provider_manifest_scope;

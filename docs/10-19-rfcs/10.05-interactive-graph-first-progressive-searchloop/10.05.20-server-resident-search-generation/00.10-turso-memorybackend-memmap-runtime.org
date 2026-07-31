@@ -1,0 +1,159 @@
+#+TITLE: Turso Authority, MemoryBackend Query Plane, And Immutable Epoch Publication
+#+DATE: 2026-07-30
+#+STATUS: Accepted architecture / implementation gate
+
+* Decision
+
+ASP uses one Tokio lifecycle-owned Runtime Server.  A workspace identity selects
+an entry inside that daemon; it does not select another process.  Different
+workspaces execute concurrently.  Sessions sharing one workspace reuse the same
+entry, read plane, database handle, and writer lane.
+
+The runtime data responsibilities are deliberately separate:
+
+- Turso is the durable canonical-generation and MVCC authority.
+- MemoryBackend is the primary query plane for the admitted current generation,
+  selector graph, owner bytes, and rootDepth live/untracked overlay.
+- memmap2 publishes an immutable, content-addressed epoch projection for
+  process-independent readers.
+- one Tokio writer lane per workspace builds and validates the next generation,
+  MemoryBackend state, and mmap segment before atomically publishing the epoch.
+
+No query command may construct a competing authority or repair state inline.
+
+* Canonical workspace admission
+
+Admission is keyed by the canonical repository identity and workspace identity.
+It occurs once per daemon lifetime or after an explicit generation invalidation.
+The admitted entry owns:
+
+- the canonical activation reference;
+- the current Turso generation transaction identity;
+- the current MemoryBackend generation;
+- the immutable mmap epoch and digest;
+- a bounded adaptive read pool;
+- one asynchronous writer lane; and
+- session leases referencing that entry.
+
+There is one workspace activation.  Per-language activation replicas are
+Legacy and must not be read, written, migrated, or consulted.  Provider
+selection is a typed subset of the Global provider catalog, not a copied
+language-local catalog.
+
+* Global provider catalog identity
+
+A provider catalog leaf identity includes all fields capable of changing parser
+or projection semantics:
+
+- provider identity;
+- provider manifest digest;
+- provider registry digest;
+- query-pack digest;
+- exact-query-pack identity digest;
+- provider binary artifact digest;
+- artifact metadata digest; and
+- execution contract digest.
+
+Warm reuse requires equality of every identity field.  Any drift creates and
+atomically publishes a new catalog generation.  Receipt equality limited to
+binary paths or binary digests is insufficient.
+
+* Generation and rootDepth overlay
+
+The durable Turso generation is complete and immutable.  MemoryBackend combines
+that canonical generation with a rootDepth live overlay for tracked changes,
+untracked owners, moves, and tombstones.  Overlay facts carry their base
+generation and content identity, so they cannot be applied to another epoch.
+
+Writer publication is:
+
+#+begin_example
+Turso next generation transaction
+  -> validate complete owner and selector envelope
+  -> build next MemoryBackend
+  -> encode and validate immutable mmap segment
+  -> atomically publish epoch pointer and receipt
+#+end_example
+
+Readers holding the previous epoch continue without blocking.  They never
+observe a mixture of old owner bytes, new selectors, or a half-written overlay.
+
+* Query-path prohibition
+
+After workspace admission, warm search and exact query must not:
+
+- canonicalize the repository or workspace again;
+- probe filesystem locks;
+- open or bootstrap Turso;
+- write activation, manifest, receipt, or generation files;
+- invoke a language provider process;
+- run configuration synchronization;
+- contact a lifecycle control socket; or
+- rebuild a source index.
+
+The read path is an identity lookup, epoch lease, MemoryBackend lookup, and
+projection render.  A missing or stale epoch returns a typed admission receipt
+to the Runtime Server writer lane; it does not perform a synchronous repair.
+
+* Tokio lifecycle
+
+The daemon, endpoint ownership, workspace registry, session leases, adaptive
+read pools, writer lanes, health supervision, restart, and shutdown are Tokio
+tasks.  Blocking Turso or mmap preparation is isolated behind bounded
+=spawn_blocking= work owned by the writer lane; it is never performed by a query
+task.  Process lifecycle and transport code must not create independent
+=std::thread= or blocking polling loops.
+
+The read-pool size is adaptive.  A fixed global worker count is not an accepted
+contract: the daemon uses observed contention, available parallelism, and
+workspace pressure while preserving per-workspace isolation.
+
+* Strong performance fixtures
+
+The performance suite is a correctness gate, not a timeout increase.  Every
+receipt records elapsed time and the counters that prove which architecture ran.
+
+Required fixtures:
+
+1. one workspace, many sessions, concurrent exact selector reads;
+2. one workspace, concurrent search and writer publication;
+3. several workspaces, concurrent readers and independent writers;
+4. process-cold reader attach to an already published mmap epoch;
+5. moved owner, tombstone, tracked edit, and untracked owner in rootDepth;
+6. catalog manifest/query-pack drift with unchanged provider binary;
+7. daemon binary digest drift followed by supervised atomic restart; and
+8. abrupt writer cancellation before and after epoch publication.
+
+Warm and process-cold admitted reads have a data-plane p99 below 1,000
+microseconds.  The installed CLI receipt separately reports process startup and
+render cost so those costs cannot be misattributed to the query plane.
+
+For admitted warm reads, all of the following counters are exactly zero:
+
+#+begin_example
+canonicalizeCalls
+lockProbes
+dbOpens
+schemaBootstraps
+providerProcesses
+activationLoads
+manifestWrites
+generationWrites
+controlSocketCalls
+#+end_example
+
+The concurrency gate must additionally prove:
+
+- no =database is locked= or bounded lock retry receipt;
+- no cross-workspace global mutex;
+- readers retain a valid old epoch while the writer publishes the next one;
+- exactly one published epoch wins each generation transition; and
+- query results identify the generation, overlay digest, and epoch used.
+
+* Completion rule
+
+Source edits, isolated unit tests, a healthy daemon, or one fast warm sample do
+not close this RFC.  Closure requires installed cold-to-warm evidence for every
+registered provider family, the multi-workspace stress fixtures above, exact
+zero-I/O counters, and successful moved/untracked/tombstone projection against
+the same published epoch.

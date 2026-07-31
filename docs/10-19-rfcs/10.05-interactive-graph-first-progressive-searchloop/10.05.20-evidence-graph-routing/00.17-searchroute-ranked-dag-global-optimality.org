@@ -1,0 +1,6 @@
+#+title: Compatibility locator: ranked-DAG global optimality
+
+* Canonicalization pending
+
+The historical RFC remains at
+[[file:../../10.05-cli-first-harness-ux/10.05.10-search-query-surface/00.17-searchroute-ranked-dag-global-optimality.org][Ranked-DAG global optimality]].

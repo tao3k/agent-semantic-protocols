@@ -53,6 +53,7 @@ pub struct SearchPipeAutoAcquisitionRequest<'a> {
     pub ignore_dirs: &'a [String],
     pub include_hidden_dirs: &'a [String],
     pub base_snapshot: &'a agent_semantic_artifacts::WorkspaceSnapshot,
+    pub base_source_snapshot: &'a agent_semantic_artifacts::SourceSnapshotEvidence,
     pub provider_digest: &'a str,
     pub require_multi_clause: bool,
     pub limit: usize,
@@ -121,7 +122,12 @@ pub fn collect_search_pipe_auto_acquisition(
             source_trace,
             candidate_sources,
             candidates: lexical_candidates,
-            source_snapshot: source_index.source_snapshot.clone(),
+            source_snapshot: Some(
+                source_index
+                    .source_snapshot
+                    .clone()
+                    .unwrap_or_else(|| request.base_source_snapshot.clone()),
+            ),
             artifact_digest: source_index.index_artifact_digest.clone(),
         });
     }

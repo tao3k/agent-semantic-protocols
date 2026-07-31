@@ -9,7 +9,7 @@ use agent_semantic_hook::{
 use serde_json::json;
 
 use crate::rust_harness_activation::support::{
-    asp_command, temp_project_root, write_state_home_provider_binary,
+    asp_command, stage_project_candidates, temp_project_root, write_state_home_provider_binary,
 };
 
 #[test]
@@ -28,6 +28,7 @@ fn cli_hook_repairs_missing_activation_and_denies_source_read() {
     .expect("write Rust manifest fixture");
     std::fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n")
         .expect("write Rust source fixture");
+    stage_project_candidates(&root);
 
     let (decision, _stderr) = run_hook_with_activation(
         &root,
@@ -65,6 +66,7 @@ fn cli_hook_repairs_missing_activation_then_classifies_source_read() {
     .expect("write Rust manifest fixture");
     std::fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n")
         .expect("write Rust source fixture");
+    stage_project_candidates(&root);
 
     let (decision, stderr) = run_hook_with_activation(
         &root,
@@ -79,6 +81,72 @@ fn cli_hook_repairs_missing_activation_then_classifies_source_read() {
         "reloaded-and-classified"
     );
     std::fs::remove_dir_all(root).expect("cleanup temp project root");
+}
+
+#[test]
+fn cli_hook_repairs_missing_activation_from_payload_workspace_identity() {
+    let root = temp_project_root("hook-activation-payload-identity");
+    let process_root = temp_project_root("hook-activation-process-identity");
+    super::super::support::write_default_client_hook_config(&root);
+    let activation_path = test_activation_path(&root);
+    let state_home = root.join(".agent-semantic-protocols");
+    write_state_home_provider_binary(&state_home, "rust", "rs-harness", "rs-harness");
+    let _ = std::fs::remove_file(&activation_path);
+    std::fs::create_dir_all(root.join("src")).expect("create Rust source fixture directory");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"activation-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Rust manifest fixture");
+    std::fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n")
+        .expect("write Rust source fixture");
+    stage_project_candidates(&root);
+
+    let (decision, stderr) = run_hook_with_activation_from(
+        &process_root,
+        &root,
+        &activation_path,
+        json!({
+            "cwd": root,
+            "tool_name": "Read",
+            "tool_input": {"file_path": "src/lib.rs"}
+        }),
+    );
+
+    assert_eq!(decision["decision"], "deny", "{decision}\n{stderr}");
+    assert_eq!(
+        decision["fields"]["activationRecoveryStatus"],
+        "reloaded-and-classified"
+    );
+    assert!(activation_path.is_file());
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+    std::fs::remove_dir_all(process_root).expect("cleanup process root");
+}
+
+#[test]
+fn cli_hook_rejects_cross_identity_activation_repair_with_deny_decision() {
+    let root = temp_project_root("hook-activation-owner-identity");
+    let other_root = temp_project_root("hook-activation-other-identity");
+    let activation_path = test_activation_path(&root);
+    let _ = std::fs::remove_file(&activation_path);
+
+    let (decision, stderr) = run_hook_with_activation_from(
+        &other_root,
+        &root,
+        &activation_path,
+        json!({
+            "cwd": other_root,
+            "tool_name": "Read",
+            "tool_input": {"file_path": "src/lib.rs"}
+        }),
+    );
+
+    assert_eq!(decision["decision"], "deny", "{decision}\n{stderr}");
+    assert_eq!(decision["reasonKind"], "direct-source-read");
+    assert!(stderr.contains("identity/state mismatch"), "{stderr}");
+    assert!(!activation_path.is_file());
+    std::fs::remove_dir_all(root).expect("cleanup temp project root");
+    std::fs::remove_dir_all(other_root).expect("cleanup other root");
 }
 
 #[test]
@@ -119,6 +187,15 @@ fn cli_doctor_syncs_generated_activation_drift() {
     super::super::support::write_default_client_hook_config(&root);
     let activation_path = write_invalid_generated_activation(&root);
     write_state_home_provider_binary(&state_home, "rust", "rs-harness", "rs-harness");
+    std::fs::create_dir_all(root.join("src")).expect("create Rust source fixture directory");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"activation-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Rust manifest fixture");
+    std::fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n")
+        .expect("write Rust source fixture");
+    stage_project_candidates(&root);
 
     let output = asp_command()
         .env_remove("PRJ_CACHE_HOME")
@@ -239,6 +316,15 @@ fn run_hook_with_activation(
     activation_path: &Path,
     payload: serde_json::Value,
 ) -> (serde_json::Value, String) {
+    run_hook_with_activation_from(project_root, project_root, activation_path, payload)
+}
+
+fn run_hook_with_activation_from(
+    process_root: &Path,
+    project_root: &Path,
+    activation_path: &Path,
+    payload: serde_json::Value,
+) -> (serde_json::Value, String) {
     let home = project_root.join(".home");
     std::fs::create_dir_all(&home).expect("create isolated hook HOME");
     let mut child = asp_command()
@@ -248,7 +334,7 @@ fn run_hook_with_activation(
             project_root.join(".agent-semantic-protocols"),
         )
         .env("CODEX_HOME", project_root.join(".codex-home"))
-        .current_dir(project_root)
+        .current_dir(process_root)
         .args([
             "hook",
             "--client",

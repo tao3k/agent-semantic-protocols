@@ -258,6 +258,7 @@ fn provider(language_id: &str, binary: &str) -> ResolvedProvider {
         .find(|manifest| manifest.language_id().as_str() == language_id)
         .expect("provider manifest");
     ResolvedProvider {
+        scope_authority: agent_semantic_client_core::ProviderScopeAuthority::ProjectResolution,
         manifest_id: format!("{binary}-test-manifest"),
         manifest_digest: format!("sha256:{binary}-test-manifest"),
         namespace: language_id.to_string(),

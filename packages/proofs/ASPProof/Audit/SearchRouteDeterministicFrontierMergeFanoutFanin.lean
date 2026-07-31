@@ -1,0 +1,21 @@
+import ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin
+
+namespace ASPProof.Audit.SearchRouteDeterministicFrontierMergeFanoutFanin
+
+open ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin
+
+#print axioms mergeMembership_commutative
+#print axioms mergeMembership_associative
+#print axioms mergeMembership_idempotent
+#print axioms parallel_fanin_equals_sequential_fold
+#print axioms equal_route_provenance_union_commutative
+#print axioms reflexive_evaluation_identity_authorizes_merge
+#print axioms changed_snapshot_rejects_merge
+#print axioms changed_duplicate_policy_rejects_merge
+#print axioms last_writer_wins_is_not_commutative
+#print axioms two_partial_frontiers_can_remain_partial
+#print axioms explicit_merge_receipt_is_bounded
+#print axioms uncapped_explicit_merge_exceeds_every_fixed_bound
+#print axioms summarized_merge_receipt_is_entry_count_independent
+
+end ASPProof.Audit.SearchRouteDeterministicFrontierMergeFanoutFanin

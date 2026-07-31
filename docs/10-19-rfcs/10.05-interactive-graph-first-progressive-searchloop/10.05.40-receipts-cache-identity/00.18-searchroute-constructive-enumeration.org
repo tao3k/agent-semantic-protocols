@@ -1,0 +1,6 @@
+#+title: Compatibility locator: SearchRoute constructive enumeration
+
+* Canonical RFC
+
+The canonical graph-routing RFC is
+[[file:../10.05.20-evidence-graph-routing/00.18-searchroute-constructive-enumeration.org][SearchRoute constructive enumeration]].

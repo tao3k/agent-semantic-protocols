@@ -1,0 +1,10 @@
+import ASPProof.Audit.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention
+
+open ASPProof.Audit.SearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContention
+
+elab "writeSearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContentionAudit" : command =>
+  ASPProof.Audit.writeReceipt
+    "receipts/searchroute-admission-retry-cache-rejoin-deterministic-recovery-contention-audit-v1.json"
+    auditJson
+
+writeSearchRouteAdmissionRetryCacheRejoinDeterministicRecoveryContentionAudit

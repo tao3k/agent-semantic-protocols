@@ -1,0 +1,7 @@
+#+title: Compatibility locator: evidence-graph shortest-path frontier completeness
+
+* Canonical RFC
+
+This path is retained as a compatibility locator.  The canonical graph-routing
+RFC is
+[[file:../10.05.20-evidence-graph-routing/01.09-searchroute-evidence-graph-shortest-path-frontier-completeness.org][Evidence-graph shortest-path frontier completeness]].

@@ -1,0 +1,235 @@
+#+TITLE: SearchLoop Architecture
+#+OPTIONS: toc:2
+
+#+property: rfc_layer 10.05.10-interactive-searchloop
+
+* Status
+
+This module defines the architectural center of the RFC 10.05 search family.
+The historical =cli-first-harness-ux= identifier remains stable, but CLI-first
+is no longer the agent-facing control model.
+
+* Decision
+
+=SearchLoop= is the agent-facing public protocol for progressive search.
+=search= is the discovery capability and =query= is the exact materialization
+capability.  A CLI, host-native tool, hook, or test harness is an adapter over
+those capabilities.
+
+An agent states its intent and advances through bounded loop transitions.  It
+does not need to manufacture a pipeline of =prime=, =pipe=, owner, item, graph,
+or recovery commands.  Those names may remain internal action vocabulary and
+diagnostic surfaces, but they are not required model-facing syntax.
+
+* Architectural decomposition
+
+SearchLoop is intentionally smaller than the machinery that supports it:
+
+#+begin_example
+intent + anchors
+  -> evidence-obligation compiler
+  -> AND/OR evidence planner
+  -> bounded branch scheduler
+  -> provider and graph evidence
+  -> independent closure validator
+  -> terminal receipt or typed frontier
+
+immutable artifact ledger
+  -> derived improvement state
+  -> advisory planning policy
+#+end_example
+
+The planner proposes how evidence may be acquired.  The closure validator
+decides whether obligations were discharged.  A ranker, cache, learned policy,
+or model response cannot declare closure.
+
+The supporting contracts are split into:
+
+- [[file:../10.05.00-foundations-invariants/00.03-evidence-obligation-planning.org][Evidence obligation planning]];
+- [[file:../10.05.40-receipts-cache-identity/00.04-semantic-cache-hierarchy.org][Semantic cache hierarchy]];
+- [[file:../10.05.40-receipts-cache-identity/00.05-artifact-ledger-and-improvement-state.org][Artifact ledger and
+  improvement state]];
+- [[file:00.06-clause-first-retrieval-and-graph-on-demand.org][Clause-first
+  retrieval and graph-on-demand]];
+- [[file:../10.05.00-foundations-invariants/00.07-bound-evidence-clause-algebra.org][Bound evidence clause
+  algebra]];
+- [[file:../10.05.20-evidence-graph-routing/00.08-relation-postings-and-graph-escalation.org][Relation postings
+  and graph escalation]];
+- [[file:../10.05.00-foundations-invariants/00.09-clause-first-design-rationale-and-risk-register.org][Clause-first
+  design rationale and risk register]];
+- [[file:../10.05.60-lean-typst-audit/00.10-clause-first-lean-proof-plan.org][Clause-first Lean proof plan]].
+
+* Ownership layers
+
+| Layer | Owner | Responsibility |
+|-
+| Interaction control | =SearchLoop= | Hold intent, frontier, budget, continuation, and closure state |
+| Discovery | =search= capability | Produce candidates, graph routes, policy facts, and typed recovery frontiers |
+| Exact evidence | =query= capability | Materialize one parser-owned identity without performing discovery |
+| Projection | RFC 10.06 | Shape graph-derived evidence for model reasoning |
+| Provider | Language facade | Parse and publish language-owned identities and facts |
+| Adapter | Host tool, CLI, hook, harness | Translate an invocation into one loop transition |
+| Acceleration | Source index, resident service, cache | Reuse derived facts without becoming semantic authority |
+
+No adapter may absorb SearchLoop state or silently redefine search/query
+semantics.
+
+* SearchLoop state
+
+A loop state MUST carry:
+
+- a canonical workspace and project identity;
+- an intent plus any explicit owner, symbol, selector, dependency, failure, or
+  changed-file anchors;
+- the active source snapshot or evidence generation;
+- a bounded frontier of candidates and unresolved questions;
+- evidence already accepted by the loop;
+- remaining item, byte, latency, and materialization budgets;
+- a continuation identity;
+- a terminal state of =closed=, =needs-input=, =blocked=, or
+  =budget-exhausted=.
+
+State is passed by identity and compact deltas.  An adapter MUST NOT resend the
+whole accumulated packet on every transition.
+
+* Progressive transition model
+
+Each transition performs at most one bounded semantic action:
+
+1. =orient= resolves workspace, provider, and already-supplied anchors.
+2. =discover= requests the smallest search projection that can advance the
+   frontier.
+3. =inspect= expands selected candidates as compact structural evidence without
+   materializing full source.
+4. =refine= changes the frontier from evidence, not from hidden string
+   heuristics.
+5. =materialize= performs exact =query= for a parser-owned selector.
+6. =close= emits a synthesis or a typed non-success terminal receipt.
+
+The loop selects the next action from current evidence.  =recommendedNext= is a
+typed transition proposal, not an instruction that the model must copy into a
+shell command.
+
+Independent frontier branches MAY execute concurrently.  Concurrency is an
+accelerator; the packet and transition contract MUST remain valid when branches
+run sequentially.
+
+* Compact interaction contract
+
+The default transition packet MUST contain only:
+
+- loop and continuation identity;
+- action and reason kind;
+- source snapshot or generation identity;
+- a bounded candidate/evidence delta;
+- truncation and budget state;
+- zero or more typed next-action proposals;
+- closure state.
+
+Source bodies, repeated workspace maps, full graph dumps, and previously
+accepted evidence are excluded by default.  Exact content is returned only by
+an explicit =materialize= transition.
+
+The shared schema for this packet MUST be defined before provider-specific
+implementation.  Provider-owned fields remain namespaced.
+
+* Minimal CLI adapter
+
+The primary human CLI SHOULD remain small:
+
+#+begin_src sh
+asp search "<intent>" [--workspace <root>] [--json]
+asp query --selector <selector> [--workspace <root>]
+#+end_src
+
+Language may be inferred from a resolved owner or supplied explicitly when
+ambiguous.  Language facades remain available for provider diagnostics and
+compatibility.
+
+Commands such as =search prime=, =search pipe=, =owner items=, graph expansion,
+cache prewarm, and recovery probes MAY remain diagnostic or internal harness
+surfaces.  They MUST NOT be presented as the normal agent interaction grammar.
+
+Shell pipelines are not a protocol requirement.  A host-native agent adapter
+SHOULD invoke SearchLoop transitions directly and receive typed packets without
+round-tripping through rendered CLI text.
+
+* Inspect boundary
+
+=inspect= is the compact expansion transition between discovery and exact
+materialization.  It consumes candidate identities already emitted by
+=search=, and it may return signatures, owners, relations, tests, policy facts,
+and bounded source skeletons.
+
+=inspect= MUST NOT:
+
+- discover a different workspace or owner implicitly;
+- perform lexical or semantic search;
+- return full source by default;
+- replace =query --selector= as exact evidence authority.
+
+An inspect miss is a typed result with candidate identities, actual kinds,
+reason kind, and next-action proposals.
+
+* CLI compatibility and deprecation
+
+Existing complex CLI commands are not removed by this decision.  They are
+classified as one of:
+
+- stable human or automation adapter;
+- provider diagnostic;
+- harness conformance surface;
+- compatibility surface pending receipt-backed migration;
+- internal transition that should stop being advertised to agents.
+
+No command is removed until real-project receipts show that the SearchLoop
+adapter covers its agent-facing use cases and scripts have a stable replacement.
+
+* Relationship to existing modules
+
+- [[file:../../10.05-cli-first-harness-ux/10.05.10-search-query-surface/01-search-discovery.org][Search discovery]] owns candidate acquisition,
+  not loop control.
+- [[file:../../10.05-cli-first-harness-ux/10.05.10-search-query-surface/02.01-query-facade.org][Query facade]] owns exact extraction and typed
+  reroutes, not discovery.
+- [[file:../../10.05-cli-first-harness-ux/10.05.10-search-query-surface/05-search-pipe-reasoning.org][Search pipe reasoning]] becomes the
+  compatibility specification for existing action ordering while transitions
+  migrate into SearchLoop.
+- [[file:../../10.05-cli-first-harness-ux/10.05.10-search-query-surface/06-cli-execution-and-recovery.org][CLI execution and recovery]] owns
+  adapter behavior only.
+- [[file:../../10.05-cli-first-harness-ux/10.05.10-search-query-surface/07-source-index-materialization.org][Source index materialization]]
+  owns evidence lifecycle and acceleration.
+- [[file:../../10.05-cli-first-harness-ux/10.05.10-search-query-surface/20-provider-route-binding.org][Provider route binding]] owns provider
+  identity and activation.
+- RFC 10.06 owns graph-route and model-facing evidence projection.
+
+* Validation receipts
+
+Migration evidence MUST compare the existing command-driven workflow with the
+SearchLoop adapter on representative projects.  Each receipt records:
+
+- model-facing tool/schema tokens before and after;
+- number of model turns and search transitions to closure;
+- command count and shell-rendered bytes;
+- packet bytes and repeated evidence bytes;
+- full-source materialization count;
+- no-hit and repeated-trigger count;
+- cold and warm latency;
+- incorrect closure or missing-evidence findings.
+
+Reduced CLI exposure is accepted only when evidence quality remains equal or
+better.  Token reduction alone cannot justify a weaker fail-closed boundary.
+
+Formal design validation is owned by
+[[file:../10.05.60-lean-typst-audit/00.02-axle-lean-rfc-validation.org][AXLE and Lean RFC validation]].
+Passing implementation tests cannot substitute for that model, and a failed
+proof or generated counterexample is an RFC design input rather than a Lean
+implementation defect by default.
+
+* Non-goals
+
+- encoding model reasoning as a large CLI grammar;
+- making the CLI own provider, workspace, or graph semantics;
+- replacing parser-owned selectors with display line ranges;
+- making multi-agent execution mandatory;
+- using a cache or daemon as source authority;
+- silently falling back from a declared native provider.

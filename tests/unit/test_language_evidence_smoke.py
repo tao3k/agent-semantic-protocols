@@ -63,7 +63,8 @@ def test_active_language_facade_conformance_matrix() -> None:
         assert f"asp {language_id} search pipe" in guide
         assert f"asp {language_id} query" in guide
         assert "--selector" in guide
-        assert "--code" in guide
+        assert "--projection source" in guide
+        assert "--projection callable-skeleton" in guide
         assert "evidence graph" in guide or "evidence-graph" in guide
         assert "evidence analyze" in guide or "evidence-analyze" in guide
 
@@ -208,6 +209,7 @@ def _run_asp_text(*args: str) -> str:
     completed = subprocess.run(
         ["asp", *args],
         cwd=_REPO_ROOT,
+        env={**os.environ, "ASP_NO_AGENT_PLATFORM": "1"},
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -225,11 +227,12 @@ def _run_asp_text(*args: str) -> str:
 
 @lru_cache(maxsize=1)
 def _active_asp_languages() -> frozenset[str]:
-    providers = _run_asp_text("providers")
+    providers = json.loads(_run_asp_text("providers", "list"))["providers"]
     return frozenset(
-        match.group(1)
-        for match in re.finditer(r"\|provider language=([^ ]+)", providers)
-        if match.group(1) not in {"org", "md"}
+        provider["manifest"]["languageId"]
+        for provider in providers
+        if provider["contractStatus"] == "valid"
+        and provider["manifest"]["languageId"] not in {"org", "md"}
     )
 
 

@@ -1,0 +1,6 @@
+#+title: Compatibility locator: SearchRoute certified lazy frontier
+
+* Canonical RFC
+
+The canonical graph-routing RFC is
+[[file:../10.05.20-evidence-graph-routing/00.19-searchroute-certified-lazy-frontier.org][SearchRoute certified lazy frontier]].

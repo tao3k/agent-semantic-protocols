@@ -40,17 +40,17 @@ install bin_dir="":
 	@just agent-tools-ensure-local-bin-path
 	@just agent-hooks-install "{{bin_dir}}"
 
-# Ensure interactive bash sessions can find the canonical local asp install.
+# Publish only the canonical ASP entry into the user PATH.
 agent-tools-ensure-local-bin-path:
-	@marker="# agent-semantic-protocols: add local agent tools"; \
-	  path_line='export PATH="$HOME/.local/bin:$PATH"'; \
-	  touch "$HOME/.bashrc"; \
-	  if ! grep -Fq '$HOME/.local/bin' "$HOME/.bashrc" && ! grep -Fq "$HOME/.local/bin" "$HOME/.bashrc"; then \
-	    printf '\n%s\n%s\n' "${marker}" "${path_line}" >> "$HOME/.bashrc"; \
-	    echo "[agent-tools-ensure-local-bin-path] added $HOME/.local/bin to ~/.bashrc"; \
-	  else \
-	    echo "[agent-tools-ensure-local-bin-path] ~/.bashrc already contains $HOME/.local/bin"; \
-	  fi
+    @canonical_runtime_asp="{{ asp_runtime_bin }}/asp"; \
+      user_path_dir="$HOME/.local/bin"; \
+      user_path_entry="${user_path_dir}/asp"; \
+      test -x "${canonical_runtime_asp}"; \
+      mkdir -p "${user_path_dir}"; \
+      temporary_link="${user_path_entry}.tmp.$$"; \
+      ln -s "${canonical_runtime_asp}" "${temporary_link}"; \
+      mv -f "${temporary_link}" "${user_path_entry}"; \
+      echo "[agent-tools-ensure-local-bin-path] canonicalRuntimeAsp=${canonical_runtime_asp} userPathEntry=${user_path_entry} switch=atomic"
 
 # Install the ASP runtime, language providers, and Codex hook config under ASP State Home.
 agent-hooks-install bin_dir="":
@@ -103,24 +103,22 @@ agent-tools-install-global bin_dir="":
     if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
       just agent-tools-install-protocol "${bin_dir}"; \
       rm -f "${bin_dir}/asp-graph-turbo" "${bin_dir}/graph-turbo"; \
-      just agent-tools-install-languages "${bin_dir}"; \
+      just agent-tools-install-languages; \
       echo "[agent-tools-install-global] installed asp with built-in graph-turbo ranker and all language provider harnesses into ${bin_dir}"
 
 # Develop mode: build and install the Orgize provider from this checkout.
-agent-tools-install-orgize bin_dir="":
-    @just agent-tools-install-language org "{{ bin_dir }}"
+agent-tools-install-orgize:
+    @just agent-tools-install-language org
 
 # Develop mode: build and install all language providers from this checkout.
-agent-tools-install-languages bin_dir="":
-    @bin_dir="{{bin_dir}}"; \
-    if [ -z "${bin_dir}" ]; then bin_dir="${SEMANTIC_AGENT_BIN_DIR:-{{asp_runtime_bin}}}"; fi; \
-      just agent-tools-install-rs "${bin_dir}"; \
-      just agent-tools-install-ts "${bin_dir}"; \
-      just agent-tools-install-py "${bin_dir}"; \
-      just agent-tools-install-julia "${bin_dir}"; \
-      just agent-tools-install-gerbil "${bin_dir}"; \
-      just agent-tools-install-orgize "${bin_dir}"; \
-      echo "[agent-tools-install-languages] installed rs-harness, ts-harness, py-harness, asp-julia-harness, gslph, and orgize into ${bin_dir}"
+agent-tools-install-languages:
+    @just agent-tools-install-rs
+    @just agent-tools-install-ts
+    @just agent-tools-install-py
+    @just agent-tools-install-julia
+    @just agent-tools-install-gerbil
+    @just agent-tools-install-orgize
+    @echo "[agent-tools-install-languages] installed rs-harness, ts-harness, py-harness, asp-julia-harness, gslph, and orgize into {{asp_runtime_bin}}"
 
 # Develop mode: build and install the shared asp binary from this checkout.
 agent-tools-install-asp bin_dir="":
@@ -145,7 +143,8 @@ agent-tools-install-protocol bin_dir="":
       rm -f "$(dirname "${destination}")/semantic-agent-protocol"; \
       test -x "${destination}"; \
       "${destination}" --version --require-release >/dev/null; \
-      "${destination}" guide >/dev/null
+      "${destination}" guide >/dev/null; \
+      if [ "${destination}" = "{{ asp_runtime_bin }}/asp" ]; then just agent-tools-ensure-local-bin-path; fi
 
 # Install the debug protocol binary into a local bin dir and prewarm it.
 agent-tools-install-protocol-debug bin_dir=".bin":
@@ -164,12 +163,11 @@ agent-tools-install-hook bin_dir="":
 
 # Install a released language provider binary through asp.
 # Develop mode: the root Justfile owns provider builds and installs into the ASP runtime bin.
-agent-tools-install-language language bin_dir="" target="" scope="global" project="":
+agent-tools-install-language language target="" scope="global" project="":
     #!/usr/bin/env bash
     set -euo pipefail
     repo_root="$(pwd -P)"
     state_home="{{asp_state_home}}"
-    bin_dir="{{ bin_dir }}"
     target="{{ target }}"
     scope="{{ scope }}"
     project="{{ project }}"
@@ -195,10 +193,6 @@ agent-tools-install-language language bin_dir="" target="" scope="global" projec
         ;;
     esac
     runtime_bin="${state_home}/runtime/bin"
-    if [[ -n "${bin_dir}" && "${bin_dir}" != "${runtime_bin}" ]]; then
-      echo "custom provider bin_dir is unsupported; ASP State Home runtime/bin is the only provider runtime authority: ${runtime_bin}" >&2
-      exit 2
-    fi
     mkdir -p "${runtime_bin}"
     case "{{ language }}" in
       rust)
@@ -279,36 +273,36 @@ agent-tools-install-language language bin_dir="" target="" scope="global" projec
     echo "[agent-tools-install] provider=${provider} language={{ language }} installMode=develop-workspace source=root-justfile binary=${binary} installedPath=${runtime_bin}/${binary} receipt=recorded"
 
 # Develop mode: build and install the Rust provider from this checkout.
-agent-tools-install-rust bin_dir="":
-    @just agent-tools-install-rs "{{bin_dir}}"
+agent-tools-install-rust:
+    @just agent-tools-install-rs
 
-agent-tools-install-rs bin_dir="":
-    @just agent-tools-install-language rust "{{bin_dir}}"
+agent-tools-install-rs:
+    @just agent-tools-install-language rust
 
 # Develop mode: build and install the TypeScript provider from this checkout.
-agent-tools-install-typescript bin_dir="":
-    @just agent-tools-install-ts "{{bin_dir}}"
+agent-tools-install-typescript:
+    @just agent-tools-install-ts
 
-agent-tools-install-ts bin_dir="":
-    @just agent-tools-install-language typescript "{{bin_dir}}"
+agent-tools-install-ts:
+    @just agent-tools-install-language typescript
 
 # Develop mode: build and install the Python provider from this checkout.
-agent-tools-install-python bin_dir="":
-    @just agent-tools-install-py "{{bin_dir}}"
+agent-tools-install-python:
+    @just agent-tools-install-py
 
-agent-tools-install-py bin_dir="":
-    @just agent-tools-install-language python "{{bin_dir}}"
+agent-tools-install-py:
+    @just agent-tools-install-language python
 
 # Develop mode: build and install the Julia provider from this checkout.
-agent-tools-install-julia bin_dir="":
-    @just agent-tools-install-jl "{{bin_dir}}"
+agent-tools-install-julia:
+    @just agent-tools-install-jl
 
-agent-tools-install-jl bin_dir="":
-    @just agent-tools-install-language julia "{{ bin_dir }}"
+agent-tools-install-jl:
+    @just agent-tools-install-language julia
 
 # Develop mode: build and install the Gerbil Scheme provider from this checkout.
-agent-tools-install-gerbil bin_dir="":
-    @just agent-tools-install-language gerbil-scheme "{{bin_dir}}"
+agent-tools-install-gerbil:
+    @just agent-tools-install-language gerbil-scheme
 
 agent-tools-build-gerbil bin_dir="":
     @set -e; \
@@ -382,10 +376,9 @@ check-graph-turbo-focused:
 check-language-evidence-smoke-setup:
     mkdir -p .bin
     just agent-tools-install-protocol .bin
-    just agent-tools-install-rs .bin
-    just agent-tools-install-ts .bin
-    just agent-tools-install-py .bin
-    PATH="$PWD/.bin:$PATH" .bin/asp hook install --client codex .
+    just agent-tools-install-rs
+    just agent-tools-install-ts
+    just agent-tools-install-py
 
 check-language-evidence-smoke-core: check-language-evidence-smoke-setup
     protocol_home="$(PATH="$PWD/.bin:$PATH" .bin/asp hook paths . | awk -F= '$1=="protocolHome"{print substr($0, 14)}')" && \
@@ -404,8 +397,7 @@ check-provider-knowledge-axes:
     node tools/provider-knowledge-axes-close-loop.mjs
 
 check-language-evidence-smoke-all-setup: check-language-evidence-smoke-setup
-    just agent-tools-install-julia .bin
-    PATH="$PWD/.bin:$PATH" .bin/asp hook install --client codex .
+    just agent-tools-install-julia
     PATH="$PWD/.bin:$PATH" .bin/asp julia guide {{julia_harness_project}} >/dev/null
 
 check-language-evidence-smoke-all: check-language-evidence-smoke-all-setup
@@ -554,7 +546,7 @@ provider-gate-typescript:
 provider-gate-python:
     uv run --project {{python_harness_project}} --frozen py-harness search policy PY-PROJ-R001 owner tests --workspace {{python_harness_project}} --view seeds
     uv run --project {{python_harness_project}} --frozen py-harness search policy PY-AGENT-R008 owner tests --workspace {{python_harness_project}} --view seeds
-    uv run --project {{python_harness_project}} --frozen py-harness query src/python_lang_project_harness/_semantic_language.py --term semantic_language_registry_document --names-only --workspace {{python_harness_project}}
+    uv run --project {{python_harness_project}} --frozen py-harness search owner src/python_lang_project_harness/_semantic_language.py items --query semantic_language_registry_document --workspace {{python_harness_project}} --view seeds
     uv run --project {{python_harness_project}} --frozen python -m pytest \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_query_set.py \
       {{python_harness_project}}/tests/unit/harness/test_semantic_cli_owner_items.py \
@@ -572,8 +564,9 @@ provider-gate-julia:
 
 # Refresh the local runtime boundary used by semantic-facts pipe smokes.
 provider-gate-semantic-facts-setup:
-    just agent-tools-install-py .bin
-    just agent-hooks-install-current .bin
+    mkdir -p .bin
+    just agent-tools-install-protocol .bin
+    just agent-tools-install-py
 
 # Verify cross-language parser-owned data-shape facts through both provider ABI and asp pipe projection.
 provider-gate-semantic-facts:
@@ -701,7 +694,7 @@ provider-gate-semantic-facts:
         require("recommendedNext=S1.query-selector" in output, f"{language} pipe missing selector-first recommendation")
         require(f"nextCommand=asp {language} query --selector" in output, f"{language} pipe missing next query command")
         require(
-            f"--workspace {project} --code" in output,
+            f"--workspace {project} --projection source" in output,
             f"{language} pipe missing scoped --workspace root {project}",
         )
         print(f"[semantic-facts] pipe {language} ok")

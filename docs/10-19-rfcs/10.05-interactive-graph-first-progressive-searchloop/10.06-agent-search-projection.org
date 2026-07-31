@@ -1,0 +1,6 @@
+#+title: Compatibility locator: Agent Search Projection
+
+* Canonical RFC
+
+The canonical projection RFC is
+[[file:../10.06-agent-search-projection.org][Agent Search Projection]].

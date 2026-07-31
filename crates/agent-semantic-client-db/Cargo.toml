@@ -10,6 +10,7 @@ default = []
 turso-sync-server-e2e = []
 
 [dependencies]
+agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 memmap2 = "0.9.10"
 agent-semantic-context-product = { path = "../agent-semantic-context-product" }
 agent-semantic-content-identity.workspace = true

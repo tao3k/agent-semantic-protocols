@@ -520,11 +520,23 @@ fn write_rust_owner_delegate(workspace: &std::path::Path, state_home: &std::path
         "providerId": "rs-harness",
         "state": "resolved",
         "resolution": {
+            "schemaId": "agent.semantic-protocols.project-resolution",
+            "schemaVersion": "1",
+            "state": "resolved",
+            "completeness": "exact",
+            "repositoryCandidates": {
+                "candidates": [
+                    {"path": "lib.rs"},
+                    {"path": "other.rs"}
+                ],
+                "policyExclusions": []
+            },
             "resolvedSourceScopes": [{
-                "packageId": "fixture-package",
-                "targetId": "fixture-target",
-                "authority": "cargo-manifest",
-                "paths": ["lib.rs", "other.rs"]
+                "roots": ["."],
+                "explicitPaths": [],
+                "extensions": [".rs"],
+                "includeAuthority": "package-manager",
+                "exclusions": []
             }]
         }
     }))

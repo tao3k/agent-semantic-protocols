@@ -58,7 +58,10 @@ impl LocalNativeCliBackend {
         Self { snapshot }
     }
 
-    pub fn prepare(&self, request: &ClientRequest) -> Result<LocalNativeCommand, String> {
+    fn prepare_uncanonicalized(
+        &self,
+        request: &ClientRequest,
+    ) -> Result<LocalNativeCommand, String> {
         let mut commands = self.prepare_all(request)?;
         if commands.len() == 1 {
             Ok(commands.remove(0))
@@ -610,5 +613,25 @@ impl LocalNativeCommand {
         argv.push(self.program.clone());
         argv.extend(self.args.clone());
         argv
+    }
+}
+impl LocalNativeCliBackend {
+    /// Prepares a provider command against one canonical project-root identity.
+    pub fn prepare(&self, request: &ClientRequest) -> Result<LocalNativeCommand, String> {
+        let mut command = self.prepare_uncanonicalized(request)?;
+        if command.project_root.try_exists().map_err(|error| {
+            format!(
+                "inspect provider command project root {}: {error}",
+                command.project_root.display()
+            )
+        })? {
+            command.project_root = command.project_root.canonicalize().map_err(|error| {
+                format!(
+                    "canonicalize provider command project root {}: {error}",
+                    command.project_root.display()
+                )
+            })?;
+        }
+        Ok(command)
     }
 }

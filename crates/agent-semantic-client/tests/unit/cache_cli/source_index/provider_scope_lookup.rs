@@ -206,7 +206,7 @@ async fn cache_source_index_refresh_uses_provider_project_resolution() {
         .expect("create home local bin");
     std::fs::write(&provider_bin, r#"#!/bin/sh
 if [ "$1" = "project-resolution-stdin" ]; then
-  printf '%s\n' '{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","languageId":"gerbil-scheme","providerId":"gerbil-scheme-harness","state":"resolved","resolution":{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","repositoryCandidates":{"candidates":[{"path":"src/included.ss"},{"path":"extra/excluded.ss"}],"policyExclusions":[]},"resolvedSourceScopes":[{"roots":["src"],"extensions":[".ss"],"includeAuthority":"package-manager","exclusions":[]}]}}'
+  printf '%s\n' '{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","languageId":"gerbil-scheme","providerId":"gerbil-scheme-harness","state":"resolved","resolution":{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","repositoryCandidates":{"candidates":[{"path":"src/included.ss"},{"path":"extra/excluded.ss"}],"policyExclusions":[]},"resolvedSourceScopes":[{"roots":["src"],"explicitPaths":[],"extensions":[".ss"],"includeAuthority":"package-manager","exclusions":[]}]}}'
   exit 0
 fi
 exit 2

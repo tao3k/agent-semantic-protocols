@@ -106,7 +106,6 @@ fn run_paths(args: &[String]) -> Result<(), String> {
 mod hook_workspace_candidate_tests;
 
 fn run_hook(args: &[String]) -> Result<(), String> {
-    hook_runtime_generation_admission::admit_hook_workspace_generation(args)?;
     let client = flag_value(args, "--client")
         .ok_or_else(|| "missing required --client <client>".to_string())?;
     ensure_supported_client(client)?;
@@ -153,7 +152,25 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let mut runtime = match load_activation(&activation_path) {
         Ok(registry) => registry,
         Err(initial_error) => {
-            let repair_project_root = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let repair_project_root = match activation_repair_project_root(
+                &payload,
+                &activation_path,
+            ) {
+                Ok(project_root) => project_root,
+                Err(identity_error) => {
+                    emit_activation_load_failure(
+                        client,
+                        event,
+                        emit,
+                        &activation_path,
+                        &format!(
+                            "initial load failed: {initial_error}; activation repair identity resolution failed: {identity_error}"
+                        ),
+                        &stdin,
+                    )?;
+                    return Ok(());
+                }
+            };
             match agent_semantic_hook::load_or_sync_activation(
                 &activation_path,
                 &repair_project_root,
@@ -182,9 +199,10 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         hook_runtime_project_root(&activation_path, &runtime.project_root);
     let project_root = hook_workspace_candidate(&payload, &activation_project_root);
     runtime.project_root = project_root.display().to_string();
-    let runtime_generation_admission = matches!(classification_event, "pre-tool" | "session-start")
-        .then(|| hook_runtime_generation_admission::request(&project_root))
-        .transpose()?;
+    let runtime_generation_admission =
+        hook_runtime_generation_admission::hook_event_requires_generation_admission(args)
+            .then(|| hook_runtime_generation_admission::request(&project_root))
+            .transpose()?;
     let config_path = flag_value(args, "--config")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
@@ -851,6 +869,38 @@ fn hook_runtime_project_root(activation_path: &Path, project_root: &str) -> Path
         return fs::canonicalize(&cwd).unwrap_or(cwd);
     }
     activation_root
+}
+
+fn activation_repair_project_root(
+    payload: &serde_json::Value,
+    activation_path: &Path,
+) -> Result<PathBuf, String> {
+    let payload_root = payload
+        .get("cwd")
+        .and_then(serde_json::Value::as_str)
+        .map(PathBuf::from)
+        .map(|root| fs::canonicalize(&root).unwrap_or(root));
+    let activation_owner =
+        agent_semantic_runtime::state::project_root_for_activation_path(activation_path)
+            .map(|root| fs::canonicalize(&root).unwrap_or(root));
+
+    if let Some(owner) = activation_owner {
+        if let Some(payload_root) = payload_root
+            && !payload_root.starts_with(&owner)
+        {
+            return Err(format!(
+                "identity/state mismatch: activationOwner={} payloadCwd={}",
+                owner.display(),
+                payload_root.display()
+            ));
+        }
+        return Ok(owner);
+    }
+    if let Some(payload_root) = payload_root {
+        return Ok(payload_root);
+    }
+    let current = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    Ok(fs::canonicalize(&current).unwrap_or(current))
 }
 
 fn activation_root_is_global_hook_state(activation_path: &Path, activation_root: &Path) -> bool {

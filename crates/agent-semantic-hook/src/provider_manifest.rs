@@ -93,8 +93,11 @@ pub fn build_default_activation_from_selections(
         if !provider_applies_to_repository_candidates(manifest, &repository_candidates) {
             continue;
         }
-        let coverage =
-            resolve_activation_coverage(project_root, manifest, selection, &repository_candidates)?;
+        let Some(coverage) =
+            resolve_activation_coverage(project_root, manifest, selection, &repository_candidates)?
+        else {
+            continue;
+        };
         providers.push(activate_provider(
             manifest,
             selection.manifest_digest.clone(),
@@ -792,12 +795,12 @@ fn resolve_activation_coverage(
     manifest: &ProviderManifest,
     selection: &ProviderCommandSelection,
     snapshot: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
-) -> Result<ActivationCoverage, String> {
+) -> Result<Option<ActivationCoverage>, String> {
     use std::io::Write as _;
     use std::process::Stdio;
 
     if manifest.document_resolution().is_some() {
-        return resolve_document_activation_coverage(manifest, snapshot);
+        return resolve_document_activation_coverage(manifest, snapshot).map(Some);
     }
     let descriptor = manifest.project_resolution().ok_or_else(|| {
         format!(
@@ -886,15 +889,47 @@ fn resolve_activation_coverage(
                 )
             })
     };
-    if response_string("schemaId")?
-        != "agent.semantic-protocols.provider-project-resolution-response"
-        || response_string("schemaVersion")? != "1"
-        || response_string("state")? != "resolved"
-        || response_string("languageId")? != manifest.language_id().as_str()
-        || response_string("providerId")? != manifest.provider_id().as_str()
+    let response_schema_id = response_string("schemaId")?;
+    let response_schema_version = response_string("schemaVersion")?;
+    let response_state = response_string("state")?;
+    let response_language_id = response_string("languageId")?;
+    let response_provider_id = response_string("providerId")?;
+    let response_failure = response
+        .get("failure")
+        .map(serde_json::Value::to_string)
+        .unwrap_or_else(|| "none".to_string());
+    if response_schema_id != "agent.semantic-protocols.provider-project-resolution-response"
+        || response_schema_version != "1"
+        || response_language_id != manifest.language_id().as_str()
+        || response_provider_id != manifest.provider_id().as_str()
     {
         return Err(format!(
-            "provider project-resolution response identity/state mismatch: providerId={}",
+            "provider project-resolution response identity/state mismatch: expectedSchemaId=agent.semantic-protocols.provider-project-resolution-response expectedSchemaVersion=1 expectedState=resolved expectedLanguageId={} expectedProviderId={} observedSchemaId={response_schema_id} observedSchemaVersion={response_schema_version} observedState={response_state} observedLanguageId={response_language_id} observedProviderId={response_provider_id} observedFailure={response_failure}",
+            manifest.language_id(),
+            manifest.provider_id(),
+        ));
+    }
+    if response_state == "failed" {
+        let failure = response
+            .get("failure")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| {
+                format!(
+                    "failed provider project-resolution omitted failure receipt: providerId={}",
+                    manifest.provider_id()
+                )
+            })?;
+        if project_resolution_failure_is_inactive(failure, manifest.provider_id().as_str())? {
+            return Ok(None);
+        }
+        return Err(format!(
+            "provider project-resolution failed: providerId={} failure={response_failure}",
+            manifest.provider_id()
+        ));
+    }
+    if response_state != "resolved" {
+        return Err(format!(
+            "provider project-resolution returned unsupported state: providerId={} state={response_state}",
             manifest.provider_id()
         ));
     }
@@ -1006,14 +1041,69 @@ fn resolve_activation_coverage(
         .and_then(|identity| identity.get("projectEntry"))
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| "project-resolution omitted projectIdentity.projectEntry".to_string())?;
-    Ok(ActivationCoverage {
+    Ok(Some(ActivationCoverage {
         package_roots: package_roots.into_iter().collect(),
         config_files: vec![project_entry.to_string()],
         source_extensions: source_extensions.into_iter().collect(),
         source_paths: source_paths.into_iter().collect(),
         repository_candidate_generation,
         project_resolution_generation: resolution_string("resolutionGeneration")?.to_string(),
-    })
+    }))
+}
+
+fn project_resolution_failure_is_inactive(
+    failure: &serde_json::Map<String, serde_json::Value>,
+    provider_id: &str,
+) -> Result<bool, String> {
+    let reason_kind = failure
+        .get("reasonKind")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            format!(
+                "provider project-resolution failure omitted reasonKind: providerId={provider_id}"
+            )
+        })?;
+    Ok(reason_kind == "project-entry-missing")
+}
+
+#[cfg(test)]
+mod provider_project_resolution_failure_tests {
+    use super::project_resolution_failure_is_inactive;
+
+    #[test]
+    fn missing_project_entry_deactivates_only_that_provider() {
+        let failure = serde_json::json!({"reasonKind": "project-entry-missing"});
+        assert_eq!(
+            project_resolution_failure_is_inactive(
+                failure.as_object().expect("failure object"),
+                "py-harness"
+            ),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn invalid_project_entry_remains_fail_closed() {
+        let failure = serde_json::json!({"reasonKind": "project-entry-invalid"});
+        assert_eq!(
+            project_resolution_failure_is_inactive(
+                failure.as_object().expect("failure object"),
+                "py-harness"
+            ),
+            Ok(false)
+        );
+    }
+
+    #[test]
+    fn malformed_failure_receipt_remains_fail_closed() {
+        let failure = serde_json::json!({});
+        let error = project_resolution_failure_is_inactive(
+            failure.as_object().expect("failure object"),
+            "py-harness",
+        )
+        .expect_err("missing reasonKind must fail closed");
+        assert!(error.contains("omitted reasonKind"), "{error}");
+    }
 }
 
 fn activate_provider(

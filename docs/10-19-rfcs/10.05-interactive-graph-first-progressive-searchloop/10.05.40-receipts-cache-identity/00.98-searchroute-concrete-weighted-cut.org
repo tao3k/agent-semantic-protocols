@@ -1,0 +1,386 @@
+#+title: RFC 10.05.40.00.98 - Concrete Weighted Cut Certificate
+#+startup: overview
+
+* Status
+
+Draft, proof-backed.
+
+This module constructs the abstract weighted-cut obligations from RFC 00.97
+over a concrete admitted report list. It changes protocol receipts and
+verification semantics only. It does not authorize Rust or Python
+implementation.
+
+* Abstract
+
+A weighted quorum and a cumulative cut are not enough to identify a valid
+weighted quantile. The verifier must also prove:
+
+- every admitted authority identity contributes at most once;
+- the concrete list is partitioned without dropping or duplicating weight;
+- the lower partition has weight strictly below the cut;
+- adding the selected report reaches the cut;
+- report values are ordered around the selected report;
+- the total weight is computed from the same admitted list.
+
+For lower weight \(W_-\), selected weight \(w_s\), upper weight \(W_+\), and
+cut \(C\):
+
+#+name: searchroute-concrete-weighted-cut-model
+#+begin_src typst
+#let concrete-cut(lower, selected, upper, cut) = (
+  lower < cut
+  and cut <= lower + selected
+  and lower + selected + upper > 0
+)
+#assert(concrete-cut(0, 4, 6, 4))
+#assert(0 + 4 + 6 == 10)
+#assert(not concrete-cut(4, 2, 4, 4))
+#assert(10 > 0)
+"ok"
+#+end_src
+
+The list partition is an evidence commitment, not merely an implementation
+detail.
+
+* Concrete report model
+
+Each admitted report contains:
+
+#+begin_example
+WeightedAuthorityReport {
+  authorityId
+  boundValue
+  votingWeight
+}
+#+end_example
+
+The =votingWeight= is resolved from the bound authority-set snapshot. It is not
+trusted from the report payload.
+
+For a closed admitted list \(R\), a concrete cut certificate supplies:
+
+\[
+R = R_- \mathbin{+\!\!+} [r_s] \mathbin{+\!\!+} R_+
+\]
+
+where \(R_-\) is the lower partition, \(r_s\) is the selected report, and
+\(R_+\) is the upper partition.
+
+The weight algebra is:
+
+\[
+W(R) = W(R_-) + w(r_s) + W(R_+).
+\]
+
+The cut obligations are:
+
+\[
+W(R_-) < C
+\qquad\text{and}\qquad
+C \le W(R_-)+w(r_s).
+\]
+
+The ordering obligations are:
+
+\[
+\forall r\in R_-,\quad v(r)\le v(r_s)
+\]
+
+and
+
+\[
+\forall r\in R_+,\quad v(r_s)\le v(r).
+\]
+
+The executable proposition is:
+
+#+name: searchroute-concrete-weighted-cut-proposition
+#+begin_src typst
+#let conservation = $
+  R = R_- ++ [r_s] ++ R_+
+  arrow.r.double
+  W(R) = W(R_-) + w(r_s) + W(R_+)
+$
+#let cut-witness = $
+  W(R_-) < C
+  and C <= W(R_-) + w(r_s)
+  arrow.r.double
+  C <= W(R)
+$
+#let ordered-thresholds = $
+  v(r) <= v(r_s) < A
+  arrow.r.double
+  v(r) < A
+$
+#assert(type(conservation) == content)
+#assert(type(cut-witness) == content)
+#assert(type(ordered-thresholds) == content)
+"ok"
+#+end_src
+
+* Proof-discovered gaps
+
+** Bare cumulative cut is insufficient
+
+Take two reports in the concrete order:
+
+#+begin_example
+(authority=1, value=10, weight=4)
+(authority=2, value=0,  weight=6)
+#+end_example
+
+With \(C=4\), the empty lower partition has weight zero and adding the first
+report reaches the cut. The cumulative arithmetic passes, but selecting value
+10 is invalid because the next report has value 0.
+
+Therefore =lowerWeight < cut <= lowerWeight + selectedWeight= MUST NOT be
+treated as a complete quantile certificate. Value ordering is an independent
+proof obligation.
+
+** Set membership is insufficient
+
+An admitted set digest proves which reports exist, but not how a quantile
+projection ordered them. Conversely, an ordered sequence digest can preserve
+an accidental duplicate unless distinct authority identity is checked.
+
+The receipt therefore needs both semantic commitments:
+
+- an identity-canonical admitted set;
+- a value-ordered quantile projection derived from exactly that set.
+
+** Duplicate reports inflate weight
+
+If one report of weight two is counted twice, total voting weight increases
+from two to four without adding an authority. Weight conservation over a list
+does not prevent this; it only proves conservation of the possibly invalid
+list. Distinct identity admission MUST precede weight summation.
+
+** Equal selected values do not imply equal receipts
+
+Two authority weight schedules can select the same numeric bound while
+producing different total weights, cuts, and Byzantine margins. Cache identity
+cannot be based on =selectedValue= alone.
+
+* Normative verifier contract
+
+** Phase ordering
+
+The verifier MUST execute the following logical phases:
+
+#+begin_example
+resolve snapshots
+  -> authenticate reports
+  -> canonicalize authority identities
+  -> reject duplicates/equivocation
+  -> resolve snapshot-owned weights
+  -> close admitted set
+  -> compute total collected weight
+  -> construct value-ordered projection
+  -> verify concrete cut partition
+  -> verify weighted cut window
+  -> emit receipt
+#+end_example
+
+A later phase MUST NOT retroactively alter an earlier commitment. Any added,
+removed, reweighted, or reclassified report creates a new aggregation attempt.
+
+** Distinct admission
+
+The verifier MUST establish pairwise-distinct canonical authority identities
+before summing weights. Multiple signatures, endpoints, aliases, or provider
+records resolving to the same authority identity count as one authority.
+
+Equivocating reports MUST be handled by an explicit policy. The verifier MUST
+either:
+
+- reject the aggregation attempt; or
+- select one effective report using a policy bound into the receipt and retain
+  all conflicting evidence.
+
+It MUST NOT sum the weight once per conflicting report.
+
+** Canonical admitted set
+
+The =admittedReportSetDigest= MUST commit to reports sorted by canonical
+authority identity. This commitment is independent of quantile ordering and
+allows set equality to be checked without trusting arrival order.
+
+Each committed entry MUST bind:
+
+- canonical authority identity;
+- authority-set snapshot identity;
+- fault-bound snapshot identity;
+- epoch;
+- report value;
+- snapshot-resolved voting weight;
+- report signature/evidence digest;
+- admission or equivocation disposition.
+
+** Quantile projection
+
+The =orderedQuantileProjectionDigest= MUST commit to the same effective reports
+ordered by:
+
+#+begin_example
+(boundValue, canonicalAuthorityId)
+#+end_example
+
+The verifier MUST prove multiset equality between the admitted set and the
+quantile projection after removing rejected evidence. No report may be added,
+dropped, duplicated, or reweighted by projection.
+
+** Concrete partition
+
+The receipt MUST identify:
+
+- =lowerPartitionDigest=;
+- =selectedAuthorityId=;
+- =selectedValue=;
+- =selectedVotingWeight=;
+- =upperPartitionDigest=;
+- =lowerPartitionWeight=;
+- =upperPartitionWeight=;
+- =cutWeight=;
+- =totalCollectedWeight=.
+
+The verifier MUST reconstruct:
+
+#+begin_example
+totalCollectedWeight =
+  lowerPartitionWeight +
+  selectedVotingWeight +
+  upperPartitionWeight
+#+end_example
+
+and:
+
+#+begin_example
+lowerPartitionWeight < cutWeight
+cutWeight <= lowerPartitionWeight + selectedVotingWeight
+#+end_example
+
+It MUST also check every lower value is at most =selectedValue= and every upper
+value is at least =selectedValue=.
+
+** Zero-weight reports
+
+A zero-weight report may appear in either ordered partition, but cannot cross
+the cut. If a selected zero-weight report is claimed to cross the cut, the
+certificate is invalid.
+
+Tie ordering by canonical authority identity is still required for zero-weight
+reports so projection and receipt identities remain deterministic.
+
+* Receipt and cache identity
+
+The concrete weighted-cut receipt identity MUST bind at least:
+
+#+begin_example
+concreteWeightedCutReceiptId = H(
+  aggregationPolicyVersion,
+  authoritySetSnapshotId,
+  faultBoundSnapshotId,
+  epoch,
+  admittedReportSetDigest,
+  orderedQuantileProjectionDigest,
+  authorityWeightScheduleDigest,
+  totalCollectedWeight,
+  faultWeightBudget,
+  cutWeight,
+  lowerPartitionDigest,
+  lowerPartitionWeight,
+  selectedAuthorityId,
+  selectedValue,
+  selectedVotingWeight,
+  upperPartitionDigest,
+  upperPartitionWeight,
+  orderingPolicyVersion,
+  tiePolicyVersion,
+  equivocationPolicyVersion
+)
+#+end_example
+
+A search-result cache MAY reuse the receipt only under exact identity and
+validity. A model prefix cache MAY reuse deterministic rendering bytes, but
+that cache hit does not establish report-set, snapshot, or epoch validity.
+
+* Progressive inspect projection
+
+The SearchLoop should not expose the full report list by default. The compact
+receipt projection SHOULD include:
+
+- snapshot and epoch identities;
+- total weight, fault budget, and cut;
+- partition weights;
+- selected value and authority;
+- admitted-set and ordered-projection digests;
+- proof-audit identity;
+- typed next actions.
+
+An =inspect lower-partition=, =inspect selected=, or
+=inspect upper-partition= transition can progressively expose the corresponding
+committed reports. This keeps the normal graph path short while preserving a
+verifiable route to concrete evidence.
+
+No separate complex CLI command family is required. The interactive protocol
+may render these transitions through a CLI adapter, tool call, or direct model
+runtime.
+
+* Lean realization
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.lean
+#+end_example
+
+It defines a concrete weighted report, distinct-authority admission, total
+weight, ordered partitions, and a cut certificate. It proves:
+
+- list append preserves total voting weight;
+- cut partitioning preserves total voting weight;
+- the concrete partition supplies both arithmetic witnesses required by the
+  abstract weighted-cut proof;
+- ordered lower and upper partitions cover threshold witnesses;
+- a duplicate authority cannot satisfy distinct admission;
+- duplicate reports can inflate total voting weight;
+- cumulative cut arithmetic without value ordering is insufficient.
+
+The modular audit owner and executable entry are:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCut.lean
+
+packages/proofs/audit/
+  SearchRouteAdmissionRetryCacheRejoinConcreteWeightedCutAudit.lean
+#+end_example
+
+The generated receipt is:
+
+#+begin_example
+packages/proofs/receipts/
+  searchroute-admission-retry-cache-rejoin-concrete-weighted-cut-audit-v1.json
+#+end_example
+
+* Non-goals
+
+This module does not yet prove:
+
+- correctness of a particular sorting implementation;
+- equality between an independently encoded set digest and sequence digest;
+- authority-set rotation during collection;
+- joint old/new weight conservation;
+- fractional weight normalization;
+- availability under missing high-weight authorities.
+
+* Next proof boundary
+
+The next module should prove a joint authority-set transition. A report
+collected under the old weight schedule cannot be reinterpreted using the new
+schedule, and two schedules cannot share a weighted-cut receipt merely because
+they select the same bound value.
+
+The proof must model old-only, joint, and new-only epochs and require separate
+weight conservation for each authorized snapshot.

@@ -1,0 +1,271 @@
+#+title: RFC 10.05.31 — Lexicographic Omitted-Frontier Certificate
+
+#+property: rfc_layer evidence-graph-routing
+
+* Status
+
+This RFC connects:
+
+- [[file:00.30-certified-sparse-evidence-graph-projection.org][RFC 10.05.30 — Certified Sparse Evidence Graph Projection]];
+- the existing =SearchRouteDAG.graphLexNoWorse= cost order;
+- the existing SearchRoute branch-bound and frontier strategy.
+
+Lean ownership:
+
+- =packages/proofs/ASPProof/SearchRouteSparseFrontierCertificate.lean=;
+- =packages/proofs/ASPProof/Audit/SearchRouteSparseFrontierCertificate.lean=.
+
+Validation remains blocked by the workspace activation failure:
+
+- =activation must include at least one provider=;
+- =resolved source scope omitted roots=.
+
+The Lean and Typst models are drafts until compiled and audited.
+
+* Problem
+
+RFC 10.05.30 states that sparse edge soundness is insufficient for a global
+shortest-route claim.  It proposes two remedies:
+
+- distance-complete sparse projection;
+- certified lower bounds over omitted route frontiers.
+
+These remedies must use the same cost order as Graph Router.  A scalar hop
+bound is insufficient when selection compares:
+
+- graph hops;
+- uncached token cost;
+- interaction rounds;
+- transition count.
+
+A lower bound that ignores tokens or rounds may certify a frontier under a
+different order than the one used to select the visible route.
+
+* Certified omitted frontier
+
+A =CertifiedOmittedFrontier= contains:
+
+- omitted candidates;
+- a symbolic lower-bound candidate;
+- proof that the lower bound is lexicographically no worse than every omitted
+  candidate.
+
+The lower-bound candidate is a proof object.  It need not be executable and
+must never be rendered as a selected route.
+
+Future implementations may replace it with an explicit cost vector, provided
+the vector order is proved equivalent to =graphLexNoWorse=.
+
+* Sparse coverage
+
+=SparseCoverage(full, visible, frontiers)= requires every full-catalog
+candidate to be:
+
+- present in the visible sparse catalog; or
+- contained in one certified omitted frontier.
+
+Coverage alone does not imply optimality.  It only proves that no candidate was
+silently lost from accounting.
+
+* Frontier closure
+
+For a selected candidate and an omitted frontier, closure requires:
+
+The selected candidate is lexicographically no worse than the frontier lower
+bound.
+
+Combined with lower-bound validity and transitivity:
+
+- selected is no worse than the lower bound;
+- lower bound is no worse than every frontier member;
+- therefore selected is no worse than every omitted candidate.
+
+* Global theorem
+
+The selected route is globally optimal when:
+
+- it is optimal among visible sparse candidates;
+- sparse coverage accounts for every full candidate;
+- every omitted frontier is closed under the selected cost.
+
+This theorem reuses the existing Graph Router cost order.  It does not create a
+second Python-private ranking order.
+
+* Distance-completeness equivalence
+
+The route-catalog form of distance completeness requires:
+
+For every full candidate, some sparse candidate is lexicographically no worse.
+
+Certified frontiers imply this property by using the selected candidate as the
+sparse witness for every visible or safely omitted route.
+
+Conversely:
+
+- if the sparse catalog is distance-complete;
+- and the selected candidate is optimal within the sparse catalog;
+
+then the selection is globally optimal in the full catalog.
+
+The two strategies therefore converge on one proof boundary:
+
+=no omitted executable route can improve the selected Graph Router cost=.
+
+* Hidden-candidate counterexample
+
+If a hidden full-catalog candidate is strictly better than the selected route,
+the selected route cannot be globally optimal in a catalog containing both.
+
+This remains true even if:
+
+- all visible edges are sound;
+- the visible route is internally optimal;
+- the hidden candidate was omitted intentionally for token savings.
+
+Token reduction does not discharge the omitted-route obligation.
+
+* Python Graph Turbo boundary
+
+Python Graph Turbo MAY choose:
+
+- distance-preserving projection;
+- contraction with reconstructable summary routes;
+- certified omitted frontiers;
+- a hybrid strategy.
+
+It MUST expose:
+
+- full and visible generation identities;
+- visible candidate membership;
+- omitted-frontier membership;
+- lower-bound derivation identity;
+- Graph Router cost-model version;
+- frontier closure result;
+- unresolved frontier count.
+
+An unresolved frontier keeps the route state open and produces one bounded
+=recommendedNext=.  It cannot be interpreted as an empty search result.
+
+* Cache and incremental update boundary
+
+A cached frontier certificate is valid only for:
+
+- the same complete Evidence Graph generation;
+- the same sparse projection generation;
+- the same cost-model version;
+- the same query or reusable route class.
+
+Incremental graph updates must invalidate or recompute every frontier whose
+candidates, lower bound, or closure relation may change.
+
+* Mathematical model
+
+#+name: lexicographic-omitted-frontier-certificate-model
+#+begin_src typst
+#let GraphCost = $ K(c) = cases(
+  h(c),
+  u(c),
+  r(c),
+  t(c),
+) $
+
+#let LowerBoundValid = $ forall c in f,
+  K(L_f) <=_"graph" K(c) $
+
+#let SparseCoverage = $ forall c in U, cases(
+  c in V,
+  exists f in F, c in f,
+) $
+
+#let VisibleOptimal = $ forall c in V,
+  K(c^*) <=_"graph" K(c) $
+
+#let FrontierClosed = $ forall f in F,
+  K(c^*) <=_"graph" K(L_f) $
+
+#let GlobalOptimal = $ cases(
+  "VisibleOptimal"(c^*, V),
+  "SparseCoverage"(U, V, F),
+  forall f in F, "LowerBoundValid"(f, L_f),
+  "FrontierClosed"(c^*, F),
+) "implies" forall c in U,
+  K(c^*) <=_"graph" K(c) $
+
+#let CatalogDistanceComplete = $ forall c in U,
+  exists v in V, K(v) <=_"graph" K(c) $
+
+#let FrontierImpliesDistanceComplete = $ cases(
+  c^* in V,
+  "GlobalOptimal"(c^*, U),
+) "implies" "CatalogDistanceComplete"(U, V) $
+
+#let DistanceCompleteImpliesGlobal = $ cases(
+  "CatalogDistanceComplete"(U, V),
+  "VisibleOptimal"(c^*, V),
+) "implies" "GlobalOptimal"(c^*, U) $
+
+#let HiddenCandidateCounterexample = $ exists c_h in U, cases(
+  c_h "not in" V,
+  K(c_h) <_"graph" K(c^*),
+  "not" "GlobalOptimal"(c^*, U),
+) $
+
+#let Main = (
+  GraphCost,
+  LowerBoundValid,
+  SparseCoverage,
+  VisibleOptimal,
+  FrontierClosed,
+  GlobalOptimal,
+  CatalogDistanceComplete,
+  FrontierImpliesDistanceComplete,
+  DistanceCompleteImpliesGlobal,
+  HiddenCandidateCounterexample,
+)
+
+"ok"
+#+end_src
+
+The block is extracted through =orgize eval plan --json NAME PATH= and sent to
+=typst eval --in -=.  It does not own a =:file= header, standalone Typst file,
+compile step, or PDF.
+
+* Lean theorem mapping
+
+=SearchRouteSparseFrontierCertificate.lean= proves:
+
+- =certified_frontier_selection_is_global=;
+- =certified_frontiers_imply_catalog_distance_completeness=;
+- =distance_complete_sparse_selection_is_global=;
+- =uncovered_hidden_candidate_invalidates_global_claim=.
+
+* Audit requirements
+
+The modular audit MUST classify:
+
+- frontier-global-optimality;
+- frontier-to-distance-completeness;
+- distance-completeness-to-global-optimality;
+- hidden-candidate counterexample.
+
+Audit targets belong only to
+=ASPProof.Audit.SearchRouteSparseFrontierCertificate=.
+
+* Non-goals
+
+This RFC does not:
+
+- implement Python Graph Turbo;
+- introduce a Python-private cost order;
+- treat lower-bound candidates as executable routes;
+- accept coverage without lower-bound validity;
+- accept unresolved frontiers as closure;
+- modify Rust provider code;
+- use raw LaTeX or standalone Typst.
+
+* Remaining proof boundary
+
+The next layer should replace symbolic lower-bound candidates with a dedicated
+cost-vector type and prove exact order equivalence.  It should then connect
+frontier certificates to incremental Python sparse-matrix updates and
+generation-bound cache invalidation.

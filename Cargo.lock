@@ -109,6 +109,7 @@ dependencies = [
  "agent-semantic-content-identity",
  "agent-semantic-context-product",
  "agent-semantic-loop",
+ "agent-semantic-runtime",
  "asp-rust-project-harness-policy",
  "blake3",
  "criterion",

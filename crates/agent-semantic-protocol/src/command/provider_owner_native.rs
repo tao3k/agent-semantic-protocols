@@ -60,28 +60,37 @@ pub(super) struct ExpectedOwnerResponse<'a> {
     pub(super) source_size: u64,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProviderProjectResolutionResponse {
-    schema_id: String,
-    schema_version: String,
-    language_id: String,
-    provider_id: String,
-    state: String,
-    resolution: Option<ProviderProjectResolution>,
-    failure: Option<serde_json::Value>,
+struct ProviderProjectResolutionRequest<'a> {
+    schema_id: &'static str,
+    schema_version: &'static str,
+    language_id: &'a str,
+    provider_id: &'a str,
+    workspace_root: &'a std::path::Path,
+    repository_candidates: &'a agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderProjectResolution {
-    resolved_source_scopes: Vec<ProviderResolvedSourceScope>,
+fn encode_provider_project_resolution_request(
+    language_id: &str,
+    provider_id: &str,
+    workspace_root: &std::path::Path,
+    repository_candidates: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
+) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(&ProviderProjectResolutionRequest {
+        schema_id: "agent.semantic-protocols.provider-project-resolution-request",
+        schema_version: "1",
+        language_id,
+        provider_id,
+        workspace_root,
+        repository_candidates,
+    })
+    .map_err(|error| format!("failed to encode provider project-resolution request: {error}"))
 }
 
-#[derive(Debug, serde::Deserialize)]
-struct ProviderResolvedSourceScope {
-    paths: Vec<std::path::PathBuf>,
-}
+#[cfg(test)]
+#[path = "../../tests/unit/provider_owner_native_project_resolution.rs"]
+mod project_resolution_request_tests;
 
 pub(super) fn run_provider_project_resolution(
     context: ProviderOwnerNativeTransportContext<'_>,
@@ -103,37 +112,12 @@ pub(super) fn run_provider_project_resolution(
             context.language_id, context.provider.provider_id
         ));
     }
-    let candidates = repository_candidates
-        .candidates
-        .iter()
-        .filter_map(|candidate| {
-            repository_candidates
-                .worktree_identity
-                .worktree_root
-                .join(&candidate.path)
-                .strip_prefix(context.project_root)
-                .ok()
-                .map(|path| serde_json::json!({ "path": path }))
-        })
-        .collect::<Vec<_>>();
-    let request = serde_json::json!({
-        "schemaId": "agent.semantic-protocols.provider-project-resolution-request",
-        "schemaVersion": "1",
-        "languageId": context.language_id,
-        "providerId": context.provider.provider_id.as_str(),
-        "workspaceRoot": context.project_root,
-        "repositoryCandidates": {
-            "schemaId": "agent.semantic-protocols.repository-candidate-snapshot",
-            "schemaVersion": "1",
-            "candidateGeneration": {
-                "digest": repository_candidates.candidate_generation.digest.as_str(),
-            },
-            "candidates": candidates,
-        },
-    });
-    let stdin = serde_json::to_vec(&request).map_err(|error| {
-        format!("failed to encode provider project-resolution request: {error}")
-    })?;
+    let stdin = encode_provider_project_resolution_request(
+        context.language_id,
+        context.provider.provider_id.as_str(),
+        context.project_root,
+        repository_candidates,
+    )?;
     let args = [descriptor.command_binding.clone()];
     let invocation = provider_invocation_with_profile(context.profiles, context.provider, &args)?;
     let output = run_provider_command_with_stdin(
@@ -143,45 +127,29 @@ pub(super) fn run_provider_project_resolution(
         context.project_root,
         stdin,
     )?;
-    let response: ProviderProjectResolutionResponse = serde_json::from_slice(
+    let expected_language_id =
+        agent_semantic_client_core::LanguageId::from(context.language_id);
+    let expected_provider_id =
+        agent_semantic_client_core::ProviderId::from(context.provider.provider_id.as_str());
+    let scope = agent_semantic_client::project_resolution_scope_from_stdout(
         output.stdout.as_ref(),
+        &expected_language_id,
+        &expected_provider_id,
     )
     .map_err(|error| {
         format!(
-            "invalid provider project-resolution response JSON: status={} stderr={} error={error}",
+            "invalid provider project-resolution response: status={} stderr={} error={error}",
             output.status,
             String::from_utf8_lossy(&output.stderr).trim()
         )
     })?;
-    if response.schema_id != "agent.semantic-protocols.provider-project-resolution-response"
-        || response.schema_version != "1"
-        || response.language_id != context.language_id
-        || response.provider_id != context.provider.provider_id.as_str()
-    {
-        return Err(format!(
-            "provider project-resolution response identity drift: schemaId={} schemaVersion={} languageId={} providerId={}",
-            response.schema_id, response.schema_version, response.language_id, response.provider_id
-        ));
-    }
-    if !output.status.success() || response.state != "resolved" {
-        return Err(format!(
-            "provider project-resolution failed: status={} state={} failure={}",
-            output.status,
-            response.state,
-            response
-                .failure
-                .as_ref()
-                .map(serde_json::Value::to_string)
-                .unwrap_or_else(|| "none".to_string())
-        ));
-    }
-    let resolution = response.resolution.ok_or_else(|| {
-        "provider project-resolution returned resolved state without resolution".to_string()
-    })?;
-    let mut paths = resolution
-        .resolved_source_scopes
+    let agent_semantic_client::ProviderProjectScope::Supported(packet) = scope else {
+        return Ok(Vec::new());
+    };
+    let mut paths = packet
+        .files
         .into_iter()
-        .flat_map(|scope| scope.paths)
+        .map(|file| std::path::PathBuf::from(file.path))
         .collect::<Vec<_>>();
     paths.sort();
     paths.dedup();

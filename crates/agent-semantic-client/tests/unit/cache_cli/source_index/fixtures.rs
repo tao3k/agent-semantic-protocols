@@ -295,6 +295,7 @@ response = {{
         }},
         "resolvedSourceScopes": [{{
             "roots": CONFIG["sourceRoots"],
+            "explicitPaths": [],
             "extensions": [CONFIG["extension"]],
             "includeAuthority": "package-manager",
             "exclusions": [

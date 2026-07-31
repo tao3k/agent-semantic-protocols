@@ -21,6 +21,9 @@ mod test_support;
 mod tools_cli;
 
 pub use agent_semantic_client_core::LanguageId;
+pub use agent_semantic_client_local_cli::{
+    ProviderProjectScope, project_resolution_scope_from_stdout,
+};
 pub use agent_semantic_runtime::{
     LanguageOwnerItemsAttempt, LanguageOwnerItemsDispatchPlan, language_owner_items_workspace_root,
     language_owner_path_exists, run_language_owner_items_dispatch_plan,

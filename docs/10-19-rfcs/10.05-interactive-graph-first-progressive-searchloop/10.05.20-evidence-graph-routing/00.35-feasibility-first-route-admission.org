@@ -1,0 +1,229 @@
+#+title: RFC 10.05.10.00.35 — Feasibility-First Route Admission
+#+startup: overview
+
+#+property: rfc_layer evidence-graph-routing
+
+* Status
+
+Draft research specification.
+
+This RFC refines route selection over the canonical graph-cost vector. It does
+not add CLI commands or authorize a runtime implementation.
+
+* Problem
+
+RFC 00.32 defines a canonical cost vector ordered by graph hops, uncached
+tokens, rounds, and transitions. A hop-first lexicographic order is useful for
+comparing executable routes, but it is unsafe as the admission rule.
+
+Consider:
+
+| Route | Graph hops | Tokens | Rounds | Transitions |
+|-------+------------+--------+--------+-------------|
+| A     |          1 |    100 |      1 |           1 |
+| B     |          2 |     10 |      1 |           1 |
+
+Under hop-first lexicographic order, A precedes B. Under a 20-token budget, A
+cannot execute and B can. Therefore:
+
+#+begin_quote
+lexicographically shortest does not imply feasible.
+#+end_quote
+
+Optimizing the graph before applying budgets can select a route that cannot
+realize its evidence claim.
+
+* Decision
+
+The Graph Router MUST use a two-stage relation:
+
+1. admission: reject candidates that are not feasible under the active route
+   budget and runtime capability premises;
+2. optimization: compare only admitted candidates using the canonical graph
+   cost relation.
+
+Feasibility is not another weighted cost dimension. A budget violation is a
+hard boundary. No improvement in graph hops can compensate for exceeding the
+token, round, or transition budget.
+
+* Executable mathematical surface
+
+#+name: feasibility-first-route-admission-math
+#+begin_src typst
+#let feasible(budget, cost) = (
+  cost.graph-hops <= budget.graph-hops
+  and cost.tokens <= budget.tokens
+  and cost.rounds <= budget.rounds
+  and cost.transitions <= budget.transitions
+)
+
+#let hop-first-no-worse(left, right) = (
+  left.graph-hops < right.graph-hops
+  or (
+    left.graph-hops == right.graph-hops
+    and (
+      left.tokens < right.tokens
+      or (
+        left.tokens == right.tokens
+        and (
+          left.rounds < right.rounds
+          or (
+            left.rounds == right.rounds
+            and left.transitions <= right.transitions
+          )
+        )
+      )
+    )
+  )
+)
+
+#let admitted-no-worse(budget, left, right) = (
+  feasible(budget, left)
+  and (
+    not feasible(budget, right)
+    or hop-first-no-worse(left, right)
+  )
+)
+
+#let counterexample = {
+  let budget = (
+    graph-hops: 4,
+    tokens: 20,
+    rounds: 4,
+    transitions: 4,
+  )
+  let short = (
+    graph-hops: 1,
+    tokens: 100,
+    rounds: 1,
+    transitions: 1,
+  )
+  let executable = (
+    graph-hops: 2,
+    tokens: 10,
+    rounds: 1,
+    transitions: 1,
+  )
+  (
+    hop-first-prefers-short: hop-first-no-worse(short, executable),
+    short-is-feasible: feasible(budget, short),
+    executable-is-feasible: feasible(budget, executable),
+  )
+}
+
+(
+  feasible: feasible,
+  hop-first-no-worse: hop-first-no-worse,
+  admitted-no-worse: admitted-no-worse,
+  counterexample: counterexample,
+)
+#+end_src
+
+The named block is extracted with
+=orgize eval plan --json feasibility-first-route-admission-math ...= and passed
+to =typst eval --in -=. It is the only mathematical source for this RFC.
+
+* Route budget
+
+The proof model uses an explicit route budget:
+
+- maximum graph hops;
+- maximum uncached tokens under the active cost context;
+- maximum model/tool rounds; and
+- maximum router transitions.
+
+The token field is interpreted only after the cache-parametric and ex-ante
+authority checks from RFC 00.33 and RFC 00.34. A stale hit certificate cannot
+make an otherwise infeasible route admissible.
+
+A future runtime can add latency, money, memory, or provider quotas through a
+new versioned budget contract. It MUST NOT silently reinterpret one of the
+existing dimensions.
+
+* Admitted comparison
+
+=AdmittedNoWorse budget left right= means:
+
+- =left= is feasible; and
+- either =right= is infeasible or =left= is no worse than =right= under the
+  canonical cost relation.
+
+The relation intentionally does not require an infeasible right-hand candidate
+to have a meaningful total order. It is outside the optimization domain.
+
+This gives the router a direct proof obligation:
+
+#+begin_quote
+Every selected route is feasible, and every feasible competitor is no better.
+#+end_quote
+
+* Omitted frontier
+
+An omitted candidate family can be closed in one of two ways:
+
+1. an infeasibility certificate proves that every member violates a hard
+   admission premise; or
+2. a cost lower-bound certificate proves that an admitted visible route is no
+   worse than every feasible member.
+
+An omitted frontier MUST NOT be closed merely because its minimum graph-hop
+count exceeds the chosen route. A longer path may be the only feasible path.
+
+For symbolic frontier bounds, feasibility and cost bounds remain separate:
+
+- lower bounds can prove unavoidable budget violation;
+- cost bounds rank the residual feasible set.
+
+* SearchLoop behavior
+
+SearchLoop remains interactive:
+
+1. inspect the current evidence graph and cost context;
+2. admit feasible candidate families;
+3. request a focused refinement only when feasibility is unknown;
+4. optimize the admitted set;
+5. execute or return a bounded failure receipt.
+
+Unknown feasibility is not treated as =false= or =true=. It produces a next
+action that asks for the missing budget, capability, lease, or evidence fact.
+That preserves fail-closed behavior without forcing a complex CLI surface.
+
+* Python Turbo Graph consequence
+
+The future Python graph engine SHOULD maintain separate indexes for:
+
+- structural reachability lower bounds;
+- resource-feasibility lower bounds; and
+- cost ranking among admitted candidates.
+
+This separation avoids expanding the entire graph to discover that the
+shortest structural route exceeds a hard budget. It also prevents a graph-hop
+heuristic from hiding the only executable route.
+
+Candidate generation MAY use aggressive heuristics. Route certification MUST
+retain the two-stage admission/optimization semantics.
+
+* Required Lean obligations
+
+The companion Lean model MUST prove:
+
+- admitted comparison implies left-side feasibility;
+- the short one-hop example is lexicographically preferred;
+- the short example violates the token budget;
+- the longer example satisfies every budget dimension; and
+- the combined counterexample demonstrates that hop-first preference does not
+  imply feasibility.
+
+The modular Lean audit emits these theorem families as JSON.
+
+* Design finding
+
+The earlier graph-cost model conflated two questions:
+
+- which route has the smallest canonical cost?
+- which route is executable under current constraints?
+
+Lean separates these propositions. No theorem can derive =Feasible= from the
+lexicographic relation alone, and the concrete counterexample makes the missing
+premise executable. The RFC therefore changes route selection from
+=minimize(all candidates)= to =minimize(filter feasible candidates)=.

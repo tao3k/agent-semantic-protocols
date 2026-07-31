@@ -1,0 +1,322 @@
+#+title: RFC 10.05.40.00.97 - Weighted Authority Quantile
+#+startup: overview
+
+* Status
+
+Draft, proof-backed.
+
+This module refines RFC 00.96 for authority sets whose members carry unequal
+voting weights. It changes the mathematical and receipt contract only. It does
+not authorize a Rust or Python implementation.
+
+* Abstract
+
+A Byzantine voting-weight budget does not imply a Byzantine authority-count
+budget. Several low-weight Byzantine authorities can outnumber fewer
+high-weight honest authorities while remaining within the voting-weight
+budget. Therefore an unweighted report median is not justified by a weighted
+fault model.
+
+Let:
+
+- \(W\) be the total voting weight of distinct admitted reports;
+- \(F\) be the authorized Byzantine voting-weight budget;
+- \(C\) be an inclusive cumulative-weight cut.
+
+For natural-number voting weights, the weighted quorum and cut window are:
+
+#+name: searchroute-weighted-authority-quantile-model
+#+begin_src typst
+#let weighted-quorum(total, fault) = fault + 1 + fault <= total
+#let cut-window(total, fault, cut) = (
+  fault < cut
+  and cut + fault <= total
+)
+#assert(weighted-quorum(10, 3))
+#assert(cut-window(10, 3, 4))
+#assert(not weighted-quorum(10, 8))
+#assert(not cut-window(10, 8, 9))
+"ok"
+#+end_src
+
+The canonical cut is \(C=F+1\). Any other cut is valid only when both sides of
+the window are certified.
+
+* Proof-discovered model separation
+
+RFC 00.96 used report count because every authority slot contributed one equal
+unit. That assumption becomes false as soon as the authority-set snapshot
+assigns unequal weights.
+
+The following models MUST remain separate:
+
+- =authority-count model=: at most \(f_c\) Byzantine identities;
+- =voting-weight model=: Byzantine identities have aggregate weight at most
+  \(F\);
+- =hybrid model=: both limits are independently authorized and checked.
+
+A voting-weight budget \(F=3\) can permit three Byzantine authorities of weight
+one each. A count rule for five authorities might assume only two Byzantine
+identities. Both statements can look like a quorum statement, but the first
+does not establish the second.
+
+The protocol MUST declare which model authorizes aggregation. It MUST NOT infer
+a count budget from a weight budget or a weight budget from a count budget.
+
+* Mathematical contract
+
+Let:
+
+- \(A\) be the actual faulty voting weight;
+- \(L\) be the honest live upper bound;
+- \(S\) be the selected authority aggregate;
+- \(B_-\) be admitted voting weight attached to reports strictly below \(A\);
+- \(B_+\) be admitted voting weight attached to reports strictly above \(L\).
+
+Distinct identity admission, snapshot-bound weights, and honest-report
+soundness establish:
+
+\[
+B_- \le F
+\qquad\text{and}\qquad
+B_+ \le F.
+\]
+
+The weighted cut certificate establishes:
+
+\[
+S < A \Longrightarrow C \le B_-
+\]
+
+and
+
+\[
+L < S \Longrightarrow W < C+B_+.
+\]
+
+The cut window is:
+
+\[
+F < C
+\qquad\text{and}\qquad
+C+F \le W.
+\]
+
+The interval result is:
+
+#+name: searchroute-weighted-authority-quantile-proposition
+#+begin_src typst
+#let canonical-cut = $
+  F + 1 + F <= W
+  arrow.r.double
+  F < F + 1
+  and (F + 1) + F <= W
+$
+#let weighted-interval = $
+  B_- <= F
+  and B_+ <= F
+  and F < C
+  and C + F <= W
+  arrow.r.double
+  A <= S
+  and S <= L
+$
+#assert(type(canonical-cut) == content)
+#assert(type(weighted-interval) == content)
+"ok"
+#+end_src
+
+If \(S<A\), the cut would fit entirely within weight \(B_-\), contradicting
+\(F<C\). If \(L<S\), the cut plus the above-live weight would exceed \(W\), but
+\(B_+\le F\) and \(C+F\le W\). Thus \(A\le S\le L\).
+
+For discrete natural-number weights, \(F+1+F\le W\) is the exact strict honest
+majority condition. A future rational-weight representation MUST restate this
+as \(2F<W\) after defining canonical scaling and rounding. It MUST NOT copy the
+=+1= form into a dense numeric domain.
+
+* Normative protocol requirements
+
+** Snapshot-bound weight schedule
+
+Each admitted authority report MUST obtain its voting weight from the same
+=authoritySetSnapshotId=. A report MUST NOT supply or override its own weight.
+
+The verifier MUST:
+
+- admit at most one effective report per canonical authority identity;
+- reject reports whose authority is absent from the bound snapshot;
+- reject mixed snapshot, epoch, policy, or fault-bound identities;
+- compute =totalCollectedWeight= from the admitted set;
+- use checked arithmetic with a canonical maximum;
+- reject negative, fractional, overflowing, or non-canonical weights under this
+  natural-number model.
+
+Zero-weight members do not contribute to quorum or quantile position. They MAY
+remain in the evidence set, but their presence MUST NOT increase
+=totalCollectedWeight= or satisfy a cut.
+
+** Weighted collected quorum
+
+The verifier MUST establish:
+
+#+begin_example
+faultWeightBudget + 1 + faultWeightBudget <= totalCollectedWeight
+#+end_example
+
+using the weights of reports actually admitted to the closed aggregation
+attempt. =configuredTotalWeight= is not a substitute for
+=totalCollectedWeight=.
+
+Failure MUST produce a typed =insufficient-collected-voting-weight= receipt.
+The SearchLoop MUST NOT fall back to report count unless a separate,
+explicitly authorized count model is present.
+
+** Weighted quantile certificate
+
+Reports MUST be ordered by the reported bound value. The selected value is the
+first value whose inclusive cumulative voting weight reaches =cutWeight=.
+
+The certificate MUST bind:
+
+- =weightDomain = "nat-v1"=;
+- =totalCollectedWeight=;
+- =faultWeightBudget=;
+- =cutWeight=;
+- =selectedValue=;
+- =weightBelowActual= or a verifier-checkable lower-cut witness;
+- =weightAboveLive= or a verifier-checkable upper-cut witness;
+- =authorityWeightScheduleDigest=;
+- =admittedReportSetDigest=;
+- =orderingPolicyVersion=;
+- =tiePolicyVersion=.
+
+The verifier MUST reconstruct the cumulative-weight claims from the admitted
+report set or from a proof object whose commitments resolve to that set.
+
+** Tie policy
+
+The semantic result is the selected value, not an arbitrary authority identity
+inside a tied value group. If a representative identity is exposed, equal
+values MUST be ordered by canonical authority identity. Changing the tie policy
+changes the receipt identity even when the selected numeric value is unchanged.
+
+** Hybrid policy
+
+A deployment MAY require both authority-count and voting-weight constraints.
+In that case, the receipt MUST carry two independently verified certificates.
+Passing one MUST NOT imply or cache the other.
+
+* Receipt and cache identity
+
+The weighted aggregation receipt identity MUST bind at least:
+
+#+begin_example
+weightedAggregationReceiptId = H(
+  aggregationPolicyVersion,
+  authoritySetSnapshotId,
+  faultBoundSnapshotId,
+  epoch,
+  weightDomain,
+  authorityWeightScheduleDigest,
+  admittedReportSetDigest,
+  totalCollectedWeight,
+  faultWeightBudget,
+  cutWeight,
+  selectedValue,
+  orderingPolicyVersion,
+  tiePolicyVersion
+)
+#+end_example
+
+A search-result cache hit is valid only under an exact identity and validity
+interval. A model prefix-cache hit may improve token and latency cost when the
+compact receipt rendering is deterministic, but it does not prove that the
+authority snapshot, report set, or fault budget is current.
+
+Changing an authority weight invalidates the receipt even if membership,
+report values, selected value, and report count remain unchanged.
+
+* SearchLoop and graph-router consequences
+
+The graph router should consume a compact weighted-quantile receipt rather than
+reopen every authority report on each transition:
+
+#+begin_example
+resolve weight snapshot
+  -> admit and close reports
+  -> sum collected weight
+  -> verify weighted quorum
+  -> verify cumulative cut
+  -> emit compact interval receipt
+  -> route
+#+end_example
+
+This is a graph-first optimization: later route edges depend on one certified
+node, reducing evidence expansion, token cost, and agent interaction rounds.
+The router MUST retain an inspect edge to the committed report set. If the
+compact proof cannot be verified, progressive inspection reopens that edge or
+fails closed.
+
+No complex user-facing CLI surface is required. The agent-facing contract is a
+typed transition and a compact receipt; CLI syntax remains an optional adapter.
+
+* Lean realization
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/
+  SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.lean
+#+end_example
+
+It proves:
+
+- a weighted collected quorum admits the canonical cut \(F+1\);
+- a weighted-cut certificate establishes both interval bounds;
+- every valid cut window implies a weighted collected quorum;
+- a voting-weight budget does not imply an authority-count budget;
+- count-selected values can violate a weighted lower-bound contract;
+- an unweighted report-count quorum does not establish weighted quorum.
+
+The modular audit owner and executable entry are:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/
+  SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantile.lean
+
+packages/proofs/audit/
+  SearchRouteAdmissionRetryCacheRejoinWeightedAuthorityQuantileAudit.lean
+#+end_example
+
+The generated receipt is:
+
+#+begin_example
+packages/proofs/receipts/
+  searchroute-admission-retry-cache-rejoin-weighted-authority-quantile-audit-v1.json
+#+end_example
+
+* Non-goals
+
+This module does not yet prove:
+
+- construction of cumulative-weight witnesses from a concrete sorted list;
+- conservation of total weight under authority-set rotation;
+- joint old/new weight schedules during epoch transition;
+- fractional or rational voting weights;
+- availability when high-weight authorities do not report;
+- implementation-specific selection complexity.
+
+* Next proof boundary
+
+The next module should construct the weighted cut from a concrete,
+identity-distinct admitted report list. It must prove conservation:
+
+\[
+\sum_{\text{admitted}} w_i = W
+\]
+
+and show that sorting, tie handling, and prefix accumulation neither duplicate
+nor drop voting weight. The following module should then handle joint
+authority-set rotation, where old and new weight schedules cannot share a
+receipt merely because their selected value is equal.

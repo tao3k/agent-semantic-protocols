@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use agent_semantic_hook::{
-    HookRuntime, default_activation_path, discover_activation_path, language_activation_path,
+    HookRuntime, default_activation_path, discover_activation_path,
     load_activation as load_published_activation, parse_hook_activation,
 };
 
@@ -42,12 +42,4 @@ pub(super) fn load_activation_for_language(
         )
         },
     )
-}
-
-pub(super) fn activation_path_for_language(
-    path: &Path,
-    invocation_root: &Path,
-    language_id: &str,
-) -> PathBuf {
-    language_activation_path(path, invocation_root, language_id)
 }

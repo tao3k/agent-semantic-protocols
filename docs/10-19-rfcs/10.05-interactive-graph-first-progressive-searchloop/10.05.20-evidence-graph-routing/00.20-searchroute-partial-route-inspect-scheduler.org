@@ -1,0 +1,6 @@
+#+title: Compatibility locator: SearchRoute partial-route inspect scheduler
+
+* Canonicalization pending
+
+The canonical SearchLoop RFC is
+[[file:../10.05.10-interactive-searchloop/00.20-searchroute-partial-route-inspect-scheduler.org][SearchRoute partial-route inspect scheduler]].

@@ -58,6 +58,16 @@ pub struct ProviderProjectScopePathFile {
 }
 
 /// Resolve the provider project scope for a project root.
+/// Returns whether a resolved provider is authorized to execute package-project resolution.
+pub fn provider_scope_authority_permits_project_resolution(
+    authority: &agent_semantic_client_core::ProviderScopeAuthority,
+) -> bool {
+    matches!(
+        authority,
+        agent_semantic_client_core::ProviderScopeAuthority::ProjectResolution
+    )
+}
+
 pub fn provider_project_scope(
     provider: &ResolvedProvider,
     project_root: &Path,
@@ -123,6 +133,13 @@ fn provider_project_scope_invocation(
     provider: &ResolvedProvider,
     project_root: &Path,
 ) -> Result<(LocalNativeCliBackend, ClientRequest), String> {
+    if !provider_scope_authority_permits_project_resolution(&provider.scope_authority) {
+        return Err(format!(
+            "provider scope authority does not permit project resolution: languageId={} providerId={}",
+            provider.language_id, provider.provider_id
+        ));
+    }
+
     let repository_candidates =
         agent_semantic_runtime::git::discover_repository_candidate_snapshot(project_root)
             .map_err(|error| format!("discover provider repository candidates: {error}"))?
@@ -324,7 +341,8 @@ pub fn provider_project_scope_from_stdout(
     project_resolution_scope_from_stdout(stdout, &provider.language_id, &provider.provider_id)
 }
 
-fn project_resolution_scope_from_stdout(
+/// Parse and validate a provider project-resolution response into its canonical file scope.
+pub fn project_resolution_scope_from_stdout(
     stdout: &[u8],
     expected_language_id: &LanguageId,
     expected_provider_id: &ProviderId,
@@ -411,6 +429,28 @@ fn project_resolution_scope_from_stdout(
                 "project-resolution source scope must declare roots and extensions".to_string(),
             );
         }
+        match (
+            scope.include_authority.as_str(),
+            scope.explicit_paths.is_empty(),
+        ) {
+            ("manifest-explicit", true) => {
+                return Err(
+                    "manifest-explicit project-resolution scope must declare explicitPaths"
+                        .to_string(),
+                );
+            }
+            ("manifest-explicit", false) | ("package-manager", true) => {}
+            (authority, false) => {
+                return Err(format!(
+                    "project-resolution scope cannot declare explicitPaths for includeAuthority={authority}"
+                ));
+            }
+            (authority, true) => {
+                return Err(format!(
+                    "unsupported project-resolution includeAuthority={authority}"
+                ));
+            }
+        }
         let mut scope_paths = std::collections::BTreeSet::new();
         for root in &scope.roots {
             if let Some(paths) = candidates_by_prefix.get(root) {
@@ -425,6 +465,12 @@ fn project_resolution_scope_from_stdout(
         }
         scope_paths.retain(|path| extension_paths.contains(path));
         for exclusion in &scope.exclusions {
+            if exclusion.authority != "package-manager" {
+                return Err(format!(
+                    "provider-project-resolution-invalid-exclusion-authority: prefix={} authority={} expected=package-manager",
+                    exclusion.prefix, exclusion.authority
+                ));
+            }
             if let Some(paths) = candidates_by_prefix.get(&exclusion.prefix) {
                 for path in paths {
                     scope_paths.remove(path);
@@ -447,7 +493,11 @@ fn project_resolution_scope_from_stdout(
             })
             .collect::<Vec<_>>();
         if scope.include_authority == "manifest-explicit" {
-            if let Some(exclusion) = policy_paths.first() {
+            if let Some(exclusion) = policy_paths.iter().find(|exclusion| {
+                scope.explicit_paths.iter().any(|explicit_path| {
+                    candidate_path_is_within(&exclusion.path, explicit_path)
+                })
+            }) {
                 return Err(format!(
                     "project-scope-conflict: path={} includeAuthority=manifest-explicit excludeAuthority={} reasonKind=explicit-source-excluded",
                     exclusion.path, exclusion.authority
@@ -521,6 +571,7 @@ struct RawRepositoryCandidatePolicyExclusion {
 #[serde(rename_all = "camelCase")]
 struct RawResolvedSourceScope {
     roots: Vec<String>,
+    explicit_paths: Vec<String>,
     extensions: Vec<String>,
     include_authority: String,
     exclusions: Vec<RawResolvedSourceExclusion>,
@@ -530,4 +581,13 @@ struct RawResolvedSourceScope {
 #[serde(rename_all = "camelCase")]
 struct RawResolvedSourceExclusion {
     prefix: String,
+    authority: String,
+}
+
+fn candidate_path_is_within(candidate: &str, root: &str) -> bool {
+    root == "."
+        || candidate == root
+        || candidate
+            .strip_prefix(root)
+            .is_some_and(|suffix| suffix.starts_with('/'))
 }

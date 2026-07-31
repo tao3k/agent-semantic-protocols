@@ -15,7 +15,7 @@ pub mod types;
 
 pub use activation::{
     ASP_PROVIDER_ACTIVATION_PATH_ENV, ProviderRegistryEvidence, ProviderRegistrySnapshot,
-    ResolvedProvider, RuntimeProfileStatus,
+    ProviderScopeAuthority, ResolvedProvider, RuntimeProfileStatus,
 };
 pub use agent_semantic_hook::ProviderExecution;
 pub use cache_artifact::{

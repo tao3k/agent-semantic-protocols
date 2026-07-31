@@ -232,11 +232,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         language_id,
     )?;
     exact_query_trace("activation-loaded", exact_query_started);
-    let activation_path = super::provider_activation::activation_path_for_language(
-        &canonical_activation_path,
-        &invocation_root,
-        language_id,
-    );
+    let activation_path = canonical_activation_path;
     let activation_root = activation_project_root(&activation_path, &runtime.project_root);
     let config = AspConfig::load(&invocation_root, &activation_root);
     let has_explicit_workspace = command_args

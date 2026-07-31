@@ -69,11 +69,11 @@ struct GitWorkspaceFileScope {
     files: Vec<GitWorkspaceFile>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryCandidateSnapshot {
-    pub schema_id: &'static str,
-    pub schema_version: &'static str,
+    pub schema_id: String,
+    pub schema_version: String,
     pub mode: RepositoryCandidateMode,
     pub repository_identity: RepositoryIdentity,
     pub worktree_identity: WorktreeIdentity,
@@ -84,13 +84,13 @@ pub struct RepositoryCandidateSnapshot {
     pub metrics: RepositoryCandidateMetrics,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RepositoryCandidateMode {
     Git,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryIdentity {
     pub repository_id: String,
@@ -100,7 +100,7 @@ pub struct RepositoryIdentity {
     pub remote_url: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreeIdentity {
     pub worktree_id: String,
@@ -110,15 +110,15 @@ pub struct WorktreeIdentity {
     pub head_id: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryCandidateGeneration {
-    pub algorithm: &'static str,
+    pub algorithm: String,
     pub digest: String,
     pub authorities: Vec<RepositoryCandidateAuthority>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryCandidate {
     pub path: PathBuf,
@@ -126,30 +126,34 @@ pub struct RepositoryCandidate {
     pub authority: RepositoryCandidateAuthority,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum RepositoryCandidateState {
     Tracked,
     Untracked,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum RepositoryCandidateAuthority {
     GitIndex,
     GitWorktree,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryCandidatePolicyExclusion {
     pub path: PathBuf,
-    pub authority: &'static str,
-    pub reason_kind: &'static str,
+    pub authority: String,
+    pub reason_kind: String,
     pub matched_value: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryCandidateMetrics {
     pub index_entry_count: usize,
@@ -360,7 +364,7 @@ pub fn discover_repository_candidate_snapshot(
     generation.update(b"\0policy-overlay\0");
     generation.update(policy_overlay_digest.as_bytes());
     let candidate_generation = RepositoryCandidateGeneration {
-        algorithm: "blake3-path-set-v1",
+        algorithm: "blake3-path-set-v1".to_owned(),
         digest: format!("blake3:{}", generation.finalize().to_hex()),
         authorities: vec![
             RepositoryCandidateAuthority::GitIndex,
@@ -369,8 +373,8 @@ pub fn discover_repository_candidate_snapshot(
     };
 
     Ok(Some(RepositoryCandidateSnapshot {
-        schema_id: "agent.semantic-protocols.repository-candidate-snapshot",
-        schema_version: "1",
+        schema_id: "agent.semantic-protocols.repository-candidate-snapshot".to_owned(),
+        schema_version: "1".to_owned(),
         mode: RepositoryCandidateMode::Git,
         repository_identity: RepositoryIdentity {
             repository_id,
@@ -448,8 +452,8 @@ fn resolve_asp_discovery_policy(
             })?;
             Some(RepositoryCandidatePolicyExclusion {
                 path: candidate.path.clone(),
-                authority: "user-policy",
-                reason_kind: "ignored-dir-name",
+                authority: "user-policy".to_owned(),
+                reason_kind: "ignored-dir-name".to_owned(),
                 matched_value,
             })
         })

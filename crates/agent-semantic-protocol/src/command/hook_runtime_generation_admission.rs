@@ -1,15 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const WORKSPACE_ADMISSION_EVENTS: [&str; 2] = ["session-start", "user-prompt"];
-
-pub(super) fn admit_hook_workspace_generation(args: &[String]) -> Result<(), String> {
-    if !hook_event_requires_generation_admission(args) {
-        return Ok(());
-    }
-
-    let project_root = hook_workspace_root()?;
-    request(&project_root).map(|_| ())
-}
 
 pub(super) fn request(project_root: &Path) -> Result<serde_json::Value, String> {
     let project_root = project_root.to_path_buf();
@@ -23,14 +14,9 @@ pub(super) fn request(project_root: &Path) -> Result<serde_json::Value, String> 
     })?
 }
 
-fn hook_event_requires_generation_admission(args: &[String]) -> bool {
+pub(super) fn hook_event_requires_generation_admission(args: &[String]) -> bool {
     args.iter()
         .any(|argument| WORKSPACE_ADMISSION_EVENTS.contains(&argument.as_str()))
-}
-
-fn hook_workspace_root() -> Result<PathBuf, String> {
-    std::env::current_dir()
-        .map_err(|error| format!("failed to resolve hook workspace root: {error}"))
 }
 
 #[cfg(test)]

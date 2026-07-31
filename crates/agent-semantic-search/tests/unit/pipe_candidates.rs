@@ -2,10 +2,11 @@ use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    SearchPipeCandidateRequest, SearchPipeSourceIndexAcquisitionRequest,
-    SearchPipeSourceIndexCandidate, SearchPipeSourceIndexDecision, SearchPipeSourceIndexLookup,
-    collect_search_pipe_candidates, collect_search_pipe_source_index_acquisition,
-    failure_candidate_query,
+    SearchPipeAutoAcquisitionRequest, SearchPipeCandidateRequest,
+    SearchPipeSourceIndexAcquisitionRequest, SearchPipeSourceIndexCandidate,
+    SearchPipeSourceIndexDecision, SearchPipeSourceIndexLookup,
+    collect_search_pipe_auto_acquisition, collect_search_pipe_candidates,
+    collect_search_pipe_source_index_acquisition, failure_candidate_query,
 };
 
 #[test]
@@ -91,6 +92,39 @@ fn source_index_acquisition_gates_broad_generic_queries() {
         crate::search_pipe_source_index_query_gate(&terms).expect("generic query should be gated");
     assert_eq!(gate.term_count, 6);
     assert_eq!(gate.generic_term_count, 6);
+}
+
+#[test]
+fn auto_acquisition_query_gate_preserves_canonical_source_snapshot() {
+    let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
+    let query = "search query budget block generic provider";
+    let terms = crate::query_pack_fixture::with_typescript_query_pack("rust", |descriptor| {
+        crate::search_pipe_typed_query_terms(
+            crate::search_pipe_query_pack::SearchPipeLanguageId("rust"),
+            crate::search_pipe_query_pack::SearchPipeQueryText(query),
+            descriptor,
+        )
+    });
+
+    let acquisition = collect_search_pipe_auto_acquisition(SearchPipeAutoAcquisitionRequest {
+        language_id: "rust",
+        project_root: std::path::Path::new("."),
+        locator_root: std::path::Path::new("."),
+        query,
+        query_terms: &terms,
+        owners: &[],
+        ignore_dirs: &[],
+        include_hidden_dirs: &[],
+        base_snapshot: &fixture.workspace,
+        base_source_snapshot: &fixture.evidence,
+        provider_digest: fixture.provider_digest.as_str(),
+        require_multi_clause: false,
+        limit: 5,
+        source_index_lookup: None,
+    })
+    .expect("query gate should preserve the admitted source snapshot");
+
+    assert_eq!(acquisition.source_snapshot, Some(fixture.evidence));
 }
 
 #[test]

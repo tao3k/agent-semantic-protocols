@@ -1,0 +1,10 @@
+#+title: Internal compatibility locator: Clause-first mathematical model
+#+property: rfc_status compatibility-locator
+
+* Canonical RFC
+
+This locator preserves one historical relative link during the physical tree
+migration. The canonical model is
+[[file:../10.05.60-lean-typst-audit/00.11-clause-first-mathematical-model.org][Clause-first mathematical model]].
+
+No mathematical or cache semantics may be authored in this locator.

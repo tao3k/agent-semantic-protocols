@@ -1,0 +1,275 @@
+#+title: RFC 10.05.20 — Partial-Route Inspect Scheduler
+#+startup: overview
+#+options: toc:3
+
+#+property: rfc_layer interactive-searchloop
+
+* Status
+
+Draft.
+
+RFC 10.05.19 proves that certified lazy pruning preserves complete-enumeration
+optimality.  This RFC supplies the next constructive layer:
+
+- a lower bound derived from a partial route;
+- a one-step route-extension relation;
+- a monotonicity theorem for every valid extension;
+- an executable scheduler that partitions frontiers into =pruned= and
+  =inspect=; and
+- a theorem connecting completed scheduling to global candidate optimality.
+
+This RFC does not authorize a Rust implementation.
+
+* Partial-route lower bound
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SPR-PARTIAL-BOUND
+:END:
+
+A =PartialRoute= contains:
+
+- a validated lower bound on eventual graph hops; and
+- the SearchLoop steps already committed by the prefix.
+
+Its lower-bound key is:
+
+#+begin_example
+(graphHopsLowerBound,
+ prefixUncachedTokens,
+ prefixRounds,
+ prefixStepCount)
+#+end_example
+
+The token component includes evidence tokens and uncached prompt tokens.  A
+future model prefix-cache hit may reduce the cost of a future step, but it
+cannot retroactively remove an already committed uncached cost.
+
+The partial-route lower bound is semantic only when its graph component is
+derived from the current graph snapshot.  It is not interchangeable with a
+model prefix-cache key or a stale semantic search-cache entry.
+
+* Monotone extension
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SPR-MONOTONE-EXTENSION
+:END:
+
+=ExtendsByOne current next step= requires:
+
+#+begin_example
+current.graphHopsLowerBound <= next.graphHopsLowerBound
+next.steps = current.steps ++ [step]
+#+end_example
+
+Lean proves:
+
+- uncached prefix tokens increase by the appended step's uncached cost;
+- rounds increase by the appended step's round cost;
+- transitions increase by exactly one; and
+- the lexicographic lower-bound key cannot improve.
+
+The graph condition is essential.  Lean provides a counterexample in which a
+prefix claims a five-hop lower bound and its extension silently changes that
+bound to two hops.  Even with a zero-cost appended step, monotonicity fails.
+
+* Executable scheduling partition
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SPR-SCHEDULER
+:END:
+
+The executable Boolean comparison =keyLexNoWorseB= is proven equivalent to the
+propositional lexicographic order.
+
+Given the current selected candidate, =scheduleInspect= traverses a finite list
+of certified partial frontiers:
+
+- if the selected key is no worse than the partial-route lower bound, place the
+  frontier in =pruned=;
+- otherwise place it in =inspect=.
+
+Lean proves:
+
+- every input frontier appears in one of the two output lists;
+- every scheduled prune is safe for every represented candidate;
+- every frontier scheduled for inspection is not currently prunable.
+
+The scheduler is deterministic and structurally terminating because it consumes
+one finite-list element per recursive call.
+
+* Completed scheduling
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.05-SPR-COMPLETE
+:END:
+
+A schedule is complete when its =inspect= list is empty.
+
+For a completed schedule, Lean proves:
+
+1. every certified partial frontier was placed in =pruned=;
+2. every deferred frontier in the snapshot-bound coverage receipt is prunable;
+3. visible optimality and coverage lift the selected candidate to global
+   no-worse ordering over the complete candidate universe.
+
+This connects the executable scheduler to the extensional theorem from RFC
+10.05.19.  The complete Cartesian product remains the proof oracle, while the
+online protocol emits only bounded inspect decisions and receipts.
+
+* Agent-facing operation
+
+One scheduling response can be represented as:
+
+#+begin_example
+inspect-schedule.v1
+  snapshotDigest
+  selectedKey
+  prunedFrontierReceipts
+  inspectFrontierIds
+  complete
+#+end_example
+
+The =complete= flag is valid only when:
+
+- every input frontier is covered by the partition receipt;
+- =inspectFrontierIds= is empty;
+- every pruned frontier has a valid partial-route lower bound; and
+- the candidate-universe snapshot binding is accepted.
+
+The agent can therefore request only the unresolved frontier IDs rather than
+receiving the complete candidate list.
+
+* Mathematical model
+
+The following named Org-Babel Typst block is the mathematical source.  It is
+compiled through standard input and has no independent =.typ= source file.
+
+#+name: searchroute-partial-route-inspect-scheduler-model
+#+begin_src typst
+#set page(width: 8.5in, height: 11in, margin: 0.72in)
+#set text(font: "New Computer Modern", size: 10.2pt)
+#set heading(numbering: "1.")
+
+= Partial-Route Inspect Scheduler
+
+For a partial route $p$, define
+
+$ L(p) = (G_"lb"(p), U(p), R(p), N(p)), $
+
+where $G_"lb"$ is a validated graph-hop lower bound and the other components
+measure the already committed SearchLoop prefix.
+
+== One-step extension
+
+Let $p arrow p'$ append step $x$ and require
+
+$ G_"lb"(p) <= G_"lb"(p'). $
+
+Then
+
+$ U(p') = U(p) + E(x) + (P(x) - C(x)), $
+
+$ R(p') = R(p) + R(x), $
+
+$ N(p') = N(p) + 1. $
+
+All increments are natural numbers.  Therefore
+
+$ L(p) <=_"lex" L(p'). $
+
+If the graph lower bound is allowed to decrease, this theorem is false even
+when every cost field of $x$ is zero.
+
+== Executable partition
+
+For selected candidate $s$ and certified partial frontier $F_p$, define
+
+$ "PruneB"(s, F_p)
+  := (K(s) <=_"lex" L(p)). $
+
+The scheduler recursively partitions finite input frontiers:
+
+$ "Schedule"(s, [])
+  = ("pruned": [], "inspect": []), $
+
+$ "Schedule"(s, F_p :: F)
+  = cases(
+      "PruneB"(s, F_p),
+      "prepend-pruned"(F_p, "Schedule"(s, F)),
+      "prepend-inspect"(F_p, "Schedule"(s, F))
+    ). $
+
+Coverage:
+
+$ forall F_p in F:
+  F_p in "pruned" union "inspect". $
+
+Pruning soundness:
+
+$ F_p in "pruned"
+  => forall c in F_p: K(s) <=_"lex" K(c). $
+
+Inspection necessity:
+
+$ F_p in "inspect"
+  => not K(s) <=_"lex" L(p). $
+
+== Completed schedule
+
+$ "Complete"(S) := (S."inspect" = []). $
+
+If the coverage receipt maps every deferred frontier to a certified partial
+frontier and the schedule is complete, then
+
+$ "VisibleOptimal"(s)
+  and "SnapshotCoverage"
+  and "Complete"(S)
+  => forall c in C_"full": K(s) <=_"lex" K(c). $
+
+Thus the scheduler preserves the optimum of the complete enumeration while
+materializing only frontiers that are not yet safely prunable.
+#+end_src
+
+* Lean correspondence
+
+| RFC clause | Lean declaration |
+|---+---|
+| =ASP-RFC-10.05-SPR-PARTIAL-BOUND= | =partial_uncached_tokens_extend=, =partial_rounds_extend= |
+| =ASP-RFC-10.05-SPR-MONOTONE-EXTENSION= | =partial_lower_bound_is_monotone=, =decreasing_graph_bound_breaks_extension_monotonicity= |
+| =ASP-RFC-10.05-SPR-SCHEDULER= | =keyLexNoWorseB_true_iff=, =scheduleInspect_covers=, =scheduled_pruning_is_safe=, =scheduled_inspection_is_not_prunable= |
+| =ASP-RFC-10.05-SPR-COMPLETE= | =completed_schedule_prunes_every_frontier=, =completed_inspect_schedule_is_globally_optimal= |
+
+Lean owner:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteInspectScheduler.lean
+#+end_example
+
+Lean audit:
+
+#+begin_example
+packages/proofs/receipts/searchroute-inspect-scheduler-audit-v1.json
+#+end_example
+
+AXLE receipt:
+
+#+begin_example
+packages/proofs/receipts/searchroute-inspect-scheduler-axle-audit-v1.json
+#+end_example
+
+Proof receipt:
+
+#+begin_example
+packages/proofs/receipts/searchroute-inspect-scheduler-proof-v1.org
+#+end_example
+
+* Remaining proof boundary
+
+The scheduler currently partitions frontiers against a fixed selected
+candidate.  It does not yet:
+
+1. choose which unresolved frontier to inspect first;
+2. update the selected candidate after materialization;
+3. prove a decreasing global fuel measure across repeated scheduling rounds;
+4. optimize expected uncached tokens or agent/model rounds; or
+5. bound the serialized size of coverage and pruning receipts.
+
+The next Lean layer should model the repeated inspect/materialize/reschedule
+loop and prove both termination and invariant preservation as the selected
+candidate changes.
