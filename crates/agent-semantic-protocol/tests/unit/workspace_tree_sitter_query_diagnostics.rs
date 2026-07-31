@@ -519,7 +519,7 @@ fn write_rust_owner_delegate(workspace: &std::path::Path, state_home: &std::path
         "languageId": "rust",
         "providerId": "rs-harness",
         "state": "resolved",
-        "resolution": {
+        "scope": {
             "schemaId": "agent.semantic-protocols.project-resolution",
             "schemaVersion": "1",
             "state": "resolved",

@@ -215,7 +215,6 @@ fn run_incremental_workspace_query(
     let mut owners = super::workspace_tree_sitter_inventory::collect_provider_inventory(
         &state.provider_workspace_root,
         provider,
-        profiles,
     )?;
     tree_sitter_trace("inventory-enumerate", phase_started, Some(owners.len()));
     let phase_started = std::time::Instant::now();
@@ -620,6 +619,7 @@ fn process_owner(
             scope: state.scope.clone(),
             owner_path: owner.owner_path.clone(),
             fingerprint: fingerprint.clone(),
+            source_bytes: source_bytes.clone(),
             projection_completeness: "complete-owner".to_string(),
             projections: owner_projections.clone(),
         },

@@ -15,8 +15,8 @@ use super::search_pipe_args::{
 use super::search_pipe_candidates::{parse_ingest_candidates, read_piped_stdin};
 use super::search_pipe_failure::run_search_failure_command;
 use super::search_pipe_model::SearchPipeSourceTrace;
-use super::search_pipe_owner_items_fast::{
-    SearchOwnerItemsFastContext, run_search_owner_items_query_command,
+use super::search_pipe_owner_items::{
+    SearchOwnerItemsContext, run_search_owner_items_query_command,
 };
 use super::search_pipe_provider_facts::{ProviderGraphFactsContext, collect_provider_graph_facts};
 use super::search_pipe_read_memory::read_loop_memory_selectors;
@@ -89,7 +89,7 @@ pub(super) fn run_asp_incremental_owner_search_command(
     }
     run_search_owner_items_query_command(
         args,
-        SearchOwnerItemsFastContext {
+        SearchOwnerItemsContext {
             language_id: context.language_id,
             project_root: context.project_root,
             locator_root: context.locator_root,
@@ -146,7 +146,7 @@ pub(super) fn run_asp_fast_search_command(
         }
         return run_search_owner_items_query_command(
             args,
-            SearchOwnerItemsFastContext {
+            SearchOwnerItemsContext {
                 language_id: context.language_id,
                 project_root: context.project_root,
                 locator_root: context.locator_root,
@@ -315,7 +315,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         return Ok(());
     }
     let current_snapshot = context.required_source_index_snapshot()?;
-    let mut acquisition = collect_search_pipe_candidates(CollectSearchPipeCandidatesRequest {
+    let acquisition = collect_search_pipe_candidates(CollectSearchPipeCandidatesRequest {
         language_id: context.language_id,
         project_root: &project_root,
         current_snapshot,

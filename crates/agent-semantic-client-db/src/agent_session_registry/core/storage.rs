@@ -72,19 +72,19 @@ pub struct AgentSessionRegistry {
 }
 
 impl AgentSessionRegistry {
-    /// Return the canonical project-scope id used by legacy registry callers.
-    pub fn project_scope_id(project_root: impl AsRef<Path>) -> String {
-        fs::canonicalize(project_root.as_ref())
-            .unwrap_or_else(|_| project_root.as_ref().to_path_buf())
-            .to_string_lossy()
-            .to_string()
+    /// Return the canonical identity of one concrete checkout/worktree workspace.
+    pub fn workspace_id(project_root: impl AsRef<Path>) -> Result<String, String> {
+        Ok(ResolvedState::resolve(project_root.as_ref())?
+            .workspace
+            .workspace_id
+            .0)
     }
 
-    /// Return the current working directory as a canonical project-scope id.
-    pub fn current_project_scope_id() -> Result<String, String> {
+    /// Return the current checkout/worktree as a canonical workspace identity.
+    pub fn current_workspace_id() -> Result<String, String> {
         let project_root = std::env::current_dir()
             .map_err(|error| format!("failed to read current directory: {error}"))?;
-        Ok(Self::project_scope_id(project_root))
+        Self::workspace_id(project_root)
     }
 
     /// Resolve a configured registry state root against the project root.

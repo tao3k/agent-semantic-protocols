@@ -10,6 +10,7 @@
     "mode",
     "repositoryIdentity",
     "worktreeIdentity",
+    "candidateScope",
     "candidateGeneration",
     "candidates",
     "policyOverlayDigest",
@@ -31,6 +32,9 @@
     },
     "worktreeIdentity": {
       "$ref": "#/$defs/worktreeIdentity"
+    },
+    "candidateScope": {
+      "$ref": "#/$defs/candidateScope"
     },
     "candidateGeneration": {
       "$ref": "#/$defs/candidateGeneration"
@@ -121,8 +125,22 @@
         }
       }
     },
+    "candidateScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectRoot"
+      ],
+      "properties": {
+        "projectRoot": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "candidateGeneration": {
       "type": "object",
+      "description": "Generation of one concrete primary or linked Git worktree. HEAD/index/worktree changes advance this generation without changing worktreeId.",
       "additionalProperties": false,
       "required": [
         "algorithm",

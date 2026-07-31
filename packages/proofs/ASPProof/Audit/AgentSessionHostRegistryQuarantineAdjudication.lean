@@ -1,0 +1,27 @@
+import ASPProof.AgentSessionHostRegistryQuarantineAdjudication
+
+namespace ASPProof.Audit.AgentSessionHostRegistryQuarantineAdjudication
+
+open ASPProof.AgentSessionHostRegistryQuarantineAdjudication
+
+#print axioms evidence_binding_requires_complete
+#print axioms evidence_binding_includes_accepted_terminal
+#print axioms evidence_binding_includes_conflicting_terminal
+#print axioms incomplete_evidence_cannot_bind
+#print axioms one_sided_accepted_evidence_cannot_bind
+#print axioms one_sided_conflicting_evidence_cannot_bind
+#print axioms authorized_adjudication_binds_authority
+#print axioms claimant_cannot_self_adjudicate
+#print axioms challenger_cannot_self_adjudicate
+#print axioms authority_mismatch_rejects_adjudication
+#print axioms history_step_appends_exact_record
+#print axioms history_step_cannot_erase_single_record
+#print axioms resolution_advances_generation
+#print axioms resolved_slot_cannot_be_resolved_again
+#print axioms advanced_key_has_successor_generation
+#print axioms stale_generation_cannot_resume_after_resolution
+#print axioms advanced_generation_is_authorized
+#print axioms adjudicator_is_distinct_from_both_workers
+#print axioms authorized_adjudication_binds_both_terminals
+
+end ASPProof.Audit.AgentSessionHostRegistryQuarantineAdjudication

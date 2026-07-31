@@ -1,5 +1,5 @@
 use agent_semantic_client_db::{
-    ClientDbEngine, ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
+    ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
     ProviderIncrementalScoped, WorkspaceDbRegistry,
 };
 use serde::Deserialize;
@@ -57,14 +57,13 @@ impl MemorySearchFixture {
         {
             return Err("Memory Search fixture schema identity mismatch".to_string());
         }
-        let engine = ClientDbEngine::resolve_for_write(&self.project_root)?;
-        let refresh = engine
-            .refresh_source_index_generation(
+        let session = registry.acquire(&self.project_root, &self.scope).await?;
+        let refresh = session
+            .commit_source_index_generation(
                 self.refresh_request.clone(),
                 self.materialization.clone(),
             )
             .await?;
-        let session = registry.acquire(&self.project_root, &self.scope).await?;
         let backend = TursoMemorySearchBackend::new_fixture(
             session,
             self.refresh_request

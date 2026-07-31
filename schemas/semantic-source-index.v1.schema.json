@@ -33,8 +33,8 @@
     "projectRoot": {
       "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
     },
-    "projectScope": {
-      "$ref": "#/$defs/projectScope"
+    "projectResolution": {
+      "$ref": "#/$defs/projectResolution"
     },
     "state": {
       "$ref": "#/$defs/indexState"
@@ -96,7 +96,7 @@
     "projectPath": {
       "$ref": "semantic-source-location.v1.schema.json#/$defs/projectPath"
     },
-    "projectScope": {
+    "projectResolution": {
       "type": "object",
       "additionalProperties": false,
       "properties": {

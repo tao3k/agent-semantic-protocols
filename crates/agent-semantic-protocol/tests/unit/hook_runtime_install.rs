@@ -1,7 +1,7 @@
 use super::{CodexPluginScope, parse_codex_plugin_install_args};
 
 #[test]
-fn clap_rejects_global_and_project_scope_together() {
+fn clap_rejects_global_and_project_resolution_together() {
     let args = vec![
         "--codex".to_string(),
         "--global".to_string(),
@@ -32,7 +32,7 @@ fn clap_parses_global_scope_without_project_pollution() {
 }
 
 #[test]
-fn clap_parses_project_scope_explicitly() {
+fn clap_parses_project_resolution_explicitly() {
     let args = vec![
         "--codex".to_string(),
         "--project".to_string(),

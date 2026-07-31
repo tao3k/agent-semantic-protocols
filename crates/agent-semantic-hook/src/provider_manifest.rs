@@ -88,9 +88,14 @@ pub fn build_default_activation_from_selections(
                     project_root.display()
                 )
             })?;
+    let candidate_paths = repository_candidates
+        .candidates
+        .iter()
+        .filter_map(|candidate| candidate.path.to_str())
+        .collect::<Vec<_>>();
     let mut providers = Vec::new();
     for (manifest, selection) in selected_providers {
-        if !provider_applies_to_repository_candidates(manifest, &repository_candidates) {
+        if !provider_applies_to_candidate_paths(manifest, &candidate_paths) {
             continue;
         }
         let Some(coverage) =
@@ -106,6 +111,13 @@ pub fn build_default_activation_from_selections(
             coverage,
             &semantic_registry_digest,
         )?);
+    }
+    if providers.is_empty() {
+        return Err(format!(
+            "no installed provider resolved an exact project or document scope from the Git candidate snapshot: workspace={} candidateGeneration={}",
+            project_root.display(),
+            repository_candidates.candidate_generation.digest
+        ));
     }
     let rankers = vec![activate_builtin_graph_turbo_ranker(&selections.graph_turbo)];
     Ok(HookActivation {
@@ -123,18 +135,6 @@ pub fn build_default_activation_from_selections(
         rankers,
         providers,
     })
-}
-
-fn provider_applies_to_repository_candidates(
-    manifest: &ProviderManifest,
-    snapshot: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
-) -> bool {
-    let candidate_paths = snapshot
-        .candidates
-        .iter()
-        .filter_map(|candidate| candidate.path.to_str())
-        .collect::<Vec<_>>();
-    provider_applies_to_candidate_paths(manifest, &candidate_paths)
 }
 
 fn provider_applies_to_candidate_paths(
@@ -562,8 +562,32 @@ pub fn validate_provider_manifest_contract(manifest: &ProviderManifest) -> Vec<S
     if let Err(error) = validate_project_resolution_descriptor(manifest) {
         errors.push(error);
     }
+    if let Some(descriptor) = manifest.language_projection()
+        && let Err(error) = validate_language_projection_descriptor(descriptor)
+    {
+        errors.push(error);
+    }
 
     errors
+}
+
+fn validate_language_projection_descriptor(
+    descriptor: &crate::protocol_activation::protocol_activation_manifest::ProviderLanguageProjectionDescriptor,
+) -> Result<(), String> {
+    if descriptor.schema_id() != "agent.semantic-protocols.provider-language-projection-descriptor"
+        || descriptor.schema_version() != "1"
+        || descriptor.command_binding() != "projection-batch-stdin"
+        || descriptor.transport() != "framed-stdin-v1"
+        || descriptor.request_schema()
+            != "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-request.v1.schema.json"
+        || descriptor.response_schema()
+            != "https://schemas.agent-semantic-protocols.dev/provider-language-projection-batch-response.v1.schema.json"
+        || descriptor.identity_schema()
+            != "https://schemas.agent-semantic-protocols.dev/canonical-language-item-identity.v1.schema.json"
+    {
+        return Err("provider languageProjection descriptor contract mismatch".to_string());
+    }
+    Ok(())
 }
 
 fn validate_project_resolution_descriptor(manifest: &ProviderManifest) -> Result<(), String> {
@@ -590,12 +614,6 @@ fn validate_project_resolution_descriptor(manifest: &ProviderManifest) -> Result
             manifest.provider_id()
         ));
     }
-    if !descriptor.supports_git_candidates && !descriptor.supports_provider_only {
-        return Err(format!(
-            "provider {} projectResolution must support at least one candidate mode",
-            manifest.provider_id()
-        ));
-    }
     if descriptor.entry_markers.is_empty()
         || descriptor
             .entry_markers
@@ -615,19 +633,19 @@ fn validate_project_resolution_descriptor(manifest: &ProviderManifest) -> Result
     }
     for (field, actual, expected) in [
         (
-            "candidateSnapshotSchema",
-            descriptor.candidate_snapshot_schema.as_str(),
-            "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json",
+            "requestSchema",
+            descriptor.request_schema.as_str(),
+            "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-request.v1.schema.json",
+        ),
+        (
+            "responseSchema",
+            descriptor.response_schema.as_str(),
+            "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-response.v1.schema.json",
         ),
         (
             "packageGraphSchema",
             descriptor.package_graph_schema.as_str(),
             "https://schemas.agent-semantic-protocols.dev/language-package-graph.v1.schema.json",
-        ),
-        (
-            "resolvedSourceScopeSchema",
-            descriptor.resolved_source_scope_schema.as_str(),
-            "https://schemas.agent-semantic-protocols.dev/resolved-source-scope.v1.schema.json",
         ),
         (
             "projectResolutionSchema",
@@ -754,7 +772,6 @@ fn resolve_document_activation_coverage(
             manifest.provider_id()
         )
     })?;
-    let candidate_generation = snapshot.candidate_generation.digest.clone();
     let snapshot = serde_json::to_value(snapshot)
         .map_err(|error| format!("encode document repository candidates: {error}"))?;
     let source_paths = snapshot
@@ -781,12 +798,6 @@ fn resolve_document_activation_coverage(
         package_roots: Vec::new(),
         config_files: Vec::new(),
         source_extensions: descriptor.extensions.clone(),
-        source_paths: source_paths.into_iter().collect(),
-        repository_candidate_generation: candidate_generation.clone(),
-        project_resolution_generation: format!(
-            "document:{}:{}",
-            candidate_generation, descriptor.parser_id
-        ),
     })
 }
 
@@ -796,9 +807,6 @@ fn resolve_activation_coverage(
     selection: &ProviderCommandSelection,
     snapshot: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<Option<ActivationCoverage>, String> {
-    use std::io::Write as _;
-    use std::process::Stdio;
-
     if manifest.document_resolution().is_some() {
         return resolve_document_activation_coverage(manifest, snapshot).map(Some);
     }
@@ -808,16 +816,130 @@ fn resolve_activation_coverage(
             manifest.provider_id()
         )
     })?;
+    let mut project_roots = snapshot
+        .candidates
+        .iter()
+        .filter_map(|candidate| {
+            descriptor
+                .entry_markers
+                .iter()
+                .any(|marker| {
+                    candidate.path.file_name().and_then(|name| name.to_str())
+                        == Some(marker.as_str())
+                })
+                .then(|| {
+                    candidate
+                        .path
+                        .parent()
+                        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
+                })
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    project_roots.sort_by(|left, right| {
+        left.components()
+            .count()
+            .cmp(&right.components().count())
+            .then_with(|| left.cmp(right))
+    });
+
+    let mut package_roots = std::collections::BTreeSet::new();
+    let mut config_files = std::collections::BTreeSet::new();
+    let mut source_extensions = std::collections::BTreeSet::new();
+    for project_relative_root in project_roots {
+        let normalized_project_root = normalize_relative_project_path(&project_relative_root);
+        if package_roots.contains(&normalized_project_root) {
+            continue;
+        }
+        let provider_project_root = if normalized_project_root == "." {
+            project_root.to_path_buf()
+        } else {
+            project_root.join(&project_relative_root)
+        };
+        let scoped_snapshot = snapshot
+            .scoped_to_project_root(&provider_project_root)
+            .map_err(|error| {
+                format!(
+                    "scope provider repository candidates: providerId={} projectRoot={} error={error}",
+                    manifest.provider_id(),
+                    provider_project_root.display()
+                )
+            })?;
+        let Some(coverage) = resolve_project_activation_coverage_once(
+            &provider_project_root,
+            manifest,
+            selection,
+            &scoped_snapshot,
+        )?
+        else {
+            continue;
+        };
+        package_roots.extend(
+            coverage
+                .package_roots
+                .iter()
+                .map(|path| prefix_project_path(&normalized_project_root, path)),
+        );
+        config_files.extend(
+            coverage
+                .config_files
+                .iter()
+                .map(|path| prefix_project_path(&normalized_project_root, path)),
+        );
+        source_extensions.extend(coverage.source_extensions);
+    }
+    if package_roots.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(ActivationCoverage {
+        package_roots: package_roots.into_iter().collect(),
+        config_files: config_files.into_iter().collect(),
+        source_extensions: source_extensions.into_iter().collect(),
+    }))
+}
+
+fn resolve_project_activation_coverage_once(
+    project_root: &Path,
+    manifest: &ProviderManifest,
+    selection: &ProviderCommandSelection,
+    snapshot: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
+) -> Result<Option<ActivationCoverage>, String> {
+    use std::io::Write as _;
+    use std::process::Stdio;
+
+    let descriptor = manifest.project_resolution().ok_or_else(|| {
+        format!(
+            "provider {} omitted projectResolution",
+            manifest.provider_id()
+        )
+    })?;
     let repository_candidate_generation = snapshot.candidate_generation.digest.clone();
-    let snapshot_value = serde_json::to_value(&snapshot)
-        .map_err(|error| format!("encode repository candidate snapshot: {error}"))?;
+    let candidate_paths = snapshot
+        .candidates
+        .iter()
+        .map(|candidate| candidate.path.to_string_lossy().replace('\\', "/"))
+        .collect::<Vec<_>>();
+    let policy_exclusions = snapshot
+        .policy_exclusions
+        .iter()
+        .map(|exclusion| {
+            serde_json::json!({
+                "path": exclusion.path.to_string_lossy().replace('\\', "/"),
+                "authority": exclusion.authority,
+                "reasonKind": exclusion.reason_kind,
+            })
+        })
+        .collect::<Vec<_>>();
     let request = serde_json::to_vec(&serde_json::json!({
         "schemaId": "agent.semantic-protocols.provider-project-resolution-request",
         "schemaVersion": "1",
         "languageId": manifest.language_id(),
         "providerId": manifest.provider_id(),
-        "workspaceRoot": project_root,
-        "repositoryCandidates": snapshot_value,
+        "candidateBase": ".",
+        "candidateGeneration": snapshot.candidate_generation,
+        "candidatePaths": candidate_paths,
+        "policyExclusions": policy_exclusions,
     }))
     .map_err(|error| format!("encode provider project-resolution request: {error}"))?;
 
@@ -934,14 +1056,46 @@ fn resolve_activation_coverage(
         ));
     }
     let resolution = response
-        .get("resolution")
+        .get("scope")
         .and_then(serde_json::Value::as_object)
         .ok_or_else(|| {
             format!(
-                "resolved provider project-resolution omitted resolution: providerId={}",
+                "resolved provider project-resolution omitted scope: providerId={}",
                 manifest.provider_id()
             )
         })?;
+    let project_resolution_receipt: agent_semantic_runtime::ProjectResolutionReceipt =
+        serde_json::from_value(serde_json::Value::Object(resolution.clone())).map_err(|error| {
+            format!(
+                "decode typed provider ProjectResolution for {}: {error}",
+                manifest.provider_id()
+            )
+        })?;
+    project_resolution_receipt.validate(
+        manifest.language_id().as_str(),
+        manifest.provider_id().as_str(),
+        &repository_candidate_generation,
+    )?;
+    if project_resolution_receipt.parser_id != descriptor.parser_id {
+        return Err(format!(
+            "provider ProjectResolution parser identity drift: providerId={} expected={} actual={}",
+            manifest.provider_id(),
+            descriptor.parser_id,
+            project_resolution_receipt.parser_id,
+        ));
+    }
+    if !descriptor
+        .entry_markers
+        .iter()
+        .any(|marker| marker == &project_resolution_receipt.project_entry)
+    {
+        return Err(format!(
+            "provider ProjectResolution entry is not declared by its manifest: providerId={} projectEntry={} entryMarkers={}",
+            manifest.provider_id(),
+            project_resolution_receipt.project_entry,
+            descriptor.entry_markers.join(","),
+        ));
+    }
     let resolution_string = |field: &str| {
         resolution
             .get(field)
@@ -956,25 +1110,21 @@ fn resolve_activation_coverage(
     if resolution_string("schemaId")? != "agent.semantic-protocols.project-resolution"
         || resolution_string("schemaVersion")? != "1"
         || resolution_string("state")? != "resolved"
-        || resolution_string("completeness")? != "exact"
+        || !matches!(resolution_string("completeness")?, "exact" | "complete")
+        || resolution_string("languageId")? != manifest.language_id().as_str()
+        || resolution_string("providerId")? != manifest.provider_id().as_str()
+        || resolution_string("candidateGenerationDigest")? != repository_candidate_generation
     {
         return Err(format!(
-            "provider project-resolution contract is not exact/resolved: providerId={}",
+            "provider project-resolution contract is not complete/resolved or generation-bound: providerId={}",
             manifest.provider_id()
         ));
     }
 
-    let candidate_paths = snapshot_value
-        .get("candidates")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| "repository candidate snapshot omitted candidates".to_string())?
-        .iter()
-        .filter_map(|candidate| candidate.get("path").and_then(serde_json::Value::as_str))
-        .collect::<Vec<_>>();
     let scopes = resolution
-        .get("resolvedSourceScopes")
+        .get("sourceScopes")
         .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| "project-resolution omitted resolvedSourceScopes".to_string())?;
+        .ok_or_else(|| "project-resolution omitted sourceScopes".to_string())?;
     let mut package_roots = std::collections::BTreeSet::new();
     let mut source_extensions = std::collections::BTreeSet::new();
     let mut source_paths = std::collections::BTreeSet::new();
@@ -1031,24 +1181,44 @@ fn resolve_activation_coverage(
         }
     }
     if source_paths.is_empty() {
-        return Err(format!(
-            "provider project-resolution resolved no Git candidate source files: providerId={}",
-            manifest.provider_id()
-        ));
+        return Ok(None);
     }
     let project_entry = resolution
-        .get("projectIdentity")
-        .and_then(|identity| identity.get("projectEntry"))
+        .get("projectEntry")
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "project-resolution omitted projectIdentity.projectEntry".to_string())?;
+        .ok_or_else(|| "project-resolution omitted projectEntry".to_string())?;
     Ok(Some(ActivationCoverage {
         package_roots: package_roots.into_iter().collect(),
         config_files: vec![project_entry.to_string()],
         source_extensions: source_extensions.into_iter().collect(),
-        source_paths: source_paths.into_iter().collect(),
-        repository_candidate_generation,
-        project_resolution_generation: resolution_string("resolutionGeneration")?.to_string(),
     }))
+}
+
+fn normalize_relative_project_path(path: &Path) -> String {
+    let text = path.to_string_lossy().replace('\\', "/");
+    if text.is_empty() || text == "." {
+        ".".to_string()
+    } else {
+        text.trim_start_matches("./")
+            .trim_end_matches('/')
+            .to_string()
+    }
+}
+
+fn prefix_project_path(project_root: &str, path: &str) -> String {
+    let path = path.replace('\\', "/");
+    let path = path.trim_start_matches("./").trim_end_matches('/');
+    if project_root == "." {
+        if path.is_empty() {
+            ".".to_string()
+        } else {
+            path.to_string()
+        }
+    } else if path.is_empty() {
+        project_root.to_string()
+    } else {
+        format!("{project_root}/{path}")
+    }
 }
 
 fn project_resolution_failure_is_inactive(

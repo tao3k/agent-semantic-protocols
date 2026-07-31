@@ -51,7 +51,7 @@ pub async fn upsert_turso_syntax_query_replay(
     bootstrap_turso_syntax_query_schema(&connection).await?;
     let replay_json = serde_json::to_string(&replay)
         .map_err(|error| format!("failed to serialize Turso syntax replay: {error}"))?;
-    let project_root = crate::types::normalized_project_root(Path::new(&generation.project_root));
+    let project_root = crate::types::normalized_project_root(Path::new(&generation.project_root))?;
     execute_turso_operation(
         || async {
             connection
@@ -104,7 +104,7 @@ pub async fn lookup_turso_syntax_query_replay(
     }
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_syntax_query_schema(&connection).await?;
-    let project_root = crate::types::normalized_project_root(&lookup.project_root);
+    let project_root = crate::types::normalized_project_root(&lookup.project_root)?;
     let mut rows = run_turso_operation(
         || async {
             connection

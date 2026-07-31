@@ -71,15 +71,27 @@ impl WorkspaceGenerationPublisher {
         let final_path = self
             .directory
             .join(format!("generation-{}.mmap", generation.active_epoch));
+        let exact_path = super::exact_segment::exact_projection_segment_path(&final_path);
         let temporary_path = self
             .directory
             .join(format!(".generation-{}.pending", generation.active_epoch));
+        let exact_temporary_path = self.directory.join(format!(
+            ".generation-{}.exact.pending",
+            generation.active_epoch
+        ));
+        let exact_segment = super::exact_segment::encode_exact_projection_segment(generation)?;
         fs::write(&temporary_path, segment)
             .await
             .map_err(|error| format!("write workspace generation segment: {error}"))?;
+        fs::write(&exact_temporary_path, exact_segment)
+            .await
+            .map_err(|error| format!("write workspace exact projection segment: {error}"))?;
         fs::rename(&temporary_path, &final_path)
             .await
             .map_err(|error| format!("publish workspace generation segment: {error}"))?;
+        fs::rename(&exact_temporary_path, &exact_path)
+            .await
+            .map_err(|error| format!("publish workspace exact projection segment: {error}"))?;
         let mapped = MappedWorkspaceGeneration::open(&final_path).await?;
         let snapshot = WorkspaceGenerationSnapshot {
             schema_id: WORKSPACE_GENERATION_SCHEMA_ID.to_owned(),
@@ -90,6 +102,7 @@ impl WorkspaceGenerationPublisher {
             generation_digest: generation.generation_digest.clone(),
             root_depth: generation.root_depth,
             memory_backend_digest: generation.memory_backend_digest.clone(),
+            workspace_source_scope_generation: generation.workspace_source_scope_generation.clone(),
             mmap_segment_path: final_path.to_string_lossy().into_owned(),
             previous_epoch_readable,
         };

@@ -266,6 +266,7 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
             &source_snapshot,
             &import,
             &source_blobs,
+            Vec::new(),
         )
         .expect("build complete canonical materialization");
     session
@@ -292,6 +293,7 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
             &session,
             "restore-from-resident-turso",
             &scope.workspace_identity,
+            std::path::Path::new(&scope.project_root),
         )
         .await
         .expect("restore canonical generation from resident Turso handle");
@@ -307,7 +309,10 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
         "cold MemoryBackend restore must not bootstrap Turso again"
     );
     let lease = memory_registry
-        .lease(&scope.workspace_identity)
+        .lease(
+            &scope.workspace_identity,
+            std::path::Path::new(&scope.project_root),
+        )
         .expect("lease restored MemoryBackend generation");
     assert_eq!(lease.generation().root_depth, [1, 0]);
     assert_eq!(
@@ -409,6 +414,10 @@ async fn one_hundred_concurrent_writes_share_one_serial_writer() {
         let session = session.clone();
         let scope = scope.clone();
         writes.spawn(async move {
+            let source_bytes = vec![u8::try_from(index % 256).expect("fixture byte")];
+            let content_digest =
+                agent_semantic_content_identity::ArtifactHash::blake3(source_bytes.as_slice())
+                    .value;
             session
                 .write_provider_incremental_owner(&ProviderIncrementalOwnerWrite {
                     scope,
@@ -420,8 +429,9 @@ async fn one_hundred_concurrent_writes_share_one_serial_writer() {
                             modified_unix_nanos: index,
                             change_time_unix_nanos: index,
                         },
-                        content_digest: format!("{:064x}", index + 1),
+                        content_digest,
                     },
+                    source_bytes,
                     projection_completeness: "complete-owner".to_owned(),
                     projections: Vec::new(),
                 })

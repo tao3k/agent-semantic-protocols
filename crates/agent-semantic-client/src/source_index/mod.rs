@@ -14,15 +14,16 @@ pub(crate) use api::current_runtime_source_index_snapshot;
 pub(crate) use api::current_source_index_snapshot_with_registry;
 #[cfg(test)]
 pub(crate) use api::materialized_current_source_index_snapshot;
-pub use api::rebuild_source_index;
 pub use api::{
     CurrentSourceIndexSnapshot, current_provider_source_index_snapshot_with_registry,
     current_source_index_snapshot, current_source_index_snapshot_for_owner,
     current_source_index_snapshot_for_owner_from_activation,
     current_workspace_search_source_index_snapshot,
 };
-pub use async_rebuild::{rebuild_source_index_async, rebuild_source_index_with_registry_async};
-pub use projection::{LanguageProjectionImportReport, import_language_projection};
+pub use async_rebuild::{
+    prepare_runtime_server_workspace_generation_async,
+};
+pub use projection::LanguageProjectionImportReport;
 pub use provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1, ProviderSourceSnapshotEnvelopePublicationV1,
     ProviderWorkspaceIdentityV1,
@@ -50,7 +51,6 @@ pub use api::{
     ensure_provider_source_index_snapshot_from_activation,
     provider_source_snapshot_envelope_path_from_activation,
 };
-pub use api::{refresh_runtime_source_index, refresh_source_index};
 #[cfg(test)]
 pub(crate) use lookup::search_pipe_source_index_lookup_from_client_result;
 pub use lookup::{

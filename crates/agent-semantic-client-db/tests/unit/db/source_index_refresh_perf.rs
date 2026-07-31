@@ -31,14 +31,15 @@ async fn source_index_1193_owner_cold_write_stays_inside_v1_gate() {
     let _test_guard = source_index_refresh_test_guard().await;
     let root = temp_project_root("source-index-1193-owner-cold-write");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
     let started_at = Instant::now();
-    let refresh =
-        commit_fixture_generation(&client_dir, large_refresh_request(&project_root, 1_193))
-            .expect("write 1193-owner source-index snapshot");
+    let refresh = commit_fixture_generation(&fixture, large_refresh_request(&project_root, 1_193))
+        .expect("write 1193-owner source-index snapshot");
     let elapsed = started_at.elapsed();
 
     assert!(!refresh.reused_generation, "cold import must publish rows");
@@ -64,13 +65,15 @@ async fn source_index_1278_owner_posting_frontier_cold_write_stays_inside_v1_gat
     let _test_guard = source_index_refresh_test_guard().await;
     let root = temp_project_root("source-index-1278-owner-posting-frontier-cold-write");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
     let request = large_high_term_refresh_request(&project_root, 1_278, 32);
     let started_at = Instant::now();
-    let refresh = commit_fixture_generation(&client_dir, request)
+    let refresh = commit_fixture_generation(&fixture, request)
         .expect("write bounded-posting source-index snapshot");
     let elapsed = started_at.elapsed();
 
@@ -94,11 +97,13 @@ async fn source_index_1193_owner_one_percent_refresh_stays_inside_v1_gate() {
     let _test_guard = source_index_refresh_test_guard().await;
     let root = temp_project_root("source-index-1193-owner-one-percent-refresh");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
-    commit_fixture_generation(&client_dir, large_refresh_request(&project_root, 1_193))
+    commit_fixture_generation(&fixture, large_refresh_request(&project_root, 1_193))
         .expect("write initial 1193-owner source-index snapshot");
 
     let mut changed_request = large_refresh_request(&project_root, 1_193);
@@ -113,7 +118,7 @@ async fn source_index_1193_owner_one_percent_refresh_stays_inside_v1_gate() {
     }
 
     let started_at = Instant::now();
-    let refresh = commit_fixture_generation(&client_dir, changed_request)
+    let refresh = commit_fixture_generation(&fixture, changed_request)
         .expect("refresh one-percent changed source-index snapshot");
     let elapsed = started_at.elapsed();
 
@@ -146,11 +151,13 @@ async fn source_index_1193_owner_high_fanout_lookup_stays_inside_v1_gate() {
     let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-1193-owner-high-fanout-lookup");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
-    commit_fixture_generation(&client_dir, large_refresh_request(&project_root, 1_193))
+    commit_fixture_generation(&fixture, large_refresh_request(&project_root, 1_193))
         .expect("write high-fanout source-index snapshot");
 
     let cold_started_at = Instant::now();
@@ -182,18 +189,19 @@ async fn source_index_refresh_reuse_stays_on_structured_turso_path() {
     let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-refresh-reuse-perf");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
     let request = refresh_request(&project_root);
     let first =
-        commit_fixture_generation(&client_dir, request.clone()).expect("cold source-index refresh");
+        commit_fixture_generation(&fixture, request.clone()).expect("cold source-index refresh");
     assert!(!first.reused_generation, "first refresh should write rows");
 
     let started_at = Instant::now();
-    let second =
-        commit_fixture_generation(&client_dir, request).expect("warm source-index refresh");
+    let second = commit_fixture_generation(&fixture, request).expect("warm source-index refresh");
     let elapsed = started_at.elapsed();
 
     assert!(second.reused_generation, "second refresh should reuse rows");
@@ -212,6 +220,8 @@ async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {
     let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-incremental-prune");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
@@ -223,7 +233,7 @@ async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {
             &initial_snapshot,
         );
     initial_request.source_snapshot = initial_snapshot;
-    commit_fixture_generation(&client_dir, initial_request)
+    commit_fixture_generation(&fixture, initial_request)
         .expect("write initial two-owner source-index snapshot");
 
     let mut pruned_request = large_refresh_request(&project_root, 2);
@@ -237,7 +247,7 @@ async fn source_index_incremental_refresh_prunes_removed_owner_and_postings() {
     pruned_request.import.file_hashes.pop();
     pruned_request.import.owners.pop();
     pruned_request.import.selectors.pop();
-    let pruned = commit_fixture_generation(&client_dir, pruned_request)
+    let pruned = commit_fixture_generation(&fixture, pruned_request)
         .expect("publish pruned source-index snapshot");
     assert!(!pruned.reused_generation);
     assert_eq!(pruned.owner_count, 1);
@@ -285,6 +295,8 @@ async fn source_index_lookup_bounds_query_bytes_terms_and_candidate_limit() {
     let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-lookup-memory-bounds");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
@@ -296,8 +308,7 @@ async fn source_index_lookup_bounds_query_bytes_terms_and_candidate_limit() {
     for selector in &mut request.import.selectors {
         selector.query_keys.push("shared_lookup_token".into());
     }
-    commit_fixture_generation(&client_dir, request)
-        .expect("write source-index memory-bound fixture");
+    commit_fixture_generation(&fixture, request).expect("write source-index memory-bound fixture");
 
     let rust_language_id = LanguageId::from("rust");
     let lookup_deadline = Instant::now() + Duration::from_secs(15);
@@ -363,6 +374,8 @@ async fn source_index_incomplete_materialization_fails_before_cold_write() {
     let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-refresh-rollback");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
@@ -372,7 +385,7 @@ async fn source_index_incomplete_materialization_fails_before_cold_write() {
         .import
         .owners
         .push(invalid_request.import.owners[0].clone());
-    let error = commit_fixture_generation(&client_dir, invalid_request)
+    let error = commit_fixture_generation(&fixture, invalid_request)
         .expect_err("incomplete materialization must fail before the cold write");
     assert!(
         error.contains("workspace canonical materialization is incomplete"),
@@ -395,7 +408,7 @@ async fn source_index_incomplete_materialization_fails_before_cold_write() {
         "failed materialization admission must not expose partial source-index rows"
     );
 
-    let retry = commit_fixture_generation(&client_dir, refresh_request(&project_root))
+    let retry = commit_fixture_generation(&fixture, refresh_request(&project_root))
         .expect("retry after rollback");
     assert!(
         !retry.reused_generation,
@@ -532,6 +545,8 @@ fn source_index_refresh_publishes_distinct_immutable_generation_identities() {
     let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-refresh-restore-snapshot-identity");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
@@ -543,7 +558,7 @@ fn source_index_refresh_publishes_distinct_immutable_generation_identities() {
             &first_snapshot,
         );
     first_request.source_snapshot = first_snapshot.clone();
-    let first = commit_fixture_generation(&client_dir, first_request)
+    let first = commit_fixture_generation(&fixture, first_request)
         .expect("write initial source-index facts");
     assert!(!first.reused_generation);
 
@@ -555,7 +570,7 @@ fn source_index_refresh_publishes_distinct_immutable_generation_identities() {
             &changed_snapshot,
         );
     changed_request.source_snapshot = changed_snapshot;
-    let changed = commit_fixture_generation(&client_dir, changed_request)
+    let changed = commit_fixture_generation(&fixture, changed_request)
         .expect("publish changed source-index membership");
     assert!(!changed.reused_generation);
 
@@ -565,7 +580,7 @@ fn source_index_refresh_publishes_distinct_immutable_generation_identities() {
             &first_snapshot,
         );
     restored_request.source_snapshot = first_snapshot;
-    let restored = commit_fixture_generation(&client_dir, restored_request)
+    let restored = commit_fixture_generation(&fixture, restored_request)
         .expect("republish historical source-index facts");
     assert_eq!(
         restored.generation_id, first.generation_id,
@@ -593,17 +608,19 @@ fn source_index_refresh_rejects_selector_bytes_without_matching_file_identity() 
     let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-selector-only-refresh");
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
-    commit_fixture_generation(&client_dir, refresh_request(&project_root))
+    commit_fixture_generation(&fixture, refresh_request(&project_root))
         .expect("write initial source-index facts");
 
     let mut changed_request = refresh_request(&project_root);
     changed_request.import.selectors[0].source =
         "pub fn source_index_perf_fixture() { changed(); }".into();
-    let error = commit_fixture_generation(&client_dir, changed_request)
+    let error = commit_fixture_generation(&fixture, changed_request)
         .expect_err("selector bytes without matching file identity must fail closed");
     assert!(
         error.contains("immutable workspace generation materialization drift"),
@@ -664,7 +681,7 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
 }
 
 fn commit_fixture_generation(
-    client_dir: &Path,
+    fixture: &agent_semantic_client_db::fixture::SourceIndexFixture,
     request: ClientDbSourceIndexRefreshRequest,
 ) -> Result<agent_semantic_client_db::ClientDbSourceIndexRefreshReport, String> {
     let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
@@ -675,11 +692,7 @@ fn commit_fixture_generation(
             )
         }),
     );
-    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-        client_dir,
-        request,
-        &source_blobs,
-    )
+    fixture.commit_source_index_generation(request, &source_blobs)
 }
 
 fn large_refresh_request(

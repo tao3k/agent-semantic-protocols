@@ -129,7 +129,8 @@ pub(super) fn write_activation_to(root: &Path, activation_path: &Path, providers
                     "sourceExtensions": crate::provider_manifest_scope::document_extensions(&manifest),
                     "sourcePaths": [],
                     "repositoryCandidateGeneration": "test-repository-candidate-generation",
-                    "projectResolutionGeneration": "test-project-resolution-generation"
+                    "workspaceSourceScopeGeneration": "test-project-resolution-generation",
+                    "projectResolutions": []
                 }
             });
             provider
@@ -372,7 +373,7 @@ pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path)
 # agent-semantic-protocol-test-project-resolution-shim-v1
 if [ "$1" = "project-resolution-stdin" ]; then
   candidates=$(git ls-files --cached --others --exclude-standard | awk 'BEGIN {{ sep="" }} {{ gsub(/\\\\/, "\\\\\\\\"); gsub(/"/, "\\\\\""); printf "%s{{\\\"path\\\":\\\"%s\\\"}}", sep, $0; sep="," }}')
-  printf '{{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","languageId":"{language_id}","providerId":"{provider_id}","state":"resolved","resolution":{{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","repositoryCandidates":{{"candidates":[%s],"policyExclusions":[]}},"resolvedSourceScopes":[{{"roots":["."],"explicitPaths":[],"extensions":{source_extensions},"includeAuthority":"package-manager","exclusions":[]}}]}}}}\n' "$candidates"
+  printf '{{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","languageId":"{language_id}","providerId":"{provider_id}","state":"resolved","scope":{{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","repositoryCandidates":{{"candidates":[%s],"policyExclusions":[]}},"resolvedSourceScopes":[{{"roots":["."],"explicitPaths":[],"extensions":{source_extensions},"includeAuthority":"package-manager","exclusions":[]}}]}}}}\n' "$candidates"
   exit 0
 fi
 if [ -x '{}' ]; then

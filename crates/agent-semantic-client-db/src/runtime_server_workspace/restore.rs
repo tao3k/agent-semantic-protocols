@@ -5,6 +5,7 @@ pub async fn restore_active_turso_generation(
     session: &crate::ProviderSearchWorkspaceSession,
     request_id: impl Into<String>,
     workspace_identity: &str,
+    project_root: &std::path::Path,
 ) -> Result<WorkspaceRecoveryReceipt, String> {
     if session.workspace_identity() != workspace_identity {
         return Err(format!(
@@ -13,7 +14,7 @@ pub async fn restore_active_turso_generation(
         ));
     }
     let materialization = session
-        .load_active_workspace_generation_materialization()
+        .load_active_workspace_generation_materialization(project_root)
         .await?
         .ok_or_else(|| {
             format!(

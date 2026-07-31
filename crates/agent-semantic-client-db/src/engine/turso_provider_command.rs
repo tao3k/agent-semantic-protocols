@@ -47,7 +47,7 @@ pub async fn replace_turso_provider_command_selections(
     context_fingerprint: &str,
     selections: &[ClientDbProviderCommandSelection],
 ) -> Result<(), String> {
-    let project_root = normalized_project_root(project_root);
+    let project_root = normalized_project_root(project_root)?;
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_provider_command_schema(&connection).await?;
     replace_turso_provider_command_selections_with_connection(
@@ -170,7 +170,7 @@ pub async fn lookup_turso_provider_command_selections(
     }
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_provider_command_schema(&connection).await?;
-    let project_root = normalized_project_root(project_root);
+    let project_root = normalized_project_root(project_root)?;
     let mut rows = run_turso_operation(
         || async {
             connection

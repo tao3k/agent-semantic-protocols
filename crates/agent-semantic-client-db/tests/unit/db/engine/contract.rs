@@ -1,4 +1,3 @@
-
 #[test]
 fn db_engine_active_backend_contract_tracks_turso_default() {
     let project_root = temp_root("db-engine-active-project");
@@ -82,10 +81,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     assert_eq!(report.backend, TURSO_BACKEND);
     assert_eq!(engine.backend().as_str(), TURSO_BACKEND);
     assert_eq!(report.db_file_name, "facts.turso");
-    assert_eq!(
-        engine.db_path(),
-        state.paths.client_dir.join("facts.turso")
-    );
+    assert_eq!(engine.db_path(), state.paths.client_dir.join("facts.turso"));
     assert_eq!(report.db_path, state.paths.client_dir.join("facts.turso"));
     assert!(
         !report.db_path.exists(),
@@ -118,23 +114,25 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
         source_index_lookup.state,
         agent_semantic_client_db::ClientDbSourceIndexLookupState::MissingDb
     );
-    {
-        let _state_home_env = EnvVarGuard::set(ASP_STATE_HOME_ENV, &state_home);
-        let project_source_index_lookup = ClientDbEngine::lookup_source_index_from_project(
-            agent_semantic_client_db::ClientDbSourceIndexProjectLookupRequest {
-                cache_project_root: &project_root,
-                indexed_project_root: &project_root,
-                language_id: None,
-                query_keys: Vec::new(),
-                limit: 8,
-                expected_snapshot_root: &expected_snapshot_root,
-                expected_index_artifact_digest: &expected_index_artifact_digest,
-                live_facts: None,
-            },
-        )
-        .expect("lookup missing source-index control DB from project root");
-        assert_eq!(project_source_index_lookup, source_index_lookup);
-    }
+    let status =
+        std::process::Command::new(std::env::current_exe().expect("locate current test binary"))
+            .arg("--exact")
+            .arg("db_engine::db_engine_project_lookup_state_home_helper")
+            .arg("--nocapture")
+            .env("ASP_DB_ENGINE_STATE_HOME_CHILD", "1")
+            .env("ASP_STATE_HOME", &state_home)
+            .env("ASP_DB_ENGINE_PROJECT_ROOT", &project_root)
+            .env("ASP_DB_ENGINE_SNAPSHOT_ROOT", &expected_snapshot_root)
+            .env(
+                "ASP_DB_ENGINE_INDEX_DIGEST",
+                &expected_index_artifact_digest,
+            )
+            .status()
+            .expect("run isolated project lookup state-home contract");
+    assert!(
+        status.success(),
+        "isolated project lookup state-home contract failed"
+    );
     let report_json = serde_json::to_value(&report).expect("serialize db engine report");
     assert_eq!(report_json["layoutVersion"], STATE_LAYOUT_VERSION);
     assert_eq!(report_json["repoId"], state.repo.repo_id.as_str());
@@ -209,11 +207,7 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
     let manifest_required = manifest_schema["required"]
         .as_array()
         .expect("manifest required fields");
-    for required_field in [
-        "backend",
-        "dbPath",
-        "generationManifestPath",
-    ] {
+    for required_field in ["backend", "dbPath", "generationManifestPath"] {
         assert!(
             manifest_required
                 .iter()
@@ -291,4 +285,39 @@ fn db_engine_active_backend_contract_tracks_turso_default() {
 
     let _ = std::fs::remove_dir_all(project_root);
     let _ = std::fs::remove_dir_all(state_home);
+}
+
+#[test]
+fn db_engine_project_lookup_state_home_helper() {
+    if std::env::var("ASP_DB_ENGINE_STATE_HOME_CHILD")
+        .ok()
+        .as_deref()
+        != Some("1")
+    {
+        return;
+    }
+    let project_root = PathBuf::from(
+        std::env::var_os("ASP_DB_ENGINE_PROJECT_ROOT").expect("ASP_DB_ENGINE_PROJECT_ROOT"),
+    );
+    let expected_snapshot_root =
+        std::env::var("ASP_DB_ENGINE_SNAPSHOT_ROOT").expect("ASP_DB_ENGINE_SNAPSHOT_ROOT");
+    let expected_index_artifact_digest =
+        std::env::var("ASP_DB_ENGINE_INDEX_DIGEST").expect("ASP_DB_ENGINE_INDEX_DIGEST");
+    let project_source_index_lookup = ClientDbEngine::lookup_source_index_from_project(
+        agent_semantic_client_db::ClientDbSourceIndexProjectLookupRequest {
+            cache_project_root: &project_root,
+            indexed_project_root: &project_root,
+            language_id: None,
+            query_keys: Vec::new(),
+            limit: 8,
+            expected_snapshot_root: &expected_snapshot_root,
+            expected_index_artifact_digest: &expected_index_artifact_digest,
+            live_facts: None,
+        },
+    )
+    .expect("lookup missing source-index control DB from project root");
+    assert_eq!(
+        project_source_index_lookup.state,
+        agent_semantic_client_db::ClientDbSourceIndexLookupState::MissingDb
+    );
 }

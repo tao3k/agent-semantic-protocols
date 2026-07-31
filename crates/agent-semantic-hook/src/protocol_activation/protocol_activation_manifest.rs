@@ -68,16 +68,13 @@ pub struct ActivatedProviderConfig {
     pub coverage: ActivationCoverage,
 }
 
-/// Provider-parsed project scope captured from a typed project-resolution receipt.
+/// The single workspace source scope derived from typed provider project resolutions.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActivationCoverage {
     pub package_roots: Vec<String>,
     pub config_files: Vec<String>,
     pub source_extensions: Vec<String>,
-    pub source_paths: Vec<String>,
-    pub repository_candidate_generation: String,
-    pub project_resolution_generation: String,
 }
 
 /// Execution mode used to invoke a provider from ASP.
@@ -126,6 +123,8 @@ pub struct ProviderManifest {
     pub(crate) project_resolution: Option<ProviderProjectResolutionDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) document_resolution: Option<ProviderDocumentResolutionDescriptor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) language_projection: Option<ProviderLanguageProjectionDescriptor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) semantic_facts_descriptor: Option<ProviderSemanticFactsDescriptor>,
     pub(crate) query_pack_descriptor: ProviderQueryPackDescriptor,
@@ -190,6 +189,10 @@ impl ProviderManifest {
         self.document_resolution.as_ref()
     }
 
+    pub fn language_projection(&self) -> Option<&ProviderLanguageProjectionDescriptor> {
+        self.language_projection.as_ref()
+    }
+
     pub fn semantic_facts_descriptor(&self) -> Option<&ProviderSemanticFactsDescriptor> {
         self.semantic_facts_descriptor.as_ref()
     }
@@ -217,6 +220,48 @@ pub struct ProviderSearchCapabilities {
     pub dependency_topology_metadata: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_snapshot: Option<ProviderSourceSnapshotDescriptor>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderLanguageProjectionDescriptor {
+    schema_id: String,
+    schema_version: String,
+    command_binding: String,
+    transport: String,
+    request_schema: String,
+    response_schema: String,
+    identity_schema: String,
+}
+
+impl ProviderLanguageProjectionDescriptor {
+    pub fn schema_id(&self) -> &str {
+        &self.schema_id
+    }
+
+    pub fn schema_version(&self) -> &str {
+        &self.schema_version
+    }
+
+    pub fn command_binding(&self) -> &str {
+        &self.command_binding
+    }
+
+    pub fn transport(&self) -> &str {
+        &self.transport
+    }
+
+    pub fn request_schema(&self) -> &str {
+        &self.request_schema
+    }
+
+    pub fn response_schema(&self) -> &str {
+        &self.response_schema
+    }
+
+    pub fn identity_schema(&self) -> &str {
+        &self.identity_schema
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -324,8 +369,10 @@ pub struct ProviderSemanticFactsDescriptor {
     pub intent_axes: Vec<ProviderSemanticFactsIntentAxis>,
 }
 
-/// Provider-owned parser capability for resolving repository candidates into
-/// a language package graph.
+/// Provider-owned package-manager parser capability.
+///
+/// Repository/worktree discovery belongs to ASP. The provider receives only
+/// an already-rebased candidate scope and returns parser-owned project facts.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderProjectResolutionDescriptor {
@@ -335,13 +382,11 @@ pub struct ProviderProjectResolutionDescriptor {
     pub entry_markers: Vec<String>,
     pub manifest_kinds: Vec<String>,
     pub lockfile_kinds: Vec<String>,
-    pub supports_git_candidates: bool,
-    pub supports_provider_only: bool,
     pub parser_id: String,
     pub command_binding: String,
-    pub candidate_snapshot_schema: String,
+    pub request_schema: String,
+    pub response_schema: String,
     pub package_graph_schema: String,
-    pub resolved_source_scope_schema: String,
     pub project_resolution_schema: String,
 }
 
@@ -536,9 +581,6 @@ pub struct ActivatedProvider {
     pub package_roots: Vec<String>,
     pub source_extensions: Vec<String>,
     pub config_files: Vec<String>,
-    pub source_paths: Vec<String>,
-    pub repository_candidate_generation: String,
-    pub project_resolution_generation: String,
     pub search_capabilities: ProviderSearchCapabilities,
     pub project_resolution: Option<ProviderProjectResolutionDescriptor>,
     pub document_resolution: Option<ProviderDocumentResolutionDescriptor>,

@@ -66,6 +66,72 @@ fn default_activation_uses_state_home_runtime_provider_receipt() {
 }
 
 #[test]
+fn default_activation_resolves_nested_provider_project_entries() {
+    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let root = temp_root("nested-provider-project-entry");
+    let state_home = root.join(".asp-state-home");
+    let _state_home_guard = StateHomeEnvGuard::set(&state_home);
+    git_init(&root);
+    let package_root = root.join("packages").join("python");
+    fs::create_dir_all(package_root.join("src")).expect("create nested Python source root");
+    fs::write(
+        package_root.join("pyproject.toml"),
+        "[project]\nname = \"nested-provider-project-entry\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write nested pyproject.toml");
+    fs::write(
+        package_root.join("src").join("fixture.py"),
+        "def fixture():\n    return 1\n",
+    )
+    .expect("write nested Python candidate");
+    install_state_home_provider(&state_home, "python", "py-harness", "py-harness");
+
+    let activation = build_default_activation(&root).expect("build nested provider activation");
+    let python = activation
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "python")
+        .expect("nested Python provider activated");
+
+    assert_eq!(
+        python.coverage.package_roots,
+        ["packages/python/src"],
+        "provider package roots must be rebased to the ASP workspace"
+    );
+    assert_eq!(
+        python.coverage.config_files,
+        ["packages/python/pyproject.toml"],
+        "provider project entry must be rebased to the ASP workspace"
+    );
+    assert_eq!(
+        python.coverage.source_paths,
+        ["packages/python/src/fixture.py"],
+        "provider source paths must remain inside the nested project scope"
+    );
+    assert_eq!(python.coverage.project_resolutions.len(), 1);
+    assert_eq!(
+        python.coverage.project_resolutions[0].candidate_base,
+        "packages/python"
+    );
+    assert_eq!(
+        python.coverage.project_resolutions[0].resolution.project_entry,
+        "pyproject.toml"
+    );
+    assert_eq!(
+        python.coverage.project_resolutions[0]
+            .resolution
+            .package_graph
+            .packages[0]
+            .package_id,
+        "fixture"
+    );
+
+    fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
 fn default_activation_rejects_project_relative_provider_override() {
     let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
         .lock()
@@ -238,11 +304,83 @@ pub(crate) fn install_state_home_provider(
         || "#!/bin/sh\nexit 0\n".to_string(),
         |(project_entry, extension)| {
             format!(
-                r#"#!/bin/sh
-if [ "$1" != "project-resolution-stdin" ]; then
-  exit 64
-fi
-printf '%s\n' '{{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","state":"resolved","languageId":"{language_id}","providerId":"{provider_id}","resolution":{{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","projectIdentity":{{"projectEntry":"{project_entry}"}},"resolvedSourceScopes":[{{"roots":["src"],"explicitPaths":[],"extensions":["{extension}"],"includeAuthority":"package-manager","exclusions":[]}}],"resolutionGeneration":"fixture:v1"}}}}'
+                r#"#!/usr/bin/env python3
+import json
+import sys
+
+if sys.argv[1:] != ["project-resolution-stdin"]:
+    raise SystemExit(64)
+request = json.load(sys.stdin)
+generation = request["candidateGeneration"]["digest"]
+scope = {{
+    "schemaId": "agent.semantic-protocols.project-resolution",
+    "schemaVersion": "1",
+    "state": "resolved",
+    "completeness": "exact",
+    "languageId": "{language_id}",
+    "providerId": "{provider_id}",
+    "parserId": "fixture.package-manager",
+    "candidateGenerationDigest": generation,
+    "projectEntry": "{project_entry}",
+    "packageGraph": {{
+        "schemaId": "agent.semantic-protocols.language-package-graph",
+        "schemaVersion": "1",
+        "languageId": "{language_id}",
+        "providerId": "{provider_id}",
+        "projectEntry": "{project_entry}",
+        "parserId": "fixture.package-manager",
+        "manifests": [{{"path": "{project_entry}", "kind": "fixture-manifest", "digest": "fixture-manifest"}}],
+        "lockfiles": [],
+        "packages": [{{
+            "packageId": "fixture",
+            "name": "fixture",
+            "manifestPath": "{project_entry}",
+            "root": ".",
+            "workspaceMember": True,
+            "targets": [{{
+                "targetId": "fixture:source",
+                "kind": "source",
+                "name": "fixture",
+                "explicit": True,
+                "sourceRoots": ["src"],
+                "entrypoints": [],
+                "generatedRoots": []
+            }}]
+        }}],
+        "internalDependencyEdges": [],
+        "externalDependencies": [],
+        "unresolved": []
+    }},
+    "sourceScopes": [{{
+        "scopeId": "fixture:source",
+        "packageId": "fixture",
+        "targetId": "fixture:source",
+        "roots": ["src"],
+        "explicitPaths": [],
+        "extensions": ["{extension}"],
+        "includeAuthority": "package-manager",
+        "exclusions": []
+    }}],
+    "conflicts": [],
+    "metrics": {{
+        "parsedManifestCount": 1,
+        "parsedLockfileCount": 0,
+        "affectedPackageCount": 1,
+        "fullWorkspaceReads": 0,
+        "fullManifestReparses": 0,
+        "dbOpens": 0,
+        "elapsedMicros": 1
+    }}
+}}
+json.dump({{
+    "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
+    "schemaVersion": "1",
+    "state": "resolved",
+    "languageId": "{language_id}",
+    "providerId": "{provider_id}",
+    "scope": scope
+}}, sys.stdout, separators=(",", ":"), sort_keys=True)
+sys.stdout.write("\n")
 "#
             )
         },

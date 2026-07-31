@@ -28,10 +28,7 @@ async fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     })
 }
 
-pub(crate) async fn atomic_write_if_changed(
-    path: &Path,
-    bytes: &[u8],
-) -> Result<bool, String> {
+pub(crate) async fn atomic_write_if_changed(path: &Path, bytes: &[u8]) -> Result<bool, String> {
     match tokio::fs::read(path).await {
         Ok(current) if current == bytes => return Ok(false),
         Ok(_) => {}

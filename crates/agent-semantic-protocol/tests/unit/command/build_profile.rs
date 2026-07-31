@@ -70,6 +70,24 @@ fn global_install_checks_release_profile_before_and_after_copy() {
 }
 
 #[test]
+fn debug_install_never_publishes_a_stale_target_after_build_failure() {
+    let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
+    let recipe = justfile
+        .split("agent-tools-install-protocol-debug bin_dir=\"\":")
+        .nth(1)
+        .and_then(|tail| tail.split("agent-tools-install-hook").next())
+        .expect("debug protocol install recipe");
+
+    assert!(
+        recipe.contains(
+            "cargo build --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp || exit $?"
+        ),
+        "a failed debug build must stop before an older target/debug/asp can be published"
+    );
+    assert!(recipe.contains("target/debug/asp install binary"));
+}
+
+#[test]
 fn asp_recipe_freshness_uses_binary_content_identity() {
     let justfile = fs::read_to_string(workspace_root().join("justfile")).expect("read justfile");
 

@@ -1,7 +1,6 @@
-use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
 
 use memmap2::{Mmap, MmapMut, MmapOptions};
 use tokio::sync::Mutex;
@@ -30,37 +29,37 @@ impl WorkspaceGenerationPointerWriter {
                 )
             })?;
         let path = directory.join(POINTER_FILE_NAME);
-        let mapping_path = path.clone();
-        let mapping = tokio::task::spawn_blocking(move || {
-            let file = OpenOptions::new()
-                .create(true)
-                .truncate(false)
-                .read(true)
-                .write(true)
-                .open(&mapping_path)
-                .map_err(|error| {
-                    format!(
-                        "failed to open workspace generation pointer `{}`: {error}",
-                        mapping_path.display()
-                    )
-                })?;
-            file.set_len(POINTER_LEN as u64).map_err(|error| {
+        let file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .await
+            .map_err(|error| {
                 format!(
-                    "failed to size workspace generation pointer `{}`: {error}",
-                    mapping_path.display()
+                    "failed to open workspace generation pointer `{}`: {error}",
+                    path.display()
                 )
             })?;
+        file.set_len(POINTER_LEN as u64).await.map_err(|error| {
+            format!(
+                "failed to size workspace generation pointer `{}`: {error}",
+                path.display()
+            )
+        })?;
+        let file = file.into_std().await;
+        let mapping = unsafe {
             // SAFETY: the file is opened read/write, is held for the mapping
             // operation, and has been sized to the exact mapped length.
-            unsafe { MmapOptions::new().len(POINTER_LEN).map_mut(&file) }.map_err(|error| {
-                format!(
-                    "failed to map workspace generation pointer `{}`: {error}",
-                    mapping_path.display()
-                )
-            })
-        })
-        .await
-        .map_err(|error| format!("workspace generation pointer open task failed: {error}"))??;
+            MmapOptions::new().len(POINTER_LEN).map_mut(&file)
+        }
+        .map_err(|error| {
+            format!(
+                "failed to map workspace generation pointer `{}`: {error}",
+                path.display()
+            )
+        })?;
         set_private_permissions(&path).await?;
         Ok(Self {
             path,
@@ -110,57 +109,46 @@ impl WorkspaceGenerationPointerWriter {
 #[derive(Debug)]
 pub struct WorkspaceGenerationPointerReader {
     mapping: Mmap,
-    leased_snapshot: RwLock<Option<WorkspaceGenerationSnapshot>>,
+    leased_snapshot: tokio::sync::watch::Sender<Option<WorkspaceGenerationSnapshot>>,
 }
 
 impl WorkspaceGenerationPointerReader {
     pub async fn open(path: &Path) -> Result<Self, String> {
-        let mapping_path = path.to_path_buf();
-        let mapping = tokio::task::spawn_blocking(move || {
-            let file = OpenOptions::new()
-                .read(true)
-                .open(&mapping_path)
-                .map_err(|error| {
-                    format!(
-                        "failed to open workspace generation pointer `{}`: {error}",
-                        mapping_path.display()
-                    )
-                })?;
+        let file = std::fs::File::open(path).map_err(|error| {
+            format!(
+                "failed to open workspace generation pointer `{}`: {error}",
+                path.display()
+            )
+        })?;
+        let mapping = unsafe {
             // SAFETY: the read-only file remains valid for the duration of the
             // mapping operation and the writer fixes its length at POINTER_LEN.
-            unsafe { MmapOptions::new().len(POINTER_LEN).map(&file) }.map_err(|error| {
-                format!(
-                    "failed to map workspace generation pointer `{}`: {error}",
-                    mapping_path.display()
-                )
-            })
-        })
-        .await
-        .map_err(|error| format!("workspace generation pointer open task failed: {error}"))??;
+            MmapOptions::new().len(POINTER_LEN).map(&file)
+        }
+        .map_err(|error| {
+            format!(
+                "failed to map workspace generation pointer `{}`: {error}",
+                path.display()
+            )
+        })?;
+        let (leased_snapshot, _) = tokio::sync::watch::channel(None);
         Ok(Self {
             mapping,
-            leased_snapshot: RwLock::new(None),
+            leased_snapshot,
         })
     }
 
     pub fn read(&self) -> Result<WorkspaceGenerationSnapshot, String> {
         match decode_consistent_snapshot(&self.mapping) {
             Ok(snapshot) => {
-                let mut lease = self
-                    .leased_snapshot
-                    .write()
-                    .map_err(|_| "workspace generation pointer lease is poisoned".to_owned())?;
-                *lease = Some(snapshot.clone());
+                self.leased_snapshot.send_replace(Some(snapshot.clone()));
                 Ok(snapshot)
             }
-            Err(ReadSnapshotError::Unstable) => self
-                .leased_snapshot
-                .read()
-                .map_err(|_| "workspace generation pointer lease is poisoned".to_owned())?
-                .clone()
-                .ok_or_else(|| {
+            Err(ReadSnapshotError::Unstable) => {
+                self.leased_snapshot.borrow().clone().ok_or_else(|| {
                     "workspace generation pointer has no complete generation lease".to_owned()
-                }),
+                })
+            }
             Err(ReadSnapshotError::Invalid(error)) => Err(error),
         }
     }

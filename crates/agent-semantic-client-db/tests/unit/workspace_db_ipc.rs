@@ -14,8 +14,35 @@ use agent_semantic_client_db::{
 };
 
 #[test]
+fn runtime_generation_admission_and_ensure_have_distinct_typed_wire_shapes() {
+    let admit = serde_json::to_value(WorkspaceDbIpcOperation::AdmitRuntimeGeneration {
+        project_root: "/workspace".to_owned(),
+    })
+    .expect("encode runtime generation admission");
+    let ensure = serde_json::to_value(WorkspaceDbIpcOperation::EnsureRuntimeGeneration {
+        project_root: "/workspace".to_owned(),
+    })
+    .expect("encode ensured runtime generation");
+    assert_eq!(
+        admit,
+        serde_json::json!({
+            "kind": "admit-runtime-generation",
+            "projectRoot": "/workspace"
+        })
+    );
+    assert_eq!(
+        ensure,
+        serde_json::json!({
+            "kind": "ensure-runtime-generation",
+            "projectRoot": "/workspace"
+        })
+    );
+}
+
+#[test]
 fn runtime_owner_tombstone_has_one_typed_v1_wire_shape() {
     let value = serde_json::to_value(WorkspaceDbIpcOperation::TombstoneRuntimeOwner {
+        project_root: "/workspace".to_owned(),
         owner_path: "src/previous.rs".to_owned(),
     })
     .expect("encode runtime owner tombstone");
@@ -23,6 +50,7 @@ fn runtime_owner_tombstone_has_one_typed_v1_wire_shape() {
         value,
         serde_json::json!({
             "kind": "tombstone-runtime-owner",
+            "projectRoot": "/workspace",
             "ownerPath": "src/previous.rs"
         })
     );
@@ -31,6 +59,7 @@ fn runtime_owner_tombstone_has_one_typed_v1_wire_shape() {
 #[test]
 fn runtime_owner_relocation_has_one_atomic_v1_wire_shape() {
     let value = serde_json::to_value(WorkspaceDbIpcOperation::RelocateRuntimeOwner {
+        project_root: "/workspace".to_owned(),
         previous_owner_path: "src/previous.rs".to_owned(),
         owner: agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
             owner_path: "src/current.rs".to_owned(),
@@ -43,21 +72,26 @@ fn runtime_owner_relocation_has_one_atomic_v1_wire_shape() {
     })
     .expect("encode runtime owner relocation");
     assert_eq!(value["kind"], "relocate-runtime-owner");
+    assert_eq!(value["projectRoot"], "/workspace");
     assert_eq!(value["previousOwnerPath"], "src/previous.rs");
     assert_eq!(value["owner"]["ownerPath"], "src/current.rs");
 }
 
 #[test]
-fn runtime_generation_project_root_uses_the_v1_camel_case_field() {
-    let value = serde_json::to_value(WorkspaceDbIpcOperation::EnsureRuntimeGeneration {
+fn runtime_owner_freshness_has_one_typed_v1_wire_shape() {
+    let value = serde_json::to_value(WorkspaceDbIpcOperation::EnsureRuntimeOwner {
         project_root: "/workspace".to_owned(),
+        language_id: "rust".to_owned(),
+        owner_path: "src/lib.rs".to_owned(),
     })
-    .expect("encode runtime generation ensure");
+    .expect("encode runtime owner freshness");
     assert_eq!(
         value,
         serde_json::json!({
-            "kind": "ensure-runtime-generation",
-            "projectRoot": "/workspace"
+            "kind": "ensure-runtime-owner",
+            "projectRoot": "/workspace",
+            "languageId": "rust",
+            "ownerPath": "src/lib.rs"
         })
     );
 }
@@ -287,7 +321,9 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
             average_nanos,
         );
         let owner_path = "src/lib.rs";
-        let owner_content_digest = format!("{:064x}", 23);
+        let source_bytes = b"pub fn example() {}".to_vec();
+        let owner_content_digest =
+            agent_semantic_content_identity::ArtifactHash::blake3(source_bytes.as_slice()).value;
         let inventory = ProviderOwnerInventoryWrite {
             scope: scope.clone(),
             state: ProviderOwnerInventoryState::Exact,
@@ -304,7 +340,7 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
 
         let metadata = ProviderOwnerMetadata {
             file_identity: "file-1".to_owned(),
-            size_bytes: 101,
+            size_bytes: source_bytes.len() as u64,
             modified_unix_nanos: 1_001,
             change_time_unix_nanos: 2_001,
         };
@@ -315,6 +351,7 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
                 metadata: metadata.clone(),
                 content_digest: owner_content_digest.clone(),
             },
+            source_bytes: source_bytes.clone(),
             projection_completeness: "complete-owner".to_owned(),
             projections: vec![ProviderSelectorProjection {
                 structural_selector: format!("rust://{owner_path}#item/function/example"),
@@ -330,12 +367,32 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
             .write_provider_incremental_owner(&incremental_write)
             .await
             .expect("write incremental owner through IPC session");
-        let projections = session
-            .read_provider_owner_projections(&scope, owner_path)
+        let snapshot = session
+            .read_provider_owner_snapshot(&scope, owner_path)
             .await
-            .expect("read incremental projections through IPC session");
-        assert_eq!(projections.len(), 1);
-        assert_eq!(projections[0].item_name, "example");
+            .expect("read complete incremental owner through IPC session")
+            .expect("incremental owner snapshot must exist");
+        assert_eq!(snapshot.source_bytes, source_bytes);
+        assert_eq!(snapshot.fingerprint.content_digest, owner_content_digest);
+        assert_eq!(snapshot.projections.len(), 1);
+        assert_eq!(snapshot.projections[0].item_name, "example");
+        let (warm_probe, warm_snapshot) = session
+            .read_provider_owner_warm(
+                &scope,
+                &ProviderOwnerBatchProbeRequest {
+                    owner_path: owner_path.to_owned(),
+                    metadata: metadata.clone(),
+                },
+            )
+            .await
+            .expect("read provider owner warm state through one IPC operation");
+        assert_eq!(warm_probe.decision, ProviderOwnerDecision::Unchanged);
+        assert_eq!(
+            warm_snapshot
+                .expect("warm provider owner snapshot")
+                .source_bytes,
+            source_bytes
+        );
 
         let query = ProviderTreeSitterQueryIdentity {
             scope: scope.clone(),

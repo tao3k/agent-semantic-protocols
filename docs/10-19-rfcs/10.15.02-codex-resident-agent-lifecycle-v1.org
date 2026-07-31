@@ -10,6 +10,8 @@ resident is the preferred transport. When Codex does not expose a
 custom-agent-aware creation path, ASP can explicitly select a degraded
 current-session parser transport instead of self-locking semantic search.
 
+The occupied-but-unbound repair counterexample and transactional generation solution are refined by [[file:10.15.02.01-agent-session-transactional-generation-lifecycle.org][RFC 10.15.02.01 — Agent Session Transactional Generation Lifecycle]].
+
 * Problem
 
 Registry absence is not evidence that a native child is absent. A Codex task can

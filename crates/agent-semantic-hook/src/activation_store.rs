@@ -4,8 +4,8 @@ use crate::protocol_activation::protocol_activation_manifest::{HookActivation, H
 use crate::protocol_activation::protocol_activation_runtime::parse_activation;
 use crate::provider_manifest::{
     DefaultActivationSelections, ProviderCommandSelection, ProviderCommandSelectionScopeV1,
-    build_default_activation, build_default_activation_from_selections,
-    default_activation_selections, default_activation_selections_for_scope, provider_manifests,
+    build_default_activation_from_selections, default_activation_selections,
+    default_activation_selections_for_scope, provider_manifests,
 };
 use agent_semantic_runtime::project_activation_path;
 use std::{
@@ -30,32 +30,7 @@ pub fn load_or_sync_activation(
     project_root: &Path,
 ) -> Result<HookRuntime, String> {
     if is_generated_activation_path_for_project(activation_path, project_root) {
-        if let Ok(current_exe) = std::env::current_exe()
-            && crate::verify_active_asp_artifact_receipt(activation_path, &[&current_exe]).is_ok()
-            && let Ok(runtime) = load_activation(activation_path)
-        {
-            return Ok(runtime);
-        }
-        return match sync_activation(project_root, activation_path) {
-            Ok(runtime) => {
-                crate::materialize_active_asp_artifact_receipt_for_current_process(
-                    activation_path,
-                    &runtime,
-                )?;
-                Ok(runtime)
-            }
-            Err(sync_error) => {
-                runtime_from_current_default_activation(project_root).or_else(|runtime_error| {
-                    load_activation(activation_path).map_err(|load_error| {
-                        format!(
-                            "{load_error}; failed to sync generated activation {}: {sync_error}; \
-                         failed to build in-memory generated activation: {runtime_error}",
-                            activation_path.display()
-                        )
-                    })
-                })
-            }
-        };
+        return sync_activation(project_root, activation_path);
     }
     load_activation(activation_path)
 }
@@ -80,6 +55,72 @@ pub fn registered_language_runtime(
 pub struct DefaultActivationSync {
     pub activation: HookActivation,
     pub status: &'static str,
+    pub admission: ActivationAdmissionReceipt,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ActivationAdmissionDecision {
+    Reuse,
+    RebuildAndPublish,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ActivationAdmissionReason {
+    CompleteIdentity,
+    ActivationMissing,
+    ArtifactReceiptInvalid,
+    ActivationSchemaInvalid,
+    ProjectIdentityMismatch,
+    ProviderSelectionDrift,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivationAdmissionGates {
+    pub activation_readable: bool,
+    pub artifact_receipt_valid: bool,
+    pub schema_valid: bool,
+    pub project_identity_matches: bool,
+    pub provider_selection_matches: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivationAdmissionReceipt {
+    pub schema_id: &'static str,
+    pub schema_version: &'static str,
+    pub decision: ActivationAdmissionDecision,
+    pub reason: ActivationAdmissionReason,
+    pub gates: ActivationAdmissionGates,
+}
+
+impl ActivationAdmissionReceipt {
+    fn rebuild(reason: ActivationAdmissionReason, gates: ActivationAdmissionGates) -> Self {
+        Self {
+            schema_id: "asp.activation-admission-receipt.v1",
+            schema_version: "1",
+            decision: ActivationAdmissionDecision::RebuildAndPublish,
+            reason,
+            gates,
+        }
+    }
+
+    fn reuse(gates: ActivationAdmissionGates) -> Self {
+        Self {
+            schema_id: "asp.activation-admission-receipt.v1",
+            schema_version: "1",
+            decision: ActivationAdmissionDecision::Reuse,
+            reason: ActivationAdmissionReason::CompleteIdentity,
+            gates,
+        }
+    }
+}
+
+struct ActivationAssessment {
+    activation: Option<HookActivation>,
+    receipt: ActivationAdmissionReceipt,
 }
 
 /// Load the generated activation when provider command selection is unchanged,
@@ -92,16 +133,17 @@ pub fn load_or_refresh_default_activation(
     let current_selections = default_activation_selections(project_root)?;
     emit_activation_timing("provider-selections", started);
     let reusable_started = std::time::Instant::now();
-    if let Some(activation) = reusable_activation(
+    let assessment = assess_activation(
         activation_path,
         project_root,
         current_selections.providers(),
-    )? {
-        materialize_activation_receipt(activation_path, project_root, &current_selections)?;
+    )?;
+    if let Some(activation) = assessment.activation {
         emit_activation_timing("reusable-activation", reusable_started);
         return Ok(DefaultActivationSync {
             activation,
             status: "reused",
+            admission: assessment.receipt,
         });
     }
     emit_activation_timing("reusable-activation", reusable_started);
@@ -118,6 +160,7 @@ pub fn load_or_refresh_default_activation(
     Ok(DefaultActivationSync {
         activation,
         status: if existed { "refreshed" } else { "created" },
+        admission: assessment.receipt,
     })
 }
 
@@ -164,14 +207,26 @@ fn emit_activation_timing(step: &str, started: std::time::Instant) {
     }
 }
 
-fn reusable_activation(
+fn assess_activation(
     activation_path: &Path,
     project_root: &Path,
     current_selections: &[ProviderCommandSelection],
-) -> Result<Option<HookActivation>, String> {
+) -> Result<ActivationAssessment, String> {
+    let mut gates = ActivationAdmissionGates::default();
     let contents = match fs::read_to_string(activation_path) {
-        Ok(contents) => contents,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Ok(contents) => {
+            gates.activation_readable = true;
+            contents
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ActivationAssessment {
+                activation: None,
+                receipt: ActivationAdmissionReceipt::rebuild(
+                    ActivationAdmissionReason::ActivationMissing,
+                    gates,
+                ),
+            });
+        }
         Err(error) => {
             return Err(format!(
                 "failed to read activation {}: {error}",
@@ -179,22 +234,61 @@ fn reusable_activation(
             ));
         }
     };
+    let current_exe = std::env::current_exe()
+        .map_err(|error| format!("failed to resolve current ASP executable: {error}"))?;
+    if crate::verify_active_asp_artifact_receipt(activation_path, &[&current_exe]).is_err() {
+        return Ok(ActivationAssessment {
+            activation: None,
+            receipt: ActivationAdmissionReceipt::rebuild(
+                ActivationAdmissionReason::ArtifactReceiptInvalid,
+                gates,
+            ),
+        });
+    }
+    gates.artifact_receipt_valid = true;
     if parse_activation(&contents, &provider_manifests()).is_err() {
-        return Ok(None);
+        return Ok(ActivationAssessment {
+            activation: None,
+            receipt: ActivationAdmissionReceipt::rebuild(
+                ActivationAdmissionReason::ActivationSchemaInvalid,
+                gates,
+            ),
+        });
     }
     let Ok(activation) = serde_json::from_str::<HookActivation>(&contents) else {
-        return Ok(None);
+        return Ok(ActivationAssessment {
+            activation: None,
+            receipt: ActivationAdmissionReceipt::rebuild(
+                ActivationAdmissionReason::ActivationSchemaInvalid,
+                gates,
+            ),
+        });
     };
+    gates.schema_valid = true;
     if activation.project_root != project_root.display().to_string() {
-        return Ok(None);
+        return Ok(ActivationAssessment {
+            activation: None,
+            receipt: ActivationAdmissionReceipt::rebuild(
+                ActivationAdmissionReason::ProjectIdentityMismatch,
+                gates,
+            ),
+        });
     }
-    if activation_matches_provider_command_selections(&activation, current_selections)
-        && activation_matches_current_candidate_generation(&activation, project_root)?
-    {
-        Ok(Some(activation))
-    } else {
-        Ok(None)
+    gates.project_identity_matches = true;
+    if !activation_matches_provider_command_selections(&activation, current_selections) {
+        return Ok(ActivationAssessment {
+            activation: None,
+            receipt: ActivationAdmissionReceipt::rebuild(
+                ActivationAdmissionReason::ProviderSelectionDrift,
+                gates,
+            ),
+        });
     }
+    gates.provider_selection_matches = true;
+    Ok(ActivationAssessment {
+        activation: Some(activation),
+        receipt: ActivationAdmissionReceipt::reuse(gates),
+    })
 }
 
 fn activation_matches_provider_command_selections(
@@ -216,7 +310,7 @@ fn activation_matches_provider_command_selections(
                     provider.manifest_digest == selection.manifest_digest
                         && provider.binary == selection.binary
                         && provider.execution == selection.execution
-                        && provider.provider_command_prefix == selection.provider_command_prefix
+                        && provider.execution_command_digest == selection.execution_command_digest
                         && provider.semantic_registry_digest == current_registry_digest
                         && manifests
                             .iter()
@@ -233,39 +327,10 @@ fn activation_matches_provider_command_selections(
         })
 }
 
-fn activation_matches_current_candidate_generation(
-    activation: &HookActivation,
-    project_root: &Path,
-) -> Result<bool, String> {
-    let snapshot =
-        agent_semantic_runtime::git::discover_repository_candidate_snapshot(project_root)
-            .map_err(|error| format!("discover current repository candidates: {error}"))?
-            .ok_or_else(|| {
-                format!(
-                    "provider activation requires a Git candidate snapshot: workspace={}",
-                    project_root.display()
-                )
-            })?;
-    let generation = serde_json::to_value(snapshot)
-        .map_err(|error| format!("encode current repository candidate snapshot: {error}"))?
-        .get("candidateGeneration")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| "repository candidate snapshot omitted candidateGeneration".to_string())?
-        .to_string();
-    Ok(activation
-        .providers
-        .iter()
-        .all(|provider| provider.coverage.repository_candidate_generation == generation))
-}
 
 fn sync_activation(project_root: &Path, activation_path: &Path) -> Result<HookRuntime, String> {
     let sync = load_or_refresh_default_activation(activation_path, project_root)?;
     activation_to_runtime(&sync.activation)
-}
-
-fn runtime_from_current_default_activation(project_root: &Path) -> Result<HookRuntime, String> {
-    let activation = build_default_activation(project_root)?;
-    activation_to_runtime(&activation)
 }
 
 fn activation_to_runtime(activation: &HookActivation) -> Result<HookRuntime, String> {

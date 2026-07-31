@@ -45,7 +45,7 @@ pub(super) fn rehydrate_trusted_resident_hook_session(
     };
     let registry =
         agent_semantic_client_db::AgentSessionRegistry::open_or_create_project(project_root)?;
-    let project_id = agent_semantic_client_db::AgentSessionRegistry::project_scope_id(project_root);
+    let project_id = agent_semantic_client_db::AgentSessionRegistry::workspace_id(project_root)?;
     let Some(existing) =
         registry.session_by_name(&project_id, root_session_id, resident_child_name)?
     else {

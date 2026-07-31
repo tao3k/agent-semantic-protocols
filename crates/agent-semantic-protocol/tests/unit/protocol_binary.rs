@@ -158,6 +158,26 @@ fn missing_artifact_root_is_not_a_digest_addressed_binary() {
 }
 
 #[test]
+fn canonical_runtime_artifact_identity_is_derived_without_reading_binary_bytes() {
+    let digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    let canonical = std::path::Path::new("/state/runtime/artifacts/blake3-256")
+        .join(digest)
+        .join("asp");
+
+    assert_eq!(
+        super::protocol_binary_digest_from_canonical_artifact_path(&canonical).as_deref(),
+        Some(digest)
+    );
+    assert!(
+        super::protocol_binary_digest_from_canonical_artifact_path(std::path::Path::new(
+            "/tmp/target/debug/asp"
+        ))
+        .is_none(),
+        "non-canonical binaries must fail closed instead of triggering query-time byte hashing"
+    );
+}
+
+#[test]
 fn concurrent_publish_uses_per_attempt_stage_paths() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)

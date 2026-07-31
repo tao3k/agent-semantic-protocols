@@ -76,14 +76,6 @@ pub(crate) fn write_rust_activation(root: &Path) -> std::path::PathBuf {
                     "vendor/tool/Cargo.toml".to_string(),
                 ],
                 source_extensions: vec!["rs".to_string()],
-                source_paths: vec![
-                    "crates/app/src/lib.rs".to_string(),
-                    "vendor/tool/src/lib.rs".to_string(),
-                ],
-                repository_candidate_generation: "test-rust-repository-candidate-generation"
-                    .to_string(),
-                project_resolution_generation: "test-rust-project-resolution-generation"
-                    .to_string(),
             },
         }],
     };
@@ -108,8 +100,6 @@ pub(crate) fn write_gerbil_activation_with_command_prefix(
     provider_command_prefix: Vec<String>,
     source_roots: &[&str],
 ) -> std::path::PathBuf {
-    let project_resolution_generation =
-        agent_semantic_artifacts::provider_digest(source_roots.join("\u{1f}").as_bytes());
     let manifest = builtin_provider_manifests()
         .into_iter()
         .find(|manifest| manifest.language_id().as_str() == "gerbil-scheme")
@@ -177,10 +167,6 @@ pub(crate) fn write_gerbil_activation_with_command_prefix(
                 package_roots: vec![".".to_string()],
                 config_files: vec!["gerbil.pkg".to_string()],
                 source_extensions: vec!["ss".to_string()],
-                source_paths: source_roots.iter().map(ToString::to_string).collect(),
-                repository_candidate_generation: "test-gerbil-repository-candidate-generation"
-                    .to_string(),
-                project_resolution_generation,
             },
         }],
     };
@@ -232,7 +218,7 @@ pub(crate) fn write_project_resolution_provider(
         "gerbil-scheme" => "gerbil.pkg",
         _ => "Project.toml",
     };
-    let resolution_inputs = serde_json::json!({
+    let project_resolution_inputs = serde_json::json!({
         "languageId": language_id,
         "providerId": provider_id,
         "extension": extension,
@@ -240,14 +226,7 @@ pub(crate) fn write_project_resolution_provider(
         "excludedRoots": excluded_roots,
         "projectEntry": project_entry,
     });
-    let resolution_generation = agent_semantic_artifacts::provider_digest(
-        serde_json::to_string(&resolution_inputs)
-            .expect("serialize fixture project-resolution inputs")
-            .as_bytes(),
-    );
-    let mut configuration = resolution_inputs;
-    configuration["resolutionGeneration"] = serde_json::Value::String(resolution_generation);
-    let configuration = configuration.to_string();
+    let configuration = project_resolution_inputs.to_string();
     let script = format!(
         r#"#!/usr/bin/env python3
 import json
@@ -260,22 +239,9 @@ if len(sys.argv) != 2 or sys.argv[1] != "project-resolution-stdin":
 
 request = json.load(sys.stdin)
 extension = "." + CONFIG["extension"].lstrip(".")
-source_roots = [root.strip("/") for root in CONFIG["sourceRoots"]]
+source_roots = [root.strip("/") or "." for root in CONFIG["sourceRoots"]]
 excluded_roots = [root.strip("/") for root in CONFIG["excludedRoots"]]
-
-def belongs_to(root, path):
-    return root in ("", ".") or path == root or path.startswith(root + "/")
-
-files = []
-for candidate in request["repositoryCandidates"]["candidates"]:
-    path = candidate["path"]
-    if not path.endswith(extension):
-        continue
-    if any(belongs_to(root, path) for root in excluded_roots):
-        continue
-    if not any(belongs_to(root, path) for root in source_roots):
-        continue
-    files.append({{"path": path}})
+generation = request["candidateGeneration"]["digest"]
 
 response = {{
     "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
@@ -283,27 +249,68 @@ response = {{
     "languageId": CONFIG["languageId"],
     "providerId": CONFIG["providerId"],
     "state": "resolved",
-    "resolution": {{
+    "scope": {{
         "schemaId": "agent.semantic-protocols.project-resolution",
         "schemaVersion": "1",
         "state": "resolved",
         "completeness": "exact",
-        "projectIdentity": {{"projectEntry": CONFIG["projectEntry"]}},
-        "repositoryCandidates": {{
-            "candidates": files,
-            "policyExclusions": [],
+        "languageId": CONFIG["languageId"],
+        "providerId": CONFIG["providerId"],
+        "parserId": "fixture.package-manager",
+        "candidateGenerationDigest": generation,
+        "projectEntry": CONFIG["projectEntry"],
+        "packageGraph": {{
+            "schemaId": "agent.semantic-protocols.language-package-graph",
+            "schemaVersion": "1",
+            "languageId": CONFIG["languageId"],
+            "providerId": CONFIG["providerId"],
+            "projectEntry": CONFIG["projectEntry"],
+            "parserId": "fixture.package-manager",
+            "manifests": [{{"path": CONFIG["projectEntry"], "kind": "fixture-manifest", "digest": "fixture-manifest"}}],
+            "lockfiles": [],
+            "packages": [{{
+                "packageId": "fixture",
+                "name": "fixture",
+                "manifestPath": CONFIG["projectEntry"],
+                "root": ".",
+                "workspaceMember": True,
+                "targets": [{{
+                    "targetId": "fixture:source",
+                    "kind": "source",
+                    "name": "fixture",
+                    "explicit": True,
+                    "sourceRoots": source_roots,
+                    "entrypoints": [],
+                    "generatedRoots": []
+                }}]
+            }}],
+            "internalDependencyEdges": [],
+            "externalDependencies": [],
+            "unresolved": []
         }},
-        "resolvedSourceScopes": [{{
-            "roots": CONFIG["sourceRoots"],
+        "sourceScopes": [{{
+            "scopeId": "fixture:source",
+            "packageId": "fixture",
+            "targetId": "fixture:source",
+            "roots": source_roots,
             "explicitPaths": [],
-            "extensions": [CONFIG["extension"]],
+            "extensions": [extension],
             "includeAuthority": "package-manager",
             "exclusions": [
                 {{"prefix": root, "authority": "package-manager"}}
                 for root in CONFIG["excludedRoots"]
             ],
         }}],
-        "resolutionGeneration": CONFIG["resolutionGeneration"],
+        "conflicts": [],
+        "metrics": {{
+            "parsedManifestCount": 1,
+            "parsedLockfileCount": 0,
+            "affectedPackageCount": 1,
+            "fullWorkspaceReads": 0,
+            "fullManifestReparses": 0,
+            "dbOpens": 0,
+            "elapsedMicros": 1
+        }}
     }},
 }}
 json.dump(response, sys.stdout, separators=(",", ":"))

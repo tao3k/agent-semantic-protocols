@@ -1,0 +1,102 @@
+{"sourcePath": "ASPProof/SearchRouteCanonicalPayloadDigestReplay.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteCanonicalPayloadDigestReplay",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload),\n  ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode left =\n      ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode right →\n    left = right",
+   "theoremFamily": "canonical-shortcut-encoding-injectivity",
+   "rfcClauseIds": ["CPD-CANONICAL"],
+   "name":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonical_encoding_is_injective",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (expected actual : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload),\n  ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode expected =\n      ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode actual →\n    expected = actual",
+   "theoremFamily": "full-field-replay-assumption-free-identity",
+   "rfcClauseIds": ["CPD-FULL-FIELD"],
+   "name":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.full_field_replay_needs_no_digest_assumption",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload),\n  left.schemaVersion ≠ right.schemaVersion →\n    ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode left ≠\n      ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode right",
+   "theoremFamily": "schema-version-inside-canonical-preimage",
+   "rfcClauseIds": ["CPD-SCHEMA"],
+   "name":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.schema_version_is_inside_canonical_preimage",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload),\n  left.hashAlgorithmId ≠ right.hashAlgorithmId →\n    ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode left ≠\n      ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode right",
+   "theoremFamily": "hash-algorithm-inside-canonical-preimage",
+   "rfcClauseIds": ["CPD-HASH"],
+   "name":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.hash_algorithm_is_inside_canonical_preimage",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (digest : ASPProof.SearchRouteCanonicalPayloadDigestReplay.DigestFunction)\n  (admitted : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload → Prop),\n  ASPProof.SearchRouteCanonicalPayloadDigestReplay.CollisionFreeOnAdmitted digest admitted →\n    ∀ (left right : ASPProof.SearchRouteCanonicalPayloadDigestReplay.CanonicalShortcutPayload),\n      admitted left →\n        admitted right →\n          digest (ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode left) =\n              digest (ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode right) →\n            left = right",
+   "theoremFamily": "collision-free-admitted-digest-replay-identity",
+   "rfcClauseIds": ["CPD-ASSUMPTION", "CPD-DIGEST"],
+   "name":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.admitted_digest_equality_implies_payload_equality",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.constantDigest\n    (ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode\n      ASPProof.SearchRouteCanonicalPayloadDigestReplay.schemaOnePayload) =\n  ASPProof.SearchRouteCanonicalPayloadDigestReplay.constantDigest\n    (ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode\n      ASPProof.SearchRouteCanonicalPayloadDigestReplay.schemaTwoPayload)",
+   "theoremFamily": "constant-digest-collision-counterexample",
+   "rfcClauseIds": ["CPD-COUNTEREXAMPLE"],
+   "name":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.constant_digest_collides",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.schemaOnePayload ≠\n  ASPProof.SearchRouteCanonicalPayloadDigestReplay.schemaTwoPayload",
+   "theoremFamily": "collision-counterexample-payload-distinctness",
+   "rfcClauseIds": ["CPD-COUNTEREXAMPLE"],
+   "name":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.collision_payloads_are_distinct",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ digest left right,\n  digest (ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode left) =\n      digest (ASPProof.SearchRouteCanonicalPayloadDigestReplay.canonicalEncode right) ∧\n    left ≠ right",
+   "theoremFamily": "digest-equality-alone-insufficient",
+   "rfcClauseIds": ["CPD-ASSUMPTION", "CPD-COUNTEREXAMPLE"],
+   "name":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.digest_equality_alone_does_not_imply_payload_equality",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.digestCompressedReplayTokens = 3",
+   "theoremFamily": "digest-compressed-replay-constant-shape",
+   "rfcClauseIds": ["CPD-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.digest_compressed_replay_is_constant_shape",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.digestCompressedReplayTokens <\n  ASPProof.SearchRouteCanonicalPayloadDigestReplay.fullFieldReplayTokens",
+   "theoremFamily": "digest-compressed-projection-smaller-than-full-field",
+   "rfcClauseIds": ["CPD-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteCanonicalPayloadDigestReplay.digest_compressed_projection_is_smaller",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 10,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 10,
+ "axiomDependentDeclarationCount": 0}

@@ -57,6 +57,9 @@ async fn concurrent_submissions_receive_one_deterministically_ordered_batch() {
 }
 
 fn request(request_id: &str) -> WorkspaceDbWriteRequest {
+    let source_bytes = vec![0_u8];
+    let content_digest =
+        agent_semantic_content_identity::ArtifactHash::blake3(source_bytes.as_slice()).value;
     let scope = ProviderIncrementalScoped {
         project_root: "/workspace".to_owned(),
         workspace_identity: "workspace-1".to_owned(),
@@ -79,8 +82,9 @@ fn request(request_id: &str) -> WorkspaceDbWriteRequest {
                     modified_unix_nanos: 1,
                     change_time_unix_nanos: 1,
                 },
-                content_digest: format!("{:064x}", 23),
+                content_digest,
             },
+            source_bytes,
             projection_completeness: "complete-owner".to_owned(),
             projections: Vec::new(),
         }),

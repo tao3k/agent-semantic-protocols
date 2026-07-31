@@ -1,0 +1,30 @@
+import ASPProof.AgentSessionHostRegistryMerklePathConformance
+
+namespace ASPProof.Audit.AgentSessionHostRegistryMerklePathConformance
+
+open ASPProof.AgentSessionHostRegistryMerklePathConformance
+
+#print axioms canonical_leaf_domain_is_leaf
+#print axioms canonical_leaf_binds_record
+#print axioms merkle_domains_are_separated
+#print axioms naive_leaf_encoding_is_ambiguous
+#print axioms empty_path_preserves_leaf
+#print axioms left_sibling_order_is_executable
+#print axioms right_sibling_order_is_executable
+#print axioms flipping_direction_changes_one_step_root
+#print axioms accepted_path_has_exact_leaf
+#print axioms accepted_path_recomputes_claimed_root
+#print axioms accepted_path_is_depth_bounded
+#print axioms wrong_root_packet_is_rejected
+#print axioms unbounded_packet_is_rejected
+#print axioms inclusion_conformance_implies_semantic_member
+#print axioms inclusion_conformance_binds_same_root
+#print axioms exclusion_conformance_implies_semantic_absence
+#print axioms forged_gap_claim_constructible
+#print axioms conforming_verifier_is_sound
+#print axioms conforming_verifier_is_complete
+#print axioms always_accept_verifier_is_not_conforming
+#print axioms accepted_path_token_cost_is_bounded
+#print axioms odd_node_duplication_is_ordered
+
+end ASPProof.Audit.AgentSessionHostRegistryMerklePathConformance

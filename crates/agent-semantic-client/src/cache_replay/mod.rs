@@ -6,10 +6,6 @@ pub(crate) use agent_semantic_client_core::structured_evidence_artifact_path;
 #[cfg(test)]
 pub(crate) use agent_semantic_search::output_with_delegation_hint_lines;
 
-#[cfg(test)]
-#[cfg(test)]
-pub(crate) use search_lexical::search_lexical_packet_matches_request;
-
 mod artifact;
 mod limits;
 mod search_lexical;

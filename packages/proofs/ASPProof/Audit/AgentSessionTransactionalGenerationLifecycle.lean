@@ -1,0 +1,26 @@
+import ASPProof.AgentSessionTransactionalGenerationLifecycle
+
+open ASPProof.AgentSessionTransactionalGenerationLifecycle
+
+#print axioms presence_does_not_establish_registration
+#print axioms acknowledgement_does_not_establish_registration
+#print axioms valid_start_binds_slot
+#print axioms valid_start_binds_generation
+#print axioms valid_start_binds_intent
+#print axioms valid_start_requires_profile_match
+#print axioms valid_start_requires_typed_start
+#print axioms stale_generation_rejects_start
+#print axioms profile_drift_rejects_start
+#print axioms untyped_start_rejects_registration
+#print axioms valid_binding_binds_generation
+#print axioms valid_binding_requires_verified_lease
+#print axioms occupied_unbound_drift_begins_retirement
+#print axioms occupied_unbound_without_retire_is_explicitly_blocked
+#print axioms retired_occupied_generation_requires_release
+#print axioms released_slot_with_typed_spawn_creates_replacement
+#print axioms unbound_drift_never_returns_ready
+#print axioms transactional_repair_has_no_self_loop
+#print axioms transactional_repair_has_no_two_cycle
+#print axioms accepted_receipt_binds_stable_dispatch_key
+#print axioms accepted_receipt_binds_generation
+#print axioms command_digest_conflict_rejects_acceptance

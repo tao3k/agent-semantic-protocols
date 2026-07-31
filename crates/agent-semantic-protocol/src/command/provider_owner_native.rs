@@ -8,7 +8,10 @@ use agent_semantic_client_db::{
 use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 use serde::Deserialize;
 
-use super::provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin};
+use super::provider_process::{
+    provider_invocation_with_profile, run_provider_command_with_stdin,
+    run_provider_command_with_stdin_async,
+};
 
 pub(super) struct ProviderOwnerNativeTransportContext<'a> {
     pub(super) language_id: &'a str,
@@ -60,106 +63,56 @@ pub(super) struct ExpectedOwnerResponse<'a> {
     pub(super) source_size: u64,
 }
 
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderProjectResolutionRequest<'a> {
-    schema_id: &'static str,
-    schema_version: &'static str,
-    language_id: &'a str,
-    provider_id: &'a str,
-    workspace_root: &'a std::path::Path,
-    repository_candidates: &'a agent_semantic_runtime::git::RepositoryCandidateSnapshot,
-}
-
-fn encode_provider_project_resolution_request(
-    language_id: &str,
-    provider_id: &str,
-    workspace_root: &std::path::Path,
-    repository_candidates: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
-) -> Result<Vec<u8>, String> {
-    serde_json::to_vec(&ProviderProjectResolutionRequest {
-        schema_id: "agent.semantic-protocols.provider-project-resolution-request",
-        schema_version: "1",
-        language_id,
-        provider_id,
-        workspace_root,
-        repository_candidates,
-    })
-    .map_err(|error| format!("failed to encode provider project-resolution request: {error}"))
-}
-
-#[cfg(test)]
-#[path = "../../tests/unit/provider_owner_native_project_resolution.rs"]
-mod project_resolution_request_tests;
-
-pub(super) fn run_provider_project_resolution(
-    context: ProviderOwnerNativeTransportContext<'_>,
-    repository_candidates: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
-) -> Result<Vec<std::path::PathBuf>, String> {
-    let descriptor = context
-        .provider
-        .project_resolution
-        .as_ref()
-        .ok_or_else(|| {
-            format!(
-                "provider project-resolution descriptor is missing: languageId={} providerId={}",
-                context.language_id, context.provider.provider_id
-            )
-        })?;
-    if !descriptor.supports_git_candidates {
-        return Err(format!(
-            "provider project-resolution does not accept Git candidates: languageId={} providerId={}",
-            context.language_id, context.provider.provider_id
-        ));
-    }
-    let stdin = encode_provider_project_resolution_request(
-        context.language_id,
-        context.provider.provider_id.as_str(),
-        context.project_root,
-        repository_candidates,
-    )?;
-    let args = [descriptor.command_binding.clone()];
-    let invocation = provider_invocation_with_profile(context.profiles, context.provider, &args)?;
-    let output = run_provider_command_with_stdin(
-        context.language_id,
-        context.provider,
-        &invocation,
-        context.project_root,
-        stdin,
-    )?;
-    let expected_language_id =
-        agent_semantic_client_core::LanguageId::from(context.language_id);
-    let expected_provider_id =
-        agent_semantic_client_core::ProviderId::from(context.provider.provider_id.as_str());
-    let scope = agent_semantic_client::project_resolution_scope_from_stdout(
-        output.stdout.as_ref(),
-        &expected_language_id,
-        &expected_provider_id,
-    )
-    .map_err(|error| {
-        format!(
-            "invalid provider project-resolution response: status={} stderr={} error={error}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        )
-    })?;
-    let agent_semantic_client::ProviderProjectScope::Supported(packet) = scope else {
-        return Ok(Vec::new());
-    };
-    let mut paths = packet
-        .files
-        .into_iter()
-        .map(|file| std::path::PathBuf::from(file.path))
-        .collect::<Vec<_>>();
-    paths.sort();
-    paths.dedup();
-    Ok(paths)
-}
-
 pub(super) fn run_provider_owner_native(
     context: ProviderOwnerNativeTransportContext<'_>,
     request: ProviderOwnerNativeRequest<'_>,
 ) -> Result<Vec<ProviderSelectorProjection>, String> {
+    let prepared = prepare_provider_owner_native(&context, &request)?;
+    let output = run_provider_command_with_stdin(
+        context.language_id,
+        context.provider,
+        &prepared.invocation,
+        context.project_root,
+        prepared.stdin,
+    )?;
+    finish_provider_owner_native(output, prepared.expected)
+}
+
+pub(super) async fn run_provider_owner_native_async(
+    context: ProviderOwnerNativeTransportContext<'_>,
+    request: ProviderOwnerNativeRequest<'_>,
+) -> Result<Vec<ProviderSelectorProjection>, String> {
+    let prepared = prepare_provider_owner_native(&context, &request)?;
+    let output = run_provider_command_with_stdin_async(
+        context.language_id,
+        context.provider,
+        &prepared.invocation,
+        context.project_root,
+        prepared.stdin,
+    )
+    .await?;
+    finish_provider_owner_native(output, prepared.expected)
+}
+
+struct PreparedProviderOwnerNative {
+    invocation: Vec<String>,
+    stdin: Vec<u8>,
+    expected: OwnedExpectedOwnerResponse,
+}
+
+struct OwnedExpectedOwnerResponse {
+    language_id: String,
+    provider_id: String,
+    owner_path: String,
+    projection_mode: String,
+    content_digest: String,
+    source_size: u64,
+}
+
+fn prepare_provider_owner_native(
+    context: &ProviderOwnerNativeTransportContext<'_>,
+    request: &ProviderOwnerNativeRequest<'_>,
+) -> Result<PreparedProviderOwnerNative, String> {
     validate_transport_identity(&context, &request)?;
     let stdin = encode_request(&context, &request)?;
     let transport = agent_semantic_hook::registered_provider_method_invocation_v1(
@@ -190,13 +143,24 @@ pub(super) fn run_provider_owner_native(
     }
     let invocation =
         provider_invocation_with_profile(context.profiles, context.provider, &transport.argv[1..])?;
-    let output = run_provider_command_with_stdin(
-        context.language_id,
-        context.provider,
-        &invocation,
-        context.project_root,
+    Ok(PreparedProviderOwnerNative {
+        invocation,
         stdin,
-    )?;
+        expected: OwnedExpectedOwnerResponse {
+            language_id: context.language_id.to_owned(),
+            provider_id: request.scope.provider_id.clone(),
+            owner_path: request.owner_path.to_owned(),
+            projection_mode: "complete-owner".to_owned(),
+            content_digest: request.fingerprint.content_digest.clone(),
+            source_size: request.source_bytes.len() as u64,
+        },
+    })
+}
+
+fn finish_provider_owner_native(
+    output: agent_semantic_provider_transport::ProviderProcessOutput,
+    expected: OwnedExpectedOwnerResponse,
+) -> Result<Vec<ProviderSelectorProjection>, String> {
     if !output.status.success() {
         return Err(format!(
             "provider owner-search-stdin failed: status={} stderr={}",
@@ -210,12 +174,12 @@ pub(super) fn run_provider_owner_native(
     validate_provider_owner_response(
         response,
         ExpectedOwnerResponse {
-            language_id: context.language_id,
-            provider_id: request.scope.provider_id.as_str(),
-            owner_path: request.owner_path,
-            projection_mode: "complete-owner",
-            content_digest: request.fingerprint.content_digest.as_str(),
-            source_size: request.source_bytes.len() as u64,
+            language_id: expected.language_id.as_str(),
+            provider_id: expected.provider_id.as_str(),
+            owner_path: expected.owner_path.as_str(),
+            projection_mode: expected.projection_mode.as_str(),
+            content_digest: expected.content_digest.as_str(),
+            source_size: expected.source_size,
         },
     )
 }

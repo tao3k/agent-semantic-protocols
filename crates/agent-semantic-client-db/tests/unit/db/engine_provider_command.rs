@@ -10,6 +10,7 @@ use agent_semantic_client_db::{ClientDbEngine, ClientDbProviderCommandSelection}
 fn db_engine_provider_command_selections_use_active_turso_path_without_retired_db_control() {
     let client_dir = temp_root("db-engine-provider-selection-client");
     let project_root = temp_root("db-engine-provider-selection-project");
+    fs::create_dir_all(&project_root).expect("create provider selection project root");
     let row = provider_command_selection_fixture("rust", "rs-harness", "sha256:abc");
     let context_b_row = provider_command_selection_fixture("python", "py-harness", "sha256:def");
 

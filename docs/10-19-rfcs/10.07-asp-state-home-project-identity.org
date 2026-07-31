@@ -65,15 +65,31 @@ snapshot root, process id, timestamp, or activation digest MUST NOT affect
 
 * Workspace Identity
 
-Workspace identity represents a checkout or package workspace below one
-repository identity.  It is derived from:
+For a Git repository, workspace identity represents exactly one concrete
+checkout/worktree below one repository identity.  It is derived only from:
 
-- canonical repository identity
-- registered language-harness workspace/package anchor
-- canonical checkout/worktree identity when the workspace is checkout-local
+- canonical repository identity;
+- canonical checkout/worktree root; and
+- Git worktree metadata.
 
-Changing cwd inside the same workspace MUST NOT create a new workspace
+Package-manager entries, language providers, package roots, and source roots
+MUST NOT participate in =workspace-id=.  Provider resolution receipts are
+inputs to one generation-bound workspace source scope; they do not establish
+child projects or multiple project scopes below the workspace.
+
+Changing cwd or selecting a different package/project entry inside the same
+worktree MUST NOT create a new workspace identity.  A linked Git worktree MUST
+create a distinct workspace identity while retaining the same repository
 identity.
+
+The primary checkout is also a worktree for this identity contract even though
+Git does not give it a separate linked-worktree administration directory.  A
+checked-out branch is observed through its concrete primary or linked worktree;
+the branch name itself MUST NOT be used as =workspace-id=.  Branch rename,
+detached HEAD, or branch switching in the same checkout therefore preserves the
+workspace identity and advances its generation.  HEAD, index, worktree, and
+package-manager entry changes MUST invalidate the generation-bound source scope
+without allocating another workspace artifacts directory.
 
 * Ephemeral State
 

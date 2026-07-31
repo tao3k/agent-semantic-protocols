@@ -44,9 +44,6 @@ pub struct ResolvedProvider {
     pub package_roots: Vec<String>,
     pub config_files: Vec<String>,
     pub source_extensions: Vec<String>,
-    pub source_paths: Vec<String>,
-    pub repository_candidate_generation: String,
-    pub project_resolution_generation: String,
     pub scope_authority: ProviderScopeAuthority,
     pub search_capabilities: agent_semantic_hook::ProviderSearchCapabilities,
     pub query_pack_descriptor: agent_semantic_hook::ProviderQueryPackDescriptor,
@@ -143,9 +140,6 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
             package_roots: provider.package_roots.clone(),
             config_files: provider.config_files.clone(),
             source_extensions: provider.source_extensions.clone(),
-            source_paths: provider.source_paths.clone(),
-            repository_candidate_generation: provider.repository_candidate_generation.clone(),
-            project_resolution_generation: provider.project_resolution_generation.clone(),
             scope_authority,
             search_capabilities: provider.search_capabilities.clone(),
             query_pack_descriptor: provider.query_pack_descriptor.clone(),
@@ -314,17 +308,6 @@ fn append_provider_scope_dirs(
     for package_root in &provider.package_roots {
         insert_existing_scope_dir(project_root, &project_root.join(&package_root), dirs);
     }
-    for source_path in &provider.source_paths {
-        let source_path = project_root.join(source_path);
-        let source_dir = if source_path.is_dir() {
-            source_path.as_path()
-        } else if let Some(parent) = source_path.parent() {
-            parent
-        } else {
-            continue;
-        };
-        insert_existing_scope_dir(project_root, source_dir, dirs);
-    }
     for config_file in &provider.config_files {
         if let Some(parent) = project_root.join(config_file).parent() {
             insert_existing_scope_dir(project_root, parent, dirs);
@@ -375,15 +358,6 @@ fn provider_fingerprint(provider: &ResolvedProvider) -> String {
         format!(
             "sourceExtensions={}",
             provider.source_extensions.join("\u{1f}")
-        ),
-        format!("sourcePaths={}", provider.source_paths.join("\u{1f}")),
-        format!(
-            "repositoryCandidateGeneration={}",
-            provider.repository_candidate_generation
-        ),
-        format!(
-            "projectResolutionGeneration={}",
-            provider.project_resolution_generation
         ),
         format!(
             "searchCapabilities={}",

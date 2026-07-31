@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 
 use crate::engine::turso_statement::run_turso_operation;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Identity boundary for one provider's incremental reasoning-search state.
 pub struct ProviderIncrementalScoped {
@@ -77,7 +77,17 @@ pub struct ProviderIncrementalOwnerWrite {
     pub scope: ProviderIncrementalScoped,
     pub owner_path: String,
     pub fingerprint: ProviderOwnerFingerprint,
+    pub source_bytes: Vec<u8>,
     pub projection_completeness: String,
+    pub projections: Vec<ProviderSelectorProjection>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// Durable complete-owner state used to restore one Runtime Server overlay.
+pub struct ProviderIncrementalOwnerSnapshot {
+    pub fingerprint: ProviderOwnerFingerprint,
+    pub source_bytes: Vec<u8>,
     pub projections: Vec<ProviderSelectorProjection>,
 }
 
@@ -163,6 +173,78 @@ pub(super) async fn read_provider_owner_projections(
     Ok(projections)
 }
 
+pub(super) async fn read_provider_owner_snapshot(
+    connection: &turso::Connection,
+    scope: &ProviderIncrementalScoped,
+    owner_path: &str,
+) -> Result<Option<ProviderIncrementalOwnerSnapshot>, String> {
+    let mut rows = run_turso_operation(
+        || async {
+            connection
+                .query(
+                    "SELECT file_identity, size_bytes, modified_unix_nanos,
+                            change_time_unix_nanos, content_digest, source_bytes
+                     FROM provider_owner_fingerprint_v1
+                     WHERE project_root = ?1
+                       AND workspace_identity = ?2
+                       AND provider_workspace_identity_digest = ?3
+                       AND provider_id = ?4
+                       AND owner_path = ?5
+                     LIMIT 1",
+                    (
+                        scope.project_root.as_str(),
+                        scope.workspace_identity.as_str(),
+                        scope.provider_workspace_identity_digest.as_str(),
+                        scope.provider_id.as_str(),
+                        owner_path,
+                    ),
+                )
+                .await
+                .map_err(|error| error.to_string())
+        },
+        "failed to read provider owner snapshot",
+    )
+    .await?;
+    let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read provider owner snapshot row: {error}"))?
+    else {
+        return Ok(None);
+    };
+    let size_bytes = row
+        .get::<i64>(1)
+        .map_err(|error| format!("failed to decode provider owner size: {error}"))?;
+    let source_bytes = row
+        .get::<Vec<u8>>(5)
+        .map_err(|error| format!("failed to decode provider owner bytes: {error}"))?;
+    if source_bytes.is_empty() && size_bytes != 0 {
+        return Ok(None);
+    }
+    Ok(Some(ProviderIncrementalOwnerSnapshot {
+        fingerprint: ProviderOwnerFingerprint {
+            metadata: ProviderOwnerMetadata {
+                file_identity: row.get::<String>(0).map_err(|error| {
+                    format!("failed to decode provider owner file identity: {error}")
+                })?,
+                size_bytes: u64::try_from(size_bytes)
+                    .map_err(|_| format!("provider owner size is out of range: {size_bytes}"))?,
+                modified_unix_nanos: row.get::<i64>(2).map_err(|error| {
+                    format!("failed to decode provider owner modified time: {error}")
+                })?,
+                change_time_unix_nanos: row.get::<i64>(3).map_err(|error| {
+                    format!("failed to decode provider owner change time: {error}")
+                })?,
+            },
+            content_digest: row.get::<String>(4).map_err(|error| {
+                format!("failed to decode provider owner content digest: {error}")
+            })?,
+        },
+        source_bytes,
+        projections: read_provider_owner_projections(connection, scope, owner_path).await?,
+    }))
+}
+
 pub(super) async fn write_provider_incremental_owner_on_connection(
     connection: &mut turso::Connection,
     request: &ProviderIncrementalOwnerWrite,
@@ -201,6 +283,15 @@ async fn write_provider_incremental_owner_transaction(
 ) -> Result<ProviderIncrementalWriteReceipt, String> {
     let connection = &**transaction;
     let scope = &request.scope;
+    if request.source_bytes.len() as u64 != request.fingerprint.metadata.size_bytes {
+        return Err("provider incremental owner bytes do not match fingerprint size".to_owned());
+    }
+    let source_digest =
+        agent_semantic_content_identity::ArtifactHash::blake3(request.source_bytes.as_slice())
+            .value;
+    if source_digest != request.fingerprint.content_digest {
+        return Err("provider incremental owner bytes do not match fingerprint digest".to_owned());
+    }
     let generation_before = active_provider_generation(connection, scope).await?;
     run_turso_operation(
         || async {
@@ -275,8 +366,8 @@ async fn write_provider_incremental_owner_transaction(
                         provider_workspace_identity_digest, provider_id,
                         language_id, owner_path, file_identity, size_bytes,
                         modified_unix_nanos, change_time_unix_nanos,
-                        content_digest, merkle_leaf_digest
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                        content_digest, merkle_leaf_digest, source_bytes
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
                      ON CONFLICT (
                         project_root, workspace_identity,
                         provider_workspace_identity_digest, provider_id, owner_path
@@ -287,7 +378,8 @@ async fn write_provider_incremental_owner_transaction(
                         modified_unix_nanos = excluded.modified_unix_nanos,
                         change_time_unix_nanos = excluded.change_time_unix_nanos,
                         content_digest = excluded.content_digest,
-                        merkle_leaf_digest = excluded.merkle_leaf_digest",
+                        merkle_leaf_digest = excluded.merkle_leaf_digest,
+                        source_bytes = excluded.source_bytes",
                     (
                         scope.project_root.as_str(),
                         scope.workspace_identity.as_str(),
@@ -301,6 +393,7 @@ async fn write_provider_incremental_owner_transaction(
                         metadata.change_time_unix_nanos,
                         request.fingerprint.content_digest.as_str(),
                         leaf_digest.as_str(),
+                        request.source_bytes.as_slice(),
                     ),
                 )
                 .await

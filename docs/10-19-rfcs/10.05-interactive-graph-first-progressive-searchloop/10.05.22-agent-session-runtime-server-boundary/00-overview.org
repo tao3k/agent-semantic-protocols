@@ -1,0 +1,318 @@
+#+title: RFC 10.05.22 — ASP Agent Session and Runtime Server Boundary
+#+startup: overview
+
+* Status
+
+The typed trigger, exact binding, acyclic recovery, and native dispatch
+lifecycle are refined by
+[[file:../10.05.23-agent-session-native-router-lifecycle/00-overview.org][RFC 10.05.23 — ASP Agent Session Native Router Lifecycle]].
+
+Draft.
+
+This RFC corrects an authority and terminology conflation discovered while
+formalizing runtime-server generation ownership.
+
+* Canonical terminology
+
+The following terms are disjoint:
+
+| Term | Lifetime | Owner | Meaning |
+|-
+| ASP Runtime Server | operating-system supervised | ASP runtime | Global daemon containing workspace-keyed data-plane entries |
+| Runtime Server workspace entry | daemon or admitted-entry lifetime | ASP Runtime Server | Index generations, read plane, writer lane, provider revisions, and query leases for one workspace |
+| ASP Agent Session | root agent task lifetime | ASP session control plane | Session graph, session receipts, subagent bindings, and requested capabilities |
+| Resident Subagent | binding lifetime inside one Agent Session | ASP Agent Session plus host attestation | A registered host subagent that may receive multiple tasks without respawn |
+| Host Runtime | host application lifetime | Codex or another client host | Native subagent creation, target resolution, DeepLink, and message delivery |
+
+The unqualified noun =resident= MUST NOT identify the Runtime Server, an Agent
+Session, a workspace entry, and a subagent interchangeably.
+
+The preferred names are:
+
+- =ASP Runtime Server= for the daemon;
+- =Runtime Server workspace entry= for in-memory workspace state;
+- =ASP Agent Session= for the agent control plane; and
+- =Resident Subagent= only for a session-scoped registered subagent binding.
+
+* Authority partition
+
+** Runtime Server
+
+=ASP-RFC-10.05-ASRS-RUNTIME=: The Runtime Server exclusively owns:
+
+- canonical workspace admission;
+- search-index writes;
+- incremental writer serialization;
+- active-generation publication;
+- query-lease issuance and validation; and
+- durable/memory search data-plane reconciliation.
+
+It does not own subagent creation, session graph mutation, host-native message
+delivery, or Resident Subagent lifecycle.
+
+** Agent Session
+
+=ASP-RFC-10.05-ASRS-SESSION=: The ASP Agent Session owns:
+
+- root and child session relationships;
+- registered Resident Subagent bindings;
+- session-scoped dispatch intents and receipts;
+- in-flight task leases;
+- subagent completion/orphan/rebind state; and
+- requested query capabilities.
+
+It does not own workspace index mutation, provider revision admission,
+generation publication, or query-lease issuance.
+
+** Host Runtime
+
+=ASP-RFC-10.05-ASRS-HOST=: The Host Runtime owns:
+
+- native subagent creation;
+- registered agent-type selection;
+- live target resolution;
+- DeepLink or native message delivery; and
+- authoritative host lifecycle attestations.
+
+ASP verifies and records host evidence.  It does not reconstruct a host target
+from role spelling, task-path punctuation, or historical registry text.
+
+** Resident Subagent
+
+A Resident Subagent executes an admitted task and emits a task receipt.  It
+does not own its own binding, replacement, parent session, generation
+publication, index writer, or host-native target.
+
+#+name: agent-session-runtime-server-authority
+#+begin_src typst
+#table(
+  columns: 4,
+  [Principal], [Owns], [May request], [Must not own],
+  [Runtime Server],
+  [workspace admission, index write, generation publication, query-lease issue],
+  [provider delta, repair intent],
+  [subagent binding, native dispatch],
+  [ASP Agent Session],
+  [session graph, subagent binding, dispatch receipt],
+  [query capability],
+  [index write, generation publication],
+  [Host Runtime],
+  [native spawn, target resolution, native dispatch],
+  [ASP verification],
+  [search generation],
+  [Resident Subagent],
+  [task execution receipt],
+  [query capability],
+  [self-binding, index write, generation publication],
+)
+
+"ok"
+#+end_src
+
+* Disjointness invariant
+
+=ASP-RFC-10.05-ASRS-DISJOINT=: Authority is not transferred by proximity,
+shared process lifetime, or a request.
+
+In particular:
+
+- an Agent Session requesting search does not gain query-lease issuance or
+  index-write authority;
+- a Resident Subagent executing =asp org query= does not become the index
+  writer;
+- the Runtime Server validating a session-supplied lease does not gain
+  subagent-binding authority;
+- a Host Runtime delivering a native message does not gain search-generation
+  authority; and
+- a long-lived object is not automatically a server.
+
+#+name: agent-session-runtime-server-disjointness
+#+begin_src typst
+$ "Owns"("RuntimeServer", "IndexWrite") $
+$ "Owns"("RuntimeServer", "GenerationPublish") $
+
+$ not "Owns"("AgentSession", "IndexWrite") $
+$ not "Owns"("ResidentSubagent", "GenerationPublish") $
+$ not "Owns"("RuntimeServer", "SubagentBinding") $
+
+"ok"
+#+end_src
+
+* Capability path
+
+=ASP-RFC-10.05-ASRS-CAPABILITY=: An ASP Agent Session or Resident Subagent may
+request a query.  The request carries:
+
+- canonical workspace identity;
+- active-generation expectation or lease;
+- query/projection identity;
+- session identity for observability; and
+- bounded evidence budget.
+
+The Runtime Server validates or issues the data-plane lease and returns a
+generation-bound result.  The request is a capability invocation, not authority
+transfer.
+
+#+name: agent-session-runtime-server-query-capability
+#+begin_src typst
+$ "AgentSession"
+arrow.r
+"QueryRequest"
+arrow.r
+"RuntimeServerValidateLease"
+arrow.r
+"GenerationBoundResult" $
+
+$ "MayRequestQuery"("AgentSession")
+not arrow.r.double
+"Owns"("AgentSession", "QueryLeaseIssue") $
+
+"ok"
+#+end_src
+
+* Resident Subagent routing
+
+=ASP-RFC-10.05-ASRS-ROUTE=: Resident Subagent routing belongs to the Agent
+Session and Host Runtime boundary, not the Runtime Server.
+
+When a verified live session binding exists:
+
+1. the Agent Session selects the registered binding;
+2. the Host Runtime resolves the native target;
+3. the Host Runtime performs one native dispatch; and
+4. ASP records the session dispatch receipt.
+
+The Runtime Server is contacted only if the admitted task itself invokes a
+search/query capability.
+
+When no live binding exists, a parser-owned exact bounded projection may
+execute directly only if its command grammar and owner language match.  An
+invalid generated =recommendedNext= or owner-language mismatch fails closed.
+
+#+name: agent-session-resident-subagent-route
+#+begin_src typst
+$ "AgentSessionBinding"
+arrow.r
+"HostResolve"
+arrow.r
+"NativeDispatch"
+arrow.r
+"SessionDispatchReceipt" $
+
+$ "SubagentBindingLive"
+arrow.r.double
+"HookRoute" = "NativeSubagent" $
+
+$ not "SubagentBindingLive"
+and not "GrammarValid(recommendedNext)"
+arrow.r.double
+"HookRoute" = "Reject" $
+
+$ not "SubagentBindingLive"
+and not "OwnerLanguageMatches"
+arrow.r.double
+"HookRoute" = "Reject" $
+
+"ok"
+#+end_src
+
+* Dispatch admission
+
+=ASP-RFC-10.05-ASRS-DISPATCH=: Native Resident Subagent dispatch requires both:
+
+- a live Agent Session binding; and
+- a current Host Runtime attestation for the same native target.
+
+Neither condition independently authorizes dispatch.  A stale session registry
+cannot overwrite a newer host target, and an unbound host child cannot claim an
+ASP session role.
+
+#+name: agent-session-dispatch-admission
+#+begin_src typst
+$ "DispatchAdmissible"
+:=
+"HostAttested"
+and "SessionBound" $
+
+$ not "HostAttested"
+arrow.r.double
+not "DispatchAdmissible" $
+
+$ not "SessionBound"
+arrow.r.double
+not "DispatchAdmissible" $
+
+"ok"
+#+end_src
+
+* Failure isolation
+
+The lifecycles fail independently:
+
+- Runtime Server restart preserves Agent Session identity and Resident Subagent
+  bindings;
+- Agent Session termination releases its subagent bindings but does not stop
+  the global Runtime Server;
+- Resident Subagent replacement does not mutate a workspace generation;
+- workspace writer failure does not orphan a Resident Subagent; and
+- host-native dispatch failure does not invalidate the active search
+  generation.
+
+Repair commands MUST name which lifecycle they repair:
+
+- =runtime-server reconcile=;
+- =workspace-entry repair=;
+- =agent-session reconcile=; or
+- =subagent-binding rebind=.
+
+A generic =resident repair= operation is forbidden because its target authority
+is ambiguous.
+
+* Lean correspondence
+
+The executable model is:
+
+=packages/proofs/ASPProof/AgentSessionRuntimeServerBoundary.lean=
+
+The modular audit is:
+
+=packages/proofs/ASPProof/Audit/AgentSessionRuntimeServerBoundary.lean=
+
+The JSON receipt is:
+
+=packages/proofs/receipts/agent-session-runtime-server-boundary-v1.json=
+
+The model proves:
+
+- Runtime Server owns index write and generation publication;
+- Agent Session and Resident Subagent cannot publish search generations;
+- Runtime Server cannot bind subagents;
+- Agent Session owns subagent binding;
+- Host Runtime owns native dispatch;
+- query request does not confer query-lease issuance authority;
+- live session binding selects native subagent routing;
+- invalid commands and owner-language mismatches fail closed; and
+- native dispatch requires both host attestation and session binding.
+
+* Acceptance gates
+
+1. Every schema and receipt uses an explicit principal name.
+2. Runtime Server receipts contain no subagent lifecycle mutation.
+3. Agent Session receipts contain no index-write or generation-publication
+   mutation.
+4. Host-native dispatch is independently attested.
+5. Resident Subagent task execution cannot mutate its own binding.
+6. Runtime Server restart, Agent Session termination, subagent replacement, and
+   workspace writer repair have independent fault-injection tests.
+7. Every named Typst block is extracted by =orgize eval plan= and evaluated
+   through stdin with =typst eval --in - '"ok"'=.
+
+* Rejected terminology and designs
+
+- =server resident=;
+- =resident server=;
+- an unqualified =resident session=;
+- a shared state machine for daemon lifecycle and subagent lifecycle;
+- Agent Session ownership of search generation;
+- Runtime Server ownership of native subagent dispatch; and
+- generic repair or cache commands whose target principal is omitted.

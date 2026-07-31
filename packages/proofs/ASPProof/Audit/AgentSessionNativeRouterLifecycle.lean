@@ -1,0 +1,29 @@
+import ASPProof.AgentSessionNativeRouterLifecycle
+
+namespace ASPProof.Audit.AgentSessionNativeRouterLifecycle
+
+open ASPProof.AgentSessionNativeRouterLifecycle
+
+#print axioms plain_text_not_admissible
+#print axioms inferred_role_not_admissible
+#print axioms stale_binding_generation_rejected
+#print axioms cross_root_dispatch_rejected
+#print axioms cross_name_dispatch_rejected
+#print axioms self_redispatch_rejected
+#print axioms reserved_turn_rejected
+#print axioms duplicate_reservation_after_reserve_rejected
+#print axioms stale_revision_rebind_rejected
+#print axioms bind_from_host_preserves_runtime
+#print axioms session_recovery_does_not_require_runtime_admission
+#print axioms runtime_mutation_preserves_session
+#print axioms inspect_is_generation_stable
+#print axioms inspect_is_revision_stable
+#print axioms zero_match_inspection_cannot_publish
+#print axioms parser_owned_action_routes_directly
+#print axioms legacy_classifier_misroutes_parser_owned_action
+#print axioms recovery_dependencies_decrease_rank
+#print axioms recovery_dependency_irreflexive
+#print axioms no_session_runtime_recovery_cycle
+#print axioms native_route_strictly_dominates_legacy
+
+end ASPProof.Audit.AgentSessionNativeRouterLifecycle

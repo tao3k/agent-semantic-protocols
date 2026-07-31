@@ -331,3 +331,69 @@ separate proofs:
 - rollback after partial external side effects;
 - bounded retention and garbage collection of retired generations;
 - policy for dispatches whose terminal receipt can never be recovered.
+
+* Activation admission identity
+
+Activation reuse is an admission decision, not a successful JSON parse.  The
+runtime MUST observe one composite identity before serving an existing
+activation:
+
+1. the activation artifact is readable;
+2. the active-artifact receipt verifies the exact activation bytes and runtime
+   artifact closure;
+3. the activation satisfies the current strict schema;
+4. the activation project identity equals the requested workspace identity;
+5. the provider selection identity equals the current manifest, execution,
+   registry, and route identities; and
+6. every provider coverage receipt binds the current typed Git candidate
+   generation.
+
+The decision is binary:
+
+#+begin_src text
+all admission predicates hold -> reuse
+any predicate is false         -> rebuild-and-publish
+#+end_src
+
+An implementation MUST NOT turn =rebuild-and-publish= failure into permission
+to serve an in-memory approximation or the previously persisted activation.
+The failed request remains fail-closed.  A missing or corrupt generated
+activation is therefore repair input, not a terminal dependency and not a
+fallback authority.
+
+** ASP-RFC-10.05-ALAE-ADMISSION
+
+=reuse= MUST imply all six admission predicates.  No individual digest,
+successful parse, or cached Ready state is sufficient.
+
+** ASP-RFC-10.05-ALAE-DRIFT
+
+Failure of any admission predicate MUST select =rebuild-and-publish=.  Provider
+selection drift and repository candidate-generation drift are first-class
+identity changes, not cache hints.
+
+** ASP-RFC-10.05-ALAE-NO-STALE-FALLBACK
+
+If rebuild or publication fails, the old activation MUST NOT be returned and an
+in-memory default activation MUST NOT be substituted.  A later request may
+retry repair from independently discoverable provider and repository state.
+
+** ASP-RFC-10.05-ALAE-PROVIDER-CLOSURE
+
+The provider-binary leaves in a workspace active-artifact receipt MUST equal
+the provider identities in that workspace's current activation.  They are not
+the global provider catalog.  Reconciliation MUST remove leaves retired by an
+activation transition and MUST materialize newly activated provider leaves
+from their typed install identities.  Metadata-only reconciliation of the old
+leaf set is insufficient and MUST NOT leave the activation permanently
+degraded.
+
+** Lean correspondence
+
+| Clause | Theorem |
+|-
+| ALAE-ADMISSION | =reuse_iff_complete_identity= |
+| ALAE-DRIFT | =any_identity_drift_requires_rebuild= |
+| ALAE-NO-STALE-FALLBACK | =failed_rebuild_cannot_serve_stale_activation= |
+| ALAE-PROVIDER-CLOSURE | =reconciled_provider_closure_matches_activation= |
+| ALAE-PROVIDER-CLOSURE | =retired_provider_cannot_survive_reconciliation= |

@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tokio::net::UnixStream;
 use tokio::sync::{Mutex, OnceCell, RwLock};
+use tokio::task::JoinSet;
 
 use super::frame::{read_frame, write_frame};
 use super::{
@@ -10,15 +12,15 @@ use super::{
     runtime_server_connection_pool_capacity,
 };
 
-static RUNTIME_SERVER_CONNECTION_POOL: OnceCell<
-    RwLock<Option<(String, Arc<RuntimeServerConnectionPool>)>>,
+static RUNTIME_SERVER_CONNECTION_POOLS: OnceCell<
+    RwLock<HashMap<String, Arc<RuntimeServerConnectionPool>>>,
 > = OnceCell::const_new();
 
 pub(super) struct RuntimeServerConnectionPool {
     endpoint: RuntimeServerEndpoint,
     next_lane: AtomicUsize,
-    lanes: RwLock<Vec<Arc<RuntimeServerLane>>>,
-    max_lanes: usize,
+    lanes: Vec<Arc<RuntimeServerLane>>,
+    prewarmed: OnceCell<()>,
 }
 
 struct RuntimeServerLane {
@@ -28,46 +30,27 @@ struct RuntimeServerLane {
 
 impl RuntimeServerConnectionPool {
     fn new(endpoint: &RuntimeServerEndpoint) -> Self {
+        let lane_count = runtime_server_connection_pool_capacity();
         Self {
             endpoint: endpoint.clone(),
             next_lane: AtomicUsize::new(0),
-            lanes: RwLock::new(Vec::new()),
-            max_lanes: runtime_server_connection_pool_capacity(),
+            lanes: (0..lane_count)
+                .map(|_| {
+                    Arc::new(RuntimeServerLane {
+                        stream: Mutex::new(None),
+                        in_flight: AtomicUsize::new(0),
+                    })
+                })
+                .collect(),
+            prewarmed: OnceCell::const_new(),
         }
     }
 
-    async fn reserve_lane(&self) -> Arc<RuntimeServerLane> {
-        {
-            let lanes = self.lanes.read().await;
-            if let Some(lane) = self.try_reserve_idle_lane(&lanes) {
-                return lane;
-            }
-            if lanes.len() >= self.max_lanes {
-                return self.reserve_least_loaded_lane(&lanes);
-            }
-        }
-
-        let mut lanes = self.lanes.write().await;
-        if let Some(lane) = self.try_reserve_idle_lane(&lanes) {
+    fn reserve_lane(&self) -> Arc<RuntimeServerLane> {
+        if let Some(lane) = self.try_reserve_idle_lane(&self.lanes) {
             return lane;
         }
-        if lanes.len() < self.max_lanes {
-            let first_new_lane = lanes.len();
-            let growth = lanes
-                .len()
-                .min(self.max_lanes.saturating_sub(lanes.len()))
-                .max(1);
-            lanes.extend((0..growth).map(|_| {
-                Arc::new(RuntimeServerLane {
-                    stream: Mutex::new(None),
-                    in_flight: AtomicUsize::new(0),
-                })
-            }));
-            let lane = Arc::clone(&lanes[first_new_lane]);
-            lane.in_flight.store(1, Ordering::Release);
-            return lane;
-        }
-        self.reserve_least_loaded_lane(&lanes)
+        self.reserve_least_loaded_lane(&self.lanes)
     }
 
     fn try_reserve_idle_lane(
@@ -104,11 +87,42 @@ impl RuntimeServerConnectionPool {
         &self,
         request: RuntimeServerControlRequest,
     ) -> Result<RuntimeServerControlReceipt, String> {
-        let lane = self.reserve_lane().await;
+        let lane = self.reserve_lane();
         let mut stream = lane.stream.lock().await;
         let result = exchange_runtime_server_request(&self.endpoint, &mut stream, &request).await;
         lane.in_flight.fetch_sub(1, Ordering::Release);
         result
+    }
+
+    pub(super) async fn prewarm(&self) -> Result<(), String> {
+        self.prewarmed
+            .get_or_try_init(|| async {
+                let mut connections = JoinSet::new();
+                for (index, lane) in self.lanes.iter().enumerate() {
+                    if lane.stream.lock().await.is_some() {
+                        continue;
+                    }
+                    let socket_path = self.endpoint.socket_path.clone();
+                    connections.spawn(async move {
+                        let stream = UnixStream::connect(&socket_path).await.map_err(|error| {
+                            format!("failed to prewarm Runtime Server control lane: {error}")
+                        })?;
+                        Ok::<_, String>((index, stream))
+                    });
+                }
+                while let Some(connection) = connections.join_next().await {
+                    let (index, stream) = connection.map_err(|error| {
+                        format!("failed to join Runtime Server control lane prewarm: {error}")
+                    })??;
+                    let mut slot = self.lanes[index].stream.lock().await;
+                    if slot.is_none() {
+                        *slot = Some(stream);
+                    }
+                }
+                Ok(())
+            })
+            .await
+            .map(|_| ())
     }
 }
 
@@ -119,25 +133,22 @@ pub(super) async fn connection_pool(
         "{}\0{}\0{}",
         endpoint.socket_path, endpoint.owner_epoch, endpoint.runtime_artifact_digest
     );
-    let state = RUNTIME_SERVER_CONNECTION_POOL
-        .get_or_init(|| async { RwLock::new(None) })
+    let pools = RUNTIME_SERVER_CONNECTION_POOLS
+        .get_or_init(|| async { RwLock::new(HashMap::new()) })
         .await;
     {
-        let guard = state.read().await;
-        if let Some((active_key, pool)) = guard.as_ref()
-            && active_key == &key
-        {
+        let guard = pools.read().await;
+        if let Some(pool) = guard.get(&key) {
             return Arc::clone(pool);
         }
     }
-    let mut guard = state.write().await;
-    if let Some((active_key, pool)) = guard.as_ref()
-        && active_key == &key
-    {
+    let mut guard = pools.write().await;
+    if let Some(pool) = guard.get(&key) {
         return Arc::clone(pool);
     }
+    guard.retain(|_, pool| pool.endpoint.socket_path != endpoint.socket_path);
     let pool = Arc::new(RuntimeServerConnectionPool::new(endpoint));
-    *guard = Some((key, Arc::clone(&pool)));
+    guard.insert(key, Arc::clone(&pool));
     pool
 }
 

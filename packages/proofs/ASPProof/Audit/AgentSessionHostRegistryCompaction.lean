@@ -1,0 +1,24 @@
+import ASPProof.AgentSessionHostRegistryCompaction
+
+namespace ASPProof.Audit.AgentSessionHostRegistryCompaction
+
+open ASPProof.AgentSessionHostRegistryCompaction
+
+#print axioms naive_partial_accepted_loss_constructible
+#print axioms accepted_singleton_cannot_disappear
+#print axioms two_accepted_entries_cannot_partially_compact
+#print axioms covered_retired_entry_can_compact
+#print axioms safe_compaction_preserves_manifest
+#print axioms safe_compaction_advances_snapshot_revision
+#print axioms safe_compaction_preserves_gc_floor_monotonicity
+#print axioms accepted_at_or_below_floor_not_safe
+#print axioms covered_generation_quarantines
+#print axioms covered_generation_cannot_resume
+#print axioms canonical_retired_compaction_constructible
+#print axioms stale_compaction_revision_cannot_commit
+#print axioms canonical_same_head_compactions_are_unique
+#print axioms canonical_compaction_advances_ledger_revision
+#print axioms present_accepted_entry_can_finalize
+#print axioms missing_accepted_entry_cannot_finalize
+
+end ASPProof.Audit.AgentSessionHostRegistryCompaction

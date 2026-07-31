@@ -1,0 +1,139 @@
+{"sourcePath":
+ "ASPProof/SearchRouteCertifiedNormalizedUnionSequentialEquivalence.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (keep : ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.KeepMask)\n  (candidates : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.CanonicalMembership) (canonicalId : Nat),\n  ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalizeMembership keep\n      (ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalizeMembership keep candidates)\n      canonicalId =\n    ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalizeMembership keep candidates canonicalId",
+   "theoremFamily": "certified-normalization-idempotent",
+   "rfcClauseIds": ["CNU-ACI", "CNU-NORMALIZE"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalization_is_idempotent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (keep : ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.KeepMask)\n  (left right : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.CanonicalMembership) (canonicalId : Nat),\n  ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalizeMembership keep\n      (ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership left right) canonicalId =\n    ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.insertNormalized keep\n      (ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalizeMembership keep left) right\n      canonicalId",
+   "theoremFamily": "normalized-union-sequential-insertion-equivalence",
+   "rfcClauseIds": ["CNU-EXTENSIONAL", "CNU-SEQUENTIAL", "CNU-UNION"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalized_union_equals_sequential_insertion",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (keep : ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.KeepMask)\n  (first second third : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.CanonicalMembership)\n  (canonicalId : Nat),\n  ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalizeMembership keep\n      (ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership\n        (ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership first second) third)\n      canonicalId =\n    ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.insertNormalized keep\n      (ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.insertNormalized keep\n        (ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalizeMembership keep first) second)\n      third canonicalId",
+   "theoremFamily": "three-way-normalized-union-sequential-equivalence",
+   "rfcClauseIds": ["CNU-FANIN", "CNU-SEQUENTIAL", "CNU-UNION"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalized_three_way_union_equals_sequential_insertion",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (keep : ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.KeepMask)\n  (first second third : ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.CanonicalMembership)\n  (canonicalId : Nat),\n  ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalizeMembership keep\n      (ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership\n        (ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership first second) third)\n      canonicalId =\n    ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalizeMembership keep\n      (ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership first\n        (ASPProof.SearchRouteDeterministicFrontierMergeFanoutFanin.mergeMembership second third))\n      canonicalId",
+   "theoremFamily": "normalized-parallel-sequential-equivalence",
+   "rfcClauseIds": ["CNU-PARALLEL", "CNU-SEQUENTIAL"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalized_parallel_fanin_equals_normalized_sequential_fold",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.EvidenceMembership)\n  (evidenceId : Nat),\n  ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.mergeDuplicateEvidence left right evidenceId =\n    ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.mergeDuplicateEvidence right left evidenceId",
+   "theoremFamily": "duplicate-evidence-union-commutative",
+   "rfcClauseIds": ["CNU-ACI", "CNU-PROVENANCE"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.duplicate_evidence_merge_is_commutative",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.correctDuplicateEvidence 0 = true",
+   "theoremFamily": "normalized-union-preserves-early-provenance",
+   "rfcClauseIds": ["CNU-PROVENANCE", "CNU-UNION"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.normalized_union_preserves_early_provenance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.prematurelyPrunedDuplicateEvidence 0 = false",
+   "theoremFamily": "premature-pruning-drops-provenance",
+   "rfcClauseIds": ["CNU-COUNTEREXAMPLE", "CNU-PRUNING"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.premature_destructive_pruning_drops_early_provenance",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.correctDuplicateEvidence 0 = true ∧\n  ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.prematurelyPrunedDuplicateEvidence 0 = false",
+   "theoremFamily": "destructive-pruning-extensional-counterexample",
+   "rfcClauseIds": ["CNU-COUNTEREXAMPLE", "CNU-EXTENSIONAL", "CNU-PRUNING"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.destructive_pruning_is_not_extensionally_equivalent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (identity : ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.NormalizationIdentity),\n  ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.NormalizationAuthorized identity identity",
+   "theoremFamily": "same-normalization-identity-authorizes-reuse",
+   "rfcClauseIds": ["CNU-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.same_normalization_identity_authorizes_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.NormalizationIdentity),\n  left.candidateUniverseRoot ≠ right.candidateUniverseRoot →\n    ¬ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.NormalizationAuthorized left right",
+   "theoremFamily": "changed-candidate-universe-rejects-reuse",
+   "rfcClauseIds": ["CNU-IDENTITY", "CNU-UNIVERSE"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.changed_candidate_universe_rejects_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (left right : ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.NormalizationIdentity),\n  left.dominanceCertificateRoot ≠ right.dominanceCertificateRoot →\n    ¬ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.NormalizationAuthorized left right",
+   "theoremFamily": "changed-dominance-certificate-rejects-reuse",
+   "rfcClauseIds": ["CNU-DOMINANCE", "CNU-IDENTITY"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.changed_dominance_certificate_rejects_reuse",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (budget : ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.NormalizationReceiptBudget)\n  (observedBytes : Nat),\n  observedBytes ≤\n      ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.explicitNormalizationReceiptUpperBound budget →\n    observedBytes ≤\n      ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.explicitNormalizationReceiptUpperBound budget",
+   "theoremFamily": "explicit-normalization-receipt-capacity-bound",
+   "rfcClauseIds": ["CNU-CAPACITY", "CNU-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.explicit_normalization_receipt_is_capacity_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (fixedBound : Nat),\n  fixedBound <\n    ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.uncappedNormalizationDisclosureBytes\n      (fixedBound + 1)",
+   "theoremFamily": "uncapped-normalization-has-no-fixed-bound",
+   "rfcClauseIds": ["CNU-CAPACITY", "CNU-RECEIPT"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.uncapped_normalization_disclosure_exceeds_every_fixed_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (fixedSummaryBytes firstCount secondCount : Nat),\n  ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.summarizedNormalizationReceiptBytes\n      fixedSummaryBytes firstCount =\n    ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.summarizedNormalizationReceiptBytes\n      fixedSummaryBytes secondCount",
+   "theoremFamily": "summary-normalization-receipt-constant-size",
+   "rfcClauseIds": ["CNU-RECEIPT", "CNU-SUMMARY"],
+   "name":
+   "ASPProof.SearchRouteCertifiedNormalizedUnionSequentialEquivalence.summarized_normalization_receipt_is_count_independent",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 14,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 14,
+ "axiomDependentDeclarationCount": 0}

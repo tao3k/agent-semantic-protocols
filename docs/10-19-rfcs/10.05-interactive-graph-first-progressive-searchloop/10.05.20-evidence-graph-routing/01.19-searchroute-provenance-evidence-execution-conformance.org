@@ -1,0 +1,436 @@
+#+title: RFC 10.05.20/01.19 - SearchRoute Provenance Evidence Execution Conformance
+#+subtitle: Replacing Boolean provenance claims with typed executable decisions and temporal checkpoint continuity
+#+date: 2026-07-31
+#+startup: overview
+#+options: toc:3 num:nil
+
+* Status and authority
+
+This document is the canonical executable-evidence extension of
+[[file:01.18-searchroute-verifier-artifact-provenance.org][RFC 10.05.20/01.18]].
+
+RFC 01.18 establishes the structural provenance conjunction: immutable source,
+hermetic recipe, bound build attestation, transparent publication, and an
+independent rebuild.  This RFC establishes how the decision claims inside that
+conjunction become executable evidence rather than trusted Boolean fields.
+
+The formal owner and audit artifacts are:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteProvenanceEvidenceExecutionConformance.lean][SearchRouteProvenanceEvidenceExecutionConformance.lean]]
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteProvenanceEvidenceExecutionConformance.lean][modular Lean audit]]
+- [[file:../../../../packages/proofs/receipts/searchroute-provenance-evidence-execution-conformance-audit-v1.json][Lean JSON receipt]]
+- [[file:../../../../packages/proofs/receipts/searchroute-provenance-evidence-execution-conformance-axle-audit-v1.json][AXLE audit receipt]]
+
+This RFC changes no Rust provider or product Python implementation.  AXLE is
+only the receipt-completeness consumer under =packages/python/tools=; the proof
+kernel remains under =packages/proofs=.
+
+* Lean-discovered Boolean evidence gap
+
+RFC 01.18 contains fields such as:
+
+- =immutable=;
+- =hermetic=;
+- =attestationSignatureVerified=;
+- =included=;
+- =checkpointSignatureVerified=;
+- =appendOnlyConsistent=;
+- =fresh=;
+- =rebuildSucceeded=; and
+- =outputCompared=.
+
+These fields are useful decoded decisions, but their names do not prove how the
+decision was obtained.  Treating =accepted = true= as complete evidence loses:
+
+1. the type of claim that the verifier evaluated;
+2. the exact subject of the claim;
+3. the policy version used by the verifier;
+4. the verifier binary that was resolved;
+5. the canonical statement sent to the verifier;
+6. the response that was decoded; and
+7. whether an independent executor replayed the same decision.
+
+The Lean counterexamples show that an accepted Boolean can coexist with an
+unresolved verifier.  They also show that subject-only binding permits a
+recipe-verification decision to be replayed as a source-immutability decision.
+
+* Typed provenance claims
+
+The protocol defines eight non-interchangeable claim kinds:
+
+| Claim kind | Bound subject |
+|-
+| =sourceImmutable= | source snapshot digest |
+| =recipeHermetic= | build recipe digest |
+| =buildAttestation= | canonical provenance statement digest |
+| =transparencyInclusion= | current transparency root digest |
+| =checkpointConsistency= | checkpoint-transition statement digest |
+| =checkpointFreshness= | current checkpoint digest |
+| =independentRebuild= | rebuilt verifier binary digest |
+| =outputComparison= | attested verifier binary digest |
+
+A claim for one row MUST NOT satisfy another row merely because its subject
+digest happens to be equal.  Claim kind, subject, and policy are independent
+binding axes.
+
+* Five-stage executable claim closure
+
+Each typed claim uses the following five stages.
+
+** Canonical claim statement
+
+The claim kind, subject digest, policy digest, serializer, statement schema,
+and canonical statement bytes are bound together.
+
+** Claim-aware verifier resolution
+
+Resolution binds the claim kind and policy to the verifier identifier and
+verifier binary.  A generic executable that does not advertise the selected
+claim kind and policy is not an admissible resolver result.
+
+** Bound invocation
+
+Invocation binds the canonical statement bytes and resolved binary to the
+claim kind, subject, policy, executor, response bytes, and successful exit.
+
+** Decoded accepted decision
+
+Decoding binds response bytes to the configured decoder schema.  Both
+=decoded= and =accepted= must be true.
+
+** Independent replay
+
+Replay binds the same claim kind, subject, policy, statement, verifier binary,
+and accepted decision.  Its executor identity must differ from the invocation
+executor identity.
+
+* Temporal transparency checkpoint chain
+
+A single =fresh = true= or =appendOnlyConsistent = true= field cannot establish
+time continuity.  This RFC introduces a transition between a prior and current
+checkpoint.
+
+The structural transition requires:
+
+- the same configured log identity at both checkpoints;
+- nondecreasing tree size;
+- strictly increasing issue time;
+- a current issue time no later than the evaluation time;
+- an evaluation time within the maximum checkpoint age; and
+- a current tree size at least the policy minimum.
+
+The current checkpoint must also equal the log, checkpoint, root, and tree size
+already carried by the RFC 01.18 provenance receipt.  This prevents a valid
+temporal proof for one checkpoint from being attached to another provenance
+receipt.
+
+The =checkpointConsistency= executable claim verifies the canonical transition
+statement.  The =checkpointFreshness= executable claim verifies the current
+checkpoint under the selected freshness policy.
+
+* Org-Babel Typst mathematical model
+
+This is the executable mathematical source for the RFC.  It is evaluated from
+standard input through =typst eval --in -= and does not generate a temporary
+=.typ= file.
+
+#+begin_src typst
+#let claim-target = $
+  C(k, s, p, c) :=
+    c.k = k
+    and c.s = s
+    and c.p = p
+$
+
+#let statement-stage = $
+  S_c(r_s) :=
+    r_s.k = c.k
+    and r_s.s = c.s
+    and r_s.p = c.p
+    and r_s.z = c.z
+    and r_s.m = c.m
+    and r_s.a
+$
+
+#let resolution-stage = $
+  R_c(r_r) :=
+    r_r.k = c.k
+    and r_r.p = c.p
+    and r_r.v = c.v
+    and r_r.b = c.b
+    and r_r.o
+$
+
+#let invocation-stage = $
+  I_(r_s, r_r)(r_i) :=
+    r_i.k = r_s.k
+    and r_i.s = r_s.s
+    and r_i.p = r_s.p
+    and r_i.q = r_s.q
+    and r_i.b = r_r.b
+    and r_i.e = 0
+$
+
+#let decode-stage = $
+  D_(c, r_i)(r_d) :=
+    r_d.k = r_i.k
+    and r_d.s = r_i.s
+    and r_d.p = r_i.p
+    and r_d.r = r_i.r
+    and r_d.d = c.d
+    and r_d.x
+    and r_d.a
+$
+
+#let replay-stage = $
+  P_(r_s, r_i, r_d)(r_p) :=
+    r_p.k = r_s.k
+    and r_p.s = r_s.s
+    and r_p.p = r_s.p
+    and r_p.q = r_s.q
+    and r_p.b = r_i.b
+    and r_p.e != r_i.e
+    and r_p.x
+    and r_p.a = r_d.a
+$
+
+#let executable-claim = $
+  V_C(c, r) :=
+    S_c(r_s)
+    and R_c(r_r)
+    and I_(r_s, r_r)(r_i)
+    and D_(c, r_i)(r_d)
+    and P_(r_s, r_i, r_d)(r_p)
+$
+
+#let checkpoint-transition = $
+  T_h(t) :=
+    t_0.l = h.l
+    and t_1.l = h.l
+    and t_0.n <= t_1.n
+    and t_0.u < t_1.u
+    and t_1.u <= h.w
+    and h.w <= t_1.u + h.a
+    and h.n_min <= t_1.n
+$
+
+#let execution-backed-provenance = $
+  V_X(c, p, x) :=
+    V_P(c, p)
+    and B(p, x.t)
+    and T_(x.h)(x.t)
+    and C_8(c, p, x)
+    and V_C^8(x)
+$
+
+#let boolean-prefix = $
+  r_d.a = 1
+  and not r_r.o
+  => not V_C(c, r)
+$
+
+#let cross-kind-prefix = $
+  r_s.s = c.s
+  and r_s.k != c.k
+  => not V_C(c, r)
+$
+
+#let feasibility-before-cost = $
+  not V_X(c, p, x)
+  => not "AdmittedNoWorse"(x, y)
+$
+#+end_src
+
+* Complete execution-backed provenance predicate
+
+The =execution-backed-provenance= Typst definition combines five independent
+requirements:
+
+1. valid RFC 01.18 structural provenance;
+2. exact binding between the temporal checkpoint and that provenance receipt;
+3. a monotone and fresh temporal checkpoint transition;
+4. all eight claim-kind, subject, and policy targets; and
+5. complete executable verification for all eight claims.
+
+The Lean projection theorem proves that execution-backed provenance preserves
+the RFC 01.18 structural provenance theorem.  This extension strengthens the
+earlier predicate; it does not redefine or weaken it.
+
+* Rejected weak prefixes
+
+** Accepted Boolean with unresolved verifier
+
+The decoded receipt reports acceptance, but verifier resolution reports
+=resolved = false=.  Lean proves that this does not satisfy executable claim
+verification.
+
+** Subject-only cross-kind replay
+
+A =recipeHermetic= receipt carries the expected source snapshot digest.  A
+subject-only check accepts the digest, but the typed verifier rejects the claim
+because =recipeHermetic= is not =sourceImmutable=.
+
+** Cross-policy replay
+
+Every stage agrees internally on policy =999=, while the context requires
+policy =700=.  Internal consistency does not authorize cross-policy reuse.
+
+** Same-executor replay
+
+The replay reproduces the accepted decision using the invocation executor.
+This is reproducibility within one failure domain, not independent replay.
+
+** Stale checkpoint
+
+The checkpoint was once valid, but evaluation occurs outside the configured
+maximum age.  A previously accepted checkpoint cannot be replayed forever.
+
+** Checkpoint tree rollback
+
+The current tree size is smaller than the prior tree size and no longer binds
+the RFC 01.18 provenance receipt.  Both temporal continuity and receipt binding
+reject the transition.
+
+* SearchLoop, graph routing, and cache consequence
+
+The graph router MUST perform execution-backed feasibility before cost ranking.
+A route cannot win because it offers fewer graph hops, lower token cost, fewer
+interaction rounds, more search-cache reuse, or better model-prefix-cache
+affinity while its provenance decisions are only Boolean prefixes.
+
+Search cache and model cache remain separate axes:
+
+- the search cache may reuse a verified claim receipt only when claim kind,
+  subject, policy, verifier binary, and checkpoint transition identity match;
+- the model cache may reuse prompt prefixes, but a prefix-cache hit supplies no
+  executable provenance evidence; and
+- neither cache can extend a checkpoint beyond its freshness window.
+
+The stable cache identity for an executable claim SHOULD include:
+
+- claim kind;
+- subject digest;
+- policy digest;
+- canonical statement digest;
+- verifier binary digest;
+- decoder schema digest; and
+- temporal checkpoint digest when the claim is time-sensitive.
+
+* Normative clauses
+
+** ASP-RFC-10.05-PEEC-CLAIM-STAGE-CLOSURE
+
+Executable provenance claims MUST close canonical statement, claim-aware
+resolution, bound invocation, decoded acceptance, and independent replay as one
+conjunction.
+
+** ASP-RFC-10.05-PEEC-CLAIM-KIND
+
+Each executable claim MUST bind one explicit provenance claim kind.  Claim
+kinds are not interchangeable even when subject digests match.
+
+** ASP-RFC-10.05-PEEC-POLICY
+
+Statement, resolution, invocation, decode, and replay MUST bind the same
+configured policy digest.
+
+** ASP-RFC-10.05-PEEC-SUBJECT
+
+Every claim MUST bind the exact provenance subject selected by its claim kind.
+
+** ASP-RFC-10.05-PEEC-RESOLUTION
+
+Verifier resolution MUST bind claim kind, policy, verifier identity, and
+verifier binary, and MUST report successful resolution.
+
+** ASP-RFC-10.05-PEEC-INVOCATION-DECODE
+
+Invocation MUST bind the canonical statement and resolved binary.  Decode MUST
+bind the exact response and configured decoder schema before acceptance.
+
+** ASP-RFC-10.05-PEEC-INDEPENDENT-REPLAY
+
+Replay MUST bind the same typed claim and accepted decision, and MUST use an
+executor distinct from the invocation executor.
+
+** ASP-RFC-10.05-PEEC-CHECKPOINT-BINDING
+
+The current temporal checkpoint MUST equal the log, checkpoint, root, and tree
+size carried by the structural provenance receipt.
+
+** ASP-RFC-10.05-PEEC-CHECKPOINT-CONTINUITY
+
+Checkpoint transitions MUST preserve log identity, nondecreasing tree size,
+increasing issue time, configured freshness, and minimum tree size.
+
+** ASP-RFC-10.05-PEEC-STRUCTURAL-PROJECTION
+
+Execution-backed provenance MUST project to valid RFC 01.18 structural
+provenance.
+
+** ASP-RFC-10.05-PEEC-FEASIBILITY-FIRST
+
+Routes without execution-backed provenance MUST be rejected before graph,
+token, round, search-cache, or model-cache cost comparison.
+
+** ASP-RFC-10.05-PEEC-PREFIX-INSUFFICIENT
+
+Accepted Booleans, subject-only binding, same-executor replay, cross-policy
+agreement, or a single stale checkpoint MUST NOT establish executable
+provenance evidence.
+
+* Lean theorem map
+
+The Lean module proves:
+
+- =valid_executable_evidence_claim_binds_all_stages=;
+- =valid_executable_evidence_claim_binds_kind_policy_subject=;
+- =valid_executable_evidence_claim_binds_resolution=;
+- =valid_executable_evidence_claim_binds_invocation_and_decode=;
+- =valid_executable_evidence_claim_has_distinct_replay_executor=;
+- =valid_executable_provenance_evidence_projects_structural_provenance=;
+- =valid_executable_provenance_evidence_binds_all_claim_targets=;
+- =valid_executable_provenance_evidence_binds_current_checkpoint=;
+- =valid_executable_provenance_evidence_has_monotone_fresh_checkpoint=;
+- =invalid_execution_backing_cannot_win_by_lower_cost=;
+- =example_executable_provenance_evidence_is_valid=;
+- =boolean_provenance_only_does_not_prove_executable_evidence=;
+- =subject_only_binding_allows_cross_kind_replay=;
+- =cross_policy_claim_replay_is_rejected=;
+- =same_executor_claim_replay_is_rejected=;
+- =stale_checkpoint_execution_is_rejected=;
+- =checkpoint_tree_rollback_is_rejected=; and
+- =accepted_boolean_does_not_prove_executable_claim=.
+
+* Audit contract
+
+The modular Lean audit MUST enumerate every public theorem, reject =sorryAx=,
+and report axiom-free and =propext=-dependent declarations separately.
+
+The AXLE audit MUST require these theorem families:
+
+- =claim-stage-closure=;
+- =claim-target-binding=;
+- =claim-resolution=;
+- =invocation-decode=;
+- =replay-independence=;
+- =structural-projection=;
+- =checkpoint-continuity=;
+- =checkpoint-binding=;
+- =feasibility-first=;
+- =boolean-prefix-insufficiency=;
+- =cross-kind-rejection=;
+- =cross-policy-rejection=; and
+- =checkpoint-rollback-rejection=.
+
+AXLE validates the Lean receipt and RFC coverage only.  It does not execute the
+real claim verifiers, transparency log, build system, or rebuild worker.
+
+* Implementation boundary
+
+This session ends at RFC, Lean, Org-Babel Typst, and AXLE verification.
+
+Future runtime work requires shared versioned schemas for executable evidence
+claim contexts, canonical claim statements, verifier resolution, invocation,
+decode, replay, checkpoint transition, and cache identity.  Those schemas must
+precede any Rust provider implementation.

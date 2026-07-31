@@ -63,7 +63,7 @@ fn install_plugin_path_selects_plugin_command() {
 }
 
 #[test]
-fn codex_plugin_help_states_global_default_and_explicit_project_scope() {
+fn codex_plugin_help_states_global_default_and_explicit_project_resolution() {
     let mut command = help_model::selected_command(&owned_args(&["install", "plugin", "--help"]));
     let help = command.render_help().to_string();
 
@@ -112,15 +112,7 @@ fn graph_render_path_selects_render_command() {
 
 #[test]
 fn language_leaf_path_selects_leaf_command() {
-    for language in [
-        "gerbil-scheme",
-        "julia",
-        "md",
-        "org",
-        "python",
-        "rust",
-        "typescript",
-    ] {
+    for language in ["gerbil-scheme", "julia", "python", "rust", "typescript"] {
         for leaf in [
             "guide",
             "search",

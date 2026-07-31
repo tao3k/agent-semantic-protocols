@@ -69,6 +69,8 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
 
     let root = temp_root();
     let client_dir = root.join("client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = root.join("project");
     fs::create_dir_all(&project_root).expect("create project root");
     let source_snapshot = agent_semantic_content_identity::SourceSnapshotEvidence {
@@ -154,16 +156,16 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
             (owner_path, source_bytes)
         }),
     );
-    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: import.clone(),
-            file_count: 1,
-            source_snapshot: source_snapshot.clone(),
-        },
-        &source_blobs,
-    )
-    .expect("materialize resident Turso source index");
+    fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: import.clone(),
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+            &source_blobs,
+        )
+        .expect("materialize resident Turso source index");
     let workspace_identity = "workspace-code-search-performance";
     let runtime_registry =
         agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(
@@ -178,6 +180,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
             &import,
             [1, 0],
             vec![owner_snapshot],
+            Vec::new(),
         )
         .expect("assemble canonical workspace materialization");
     let second_workspace_identity = "workspace-code-search-performance-second";
@@ -188,6 +191,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
             &import,
             [1, 0],
             vec![second_workspace_owner_snapshot],
+            Vec::new(),
         )
         .expect("assemble second canonical workspace materialization");
     let canonical_materialization_replay = canonical_materialization.clone();

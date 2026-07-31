@@ -204,7 +204,7 @@ provider resolution, ASP applies those exact exclusions once while projecting
 the final file scope.  Providers MUST NOT reapply private default ignore lists
 or interpret ASP directory-name policy themselves.  A policy exclusion MUST
 NOT silently exclude a path explicitly owned by a package target; conflicts
-fail closed with a typed =project-scope-conflict= result naming the exact path,
+fail closed with a typed =project-resolution-conflict= result naming the exact path,
 =manifest-explicit= include authority, and =user-policy= exclude authority.
 
 For a non-Git workspace, repository candidate resolution uses an explicitly labeled

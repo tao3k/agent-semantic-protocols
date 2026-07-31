@@ -1,0 +1,365 @@
+#+title: RFC 10.05.30 — Agent Session Canonical Registry Manifest
+#+startup: overview
+
+* Status
+
+Draft for formal verification. This RFC refines
+[[file:../10.05.29-agent-session-host-registry-compaction/00-overview.org][RFC 10.05.29 — Agent Session Multi-Key Registry Compaction]] by proving
+manifest uniqueness, ordering, entry coverage, and key-scoped tombstone
+commitments. It does not authorize Rust implementation in this session.
+
+Focused verification is complete. The source module and direct audit compile,
+all 23 audited theorem declarations report no axioms, and the module is
+imported by the proof-package root. The earlier activation ABI mismatch was a
+tooling blocker rather than a proof counterexample; it is retained in the
+session evidence, not as the current RFC state.
+
+The aggregate =lake build ASPProof= gate is not green. Its first independent
+failures are an unavailable =Mathlib= module in
+=SearchRouteReservationLifecycleConservation= and missing =Decidable=
+instances in =SearchRouteContinuationAwareInspect= and
+=SearchRouteCertifiedAmbiguity=. None references this manifest module. This RFC
+therefore claims focused proof closure, not aggregate proof-package closure.
+
+* Problem
+
+RFC 10.05.29 proves that compaction preserves the declared manifest. That does
+not prove the manifest was valid before compaction. An unchanged invalid
+manifest remains invalid.
+
+Four counterexamples remain possible:
+
+- two manifest records carry the same key with different generations or states;
+- an entry exists without any manifest record;
+- a live manifest record has no matching entry;
+- a retired entry is removed while no key-scoped tombstone record survives.
+
+A generic digest over such a structure does not repair it. Deterministic bytes
+can faithfully commit to an ambiguous or incomplete manifest. Canonicalization
+must therefore be a semantic admission step before hashing and ledger
+publication.
+
+* Design decision
+
+The manifest is an ordered list of =ManifestRecord= values. Each record binds:
+
+- the complete canonical key identity;
+- the entry generation;
+- exactly one disposition: =Live= or =Tombstoned=.
+
+Canonical admission requires two independent witnesses:
+
+1. =StrictlyOrderedKeys=: adjacent canonical keys are strictly increasing,
+   which excludes duplicates and fixes serialization order;
+2. =ManifestAccounts=: the manifest and entry collection are consumed together
+   until both are empty.
+
+=ManifestAccounts= has four legal record cases:
+
+- a live record matched by the exact empty entry;
+- a live record matched by the exact accepted entry;
+- a tombstone record matched by the exact retained retired entry and GC-floor
+  coverage;
+- a tombstone record whose retired entry was compacted, while the key,
+  generation, disposition, and GC-floor coverage remain in the manifest.
+
+There is no constructor for an orphan entry, an unaccounted live key, a key or
+generation mismatch, or an uncommitted tombstone deletion.
+
+* Stateful architecture
+
+#+name: canonical-registry-manifest-architecture
+#+begin_src mermaid
+flowchart LR
+  S["Manifest candidate\nstate: Candidate(records, entries, floor)"]
+  O["Ordering verifier\nstate: StrictlyOrdered | Duplicate | Reversed"]
+  A["Accounting verifier\nstate: FullyAccounted | OrphanEntry | MissingLive | Mismatch"]
+  T["Tombstone verifier\nstate: Present | CompactedAndCovered | Uncommitted"]
+  I["Canonical commitment input\nstate: Versioned(snapshotRevision, records, entries, floor)"]
+  C["Canonical manifest certificate\nstate: Certified | Rejected"]
+  L["Authority ledger\nstate: Head(revision, canonicalManifest) "]
+  Q["Quarantine\nstate: Closed(reason, candidateIdentity)"]
+
+  S -->|"guard; state: Candidate -> OrderedOrRejected; compare complete canonical keys"| O
+  S -->|"guard; state: Candidate -> AccountedOrRejected; consume records and entries"| A
+  A -->|"guard; state: TombstoneCase -> PresentOrCovered; verify key-scoped negative evidence"| T
+  O -->|"capability; state: StrictlyOrdered -> CertifiedPending; ordering witness"| C
+  A -->|"capability; state: FullyAccounted -> CertifiedPending; coverage witness"| C
+  T -->|"capability; state: PresentOrCompactedAndCovered -> CertifiedPending; tombstone witness"| C
+  O -->|"prohibitedEffect; state: DuplicateOrReversed -> Closed; no digest admission"| Q
+  A -->|"prohibitedEffect; state: OrphanOrMissingOrMismatch -> Closed; no head publication"| Q
+  T -->|"prohibitedEffect; state: Uncommitted -> Closed; no retired-entry deletion"| Q
+  C -->|"transition; state: Certified -> VersionedInput; serialize every bound field"| I
+  I -->|"transition; state: VersionedInput -> Head(revision + 1); canonical CAS"| L
+#+end_src
+
+* Manifest admission state machine
+
+#+name: canonical-registry-manifest-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+  state "Candidate\nstate: Unverified(records, entries)" as Candidate
+  state "OrderChecked\nstate: StrictKeyOrder" as OrderChecked
+  state "Accounting\nstate: Cursor(recordIndex, entryIndex)" as Accounting
+  state "TombstoneCovered\nstate: KeyScoped(record, floorWitness)" as TombstoneCovered
+  state "Canonical\nstate: Certified(snapshotIdentity)" as Canonical
+  state "Committed\nstate: LedgerHead(revision + 1, canonicalSnapshot)" as Committed
+  state "Rejected\nstate: Quarantine(defect)" as Rejected
+
+  Candidate --> OrderChecked: "guard; state: Unverified -> StrictKeyOrder; adjacent key comparison"
+  Candidate --> Rejected: "guard; state: DuplicateOrReversed -> Quarantine"
+  OrderChecked --> Accounting: "transition; state: Ordered -> Accounting; consume manifest and entries"
+  Accounting --> Accounting: "transition; state: Record(i) -> Record(i + 1); exact live match"
+  Accounting --> TombstoneCovered: "guard; state: TombstoneRecord -> Covered; retained or compacted"
+  Accounting --> Rejected: "prohibitedEffect; state: OrphanOrMissingOrMismatch -> Quarantine"
+  TombstoneCovered --> Accounting: "transition; state: Covered -> Record(i + 1); preserve commitment"
+  Accounting --> Canonical: "guard; state: BothListsEmpty -> Certified"
+  Canonical --> Committed: "transition; state: Certified -> LedgerHead(revision + 1); canonical CAS"
+#+end_src
+
+* Mathematical model
+
+#+name: canonical-manifest-order-law
+#+begin_src typst
+#let Key(r) = $upright("key")(#r)$
+#let Ordered(records) = $upright("StrictlyOrdered")(#records)$
+
+$
+  Ordered([r_0, dots, r_n])
+  <=> forall i < n, Key(r_i) < Key(r_(i + 1)).
+$
+
+$
+  Key(r_i) = Key(r_j) and i != j
+  => not Ordered([r_0, dots, r_n]).
+$
+
+Strict ordering supplies uniqueness and one canonical serialization order.
+#+end_src
+
+#+name: manifest-accounting-grammar
+#+begin_src typst
+#let Account(f, records, entries) = $upright("Account")(#f, #records, #entries)$
+#let Live(k, g) = $upright("Live")(#k, #g)$
+#let Tomb(k, g) = $upright("Tombstone")(#k, #g)$
+#let Empty(k, g) = $upright("Empty")(#k, #g)$
+#let Accepted(k, g, r) = $upright("Accepted")(#k, #g, #r)$
+#let Retired(k, g) = $upright("Retired")(#k, #g)$
+
+$
+  Account(f, [], [])
+$
+
+$
+  Account(f, R, E)
+  => Account(f, Live(k, g) :: R, Empty(k, g) :: E)
+$
+
+$
+  Account(f, R, E)
+  => Account(f, Live(k, g) :: R, Accepted(k, g, r) :: E)
+$
+
+$
+  g <= f and Account(f, R, E)
+  => Account(f, Tomb(k, g) :: R, Retired(k, g) :: E)
+  and Account(f, Tomb(k, g) :: R, E).
+$
+#+end_src
+
+#+name: manifest-counterexample-rejection
+#+begin_src typst
+#let Canonical(s) = $upright("Canonical")(#s)$
+#let Duplicate(k) = $upright("DuplicateKey")(#k)$
+#let Orphan(e) = $upright("OrphanEntry")(#e)$
+#let Missing(k) = $upright("MissingLiveEntry")(#k)$
+
+$
+  Duplicate(k) => not Canonical(S),
+  quad Orphan(e) => not Canonical(S),
+  quad Missing(k) => not Canonical(S).
+$
+#+end_src
+
+#+name: canonical-manifest-commitment-input
+#+begin_src typst
+#let Input(vs, vz, rev, records, entries, floor) = $upright("CommitmentInput")(#vs, #vz, #rev, #records, #entries, #floor)$
+#let SchemaVersion = $v_s$
+#let SerializationVersion = $v_z$
+#let SnapshotRevision(s) = $upright("snapshotRevision")(#s)$
+#let Records(s) = $upright("records")(#s)$
+#let Entries(s) = $upright("entries")(#s)$
+#let Floor(s) = $upright("gcFloor")(#s)$
+
+$
+  I(S) = Input(
+    SchemaVersion,
+    SerializationVersion,
+    SnapshotRevision(S),
+    Records(S),
+    Entries(S),
+    Floor(S),
+  ).
+$
+
+The proof binds the complete input value. Collision resistance of a runtime
+digest remains a separate executable assumption and receipt.
+#+end_src
+
+* Formal state model
+
+The Lean model introduces:
+
+- =ManifestRecord=: key, generation, and live/tombstoned disposition;
+- =StrictlyOrderedKeys=: inductive adjacent ordering over arbitrary manifest
+  length;
+- =ManifestAccounts=: simultaneous structural coverage of all manifest records
+  and all entries;
+- =CanonicalManifest=: one certificate containing both ordering and accounting
+  witnesses;
+- explicit =DuplicateKeyManifest=, =OrphanEntrySnapshot=, and
+  =UnaccountedLiveKeySnapshot= adversarial witnesses;
+- =CanonicalManifestInput=: versioned commitment input containing revision,
+  records, entries, and GC floor;
+- =KeyScopedTombstoneCompaction=: removes the retired entry while preserving the
+  exact tombstone record;
+- =CanonicalManifestCas=: admits only a certified chosen snapshot into the
+  canonical ledger head.
+
+The proof key is =Nat= only as a mathematical canonical-order abstraction. A
+runtime implementation must order the complete stable dispatch-key encoding,
+not a truncated hash, process-local identifier, or insertion order.
+
+* Lean-discovered defects
+
+** D1: preservation did not establish validity
+
+RFC 10.05.29 could preserve =[k, k]= exactly. The new strict-order witness
+rejects equal adjacent keys and any reversed pair.
+
+** D2: manifest membership alone did not establish coverage
+
+Independent “key is present” checks do not prove that every entry is consumed
+once or that every live key has an entry. Structural accounting terminates only
+when both lists are empty.
+
+** D3: a global floor was not key-scoped tombstone evidence
+
+The GC floor proves generation coverage, but without a surviving record it does
+not identify which key was retired. A compacted tombstone therefore remains a
+manifest record binding key and generation while the floor supplies monotone
+coverage.
+
+** D4: deterministic hashing could commit invalid semantics
+
+Canonical bytes are necessary but not sufficient. Ordering and accounting must
+be certified before the versioned commitment input is eligible for hashing.
+
+** D5: ordering by a shortened digest reintroduces ambiguity
+
+The Lean order compares full abstract key identities. Runtime ordering by a
+non-injective projection would not implement this theorem.
+
+** D6: digest fields needed explicit version binding
+
+The commitment input now binds schema and serialization versions in addition to
+snapshot revision, records, entries, and GC floor. Silent serialization changes
+must invalidate the receipt.
+
+* Required invariants
+
+1. Manifest records are strictly ordered by complete canonical key identity.
+2. Strict ordering forbids duplicate keys.
+3. Every live record matches exactly one entry with identical key and generation.
+4. Every entry is consumed by exactly one manifest record.
+5. A retained retired entry matches one tombstone record and GC-floor witness.
+6. A compacted retired entry leaves the same key-scoped tombstone record.
+7. An unaccounted live key is rejected.
+8. An orphan entry is rejected.
+9. A key, generation, disposition, or state mismatch is rejected.
+10. Canonical commitment input binds schema version, serialization version,
+    snapshot revision, records, entries, and GC floor.
+11. Only a canonical manifest certificate may enter the authority ledger CAS.
+12. A stale ledger revision cannot commit.
+13. Two successful commits from the same head and canonical choice are equal.
+
+* Admission sequence
+
+#+name: canonical-registry-manifest-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant B as "Snapshot Builder [state: Candidate]"
+  participant O as "Order Verifier [state: Pending]"
+  participant A as "Accounting Verifier [state: Pending]"
+  participant T as "Tombstone Verifier [state: Pending]"
+  participant I as "Commitment Builder [state: Closed]"
+  participant L as "Authority Ledger [state: Head(r, oldSnapshot)]"
+
+  B->>O: "transition; state: Candidate -> OrderPending; submit complete records"
+  O-->>B: "guard; state: OrderPending -> StrictOrRejected; verify adjacent keys"
+  B->>A: "transition; state: Ordered -> AccountingPending; submit records and entries"
+  A->>T: "guard; state: TombstoneCase -> CoveragePending; verify key, generation, floor"
+  T-->>A: "transition; state: CoveragePending -> Accounted; retained or compacted tombstone"
+  A-->>B: "guard; state: AccountingPending -> FullyAccountedOrRejected; consume both lists"
+  alt ordered and fully accounted
+    B->>I: "transition; state: Certified -> VersionedInput; bind all semantic fields"
+    I->>L: "transition; state: VersionedInput -> Head(r + 1); canonical manifest CAS"
+  else duplicate, orphan, missing, or mismatch
+    B-->>L: "prohibitedEffect; state: Rejected -> OldHeadPreserved; no publication"
+  end
+#+end_src
+
+All admission checks are deterministic background protocol work and do not
+require an LLM control round.
+
+* Traceability
+
+| RFC claim | Lean declaration |
+|-
+| Duplicate manifest is constructible as an adversarial input | =duplicate_manifest_constructible= |
+| Orphan entry is constructible | =orphan_entry_constructible= |
+| Unaccounted live key is constructible | =unaccounted_live_key_constructible= |
+| Duplicate pair is not strictly ordered | =duplicate_pair_not_strictly_ordered= |
+| Reverse pair is not strictly ordered | =reverse_pair_not_strictly_ordered= |
+| Live accepted record is accounted | =live_accepted_record_is_accounted= |
+| Present tombstone is accounted | =present_tombstone_record_is_accounted= |
+| Compacted tombstone is accounted | =compacted_tombstone_record_is_accounted= |
+| Orphan entry is rejected | =orphan_entry_not_accounted= |
+| Missing live entry is rejected | =live_key_without_entry_not_accounted= |
+| Canonical live snapshot is constructible | =canonical_live_snapshot_constructible= |
+| Duplicate snapshot is not canonical | =duplicate_snapshot_not_canonical= |
+| Orphan snapshot is not canonical | =orphan_snapshot_not_canonical= |
+| Unaccounted live snapshot is not canonical | =unaccounted_live_snapshot_not_canonical= |
+| Commitment input binds records | =canonical_input_binds_records= |
+| Commitment input binds entries | =canonical_input_binds_entries= |
+| Commitment input binds revision and floor | =canonical_input_binds_revision_and_floor= |
+| Tombstone compaction preserves record | =tombstone_compaction_preserves_record= |
+| Compacted tombstone snapshot is canonical | =compacted_tombstone_snapshot_is_canonical= |
+| Stale manifest revision cannot commit | =stale_manifest_revision_cannot_commit= |
+| Same-head manifest commits are unique | =canonical_same_head_manifest_commits_are_unique= |
+
+* Verification artifacts
+
+- =packages/proofs/ASPProof/AgentSessionHostRegistryManifest.lean=
+- =packages/proofs/ASPProof/Audit/AgentSessionHostRegistryManifest.lean=
+- =packages/proofs/audit/AgentSessionHostRegistryManifest.lean=
+- proof receipt: pending successful focused Lean audit after activation repair.
+
+The Lean audit must remain axiom-free. Typst blocks are evaluated from stdin.
+Mermaid blocks are parsed from Org and rendered by the TypeScript docs runtime.
+
+* Implementation calibration boundary
+
+This RFC is not current Rust conformance evidence. Runtime status remains
+=Unverified= until executable receipts demonstrate full-key canonical ordering,
+duplicate rejection, total entry accounting, key-scoped tombstone persistence,
+versioned serialization, stale-CAS rejection, and digest binding to the exact
+certified input.
+
+The next formal boundary is scalable authenticated projection: Merkle
+inclusion/exclusion proofs and incremental manifest updates must preserve this
+full canonical semantics without forcing every recovery or receipt check to
+materialize the complete manifest.
+
+That boundary is refined by [[file:../10.05.31-agent-session-host-registry-authenticated-projection/00-overview.org][RFC 10.05.31 — Agent Session Authenticated Registry
+Projection]].

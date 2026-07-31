@@ -9,6 +9,8 @@ pub const WORKSPACE_DATA_PLANE_PERFORMANCE_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-workspace-data-plane-performance-receipt.v1";
 pub const RUNTIME_SERVER_SHUTDOWN_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-shutdown-receipt.v1";
+pub const WORKSPACE_RUNTIME_SELECTOR_OVERLAY_RECEIPT_SCHEMA_ID: &str =
+    "agent.semantic-protocols.runtime-server-selector-overlay-receipt.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -90,6 +92,14 @@ pub struct WorkspaceSelectorSnapshot {
     pub selector: String,
     pub byte_start: usize,
     pub byte_end: usize,
+    pub derived_projections: Vec<WorkspaceDerivedProjectionSnapshot>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceDerivedProjectionSnapshot {
+    pub projection_kind: String,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,8 +113,100 @@ pub struct WorkspaceOwnerSnapshot {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspaceRuntimeSelectorOverlay {
+    pub projection_kind: String,
+    pub structural_selector: String,
+    pub owner_path: String,
+    pub owner_content_digest: String,
+    pub byte_start: usize,
+    pub byte_end: usize,
+    pub projection_bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceRuntimeSelectorOverlayReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub workspace_identity: String,
+    pub generation_digest: String,
+    pub projection_kind: String,
+    pub structural_selector: String,
+    pub inserted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// Proof-carrying result of reconciling one resident owner with its workspace file.
+pub struct WorkspaceRuntimeOwnerFreshnessReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub workspace_identity: String,
+    pub generation_digest: String,
+    pub owner_path: String,
+    pub owner_content_digest: Option<String>,
+    pub changed: bool,
+    pub removed: bool,
+}
+
+impl WorkspaceRuntimeOwnerFreshnessReceipt {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != "asp.runtime-owner-freshness-receipt.v1" || self.schema_version != "1"
+        {
+            return Err("runtime owner freshness receipt schema identity mismatch".to_owned());
+        }
+        if self.workspace_identity.trim().is_empty() || self.owner_path.trim().is_empty() {
+            return Err("runtime owner freshness receipt identity is incomplete".to_owned());
+        }
+        if !valid_blake3_wire_digest(&self.generation_digest) {
+            return Err("runtime owner freshness generation digest is invalid".to_owned());
+        }
+        match (&self.owner_content_digest, self.removed) {
+            (None, true) => Ok(()),
+            (Some(digest), false) if valid_blake3_wire_digest(digest) => Ok(()),
+            _ => Err("runtime owner freshness content identity is inconsistent".to_owned()),
+        }
+    }
+}
+
+fn valid_blake3_wire_digest(value: &str) -> bool {
+    value.strip_prefix("blake3-256:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "state",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
+pub enum WorkspaceRuntimeSelectorRead {
+    GenerationMissing,
+    Projection {
+        generation_digest: String,
+        root_digest: String,
+        bytes: Vec<u8>,
+    },
+    OwnerForRepair {
+        generation_digest: String,
+        root_digest: String,
+        owner: WorkspaceOwnerSnapshot,
+    },
+    OwnerMissing {
+        generation_digest: String,
+        root_digest: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceMemoryGeneration {
     pub workspace_identity: String,
+    pub project_root: String,
     pub state: WorkspaceGenerationState,
     pub active_epoch: u64,
     pub generation_digest: String,
@@ -113,6 +215,8 @@ pub struct WorkspaceMemoryGeneration {
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
     pub memory_backend_digest: String,
+    pub workspace_source_scope_generation: String,
+    pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
 }
 
@@ -122,6 +226,17 @@ impl WorkspaceMemoryGeneration {
         self.validate_identity()?;
         validate_digest("generationDigest", &self.generation_digest)?;
         validate_digest("memoryBackendDigest", &self.memory_backend_digest)?;
+        validate_digest(
+            "workspaceSourceScopeGeneration",
+            &self.workspace_source_scope_generation,
+        )?;
+        if self.workspace_source_scope_generation
+            != agent_semantic_runtime::workspace_source_scope_generation_digest(
+                &self.project_resolutions,
+            )?
+        {
+            return Err("workspace generation ProjectResolution evidence drift".to_owned());
+        }
         if self.workspace_snapshot.root_digest() != self.source_snapshot.root_digest
             || self.workspace_generation.root_digest != self.source_snapshot.root_digest
             || self.workspace_generation.root_depth != u32::from(self.root_depth[0])
@@ -144,6 +259,9 @@ impl WorkspaceMemoryGeneration {
     fn validate_identity(&self) -> Result<(), String> {
         if self.workspace_identity.trim().is_empty() {
             return Err("workspace identity must be non-empty text".to_owned());
+        }
+        if self.project_root.trim().is_empty() {
+            return Err("workspace project root must be non-empty text".to_owned());
         }
         if self.state != WorkspaceGenerationState::Ready {
             return Err("only a ready workspace generation may be published".to_owned());
@@ -169,6 +287,7 @@ pub struct WorkspaceGenerationSnapshot {
     pub generation_digest: String,
     pub root_depth: [u8; 2],
     pub memory_backend_digest: String,
+    pub workspace_source_scope_generation: String,
     pub mmap_segment_path: String,
     pub previous_epoch_readable: bool,
 }
@@ -188,7 +307,11 @@ impl WorkspaceGenerationSnapshot {
             return Err("workspace generation snapshot is not publishable".to_owned());
         }
         validate_digest("generationDigest", &self.generation_digest)?;
-        validate_digest("memoryBackendDigest", &self.memory_backend_digest)
+        validate_digest("memoryBackendDigest", &self.memory_backend_digest)?;
+        validate_digest(
+            "workspaceSourceScopeGeneration",
+            &self.workspace_source_scope_generation,
+        )
     }
 }
 
@@ -297,7 +420,6 @@ impl RuntimeServerShutdownReceipt {
 #[derive(Debug)]
 pub(crate) struct WorkspaceMemoryBackend {
     generation: Arc<WorkspaceMemoryGeneration>,
-    owner_index: HashMap<String, usize>,
     selector_index: HashMap<String, (usize, usize)>,
     term_index: HashMap<String, Vec<usize>>,
 }
@@ -305,11 +427,9 @@ pub(crate) struct WorkspaceMemoryBackend {
 impl WorkspaceMemoryBackend {
     pub(crate) fn from_generation(generation: WorkspaceMemoryGeneration) -> Result<Self, String> {
         generation.validate()?;
-        let mut owner_index = HashMap::with_capacity(generation.owners.len());
         let mut selector_index = HashMap::new();
         let mut term_index = HashMap::<String, Vec<usize>>::new();
         for (owner_position, owner) in generation.owners.iter().enumerate() {
-            owner_index.insert(owner.owner_path.clone(), owner_position);
             let text = std::str::from_utf8(&owner.bytes).unwrap_or_default();
             for term in crate::source_index::source_query_keys(&owner.owner_path, text) {
                 term_index.entry(term).or_default().push(owner_position);
@@ -323,7 +443,6 @@ impl WorkspaceMemoryBackend {
         }
         Ok(Self {
             generation: Arc::new(generation),
-            owner_index,
             selector_index,
             term_index,
         })
@@ -340,13 +459,6 @@ impl WorkspaceMemoryBackend {
             owner_position,
             selector_position,
         })
-    }
-
-    pub(crate) fn owner(self: &Arc<Self>, owner_path: &str) -> Option<Arc<[u8]>> {
-        let owner_position = *self.owner_index.get(owner_path)?;
-        Some(Arc::from(
-            self.generation.owners[owner_position].bytes.as_slice(),
-        ))
     }
 
     pub(crate) fn source_index_owner_positions(&self, query: &str, limit: usize) -> Vec<usize> {
@@ -429,7 +541,7 @@ fn validate_digest(field: &str, digest: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub(super) fn validate_owners(owners: &[WorkspaceOwnerSnapshot]) -> Result<(), String> {
+pub(crate) fn validate_owners(owners: &[WorkspaceOwnerSnapshot]) -> Result<(), String> {
     let mut owner_paths = HashMap::with_capacity(owners.len());
     let mut selectors = HashMap::new();
     for (owner_index, owner) in owners.iter().enumerate() {
@@ -481,11 +593,42 @@ fn validate_selector(
     if selector.selector.trim().is_empty() {
         return Err("workspace selector must be non-empty text".to_owned());
     }
+    let (_, selector_target) = selector
+        .selector
+        .split_once("://")
+        .ok_or_else(|| "workspace selector must include a language scheme".to_owned())?;
+    let (selector_owner, _) = selector_target
+        .split_once('#')
+        .ok_or_else(|| "workspace selector must include an owner fragment".to_owned())?;
+    if selector_owner != owner.owner_path {
+        return Err(format!(
+            "workspace selector owner drift: selector={} ownerPath={}",
+            selector.selector, owner.owner_path
+        ));
+    }
     if selector.byte_start > selector.byte_end || selector.byte_end > owner.bytes.len() {
         return Err(format!(
             "workspace selector byte range is invalid: selector={}",
             selector.selector
         ));
+    }
+    let mut projection_kinds = std::collections::HashSet::new();
+    for projection in &selector.derived_projections {
+        if projection.projection_kind != "callable-skeleton" {
+            return Err(format!(
+                "workspace derived selector projection kind is unsupported: projectionKind={}",
+                projection.projection_kind
+            ));
+        }
+        if projection.bytes.is_empty() {
+            return Err("workspace derived selector projection bytes are empty".to_owned());
+        }
+        if !projection_kinds.insert(projection.projection_kind.as_str()) {
+            return Err(format!(
+                "duplicate workspace derived selector projection: selector={} projectionKind={}",
+                selector.selector, projection.projection_kind
+            ));
+        }
     }
     Ok(())
 }

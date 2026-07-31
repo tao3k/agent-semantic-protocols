@@ -127,7 +127,16 @@
         "activeEpoch",
         "generationDigest",
         "rootDepth",
+        "providerSchemaDigest",
+        "sourceRootDigest",
+        "baseRootDigest",
+        "sourceProviderDigest",
+        "dirtyPathsDigest",
+        "moduleGraphDigest",
+        "selectorSetDigest",
         "memoryBackendDigest",
+        "workspaceSourceScopeGeneration",
+        "durableCommitDigest",
         "mmapSegmentPath",
         "previousEpochReadable"
       ],
@@ -161,7 +170,49 @@
           "minItems": 2,
           "maxItems": 2
         },
+        "providerSchemaDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "sourceRootDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "baseRootDigest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "sourceProviderDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "dirtyPathsDigest": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "moduleGraphDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "selectorSetDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
         "memoryBackendDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "workspaceSourceScopeGeneration": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
+        },
+        "durableCommitDigest": {
           "type": "string",
           "pattern": "^blake3-256:[0-9a-f]{64}$"
         },

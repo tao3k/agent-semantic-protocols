@@ -2,12 +2,51 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use agent_semantic_client_db::WorkspaceDbRegistry;
-use agent_semantic_client_db::runtime_server::{RuntimeServer, RuntimeServerExit};
+use agent_semantic_client_db::runtime_server::{
+    RuntimeServer, RuntimeServerEvent, RuntimeServerExit,
+};
+use agent_semantic_client_db::runtime_server_admission_catalog::{
+    RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
+};
 use agent_semantic_client_db::runtime_server_control::{
     RuntimeServerControlRequest, RuntimeServerEndpoint, RuntimeServerOperation, RuntimeServerState,
     call_runtime_server, prepare_runtime_server_endpoint_in, prewarm_runtime_server_status_memory,
-    runtime_server_status_memory_metrics,
+    runtime_server_status_memory_metrics, runtime_server_transport_contract_digest,
 };
+
+#[test]
+fn runtime_transport_identity_binds_control_and_workspace_data_plane_contracts() {
+    let domain = b"agent.semantic-protocols.runtime-server-transport.v1";
+    let control = include_bytes!("../../../../schemas/runtime-server-control.v1.schema.json");
+    let data_plane = include_bytes!("../../../../schemas/workspace-db-owner-ipc.v1.schema.json");
+    let mut expected = blake3::Hasher::new();
+    expected.update(domain);
+    for (contract_name, contract_bytes) in [
+        (b"runtime-server-control.v1".as_slice(), control.as_slice()),
+        (
+            b"workspace-db-owner-ipc.v1".as_slice(),
+            data_plane.as_slice(),
+        ),
+    ] {
+        expected.update(&(contract_name.len() as u64).to_le_bytes());
+        expected.update(contract_name);
+        expected.update(&(contract_bytes.len() as u64).to_le_bytes());
+        expected.update(contract_bytes);
+    }
+    let expected = format!("blake3-256:{}", expected.finalize().to_hex());
+
+    assert_eq!(runtime_server_transport_contract_digest(), expected);
+    assert_ne!(
+        runtime_server_transport_contract_digest(),
+        format!("blake3-256:{}", blake3::hash(control).to_hex()),
+        "control-only identity would admit an incompatible workspace data plane"
+    );
+    assert_ne!(
+        runtime_server_transport_contract_digest(),
+        format!("blake3-256:{}", blake3::hash(data_plane).to_hex()),
+        "data-plane-only identity would admit an incompatible control plane"
+    );
+}
 
 async fn fixture_endpoint(
     runtime_dir: &tempfile::TempDir,
@@ -81,10 +120,10 @@ async fn runtime_endpoint_omits_workspace_and_process_identity() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn restart_is_idempotent_for_the_expected_runtime_digest() {
+async fn explicit_restart_is_not_downgraded_to_status_for_the_current_digest() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
     let endpoint = fixture_endpoint(&runtime_dir, 22).await;
-    let mut request = RuntimeServerControlRequest {
+    let request = RuntimeServerControlRequest {
         schema_id: "agent.semantic-protocols.runtime-server-control-request.v1".to_owned(),
         schema_version: "1".to_owned(),
         operation: RuntimeServerOperation::Restart,
@@ -96,15 +135,153 @@ async fn restart_is_idempotent_for_the_expected_runtime_digest() {
     };
 
     assert!(
-        !request
-            .requires_restart(&endpoint)
-            .expect("validate already-current restart")
-    );
-    request.expected_runtime_artifact_digest = "next-runtime-digest".to_owned();
-    assert!(
         request
             .requires_restart(&endpoint)
-            .expect("validate stale-runtime restart")
+            .expect("validate explicit restart")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn startup_restore_is_starting_then_isolates_scope_failure_without_global_restart() {
+    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
+    let project_root = runtime_dir.path().join("stale-workspace");
+    tokio::fs::create_dir_all(&project_root)
+        .await
+        .expect("create catalog project root");
+    let catalog = RuntimeWorkspaceAdmissionCatalog::load(
+        runtime_dir.path().join("workspace-admissions.v1.json"),
+    )
+    .await
+    .expect("load admission catalog");
+    catalog
+        .record(RuntimeWorkspaceAdmissionCatalogEntry {
+            workspace_identity: "workspace-stale".to_owned(),
+            project_root,
+        })
+        .await
+        .expect("record stale scope");
+    let endpoint = fixture_endpoint(&runtime_dir, 31).await;
+    let (events, mut event_receipts) = tokio::sync::mpsc::unbounded_channel();
+    let server = RuntimeServer::bind(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::with_state_home(
+            &runtime_dir.path().join("state"),
+        )),
+    )
+    .await
+    .expect("bind Runtime Server")
+    .with_workspace_generation_builder_and_catalog(
+        Arc::new(|_, _| Box::pin(async { Err("fixture canonical generation missing".to_owned()) })),
+        catalog,
+    )
+    .with_event_sender(events);
+    let shutdown = server.shutdown_handle();
+
+    let starting = call_runtime_server(
+        &endpoint,
+        RuntimeServerOperation::Status,
+        endpoint.runtime_artifact_digest.clone(),
+        "status-during-catalog-restore".to_owned(),
+    )
+    .await
+    .expect("read Starting status from mmap");
+    assert_eq!(starting.state, RuntimeServerState::Starting);
+
+    let server = tokio::spawn(server.serve());
+    let event = event_receipts.recv().await.expect("scope failure event");
+    let RuntimeServerEvent::WorkspaceGenerationRestoreFailed {
+        workspace_identity,
+        error,
+    } = event
+    else {
+        panic!("expected workspace restore failure event: {event:?}");
+    };
+    assert_eq!(workspace_identity, "workspace-stale");
+    assert!(!error.is_empty());
+    let healthy = call_runtime_server(
+        &endpoint,
+        RuntimeServerOperation::Status,
+        endpoint.runtime_artifact_digest.clone(),
+        "status-after-scope-isolation".to_owned(),
+    )
+    .await
+    .expect("read Healthy status after isolated scope failure");
+    assert_eq!(healthy.state, RuntimeServerState::Healthy);
+
+    shutdown.shutdown();
+    assert_eq!(
+        server.await.expect("join Runtime Server").expect("serve"),
+        RuntimeServerExit::ShutdownRequested
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn source_index_lease_miss_is_fail_fast_and_never_opens_turso() {
+    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
+    let project_root = runtime_dir.path().join("query-miss-workspace");
+    tokio::fs::create_dir_all(&project_root)
+        .await
+        .expect("create query project root");
+    let workspace_identity = "workspace-query-miss".to_owned();
+    let endpoint = fixture_endpoint(&runtime_dir, 32).await;
+    let durable_registry = Arc::new(WorkspaceDbRegistry::with_state_home(
+        &runtime_dir.path().join("state"),
+    ));
+    let server = RuntimeServer::bind(endpoint.clone(), Arc::clone(&durable_registry))
+        .await
+        .expect("bind Runtime Server");
+    let memory_registry = Arc::clone(server.workspace_registry());
+    let shutdown = server.shutdown_handle();
+    let server = tokio::spawn(server.serve());
+    let session =
+        agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
+            &endpoint,
+            workspace_identity,
+            project_root.clone(),
+        );
+    let request = agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest {
+        project_root: project_root.clone(),
+        indexed_project_root: project_root,
+        source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence {
+            schema_id: "asp.source-snapshot.v1".to_owned(),
+            algorithm: "blake3-256".to_owned(),
+            root_digest: format!("{:064x}", 71),
+            source_kind: agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+            leaf_count: 1,
+            base_root_digest: None,
+            provider_digest: format!("{:064x}", 73),
+            dirty_paths_digest: None,
+        },
+        query: "missing-generation".to_owned(),
+        language_id: Some("rust".into()),
+        limit: 8,
+    };
+
+    let started = tokio::time::Instant::now();
+    let error = session
+        .read_source_index(&request)
+        .await
+        .expect_err("query without an admitted generation must fail closed");
+    assert!(
+        error.contains("active workspace generation lease is required"),
+        "unexpected query miss error: {error}"
+    );
+    assert!(
+        started.elapsed() < Duration::from_millis(10),
+        "generation lease miss must fail in milliseconds: {:?}",
+        started.elapsed()
+    );
+    assert_eq!(durable_registry.workspace_entry_counts(), (0, 0));
+    let counters = memory_registry.data_plane_counters();
+    assert_eq!(counters.database_opens, 0);
+    assert_eq!(counters.provider_spawns, 0);
+    assert_eq!(counters.schema_bootstraps, 0);
+    assert_eq!(counters.lock_probes, 0);
+
+    shutdown.shutdown();
+    assert_eq!(
+        server.await.expect("join Runtime Server").expect("serve"),
+        RuntimeServerExit::ShutdownRequested
     );
 }
 
@@ -289,7 +466,12 @@ async fn adaptive_concurrent_runtime_control_is_sub_millisecond_at_p99() {
     let cold_metrics =
         runtime_server_status_memory_metrics(&endpoint).expect("cold status memory metrics");
     assert_eq!(cold_metrics.reader_open_count, 1);
-    assert_eq!(cold_metrics.snapshot_decode_count, 1);
+    assert!(
+        cold_metrics.snapshot_decode_count
+            <= admission_metrics.snapshot_decode_count.saturating_add(1),
+        "the starting-to-healthy transition may decode one new generation, but no more: \
+         admission={admission_metrics:?} cold={cold_metrics:?}"
+    );
 
     let latencies = concurrent_runtime_status_wave(&endpoint, request_count, "adaptive-warm").await;
     let p99 = latencies[p99_index];
@@ -300,7 +482,10 @@ async fn adaptive_concurrent_runtime_control_is_sub_millisecond_at_p99() {
     let warm_metrics =
         runtime_server_status_memory_metrics(&endpoint).expect("warm status memory metrics");
     assert_eq!(warm_metrics.reader_open_count, 1);
-    assert_eq!(warm_metrics.snapshot_decode_count, 1);
+    assert_eq!(
+        warm_metrics.snapshot_decode_count, cold_metrics.snapshot_decode_count,
+        "a stable healthy generation must not be decoded again"
+    );
     assert_eq!(
         warm_metrics.snapshot_cache_hit_count - cold_metrics.snapshot_cache_hit_count,
         request_count as u64,
@@ -342,7 +527,11 @@ async fn adaptive_concurrent_runtime_control_is_sub_millisecond_at_p99() {
     let draining_metrics =
         runtime_server_status_memory_metrics(&endpoint).expect("draining status memory metrics");
     assert_eq!(draining_metrics.reader_open_count, 1);
-    assert_eq!(draining_metrics.snapshot_decode_count, 2);
+    assert_eq!(
+        draining_metrics.snapshot_decode_count,
+        warm_metrics.snapshot_decode_count.saturating_add(1),
+        "the explicit healthy-to-draining transition must decode exactly one new generation"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -451,13 +640,36 @@ async fn concurrent_tokio_shutdown_drains_the_runtime_server_once() {
     assert_eq!(draining.state, RuntimeServerState::Draining);
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn hook_generation_admission_is_non_blocking_and_single_flight() {
+#[test]
+fn hook_generation_admission_is_non_blocking_and_single_flight() {
+    let worker_count = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1);
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(worker_count)
+        .enable_all()
+        .build()
+        .expect("build adaptive hook admission runtime")
+        .block_on(hook_generation_admission_is_non_blocking_and_single_flight_async());
+}
+
+async fn hook_generation_admission_is_non_blocking_and_single_flight_async() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
     let project_root = runtime_dir.path().join("project");
     tokio::fs::create_dir_all(&project_root)
         .await
         .expect("create admission project");
+    let git_init = tokio::process::Command::new("git")
+        .arg("init")
+        .arg(&project_root)
+        .output()
+        .await
+        .expect("initialize admission Git workspace");
+    assert!(
+        git_init.status.success(),
+        "initialize admission Git workspace: {}",
+        String::from_utf8_lossy(&git_init.stderr)
+    );
     let workspace_identity =
         agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
             .expect("resolve admission workspace")
@@ -466,29 +678,38 @@ async fn hook_generation_admission_is_non_blocking_and_single_flight() {
             .to_string();
     let endpoint = fixture_endpoint(&runtime_dir, 28).await;
     let source_build_count = Arc::new(tokio::sync::Mutex::new(0_u32));
-    let source_build_release = Arc::new(tokio::sync::Notify::new());
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
-        .await
-        .expect("bind Runtime Server")
-        .with_workspace_generation_builder(Arc::new({
+    let source_build_release = Arc::new(tokio::sync::Semaphore::new(0));
+    let state_home = runtime_dir.path().join("state");
+    let server = RuntimeServer::bind(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::with_state_home(&state_home)),
+    )
+    .await
+    .expect("bind Runtime Server")
+    .with_workspace_generation_builder(Arc::new({
+        let source_build_count = Arc::clone(&source_build_count);
+        let source_build_release = Arc::clone(&source_build_release);
+        move |_workspace_identity, _project_root| {
             let source_build_count = Arc::clone(&source_build_count);
             let source_build_release = Arc::clone(&source_build_release);
-            move |_workspace_identity, _project_root| {
-                let source_build_count = Arc::clone(&source_build_count);
-                let source_build_release = Arc::clone(&source_build_release);
-                Box::pin(async move {
-                    *source_build_count.lock().await += 1;
-                    source_build_release.notified().await;
-                    Err("fixture stops before source publication".to_owned())
-                })
-            }
-        }));
+            Box::pin(async move {
+                *source_build_count.lock().await += 1;
+                source_build_release
+                    .acquire_owned()
+                    .await
+                    .map_err(|_| "fixture generation release closed".to_owned())?
+                    .forget();
+                Err("fixture stops before source publication".to_owned())
+            })
+        }
+    }));
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
     let session = Arc::new(
         agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
             &endpoint,
             workspace_identity,
+            project_root.clone(),
         ),
     );
 
@@ -499,13 +720,9 @@ async fn hook_generation_admission_is_non_blocking_and_single_flight() {
     let mut requests = tokio::task::JoinSet::new();
     for _ in 0..request_count {
         let session = Arc::clone(&session);
-        let project_root = project_root.clone();
         requests.spawn(async move {
             let started = tokio::time::Instant::now();
-            (
-                session.admit_runtime_generation(&project_root).await,
-                started.elapsed(),
-            )
+            (session.admit_runtime_generation().await, started.elapsed())
         });
     }
     let mut accepted_count = 0_u32;
@@ -524,13 +741,179 @@ async fn hook_generation_admission_is_non_blocking_and_single_flight() {
         "hook admission control p99 exceeded 25ms: {p99:?}"
     );
 
-    source_build_release.notify_waiters();
+    let ensure = tokio::spawn({
+        let session = Arc::clone(&session);
+        async move { session.ensure_runtime_generation().await }
+    });
+    tokio::task::yield_now().await;
+    assert!(
+        !ensure.is_finished(),
+        "typed ensure must wait for the admitted generation's terminal receipt"
+    );
+    source_build_release.add_permits(1);
+    let ensured = ensure
+        .await
+        .expect("join ensured generation")
+        .expect("read ensured generation receipt");
+    assert_eq!(
+        ensured.state,
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Failed
+    );
+    assert_eq!(
+        ensured.error.as_deref(),
+        Some("fixture stops before source publication")
+    );
     shutdown.shutdown();
     assert_eq!(
         server.await.expect("join Runtime Server").expect("serve"),
         RuntimeServerExit::ShutdownRequested
     );
-    assert!(*source_build_count.lock().await <= 1);
+    assert_eq!(*source_build_count.lock().await, 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn multi_workspace_multi_session_admission_is_single_flight_and_bounded() {
+    const WORKSPACE_COUNT: usize = 3;
+    const SESSION_COUNT_PER_WORKSPACE: usize = 12;
+    const CALL_COUNT_PER_SESSION: usize = 16;
+    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
+    let endpoint = fixture_endpoint(&runtime_dir, 30).await;
+    let source_build_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let source_build_release = Arc::new(tokio::sync::Semaphore::new(0));
+    let state_home = runtime_dir.path().join("state");
+    let server = RuntimeServer::bind(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::with_state_home(&state_home)),
+    )
+    .await
+    .expect("bind Runtime Server")
+    .with_workspace_generation_builder(Arc::new({
+        let source_build_count = Arc::clone(&source_build_count);
+        let source_build_release = Arc::clone(&source_build_release);
+        move |_workspace_identity, _project_root| {
+            let source_build_count = Arc::clone(&source_build_count);
+            let source_build_release = Arc::clone(&source_build_release);
+            Box::pin(async move {
+                source_build_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                source_build_release
+                    .acquire_owned()
+                    .await
+                    .map_err(|_| "fixture generation release closed".to_owned())?
+                    .forget();
+                Err("fixture stops before source publication".to_owned())
+            })
+        }
+    }));
+    let generation_admission = server
+        .workspace_generation_admission()
+        .expect("configured generation admission");
+    let shutdown = server.shutdown_handle();
+    let server = tokio::spawn(server.serve());
+
+    let mut requests = tokio::task::JoinSet::new();
+    let mut workspace_projects = Vec::with_capacity(WORKSPACE_COUNT);
+    for workspace_index in 0..WORKSPACE_COUNT {
+        let project_root = runtime_dir
+            .path()
+            .join(format!("project-{workspace_index}"));
+        tokio::fs::create_dir_all(&project_root)
+            .await
+            .expect("create admission project");
+        let git_init = tokio::process::Command::new("git")
+            .arg("init")
+            .arg(&project_root)
+            .output()
+            .await
+            .expect("initialize admission Git workspace");
+        assert!(
+            git_init.status.success(),
+            "initialize admission Git workspace: {}",
+            String::from_utf8_lossy(&git_init.stderr)
+        );
+        let workspace_identity =
+            agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+                .expect("resolve admission workspace")
+                .workspace
+                .workspace_id
+                .to_string();
+        workspace_projects.push((workspace_identity.clone(), project_root.clone()));
+        for _ in 0..SESSION_COUNT_PER_WORKSPACE {
+            let session = Arc::new(
+                agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
+                    &endpoint,
+                    workspace_identity.clone(),
+                    project_root.clone(),
+                ),
+            );
+            for _ in 0..CALL_COUNT_PER_SESSION {
+                let session = Arc::clone(&session);
+                requests.spawn(async move {
+                    let started = tokio::time::Instant::now();
+                    (session.admit_runtime_generation().await, started.elapsed())
+                });
+            }
+        }
+    }
+
+    let request_count = WORKSPACE_COUNT * SESSION_COUNT_PER_WORKSPACE * CALL_COUNT_PER_SESSION;
+    let mut accepted_by_workspace = std::collections::BTreeMap::<String, usize>::new();
+    let mut latencies = Vec::with_capacity(request_count);
+    while let Some(result) = requests.join_next().await {
+        let (receipt, latency) = result.expect("join multi-session hook admission");
+        let receipt = receipt.expect("multi-session hook admission receipt");
+        if receipt.accepted {
+            *accepted_by_workspace
+                .entry(receipt.workspace_identity)
+                .or_default() += 1;
+        }
+        latencies.push(latency);
+    }
+    latencies.sort_unstable();
+    let p99 = latencies[(latencies.len() * 99 / 100).min(latencies.len() - 1)];
+    eprintln!(
+        "runtime-server-multi-workspace-session-admission workspaceCount={WORKSPACE_COUNT} sessionCount={} requestCount={request_count} p99Micros={}",
+        WORKSPACE_COUNT * SESSION_COUNT_PER_WORKSPACE,
+        p99.as_micros()
+    );
+
+    source_build_release.add_permits(WORKSPACE_COUNT);
+    let build_start = tokio::time::Instant::now();
+    let mut terminal_receipts = Vec::with_capacity(WORKSPACE_COUNT);
+    for (workspace_identity, project_root) in &workspace_projects {
+        terminal_receipts.push(
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                generation_admission.wait_terminal(workspace_identity, project_root),
+            )
+            .await
+            .expect("admitted workspace generation task must reach a terminal state")
+            .expect("read workspace generation terminal receipt"),
+        );
+    }
+    eprintln!(
+        "runtime-server-multi-workspace-build-start micros={} terminalReceipts={terminal_receipts:?}",
+        build_start.elapsed().as_micros(),
+    );
+    shutdown.shutdown();
+    assert_eq!(
+        server.await.expect("join Runtime Server").expect("serve"),
+        RuntimeServerExit::ShutdownRequested
+    );
+    assert_eq!(accepted_by_workspace.len(), WORKSPACE_COUNT);
+    assert!(
+        accepted_by_workspace
+            .values()
+            .all(|accepted| *accepted == 1),
+        "each workspace must accept exactly one generation build: {accepted_by_workspace:?}"
+    );
+    assert!(
+        p99 < Duration::from_millis(25),
+        "multi-workspace multi-session admission p99 exceeded 25ms: {p99:?}"
+    );
+    assert_eq!(
+        source_build_count.load(std::sync::atomic::Ordering::Relaxed),
+        WORKSPACE_COUNT
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -545,12 +928,14 @@ async fn shared_runtime_admission_plane_is_workspace_keyed_and_drains() {
         agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
             &endpoint,
             "workspace-first",
+            runtime_dir.path().join("workspace-first"),
         ),
     );
     let second = Arc::new(
         agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
             &endpoint,
             "workspace-second",
+            runtime_dir.path().join("workspace-second"),
         ),
     );
     first.health().await.expect("prewarm first workspace lane");

@@ -228,9 +228,9 @@ enum InvalidWrite {
 }
 
 struct ProviderTreeSitterWriteFixture {
-    _environment: MutexGuard<'static, ()>,
     _state_home: StateHomeGuard,
     _temp: TempDir,
+    _environment: MutexGuard<'static, ()>,
     base_scope: ProviderIncrementalScoped,
     registry: WorkspaceDbRegistry,
     session: ProviderSearchWorkspaceSession,
@@ -248,9 +248,9 @@ impl ProviderTreeSitterWriteFixture {
             .await
             .expect("acquire provider Tree-sitter workspace session");
         Self {
-            _environment: environment,
             _state_home: state_home,
             _temp: temp,
+            _environment: environment,
             base_scope,
             registry,
             session,

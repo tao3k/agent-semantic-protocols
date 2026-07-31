@@ -10,7 +10,12 @@ the proposed Rust server transaction is implemented.
 
 * Decision
 
-=ASP-RFC-10.05-SRSG-AUTHORITY=: The resident workspace server is the only
+The directory name is retained as a compatibility locator.  The normative
+principal is the =ASP Runtime Server=.  ASP Agent Session and Resident Subagent
+authority is specified separately by
+[[file:../10.05.22-agent-session-runtime-server-boundary/00-overview.org][RFC 10.05.22]].
+
+=ASP-RFC-10.05-SRSG-AUTHORITY=: The Runtime Server workspace entry is the only
 writer of search-index state.
 
 =ASP-RFC-10.05-SRSG-READ-WRITE=: Reader readiness and writer readiness are
@@ -120,38 +125,22 @@ The same local run produced four hook/router counterexamples:
 - an exact named =orgize eval plan= piped to =typst eval --in -=, and a bounded
   JSON receipt projection, were misclassified as =bulk-source-dump=.
 
-=ASP-RFC-10.05-SRSG-HOOK-ROUTE=: The hook MUST preserve parser-owner identity,
-exact block/receipt boundedness,
+=ASP-RFC-10.05-SRSG-HOOK-ROUTE= is a compatibility observation only.  Its
+normative authority and proof moved to =ASP-RFC-10.05-ASRS-ROUTE= in RFC
+10.05.22.  The Agent Session hook MUST preserve parser-owner identity, exact
+block/receipt boundedness,
 and registered resident liveness.  It MUST NOT insert a bootstrap pane when a
 verified native target already exists.  A generated =recommendedNext= is part
 of the protocol contract and MUST be grammar-checked against the selected
 facade before publication.
 
-#+name: server-native-agent-route
+#+name: compatibility-agent-session-route-reference
 #+begin_src typst
-$ "RegisteredName"
-  arrow.r
-  "HostResolve"
-  arrow.r
-  "DeepLink"
-  arrow.r
-  "NativeDispatch" $
+$ "AgentSessionRouteProof"
+=
+"RFC 10.05.22" $
 
-$ "ASP" = "verify(authority, generation, receipt)" $
-
-$ "ResidentLive"
-arrow.r.double
-"HookRoute" = "NativeResident" $
-
-$ not "ResidentLive"
-and not "GrammarValid(recommendedNext)"
-arrow.r.double
-"HookRoute" = "Reject" $
-
-$ not "ResidentLive"
-and not "OwnerLanguageMatches"
-arrow.r.double
-"HookRoute" = "Reject" $
+$ not "OwnedBy"("RuntimeServer", "SubagentBinding") $
 
 "ok"
 #+end_src
@@ -299,6 +288,12 @@ Recovery order is:
 
 CLI cache deletion is not a recovery primitive.
 
+The platform supervisor definition MUST pin the immutable, digest-addressed
+runtime artifact, not the mutable =runtime/bin/asp= entry. Publishing a new
+stable entry therefore changes the supervisor definition and forces an atomic
+service replacement. A healthy receipt from the previous digest is not a
+successful reconciliation.
+
 * Implementation calibration
 
 | Surface | Current evidence | Required state |
@@ -313,7 +308,7 @@ CLI cache deletion is not a recovery primitive.
 
 * Lean correspondence
 
-The Lean model =ASPProof.ServerResidentSearchGeneration= proves:
+The Lean model =ASPProof.RuntimeServerSearchGeneration= proves:
 
 - CLI write authority is empty;
 - staged generations are not queryable;

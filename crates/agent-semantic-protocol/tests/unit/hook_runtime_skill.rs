@@ -58,7 +58,8 @@ fn activation_provider(
             source_extensions: Vec::new(),
             source_paths: Vec::new(),
             repository_candidate_generation: "test-repository-candidate-generation".to_string(),
-            project_resolution_generation: "test-project-resolution-generation".to_string(),
+            workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
+            project_resolutions: Vec::new(),
         },
     }
 }

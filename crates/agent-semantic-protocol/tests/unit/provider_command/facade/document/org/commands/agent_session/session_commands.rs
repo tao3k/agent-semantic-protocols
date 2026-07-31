@@ -676,7 +676,7 @@ fn asp_agent_session_wraps_codex_saved_session_commands() {
 }
 
 #[test]
-fn asp_agent_session_status_from_temp_cwd_uses_root_project_scope() {
+fn asp_agent_session_status_from_temp_cwd_uses_root_project_resolution() {
     let root = temp_project_root("agent-command-session-status-temp-cwd");
     let home = root.join("home");
     let root_session_id = "codex-root-thread";

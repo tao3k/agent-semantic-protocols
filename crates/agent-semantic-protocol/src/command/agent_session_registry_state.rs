@@ -311,20 +311,20 @@ pub(super) fn open_or_create_default_registry(
 pub(super) fn current_project_session_scope_id(
     registry: &AgentSessionRegistry,
 ) -> Result<String, String> {
-    if let Some(project_id) = current_agent_project_scope_id(registry)? {
+    if let Some(project_id) = current_agent_project_resolution_id(registry)? {
         return Ok(project_id);
     }
-    AgentSessionRegistry::current_project_scope_id()
+    AgentSessionRegistry::current_workspace_id()
 }
 
 pub(super) fn project_session_scope_id(
     registry: &AgentSessionRegistry,
     project_root: &Path,
 ) -> Result<String, String> {
-    if let Some(project_id) = current_agent_project_scope_id(registry)? {
+    if let Some(project_id) = current_agent_project_resolution_id(registry)? {
         return Ok(project_id);
     }
-    Ok(AgentSessionRegistry::project_scope_id(project_root))
+    AgentSessionRegistry::workspace_id(project_root)
 }
 
 pub(super) fn current_recall_session_id(
@@ -343,7 +343,7 @@ pub(super) fn current_recall_session_id(
     Ok(Some(session.recall_session_id().to_string()))
 }
 
-fn current_agent_project_scope_id(
+fn current_agent_project_resolution_id(
     registry: &AgentSessionRegistry,
 ) -> Result<Option<String>, String> {
     if let Some(session) = current_agent_runtime_session()

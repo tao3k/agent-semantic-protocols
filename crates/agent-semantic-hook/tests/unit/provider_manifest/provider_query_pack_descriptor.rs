@@ -271,13 +271,14 @@ fn activation_rejects_search_capabilities_drift() {
                 package_roots: vec!["src".to_string()],
                 config_files: manifest
                     .project_resolution()
-                    .expect("programming-language project resolution")
+                    .expect("programming-language project scope")
                     .entry_markers
                     .clone(),
                 source_extensions: vec![".test".to_string()],
                 source_paths: vec!["src/provider.test".to_string()],
                 repository_candidate_generation: "test-candidate-generation".to_string(),
-                project_resolution_generation: "test-project-resolution-generation".to_string(),
+                workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
+                project_resolutions: Vec::new(),
             },
         }],
     };
@@ -339,13 +340,14 @@ fn activation_rejects_semantic_facts_descriptor_drift() {
                 package_roots: vec!["src".to_string()],
                 config_files: manifest
                     .project_resolution()
-                    .expect("programming-language project resolution")
+                    .expect("programming-language project scope")
                     .entry_markers
                     .clone(),
                 source_extensions: vec![".test".to_string()],
                 source_paths: vec!["src/provider.test".to_string()],
                 repository_candidate_generation: "test-candidate-generation".to_string(),
-                project_resolution_generation: "test-project-resolution-generation".to_string(),
+                workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
+                project_resolutions: Vec::new(),
             },
         }],
     };

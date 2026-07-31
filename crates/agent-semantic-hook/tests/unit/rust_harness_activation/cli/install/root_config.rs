@@ -143,6 +143,26 @@ fn cli_install_rejects_missing_subagent_model_value() {
 #[test]
 fn cli_install_writes_claude_custom_subagent_by_default() {
     let root = git_project_root("install-claude-subagent");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"activation-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Rust package-manager project entry");
+    std::fs::create_dir_all(root.join("src")).expect("create Rust source root");
+    std::fs::write(root.join("src/lib.rs"), "pub fn run() {}\n")
+        .expect("write Rust source candidate");
+    let init = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(&root)
+        .output()
+        .expect("initialize Git fixture");
+    assert!(init.status.success(), "git init failed: {init:?}");
+    let add = std::process::Command::new("git")
+        .args(["add", "Cargo.toml", "src/lib.rs"])
+        .current_dir(&root)
+        .output()
+        .expect("index Rust fixture");
+    assert!(add.status.success(), "git add failed: {add:?}");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");

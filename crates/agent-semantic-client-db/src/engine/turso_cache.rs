@@ -128,7 +128,7 @@ pub(super) async fn upsert_turso_cache_generations_with_connection(
     let mut pointer_rows = Vec::with_capacity(manifest.generations.len());
     let mut pointer_delete_rows = Vec::new();
     for generation in &manifest.generations {
-        let project_root = normalized_project_root(Path::new(&generation.project_root));
+        let project_root = normalized_project_root(Path::new(&generation.project_root))?;
         let export_method = generation.export_method.as_deref().ok_or_else(|| {
             format!(
                 "Turso cache generation `{}` has no export method",
@@ -390,19 +390,19 @@ pub async fn prune_turso_cache_generations_to_manifest(
     }
     let connection = connect_turso_client_db(db_path).await?;
     bootstrap_turso_client_cache_schema(&connection).await?;
-    let keep_keys = manifest
-        .generations
-        .iter()
-        .filter_map(|generation| {
-            Some((
-                normalized_project_root(Path::new(&generation.project_root)),
-                generation.language_id.as_str().to_string(),
-                generation.provider_id.as_str().to_string(),
-                generation.export_method.as_deref()?.to_string(),
-                generation.generation_id.clone(),
-            ))
-        })
-        .collect::<std::collections::HashSet<_>>();
+    let mut keep_keys = std::collections::HashSet::new();
+    for generation in &manifest.generations {
+        let Some(export_method) = generation.export_method.as_deref() else {
+            continue;
+        };
+        keep_keys.insert((
+            normalized_project_root(Path::new(&generation.project_root))?,
+            generation.language_id.as_str().to_string(),
+            generation.provider_id.as_str().to_string(),
+            export_method.to_string(),
+            generation.generation_id.clone(),
+        ));
+    }
     let mut rows = run_turso_operation(
         || async {
             connection
@@ -592,7 +592,7 @@ pub(super) async fn invalidate_turso_cache_generations_for_project_with_connecti
     connection: &turso::Connection,
     project_root: &Path,
 ) -> Result<u32, String> {
-    let project_root = normalized_project_root(project_root);
+    let project_root = normalized_project_root(project_root)?;
     execute_turso_statement(
         connection,
         "BEGIN TRANSACTION",
@@ -712,7 +712,7 @@ pub(super) async fn lookup_recent_turso_cache_generations_with_connection(
     if limit == 0 {
         return Ok(Vec::new());
     }
-    let project_root = normalized_project_root(project_root);
+    let project_root = normalized_project_root(project_root)?;
     if let Some(request_fingerprint) = request_fingerprint {
         maybe_report_turso_cache_generation_query_plan(
             connection,

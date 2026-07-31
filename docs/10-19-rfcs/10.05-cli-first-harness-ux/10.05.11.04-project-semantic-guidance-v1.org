@@ -201,6 +201,15 @@ After a workspace identity is established, ASP MUST:
    workspace generation; and
 5. persist those receipts under the workspace artifacts owner.
 
+For Git repositories, =workspace= means exactly the concrete Git worktree.
+Registered package-manager entries are provider inputs inside that workspace,
+not child projects and not additional workspace/project scopes.  Their typed
+resolution receipts are composed into the workspace's generation-bound source
+scope.  Discovering another =Cargo.toml=, =package.json=, =pyproject.toml=,
+=Project.toml=, or other registered entry MUST NOT create another identity or
+scope root.  Conversely, a linked Git worktree has its own workspace identity
+even when it contains the same package-manager entries.
+
 The artifact key MUST include the repository/worktree candidate generation,
 project-entry digest, lockfile digest when present, provider parser digest, and
 policy digest.  A change to any package-manager input invalidates only the
@@ -286,7 +295,7 @@ or conflicts remain unresolved. They MUST NOT repair the condition by scanning
 the workspace or opening a database directly.
 * Provider-owned package-manager scenario authority
 
-=provider_project_scope= is a receipt consumer.  It MUST NOT infer package
+=provider_project_resolution= is a receipt consumer.  It MUST NOT infer package
 roots, source roots, targets, configuration files, or exclusions locally.
 Those facts are owned by the activated language harness and are published as a
 typed =ProjectResolution= containing a =LanguagePackageGraph= and

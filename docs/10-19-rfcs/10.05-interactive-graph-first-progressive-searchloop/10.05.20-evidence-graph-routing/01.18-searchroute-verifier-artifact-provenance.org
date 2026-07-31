@@ -1,0 +1,429 @@
+#+title: RFC 10.05.20/01.18 - SearchRoute Verifier Artifact Provenance
+#+subtitle: Binding an executed verifier binary to source, recipe, transparency, and an independent rebuild
+#+date: 2026-07-31
+#+startup: overview
+#+options: toc:3 num:nil
+
+* Status and authority
+
+This document is the canonical SearchRoute artifact-provenance extension of
+[[file:01.17-searchroute-executable-verifier-conformance.org][RFC 10.05.20/01.17]].
+
+RFC 01.17 proves that a verifier binary was resolved, invoked, decoded, and
+independently replayed.  It deliberately does not prove that the resolved
+binary was built from the intended source snapshot and build recipe.  This RFC
+closes that second boundary.
+
+The formal owner and audit artifacts are:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteVerifierArtifactProvenance.lean][SearchRouteVerifierArtifactProvenance.lean]]
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteVerifierArtifactProvenance.lean][SearchRouteVerifierArtifactProvenance audit]]
+- [[file:../../../../packages/proofs/receipts/searchroute-verifier-artifact-provenance-audit-v1.json][Lean audit receipt]]
+- [[file:../../../../packages/proofs/receipts/searchroute-verifier-artifact-provenance-axle-audit-v1.json][AXLE audit receipt]]
+
+This RFC changes no Rust provider or product Python runtime.  AXLE remains an
+audit consumer under =packages/python/tools=; the proof kernel remains under
+=packages/proofs=.
+
+* Lean-discovered provenance gap
+
+An executable receipt can establish:
+
+1. the resolver selected binary digest =b=;
+2. a process identified by =b= was invoked;
+3. its response was decoded and accepted; and
+4. another executor reproduced the verification decision.
+
+Those facts do not establish:
+
+1. which source snapshot produced \(b\);
+2. which toolchain, dependency lock, and build environment produced \(b\);
+3. whether the build statement was published in a non-equivocating log;
+4. whether another builder reproduced \(b\); or
+5. whether equality of digest values is faithful to artifact semantics.
+
+The logical error is to replace provenance with the single equality
+=buildBinaryDigest = resolvedBinaryDigest=.  This equality is necessary, but it
+is only one conjunct of provenance.  Its mathematical role is defined by
+=build-stage= and =provenance-closure= in the Org-Babel Typst block below.
+
+* Threat model
+
+The model rejects five distinct substitution paths.
+
+** Source substitution
+
+An attacker retains the expected verifier identifier and algorithm identifier
+but builds from another repository, revision, or source snapshot.
+
+** Recipe substitution
+
+An attacker builds the expected source using another toolchain, dependency
+lock, environment, or non-hermetic recipe.
+
+** Artifact substitution
+
+An attacker publishes an attestation for one output while the executable
+resolver selects another output.
+
+** Log equivocation or staleness
+
+An inclusion proof against an unverified, inconsistent, or stale checkpoint
+does not establish globally visible publication.
+
+** Builder monoculture
+
+A "rebuild" by the original builder does not provide an independent
+reproducibility boundary.  The rebuild authority must be distinct from the
+attesting builder authority.
+
+* Five-stage artifact-provenance closure
+
+Let =c= be the trusted provenance context, =r= the executable verifier
+resolution, and =p= the provenance receipt.
+
+** Stage 1: immutable source snapshot
+
+The repository identity, revision, and source snapshot must equal the trusted
+context.  The receipt must assert an immutable revision boundary.
+
+** Stage 2: hermetic build recipe
+
+The recipe binds the toolchain, dependency lock, and build environment.
+Hermeticity is an admission requirement rather than optional ranking metadata.
+
+** Stage 3: bound build attestation
+
+The build statement binds:
+
+- source snapshot;
+- build recipe;
+- verifier identifier;
+- verification algorithm;
+- produced verifier binary;
+- builder authority; and
+- canonical provenance statement.
+
+Both build success and attestation signature verification are required.
+
+** Stage 4: fresh append-only transparency
+
+The canonical provenance statement must be included under the configured log,
+checkpoint, and Merkle root.  Inclusion alone is insufficient.  The model also
+requires:
+
+- a valid leaf range;
+- a minimum accepted tree size;
+- checkpoint signature verification;
+- append-only consistency; and
+- freshness.
+
+** Stage 5: independent reproducible rebuild
+
+A distinct rebuild authority must rebuild the same source snapshot and recipe,
+then compare the produced binary digest with the attested build output.
+
+* Org-Babel Typst mathematical model
+
+The following Typst block is the executable mathematical source for this RFC.
+It is evaluated from standard input with =typst eval --in -=; no generated
+=.typ= source file is required.
+
+#+begin_src typst
+#let source-stage = $
+  S_c(p_s) :=
+    p_s.r = c.r
+    and p_s.v = c.v
+    and p_s.s = c.s
+    and p_s.i
+$
+
+#let recipe-stage = $
+  R_c(p_r) :=
+    p_r.r = c.r
+    and p_r.t = c.t
+    and p_r.l = c.l
+    and p_r.e = c.e
+    and p_r.h
+$
+
+#let build-stage = $
+  B_(c, v)(p_b) :=
+    p_b.s = p_s.s
+    and p_b.r = p_r.r
+    and p_b.v = v.v
+    and p_b.a = v.a
+    and p_b.x = v.x
+    and p_b.b = c.b
+    and p_b.q = c.q
+    and p_b.o
+    and p_b.a_v
+$
+
+#let transparency-stage = $
+  T_c(p_t) :=
+    p_t.q = p_b.q
+    and p_t.l = c.l
+    and p_t.c = c.c
+    and p_t.r = c.r
+    and p_t.k < p_t.n
+    and c.n_min <= p_t.n
+    and p_t.i
+    and p_t.c_v
+    and p_t.a
+    and p_t.f
+$
+
+#let rebuild-stage = $
+  I_c(p_i) :=
+    p_i.s = p_b.s
+    and p_i.r = p_b.r
+    and p_i.x = p_b.x
+    and p_i.b = c.b_i
+    and p_i.b != p_b.b
+    and p_i.o
+    and p_i.c
+$
+
+#let provenance-closure = $
+  V_P(c, v, p) :=
+    S_c(p_s)
+    and R_c(p_r)
+    and B_(c, v)(p_b)
+    and T_c(p_t)
+    and I_c(p_i)
+$
+
+#let executable-projection = $
+  V_(S C)(e, c, v, p)
+  => V_E(e)
+  and p_b.x = e.v.x
+$
+
+#let digest-faithfulness = $
+  "InjectiveOn"(H, A) :=
+    forall x, y in A,
+      H(x) = H(y) => x = y
+$
+
+#let feasibility-before-cost = $
+  "Feasible"(pi) :=
+    forall e in pi,
+      V_E(e) and V_P(e.p)
+$
+
+#let prefix-counterexample = $
+  p_b.x = v.x
+  and not p_t.i
+  => not V_P(c, v, p)
+$
+
+#let collision-counterexample = $
+  x != y
+  and H_0(x) = H_0(y)
+  quad "where" quad H_0(z) = 0
+$
+#+end_src
+
+* Admission predicate
+
+The executable =provenance-closure= Typst definition is the complete
+conjunction of =source-stage=, =recipe-stage=, =build-stage=,
+=transparency-stage=, and =rebuild-stage=.
+
+The =executable-projection= Typst definition strengthens this closure with RFC
+01.17 executable verification.  It preserves the earlier executable theorem
+and adds the equality between the attested build output and the verifier binary
+selected by executable resolution.
+
+* Digest faithfulness is an explicit assumption boundary
+
+Lean proves equality of digest values.  It does not prove collision resistance
+of a concrete hash function merely because the field is named =digest=.
+
+For artifact semantics =A= and digest function =H=, substitution exclusion
+requires the =digest-faithfulness= Typst definition: equality of =H= on two
+trusted artifacts implies equality of those artifacts.
+
+The =collision-counterexample= Typst definition and the corresponding Lean
+theorem use a constant digest to exhibit two unequal artifacts with the same
+digest.
+
+Therefore the RFC MUST NOT claim unconditional semantic identity from digest
+equality.  A runtime conformance profile must name the digest algorithm and
+carry external cryptographic assurance for the admitted artifact domain.
+
+* SearchLoop and evidence-graph consequence
+
+A graph route can be structurally short and still be inadmissible when its
+verifier binary lacks provenance.  The =feasibility-before-cost= Typst
+definition requires every edge in a path to pass executable and provenance
+verification.
+
+Only feasible routes enter the Pareto comparison over graph length, token cost,
+latency, model-cache affinity, search-cache reuse, and interaction rounds.
+
+This ordering prevents a malicious or unverifiable binary from winning merely
+because it advertises a shorter path or lower token cost.
+
+Provenance receipts SHOULD be referenced by stable digest from graph edges
+rather than duplicated in every SearchLoop packet.  The first encounter pays
+the verification cost; subsequent edges can reuse the verified receipt through
+an explicit cache key that includes:
+
+- provenance statement digest;
+- transparency checkpoint digest;
+- verifier binary digest; and
+- provenance-policy version.
+
+Search cache reuse and model prefix-cache reuse remain separate measurements.
+Neither cache hit changes provenance feasibility.
+
+* Rejected weak prefixes
+
+The Lean model constructs and rejects the following prefixes.
+
+** Binary digest only
+
+The build output equals the resolved binary, but the build statement is absent
+from the transparency log.
+
+** Attested build only
+
+The source, recipe, and signed build statement agree, but no transparency or
+independent rebuild is present.
+
+** Logged build only
+
+The statement is published under a fresh append-only checkpoint, but the
+"independent" rebuild uses the same builder authority.
+
+** Non-hermetic recipe
+
+All named digests agree, but the recipe does not close undeclared build inputs.
+
+** Stale checkpoint
+
+The log inclusion proof is otherwise valid but is evaluated against a stale
+checkpoint.
+
+* Normative clauses
+
+** ASP-RFC-10.05-VAP-STAGE-CLOSURE
+
+Artifact provenance MUST close source snapshot, hermetic recipe, bound build
+attestation, fresh append-only transparency, and independent rebuild as one
+conjunction.  No strict prefix is equivalent to the complete predicate.
+
+** ASP-RFC-10.05-VAP-SOURCE-SNAPSHOT
+
+A provenance-admitted verifier artifact MUST bind repository identity,
+revision, immutable source snapshot, and the expected snapshot digest.
+
+** ASP-RFC-10.05-VAP-HERMETIC-RECIPE
+
+The build recipe MUST bind toolchain, dependency lock, environment, and
+hermeticity.
+
+** ASP-RFC-10.05-VAP-BUILD-ATTESTATION
+
+The verified build attestation MUST bind the source snapshot, recipe, verifier
+identity, verification algorithm, output binary, builder authority, and
+canonical provenance statement.
+
+** ASP-RFC-10.05-VAP-TRANSPARENCY
+
+Transparency admission MUST require inclusion, checkpoint verification,
+append-only consistency, freshness, and the configured minimum tree size.
+
+** ASP-RFC-10.05-VAP-INDEPENDENT-REBUILD
+
+The rebuild authority MUST differ from the original builder authority and MUST
+compare an output produced from the same source snapshot and build recipe.
+
+** ASP-RFC-10.05-VAP-EXECUTABLE-PROJECTION
+
+Supply-chain verified signatures MUST project to RFC 01.17 executable
+verification and MUST bind the built artifact to the executed verifier
+resolution.
+
+** ASP-RFC-10.05-VAP-DIGEST-ASSUMPTION
+
+Digest equality MUST NOT be interpreted as unconditional semantic identity.
+Any substitution-exclusion claim MUST state the admitted artifact domain and
+the external digest-faithfulness assumption.
+
+** ASP-RFC-10.05-VAP-FEASIBILITY-FIRST
+
+Evidence-graph routes containing provenance-unverified verifier artifacts MUST
+be rejected before graph length, token cost, latency, or cache utility is
+ranked.
+
+** ASP-RFC-10.05-VAP-PREFIX-INSUFFICIENT
+
+Binary-digest equality, build attestation, transparency inclusion, or
+same-builder replay alone MUST NOT be treated as complete provenance.
+
+* Lean theorem map
+
+The Lean module proves:
+
+- =valid_provenance_binds_all_stages=;
+- =valid_provenance_binds_source_snapshot=;
+- =valid_provenance_binds_hermetic_recipe=;
+- =valid_provenance_binds_build_attestation=;
+- =valid_provenance_binds_resolved_binary=;
+- =valid_provenance_uses_distinct_builders=;
+- =valid_provenance_has_fresh_append_only_transparency=;
+- =supply_chain_verified_signature_projects_executable_verification=;
+- =supply_chain_verified_signature_binds_executed_binary_to_build=;
+- =trusted_digest_equality_prevents_semantic_substitution=;
+- =unverified_route_cannot_win_by_lower_cost=;
+- =unpublished_build_is_rejected=;
+- =stale_checkpoint_is_rejected=;
+- =same_builder_rebuild_is_rejected=;
+- =substituted_binary_is_rejected=;
+- =nonhermetic_recipe_is_rejected=;
+- =binary_digest_only_does_not_prove_provenance=;
+- =logged_build_without_independent_rebuild_does_not_prove_provenance=; and
+- =constant_digest_allows_semantic_substitution=.
+
+* Audit contract
+
+The modular Lean audit MUST enumerate all public theorem declarations, reject
+=sorryAx=, and distinguish axiom-free declarations from declarations that use
+only standard logical extensionality.
+
+The AXLE audit MUST consume the Lean JSON receipt and require these families:
+
+- =stage-closure=;
+- =source-snapshot=;
+- =hermetic-recipe=;
+- =build-attestation=;
+- =transparency=;
+- =independent-rebuild=;
+- =executable-projection=;
+- =binary-binding=;
+- =prefix-insufficiency=;
+- =substitution-rejection=; and
+- =digest-assumption-boundary=.
+
+AXLE validates receipt completeness and RFC clause coverage.  It does not
+silently upgrade digest equality into a cryptographic theorem, nor does it
+replace real runtime build, log, and rebuild execution.
+
+* Implementation boundary
+
+This RFC and its Lean proof define the protocol boundary only.
+
+Future provider implementation will require shared, versioned schemas for:
+
+- source snapshot receipts;
+- hermetic build recipe receipts;
+- build attestations;
+- transparency inclusion and checkpoint consistency;
+- independent rebuild receipts; and
+- graph-edge references to verified provenance receipts.
+
+Those schemas must be designed before any Rust provider implementation.  This
+session intentionally stops at RFC, Lean, Typst, and AXLE verification.

@@ -142,7 +142,7 @@ pub async fn latest_turso_source_index_generation_snapshot(
     if !db_path.exists() {
         return Ok(None);
     }
-    let normalized_project_root = crate::types::normalized_project_root(project_root);
+    let normalized_project_root = crate::types::normalized_project_root(project_root)?;
     let connection = crate::engine::turso::connect_turso_client_db(db_path).await?;
     super::core::ensure_turso_source_index_schema(&connection).await?;
     load_turso_source_index_generation_snapshot(

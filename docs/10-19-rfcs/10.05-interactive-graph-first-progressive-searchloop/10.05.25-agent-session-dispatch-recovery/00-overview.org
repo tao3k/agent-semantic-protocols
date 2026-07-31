@@ -1,0 +1,408 @@
+#+title: RFC 10.05.25 — ASP Agent Session Dispatch Recovery
+#+startup: overview
+
+* Status
+
+Draft.
+
+This module refines RFC 10.05.24 with bounded background recovery,
+quarantine, authoritative reconciliation, and explicit liveness assumptions.
+
+* Formalization-discovered defect
+
+RFC 10.05.24 makes retry safe by preserving one immutable dispatch intent and
+one stable Host Runtime key.  Safety alone does not imply completion.
+
+An unbounded =Attempting -> Attempting= loop can be:
+
+- safe from duplicate host effects;
+- durable across crashes;
+- locally consistent; and
+- permanently nonterminal.
+
+Likewise, a finite retry budget does not prove delivery.  When the budget
+reaches zero, the Host Runtime outcome can remain unknown.  Treating that
+timeout as cancellation, rejection, or permission to retarget recreates the
+duplicate-dispatch bug.
+
+#+name: recovery-safety-liveness-separation
+#+begin_src typst
+#table(
+  columns: 3,
+  [Property], [Required mechanism], [Does not prove],
+  [retry safety], [stable key plus host dedup], [eventual response],
+  [bounded automation], [decreasing retry budget], [terminal outcome],
+  [terminal delivery], [authoritative accepted receipt], [task business effect],
+  [terminal rejection], [authoritative negative receipt], [future availability],
+)
+
+"ok"
+#+end_src
+
+=ASP-RFC-10.05-ASDR-SEPARATE=: Safety and liveness receipts MUST be reported
+separately.  A proof of stable-key replay does not close recovery liveness.
+
+* Recovery ownership
+
+=ASP-RFC-10.05-ASDR-OWNER=: Dispatch recovery is owned by an =ASP Agent Session
+Supervisor=.
+
+The supervisor may be a long-lived background service, but it remains part of
+the Agent Session control plane.
+
+- The ASP Runtime Server does not own dispatch retry, quarantine, turn release,
+  or target supersession.
+- A Resident Subagent does not own its parent dispatch record or recovery.
+- The Host Runtime owns authoritative accepted/rejected outcome attestations.
+- The Agent Session Supervisor owns durable retry scheduling, recovery CAS, and
+  reconciliation state.
+
+This boundary prevents the word "resident" from collapsing the search
+data-plane daemon, the Session supervisor, and the executing child into one
+principal.
+
+#+name: recovery-authority-partition
+#+begin_src typst
+#table(
+  columns: 3,
+  [Principal], [Owns], [Must not own],
+  [Agent Session Supervisor], [retry schedule and recovery CAS], [host outcome],
+  [Host Runtime], [outcome attestation], [session ledger],
+  [Runtime Server], [search admission and generation], [dispatch recovery],
+  [Resident Subagent], [task receipt], [parent dispatch recovery],
+)
+
+"ok"
+#+end_src
+
+* Recovery phases
+
+The recovery projection is:
+
+#+begin_example
+Attempting(remainingRetries)
+Delivered(acceptedReceipt)
+Rejected(negativeReceipt)
+Quarantined
+#+end_example
+
+The automatic transitions are:
+
+#+begin_example
+Attempting(n + 1) -> Attempting(n)
+Attempting(0)     -> Quarantined
+#+end_example
+
+Evidence transitions are:
+
+#+begin_example
+Attempting(n) -> Delivered(acceptedReceipt)
+Attempting(n) -> Rejected(negativeReceipt)
+Quarantined   -> Delivered(acceptedReceipt)
+Quarantined   -> Rejected(negativeReceipt)
+#+end_example
+
+=ASP-RFC-10.05-ASDR-QUARANTINE=: =Quarantined= means unresolved and fenced.  It
+is not terminal success, terminal rejection, cancellation, or a dead-letter
+permission to forget the intent.
+
+#+name: dispatch-recovery-state-machine-diagram
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> Attempting: recover durable nonterminal intent
+  Attempting --> Attempting: transient failure and remainingRetries greater than zero
+  Attempting --> Quarantined: retry budget exhausted
+  Attempting --> Delivered: authoritative accepted receipt
+  Attempting --> Rejected: authoritative negative receipt
+  Quarantined --> Delivered: authoritative accepted reconciliation
+  Quarantined --> Rejected: authoritative negative reconciliation
+  Delivered --> [*]
+  Rejected --> [*]
+
+  note right of Quarantined
+    Unknown Host outcome remains fenced.
+    No turn release, cancellation, deletion, or retarget.
+  end note
+#+end_src
+
+#+name: dispatch-recovery-ownership-architecture
+#+begin_src mermaid
+flowchart LR
+  subgraph SessionPlane["ASP Agent Session control plane"]
+    Ledger["Dispatch recovery ledger<br/>state: Attempting | Quarantined | Delivered | Rejected"]
+    Scheduler["Fair background scheduler<br/>state: Idle | Due | Running"]
+    RecoveryCAS["Recovery CAS<br/>state: Pending | Committed | Conflict"]
+    Quarantine["Durable quarantine<br/>state: Fenced | Reconciled"]
+  end
+
+  subgraph HostPlane["Host Runtime authority"]
+    Status["Status by immutable intent<br/>state: Unknown | Accepted | DefinitiveRejected"]
+    Accepted["Accepted receipt<br/>state: Unverified | Verified"]
+    Negative["Definitive negative receipt<br/>state: Unverified | Verified"]
+  end
+
+  RuntimeServer["ASP Runtime Server<br/>state: SearchUnavailable | SearchReady"]
+  Child["Resident Subagent<br/>state: Registered | Running | Terminal"]
+  LLM["Agent and LLM context<br/>state: Unnotified | TerminalNotice | AuthorityRequired"]
+
+  Ledger -->|"Attempting and due"| Scheduler
+  Scheduler -->|"Idle to Running"| RecoveryCAS
+  RecoveryCAS -->|"Committed attempt"| Status
+  Status -->|"Accepted evidence"| Accepted
+  Status -->|"Definitive rejection evidence"| Negative
+  Accepted -->|"Attempting or Fenced to Delivered"| Ledger
+  Negative -->|"Attempting or Fenced to Rejected"| Ledger
+  RecoveryCAS -->|"retry budget zero"| Quarantine
+  Quarantine -->|"Fenced and evidence available"| Scheduler
+
+  RuntimeServer -. "does not own dispatch recovery" .-> Ledger
+  Child -. "does not own parent recovery" .-> Ledger
+  Scheduler -.->|"terminal or authority-required notification only"| LLM
+#+end_src
+
+The recovery loop is background Session work.  It does not traverse the
+Runtime Server and does not stream every retry into the LLM context.
+
+#+name: bounded-retry-measure
+#+begin_src typst
+#let measure(phase, remaining) = if phase == "Attempting" {
+  remaining + 1
+} else {
+  0
+}
+
+#let before = measure("Attempting", 3)
+#let after = measure("Attempting", 2)
+#assert(after < before)
+#assert(measure("Quarantined", 0) == 0)
+
+$ "AutomaticRetry"(s,t) => "measure"(t) < "measure"(s) $
+
+"ok"
+#+end_src
+
+Every automatic retry strictly decreases the finite measure.  This proves that
+the automatic retry phase terminates.  It does not prove that it terminates in
+=Delivered= or =Rejected=; it may terminate in =Quarantined=.
+
+* Timeout and claim-expiry semantics
+
+=ASP-RFC-10.05-ASDR-TIMEOUT=: Timeout is absence of knowledge, not negative
+evidence.
+
+=ASP-RFC-10.05-ASDR-LEASE=: A claim or scheduler lease expiry revokes the
+worker's right to perform another uncoordinated mutation.  It does not prove
+that the Host Runtime failed to accept the dispatch.
+
+Therefore none of these observations permits turn release or retargeting:
+
+- retry budget exhaustion;
+- network timeout;
+- process crash;
+- claim lease expiry;
+- child silence;
+- missing local receipt; or
+- Session supervisor restart.
+
+#+name: timeout-is-not-rejection
+#+begin_src typst
+$ "Timeout"(K) not arrow.r.double "Rejected"(K) $
+$ "LeaseExpired"(K) not arrow.r.double "HostNotAccepted"(K) $
+$ "Quarantined"(K) not arrow.r.double "MayRetarget"(K) $
+
+"ok"
+#+end_src
+
+A generic dead-letter queue is unsafe if its retention policy deletes the only
+record fencing an unknown host effect.  Quarantine retention must preserve the
+dispatch key, immutable intent, binding generation, attempt history, and last
+known Host Runtime authority epoch until authoritative reconciliation.
+
+* Authoritative reconciliation
+
+=ASP-RFC-10.05-ASDR-EVIDENCE=: Quarantine can resolve only with evidence bound
+to the immutable intent.
+
+Accepted evidence contains at least:
+
+- dispatch key;
+- payload digest;
+- Host Runtime authority identity/epoch;
+- accepted-effect identity;
+- receipt sequence or equivalent replay identity; and
+- verification status.
+
+Negative evidence contains at least:
+
+- the same dispatch key and payload digest;
+- Host Runtime authority identity/epoch;
+- a definitive non-acceptance reason;
+- a statement that later acceptance under the same key is fenced; and
+- verification status.
+
+A transient error, timeout, or "not currently found" response is not a
+definitive negative receipt.
+
+Only =Delivered= or =Rejected= may close the recovery reservation.
+=Quarantined= and =Attempting= remain fenced.  Target supersession requires
+=Rejected= evidence and creates a new dispatch identity; it never mutates the
+old intent.
+
+* Conditional liveness
+
+=ASP-RFC-10.05-ASDR-LIVENESS=: Eventual terminal recovery is conditional on all
+of:
+
+1. fair scheduling of due recovery records;
+2. eventual storage/CAS availability;
+3. stable access to the authoritative Host Runtime identity; and
+4. eventual authoritative accepted or definitive-rejected evidence.
+
+If condition 4 never holds, the correct result is durable quarantine, not a
+false liveness claim.
+
+#+name: conditional-recovery-liveness
+#+begin_src typst
+$ "FairScheduler"
+  and "EventuallyCAS"
+  and "StableHostAuthority"
+  and "EventuallyAuthoritativeOutcome"
+  arrow.r.double
+  "EventuallyTerminal" $
+
+$ not "EventuallyAuthoritativeOutcome"
+  arrow.r.double
+  "QuarantineMayPersist" $
+
+"ok"
+#+end_src
+
+The liveness assumptions must appear in Lean theorem parameters or in the audit
+receipt.  They must not be hidden in prose such as "the retry worker eventually
+succeeds."
+
+* Agent and SearchLoop cost
+
+Recovery is background Session control-plane work.  It must not require the LLM
+to repeatedly choose a bootstrap pane, repeat a denied command, or poll the
+same claim.
+
+#+name: background-recovery-control-cost
+#+begin_src typst
+#let background = (llm-rounds: 0, messages: 2)
+#let prompt-loop = (llm-rounds: 3, messages: 5)
+
+#assert(background.llm-rounds < prompt-loop.llm-rounds)
+#assert(background.messages < prompt-loop.messages)
+
+$ "LLMRounds"("BackgroundRecovery") <
+  "LLMRounds"("PromptLoopRecovery") $
+
+"ok"
+#+end_src
+
+The Session supervisor may emit a compact state-change notification when a
+record becomes terminal or requires human authority.  It must not stream every
+retry attempt into the model context.
+
+* Lean verification
+
+The proof family is:
+
+- =packages/proofs/ASPProof/AgentSessionDispatchRecovery.lean=
+- =packages/proofs/ASPProof/Audit/AgentSessionDispatchRecovery.lean=
+- =packages/proofs/audit/AgentSessionDispatchRecovery.lean=
+- =packages/proofs/receipts/agent-session-dispatch-recovery-v1.json=
+
+It verifies:
+
+- strict decrease of automatic retry measure;
+- zero-budget transition to quarantine;
+- impossibility of another automatic retry at zero;
+- absence of automatic transitions from quarantine;
+- quarantine nonterminality;
+- turn-close and retarget fences;
+- timeout/non-evidence separation;
+- accepted and rejected evidence reconciliation;
+- conditional terminal closure with explicit fair-schedule, CAS-availability,
+  stable-authority, and authoritative-outcome witnesses;
+- staged provider-health nonimplication from resolution/catalog readiness to
+  invocation, decoded response, and replay evidence;
+- Session/Runtime Server/Resident Subagent authority separation; and
+- lower LLM-round cost for background recovery.
+
+* Three-view traceability
+
+| Concern | Mermaid identity | Typst identity | Lean identity |
+|---------+------------------+----------------+---------------|
+| Finite automatic retry | =dispatch-recovery-state-machine-diagram= | =bounded-retry-measure= | =automatic_retry_decreases_measure= |
+| Unknown-outcome fence | Quarantined note and ownership graph | =timeout-is-not-rejection= | =quarantine_cannot_close_reservation=, =quarantine_cannot_retarget= |
+| Conditional terminal closure | evidence transitions | =conditional-recovery-liveness= | =attempting_conditional_liveness=, =quarantine_conditional_liveness= |
+| Authority partition | =dispatch-recovery-ownership-architecture= | =recovery-authority-partition= | =OwnsRecovery=, =OwnsOutcomeAttestation= |
+| Model-context efficiency | supervisor-to-LLM dotted edge | =background-recovery-control-cost= | =background_recovery_reduces_llm_rounds= |
+| Staged provider health | Host status boundary | recovery health stages | =InvocationEvidence=, =CompletedResponseEvidence=, =ReplayEvidence= |
+
+* Current implementation evidence
+
+Parser-owned ASP search did not surface retry, quarantine, dead-letter,
+claim-expiry, or recovery transition symbols for =dispatch|claim=.  A following
+=agent_session|recovery= query failed because the registered Rust language
+runtime became unavailable:
+
+#+begin_example
+state=cold-required
+reasonKind=registered-language-runtime-unavailable
+write provider project-resolution request for rs-harness:
+Broken pipe (os error 32)
+#+end_example
+
+This is not evidence that the Rust implementation lacks recovery.  It is
+evidence that the audit path cannot currently prove whether it exists, and that
+runtime admission/restart remains a prerequisite for implementation
+calibration.
+
+A subsequent =asp healthcheck= reported:
+
+#+begin_example
+residentRuntime status=healthy
+provider language=rust runtime=available
+catalogReadiness status=ready
+#+end_example
+
+That green result did not invalidate the preceding =Broken pipe=.  It exposed a
+staged-conformance gap: binary resolution, registration, resident health, and
+catalog readiness do not prove that a provider invocation is accepted,
+completed, decoded, or independently replayable.
+
+=ASP-RFC-10.05-ASDR-HEALTH=: Recovery MUST treat provider health as stages:
+
+1. manifest valid;
+2. binary resolved;
+3. transport invocation accepted;
+4. response completed and decoded; and
+5. independent replay verified when required.
+
+A green result from stages 1–2 cannot authorize state release, retry-budget
+reset, or a liveness claim for stages 3–5.
+
+* Implementation consequences
+
+No Rust implementation is changed in this proof session.
+
+A later conformance phase must expose and verify:
+
+- the Session supervisor recovery owner;
+- retry budget and scheduling policy;
+- claim-lease semantics;
+- =Quarantined= retention;
+- accepted and definitive-negative Host receipts;
+- authority epoch verification;
+- reservation-close and retarget fences;
+- background retry receipts without LLM-loop amplification; and
+- parser-owned lifecycle projection; and
+- staged provider-health receipts that distinguish resolution from executable
+  invocation and replay.
+
+If authoritative negative evidence cannot be produced, unknown records must
+remain quarantined.  Retention pressure is not sufficient justification to
+convert uncertainty into rejection.

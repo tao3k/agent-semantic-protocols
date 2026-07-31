@@ -10,10 +10,38 @@ use tokio::sync::Mutex;
 pub const WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-workspace-generation-admission.v1";
 
+pub struct WorkspaceGenerationBuild {
+    pub refresh: crate::ClientDbSourceIndexRefreshRequest,
+    pub materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
+}
+
+impl WorkspaceGenerationBuild {
+    pub fn new(
+        refresh: crate::ClientDbSourceIndexRefreshRequest,
+        materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
+    ) -> Self {
+        Self {
+            refresh,
+            materialization,
+        }
+    }
+}
+
 pub type WorkspaceGenerationBuildFuture =
     Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>>;
 pub type WorkspaceGenerationBuilder =
     Arc<dyn Fn(String, PathBuf) -> WorkspaceGenerationBuildFuture + Send + Sync + 'static>;
+
+pub type WorkspaceGenerationCandidateBuildFuture =
+    Pin<Box<dyn Future<Output = Result<WorkspaceGenerationBuild, String>> + Send + 'static>>;
+pub type WorkspaceGenerationCandidateBuilder =
+    Arc<dyn Fn(String, PathBuf) -> WorkspaceGenerationCandidateBuildFuture + Send + Sync + 'static>;
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct WorkspaceGenerationAdmissionKey {
+    workspace_identity: String,
+    project_root: PathBuf,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -33,6 +61,12 @@ pub struct WorkspaceGenerationAdmissionReceipt {
     pub accepted: bool,
     pub attempt: u64,
     pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct WorkspaceGenerationRestoreReport {
+    pub ready: Vec<WorkspaceGenerationAdmissionReceipt>,
+    pub failed: Vec<WorkspaceGenerationAdmissionReceipt>,
 }
 
 impl WorkspaceGenerationAdmissionReceipt {
@@ -57,7 +91,9 @@ impl WorkspaceGenerationAdmissionReceipt {
 #[derive(Clone)]
 pub struct WorkspaceGenerationAdmission {
     builder: WorkspaceGenerationBuilder,
-    states: Arc<Mutex<BTreeMap<String, WorkspaceGenerationAdmissionReceipt>>>,
+    catalog: Option<crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog>,
+    states:
+        Arc<Mutex<BTreeMap<WorkspaceGenerationAdmissionKey, WorkspaceGenerationAdmissionReceipt>>>,
     tasks: Arc<Mutex<tokio::task::JoinSet<()>>>,
     changes: Arc<tokio::sync::Notify>,
 }
@@ -66,10 +102,19 @@ impl WorkspaceGenerationAdmission {
     pub fn new(builder: WorkspaceGenerationBuilder) -> Self {
         Self {
             builder,
+            catalog: None,
             states: Arc::new(Mutex::new(BTreeMap::new())),
             tasks: Arc::new(Mutex::new(tokio::task::JoinSet::new())),
             changes: Arc::new(tokio::sync::Notify::new()),
         }
+    }
+
+    pub fn with_catalog(
+        mut self,
+        catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
+    ) -> Self {
+        self.catalog = Some(catalog);
+        self
     }
 
     pub async fn admit(
@@ -84,9 +129,23 @@ impl WorkspaceGenerationAdmission {
         if !project_root.is_absolute() {
             return Err("workspace generation admission root must be absolute".to_owned());
         }
+        if let Some(catalog) = &self.catalog {
+            catalog
+                .record(
+                    crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry {
+                        workspace_identity: workspace_identity.clone(),
+                        project_root: project_root.clone(),
+                    },
+                )
+                .await?;
+        }
+        let key = WorkspaceGenerationAdmissionKey {
+            workspace_identity: workspace_identity.clone(),
+            project_root: project_root.clone(),
+        };
 
         let mut states = self.states.lock().await;
-        let attempt = match states.get(&workspace_identity) {
+        let attempt = match states.get(&key) {
             Some(existing) if existing.state != WorkspaceGenerationAdmissionState::Failed => {
                 let mut observed = existing.clone();
                 observed.accepted = false;
@@ -105,7 +164,7 @@ impl WorkspaceGenerationAdmission {
             error: None,
         };
         receipt.validate()?;
-        states.insert(workspace_identity.clone(), receipt.clone());
+        states.insert(key.clone(), receipt.clone());
         drop(states);
 
         let builder = Arc::clone(&self.builder);
@@ -134,32 +193,89 @@ impl WorkspaceGenerationAdmission {
                     error: Some(error),
                 },
             };
-            states.lock().await.insert(workspace_identity, completed);
+            states.lock().await.insert(key, completed);
             changes.notify_waiters();
         });
         Ok(receipt)
     }
 
+    pub async fn restore_registered(&self) -> Result<WorkspaceGenerationRestoreReport, String> {
+        let Some(catalog) = &self.catalog else {
+            return Ok(WorkspaceGenerationRestoreReport::default());
+        };
+        let entries = catalog.entries().await;
+        let mut tasks = tokio::task::JoinSet::new();
+        for entry in entries {
+            let admission = self.clone();
+            tasks.spawn(async move {
+                let receipt = admission
+                    .admit(entry.workspace_identity.clone(), entry.project_root.clone())
+                    .await?;
+                if receipt.state == WorkspaceGenerationAdmissionState::Building {
+                    admission
+                        .wait_terminal(&entry.workspace_identity, &entry.project_root)
+                        .await
+                } else {
+                    Ok(receipt)
+                }
+            });
+        }
+        let mut report = WorkspaceGenerationRestoreReport::default();
+        while let Some(result) = tasks.join_next().await {
+            let receipt = result
+                .map_err(|error| format!("workspace admission restore task failed: {error}"))??;
+            match receipt.state {
+                WorkspaceGenerationAdmissionState::Ready => report.ready.push(receipt),
+                WorkspaceGenerationAdmissionState::Failed => report.failed.push(receipt),
+                WorkspaceGenerationAdmissionState::Building => {
+                    return Err(
+                        "workspace admission restore returned a non-terminal receipt".to_owned(),
+                    );
+                }
+            }
+        }
+        report
+            .ready
+            .sort_by(|left, right| left.workspace_identity.cmp(&right.workspace_identity));
+        report
+            .failed
+            .sort_by(|left, right| left.workspace_identity.cmp(&right.workspace_identity));
+        Ok(report)
+    }
+
     pub async fn status(
         &self,
         workspace_identity: &str,
+        project_root: &std::path::Path,
     ) -> Option<WorkspaceGenerationAdmissionReceipt> {
-        self.states.lock().await.get(workspace_identity).cloned()
+        self.states
+            .lock()
+            .await
+            .get(&WorkspaceGenerationAdmissionKey {
+                workspace_identity: workspace_identity.to_owned(),
+                project_root: project_root.to_path_buf(),
+            })
+            .cloned()
     }
 
     pub async fn wait_terminal(
         &self,
         workspace_identity: &str,
+        project_root: &std::path::Path,
     ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
         loop {
             let changed = self.changes.notified();
             tokio::pin!(changed);
             changed.as_mut().enable();
-            let receipt = self.status(workspace_identity).await.ok_or_else(|| {
-                format!(
-                    "workspace generation admission is unknown: workspaceIdentity={workspace_identity}"
-                )
-            })?;
+            let receipt = self
+                .status(workspace_identity, project_root)
+                .await
+                .ok_or_else(|| {
+                    format!(
+                        "workspace generation admission is unknown: workspaceIdentity={workspace_identity} projectRoot={}",
+                        project_root.display()
+                    )
+                })?;
             if receipt.state != WorkspaceGenerationAdmissionState::Building {
                 return Ok(receipt);
             }

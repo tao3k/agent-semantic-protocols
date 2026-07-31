@@ -164,7 +164,14 @@ pub fn read_language_owner_items_cache(
     match fs::read(path) {
         Ok(bytes) if !bytes.is_empty() => Ok(Some(bytes)),
         Ok(_) => Ok(None),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+            ) =>
+        {
+            Ok(None)
+        }
         Err(error) => Err(format!("failed to read owner-items cache: {error}")),
     }
 }

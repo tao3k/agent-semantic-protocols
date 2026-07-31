@@ -2,26 +2,13 @@
 
 use std::path::Path;
 
-use crate::source_index::{ClientDbSourceIndexImport, ClientDbSourceIndexRefreshRequest};
 use crate::structural_index::ClientDbStructuralIndexImport;
 
+use crate::engine::ClientDbEngineStructuralIndexReadModelReport;
 use crate::engine::facade::{ClientDbEngine, block_on_db_engine_async};
 use crate::engine::turso_search::replace_turso_search_document_generation;
-use crate::engine::{
-    ClientDbEngineSourceIndexReadModelReport, ClientDbEngineStructuralIndexReadModelReport,
-};
 
 impl ClientDbEngine {
-    /// Publish one complete source-index generation through the engine-owned
-    /// Turso path and return its generation receipt.
-    pub async fn refresh_source_index_generation(
-        &self,
-        request: ClientDbSourceIndexRefreshRequest,
-        materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
-    ) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
-        commit_turso_source_index_generation_via_runtime_server(request, materialization).await
-    }
-
     pub fn lookup_exact_selector_projection_v1_from_client_dir(
         client_dir: impl AsRef<Path>,
         key: &agent_semantic_content_identity::exact_selector_cache::ExactSelectorMerkleLookupKeyV1<
@@ -100,61 +87,6 @@ impl ClientDbEngine {
         })
     }
 
-    /// Persist stable source-index graph and search documents through the active DB Engine backend.
-    pub async fn persist_source_index_read_model(
-        &self,
-        import: &ClientDbSourceIndexImport,
-        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-        source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
-    ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
-        let trace_started = std::time::Instant::now();
-        let workspace_identity =
-            agent_semantic_client_core::state_core::ResolvedState::resolve(&import.project_root)?
-                .workspace
-                .workspace_id
-                .to_string();
-        let materialization =
-            crate::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
-                workspace_identity,
-                source_snapshot,
-                import,
-                source_blobs,
-            )?;
-        let refresh = commit_turso_source_index_generation_via_runtime_server(
-            ClientDbSourceIndexRefreshRequest {
-                import: import.clone(),
-                file_count: import.file_hashes.len().min(u32::MAX as usize) as u32,
-                source_snapshot: source_snapshot.clone(),
-            },
-            materialization,
-        )
-        .await?;
-        db_engine_trace("source-index-refresh-read-model", trace_started);
-        let search_document_count = refresh.owner_count as usize;
-        Ok(source_index_read_model_report(
-            refresh.owner_count as usize + refresh.selector_count as usize,
-            search_document_count,
-            refresh.source_snapshot,
-        ))
-    }
-
-    /// Persist one parser-owned language projection through the Turso read model.
-    pub async fn persist_language_projection_read_model(
-        &self,
-        import: &ClientDbSourceIndexImport,
-        projection: &crate::ClientDbLanguageProjection,
-        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-        source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
-    ) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
-        persist_language_projection_read_model_at_path(
-            import,
-            projection,
-            source_snapshot,
-            source_blobs,
-        )
-        .await
-    }
-
     /// Persist stable structural-index graph facts through the active DB Engine backend.
     pub async fn persist_structural_index_read_model(
         &self,
@@ -196,43 +128,6 @@ impl ClientDbEngine {
     }
 }
 
-async fn persist_language_projection_read_model_at_path(
-    import: &ClientDbSourceIndexImport,
-    projection: &crate::ClientDbLanguageProjection,
-    source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
-    source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
-) -> Result<ClientDbEngineSourceIndexReadModelReport, String> {
-    let trace_started = std::time::Instant::now();
-    let workspace_identity =
-        agent_semantic_client_core::state_core::ResolvedState::resolve(&import.project_root)?
-            .workspace
-            .workspace_id
-            .to_string();
-    let materialization =
-        crate::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
-            workspace_identity,
-            source_snapshot,
-            import,
-            source_blobs,
-        )?;
-    let refresh = commit_turso_source_index_generation_via_runtime_server(
-        ClientDbSourceIndexRefreshRequest {
-            import: import.clone(),
-            file_count: import.file_hashes.len().min(u32::MAX as usize) as u32,
-            source_snapshot: source_snapshot.clone(),
-        },
-        materialization,
-    )
-    .await?;
-    db_engine_trace("language-projection-source-index-refreshed", trace_started);
-    projection.validate()?;
-    Ok(source_index_read_model_report(
-        refresh.owner_count as usize + refresh.selector_count as usize,
-        refresh.owner_count as usize,
-        refresh.source_snapshot,
-    ))
-}
-
 fn db_engine_trace(stage: &str, started: std::time::Instant) {
     if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
         eprintln!(
@@ -240,18 +135,6 @@ fn db_engine_trace(stage: &str, started: std::time::Instant) {
             stage,
             started.elapsed().as_millis()
         );
-    }
-}
-
-fn source_index_read_model_report(
-    node_locator_count: usize,
-    search_document_count: usize,
-    source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
-) -> ClientDbEngineSourceIndexReadModelReport {
-    ClientDbEngineSourceIndexReadModelReport {
-        node_locator_count,
-        search_document_count,
-        source_snapshot,
     }
 }
 
@@ -379,4 +262,3 @@ fn structural_index_read_model_report(
         search_document_count,
     }
 }
-use crate::engine::turso_source_index::commit_turso_source_index_generation_via_runtime_server;

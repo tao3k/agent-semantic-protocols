@@ -18,15 +18,7 @@ pub(crate) async fn reconcile_runtime_server_supervisor(
 }
 
 async fn install(protocol_home: &Path) -> Result<(), String> {
-    let runtime_artifact = protocol_home.join("runtime").join("bin").join("asp");
-    tokio::fs::metadata(&runtime_artifact)
-        .await
-        .map_err(|error| {
-            format!(
-                "canonical ASP Runtime Server binary is unavailable at {}: {error}",
-                runtime_artifact.display()
-            )
-        })?;
+    let runtime_artifact = canonical_supervisor_runtime_artifact(protocol_home).await?;
     let runtime_is_healthy = matches!(
         super::runtime_server::healthcheck_runtime_server_at(protocol_home).await,
         Ok(receipt)
@@ -55,7 +47,7 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
             return Ok(());
         }
         retire_legacy_launchd(&home).await?;
-        reconcile_launchd(&target).await
+        reconcile_launchd(&target, definition_changed).await
     }
     #[cfg(target_os = "linux")]
     {
@@ -103,6 +95,20 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
     }
 }
 
+async fn canonical_supervisor_runtime_artifact(protocol_home: &Path) -> Result<PathBuf, String> {
+    let stable_entry = protocol_home.join("runtime").join("bin").join("asp");
+    let runtime_artifact = tokio::fs::canonicalize(&stable_entry)
+        .await
+        .map_err(|error| {
+            format!(
+                "canonical ASP Runtime Server binary is unavailable at {}: {error}",
+                stable_entry.display()
+            )
+        })?;
+    super::protocol_binary::canonical_protocol_binary_artifact_digest(&runtime_artifact).await?;
+    Ok(runtime_artifact)
+}
+
 #[cfg(target_os = "macos")]
 async fn retire_legacy_launchd(home: &Path) -> Result<(), String> {
     for label in runtime_server_service_catalog().retired_macos_labels {
@@ -144,7 +150,31 @@ async fn retire_legacy_launchd(home: &Path) -> Result<(), String> {
 }
 
 #[cfg(target_os = "macos")]
-async fn reconcile_launchd(plist: &Path) -> Result<(), String> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LaunchdReconcilePlan {
+    Bootstrap,
+    Kickstart,
+    Rebootstrap,
+}
+
+#[cfg(target_os = "macos")]
+impl LaunchdReconcilePlan {
+    fn requires_kickstart(self) -> bool {
+        matches!(self, Self::Kickstart)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn launchd_reconcile_plan(present: bool, definition_changed: bool) -> LaunchdReconcilePlan {
+    match (present, definition_changed) {
+        (false, _) => LaunchdReconcilePlan::Bootstrap,
+        (true, false) => LaunchdReconcilePlan::Kickstart,
+        (true, true) => LaunchdReconcilePlan::Rebootstrap,
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn reconcile_launchd(plist: &Path, definition_changed: bool) -> Result<(), String> {
     let service = format!(
         "gui/{}/{}",
         unsafe { libc::getuid() },
@@ -157,15 +187,41 @@ async fn reconcile_launchd(plist: &Path) -> Result<(), String> {
         .map_err(|error| format!("failed to inspect ASP Runtime Server launchd service: {error}"))?
         .status
         .success();
-    if present {
-        require_command_success(
-            Command::new("/bin/launchctl")
-                .args(["bootout", &service])
-                .output()
-                .await,
-            "remove stale ASP Runtime Server launchd identity",
-        )?;
+    let plan = launchd_reconcile_plan(present, definition_changed);
+    match plan {
+        LaunchdReconcilePlan::Kickstart => {}
+        LaunchdReconcilePlan::Bootstrap => {
+            bootstrap_launchd(plist).await?;
+        }
+        LaunchdReconcilePlan::Rebootstrap => {
+            require_command_success(
+                Command::new("/bin/launchctl")
+                    .args([
+                        "bootout",
+                        &format!("gui/{}", unsafe { libc::getuid() }),
+                        &plist.to_string_lossy(),
+                    ])
+                    .output()
+                    .await,
+                "remove stale ASP Runtime Server launchd definition",
+            )?;
+            bootstrap_launchd(plist).await?;
+        }
     }
+    if !plan.requires_kickstart() {
+        return Ok(());
+    }
+    require_command_success(
+        Command::new("/bin/launchctl")
+            .args(["kickstart", "-k", &service])
+            .output()
+            .await,
+        "reconcile ASP Runtime Server launchd service",
+    )
+}
+
+#[cfg(target_os = "macos")]
+async fn bootstrap_launchd(plist: &Path) -> Result<(), String> {
     require_command_success(
         Command::new("/bin/launchctl")
             .args([
@@ -176,13 +232,6 @@ async fn reconcile_launchd(plist: &Path) -> Result<(), String> {
             .output()
             .await,
         "bootstrap ASP Runtime Server launchd service",
-    )?;
-    require_command_success(
-        Command::new("/bin/launchctl")
-            .args(["kickstart", "-k", &service])
-            .output()
-            .await,
-        "reconcile ASP Runtime Server launchd service",
     )
 }
 
@@ -207,6 +256,10 @@ fn home_directory() -> Result<PathBuf, String> {
         .map(PathBuf::from)
         .ok_or_else(|| "HOME is unset; cannot install Global ASP launchd service".to_owned())
 }
+
+#[cfg(all(test, target_os = "macos"))]
+#[path = "../../tests/unit/runtime_server_supervisor.rs"]
+mod runtime_server_supervisor_tests;
 
 #[cfg(target_os = "linux")]
 fn linux_user_service_directory() -> Result<PathBuf, String> {

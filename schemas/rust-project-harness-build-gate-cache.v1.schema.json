@@ -30,7 +30,7 @@
         "findings",
         "root_paths",
         "blocking_severities",
-        "project_scope",
+        "project_resolution",
         "workspace_member_scopes"
       ]
     },

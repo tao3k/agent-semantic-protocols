@@ -5,6 +5,7 @@
 pub mod byte_text;
 mod capture;
 mod process_contract;
+pub mod projection_batch;
 mod transport;
 
 pub use process_contract::{

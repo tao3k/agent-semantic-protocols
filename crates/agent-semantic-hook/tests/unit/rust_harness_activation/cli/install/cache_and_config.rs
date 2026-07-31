@@ -67,41 +67,14 @@ enabled = false
         "install stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(installed_activation_path(&asp_state_home).is_file());
+    let mut activation_paths = Vec::new();
+    collect_activation_paths(&asp_state_home, &mut activation_paths);
+    assert!(
+        activation_paths.is_empty(),
+        "install must defer activation materialization to pre-tool: {activation_paths:?}"
+    );
     assert!(!root.join(".cache").exists());
     assert!(!prj_cache_home.exists());
-}
-
-fn installed_activation_path(state_home: &std::path::Path) -> std::path::PathBuf {
-    let mut matches = Vec::new();
-    collect_activation_paths(state_home, &mut matches);
-    let expected_project_root = state_home
-        .parent()
-        .expect("state home must be rooted under the fixture project")
-        .canonicalize()
-        .expect("canonical fixture project root");
-    // ASP_STATE_HOME may contain activations for multiple independently owned
-    // roots. The install contract is one activation for this project scope,
-    // not one activation across the entire state home.
-    matches.retain(|path| {
-        let activation: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(path).expect("read activation candidate"),
-        )
-        .expect("parse activation candidate");
-        activation
-            .get("projectRoot")
-            .and_then(serde_json::Value::as_str)
-            .map(std::path::PathBuf::from)
-            .and_then(|project_root| project_root.canonicalize().ok())
-            .is_some_and(|project_root| project_root == expected_project_root)
-    });
-    matches.sort();
-    assert_eq!(
-        matches.len(),
-        1,
-        "project activation paths for {expected_project_root:?}: {matches:?}"
-    );
-    matches.remove(0)
 }
 
 fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::PathBuf>) {

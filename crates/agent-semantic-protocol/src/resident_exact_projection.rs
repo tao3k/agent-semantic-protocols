@@ -1,10 +1,8 @@
-use agent_semantic_client_db::runtime_server_workspace::{
-    WorkspaceGenerationDataPlaneClient, WorkspaceProjectionLease,
-};
+use agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead;
 use agent_semantic_content_identity::CanonicalItemSelector;
 
 pub(crate) enum ResidentExactProjection {
-    Hit(WorkspaceProjectionLease),
+    Hit(Vec<u8>),
     Miss(ResidentExactProjectionMiss),
 }
 
@@ -21,29 +19,43 @@ pub(crate) struct ResidentExactProjectionMiss {
 }
 
 pub(crate) fn resolve(
-    client: &WorkspaceGenerationDataPlaneClient,
+    read: WorkspaceRuntimeSelectorRead,
     structural_selector: &str,
 ) -> Result<ResidentExactProjection, String> {
     let requested = CanonicalItemSelector::parse_root_or_exact_descendant(structural_selector)?;
-    let lease = client.lease();
-    if let Some(projection) = lease.project(structural_selector) {
-        return Ok(ResidentExactProjection::Hit(projection));
-    }
     let owner_path = structural_selector
         .split_once("://")
         .and_then(|(_, selector)| selector.split_once('#'))
         .map(|(owner_path, _)| owner_path)
         .ok_or_else(|| "exact structural selector is missing its owner path".to_owned())?;
-    let owner = lease
-        .generation()
-        .owners
-        .iter()
-        .find(|owner| owner.owner_path == owner_path);
+    let (root_digest, owner) = match read {
+        WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {
+            return Ok(ResidentExactProjection::Hit(bytes));
+        }
+        WorkspaceRuntimeSelectorRead::OwnerForRepair {
+            generation_digest,
+            root_digest,
+            owner,
+        } => {
+            let _ = generation_digest;
+            (root_digest, Some(owner))
+        }
+        WorkspaceRuntimeSelectorRead::OwnerMissing {
+            generation_digest,
+            root_digest,
+        } => {
+            let _ = generation_digest;
+            (root_digest, None)
+        }
+        WorkspaceRuntimeSelectorRead::GenerationMissing => {
+            return Err("runtime workspace generation is not admitted".to_owned());
+        }
+    };
     let Some(owner) = owner else {
         return Ok(ResidentExactProjection::Miss(ResidentExactProjectionMiss {
             owner_path: owner_path.to_owned(),
             structural_selector: structural_selector.to_owned(),
-            root_digest: lease.generation().source_snapshot.root_digest.clone(),
+            root_digest,
             item_kind: requested.kind.as_str().to_owned(),
             item_name: requested.symbol.as_str().to_owned(),
             candidates: Vec::new(),
@@ -75,7 +87,7 @@ pub(crate) fn resolve(
     Ok(ResidentExactProjection::Miss(ResidentExactProjectionMiss {
         owner_path: owner_path.to_owned(),
         structural_selector: structural_selector.to_owned(),
-        root_digest: lease.generation().source_snapshot.root_digest.clone(),
+        root_digest,
         item_kind: requested.kind.as_str().to_owned(),
         item_name: requested.symbol.as_str().to_owned(),
         candidates,

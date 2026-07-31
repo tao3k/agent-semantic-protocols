@@ -52,13 +52,27 @@ Broad search resolves candidate owners through the Rust DB Engine source index f
 Only after Rust chooses an owner set may the CLI invoke language providers for
 bounded semantic fact extraction or owner-local validation.
 
-* Project Scope
+* Workspace Source Scope
 
-The Rust source index covers language project scopes derived from package-management anchor files. Examples include =Cargo.toml= for Rust packages and workspaces, =pyproject.toml= for Python projects, =Project.toml= for Julia packages, =package.json= for TypeScript/JavaScript projects, and =gerbil.pkg= for Gerbil packages.
+The Rust source index owns one generation-bound source scope for one concrete
+Git worktree workspace.  Package-management entry files such as =Cargo.toml=,
+=pyproject.toml=, =Project.toml=, =package.json=, and =gerbil.pkg= dispatch
+provider-owned project resolvers.  Their package, target, dependency, and
+source-root receipts compose that one workspace scope; an entry file does not
+create a child project scope or a second workspace identity.
 
-The cover set is the source and configuration surface owned by those anchored projects. Hidden cache roots such as =.data=, =.codex=, =.devenv=, =.direnv=, =.cache=, VCS metadata, package dependency directories, and build outputs are excluded while discovering anchors and while walking anchored package source directories.
+The candidate universe comes from the Git worktree/index snapshot.  The cover
+set then comes from provider package-graph resolution over those candidates.
+ASP MUST NOT invent a default source directory, default extension set, or
+hard-coded ignore-prefix list, and MUST NOT recursively walk the workspace root.
+ASP State/runtime artifacts and VCS internals are excluded by their typed
+authority boundaries rather than by provider-default ignore strings.
 
-For Cargo workspaces, =workspace.exclude= is part of the project-scope contract. Excluded package roots and nested VCS roots are not indexed as part of the parent workspace by default. Agents that need those sources must activate or index that package root explicitly.
+For Cargo workspaces, =workspace.members=, =workspace.exclude=, explicit target
+paths, default target rules, and path dependencies are Cargo resolver facts.
+They change the composed workspace source-scope generation; they do not create
+or remove workspace identities.  Equivalent provider resolvers for other
+languages own their package-manager-specific graph semantics.
 
 This boundary is part of search quality, not just performance. Agent-facing broad search must not rank vendored Codex source, plugin cache files, or runtime-source mirrors ahead of the active language project unless a future command explicitly requests an external-source scope.
 

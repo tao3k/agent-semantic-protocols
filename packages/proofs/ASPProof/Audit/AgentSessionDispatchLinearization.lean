@@ -1,0 +1,23 @@
+import ASPProof.AgentSessionDispatchLinearization
+
+namespace ASPProof.Audit.AgentSessionDispatchLinearization
+
+open ASPProof.AgentSessionDispatchLinearization
+
+#print axioms atomic_reservation_constructible
+#print axioms session_only_write_not_published
+#print axioms outbox_only_write_not_published
+#print axioms uncommitted_reservation_not_published
+#print axioms published_has_session_reservation
+#print axioms published_has_durable_outbox
+#print axioms published_revision_advances_once
+#print axioms delivered_cas_constructible
+#print axioms stale_attempting_revision_rejected
+#print axioms delivered_replay_is_idempotent
+#print axioms conflicting_receipt_replay_rejected
+#print axioms delivered_commit_advances_revision
+#print axioms delivered_replay_preserves_revision
+#print axioms linearization_advances_rank
+#print axioms linearization_is_acyclic
+
+end ASPProof.Audit.AgentSessionDispatchLinearization

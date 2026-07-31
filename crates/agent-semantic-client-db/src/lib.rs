@@ -14,7 +14,9 @@ pub mod engine;
 mod runtime_concurrency;
 pub mod runtime_server;
 pub mod runtime_server_admission;
+pub mod runtime_server_admission_catalog;
 pub mod runtime_server_control;
+pub mod runtime_server_diagnostics;
 pub mod runtime_server_runtime;
 pub mod runtime_server_workspace;
 mod source_index;
@@ -72,12 +74,13 @@ pub use dependency_index::{
 pub use engine::{
     ClientDbBackend, ClientDbEngine, ClientDbEngineDurability, ClientDbEngineFeatures,
     ClientDbEngineReadSession, ClientDbEngineReport, ClientDbEngineWriteSession,
-    ProviderIncrementalOwnerWrite, ProviderIncrementalScoped, ProviderIncrementalWriteReceipt,
-    ProviderOwnerBatchProbeReceipt, ProviderOwnerBatchProbeRequest, ProviderOwnerBatchProbeResult,
-    ProviderOwnerDecision, ProviderOwnerFingerprint, ProviderOwnerInventory,
-    ProviderOwnerInventoryEntry, ProviderOwnerInventoryEntryState, ProviderOwnerInventoryState,
-    ProviderOwnerInventoryWrite, ProviderOwnerInventoryWriteReceipt, ProviderOwnerMetadata,
-    ProviderOwnerProbe, ProviderRemainingOwnerCountKind, ProviderSelectorProjection,
+    ProviderIncrementalOwnerSnapshot, ProviderIncrementalOwnerWrite, ProviderIncrementalScoped,
+    ProviderIncrementalWriteReceipt, ProviderOwnerBatchProbeReceipt,
+    ProviderOwnerBatchProbeRequest, ProviderOwnerBatchProbeResult, ProviderOwnerDecision,
+    ProviderOwnerFingerprint, ProviderOwnerInventory, ProviderOwnerInventoryEntry,
+    ProviderOwnerInventoryEntryState, ProviderOwnerInventoryState, ProviderOwnerInventoryWrite,
+    ProviderOwnerInventoryWriteReceipt, ProviderOwnerMetadata, ProviderOwnerProbe,
+    ProviderRemainingOwnerCountKind, ProviderSelectorProjection,
     ProviderTreeSitterCaptureProjection, ProviderTreeSitterContinuation,
     ProviderTreeSitterOwnerResult, ProviderTreeSitterOwnerResultState,
     ProviderTreeSitterOwnerWriteReceipt, ProviderTreeSitterQueryCounters,

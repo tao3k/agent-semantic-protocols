@@ -3,10 +3,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ClientDbSourceIndexLookupResult, ProviderIncrementalOwnerWrite, ProviderIncrementalScoped,
-    ProviderIncrementalWriteReceipt, ProviderOwnerBatchProbeReceipt,
-    ProviderOwnerBatchProbeRequest, ProviderOwnerInventoryWrite,
-    ProviderOwnerInventoryWriteReceipt, ProviderSelectorProjection, ProviderTreeSitterContinuation,
+    ClientDbSourceIndexLookupResult, ProviderIncrementalOwnerSnapshot,
+    ProviderIncrementalOwnerWrite, ProviderIncrementalScoped, ProviderIncrementalWriteReceipt,
+    ProviderOwnerBatchProbeReceipt, ProviderOwnerBatchProbeRequest, ProviderOwnerInventoryWrite,
+    ProviderOwnerInventoryWriteReceipt, ProviderOwnerProbe, ProviderTreeSitterContinuation,
     ProviderTreeSitterOwnerResult, ProviderTreeSitterOwnerWriteReceipt,
     ProviderTreeSitterQueryIdentity, ProviderTreeSitterQueryRead, TursoResidentSelectorQuery,
     TursoResidentSelectorRead, WorkspaceDbWriteFinishMode, WorkspaceDbWriteFinishReceipt,
@@ -62,20 +62,15 @@ pub async fn connect_runtime_server_workspace_session(
     Ok(WorkspaceDbIpcSession::for_runtime_server(
         &endpoint,
         workspace_identity,
-    ))
-}
-
-pub fn commit_source_index_generation_via_runtime_server(
-    request: crate::ClientDbSourceIndexRefreshRequest,
-    materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
-) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
-    crate::engine::facade::block_on_db_engine_async(async move {
-        let project_root = request.import.project_root.clone();
-        let session = connect_runtime_server_workspace_session(&project_root).await?;
-        session
-            .commit_source_index_generation(&request, materialization)
+        tokio::fs::canonicalize(project_root)
             .await
-    })
+            .map_err(|error| {
+                format!(
+                    "failed to canonicalize Runtime Server project root {}: {error}",
+                    project_root.display()
+                )
+            })?,
+    ))
 }
 
 pub fn read_source_index_via_runtime_server(
@@ -99,14 +94,24 @@ pub enum WorkspaceDbIpcOperation {
     ReadSourceIndex {
         request: WorkspaceDbSourceIndexLookupRequest,
     },
-    CommitSourceIndexGeneration {
-        request: crate::ClientDbSourceIndexRefreshRequest,
-        materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
-    },
-    EnsureRuntimeGeneration {
+    ReadRuntimeSelector {
         project_root: String,
+        projection_kind: String,
+        structural_selector: String,
+    },
+    EnsureRuntimeOwner {
+        project_root: String,
+        language_id: String,
+        owner_path: String,
+    },
+    PublishRuntimeSelectorOverlay {
+        project_root: String,
+        overlay: crate::runtime_server_workspace::WorkspaceRuntimeSelectorOverlay,
     },
     AdmitRuntimeGeneration {
+        project_root: String,
+    },
+    EnsureRuntimeGeneration {
         project_root: String,
     },
     WriteProviderIncrementalOwner {
@@ -117,9 +122,13 @@ pub enum WorkspaceDbIpcOperation {
         incremental_budget: u32,
         continuation: Option<ProviderTreeSitterContinuation>,
     },
-    ReadProviderOwnerProjections {
+    ReadProviderOwnerSnapshot {
         scope: ProviderIncrementalScoped,
         owner_path: String,
+    },
+    ReadProviderOwnerWarm {
+        scope: ProviderIncrementalScoped,
+        owner: ProviderOwnerBatchProbeRequest,
     },
     ReadResidentSelector {
         request: TursoResidentSelectorQuery,
@@ -140,12 +149,15 @@ pub enum WorkspaceDbIpcOperation {
         mode: WorkspaceDbWriteFinishMode,
     },
     PublishRuntimeOwner {
+        project_root: String,
         owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot,
     },
     TombstoneRuntimeOwner {
+        project_root: String,
         owner_path: String,
     },
     RelocateRuntimeOwner {
+        project_root: String,
         previous_owner_path: String,
         owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot,
     },
@@ -183,8 +195,12 @@ pub enum WorkspaceDbIpcResult {
     ProviderTreeSitterQuery {
         read: ProviderTreeSitterQueryRead,
     },
-    ProviderOwnerProjections {
-        projections: Vec<ProviderSelectorProjection>,
+    ProviderOwnerSnapshot {
+        snapshot: Option<ProviderIncrementalOwnerSnapshot>,
+    },
+    ProviderOwnerWarm {
+        probe: ProviderOwnerProbe,
+        snapshot: Option<ProviderIncrementalOwnerSnapshot>,
     },
     ResidentSelector {
         read: Option<TursoResidentSelectorRead>,
@@ -207,16 +223,19 @@ pub enum WorkspaceDbIpcResult {
     RuntimeGenerationAdmission {
         receipt: crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt,
     },
+    RuntimeSelector {
+        read: crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
+    },
+    RuntimeOwnerFreshness {
+        receipt: crate::runtime_server_workspace::WorkspaceRuntimeOwnerFreshnessReceipt,
+    },
+    RuntimeSelectorOverlay {
+        receipt: crate::runtime_server_workspace::WorkspaceRuntimeSelectorOverlayReceipt,
+    },
     Failed {
         code: String,
         message: String,
     },
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum RuntimeGenerationEnsure {
-    Ready(crate::runtime_server_workspace::WorkspaceRecoveryReceipt),
-    Admission(crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -260,6 +279,7 @@ pub struct WorkspaceDbIpcSession {
 #[derive(Clone, Debug)]
 struct WorkspaceDbSessionBinding {
     workspace_identity: String,
+    project_root: Option<PathBuf>,
     transport_contract_digest: String,
     owner_epoch: u64,
     runtime_binary_path: String,
@@ -273,6 +293,10 @@ struct WorkspaceDbIpcSessionState {
     client_id: u64,
     next_request_id: std::sync::atomic::AtomicU64,
     lanes: Vec<tokio::sync::Mutex<Option<UnixStream>>>,
+    generation_admission:
+        tokio::sync::OnceCell<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt>,
+    generation_admission_ticket: std::sync::atomic::AtomicU64,
+    generation_admission_winner: std::sync::atomic::AtomicU64,
 }
 
 impl Clone for WorkspaceDbIpcSession {
@@ -289,6 +313,7 @@ impl WorkspaceDbIpcSession {
         Self {
             endpoint: WorkspaceDbSessionBinding {
                 workspace_identity: endpoint.workspace_identity,
+                project_root: None,
                 transport_contract_digest: endpoint.transport_contract_digest,
                 owner_epoch: endpoint.owner_epoch,
                 runtime_binary_path: endpoint.runtime_binary_path,
@@ -303,6 +328,9 @@ impl WorkspaceDbIpcSession {
                 lanes: (0..workspace_db_ipc_read_lane_capacity())
                     .map(|_| tokio::sync::Mutex::new(None))
                     .collect(),
+                generation_admission: tokio::sync::OnceCell::new(),
+                generation_admission_ticket: std::sync::atomic::AtomicU64::new(1),
+                generation_admission_winner: std::sync::atomic::AtomicU64::new(0),
             }),
         }
     }
@@ -310,10 +338,12 @@ impl WorkspaceDbIpcSession {
     pub fn for_runtime_server(
         endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
         workspace_identity: impl Into<String>,
+        project_root: PathBuf,
     ) -> Self {
         Self {
             endpoint: WorkspaceDbSessionBinding {
                 workspace_identity: workspace_identity.into(),
+                project_root: Some(project_root),
                 transport_contract_digest: endpoint.transport_contract_digest.clone(),
                 owner_epoch: endpoint.owner_epoch,
                 runtime_binary_path: endpoint.runtime_artifact_path.clone(),
@@ -328,8 +358,58 @@ impl WorkspaceDbIpcSession {
                 lanes: (0..workspace_db_ipc_read_lane_capacity())
                     .map(|_| tokio::sync::Mutex::new(None))
                     .collect(),
+                generation_admission: tokio::sync::OnceCell::new(),
+                generation_admission_ticket: std::sync::atomic::AtomicU64::new(1),
+                generation_admission_winner: std::sync::atomic::AtomicU64::new(0),
             }),
         }
+    }
+
+    pub(super) fn runtime_project_root(&self) -> Result<&Path, String> {
+        self.endpoint.project_root.as_deref().ok_or_else(|| {
+            "Runtime Server operation requires a session-bound project root".to_owned()
+        })
+    }
+
+    pub(super) async fn call_runtime_generation_admission(
+        &self,
+        project_root: String,
+    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
+        let ticket = self
+            .shared
+            .generation_admission_ticket
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let receipt = self
+            .shared
+            .generation_admission
+            .get_or_try_init(|| async {
+                self.shared
+                    .generation_admission_winner
+                    .store(ticket, std::sync::atomic::Ordering::Release);
+                match self
+                    .call_operation(WorkspaceDbIpcOperation::AdmitRuntimeGeneration {
+                        project_root,
+                    })
+                    .await?
+                {
+                    WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt } => Ok(receipt),
+                    _ => Err(
+                        "Runtime Server returned an unexpected generation admission result"
+                            .to_owned(),
+                    ),
+                }
+            })
+            .await?;
+        let mut observed = receipt.clone();
+        if self
+            .shared
+            .generation_admission_winner
+            .load(std::sync::atomic::Ordering::Acquire)
+            != ticket
+        {
+            observed.accepted = false;
+        }
+        Ok(observed)
     }
 
     pub(super) async fn call_operation(
@@ -486,48 +566,16 @@ impl WorkspaceDbIpcSession {
         &self,
         request: &WorkspaceDbSourceIndexLookupRequest,
     ) -> Result<ClientDbSourceIndexLookupResult, String> {
+        let mut request = request.clone();
+        if let Some(project_root) = self.endpoint.project_root.as_ref() {
+            request.project_root = project_root.clone();
+        }
         match self
-            .call_operation(WorkspaceDbIpcOperation::ReadSourceIndex {
-                request: request.clone(),
-            })
+            .call_operation(WorkspaceDbIpcOperation::ReadSourceIndex { request })
             .await?
         {
             WorkspaceDbIpcResult::SourceIndex { lookup } => Ok(lookup),
             _ => Err("workspace owner IPC returned an unexpected source-index result".to_owned()),
-        }
-    }
-
-    pub async fn probe_provider_owners(
-        &self,
-        scope: &ProviderIncrementalScoped,
-        owners: &[ProviderOwnerBatchProbeRequest],
-    ) -> Result<ProviderOwnerBatchProbeReceipt, String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::ProbeProviderOwners {
-                scope: scope.clone(),
-                owners: owners.to_vec(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::ProviderOwners { receipt } => Ok(receipt),
-            _ => Err("workspace owner IPC returned an unexpected probe result".to_owned()),
-        }
-    }
-
-    pub async fn write_provider_incremental_owner(
-        &self,
-        request: &ProviderIncrementalOwnerWrite,
-    ) -> Result<ProviderIncrementalWriteReceipt, String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::WriteProviderIncrementalOwner {
-                request: request.clone(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::ProviderIncrementalOwner { receipt } => Ok(receipt),
-            _ => Err(
-                "workspace owner IPC returned an unexpected incremental write result".to_owned(),
-            ),
         }
     }
 
@@ -548,25 +596,6 @@ impl WorkspaceDbIpcSession {
             WorkspaceDbIpcResult::ProviderTreeSitterQuery { read } => Ok(read),
             _ => {
                 Err("workspace owner IPC returned an unexpected Tree-sitter read result".to_owned())
-            }
-        }
-    }
-
-    pub async fn read_provider_owner_projections(
-        &self,
-        scope: &ProviderIncrementalScoped,
-        owner_path: &str,
-    ) -> Result<Vec<ProviderSelectorProjection>, String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::ReadProviderOwnerProjections {
-                scope: scope.clone(),
-                owner_path: owner_path.to_owned(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::ProviderOwnerProjections { projections } => Ok(projections),
-            _ => {
-                Err("workspace owner IPC returned an unexpected owner projection result".to_owned())
             }
         }
     }

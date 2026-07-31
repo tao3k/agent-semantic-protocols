@@ -1,0 +1,15 @@
+import ASPProof.Audit.RuntimeWorkspaceGeneration
+
+open ASPProof.RuntimeWorkspaceGeneration
+open ASPProof.Audit.RuntimeWorkspaceGeneration
+
+#check generation_identity_deterministic
+#check writer_offline_preserves_active
+#check stale_reconciliation_preserves_active
+#check acquire_lease_preserves_active
+#check release_lease_preserves_active
+#check active_publication_is_atomic
+#check workspace_transition_isolated
+#check generation_identity_is_a_function
+#check resident_read_gate_requires_zero_db_open
+#check resident_read_gate_requires_memory_hit

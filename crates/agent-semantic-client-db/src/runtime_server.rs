@@ -19,10 +19,15 @@ pub enum RuntimeServerExit {
     ShutdownRequested,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(tag = "kind", content = "detail", rename_all = "kebab-case")]
 pub enum RuntimeServerEvent {
     ConnectionRejected(String),
     ConnectionTaskFailed(String),
+    WorkspaceGenerationRestoreFailed {
+        workspace_identity: String,
+        error: String,
+    },
 }
 
 #[derive(Clone)]
@@ -50,6 +55,8 @@ pub struct RuntimeServer {
     events: Option<mpsc::UnboundedSender<RuntimeServerEvent>>,
     generation_admission:
         Option<Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>>,
+    owner_projection_builder:
+        Option<crate::runtime_server_workspace::WorkspaceOwnerProjectionBuilder>,
 }
 
 impl RuntimeServer {
@@ -57,6 +64,13 @@ impl RuntimeServer {
         &self,
     ) -> &std::sync::Arc<crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry> {
         &self.workspace_registry
+    }
+
+    /// Returns the supervised workspace generation admission plane when configured.
+    pub fn workspace_generation_admission(
+        &self,
+    ) -> Option<Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>> {
+        self.generation_admission.clone()
     }
 
     pub async fn serve(self) -> Result<RuntimeServerExit, String> {
@@ -110,7 +124,7 @@ impl RuntimeServer {
         let mut status_memory = RuntimeServerStatusMemoryWriter::create(&endpoint).await?;
         let (slot_count, loaded_entry_count) = registry.workspace_entry_counts();
         status_memory.publish(
-            crate::runtime_server_control::RuntimeServerState::Healthy,
+            crate::runtime_server_control::RuntimeServerState::Starting,
             slot_count.max(loaded_entry_count),
         )?;
         let workspace_registry_root = std::path::Path::new(&endpoint.socket_path)
@@ -138,7 +152,16 @@ impl RuntimeServer {
             status_memory,
             events: None,
             generation_admission: None,
+            owner_projection_builder: None,
         })
+    }
+
+    pub fn with_workspace_owner_projection_builder(
+        mut self,
+        builder: crate::runtime_server_workspace::WorkspaceOwnerProjectionBuilder,
+    ) -> Self {
+        self.owner_projection_builder = Some(builder);
+        self
     }
 
     pub fn shutdown_handle(&self) -> RuntimeServerShutdownHandle {
@@ -179,16 +202,44 @@ impl RuntimeServer {
     }
 
     pub fn with_workspace_generation_builder(
-        mut self,
-        source_builder: crate::runtime_server_admission::WorkspaceGenerationBuilder,
+        self,
+        source_builder: crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder,
     ) -> Self {
+        self.configure_workspace_generation_builder(source_builder, None)
+    }
+
+    pub fn with_workspace_generation_builder_and_catalog(
+        self,
+        source_builder: crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder,
+        catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
+    ) -> Self {
+        self.configure_workspace_generation_builder(source_builder, Some(catalog))
+    }
+
+    /// Restores only canonical generations already committed to the workspace Turso authority.
+    /// Missing generations remain scope-local failures and must be published by the writer lane.
+    pub fn with_workspace_generation_catalog(
+        self,
+        catalog: crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog,
+    ) -> Self {
+        self.configure_workspace_generation_builder(None, Some(catalog))
+    }
+
+    fn configure_workspace_generation_builder(
+        mut self,
+        source_builder: impl Into<
+            Option<crate::runtime_server_admission::WorkspaceGenerationCandidateBuilder>,
+        >,
+        catalog: Option<crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog>,
+    ) -> Self {
+        let source_builder = source_builder.into();
         let durable_registry = Arc::clone(&self.registry);
         let memory_registry = Arc::clone(&self.workspace_registry);
         let builder = Arc::new(
             move |workspace_identity: String, project_root: std::path::PathBuf| {
                 let durable_registry = Arc::clone(&durable_registry);
                 let memory_registry = Arc::clone(&memory_registry);
-                let source_builder = Arc::clone(&source_builder);
+                let source_builder = source_builder.clone();
                 let workspace_for_build = workspace_identity.clone();
                 Box::pin(async move {
                     let session = crate::workspace_db_ipc_server::admitted_or_bootstrap_workspace(
@@ -197,35 +248,52 @@ impl RuntimeServer {
                         &project_root,
                     )
                     .await?;
-                    if let Some(materialization) = session
-                        .load_active_workspace_generation_materialization()
+                    match session
+                        .load_active_workspace_generation_materialization_state(&project_root)
                         .await?
                     {
-                        materialization.validate_persisted(&workspace_identity)?;
-                        memory_registry
-                            .ensure_canonical_generation(
-                                format!("daemon-admission-restore-{workspace_identity}"),
-                                &workspace_identity,
-                                materialization,
-                            )
-                            .await?;
-                        return Ok(());
+                        crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Ready(materialization) => {
+                            materialization.validate_persisted(&workspace_identity)?;
+                            memory_registry
+                                .ensure_canonical_generation(
+                                    format!("daemon-admission-restore-{workspace_identity}"),
+                                    &workspace_identity,
+                                    materialization,
+                                )
+                                .await?;
+                            return Ok(());
+                        }
+                        crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Missing
+                        | crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Incompatible { .. } => {}
                     }
-                    source_builder(workspace_for_build, project_root.clone()).await?;
-                    let materialization = session
-                    .load_active_workspace_generation_materialization()
-                    .await?
-                    .ok_or_else(|| {
+                    let source_builder = source_builder.as_ref().ok_or_else(|| {
                         format!(
-                            "workspace generation builder published no canonical materialization: workspaceIdentity={workspace_identity}"
+                            "canonical workspace generation is unavailable; writer lane publication is required before admission: workspaceIdentity={workspace_identity}"
                         )
                     })?;
-                    materialization.validate_persisted(&workspace_identity)?;
+                    let build = source_builder(workspace_for_build, project_root.clone()).await?;
+                    build
+                        .materialization
+                        .validate_refresh_request(&workspace_identity, &build.refresh)?;
+                    let committed_materialization = build.materialization.clone();
+                    let durable = session
+                        .commit_source_index_generation(build.refresh, build.materialization)
+                        .await?;
+                    committed_materialization.validate_persisted(&workspace_identity)?;
+                    if !durable
+                        .source_snapshot
+                        .has_same_content_identity(&committed_materialization.source_snapshot)
+                    {
+                        return Err(format!(
+                            "Turso generation evidence differs from canonical materialization: durable={:?} materialized={:?}",
+                            durable.source_snapshot, committed_materialization.source_snapshot
+                        ));
+                    }
                     memory_registry
                         .ensure_canonical_generation(
                             format!("daemon-admission-build-{workspace_identity}"),
                             &workspace_identity,
-                            materialization,
+                            committed_materialization,
                         )
                         .await?;
                     Ok(())
@@ -233,9 +301,11 @@ impl RuntimeServer {
                     as crate::runtime_server_admission::WorkspaceGenerationBuildFuture
             },
         );
-        self.generation_admission = Some(Arc::new(
-            crate::runtime_server_admission::WorkspaceGenerationAdmission::new(builder),
-        ));
+        let admission = crate::runtime_server_admission::WorkspaceGenerationAdmission::new(builder);
+        self.generation_admission = Some(Arc::new(match catalog {
+            Some(catalog) => admission.with_catalog(catalog),
+            None => admission,
+        }));
         self
     }
 
@@ -252,7 +322,39 @@ impl RuntimeServer {
             mut status_memory,
             events,
             generation_admission,
+            owner_projection_builder,
         } = self;
+        let (slot_count, loaded_entry_count) = registry.workspace_entry_counts();
+        status_memory.publish(
+            crate::runtime_server_control::RuntimeServerState::Healthy,
+            slot_count
+                .max(loaded_entry_count)
+                .max(*workspace_count.borrow()),
+        )?;
+        let restore_task = generation_admission.clone().map(|admission| {
+            let events = events.clone();
+            tokio::spawn(async move {
+                match admission.restore_registered().await {
+                    Ok(report) => {
+                        for receipt in report.failed {
+                            publish_event(
+                                events.as_ref(),
+                                RuntimeServerEvent::WorkspaceGenerationRestoreFailed {
+                                    workspace_identity: receipt.workspace_identity,
+                                    error: receipt.error.unwrap_or_else(|| "unknown".to_owned()),
+                                },
+                            );
+                        }
+                    }
+                    Err(error) => publish_event(
+                        events.as_ref(),
+                        RuntimeServerEvent::ConnectionTaskFailed(format!(
+                            "workspace generation restore task failed: {error}"
+                        )),
+                    ),
+                }
+            })
+        });
         let mut connections = JoinSet::new();
         let (drain_sender, drain_receiver) = watch::channel(false);
         let exit = loop {
@@ -276,6 +378,7 @@ impl RuntimeServer {
                     let registry = Arc::clone(&registry);
                     let memory_registry = Arc::clone(&workspace_registry);
                     let generation_admission = generation_admission.clone();
+                    let owner_projection_builder = owner_projection_builder.clone();
                     let connection_drain = drain_receiver.clone();
                     connections.spawn(async move {
                         crate::workspace_db_ipc_server::serve_runtime_server_workspace_stream(
@@ -284,6 +387,7 @@ impl RuntimeServer {
                             &registry,
                             &memory_registry,
                             generation_admission.as_deref(),
+                            owner_projection_builder.as_ref(),
                             connection_drain,
                         )
                         .await?;
@@ -363,6 +467,10 @@ impl RuntimeServer {
                     RuntimeServerEvent::ConnectionTaskFailed(error.to_string()),
                 ),
             }
+        }
+        if let Some(restore_task) = restore_task {
+            restore_task.abort();
+            let _ = restore_task.await;
         }
         Ok(exit)
     }

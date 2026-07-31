@@ -206,13 +206,14 @@ pub(super) fn root_owned_rust_activation_json() -> String {
                 package_roots: vec![".".to_string()],
                 config_files: manifest
                     .project_resolution()
-                    .expect("Rust project resolution")
+                    .expect("Rust project scope")
                     .entry_markers
                     .clone(),
                 source_extensions: vec![".rs".to_string()],
                 source_paths: vec!["src/lib.rs".to_string()],
                 repository_candidate_generation: "test-candidate-generation".to_string(),
-                project_resolution_generation: "test-project-resolution-generation".to_string(),
+                workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
+                project_resolutions: Vec::new(),
             },
         }],
     };
@@ -245,15 +246,6 @@ pub(super) fn write_state_home_provider_binary(
     write_state_home_provider_file(state_home, language_id, provider_id, binary, 0o755, false)
 }
 
-pub(super) fn write_failing_state_home_provider_binary(
-    state_home: &std::path::Path,
-    language_id: &str,
-    provider_id: &str,
-    binary: &str,
-) -> PathBuf {
-    write_state_home_provider_file(state_home, language_id, provider_id, binary, 0o755, true)
-}
-
 fn write_state_home_provider_file(
     state_home: &std::path::Path,
     language_id: &str,
@@ -282,7 +274,7 @@ fn write_state_home_provider_file(
             "languageId": language_id,
             "providerId": provider_id,
             "state": "resolved",
-            "resolution": {
+            "scope": {
                 "schemaId": "agent.semantic-protocols.project-resolution",
                 "schemaVersion": "1",
                 "state": "resolved",

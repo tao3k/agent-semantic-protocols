@@ -108,13 +108,15 @@ pub(crate) fn write_activation(root: &Path, state_home: &Path, language_ids: &[&
                 coverage: ActivationCoverage {
                     package_roots: vec![canonical_root.display().to_string()],
                     config_files: crate::provider_manifest_scope::project_entries(&manifest),
-                    source_extensions:
-                        crate::provider_manifest_scope::document_extensions(&manifest),
+                    source_extensions: crate::provider_manifest_scope::document_extensions(
+                        &manifest,
+                    ),
                     source_paths: Vec::new(),
-                    repository_candidate_generation:
-                        "test-repository-candidate-generation".to_string(),
-                    project_resolution_generation:
-                        "test-project-resolution-generation".to_string(),
+                    repository_candidate_generation: "test-repository-candidate-generation"
+                        .to_string(),
+                    workspace_source_scope_generation: "test-project-resolution-generation"
+                        .to_string(),
+                    project_resolutions: Vec::new(),
                 },
             }
         })

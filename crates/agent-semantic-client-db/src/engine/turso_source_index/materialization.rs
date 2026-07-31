@@ -11,6 +11,7 @@ pub(super) async fn persist_workspace_generation_materialization(
     if let Some(existing) = load_workspace_generation_materialization(
         connection,
         materialization.workspace_identity.as_str(),
+        project_root,
         source_index_schema_id,
         source_index_schema_version,
         generation_id,
@@ -68,6 +69,7 @@ pub(super) async fn persist_workspace_generation_materialization(
 pub(super) async fn load_workspace_generation_materialization(
     connection: &turso::Connection,
     workspace_identity: &str,
+    project_root: &str,
     source_index_schema_id: &str,
     source_index_schema_version: &str,
     generation_id: &str,
@@ -77,12 +79,14 @@ pub(super) async fn load_workspace_generation_materialization(
             "SELECT materialization_json
              FROM asp_workspace_generation_materialization_v1
              WHERE workspace_identity = ?1
-               AND source_index_schema_id = ?2
-               AND source_index_schema_version = ?3
-               AND generation_id = ?4
+               AND project_root = ?2
+               AND source_index_schema_id = ?3
+               AND source_index_schema_version = ?4
+               AND generation_id = ?5
              LIMIT 1",
             (
                 workspace_identity,
+                project_root,
                 source_index_schema_id,
                 source_index_schema_version,
                 generation_id,
@@ -110,7 +114,10 @@ pub(super) async fn load_workspace_generation_materialization(
 pub(super) async fn load_active_workspace_generation_materialization(
     connection: &turso::Connection,
     workspace_identity: &str,
-) -> Result<Option<WorkspaceCanonicalMaterialization>, String> {
+    project_root: &str,
+) -> Result<crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad, String> {
+    use crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad;
+
     let mut rows = connection
         .query(
             "SELECT materialization.materialization_json, scope.source_snapshot_json
@@ -121,9 +128,10 @@ pub(super) async fn load_active_workspace_generation_materialization(
               AND scope.schema_version = materialization.source_index_schema_version
               AND scope.generation_id = materialization.generation_id
              WHERE materialization.workspace_identity = ?1
+               AND materialization.project_root = ?2
              ORDER BY scope.updated_at_ms DESC, scope.generation_id DESC
              LIMIT 1",
-            [workspace_identity],
+            (workspace_identity, project_root),
         )
         .await
         .map_err(|error| {
@@ -133,22 +141,47 @@ pub(super) async fn load_active_workspace_generation_materialization(
         format!("failed to read active workspace generation materialization: {error}")
     })?
     else {
-        return Ok(None);
+        return Ok(WorkspaceCanonicalMaterializationLoad::Missing);
     };
     let bytes = row.get::<Vec<u8>>(0).map_err(|error| {
         format!("failed to decode active workspace generation materialization bytes: {error}")
     })?;
-    let materialization: WorkspaceCanonicalMaterialization = serde_json::from_slice(&bytes)
-        .map_err(|error| {
-            format!("failed to decode active workspace generation materialization: {error}")
-        })?;
+    let mut materialization: WorkspaceCanonicalMaterialization =
+        match serde_json::from_slice(&bytes) {
+            Ok(materialization) => materialization,
+            Err(error) => {
+                return Ok(WorkspaceCanonicalMaterializationLoad::Incompatible {
+                    reason: format!(
+                        "failed to decode active workspace generation materialization: {error}"
+                    ),
+                });
+            }
+        };
+    let requested_project_root =
+        WorkspaceCanonicalMaterialization::canonical_project_root(project_root)?;
+    let materialized_project_root =
+        WorkspaceCanonicalMaterialization::canonical_project_root(&materialization.project_root)?;
+    if materialized_project_root != requested_project_root {
+        return Err(format!(
+            "active workspace generation materialization project root drift: requested={project_root} materialized={}",
+            materialization.project_root
+        ));
+    }
+    materialization.project_root = requested_project_root;
     let source_snapshot_json = row.get::<String>(1).map_err(|error| {
         format!("failed to decode active workspace generation source snapshot: {error}")
     })?;
     let source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence =
-        serde_json::from_str(&source_snapshot_json).map_err(|error| {
-            format!("failed to decode active workspace generation source snapshot: {error}")
-        })?;
+        match serde_json::from_str(&source_snapshot_json) {
+            Ok(source_snapshot) => source_snapshot,
+            Err(error) => {
+                return Ok(WorkspaceCanonicalMaterializationLoad::Incompatible {
+                    reason: format!(
+                        "failed to decode active workspace generation source snapshot: {error}"
+                    ),
+                });
+            }
+        };
     if !materialization
         .source_snapshot
         .has_same_content_identity(&source_snapshot)
@@ -158,7 +191,9 @@ pub(super) async fn load_active_workspace_generation_materialization(
             materialization.source_snapshot
         ));
     }
-    Ok(Some(materialization))
+    Ok(WorkspaceCanonicalMaterializationLoad::Ready(
+        materialization,
+    ))
 }
 
 fn unix_time_ms() -> i64 {

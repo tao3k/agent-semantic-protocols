@@ -47,7 +47,7 @@ async fn concurrent_workspace_admission_is_single_flight() {
     assert_eq!(accepted_count, 1);
     assert_eq!(*build_count.lock().await, 1);
     let receipt = admission
-        .wait_terminal("workspace-single-flight")
+        .wait_terminal("workspace-single-flight", &project_root)
         .await
         .expect("wait for completed admission");
     assert_eq!(receipt.state, WorkspaceGenerationAdmissionState::Ready);
@@ -55,6 +55,58 @@ async fn concurrent_workspace_admission_is_single_flight() {
         .shutdown()
         .await
         .expect("drain generation admission lane");
+}
+
+#[tokio::test]
+async fn project_roots_have_independent_admission_flights() {
+    let roots = Arc::new(Mutex::new(Vec::new()));
+    let admission = WorkspaceGenerationAdmission::new(Arc::new({
+        let roots = Arc::clone(&roots);
+        move |_workspace_identity, project_root| {
+            let roots = Arc::clone(&roots);
+            Box::pin(async move {
+                roots.lock().await.push(project_root);
+                Ok(())
+            })
+        }
+    }));
+    let first_root = std::env::temp_dir().join("asp-generation-admission-first-project");
+    let second_root = std::env::temp_dir().join("asp-generation-admission-second-project");
+
+    let first = admission
+        .admit("shared-repository-identity", first_root.clone())
+        .await
+        .expect("admit first project root");
+    let second = admission
+        .admit("shared-repository-identity", second_root.clone())
+        .await
+        .expect("admit second project root");
+    assert!(first.accepted);
+    assert!(second.accepted);
+    assert_eq!(
+        admission
+            .wait_terminal("shared-repository-identity", &first_root)
+            .await
+            .expect("first project terminal state")
+            .state,
+        WorkspaceGenerationAdmissionState::Ready
+    );
+    assert_eq!(
+        admission
+            .wait_terminal("shared-repository-identity", &second_root)
+            .await
+            .expect("second project terminal state")
+            .state,
+        WorkspaceGenerationAdmissionState::Ready
+    );
+    let mut observed_roots = roots.lock().await.clone();
+    observed_roots.sort();
+    assert_eq!(observed_roots, vec![first_root, second_root]);
+
+    admission
+        .shutdown()
+        .await
+        .expect("drain independent admission lanes");
 }
 
 #[tokio::test]
@@ -82,7 +134,7 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
         .expect("schedule failed builder");
     failed.notified().await;
     let receipt = admission
-        .wait_terminal("workspace-sticky-failure")
+        .wait_terminal("workspace-sticky-failure", &project_root)
         .await
         .expect("failure state must become visible");
 

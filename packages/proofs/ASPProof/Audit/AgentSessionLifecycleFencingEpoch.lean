@@ -1,0 +1,28 @@
+import ASPProof.AgentSessionLifecycleFencingEpoch
+
+open ASPProof.AgentSessionLifecycleFencingEpoch
+
+#print axioms current_token_binds_slot
+#print axioms current_token_binds_generation
+#print axioms current_token_binds_epoch
+#print axioms current_token_binds_revision
+#print axioms current_token_binds_state_digest
+#print axioms current_token_binds_capability_digest
+#print axioms current_token_is_unexpired
+#print axioms stale_generation_rejects_token
+#print axioms stale_epoch_rejects_token
+#print axioms stale_revision_rejects_token
+#print axioms state_drift_rejects_token
+#print axioms capability_drift_rejects_token
+#print axioms expired_token_is_rejected
+#print axioms noncurrent_token_authorizes_no_effect
+#print axioms stale_epoch_cannot_retire
+#print axioms stale_epoch_cannot_release
+#print axioms stale_epoch_cannot_bind
+#print axioms stale_epoch_cannot_dispatch
+#print axioms stale_epoch_cannot_commit_terminal
+#print axioms fence_advance_invalidates_old_epoch_token
+#print axioms fence_advance_has_no_self_loop
+#print axioms fence_advance_has_no_two_cycle
+#print axioms authorized_retire_requires_retire_capability
+#print axioms current_controller_can_ingest_old_generation_completion

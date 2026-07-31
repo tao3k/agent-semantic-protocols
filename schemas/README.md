@@ -667,6 +667,13 @@ current project, their resolved command prefixes, manifest digests, and
 coverage roots. It does not repeat provider routes or policies, so a stale
 activation cannot drift into an alternate command registry.
 
+`activation-admission-receipt.v1.schema.json` is the runtime reuse boundary for
+that generated activation. It records the complete artifact, schema, project,
+provider-selection, and repository-candidate-generation gate vector. Reuse is
+valid only when every gate is true; any failed gate selects
+`rebuild-and-publish`, and rebuild failure never authorizes an old or in-memory
+fallback activation.
+
 `semantic-agent-runtime-profiles.v1.schema.json` is the derived runtime
 execution profile shape for activated providers. It is not a separate
 workspace source of truth and must not resurrect the retired runtime profile
@@ -1188,3 +1195,8 @@ py-harness search tests src/python_lang_project_harness/_cli.py --json .
 py-harness search lexical PythonHarnessReport --json .
 rg -n "PythonHarnessReport" src tests | py-harness search ingest --json .
 ```
+
+`runtime-selector-overlay-receipt.v1.schema.json` records a selector-only
+publication against one admitted workspace generation. Exact repair binds the
+owner digest and byte range without advancing or rewriting the canonical source
+generation.

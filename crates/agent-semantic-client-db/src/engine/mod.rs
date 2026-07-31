@@ -28,16 +28,17 @@ mod turso_search;
 mod turso_source_index;
 pub use turso_source_index::{
     ClientDbSourceIndexGenerationOwner, ClientDbSourceIndexGenerationSnapshot,
-    ClientDbSourceIndexSelectorFact, ProviderIncrementalOwnerWrite, ProviderIncrementalScoped,
-    ProviderIncrementalWriteReceipt, ProviderOwnerDecision, ProviderOwnerFingerprint,
-    ProviderOwnerInventory, ProviderOwnerInventoryEntry, ProviderOwnerInventoryEntryState,
-    ProviderOwnerInventoryState, ProviderOwnerInventoryWrite, ProviderOwnerInventoryWriteReceipt,
-    ProviderOwnerMetadata, ProviderOwnerProbe, ProviderRemainingOwnerCountKind,
-    ProviderSelectorProjection, ProviderTreeSitterCaptureProjection,
-    ProviderTreeSitterContinuation, ProviderTreeSitterOwnerResult,
-    ProviderTreeSitterOwnerResultState, ProviderTreeSitterOwnerWriteReceipt,
-    ProviderTreeSitterQueryCounters, ProviderTreeSitterQueryIdentity,
-    ProviderTreeSitterQueryReceipt, latest_turso_source_index_generation_snapshot,
+    ClientDbSourceIndexSelectorFact, ProviderIncrementalOwnerSnapshot,
+    ProviderIncrementalOwnerWrite, ProviderIncrementalScoped, ProviderIncrementalWriteReceipt,
+    ProviderOwnerDecision, ProviderOwnerFingerprint, ProviderOwnerInventory,
+    ProviderOwnerInventoryEntry, ProviderOwnerInventoryEntryState, ProviderOwnerInventoryState,
+    ProviderOwnerInventoryWrite, ProviderOwnerInventoryWriteReceipt, ProviderOwnerMetadata,
+    ProviderOwnerProbe, ProviderRemainingOwnerCountKind, ProviderSelectorProjection,
+    ProviderTreeSitterCaptureProjection, ProviderTreeSitterContinuation,
+    ProviderTreeSitterOwnerResult, ProviderTreeSitterOwnerResultState,
+    ProviderTreeSitterOwnerWriteReceipt, ProviderTreeSitterQueryCounters,
+    ProviderTreeSitterQueryIdentity, ProviderTreeSitterQueryReceipt,
+    latest_turso_source_index_generation_snapshot,
 };
 pub(crate) mod turso_statement;
 mod turso_syntax;
@@ -59,8 +60,6 @@ pub use turso_search::{
     TursoClientDbSearchDocument, TursoClientDbSearchHit, TursoClientDbSearchResult,
     TursoClientDbSearchState,
 };
-pub(crate) use turso_source_index::commit_turso_source_index_generation_in_fixture;
-pub(crate) use turso_source_index::load_active_workspace_generation_materialization_in_fixture;
 pub use turso_source_index::{
     ProviderOwnerBatchProbeReceipt, ProviderOwnerBatchProbeRequest, ProviderOwnerBatchProbeResult,
     ProviderTreeSitterQueryRead, ProviderTreeSitterQueryReadState,

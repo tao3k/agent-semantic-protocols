@@ -1,14 +1,11 @@
 use std::{
-    ffi::{OsStr, OsString},
     fs,
     path::{Path, PathBuf},
     sync::{Arc, Barrier},
     thread,
 };
 
-use agent_semantic_client_core::state_core::{
-    ASP_STATE_HOME_ENV, ResolvedState, STATE_LAYOUT_VERSION, TURSO_BACKEND,
-};
+use agent_semantic_client_core::state_core::{ResolvedState, STATE_LAYOUT_VERSION, TURSO_BACKEND};
 use agent_semantic_client_core::{CacheExportMethod, ClientCacheManifest, LanguageId, ProviderId};
 use agent_semantic_client_core::{
     CacheGenerationId, ClientCacheFileHash, SemanticSchemaId, SemanticSchemaVersion,
@@ -60,38 +57,4 @@ fn temp_root(label: &str) -> PathBuf {
     root.push(unique);
     std::fs::create_dir_all(&root).expect("create temp root");
     root
-}
-
-struct EnvVarGuard {
-    key: &'static str,
-    previous: Option<OsString>,
-    _env_lock: std::sync::MutexGuard<'static, ()>,
-}
-
-impl EnvVarGuard {
-    fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
-        let env_lock = crate::env::ENV_LOCK.lock().expect("lock env");
-        let previous = std::env::var_os(key);
-        unsafe {
-            std::env::set_var(key, value);
-        }
-        Self {
-            key,
-            previous,
-            _env_lock: env_lock,
-        }
-    }
-}
-
-impl Drop for EnvVarGuard {
-    fn drop(&mut self) {
-        match &self.previous {
-            Some(value) => unsafe {
-                std::env::set_var(self.key, value);
-            },
-            None => unsafe {
-                std::env::remove_var(self.key);
-            },
-        }
-    }
 }

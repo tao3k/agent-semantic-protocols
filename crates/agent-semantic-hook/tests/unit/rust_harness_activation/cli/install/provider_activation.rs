@@ -5,8 +5,7 @@ use agent_semantic_hook::{
 use std::env;
 
 use crate::rust_harness_activation::support::{
-    asp_bin_dir, write_failing_state_home_provider_binary, write_state_home_provider_binary,
-    write_unmanaged_provider_file,
+    asp_bin_dir, write_state_home_provider_binary, write_unmanaged_provider_file,
 };
 
 use super::support::{codex_plugin_install_args, git_project_root, protocol_command};
@@ -14,13 +13,10 @@ use super::support::{codex_plugin_install_args, git_project_root, protocol_comma
 #[test]
 fn cli_install_does_not_materialize_hook_activation_before_pre_tool() {
     let root = git_project_root("install-static-provider-manifest");
+    write_python_project_marker(&root);
     let asp_state_home = root.join(".asp-state-home");
-    let provider_bin = write_failing_state_home_provider_binary(
-        &asp_state_home,
-        "python",
-        "py-harness",
-        "py-harness",
-    );
+    let provider_bin =
+        write_state_home_provider_binary(&asp_state_home, "python", "py-harness", "py-harness");
     let asp_bin_dir = asp_bin_dir();
     let protocol_bin_dir = root.join(".agent-bin");
     let path = env::join_paths([protocol_bin_dir.as_path(), asp_bin_dir.as_path()])
@@ -78,6 +74,7 @@ fn cli_install_does_not_materialize_hook_activation_before_pre_tool() {
 #[test]
 fn hook_materialized_runtime_profile_uses_state_home_provider_only() {
     let root = git_project_root("install-state-home-provider");
+    write_python_project_marker(&root);
     let asp_state_home = root.join(".asp-state-home");
     let external_root = git_project_root("install-external-provider");
     let state_home_provider =
@@ -179,6 +176,7 @@ fn agent_config_sync_is_provider_independent_and_does_not_materialize_activation
 #[test]
 fn hook_materialization_honors_asp_toml_state_home_provider_basename() {
     let root = git_project_root("install-asp-toml-provider-config");
+    write_python_project_marker(&root);
     let asp_state_home = root.join(".asp-state-home");
     let empty_path = root.join("empty-path");
     std::fs::create_dir_all(&empty_path).expect("empty path");
@@ -295,6 +293,7 @@ enabled = false
 #[test]
 fn hook_materialization_writes_executable_python_ingest_route() {
     let root = git_project_root("install-python");
+    write_python_project_marker(&root);
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "python", "py-harness", "py-harness");
     let asp_bin_dir = asp_bin_dir();
@@ -380,11 +379,10 @@ fn materialize_hook_activation(
 ) {
     let payload = serde_json::json!({
         "cwd": root,
-        "hook_event_name": "PostToolUse",
+        "hook_event_name": "PreToolUse",
         "session_id": "install-provider-activation-test",
-        "tool_name": "Bash",
+        "tool_name": "exec_command",
         "tool_input": {"cmd": "true"},
-        "tool_result": {"status": "completed"}
     });
     let mut child = protocol_command()
         .current_dir(root)
@@ -393,30 +391,25 @@ fn materialize_hook_activation(
         .env("ASP_STATE_HOME", asp_state_home)
         .env("CODEX_HOME", root.join(".codex-home"))
         .args([
-            "hook",
-            "--client",
-            "codex",
-            "post-tool",
-            "--emit",
-            "decision",
+            "hook", "--client", "codex", "pre-tool", "--emit", "decision",
         ])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .expect("start post-tool activation materialization");
+        .expect("start pre-tool activation materialization");
     std::io::Write::write_all(
-        child.stdin.as_mut().expect("post-tool stdin"),
+        child.stdin.as_mut().expect("pre-tool stdin"),
         payload.to_string().as_bytes(),
     )
-    .expect("write post-tool payload");
+    .expect("write pre-tool payload");
     drop(child.stdin.take());
     let output = child
         .wait_with_output()
-        .expect("wait for post-tool activation materialization");
+        .expect("wait for pre-tool activation materialization");
     assert!(
         output.status.success(),
-        "post-tool activation materialization failed: stdout={} stderr={}",
+        "pre-tool activation materialization failed: stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -434,5 +427,31 @@ fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::
             matches.push(path);
         }
     }
+}
+
+fn write_python_project_marker(root: &std::path::Path) {
+    std::fs::write(
+        root.join("pyproject.toml"),
+        "[project]\nname = \"activation-fixture\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write Python package-manager project entry");
+    std::fs::create_dir_all(root.join("src")).expect("create Python source root");
+    std::fs::write(
+        root.join("src/activation_fixture.py"),
+        "def run():\n    return 1\n",
+    )
+    .expect("write Python source candidate");
+    let init = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(root)
+        .output()
+        .expect("initialize Git fixture");
+    assert!(init.status.success(), "git init failed: {init:?}");
+    let add = std::process::Command::new("git")
+        .args(["add", "pyproject.toml", "src/activation_fixture.py"])
+        .current_dir(root)
+        .output()
+        .expect("index Python fixture");
+    assert!(add.status.success(), "git add failed: {add:?}");
 }
 use crate::rust_harness_activation::cli::install::support::write_real_asp_launcher;

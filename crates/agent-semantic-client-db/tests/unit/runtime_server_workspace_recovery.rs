@@ -4,6 +4,10 @@ use agent_semantic_client_db::runtime_server_workspace::{
     WorkspaceOwnerSnapshot, WorkspaceRecoverySource,
 };
 
+fn project_root(workspace_identity: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from("/runtime-server-recovery-fixture").join(workspace_identity)
+}
+
 fn generation(workspace_identity: &str) -> WorkspaceMemoryGeneration {
     let bytes = b"pub fn recovered() {}\n";
     let content_digest = format!("blake3-256:{}", blake3::hash(bytes).to_hex());
@@ -23,6 +27,7 @@ fn generation(workspace_identity: &str) -> WorkspaceMemoryGeneration {
         };
     WorkspaceMemoryGeneration {
         workspace_identity: workspace_identity.to_owned(),
+        project_root: project_root(workspace_identity).display().to_string(),
         state: WorkspaceGenerationState::Ready,
         active_epoch: 1,
         generation_digest: content_digest.clone(),
@@ -31,6 +36,10 @@ fn generation(workspace_identity: &str) -> WorkspaceMemoryGeneration {
         source_snapshot,
         workspace_generation,
         memory_backend_digest: content_digest.clone(),
+        workspace_source_scope_generation:
+            agent_semantic_runtime::workspace_source_scope_generation_digest(&[])
+                .expect("empty ProjectResolution generation"),
+        project_resolutions: Vec::new(),
         owners: vec![WorkspaceOwnerSnapshot {
             owner_path: "src/lib.rs".to_owned(),
             content_digest,
@@ -75,6 +84,16 @@ async fn resident_writer_replaces_a_corrupt_pointer_with_one_complete_generation
     let generations = temporary
         .path()
         .join(workspace_identity)
+        .join("scopes")
+        .join(format!(
+            "scope-{}",
+            &blake3::hash(
+                project_root(workspace_identity)
+                    .to_string_lossy()
+                    .as_bytes()
+            )
+            .to_hex()[..16]
+        ))
         .join("generations");
     tokio::fs::create_dir_all(&generations)
         .await

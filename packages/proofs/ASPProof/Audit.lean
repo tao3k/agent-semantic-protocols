@@ -9,6 +9,8 @@ import ASPProof.SearchRouteInspectTraceCost
 import ASPProof.SearchLoopCacheRelocation
 import ASPProof.SearchLoopCacheDiagnostics
 import ASPProof.SearchLoopCacheIdentity
+import ASPProof.Audit.ActivationAdmission
+import ASPProof.Audit.RuntimeSelectorOverlay
 import Lean.Elab.Command
 
 namespace ASPProof.Audit

@@ -8,10 +8,13 @@
     "schemaId",
     "schemaVersion",
     "workspaceIdentity",
+    "projectRoot",
     "workspaceSnapshot",
     "sourceSnapshot",
     "workspaceGeneration",
     "importDigest",
+    "workspaceSourceScopeGeneration",
+    "projectResolutions",
     "fileCount",
     "rootDepth",
     "owners"
@@ -24,6 +27,10 @@
       "const": "1"
     },
     "workspaceIdentity": {
+      "type": "string",
+      "minLength": 1
+    },
+    "projectRoot": {
       "type": "string",
       "minLength": 1
     },
@@ -159,6 +166,32 @@
     "importDigest": {
       "type": "string",
       "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "workspaceSourceScopeGeneration": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "projectResolutions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["candidateBase", "scopeDigest", "scope"],
+        "properties": {
+          "candidateBase": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+          },
+          "scopeDigest": {
+            "type": "string",
+            "pattern": "^blake3-256:[0-9a-f]{64}$"
+          },
+          "scope": {
+            "$ref": "https://schemas.agent-semantic-protocols.dev/project-resolution.v1.schema.json"
+          }
+        }
+      }
     },
     "fileCount": {
       "type": "integer",

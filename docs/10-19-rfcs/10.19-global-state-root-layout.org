@@ -42,9 +42,15 @@ Workspace identity:
 - is the default bucket for live DB state, hook runtime events, session registry
   rows, and artifacts.
 
-Scope identity:
-- defaults to the workspace scope until a package/language manifest narrows it;
-- is where monorepo package, provider, dependency, and analyzer facts attach.
+Workspace semantic scope:
+- belongs to exactly one Git-worktree workspace generation;
+- is composed from provider package-manager resolution receipts over that
+  worktree's candidate generation; and
+- is where package, provider, dependency, and analyzer facts attach.
+
+There is no provider-default or directory-default scope.  Multiple registered
+language/package-manager entries contribute receipts to the same workspace
+semantic scope; they do not create multiple project scopes or identities.
 
 * Canonical layout
 The current physical layout is:

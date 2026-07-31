@@ -1,0 +1,249 @@
+#+title: RFC 10.05.38 — Agent Session Host Registry Adjudication Decision Certificate
+#+language: en
+
+* Status
+
+Focused formal verification is complete. This RFC refines [[file:../10.05.37-agent-session-host-registry-quarantine-adjudication/00-overview.org][RFC 10.05.37 — Agent Session Host Registry Quarantine Adjudication]]. The Lean source and direct audit compile, all 21 theorem declarations are axiom-free, and the module is imported by the proof-package root.
+
+This RFC verifies provenance binding, decision entailment, certificate sealing, revocation, and appeal generation safety. It does not claim that a concrete evidence collector or decision verifier exists. No Rust implementation is authorized in this session.
+
+* Problem
+
+RFC37 proves that adjudication is authorized, two-sided, append-only, and generation advancing. Authorization does not establish that the evidence roots are genuine or that the selected decision follows from them.
+
+A trustworthy decision certificate must close six additional gaps:
+
+- each terminal capture requires its own acquisition provenance root;
+- each acquisition must be independently replayed;
+- the two sides may not share one collector or one provenance root;
+- the decision must carry a typed entailment witness;
+- revocation must block new authorization without rewriting historical evidence;
+- appeal must supersede the prior certificate and advance generation again.
+
+Certificate identity is the digest of the complete payload, not a free-standing identifier.
+
+* Lean-discovered ambiguity
+
+RFC37 defines three decisions: uphold accepted, replace with conflicting, or reject both. Lean shows that none of these decisions is entailed when both terminal provenance judgments are valid.
+
+This is not a missing proof tactic. It is a protocol state omitted by the earlier prose. A both-valid dispute must remain quarantined as an ambiguity until additional semantic evidence distinguishes the terminal captures. An authority must not collapse this state into a decision merely to make progress.
+
+* Provenance replay law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASDC-PROVENANCE
+:END:
+
+#+name: registry-decision-certificate-provenance-law
+#+begin_src typst
+#let Binds(t, p) = $upright("ProvenanceBindsTerminal")(#t, #p)$
+#let Terminal(p) = $upright("terminal")(#p)$
+#let Replayed(p) = $upright("replayed")(#p)$
+#let Collector(p) = $upright("collectorDigest")(#p)$
+#let Replayer(p) = $upright("replayExecutorDigest")(#p)$
+#let True = $upright("true")$
+
+$
+  forall t, p,
+  Binds(t, p) =>
+  Terminal(p) = t and Replayed(p) = True and Replayer(p) != Collector(p).
+$
+#+end_src
+
+The collector cannot certify its own acquisition as independently replayed.
+
+* Decision entailment law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASDC-ENTAILMENT
+:END:
+
+#+name: registry-decision-certificate-entailment-law
+#+begin_src typst
+#let Entails(d, a, c) = $upright("DecisionEntailed")(#d, #a, #c)$
+#let Valid = $upright("valid")$
+#let Invalid = $upright("invalid")$
+#let Uphold = $upright("upholdAccepted")$
+#let Replace = $upright("replaceWithConflicting")$
+#let Reject = $upright("rejectBoth")$
+
+$
+  Entails(Uphold, Valid, Invalid) and
+  Entails(Replace, Invalid, Valid) and
+  Entails(Reject, Invalid, Invalid),
+  quad forall d, not Entails(d, Valid, Valid).
+$
+#+end_src
+
+A decision label without one of these witnesses is not a certificate.
+
+* Revocation law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASDC-REVOCATION
+:END:
+
+#+name: registry-decision-certificate-revocation-law
+#+begin_src typst
+#let Step(c, before, after) = $upright("CertificateLifecycleStep")(#c, #before, #after)$
+#let Active = $upright("active")$
+#let Revoked(r) = $upright("revoked")(#r)$
+#let Admit(s) = $upright("AdmittedForNewDecision")(#s)$
+
+$
+  forall c, r,
+  Step(c, Active, Revoked(r)) and
+  not Admit(Revoked(r)) and
+  not Step(c, Revoked(r), Active).
+$
+#+end_src
+
+Revocation appends a lifecycle fact. It blocks new decisions but does not erase the certificate from historical audit.
+
+* Appeal generation law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASDC-APPEAL
+:END:
+
+#+name: registry-decision-certificate-appeal-law
+#+begin_src typst
+#let Supersedes(old, appeal) = $upright("AppealSupersedes")(#old, #appeal)$
+#let Generation(c) = $upright("generation")(#c)$
+#let Prior(a) = $upright("priorCertificateDigest")(#a)$
+#let Digest(c) = $upright("certificateDigest")(#c)$
+#let Successor(a) = $upright("successor")(#a)$
+
+$
+  forall c, a,
+  Supersedes(c, a) =>
+  Prior(a) = Digest(c) and
+  Generation(Successor(a)) = Generation(c) + 1.
+$
+#+end_src
+
+Appeal creates a successor certificate. It does not mutate the prior certificate or restore the original quarantined generation.
+
+* Stateful architecture
+
+#+name: registry-decision-certificate-architecture
+#+begin_src mermaid
+flowchart LR
+  A["Accepted terminal acquisition\nstate: Collected(rootA, collectorA)"]
+  C["Conflicting terminal acquisition\nstate: Collected(rootC, collectorC)"]
+  RA["Accepted replay\nstate: IndependentReplayA"]
+  RC["Conflicting replay\nstate: IndependentReplayC"]
+  E["Entailment checker\nstate: Entailed(decision) | BothValidAmbiguous | Rejected"]
+  S["Certificate sealer\nstate: PayloadBound(certificateDigest)"]
+  L["Lifecycle registry\nstate: Active | Revoked | Superseded"]
+  G["Generation registry\nstate: SuccessorCurrent"]
+
+  A -->|"transition; state: Collected -> ReplayPendingA; terminal and snapshot bound"| RA
+  C -->|"transition; state: Collected -> ReplayPendingC; terminal and snapshot bound"| RC
+  RA -->|"guard; state: IndependentReplayA -> JudgmentPending; collector differs"| E
+  RC -->|"guard; state: IndependentReplayC -> JudgmentPending; collector and root differ"| E
+  E -->|"capability; state: Entailed -> PayloadPending; typed witness"| S
+  E -->|"prohibitedEffect; state: BothValidAmbiguous -> Quarantined; no decision"| L
+  S -->|"transition; state: PayloadBound -> Active; exact digest"| L
+  L -->|"transition; state: Active -> RevokedOrSuperseded; append lifecycle fact"| G
+  G -->|"guard; state: SuccessorCurrent -> AppealAdmitted; old generation remains revoked"| L
+#+end_src
+
+* Certificate state machine
+
+#+name: registry-decision-certificate-state
+#+begin_src mermaid
+stateDiagram-v2
+  state "Acquiring\nstate: TwoRootsPending" as Acquiring
+  state "Replayed\nstate: IndependentCollectors" as Replayed
+  state "Entailed\nstate: TypedDecisionWitness" as Entailed
+  state "Ambiguous\nstate: BothValidQuarantine" as Ambiguous
+  state "Active\nstate: CertificateCurrent" as Active
+  state "Revoked\nstate: HistoricalOnly" as Revoked
+  state "Superseded\nstate: AppealSuccessorCurrent" as Superseded
+
+  Acquiring --> Replayed: "guard; state: TwoRootsPending -> IndependentCollectors"
+  Acquiring --> Ambiguous: "prohibitedEffect; state: SameCollectorOrRoot -> BothValidQuarantine"
+  Replayed --> Entailed: "guard; state: Independent -> TypedDecisionWitness"
+  Replayed --> Ambiguous: "prohibitedEffect; state: BothValid -> BothValidQuarantine"
+  Entailed --> Active: "capability; state: Witness -> CertificateCurrent; payload sealed"
+  Active --> Revoked: "transition; state: Current -> HistoricalOnly; revocation appended"
+  Revoked --> Superseded: "guard; state: HistoricalOnly -> AppealSuccessorCurrent; generation advances"
+  Revoked --> Active: "prohibitedEffect; state: HistoricalOnly -> Rejected; no unrevocation"
+#+end_src
+
+* Revocation and appeal sequence
+
+#+name: registry-decision-certificate-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant PA as "Collector A [state: AcquiredA]"
+  participant PC as "Collector C [state: AcquiredC]"
+  participant V as "Replay Verifier [state: Independent]"
+  participant E as "Entailment Checker [state: Pending]"
+  participant L as "Lifecycle Ledger [state: Active]"
+  participant AP as "Appeal Authority [state: Idle]"
+
+  PA->>V: "transition; state: AcquiredA -> ReplayA; provenance root A"
+  PC->>V: "transition; state: AcquiredC -> ReplayC; provenance root C"
+  V->>E: "guard; state: BothReplayed -> JudgmentPair"
+  alt exactly one valid or both invalid
+    E->>L: "capability; state: Entailed -> Active; sealed certificate"
+  else both valid
+    E->>L: "prohibitedEffect; state: Ambiguous -> QuarantinedUnchanged"
+  end
+  L->>L: "transition; state: Active -> Revoked; append revocation"
+  AP->>L: "guard; state: Revoked -> AppealPending; prior digest bound"
+  L-->>AP: "capability; state: AppealPending -> Superseded; generation + 1"
+#+end_src
+
+* Lean contract embedded in Org
+
+#+name: registry-decision-certificate-lean-contract
+#+begin_src lean
+def ProvenanceBindsTerminal
+    (expected : TerminalCapture)
+    (provenance : TerminalProvenance) : Prop :=
+  provenance.terminal = expected ∧
+  provenance.replayed = true ∧
+  provenance.replayExecutorDigest ≠ provenance.collectorDigest
+
+inductive DecisionEntailed where
+  | upholdAccepted : DecisionEntailed .upholdAccepted .valid .invalid
+  | replaceWithConflicting : DecisionEntailed .replaceWithConflicting .invalid .valid
+  | rejectBoth : DecisionEntailed .rejectBoth .invalid .invalid
+
+def AppealSupersedes
+    (prior : DecisionCertificate)
+    (appeal : AppealCertificate) : Prop :=
+  appeal.priorCertificateDigest = prior.certificateDigest ∧
+  appeal.successor.payload.generation = prior.payload.generation + 1 ∧
+  appeal.successor.certificateDigest ≠ prior.certificateDigest
+#+end_src
+
+* Lean-discovered obligations
+
+Lean rejects non-replayed provenance, self-replay, a shared collector, a shared provenance root, a wrong certificate seal, revoked-certificate admission, lifecycle unrevocation, and appeal generation rollback.
+
+The typed entailment relation exposes the both-valid ambiguity. Because it has no constructor for =valid/valid=, no decision certificate can be formed for that judgment pair. This closes a real RFC37 design hole by preserving quarantine instead of allowing an authority-selected answer without semantic evidence.
+
+Revocation and historical audit remain distinct. The lifecycle transition prevents new authorization and unrevocation; it does not delete the certificate payload. Appeal binds the prior certificate digest, creates a distinct successor digest, and advances generation again.
+
+* Verification plan
+
+- build the focused Lean source and direct axiom audit;
+- execute the audit runner and emit the Lean JSON receipt;
+- admit scoped theorem families through AXLE;
+- evaluate every Typst block through parser-owned Org content on stdin;
+- run =orgize lint= and restricted =git diff --check=;
+- add no Rust implementation in this session.
+
+* Formal receipts
+
+- Lean source: =packages/proofs/ASPProof/AgentSessionHostRegistryAdjudicationDecisionCertificate.lean=
+- direct audit: =packages/proofs/ASPProof/Audit/AgentSessionHostRegistryAdjudicationDecisionCertificate.lean=
+- Lean JSON: =packages/proofs/receipts/agent-session-host-registry-adjudication-decision-certificate-audit-v1.json=
+- AXLE receipt: =packages/proofs/receipts/agent-session-host-registry-adjudication-decision-certificate-axle-audit-v1.json=
+- admitted audit SHA-256: =f5dca9c7ce83d0e205a2965b827626b5c18f36de409fbfc9f1af5735e4114a55=
+
+* Next boundary
+
+This boundary is refined by [[file:../10.05.39-agent-session-host-registry-both-valid-ambiguity-refinement/00-overview.org][RFC 10.05.39 — Agent Session Host Registry Both-Valid Ambiguity Refinement]].
+
+The next formal boundary is both-valid ambiguity refinement: semantic equivalence or incompatibility witnesses for terminal captures, bounded evidence acquisition, monotone ambiguity reduction, and proof that additional evidence cannot invalidate already verified provenance roots while refining their interpretation.

@@ -10,17 +10,16 @@ use agent_semantic_client_db::{
     client_db_source_index_file_count, source_index_import_with_file_hashes,
 };
 
-use super::api::{source_index_snapshot_from_files, source_index_trace};
+use super::api::source_index_trace;
 use super::config::{
     SOURCE_INDEX_FILE_BYTES_LIMIT, SOURCE_INDEX_PROVIDER_ID, SOURCE_INDEX_SCHEMA_ID,
     SOURCE_INDEX_SCHEMA_VERSION,
 };
 use super::generation_commit::PreparedSourceIndexGeneration;
-use super::model::{SourceIndexRefreshReport, SourceIndexScopeFile};
+use super::model::SourceIndexScopeFile;
 
 pub(super) struct SourceIndexRefreshContext {
     db_path: std::path::PathBuf,
-    client_cache_dir: std::path::PathBuf,
     schema_id: SemanticSchemaId,
     schema_version: SemanticSchemaVersion,
 }
@@ -32,37 +31,9 @@ impl SourceIndexRefreshContext {
         let db_engine = ClientDbEngine::resolve(project_root)?;
         Ok(Self {
             db_path: db_engine.db_path().to_path_buf(),
-            client_cache_dir: db_engine.client_dir().to_path_buf(),
             schema_id: SemanticSchemaId::from(SOURCE_INDEX_SCHEMA_ID),
             schema_version: SemanticSchemaVersion::from(SOURCE_INDEX_SCHEMA_VERSION),
         })
-    }
-
-    pub(super) fn client_cache_dir(&self) -> &Path {
-        &self.client_cache_dir
-    }
-
-    pub(super) fn refresh_generation(
-        &mut self,
-        request: SourceIndexGenerationRefresh<'_>,
-    ) -> Result<SourceIndexRefreshReport, String> {
-        self.prepare_generation(request)?.commit()
-    }
-
-    pub(super) fn prepare_generation(
-        &self,
-        request: SourceIndexGenerationRefresh<'_>,
-    ) -> Result<PreparedSourceIndexGeneration, String> {
-        let trace_started = Instant::now();
-        let (file_hashes, _workspace_snapshot, source_snapshot, source_blobs) =
-            source_index_snapshot_from_files(request.index_root, request.files, request.registry)?;
-        self.prepare_generation_from_snapshot(
-            request,
-            file_hashes,
-            source_snapshot,
-            source_blobs,
-            trace_started,
-        )
     }
 
     pub(super) async fn prepare_generation_async(
@@ -132,6 +103,7 @@ impl SourceIndexRefreshContext {
                     &source_snapshot,
                     &refresh_request.import,
                     &source_blobs,
+                    request.project_resolutions.to_vec(),
                 )?;
         Ok(PreparedSourceIndexGeneration::new(
             self.db_path.clone(),
@@ -145,5 +117,6 @@ impl SourceIndexRefreshContext {
 pub(super) struct SourceIndexGenerationRefresh<'a> {
     pub(super) index_root: &'a Path,
     pub(super) files: &'a [SourceIndexScopeFile],
+    pub(super) project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
     pub(super) registry: &'a ProviderRegistryEvidence,
 }

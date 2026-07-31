@@ -22,7 +22,7 @@ pub(super) fn registered_resident_session_by_id(
     else {
         return Ok(None);
     };
-    let project_id = agent_semantic_client_db::AgentSessionRegistry::project_scope_id(project_root);
+    let project_id = agent_semantic_client_db::AgentSessionRegistry::workspace_id(project_root)?;
     registry.lookup_session(agent_semantic_client_db::AgentSessionLookupRequest {
         project_id: (&project_id).into(),
         session_id: Some(session_id.into()),

@@ -1,85 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-descriptor.v1.schema.json",
-  "title": "Provider Project Resolution Descriptor",
+  "title": "Provider Project Scope Descriptor",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schemaId",
-    "schemaVersion",
-    "capabilityId",
-    "entryMarkers",
-    "manifestKinds",
-    "lockfileKinds",
-    "supportsGitCandidates",
-    "supportsProviderOnly",
-    "parserId",
-    "commandBinding",
-    "candidateSnapshotSchema",
-    "packageGraphSchema",
-    "resolvedSourceScopeSchema",
-    "projectResolutionSchema"
-  ],
+  "required": ["schemaId", "schemaVersion", "capabilityId", "entryMarkers", "manifestKinds", "lockfileKinds", "parserId", "commandBinding", "requestSchema", "responseSchema", "packageGraphSchema", "projectResolutionSchema"],
   "properties": {
-    "schemaId": {
-      "const": "agent.semantic-protocols.provider-project-resolution-descriptor"
-    },
-    "schemaVersion": {
-      "const": "1"
-    },
-    "capabilityId": {
-      "const": "project-resolution"
-    },
-    "entryMarkers": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      },
-      "minItems": 1,
-      "uniqueItems": true
-    },
-    "manifestKinds": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      },
-      "minItems": 1,
-      "uniqueItems": true
-    },
-    "lockfileKinds": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      },
-      "uniqueItems": true
-    },
-    "supportsGitCandidates": {
-      "const": true
-    },
-    "supportsProviderOnly": {
-      "type": "boolean"
-    },
-    "parserId": {
-      "type": "string",
-      "minLength": 1
-    },
-    "commandBinding": {
-      "const": "project-resolution-stdin"
-    },
-    "candidateSnapshotSchema": {
-      "const": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json"
-    },
-    "packageGraphSchema": {
-      "const": "https://schemas.agent-semantic-protocols.dev/language-package-graph.v1.schema.json"
-    },
-    "resolvedSourceScopeSchema": {
-      "const": "https://schemas.agent-semantic-protocols.dev/resolved-source-scope.v1.schema.json"
-    },
-    "projectResolutionSchema": {
-      "const": "https://schemas.agent-semantic-protocols.dev/project-resolution.v1.schema.json"
-    }
+    "schemaId": { "const": "agent.semantic-protocols.provider-project-resolution-descriptor" },
+    "schemaVersion": { "const": "1" },
+    "capabilityId": { "const": "project-resolution" },
+    "entryMarkers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+    "manifestKinds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+    "lockfileKinds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "parserId": { "type": "string", "minLength": 1 },
+    "commandBinding": { "const": "project-resolution-stdin" },
+    "requestSchema": { "const": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-request.v1.schema.json" },
+    "responseSchema": { "const": "https://schemas.agent-semantic-protocols.dev/provider-project-resolution-response.v1.schema.json" },
+    "packageGraphSchema": { "const": "https://schemas.agent-semantic-protocols.dev/language-package-graph.v1.schema.json" },
+    "projectResolutionSchema": { "const": "https://schemas.agent-semantic-protocols.dev/project-resolution.v1.schema.json" }
   }
 }

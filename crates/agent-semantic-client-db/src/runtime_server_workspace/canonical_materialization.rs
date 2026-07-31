@@ -14,16 +14,32 @@ pub struct WorkspaceCanonicalMaterialization {
     pub schema_id: String,
     pub schema_version: String,
     pub workspace_identity: String,
+    pub project_root: String,
     pub workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
     pub import_digest: String,
+    pub workspace_source_scope_generation: String,
+    pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     pub file_count: u32,
     pub root_depth: [u8; 2],
     pub owners: Vec<WorkspaceOwnerSnapshot>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceCanonicalMaterializationLoad {
+    Ready(WorkspaceCanonicalMaterialization),
+    Missing,
+    Incompatible { reason: String },
+}
+
 impl WorkspaceCanonicalMaterialization {
+    pub(crate) fn canonical_project_root(
+        project_root: impl AsRef<std::path::Path>,
+    ) -> Result<String, String> {
+        crate::types::normalized_project_root(project_root.as_ref())
+    }
+
     /// Whether two materializations commit the same canonical owner generation.
     ///
     /// Source acquisition provenance may differ while the provider-bound
@@ -32,12 +48,15 @@ impl WorkspaceCanonicalMaterialization {
         self.schema_id == other.schema_id
             && self.schema_version == other.schema_version
             && self.workspace_identity == other.workspace_identity
+            && self.project_root == other.project_root
             && self.workspace_snapshot == other.workspace_snapshot
             && self
                 .source_snapshot
                 .has_same_content_identity(&other.source_snapshot)
             && self.workspace_generation == other.workspace_generation
             && self.import_digest == other.import_digest
+            && self.workspace_source_scope_generation == other.workspace_source_scope_generation
+            && self.project_resolutions == other.project_resolutions
             && self.file_count == other.file_count
             && self.root_depth == other.root_depth
             && self.owners == other.owners
@@ -72,6 +91,7 @@ impl WorkspaceCanonicalMaterialization {
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
         import: &crate::ClientDbSourceIndexImport,
         source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
+        project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     ) -> Result<Self, String> {
         let mut owners = std::collections::BTreeMap::new();
         for (owner_path, bytes) in source_blobs.iter() {
@@ -131,6 +151,7 @@ impl WorkspaceCanonicalMaterialization {
                 selector: proof.structural_selector.clone(),
                 byte_start,
                 byte_end,
+                derived_projections: Vec::new(),
             });
         }
         let mut owners = owners.into_values().collect::<Vec<_>>();
@@ -145,6 +166,7 @@ impl WorkspaceCanonicalMaterialization {
             import,
             [1, 0],
             owners,
+            project_resolutions,
         )
     }
 
@@ -154,6 +176,7 @@ impl WorkspaceCanonicalMaterialization {
         import: &crate::ClientDbSourceIndexImport,
         root_depth: [u8; 2],
         owners: Vec<WorkspaceOwnerSnapshot>,
+        project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     ) -> Result<Self, String> {
         let file_count = u32::try_from(owners.len())
             .map_err(|_| "workspace canonical materialization file count overflow".to_owned())?;
@@ -187,14 +210,19 @@ impl WorkspaceCanonicalMaterialization {
         }
         let workspace_generation =
             Self::generation_evidence(&source_snapshot, root_depth, owners.len())?;
+        let workspace_source_scope_generation =
+            agent_semantic_runtime::workspace_source_scope_generation_digest(&project_resolutions)?;
         Ok(Self {
             schema_id: WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),
             workspace_identity: workspace_identity.into(),
+            project_root: Self::canonical_project_root(&import.project_root)?,
             workspace_snapshot,
             source_snapshot,
             workspace_generation,
             import_digest: Self::typed_digest(import)?,
+            workspace_source_scope_generation,
+            project_resolutions,
             file_count,
             root_depth,
             owners,
@@ -244,6 +272,14 @@ impl WorkspaceCanonicalMaterialization {
             ));
         }
         let expected_import_digest = Self::typed_digest(import)?;
+        let expected_project_root = Self::canonical_project_root(&import.project_root)?;
+        let actual_project_root = Self::canonical_project_root(&self.project_root)?;
+        if actual_project_root != expected_project_root {
+            return Err(format!(
+                "workspace canonical materialization project root drift: expected={} actual={}",
+                expected_project_root, actual_project_root
+            ));
+        }
         if self.import_digest != expected_import_digest {
             return Err(format!(
                 "workspace canonical materialization import drift: expected={expected_import_digest} actual={}",
@@ -281,6 +317,11 @@ impl WorkspaceCanonicalMaterialization {
                 "workspace canonical materialization identity mismatch: requested={workspace_identity} materialized={}",
                 self.workspace_identity
             ));
+        }
+        if self.project_root.trim().is_empty() {
+            return Err(
+                "workspace canonical materialization project root must be non-empty".to_owned(),
+            );
         }
         if self.root_depth != [1, 0] {
             return Err("workspace canonical materialization rootDepth must be [1, 0]".to_owned());
@@ -334,6 +375,15 @@ impl WorkspaceCanonicalMaterialization {
         {
             return Err("workspace canonical materialization import digest is invalid".to_owned());
         }
+        if self.workspace_source_scope_generation
+            != agent_semantic_runtime::workspace_source_scope_generation_digest(
+                &self.project_resolutions,
+            )?
+        {
+            return Err(
+                "workspace canonical materialization ProjectResolution generation drift".to_owned(),
+            );
+        }
         Ok(())
     }
 
@@ -341,17 +391,24 @@ impl WorkspaceCanonicalMaterialization {
         let target_epoch = active_epoch
             .checked_add(1)
             .ok_or_else(|| "workspace generation epoch overflow".to_owned())?;
-        let memory_backend_digest = Self::typed_digest(&self.owners)?;
+        let memory_backend_digest = Self::typed_digest(&(
+            &self.owners,
+            &self.workspace_source_scope_generation,
+            &self.project_resolutions,
+        ))?;
         let generation_digest = Self::typed_digest(&(
             &self.workspace_identity,
+            &self.project_root,
             &self.workspace_snapshot,
             &self.source_snapshot,
             &self.workspace_generation,
             &self.import_digest,
+            &self.workspace_source_scope_generation,
             &memory_backend_digest,
         ))?;
         Ok(WorkspaceMemoryGeneration {
             workspace_identity: self.workspace_identity,
+            project_root: self.project_root,
             state: WorkspaceGenerationState::Ready,
             active_epoch: target_epoch,
             generation_digest,
@@ -360,6 +417,8 @@ impl WorkspaceCanonicalMaterialization {
             source_snapshot: self.source_snapshot,
             workspace_generation: self.workspace_generation,
             memory_backend_digest,
+            workspace_source_scope_generation: self.workspace_source_scope_generation,
+            project_resolutions: self.project_resolutions,
             owners: self.owners,
         })
     }

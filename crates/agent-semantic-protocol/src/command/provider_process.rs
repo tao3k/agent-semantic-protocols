@@ -2,6 +2,7 @@ use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
     provider_process_limits_from_environment, run_provider_process as run_transport_process,
+    run_provider_process_async as run_transport_process_async,
 };
 use agent_semantic_runtime::project_state_paths;
 use std::collections::BTreeMap;
@@ -115,6 +116,30 @@ pub(super) fn run_provider_command_with_stdin(
     )
 }
 
+pub(super) async fn run_provider_command_with_stdin_async(
+    language_id: &str,
+    provider: &ActivatedProvider,
+    invocation: &[String],
+    project_root: &Path,
+    stdin: Vec<u8>,
+) -> Result<ProviderProcessOutput, String> {
+    let limits = default_provider_process_limits()?;
+    let (program, forwarded) = invocation
+        .split_first()
+        .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
+    run_provider_process_with_stdin_async(ProviderProcessRun {
+        language_id,
+        provider_id: provider.provider_id.as_str(),
+        execution_command_digest: &provider.execution_command_digest,
+        program,
+        forwarded,
+        project_root,
+        limits,
+        stdin: StdinMode::bytes(stdin),
+    })
+    .await
+}
+
 pub(super) fn run_provider_command_with_stdin_limits(
     language_id: &str,
     provider: &ActivatedProvider,
@@ -199,6 +224,24 @@ struct ProviderProcessRun<'a> {
 fn run_provider_process_with_stdin(
     request: ProviderProcessRun<'_>,
 ) -> Result<ProviderProcessOutput, String> {
+    let (spec, language_id, provider_id) = provider_process_spec(request)?;
+    run_transport_process(spec).map_err(|error| {
+        format!("failed to run provider `{provider_id}` for language `{language_id}`: {error}")
+    })
+}
+
+async fn run_provider_process_with_stdin_async(
+    request: ProviderProcessRun<'_>,
+) -> Result<ProviderProcessOutput, String> {
+    let (spec, language_id, provider_id) = provider_process_spec(request)?;
+    run_transport_process_async(spec).await.map_err(|error| {
+        format!("failed to run provider `{provider_id}` for language `{language_id}`: {error}")
+    })
+}
+
+fn provider_process_spec(
+    request: ProviderProcessRun<'_>,
+) -> Result<(ProviderProcessSpec, String, String), String> {
     let ProviderProcessRun {
         language_id,
         provider_id,
@@ -233,22 +276,20 @@ fn run_provider_process_with_stdin(
         envs.insert("PATH".to_string(), path.to_string_lossy().to_string());
     }
 
-    run_transport_process(ProviderProcessSpec {
-        program: resolve_provider_program(program, project_root),
-        args: forwarded.to_vec(),
-        cwd: project_root.to_path_buf(),
-        env: envs,
-        stdin,
-        stdout: OutputMode::Capture,
-        stderr: OutputMode::Capture,
-        limits,
-    })
-    .map_err(|error| {
-        format!(
-            "failed to run provider `{}` for language `{language_id}`: {error}",
-            provider_id
-        )
-    })
+    Ok((
+        ProviderProcessSpec {
+            program: resolve_provider_program(program, project_root),
+            args: forwarded.to_vec(),
+            cwd: project_root.to_path_buf(),
+            env: envs,
+            stdin,
+            stdout: OutputMode::Capture,
+            stderr: OutputMode::Capture,
+            limits,
+        },
+        language_id.to_owned(),
+        provider_id.to_owned(),
+    ))
 }
 
 fn resolve_provider_program(program: &str, project_root: &Path) -> String {

@@ -184,7 +184,7 @@ pub async fn refresh_turso_source_index_import_on_connection(
     source_index_db_trace("source-index-schema-verified", trace_started);
     let file_hashes_json = serde_json::to_string(&import.file_hashes)
         .map_err(|error| format!("failed to serialize Turso source-index file hashes: {error}"))?;
-    let project_root = normalized_project_root(&import.project_root);
+    let project_root = normalized_project_root(&import.project_root)?;
     let current_file_hashes = import
         .file_hashes
         .iter()
@@ -275,6 +275,7 @@ pub async fn refresh_turso_source_index_import_on_connection(
         match super::materialization::load_workspace_generation_materialization(
             connection,
             materialization.workspace_identity.as_str(),
+            project_root.as_str(),
             import.schema_id.as_str(),
             import.schema_version.as_str(),
             refresh.generation_id.as_str(),
@@ -342,41 +343,6 @@ pub async fn refresh_turso_source_index_import_on_connection(
     })
 }
 
-pub async fn commit_turso_source_index_generation_via_runtime_server(
-    request: ClientDbSourceIndexRefreshRequest,
-    materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
-) -> Result<ClientDbSourceIndexRefreshReport, String> {
-    let project_root = request.import.project_root.clone();
-    let session =
-        crate::workspace_db_ipc::connect_runtime_server_workspace_session(&project_root).await?;
-    session
-        .commit_source_index_generation(&request, materialization)
-        .await
-}
-
-pub(crate) async fn commit_turso_source_index_generation_in_fixture(
-    db_path: &Path,
-    request: ClientDbSourceIndexRefreshRequest,
-    materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
-) -> Result<ClientDbSourceIndexRefreshReport, String> {
-    crate::engine::turso_bootstrap::bootstrap_turso_client_db(db_path).await?;
-    let mut connection = connect_turso_client_db(db_path).await?;
-    refresh_turso_source_index_import_on_connection(&mut connection, request, materialization).await
-}
-
-pub(crate) async fn load_active_workspace_generation_materialization_in_fixture(
-    db_path: &Path,
-    workspace_identity: &str,
-) -> Result<Option<crate::runtime_server_workspace::WorkspaceCanonicalMaterialization>, String> {
-    crate::engine::turso_bootstrap::bootstrap_turso_client_db(db_path).await?;
-    let connection = connect_turso_client_db(db_path).await?;
-    super::materialization::load_active_workspace_generation_materialization(
-        &connection,
-        workspace_identity,
-    )
-    .await
-}
-
 pub async fn latest_turso_source_index_file_hashes(
     db_path: &Path,
     project_root: &Path,
@@ -411,7 +377,7 @@ pub async fn latest_turso_source_index_stats(
     })?;
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
-    let normalized_project_root = normalized_project_root(project_root);
+    let normalized_project_root = normalized_project_root(project_root)?;
     if !turso_source_index_projection_ready(
         &connection,
         normalized_project_root.as_str(),
@@ -482,7 +448,7 @@ pub async fn lookup_reusable_turso_source_index_generation(
     }
     let file_hashes_json = serde_json::to_string(file_hashes)
         .map_err(|error| format!("failed to serialize Turso source-index file hashes: {error}"))?;
-    let project_root = normalized_project_root(project_root);
+    let project_root = normalized_project_root(project_root)?;
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
     let mut rows = run_turso_operation(
@@ -551,7 +517,7 @@ async fn latest_turso_source_index_generation(
     if !db_path.exists() {
         return Ok(None);
     }
-    let project_root = normalized_project_root(project_root);
+    let project_root = normalized_project_root(project_root)?;
     let connection = connect_turso_client_db(db_path).await?;
     ensure_turso_source_index_schema(&connection).await?;
     super::generation_snapshot::latest_turso_source_index_generation_on_connection(

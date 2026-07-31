@@ -13,9 +13,9 @@ fn digest(seed: u8) -> String {
 }
 
 struct TestContext {
-    _environment: std::sync::MutexGuard<'static, ()>,
-    _temp: TestDir,
     _state_home: StateHomeGuard,
+    _temp: TestDir,
+    _environment: std::sync::MutexGuard<'static, ()>,
     registry: WorkspaceDbRegistry,
     session: ProviderSearchWorkspaceSession,
     scope: ProviderIncrementalScoped,
@@ -38,9 +38,9 @@ impl TestContext {
             .await
             .expect("acquire Tree-sitter workspace session");
         Self {
-            _environment: environment,
-            _temp: temp,
             _state_home: state_home,
+            _temp: temp,
+            _environment: environment,
             registry,
             session,
             scope,

@@ -17,20 +17,16 @@ use agent_semantic_client_core::{
     StateLayout,
 };
 use agent_semantic_client_db::{ClientDbEngine, ClientDbEngineReport, ClientDbReport};
-use agent_semantic_runtime::{RuntimeSourceSpec, ensure_runtime_source_checkout_in_client_cache};
 use serde_json::json;
 
 use super::source_index_evidence::{
-    source_index_lookup_artifact_evidence, source_index_refresh_artifact_evidence,
+    source_index_lookup_artifact_evidence,
 };
 use super::structural_index_import::import_structural_index_artifacts;
 use crate::source_index::{
-    SourceIndexLookupRequest, lookup_source_index_in_cache, refresh_runtime_source_index,
-    refresh_source_index,
+    SourceIndexLookupRequest, lookup_source_index_in_cache,
 };
 
-const SOURCE_INDEX_REFRESH_INDEX_OWNER: &str = "db-engine";
-const SOURCE_INDEX_REFRESH_PHASE: &str = "source-index-db-engine";
 
 pub(crate) fn run_cache(
     project_root: &Path,
@@ -41,86 +37,6 @@ pub(crate) fn run_cache(
     match forwarded_args {
         [subcommand, rest @ ..] if subcommand == "migrate" => {
             super::run_cache_migration(project_root, rest, receipt_json)
-        }
-        [subcommand, action, rest @ ..]
-            if subcommand == "runtime-source" && action == "acquire" =>
-        {
-            let spec = parse_runtime_source_acquire_args(rest)?;
-            let state_layout = cache_state_layout(project_root)?;
-            let checkout =
-                ensure_runtime_source_checkout_in_client_cache(state_layout.client_cache_dir(), &spec)?;
-            let source_index_report = refresh_runtime_source_index(
-                project_root,
-                &checkout.checkout_dir,
-                &LanguageId::from(checkout.language_id.as_str()),
-                &ProviderId::from(checkout.index_owner.as_str()),
-            )?;
-            println!(
-                "[asp-cache-runtime-source] status=ready language={} stateNamespace={} checkout={} statePathPolicy=asp-state-managed indexOwner={} sourceIndex=refreshed indexGeneration={} reused={} files={} owners={} selectors={} snapshotRoot={} providerDigest={} indexArtifactDigest={} rawSourceStored=false",
-                checkout.language_id,
-                checkout.state_namespace,
-                checkout.checkout,
-                checkout.index_owner,
-                source_index_report.generation_id(),
-                source_index_report.reused_generation(),
-                source_index_report.file_count(),
-                source_index_report.owner_count(),
-                source_index_report.selector_count(),
-                source_index_report.source_snapshot().root_digest.as_str(),
-                source_index_report.source_snapshot().provider_digest.as_str(),
-                source_index_report.index_artifact_digest()
-            );
-            println!(
-                "|sourceRef manager=git repository={} checkout={}",
-                checkout.repository, checkout.checkout
-            );
-            println!(
-                "|acquisition owner=asp operation=clone-or-fetch-checkout-index checkoutDir={} indexOwner={}",
-                checkout.checkout_dir.display(),
-                checkout.index_owner
-            );
-            println!(
-                "|sourceIndex db={} generation={} reused={} projectRoot={} snapshotRoot={} providerDigest={} indexArtifactDigest={} rawSourceStored=false",
-                source_index_report.db_path().display(),
-                source_index_report.generation_id(),
-                source_index_report.reused_generation(),
-                checkout.checkout_dir.display(),
-                source_index_report.source_snapshot().root_digest.as_str(),
-                source_index_report.source_snapshot().provider_digest.as_str(),
-                source_index_report.index_artifact_digest()
-            );
-            println!("next=asp cache import");
-            if receipt_json {
-                let receipt = json!({
-                    "schemaId": "agent.semantic-protocols.semantic-runtime-source-acquisition.receipt",
-                    "schemaVersion": "1",
-                    "status": "ready",
-                    "languageId": checkout.language_id,
-                    "repository": checkout.repository,
-                    "checkout": checkout.checkout,
-                    "stateNamespace": checkout.state_namespace,
-                    "statePathPolicy": "asp-state-managed",
-                    "indexOwner": checkout.index_owner,
-                    "checkoutDir": checkout.checkout_dir.display().to_string(),
-                    "sourceIndex": {
-                        "status": "refreshed",
-                        "dbPath": source_index_report.db_path().display().to_string(),
-                        "generationId": source_index_report.generation_id().to_string(),
-                        "reused": source_index_report.reused_generation(),
-                        "fileCount": source_index_report.file_count(),
-                        "ownerCount": source_index_report.owner_count(),
-                        "selectorCount": source_index_report.selector_count(),
-                        "sourceSnapshot": source_index_report.source_snapshot(),
-                        "indexArtifactDigest": source_index_report.index_artifact_digest(),
-                        "artifactEvidence": source_index_refresh_artifact_evidence(&source_index_report),
-                        "rawSourceStored": false,
-                        "projectRoot": checkout.checkout_dir.display().to_string()
-                    },
-                    "next": "asp cache import"
-                });
-                eprintln!("{receipt}");
-            }
-            Ok(())
         }
         [subcommand, rest @ ..] if subcommand == "gc" => {
             super::project_registry_gc_command::run_project_registry_gc(
@@ -232,125 +148,6 @@ pub(crate) fn run_cache(
             if receipt_json {
                 let receipt = serde_json::to_string(&receipt)
                     .map_err(|error| format!("failed to serialize receipt: {error}"))?;
-                eprintln!("{receipt}");
-            }
-            Ok(())
-        }
-        [subcommand, action, rest @ ..] if subcommand == "source-index" && action == "rebuild" => {
-            let refresh_project_root = parse_cache_workspace(project_root, rest)?;
-            let report = crate::source_index::rebuild_source_index(&refresh_project_root)?;
-            println!(
-                "[asp-cache-source-index] status=rebuilt route=local-cache db={} generation={} reused={} files={} owners={} selectors={} snapshotRoot={} providerDigest={} indexArtifactDigest={} rawSourceStored=false indexOwner={}",
-                report.db_path().display(),
-                report.generation_id(),
-                report.reused_generation(),
-                report.file_count(),
-                report.owner_count(),
-                report.selector_count(),
-                report.source_snapshot().root_digest.as_str(),
-                report.source_snapshot().provider_digest.as_str(),
-                report.index_artifact_digest(),
-                source_index_refresh_index_owner()
-            );
-            println!(
-                "|reason phase={} action=rebuild providerCommands=0",
-                source_index_refresh_phase()
-            );
-            if receipt_json {
-                let receipt = json!({
-                    "schemaId": "agent.semantic-protocols.semantic-source-index.refresh-receipt",
-                    "schemaVersion": "1",
-                    "status": "rebuilt",
-                    "route": "local-cache",
-                    "dbPath": report.db_path().display().to_string(),
-                    "generationId": report.generation_id().to_string(),
-                    "reused": report.reused_generation(),
-                    "fileCount": report.file_count(),
-                    "ownerCount": report.owner_count(),
-                    "selectorCount": report.selector_count(),
-                    "sourceSnapshot": report.source_snapshot(),
-                    "indexArtifactDigest": report.index_artifact_digest(),
-                    "artifactEvidence": source_index_refresh_artifact_evidence(&report),
-                    "rawSourceStored": false,
-                    "indexOwner": source_index_refresh_index_owner()
-                });
-                eprintln!("{receipt}");
-            }
-            Ok(())
-        }
-        [subcommand, action, rest @ ..] if subcommand == "source-index" && action == "refresh" => {
-            let refresh_project_root = parse_cache_workspace(project_root, rest)?;
-            let Some(report) = refresh_source_index(&refresh_project_root)? else {
-                println!(
-                    "[asp-cache-source-index] status=cold-required route=local-cache db=- generation=- reused=false files=0 owners=0 selectors=0 snapshotRoot=- providerDigest=- indexArtifactDigest=- rawSourceStored=false indexOwner={}",
-                    source_index_refresh_index_owner()
-                );
-                println!(
-                    "|reason phase={} action=refresh state=no-reusable-generation providerCommands=0",
-                    source_index_refresh_phase()
-                );
-                println!(
-                    "next=asp cache source-index rebuild --workspace {}",
-                    refresh_project_root.display()
-                );
-                if receipt_json {
-                    let receipt = json!({
-                        "schemaId": "agent.semantic-protocols.semantic-source-index.refresh-receipt",
-                        "schemaVersion": "1",
-                        "status": "cold-required",
-                        "route": "local-cache",
-                        "dbPath": null,
-                        "generationId": null,
-                        "reused": false,
-                        "fileCount": 0,
-                        "ownerCount": 0,
-                        "selectorCount": 0,
-                        "sourceSnapshot": null,
-                        "indexArtifactDigest": null,
-                        "artifactEvidence": null,
-                        "rawSourceStored": false,
-                        "indexOwner": source_index_refresh_index_owner(),
-                        "next": "asp cache source-index rebuild"
-                    });
-                    eprintln!("{receipt}");
-                }
-                return Ok(());
-            };
-            println!(
-                "[asp-cache-source-index] status=refreshed route=local-cache db={} generation={} reused={} files={} owners={} selectors={} snapshotRoot={} providerDigest={} indexArtifactDigest={} rawSourceStored=false indexOwner={}",
-                report.db_path().display(),
-                report.generation_id(),
-                report.reused_generation(),
-                report.file_count(),
-                report.owner_count(),
-                report.selector_count(),
-                report.source_snapshot().root_digest.as_str(),
-                report.source_snapshot().provider_digest.as_str(),
-                report.index_artifact_digest(),
-                source_index_refresh_index_owner()
-            );
-            println!(
-                "|reason phase={} action=refresh providerCommands=0",
-                source_index_refresh_phase()
-            );
-            if receipt_json {
-                let receipt = json!({
-                    "schemaId": "agent.semantic-protocols.semantic-source-index.refresh-receipt",
-                    "schemaVersion": "1",
-                    "status": "refreshed",
-                    "route": "local-cache",
-                    "dbPath": report.db_path().display().to_string(),
-                    "generationId": report.generation_id().to_string(),
-                    "reused": report.reused_generation(),
-                    "fileCount": report.file_count(),
-                    "ownerCount": report.owner_count(),
-                    "selectorCount": report.selector_count(),
-                    "sourceSnapshot": report.source_snapshot(),
-                    "indexArtifactDigest": report.index_artifact_digest(),
-                    "artifactEvidence": source_index_refresh_artifact_evidence(&report),
-                    "rawSourceStored": false,
-                    "indexOwner": source_index_refresh_index_owner()
-                });
                 eprintln!("{receipt}");
             }
             Ok(())
@@ -583,36 +380,12 @@ pub(crate) fn run_cache(
             Ok(())
         }
         _ => Err(
-            "usage: asp cache <status|gc [--grace-days <n>] [--apply]|import|source-index refresh [--workspace <path>]|source-index rebuild [--workspace <path>]|source-index lookup --query <term> [--index-root <path>] [--index-owner <provider>] [--limit <n>]|invalidate|flush [syntax-rows]|runtime-source acquire --language-id <id> --repository <url> --checkout <ref> --state-namespace <namespace> --index-owner <owner>> [--workspace <path>]; use asp <language> cache source-index lookup ... for language-scoped lookup"
+            "usage: asp cache <status|gc [--grace-days <n>] [--apply]|import|source-index lookup --query <term> [--index-root <path>] [--index-owner <provider>] [--limit <n>]|invalidate|flush [syntax-rows]>; use asp <language> cache source-index lookup ... for language-scoped lookup"
                 .to_string(),
         ),
     }
 }
 
-fn parse_cache_workspace(project_root: &Path, args: &[String]) -> Result<PathBuf, String> {
-    let mut workspace = None;
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--workspace" => workspace = Some(next_flag_value("--workspace", &mut iter)?),
-            other => {
-                return Err(format!(
-                    "unexpected cache source-index refresh argument: {other}"
-                ));
-            }
-        }
-    }
-    Ok(workspace
-        .map(PathBuf::from)
-        .map(|path| {
-            if path.is_absolute() {
-                path
-            } else {
-                project_root.join(path)
-            }
-        })
-        .unwrap_or_else(|| project_root.to_path_buf()))
-}
 
 struct SourceIndexLookupSpec {
     query: String,
@@ -664,38 +437,6 @@ fn parse_source_index_lookup_args(
     })
 }
 
-fn parse_runtime_source_acquire_args(args: &[String]) -> Result<RuntimeSourceSpec, String> {
-    let mut language_id = None;
-    let mut repository = None;
-    let mut checkout = None;
-    let mut state_namespace = None;
-    let mut index_owner = None;
-    let mut iter = args.iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            "--language-id" => language_id = Some(next_flag_value("--language-id", &mut iter)?),
-            "--repository" => repository = Some(next_flag_value("--repository", &mut iter)?),
-            "--checkout" => checkout = Some(next_flag_value("--checkout", &mut iter)?),
-            "--state-namespace" => {
-                state_namespace = Some(next_flag_value("--state-namespace", &mut iter)?);
-            }
-            "--index-owner" => index_owner = Some(next_flag_value("--index-owner", &mut iter)?),
-            other => {
-                return Err(format!(
-                    "unexpected runtime-source acquire argument: {other}"
-                ));
-            }
-        }
-    }
-    Ok(RuntimeSourceSpec {
-        language_id: language_id.ok_or_else(|| "--language-id is required".to_string())?,
-        repository: repository.ok_or_else(|| "--repository is required".to_string())?,
-        checkout: checkout.ok_or_else(|| "--checkout is required".to_string())?,
-        state_namespace: state_namespace
-            .ok_or_else(|| "--state-namespace is required".to_string())?,
-        index_owner: index_owner.ok_or_else(|| "--index-owner is required".to_string())?,
-    })
-}
 
 fn next_flag_value<'a>(
     flag: &str,
@@ -711,13 +452,6 @@ fn next_flag_value<'a>(
     }
 }
 
-pub(crate) fn source_index_refresh_index_owner() -> &'static str {
-    SOURCE_INDEX_REFRESH_INDEX_OWNER
-}
-
-pub(crate) fn source_index_refresh_phase() -> &'static str {
-    SOURCE_INDEX_REFRESH_PHASE
-}
 
 fn clear_manifest_generations(
     cache_report: &CacheManifestReport,

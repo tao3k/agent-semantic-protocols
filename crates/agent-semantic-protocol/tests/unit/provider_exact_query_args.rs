@@ -15,7 +15,12 @@ fn accepts_only_the_typed_exact_projection_surface() {
         "source",
     ]))
     .expect("typed exact query");
+    assert_eq!(
+        parsed.structural_selector,
+        "rust://src/lib.rs#item/function/run"
+    );
     assert_eq!(parsed.projection, "source");
+    assert!(!parsed.json);
 }
 
 #[test]

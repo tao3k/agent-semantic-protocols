@@ -1,5 +1,6 @@
 use agent_semantic_hook::{
-    HookActivation, build_default_activation, load_or_sync_activation,
+    ActivationAdmissionDecision, ActivationAdmissionReason, HookActivation,
+    build_default_activation, load_or_refresh_default_activation, load_or_sync_activation,
     materialize_active_asp_artifact_receipt_for_current_process,
     verify_active_asp_artifact_receipt, write_activation,
 };
@@ -15,7 +16,8 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
     let root = temp_root("stale-coverage-defaults");
     super::git_init(&root);
     fs::create_dir_all(root.join("src")).expect("create Rust source root");
-    let state_home = root.join(".asp-state-home");
+    let state_parent = temp_root("stale-coverage-defaults-state");
+    let state_home = state_parent.join(".agent-semantic-protocols");
     let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
     fs::write(
         root.join("Cargo.toml"),
@@ -25,7 +27,7 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
     fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
     super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
 
-    let activation_path = test_activation_path(&root, &root);
+    let activation_path = test_activation_path(&root, &state_parent);
     let mut activation = build_default_activation(&root).expect("build activation");
     let rust_provider = activation
         .providers
@@ -69,6 +71,158 @@ fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
         refreshed_rust_provider.coverage.config_files, expected_config_files,
         "activation sync should durably refresh manifest config files"
     );
+    let unchanged = load_or_refresh_default_activation(&activation_path, &root)
+        .expect("unchanged typed candidate generation should reuse activation");
+    assert_eq!(unchanged.status, "reused");
+    assert_eq!(
+        unchanged.admission.decision,
+        ActivationAdmissionDecision::Reuse
+    );
+    assert_eq!(
+        unchanged.admission.reason,
+        ActivationAdmissionReason::CompleteIdentity
+    );
+    let admission_schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../schemas/activation-admission-receipt.v1.schema.json"
+    ))
+    .expect("valid activation admission schema");
+    let admission_json =
+        serde_json::to_value(unchanged.admission).expect("serialize activation admission receipt");
+    jsonschema::validator_for(&admission_schema)
+        .expect("compile activation admission schema")
+        .validate(&admission_json)
+        .expect("reuse admission receipt satisfies schema");
+
+    fs::remove_dir_all(root).expect("remove temp root");
+    fs::remove_dir_all(state_parent).expect("remove temp state parent");
+}
+
+#[test]
+fn missing_generated_activation_is_rebuilt_without_stale_fallback() {
+    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let root = temp_root("missing-generated-activation");
+    super::git_init(&root);
+    fs::create_dir_all(root.join("src")).expect("create Rust source root");
+    let state_home = root.join(".asp-state-home");
+    let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write cargo manifest");
+    fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
+    super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+
+    let activation_path = test_activation_path(&root, &root);
+    assert!(!activation_path.exists());
+    let sync = load_or_refresh_default_activation(&activation_path, &root)
+        .expect("missing activation should rebuild from typed provider and Git state");
+    assert_eq!(sync.status, "created");
+    assert_eq!(
+        sync.admission.decision,
+        ActivationAdmissionDecision::RebuildAndPublish
+    );
+    assert_eq!(
+        sync.admission.reason,
+        ActivationAdmissionReason::ActivationMissing
+    );
+    assert!(activation_path.is_file());
+    assert!(
+        sync.activation
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == "rust")
+    );
+
+    fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn generated_activation_rebuild_failure_does_not_serve_old_activation() {
+    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let root = temp_root("failed-rebuild-no-stale-fallback");
+    super::git_init(&root);
+    fs::create_dir_all(root.join("src")).expect("create Rust source root");
+    let state_home = root.join(".asp-state-home");
+    let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write cargo manifest");
+    fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
+    let provider_bin =
+        super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+
+    let activation_path = test_activation_path(&root, &root);
+    load_or_sync_activation(&activation_path, &root).expect("create initial activation");
+    assert!(activation_path.is_file());
+
+    fs::remove_file(&provider_bin).expect("remove active provider to force rebuild failure");
+    let error = load_or_sync_activation(&activation_path, &root)
+        .expect_err("failed rebuild must not return the previously persisted activation");
+    assert!(
+        error.contains("provider") || error.contains("installed"),
+        "unexpected rebuild error: {error}"
+    );
+
+    fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn generated_activation_sync_admits_a_newly_installed_nested_provider() {
+    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let root = temp_root("newly-installed-nested-provider");
+    super::git_init(&root);
+    fs::create_dir_all(root.join("src")).expect("create Rust source root");
+    let python_root = root.join("packages").join("python");
+    fs::create_dir_all(python_root.join("src")).expect("create Python source root");
+    let state_home = root.join(".asp-state-home");
+    let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write cargo manifest");
+    fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
+    fs::write(
+        python_root.join("pyproject.toml"),
+        "[project]\nname = \"sample-python\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write Python manifest");
+    fs::write(
+        python_root.join("src").join("fixture.py"),
+        "def fixture():\n    return 1\n",
+    )
+    .expect("write Python candidate");
+    super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+
+    let activation_path = test_activation_path(&root, &root);
+    let initial =
+        load_or_sync_activation(&activation_path, &root).expect("create initial activation");
+    assert!(
+        initial
+            .providers
+            .iter()
+            .all(|provider| provider.language_id != "python")
+    );
+
+    super::install_state_home_provider(&state_home, "python", "py-harness", "py-harness");
+    let refreshed =
+        load_or_sync_activation(&activation_path, &root).expect("refresh provider generation");
+    let python = refreshed
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == "python")
+        .expect("newly installed Python provider activated");
+    assert_eq!(python.package_roots, ["packages/python/src"]);
+    assert_eq!(python.config_files, ["packages/python/pyproject.toml"]);
 
     fs::remove_dir_all(root).expect("remove temp root");
 }

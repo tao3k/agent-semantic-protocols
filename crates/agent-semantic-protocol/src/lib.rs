@@ -6,6 +6,7 @@ mod cli;
 mod command;
 mod exact_projection_diagnostic;
 mod exact_projection_diagnostic_io;
+mod exact_projection_trace;
 mod resident_exact_projection;
 pub use agent_semantic_context_product as context_product_state;
 

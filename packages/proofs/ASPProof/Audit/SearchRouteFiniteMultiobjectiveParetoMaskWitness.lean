@@ -1,0 +1,27 @@
+import ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness
+
+namespace ASPProof.Audit.SearchRouteFiniteMultiobjectiveParetoMaskWitness
+
+open ASPProof.SearchRouteFiniteMultiobjectiveParetoMaskWitness
+
+#print axioms findDominator_some_is_sound
+#print axioms findDominator_none_excludes_dominator
+#print axioms kept_candidate_findDominator_none
+#print axioms findDominator_none_candidate_kept
+#print axioms kept_candidate_is_undominated
+#print axioms undominated_candidate_is_kept
+#print axioms removed_candidate_has_dominating_witness
+#print axioms natLt_is_irreflexive
+#print axioms strictlyImproves_is_irreflexive
+#print axioms equal_cost_does_not_strictly_dominate
+#print axioms strict_dominance_is_irreflexive
+#print axioms equal_cost_distinct_routes_are_both_kept
+#print axioms adjacent_swap_preserves_keep_mask
+#print axioms candidate_permutation_preserves_keep_mask
+#print axioms faster_route_strictly_dominates_slower_route
+#print axioms slower_route_is_removed_with_faster_witness
+#print axioms direct_dominating_witness_may_itself_be_removed
+#print axioms dominance_witness_receipt_is_capacity_bounded
+#print axioms summarized_dominance_receipt_is_removed_count_independent
+
+end ASPProof.Audit.SearchRouteFiniteMultiobjectiveParetoMaskWitness

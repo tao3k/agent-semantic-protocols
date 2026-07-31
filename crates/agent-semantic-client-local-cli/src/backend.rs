@@ -146,6 +146,23 @@ impl LocalNativeCliBackend {
                 )
             })?;
         let path = state_home.join("runtime").join("bin").join(binary);
+        if !path.try_exists().map_err(|error| {
+            format!(
+                "inspect provider binary `{}` for language `{}` at `{}`: {error}",
+                provider.binary,
+                provider.language_id,
+                path.display()
+            )
+        })? {
+            return Err(format!(
+                "provider binary `{}` for language `{}` is missing from `$ASP_STATE_HOME/runtime/bin/{}` (resolved path `{}`); run `asp install language {}`",
+                provider.binary,
+                provider.language_id,
+                provider.binary,
+                path.display(),
+                provider.language_id
+            ));
+        }
         Ok(path.to_string_lossy().to_string())
     }
 

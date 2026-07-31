@@ -1,0 +1,27 @@
+import ASPProof.AgentSessionLifecycleLeaseRenewalClockAuthority
+
+open ASPProof.AgentSessionLifecycleLeaseRenewalClockAuthority
+
+#print axioms valid_renewal_binds_epoch
+#print axioms valid_renewal_binds_revision
+#print axioms valid_renewal_binds_clock_epoch
+#print axioms valid_renewal_binds_capability_digest
+#print axioms valid_renewal_strictly_extends_expiry
+#print axioms valid_renewal_uses_authority_time_before_expiry
+#print axioms renewed_lease_preserves_generation
+#print axioms renewed_lease_preserves_fencing_epoch
+#print axioms renewed_lease_advances_revision
+#print axioms renewed_lease_uses_requested_expiry
+#print axioms stale_epoch_rejects_renewal
+#print axioms stale_revision_rejects_renewal
+#print axioms stale_clock_epoch_rejects_renewal
+#print axioms capability_drift_rejects_renewal
+#print axioms expired_lease_cannot_be_renewed
+#print axioms replayed_old_revision_receipt_is_rejected
+#print axioms local_clock_cannot_change_renewal_validity
+#print axioms renewal_ledger_has_one_receipt_per_nonce
+#print axioms renewal_ledger_rejects_expiry_conflict
+#print axioms valid_inflight_dispatch_survives_expiry_extension
+#print axioms renewal_does_not_change_dispatch_identity
+#print axioms renewal_does_not_change_dispatch_generation
+#print axioms renewal_does_not_change_dispatch_fencing_epoch

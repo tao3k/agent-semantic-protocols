@@ -60,9 +60,10 @@ mod test_process_env;
 mod tool_action;
 
 pub use crate::activation_store::{
-    DefaultActivationSync, default_activation_path, discover_activation_path, load_activation,
-    load_or_refresh_default_activation, load_or_sync_activation, parse_hook_activation,
-    write_activation,
+    ActivationAdmissionDecision, ActivationAdmissionGates, ActivationAdmissionReason,
+    ActivationAdmissionReceipt, DefaultActivationSync, default_activation_path,
+    discover_activation_path, load_activation, load_or_refresh_default_activation,
+    load_or_sync_activation, parse_hook_activation, write_activation,
 };
 pub use crate::active_artifact_receipt::{
     ActiveAspArtifactInput, ActiveAspArtifactMaterialization, active_asp_artifact_receipt_path,

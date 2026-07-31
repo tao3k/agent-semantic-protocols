@@ -74,6 +74,7 @@ pub(in crate::engine) async fn bootstrap_turso_source_index_schema(
             updated_at_ms INTEGER NOT NULL,
             PRIMARY KEY (
                 workspace_identity,
+                project_root,
                 source_index_schema_id,
                 source_index_schema_version,
                 generation_id

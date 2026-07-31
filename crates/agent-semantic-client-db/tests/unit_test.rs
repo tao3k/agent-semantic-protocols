@@ -30,6 +30,8 @@ mod provider_incremental_probe_batch;
 mod provider_treesitter_read;
 #[path = "unit/runtime_server_control.rs"]
 mod runtime_server_control;
+#[path = "unit/runtime_server_diagnostics.rs"]
+mod runtime_server_diagnostics;
 #[path = "unit/runtime_server_generation_admission.rs"]
 mod runtime_server_generation_admission;
 #[path = "unit/runtime_server_overlay_admission.rs"]
@@ -40,6 +42,8 @@ mod runtime_server_runtime;
 mod runtime_server_workspace;
 #[path = "unit/runtime_server_workspace_recovery.rs"]
 mod runtime_server_workspace_recovery;
+#[path = "unit/runtime_server_workspace_resident.rs"]
+mod runtime_server_workspace_resident;
 #[path = "unit/selector_generation_evidence.rs"]
 mod selector_generation_evidence;
 #[path = "unit/db/snapshot_fixture.rs"]

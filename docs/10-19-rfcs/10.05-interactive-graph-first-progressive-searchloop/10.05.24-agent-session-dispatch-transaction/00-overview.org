@@ -1,0 +1,604 @@
+#+title: RFC 10.05.24 — ASP Agent Session Dispatch Transaction
+#+startup: overview
+
+* Status
+
+Draft.
+
+This module refines RFC 10.05.23.  It replaces the insufficient rule
+"atomically consume the turn with dispatch admission" with a crash-safe,
+idempotency-keyed dispatch transaction.
+
+Bounded background retry, quarantine, and conditional liveness are refined by
+[[file:../10.05.25-agent-session-dispatch-recovery/00-overview.org][RFC 10.05.25 — ASP Agent Session Dispatch Recovery]].
+
+* Formalization-discovered defect
+
+Turn consumption and external native dispatch cannot be made atomic by a local
+Session database transaction alone.
+
+Two naive orderings both fail:
+
+1. =consume -> crash -> dispatch= loses the admitted task because recovery sees
+   a consumed turn with no host effect.
+2. =dispatch -> crash -> consume -> replay= can dispatch twice because recovery
+   cannot distinguish a lost local acknowledgement from an unperformed host
+   effect.
+
+#+name: naive-dispatch-crash-windows
+#+begin_src typst
+#let consume-first = (
+  consumed: true,
+  dispatch-count: 0,
+)
+
+#let dispatch-first-replay = (
+  consumed: false,
+  dispatch-count: 2,
+)
+
+#assert(consume-first.consumed)
+#assert(consume-first.dispatch-count == 0)
+#assert(dispatch-first-replay.dispatch-count == 2)
+
+$ "ConsumeFirstLoss" = (1, 0) $
+$ "DispatchFirstDuplicate" = (0, 2) $
+
+"ok"
+#+end_src
+
+=ASP-RFC-10.05-ASDT-NAIVE=: Neither consume-first nor dispatch-first is an
+acceptable implementation of exactly-once native dispatch.
+
+* Guarantee boundary
+
+This RFC distinguishes three different claims:
+
+- =exactly-once admission=: one Session revision reserves a turn once;
+- =exactly-once dispatch effect=: the Host Runtime accepts one stable dispatch
+  key at most once while allowing retries; and
+- =exactly-once task effect=: the child task's external business effects occur
+  once.
+
+The dispatch transaction can prove the first two only when the Host Runtime
+supports idempotent acceptance or authoritative status lookup by dispatch key.
+It cannot prove exactly-once task effects.  Those require task-owned
+idempotency, a transactional receiver, or compensating semantics.
+
+Without Host Runtime deduplication, a durable outbox provides retryable
+at-least-once dispatch attempts, not exactly-once dispatch effects.
+
+#+name: dispatch-guarantee-lattice
+#+begin_src typst
+#table(
+  columns: 3,
+  [Mechanism], [Proven guarantee], [Not proven],
+  [Session revision CAS], [exactly-once admission], [host dispatch effect],
+  [durable outbox only], [retryable at-least-once attempt], [exactly-once effect],
+  [outbox + host key dedup], [exactly-once dispatch effect], [task business effect],
+  [task idempotency], [task-defined effect boundary], [unrelated external systems],
+)
+
+"ok"
+#+end_src
+
+* Stable dispatch identity
+
+=ASP-RFC-10.05-ASDT-KEY=: Every dispatch transaction has an immutable key:
+
+#+begin_example
+DispatchKey {
+  rootSessionId,
+  turnId,
+  nativeTargetId,
+  bindingGeneration
+}
+#+end_example
+
+The payload digest is bound separately to the intent.  Reusing the same key
+with a different payload digest is a protocol violation.
+
+A retry, crash recovery, receipt query, or Host Runtime DeepLink MUST preserve
+the same key.  A binding repair or target replacement MUST NOT retarget an
+existing transaction.  It creates a new turn or an explicitly superseding
+transaction under a new key.
+
+#+name: immutable-dispatch-key
+#+begin_src typst
+#let key = (
+  root: 7,
+  turn: 31,
+  target: 5,
+  binding-generation: 11,
+)
+
+#let retry-key = key
+#assert(retry-key == key)
+
+$ forall t, "RetryKey"(t) = "IntentKey"(t) $
+
+"ok"
+#+end_src
+
+The key is an identity and replay-fence field.  It is not authorization by
+itself.  Initial reservation still requires the current Session revision,
+binding, typed mention, and Host attestation defined by RFC 10.05.23.
+
+* End-to-end linearization architecture
+
+The normative chain is:
+
+#+begin_example
+revision CAS reservation
+-> atomic session/outbox publication
+-> stable dispatch key
+-> Host key-scoped idempotent acceptance
+-> key-and-payload-indexed receipt
+-> delivered CAS
+#+end_example
+
+#+name: dispatch-linearization-architecture
+#+begin_src mermaid
+flowchart LR
+  RevisionCAS["Revision CAS<br/>state: Pending | Won | Conflict"]
+  Reservation["Reservation commit<br/>state: Invisible | Published"]
+  Outbox["Durable intent outbox<br/>state: Absent | Durable | Claimed"]
+  HostSlot["Host slot by stable key<br/>state: Empty | Accepted | PayloadConflict"]
+  Receipt["Host receipt<br/>state: Missing | IntentIndexed | Conflicting"]
+  DeliveredCAS["Delivered CAS<br/>state: Pending | Committed | AlreadyDelivered | Conflict"]
+  Ledger["Session dispatch ledger<br/>state: Unreserved | Reserved | Attempting | Delivered"]
+
+  RevisionCAS -->|"Won: reserve session revision"| Reservation
+  Outbox -->|"Durable in same atomic commit"| Reservation
+  Reservation -->|"Published to Reserved"| Ledger
+  Ledger -->|"Reserved to Attempting"| HostSlot
+  HostSlot -->|"Empty to Accepted or same-digest replay"| Receipt
+  HostSlot -->|"different digest to PayloadConflict"| Ledger
+  Receipt -->|"matching key and digest"| DeliveredCAS
+  DeliveredCAS -->|"Committed or AlreadyDelivered"| Ledger
+#+end_src
+
+Every node exposes state, and every edge identifies a transition or guard.  A
+component-only topology would not satisfy RFC 10.05.26.
+
+* Atomic reservation and outbox publication
+
+=ASP-RFC-10.05-ASDT-ATOMIC-RESERVATION=: Session reservation, revision advance,
+durable intent persistence, and commit visibility form one publication unit.
+
+#+name: atomic-reservation-publication
+#+begin_src typst
+#let published(record) = (
+  record.session-reserved
+  and record.outbox-durable
+  and record.commit-visible
+  and record.next-revision == record.previous-revision + 1
+)
+
+#let atomic = (
+  session-reserved: true,
+  outbox-durable: true,
+  commit-visible: true,
+  previous-revision: 7,
+  next-revision: 8,
+)
+
+#let session-only = (
+  session-reserved: true,
+  outbox-durable: false,
+  commit-visible: true,
+  previous-revision: 7,
+  next-revision: 8,
+)
+
+#assert(published(atomic))
+#assert(not published(session-only))
+
+$ "PublishedReservation"(r) <==>
+  "SessionReserved"(r)
+  and "OutboxDurable"(r)
+  and "CommitVisible"(r)
+  and "RevisionAdvancedOnce"(r) $
+
+"ok"
+#+end_src
+
+The following partial states are never externally published:
+
+- Session reserved but outbox absent;
+- outbox durable but Session unreserved; and
+- both writes present but commit marker invisible.
+
+Recovery ignores invisible partial writes or rolls them back through the
+storage transaction owner.  It does not reconstruct a published reservation
+from timestamps or record proximity.
+
+* Transaction state machine
+
+The durable Session-side phases are:
+
+#+begin_example
+Reserved   -> Attempting -> Delivered(receipt)
+    |
+    +------> Cancelled
+#+end_example
+
+=Reserved= means the revision CAS succeeded and the outbox intent is durable,
+but no external attempt has begun.
+
+=Attempting= means an external call may have reached the Host Runtime.  A
+timeout or crash leaves the outcome unknown locally.  Recovery retries or
+queries the same dispatch key.
+
+=Delivered(receipt)= binds an authoritative Host Runtime receipt indexed by the
+same dispatch key.
+
+=Cancelled= is terminal and is reachable only from =Reserved=.  Once the
+transaction reaches =Attempting=, cancellation is unsafe because the host
+effect may already exist.
+
+#+name: dispatch-transaction-state-machine-diagram
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> Reserved: revision CAS and durable intent
+  Reserved --> Attempting: persist attempt-before-call
+  Reserved --> Cancelled: cancel before external attempt
+  Attempting --> Attempting: retry same immutable intent
+  Attempting --> Delivered: intent-indexed Host receipt
+  Delivered --> [*]
+  Cancelled --> [*]
+
+  note right of Attempting
+    A crash or timeout leaves Host outcome unknown.
+    Retarget and cancellation are forbidden.
+  end note
+#+end_src
+
+#+name: dispatch-transaction-implementation-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant Hook as Host hook [state: Awaiting | ReservedReceipt]
+  participant Session as Session registry [state: Unreserved | Reserved | Attempting | Delivered]
+  participant Outbox as Dispatch outbox [state: Absent | Durable | Claimed]
+  participant Supervisor as Session supervisor [state: Idle | Running | Waiting]
+  participant Host as Host Runtime [state: Unknown | Accepted | Rejected]
+  participant Child as Registered subagent [state: Registered | Running | Terminal]
+
+  Hook->>Session: Unreserved to Reserved by revision CAS
+  Session->>Outbox: Absent to Durable with immutable intent
+  Outbox-->>Session: Durable acknowledgement
+  Session-->>Hook: Awaiting to ReservedReceipt
+
+  Supervisor->>Outbox: Idle to Running; Durable to Claimed
+  Supervisor->>Session: Reserved to Attempting by CAS
+  Session-->>Supervisor: Attempting persisted
+  Supervisor->>Host: Unknown dispatch(key, payloadDigest)
+
+  alt first Host acceptance
+    Host->>Child: Accepted to Running; one native delivery
+    Host-->>Supervisor: Waiting receives accepted intent-indexed receipt
+  else retry after lost acknowledgement
+    Host-->>Supervisor: Accepted returns same authoritative receipt
+  end
+
+  Supervisor->>Session: Attempting to Delivered by CAS
+  Session-->>Supervisor: terminal dispatch receipt
+#+end_src
+
+The ordering =persist Attempting -> call Host -> persist Delivered= is
+normative.  It ensures that a crash after an external call recovers through the
+same key rather than through cancellation or retargeting.
+
+#+name: dispatch-transaction-state-machine
+#+begin_src typst
+#let transitions = (
+  ("Reserved", "Attempting"),
+  ("Reserved", "Cancelled"),
+  ("Attempting", "Delivered"),
+  ("Attempting", "Attempting"),
+)
+
+#let forbidden = (
+  ("Attempting", "Cancelled"),
+  ("Delivered", "Cancelled"),
+  ("Cancelled", "Attempting"),
+)
+
+#assert(transitions.len() == 4)
+#assert(forbidden.len() == 3)
+
+$ "Reserved" arrow.r "Attempting" arrow.r "Delivered" $
+$ "Reserved" arrow.r "Cancelled" $
+
+"ok"
+#+end_src
+
+=ASP-RFC-10.05-ASDT-CAS=: Reservation is one atomic Session mutation that:
+
+- verifies the expected Session revision;
+- verifies that the turn is not already reserved;
+- persists the immutable dispatch intent;
+- advances the Session revision; and
+- makes the outbox item recoverable before returning success.
+
+A stale revision or reserved turn fails closed without creating an outbox
+record.
+
+* Host acceptance and linearization
+
+=ASP-RFC-10.05-ASDT-HOST=: The Host Runtime accepts
+=dispatch(key, payloadDigest)= idempotently.
+
+The Host acceptance registry is partitioned by stable dispatch key.  Each key
+slot is initially =Empty= and may bind exactly one payload digest.  It is not
+partitioned by full intent, because that would incorrectly give two different
+payloads under the same key two independent first-acceptance slots.
+
+- The first accepted call establishes the host-side linearization point and
+  returns a receipt indexed by =key=.
+- A retry with the same key and digest returns the same authoritative receipt
+  or an equivalent receipt referring to the same accepted effect.
+- A retry with the same key and another digest is rejected.
+- A receipt for another key cannot finalize the transaction.
+
+#+name: idempotent-host-acceptance
+#+begin_src typst
+#let accept(slot, key) = if slot == none {
+  (key, 0)
+} else {
+  slot
+}
+
+#let first = accept(none, "K")
+#let retry = accept(first, "K")
+#assert(first == retry)
+
+$ "Accept"("Accept"(S,K),K) = "Accept"(S,K) $
+
+"ok"
+#+end_src
+
+#+name: stable-key-payload-conflict
+#+begin_src typst
+#let accept(slot, requested-digest) = if slot == none {
+  (state: "accepted", digest: requested-digest, effect-count: 1)
+} else if slot.digest == requested-digest {
+  (state: "replay", digest: slot.digest, effect-count: 1)
+} else {
+  (state: "payload-conflict", digest: slot.digest, effect-count: 1)
+}
+
+#let existing = (digest: "D1")
+#let replay = accept(existing, "D1")
+#let conflict = accept(existing, "D2")
+
+#assert(replay.state == "replay")
+#assert(conflict.state == "payload-conflict")
+#assert(replay.effect-count == 1)
+#assert(conflict.effect-count == 1)
+
+$ "SameKeySameDigest" arrow.r.double "SameReceipt" $
+$ "SameKeyDifferentDigest" arrow.r.double "PayloadConflict" $
+
+"ok"
+#+end_src
+
+=ASP-RFC-10.05-ASDT-PAYLOAD-CONFLICT=: A request using an accepted key with a
+different payload digest returns =PayloadConflict= and preserves the original
+Host slot and effect count.  It MUST NOT allocate another slot, overwrite the
+digest, deliver another child message, or synthesize a receipt for the new
+payload.
+
+The local =Delivered= CAS is not the external-effect linearization point.  It
+is a durable acknowledgement of the already linearized Host Runtime effect.
+This distinction permits safe recovery from a crash after host acceptance but
+before local finalization.
+
+* Delivered CAS
+
+=ASP-RFC-10.05-ASDT-DELIVERED-CAS=: Finalization is a revision-CAS transition
+from =Attempting= to =Delivered(receipt)=.
+
+#+name: delivered-cas-semantics
+#+begin_src typst
+#let finalize(phase, current-revision, expected-revision, receipt-matches) = {
+  if phase == "Attempting" and current-revision == expected-revision and receipt-matches {
+    (state: "committed", revision: current-revision + 1)
+  } else if phase == "Delivered" and receipt-matches {
+    (state: "already-delivered", revision: current-revision)
+  } else {
+    (state: "conflict", revision: current-revision)
+  }
+}
+
+#let committed = finalize("Attempting", 4, 4, true)
+#let replay = finalize("Delivered", 5, 4, true)
+#let stale = finalize("Attempting", 5, 4, true)
+
+#assert(committed.state == "committed")
+#assert(committed.revision == 5)
+#assert(replay.state == "already-delivered")
+#assert(replay.revision == 5)
+#assert(stale.state == "conflict")
+
+$ "Committed" arrow.r.double "RevisionAdvancesOnce" $
+$ "AlreadyDelivered" arrow.r.double "RevisionUnchanged" $
+
+"ok"
+#+end_src
+
+The CAS rules are:
+
+- matching =Attempting= revision commits once and advances revision once;
+- a retry carrying the exact receipt against =Delivered= returns
+  =AlreadyDelivered= without mutation;
+- a stale =Attempting= revision fails closed; and
+- a different receipt cannot use the idempotent replay path.
+
+* Recovery algorithm
+
+=ASP-RFC-10.05-ASDT-RECOVER=: Recovery scans durable nonterminal transactions,
+not historical prose or inferred agent roles.
+
+For =Reserved=:
+
+1. revalidate that the immutable binding snapshot is still admissible for
+   first attempt;
+2. CAS to =Attempting=;
+3. call the Host Runtime with the stable key.
+
+For =Attempting=:
+
+1. do not cancel or retarget;
+2. query status by key when the Host Runtime supports it, otherwise retry the
+   same idempotent call;
+3. verify receipt key and payload digest;
+4. CAS to =Delivered(receipt)=.
+
+For =Delivered= and =Cancelled=: perform no external action.
+
+A replaced live binding affects new turns only.  It does not mutate an existing
+=Reserved= or =Attempting= transaction's target or generation.
+
+* SearchLoop and lifecycle cost
+
+The durable transaction adds local state transitions, but it remains shorter
+than the legacy bootstrap/pane/claim/execute loop for an already registered
+native target.
+
+#+name: durable-native-route-cost
+#+begin_src typst
+#let durable-native = (hops: 5, rounds: 2, tokens: 5)
+#let legacy-bootstrap = (hops: 7, rounds: 4, tokens: 9)
+
+#let dominates(a, b) = (
+  a.hops < b.hops
+  and a.rounds < b.rounds
+  and a.tokens < b.tokens
+)
+
+#assert(dominates(durable-native, legacy-bootstrap))
+
+$ "StrictlyDominates"("DurableNative", "LegacyBootstrap") $
+
+"ok"
+#+end_src
+
+These values are constructive proof witnesses, not benchmark claims.
+Implementation closure requires real receipts for:
+
+- graph hops;
+- Host Runtime control rounds;
+- bytes and model-visible token units;
+- retry count;
+- cold and warm latency;
+- model prefix-cache hit behavior; and
+- Runtime Server search-cache behavior.
+
+The two cache measurements remain separate.
+
+* Lean verification
+
+The formal model and audit are:
+
+- =packages/proofs/ASPProof/AgentSessionDispatchTransaction.lean=
+- =packages/proofs/ASPProof/Audit/AgentSessionDispatchTransaction.lean=
+- =packages/proofs/audit/AgentSessionDispatchTransaction.lean=
+- =packages/proofs/receipts/agent-session-dispatch-transaction-v1.json=
+- =packages/proofs/ASPProof/AgentSessionDispatchLinearization.lean=
+- =packages/proofs/ASPProof/Audit/AgentSessionDispatchLinearization.lean=
+- =packages/proofs/audit/AgentSessionDispatchLinearization.lean=
+- =packages/proofs/receipts/agent-session-dispatch-linearization-v1.json=
+
+The proof family includes machine-checked counterexamples for both naive
+orderings and desired invariants for:
+
+- stale revision rejection;
+- already-reserved turn rejection;
+- atomic session/outbox publication and partial-write nonpublication;
+- crash preservation;
+- stable retry identity;
+- stable-key payload-conflict rejection;
+- cancellation boundaries;
+- Host acceptance idempotence;
+- receipt/immutable-intent indexing, including payload digest;
+- delivered-CAS stale revision rejection and idempotent replay;
+- acyclic linearization-stage ordering;
+- non-retargeting; and
+- strict route-cost dominance.
+
+The counterexample theorems are not desired system properties.  They certify
+that the naive lifecycle designs admit loss or duplication traces.
+
+* Three-view traceability
+
+| Concern | Mermaid identity | Typst identity | Lean identity |
+|---------+------------------+----------------+---------------|
+| Naive crash windows | =dispatch-transaction-implementation-sequence= | =naive-dispatch-crash-windows= | =consume_first_has_loss_window=, =dispatch_first_has_duplicate_window= |
+| Legal phases | =dispatch-transaction-state-machine-diagram= | =dispatch-transaction-state-machine= | =BeginAttemptStep=, =FinalizeStep=, =CancelStep= |
+| Stable retry effect | implementation sequence Host retry branch | =idempotent-host-acceptance= | =host_retry_is_idempotent= |
+| Same-key payload conflict | =dispatch-linearization-architecture= Host slot states | =stable-key-payload-conflict= | =HostConflicts=, =different_payload_cannot_be_accepted= |
+| Intent and payload binding | =dispatch(key, payloadDigest)= message | =immutable-dispatch-key= | =HostReceipt key payloadDigest=, =finalize_receipt_is_intent_indexed= |
+| Atomic reservation publication | linearization Reservation/Outbox states | =atomic-reservation-publication= | =PublishedReservation= and partial-write rejection theorems |
+| Delivered CAS | linearization DeliveredCAS states | =delivered-cas-semantics= | =DeliveredCasStep=, =stale_attempting_revision_rejected=, =delivered_replay_is_idempotent= |
+| Cost | direct durable sequence | =durable-native-route-cost= | =durable_native_route_strictly_dominates_legacy= |
+
+* Current implementation evidence gap
+
+Parser-owned discovery identified the likely Rust owners:
+
+- =crates/agent-semantic-client-db/src/agent_session_registry/dispatch.rs=
+- =crates/agent-semantic-client-db/src/agent_session_registry/lifecycle.rs=
+- =crates/agent-semantic-client-db/src/agent_session_registry/interactive_loop.rs=
+- =crates/agent-semantic-protocol/src/command/agent_session_registry_dispatch.rs=
+- =crates/agent-semantic-protocol/src/command/hook_runtime_agent_session_dispatch.rs=
+- =crates/agent-semantic-protocol/src/command/dispatch_agent_session_policy.rs=
+
+However, owner-item projection returned zero matches for
+=dispatch|claim|receipt|idempotency|outbox|recovery|revision|conflict=.  The
+cold read also advanced the exposed workspace generation.
+
+Therefore this RFC does not claim that the current Rust implementation has or
+lacks an outbox merely from source-name inference.  It records two confirmed
+gaps:
+
+1. the agent-facing projection cannot expose the critical dispatch transition
+   facts needed for audit; and
+2. read-only cold inspection is not observationally generation-stable.
+
+Both gaps must be resolved before Rust conformance can be certified.
+
+A later parser-owned probe for =outbox|commit= failed before owner selection:
+
+#+begin_example
+provider project-resolution failed
+repository candidate scope mismatch
+workspaceRoot=.../build-support/asp-rust-project-harness-policy
+candidateScope.projectRoot=.../agent-semantic-protocols
+#+end_example
+
+This is a provider-scope admission defect, not evidence about the dispatch
+implementation.  Until the registered Rust runtime admits the canonical
+workspace, the outbox, payload-conflict, and delivered-CAS implementation state
+remains =Unverified=.
+
+* Implementation consequences
+
+No Rust changes are authorized by this proof-only session.
+
+A later implementation phase must either demonstrate an equivalent existing
+mechanism or add:
+
+- a durable dispatch intent/outbox;
+- immutable dispatch keys and payload-digest binding;
+- revision-CAS reservation;
+- =Reserved/Attempting/Delivered/Cancelled= states;
+- Host Runtime idempotent dispatch or authoritative status lookup;
+- key-indexed receipts;
+- crash recovery using the same key;
+- cancellation and retargeting fences; and
+- compact parser-owned projection of these transitions.
+
+If the Host Runtime cannot provide key-based deduplication or status lookup,
+the RFC guarantee must be weakened explicitly to at-least-once dispatch
+attempts.  ASP must not label that mode exactly-once.

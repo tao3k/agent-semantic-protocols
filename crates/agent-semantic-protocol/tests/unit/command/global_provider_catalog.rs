@@ -131,7 +131,7 @@ fn write_catalog(path: &Path, providers: &[catalog::GlobalProviderCatalogProvide
 }
 
 #[test]
-fn catalog_loads_once_and_fails_closed_for_invalid_or_drifted_entries() {
+fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     let _publication_entrypoint: fn(
         &[install_provider_reconcile::ProviderInstallReceipt],
     )
@@ -163,11 +163,11 @@ fn catalog_loads_once_and_fails_closed_for_invalid_or_drifted_entries() {
     let _environment = EnvironmentGuard::install(&state_home, &fake_home);
     let catalog_path = runtime.join("provider-catalog.v1.json");
 
-    let missing = catalog::global_provider_for_language("rust")
+    let missing = catalog::read_global_provider_catalog_readiness()
         .expect_err("missing State Home catalog must fail closed");
     assert!(missing.contains("failed to read Global provider catalog"));
     std::fs::write(&catalog_path, b"{").expect("write malformed catalog");
-    let malformed = catalog::global_provider_for_language("rust")
+    let malformed = catalog::read_global_provider_catalog_readiness()
         .expect_err("malformed State Home catalog must fail closed");
     assert!(malformed.contains("failed to parse Global provider catalog"));
 
@@ -184,22 +184,13 @@ fn catalog_loads_once_and_fails_closed_for_invalid_or_drifted_entries() {
     ];
     write_catalog(&catalog_path, &providers);
 
-    let rust = catalog::global_provider_for_language("rust").expect("load exact Rust provider");
-    assert_eq!(rust.language_id, "rust");
-    assert_eq!(rust.provider_id, "rs-harness");
-    assert_eq!(rust.argv_prefix, vec![rust.materialized_path.clone()]);
+    let readiness =
+        catalog::read_global_provider_catalog_readiness().expect("load valid provider catalog");
+    assert_eq!(readiness.provider_count, 2);
 
-    std::fs::write(&catalog_path, b"{").expect("replace catalog after first load");
-    let loaded_once = catalog::global_provider_for_language("rust")
-        .expect("same process reuses the loaded State Home catalog");
-    assert_eq!(loaded_once, rust);
-
-    let missing_language = catalog::global_provider_for_language("python")
-        .expect_err("unlisted language must fail closed");
-    assert!(missing_language.contains("has no provider for language python"));
     std::fs::write(&typescript_path, b"typescript-provider-drift")
         .expect("drift TypeScript provider metadata");
-    let digest_drift = catalog::global_provider_for_language("typescript")
+    let digest_drift = catalog::read_global_provider_catalog_readiness()
         .expect_err("artifact metadata drift must fail closed");
     assert!(digest_drift.contains("artifact metadata drift"));
 

@@ -34,6 +34,7 @@ pub(super) async fn bootstrap_provider_incremental_schema(
             change_time_unix_nanos INTEGER NOT NULL,
             content_digest TEXT NOT NULL,
             merkle_leaf_digest TEXT NOT NULL,
+            source_bytes BLOB NOT NULL DEFAULT X'',
             PRIMARY KEY (
                 project_root,
                 workspace_identity,
@@ -231,5 +232,35 @@ pub(super) async fn bootstrap_provider_incremental_schema(
             format!("failed to bootstrap provider incremental search schema: {error}")
         })?;
     }
+    ensure_provider_owner_source_bytes(connection).await?;
+    Ok(())
+}
+
+async fn ensure_provider_owner_source_bytes(connection: &turso::Connection) -> Result<(), String> {
+    let mut rows = connection
+        .query("PRAGMA table_info(provider_owner_fingerprint_v1)", ())
+        .await
+        .map_err(|error| format!("failed to inspect provider owner schema: {error}"))?;
+    while let Some(row) = rows
+        .next()
+        .await
+        .map_err(|error| format!("failed to read provider owner schema: {error}"))?
+    {
+        if row
+            .get::<String>(1)
+            .map_err(|error| format!("failed to decode provider owner schema column: {error}"))?
+            == "source_bytes"
+        {
+            return Ok(());
+        }
+    }
+    connection
+        .execute(
+            "ALTER TABLE provider_owner_fingerprint_v1
+             ADD COLUMN source_bytes BLOB NOT NULL DEFAULT X''",
+            (),
+        )
+        .await
+        .map_err(|error| format!("failed to add provider owner source bytes: {error}"))?;
     Ok(())
 }

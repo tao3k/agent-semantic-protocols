@@ -245,7 +245,8 @@ fn activation_snapshot_rejects_legacy_provider_command_prefix() {
                 source_extensions: vec!["py".to_string()],
                 source_paths: vec!["src/package.py".to_string()],
                 repository_candidate_generation: "test-candidate-generation".to_string(),
-                project_resolution_generation: "test-project-resolution-generation".to_string(),
+                workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
+                project_resolutions: Vec::new(),
             },
         }],
     };
@@ -318,7 +319,8 @@ fn explicit_activation_path_keeps_requested_project_root() {
                 source_extensions: vec!["py".to_string()],
                 source_paths: vec!["src/package.py".to_string()],
                 repository_candidate_generation: "test-candidate-generation".to_string(),
-                project_resolution_generation: "test-project-resolution-generation".to_string(),
+                workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
+                project_resolutions: Vec::new(),
             },
         }],
     };

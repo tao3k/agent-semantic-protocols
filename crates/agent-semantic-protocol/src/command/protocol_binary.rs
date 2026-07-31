@@ -1,5 +1,16 @@
 //! PATH-visible `asp` binary installation helpers.
 
+#[path = "protocol_binary_identity.rs"]
+mod protocol_binary_identity;
+
+#[cfg(test)]
+pub(crate) use protocol_binary_identity::protocol_binary_digest_from_canonical_artifact_path;
+pub(crate) use protocol_binary_identity::{
+    canonical_protocol_binary_artifact_digest, protocol_binary_artifact_path_digest,
+};
+use protocol_binary_identity::{
+    is_digest_addressed_protocol_binary, protocol_binary_artifact_digest,
+};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -497,48 +508,6 @@ fn managed_protocol_binary_path_aliases(
     Ok(aliases)
 }
 
-fn is_digest_addressed_protocol_binary(
-    identity: &Path,
-    artifact_root: &Path,
-) -> Result<bool, String> {
-    let artifact_root = match fs::canonicalize(artifact_root) {
-        Ok(artifact_root) => artifact_root,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => {
-            return Err(format!(
-                "failed to resolve protocol artifact root {}: {error}",
-                artifact_root.display()
-            ));
-        }
-    };
-    let Ok(relative) = identity.strip_prefix(&artifact_root) else {
-        return Ok(false);
-    };
-    let mut components = relative.components();
-    let Some(store) = components
-        .next()
-        .and_then(|value| value.as_os_str().to_str())
-    else {
-        return Ok(false);
-    };
-    let Some(digest) = components
-        .next()
-        .and_then(|value| value.as_os_str().to_str())
-    else {
-        return Ok(false);
-    };
-    let Some(binary) = components.next().map(|value| value.as_os_str()) else {
-        return Ok(false);
-    };
-    Ok(store == "blake3-256"
-        && digest.len() == 64
-        && digest
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        && !binary.is_empty()
-        && components.next().is_none())
-}
-
 pub(crate) fn install_protocol_binary_target(
     source: &Path,
     target: &Path,
@@ -644,48 +613,6 @@ fn install_protocol_binary_from_artifact(
         ));
     }
     Ok(status)
-}
-
-pub(crate) fn protocol_binary_artifact_path_digest(path: &Path) -> Option<String> {
-    let canonical = fs::canonicalize(path).ok()?;
-    let digest = canonical.parent()?.file_name()?.to_str()?;
-    let algorithm = canonical.parent()?.parent()?.file_name()?.to_str()?;
-    if algorithm == "blake3-256"
-        && digest.len() == 64
-        && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
-        return Some(digest.to_string());
-    }
-    if let Some(digest) = digest_addressed_protocol_binary_digest(&canonical) {
-        return Some(digest);
-    }
-    None
-}
-
-pub(crate) fn protocol_binary_artifact_digest(path: &Path) -> Option<String> {
-    if let Some(digest) = protocol_binary_artifact_path_digest(path) {
-        return Some(digest);
-    }
-    let bytes = fs::read(path).ok()?;
-    Some(
-        agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(&bytes)
-            .as_str()
-            .to_string(),
-    )
-}
-
-fn digest_addressed_protocol_binary_digest(path: &Path) -> Option<String> {
-    let parent = path.parent()?;
-    let digest = parent.file_name()?.to_str()?;
-    let algorithm = parent.parent()?.file_name()?.to_str()?;
-    let artifacts = parent.parent()?.parent()?.file_name()?.to_str()?;
-    (artifacts == ".asp-artifacts"
-        && algorithm == "blake3-256"
-        && digest.len() == 64
-        && digest
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
-    .then(|| digest.to_string())
 }
 
 fn digest_addressed_protocol_binary_path(

@@ -1,0 +1,157 @@
+#+title: RFC 10.15.02.02 — Agent Session Lifecycle Crash Recovery
+
+* Status
+Focused formal verification is complete. This RFC refines [[file:10.15.02.01-agent-session-transactional-generation-lifecycle.org][RFC 10.15.02.01]]. The Lean source, compiled module, direct audit, and runner pass; all 23 theorem declarations are axiom-free. No Rust implementation is authorized in this session.
+
+* Problem
+A durable lifecycle intent crosses a non-transactional host boundary. The host may accept retirement, path release, typed spawn, binding, or command execution before the local receipt and delivered CAS become durable. Retrying with a new key can duplicate a child or command effect. Treating absence of a local receipt as host rejection is unsound.
+
+Recovery therefore preserves the original intent identity and distinguishes five facts: intent durable, host acceptance observed, receipt indexed, local state committed, and terminal command receipt present.
+
+* Intent-indexed host receipt
+A receipt is admissible only when slot, generation, intent key, kind, payload digest, and accepted state match the durable intent. Host idempotence means two accepted receipts for the same intent identify the same effect.
+
+#+name: agent-session-crash-intent-receipt
+#+begin_src typst
+#let Match(i, r) = $upright("ReceiptMatchesIntent")(i, r)$
+#let Key(x) = $upright("intentKey")(x)$
+#let Gen(x) = $upright("generation")(x)$
+#let Payload(x) = $upright("payloadDigest")(x)$
+#let Effect(x) = $upright("effectIdentity")(x)$
+$
+  forall i, r,
+  Match(i, r) => Key(r) = Key(i) and Gen(r) = Gen(i) and
+  Payload(r) = Payload(i).
+$
+$
+  forall i, r_1, r_2,
+  Match(i, r_1) and Match(i, r_2) => Effect(r_1) = Effect(r_2).
+$
+#+end_src
+
+* Crash-window recovery law
+Recovery never invents a second intent. Accepted-without-receipt persists the indexed receipt. Receipt-without-CAS commits the kind-specific CAS. Already committed state is idempotent. Missing durable intent blocks rather than inferring authority.
+
+#+name: agent-session-crash-window-recovery
+#+begin_src typst
+#let Recover(k, s) = $upright("classifyRecovery")(k, s)$
+$
+  Recover(upright("retire"), upright("AcceptedNoReceipt"))
+    = upright("PersistIndexedReceipt").
+$
+$
+  Recover(upright("release"), upright("ReceiptNoCAS"))
+    = upright("CommitReleasedCAS").
+$
+$
+  Recover(upright("spawn"), upright("StartReceiptNoBinding"))
+    = upright("CommitBindingCAS").
+$
+#+end_src
+
+* Bounded uncertainty law
+When host acceptance is unknown, recovery polls by the same stable intent key. Each poll consumes budget. Exhaustion yields =BlockedPollBudget=, not another unbounded repair loop.
+
+#+name: agent-session-crash-bounded-poll
+#+begin_src typst
+#let Poll(b, n) = $upright("PollStep")(b, n)$
+#let Recover(s) = $upright("classifyRecovery")(s)$
+$ forall b, n, Poll(b, n) => n < b. $
+$ not exists b, Poll(b, b). $
+$ Recover(upright("UnknownAcceptanceBudgetZero")) = upright("BlockedPollBudget"). $
+#+end_src
+
+* Dispatch completion law
+Dispatch identity belongs to the logical slot, not the delivery generation. A terminal completion from the old generation wins even if replacement binding has completed. Only an orphan with no terminal receipt may replay under the new verified binding, using the same stable dispatch key.
+
+#+name: agent-session-crash-dispatch-completion
+#+begin_src typst
+#let Complete(d, r) = $upright("ValidDispatchCompletion")(d, r)$
+#let Key(x) = $upright("dispatchKey")(x)$
+#let Digest(x) = $upright("commandDigest")(x)$
+$
+  forall d, r,
+  Complete(d, r) => Key(r) = Key(d) and Digest(r) = Digest(d).
+$
+$
+  upright("TerminalExists") => upright("ReturnStoredTerminal")
+  and not upright("ReplayDispatch").
+$
+#+end_src
+
+* Stateful architecture
+#+begin_src mermaid
+flowchart LR
+  I["Lifecycle intent\nstate: Missing | Durable(stableKey)"]
+  H["Host effect\nstate: Unknown | Accepted(effectIdentity)"]
+  R["Indexed receipt\nstate: Missing | IntentMatched"]
+  C["Local CAS\nstate: Pending | Committed"]
+  P["Poll budget\nstate: Positive | Exhausted"]
+  D["Dispatch ledger\nstate: Orphaned | Terminal"]
+  O["Recovery outcome\nstate: Progress | Idempotent | Blocked"]
+  I -->|"transition; state: Durable -> HostUnknown; preserve stable intent key"| H
+  H -->|"guard; state: Accepted -> IntentMatched; persist host effect identity"| R
+  R -->|"transition; state: IntentMatched -> Committed; kind-specific CAS"| C
+  C -->|"capability; state: Committed -> Idempotent; return stored state"| O
+  H -->|"transition; state: Unknown -> PollBudgetLower; query same key"| P
+  P -->|"prohibitedEffect; state: Exhausted -> Blocked; never mint new intent"| O
+  D -->|"guard; state: Terminal -> Idempotent; suppress replacement replay"| O
+  D -->|"transition; state: OrphanedNoTerminal -> Progress; replay stable dispatch key once"| O
+#+end_src
+
+* Recovery state machine
+#+begin_src mermaid
+stateDiagram-v2
+  state "IntentDurable\nstate: rank3" as I
+  state "HostAccepted\nstate: rank2" as H
+  state "ReceiptIndexed\nstate: rank1" as R
+  state "StateCommitted\nstate: rank0" as C
+  state "AcceptanceUnknown\nstate: budgetN" as U
+  state "BlockedPollBudget\nstate: budget0" as B
+  I --> H: "transition; state: rank3 -> rank2; host accepts stable key"
+  H --> R: "transition; state: rank2 -> rank1; persist indexed receipt"
+  R --> C: "transition; state: rank1 -> rank0; delivered CAS"
+  I --> U: "guard; state: rank3 -> budgetN; acceptance unavailable"
+  U --> U: "transition; state: budgetN -> budgetN-1; poll same key"
+  U --> H: "guard; state: responseAccepted -> rank2; no redispatch"
+  U --> B: "prohibitedEffect; state: budget0 -> BlockedPollBudget; stop loop"
+#+end_src
+
+* Cross-generation completion sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant L as "Lifecycle Store [state: ReplacementInProgress]"
+  participant H as "Host [state: OldEffectMayExist]"
+  participant R as "Receipt Index [state: Missing]"
+  participant B as "Binding Registry [state: NewGenerationPending]"
+  participant D as "Dispatch Ledger [state: OrphanedStableKey]"
+  L->>H: "guard; state: DurableIntent -> QuerySameKey; never mint replacement key"
+  H->>R: "transition; state: Accepted -> ReceiptIndexed; effect identity"
+  R->>L: "transition; state: ReceiptIndexed -> DeliveredCAS; commit lifecycle state"
+  H-->>D: "transition; state: OldGenerationCompletion -> TerminalReceipt; same dispatch key"
+  B->>D: "guard; state: NewGenerationVerified -> ReplayEligibilityCheck"
+  alt terminal receipt already exists
+    D-->>B: "prohibitedEffect; state: TerminalReceipt -> ReturnStoredTerminal; suppress replay"
+  else no terminal receipt
+    D->>B: "capability; state: Orphaned -> ReplayStableDispatchKey; one delivery lease"
+  end
+#+end_src
+
+* Lean-discovered corrections
+1. Receipt absence is not host rejection.
+2. Recovery must bind intent key, generation, kind, and payload digest.
+3. Two receipts for one idempotent host intent must identify one effect.
+4. Missing durable intent is a hard authority failure.
+5. Polling is safe only with a decreasing budget and explicit blocked outcome.
+6. Committed recovery transitions admit neither self-loops nor two-cycles.
+7. Terminal command completion outranks replacement replay regardless of delivery generation.
+
+* Formal receipts
+- Lean source: =packages/proofs/ASPProof/AgentSessionLifecycleCrashRecovery.lean=
+- direct audit: =packages/proofs/ASPProof/Audit/AgentSessionLifecycleCrashRecovery.lean=
+- audit runner: =packages/proofs/audit/AgentSessionLifecycleCrashRecovery.lean=
+- declaration count: =23=
+- axiom-free declaration count: =23=
+
+* Next boundary
+The next boundary is [[file:10.15.02.03-agent-session-lifecycle-concurrent-linearizability.org][RFC 10.15.02.03 — Agent Session Lifecycle Concurrent Linearizability]]: concurrent controllers racing to claim intent, index host receipt, commit binding, or ingest terminal completion without process-local locks.

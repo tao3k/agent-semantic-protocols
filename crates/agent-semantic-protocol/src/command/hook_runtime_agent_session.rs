@@ -30,9 +30,8 @@ mod hook_runtime_agent_session_typed_replacement;
 use hook_runtime_agent_session_pane::{
     agent_session_allow_decision, agent_session_route_fields, render_agent_session_template,
 };
-use hook_runtime_agent_session_payload::{
-    payload_command_strings, payload_evidence_ref, string_field,
-};
+pub(in crate::command::hook_runtime) use hook_runtime_agent_session_payload::payload_command_strings;
+use hook_runtime_agent_session_payload::{payload_evidence_ref, string_field};
 use hook_runtime_agent_session_profile::{
     append_resident_agent_fields, resident_child_create_action,
 };

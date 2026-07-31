@@ -46,10 +46,12 @@ impl ActivatedProvider {
                 SourceSelectorKind::ExactPath
             });
         }
-        if self.source_paths.iter().any(|path| {
-            normalize_route_path(path) == selector.normalized
-                || selector.normalized.ends_with(&normalize_route_path(path))
-        }) {
+        if !selector.has_glob
+            && self
+                .source_extensions
+                .iter()
+                .any(|extension| selector.normalized.ends_with(extension))
+        {
             return Some(SourceSelectorKind::ExactPath);
         }
         if self

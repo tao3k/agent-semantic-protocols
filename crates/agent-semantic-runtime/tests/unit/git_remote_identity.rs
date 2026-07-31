@@ -161,7 +161,21 @@ fn linked_worktrees_share_gix_repository_identity() {
     let linked_state =
         crate::state_core::ResolvedState::resolve_with_state_home(&linked, &state_home)
             .expect("resolve linked worktree state");
+    let package_entry = main.join("crates/example");
+    std::fs::create_dir_all(&package_entry).expect("create package entry directory");
+    std::fs::write(
+        package_entry.join("Cargo.toml"),
+        "[package]\nname = \"example\"\n",
+    )
+    .expect("write package entry");
+    let package_state =
+        crate::state_core::ResolvedState::resolve_with_state_home(&package_entry, &state_home)
+            .expect("resolve package entry state");
     assert_eq!(main_state.repo.repo_id, linked_state.repo.repo_id);
+    assert_eq!(
+        main_state.workspace.workspace_id, package_state.workspace.workspace_id,
+        "package/project entries inside one worktree must remain one workspace"
+    );
     assert_ne!(
         main_state.workspace.workspace_id,
         linked_state.workspace.workspace_id

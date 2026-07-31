@@ -115,13 +115,14 @@ fn activation_value(manifest: &ProviderManifest, manifest_digest: &str) -> Value
             package_roots: vec!["src".to_string()],
             config_files: manifest
                 .project_resolution()
-                .expect("TypeScript project resolution")
+                .expect("TypeScript project scope")
                 .entry_markers
                 .clone(),
             source_extensions: vec![".ts".to_string()],
             source_paths: vec!["src/index.ts".to_string()],
             repository_candidate_generation: "test-candidate-generation".to_string(),
-            project_resolution_generation: "test-project-resolution-generation".to_string(),
+            workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
+            project_resolutions: Vec::new(),
         },
     };
     json!({

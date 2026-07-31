@@ -1,0 +1,244 @@
+#+title: RFC 10.05.37 — Agent Session Host Registry Quarantine Adjudication
+#+language: en
+
+* Status
+
+Focused formal verification is complete. This RFC refines [[file:../10.05.36-agent-session-host-registry-crash-safe-materialization-recovery/00-overview.org][RFC 10.05.36 — Agent Session Host Registry Crash-Safe Materialization Recovery]]. The Lean source and direct audit compile, all 19 theorem declarations are axiom-free, and the module is imported by the proof-package root.
+
+This RFC proves adjudication authorization, evidence completeness, history preservation, and generation fencing. It does not prove that an authorized decision is factually correct without external evidence provenance. No Rust implementation is authorized in this session.
+
+* Problem
+
+RFC36 moves different terminal captures into quarantine and prevents further publication. Quarantine is safe but not self-resolving. A clearance protocol that merely carries an authority identifier remains vulnerable to:
+
+- the claimant or challenger adjudicating its own disputed terminal;
+- evidence that includes only the preferred terminal;
+- mutation or erasure of prior adjudication records;
+- two contradictory resolutions for one quarantined slot;
+- clearing quarantine without advancing invocation generation;
+- resurrection of the old generation after resolution.
+
+Resolution must bind authority, independent adjudicator identity, both competing terminal captures, complete evidence, append-only history, and a successor generation.
+
+* Evidence alignment
+
+The existing authorized quarantine model binds quarantine digest, request/effect identity, ledger revision, evidence digest, and resolver authority while preserving ledger capacity. RFC37 extends that contract for terminal-capture disputes. It adds separation of duties and generation fencing, neither of which follows from capacity conservation.
+
+The decision set is closed: uphold the accepted terminal, replace it with the conflicting terminal, or reject both. Authorization proves that a decision was made under the correct scope; evidence provenance must separately justify which decision is true.
+
+* Complete dispute evidence law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASQA-EVIDENCE
+:END:
+
+#+name: registry-quarantine-adjudication-evidence-law
+#+begin_src typst
+#let Binds(q, e) = $upright("EvidenceBindsCase")(#q, #e)$
+#let Complete(e) = $upright("complete")(#e)$
+#let Accepted(x) = $upright("acceptedTerminal")(#x)$
+#let Conflicting(x) = $upright("conflictingTerminal")(#x)$
+#let True = $upright("true")$
+
+$
+  forall q, e,
+  Binds(q, e) =>
+  Complete(e) = True and
+  Accepted(e) = Accepted(q) and
+  Conflicting(e) = Conflicting(q).
+$
+#+end_src
+
+Evidence is two-sided. A digest for one terminal plus a decision label is incomplete.
+
+* Independent authority law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASQA-AUTHORITY
+:END:
+
+#+name: registry-quarantine-adjudication-authority-law
+#+begin_src typst
+#let Authorized(a, q, r) = $upright("AuthorizedAdjudication")(#a, #q, #r)$
+#let Judge(r) = $upright("adjudicatorDigest")(#r)$
+#let Claimant(q) = $upright("claimantExecutorDigest")(#q)$
+#let Challenger(q) = $upright("challengerExecutorDigest")(#q)$
+#let Authority(r) = $upright("authority")(#r)$
+
+$
+  forall a, q, r,
+  Authorized(a, q, r) =>
+  Authority(r) = a and
+  Judge(r) != Claimant(q) and
+  Judge(r) != Challenger(q).
+$
+#+end_src
+
+Authority scope and separation of duties are independent predicates. Possessing the correct scope does not permit a disputed worker to judge itself.
+
+* Append-only adjudication history law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASQA-HISTORY
+:END:
+
+#+name: registry-quarantine-adjudication-history-law
+#+begin_src typst
+#let Step(h, r, next) = $upright("AdjudicationHistoryStep")(#h, #r, #next)$
+#let Append(h, r) = $upright("append")(#h, #r)$
+
+$
+  forall h, r, n,
+  Step(h, r, n) => n = Append(h, r).
+$
+#+end_src
+
+The history transition has only an append constructor. Resolution cannot redact the conflict that made adjudication necessary.
+
+* Successor-generation law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASQA-GENERATION
+:END:
+
+#+name: registry-quarantine-adjudication-generation-law
+#+begin_src typst
+#let Resolve(q, next) = $upright("QuarantineResolution")(#q, #next)$
+#let Generation(x) = $upright("generation")(#x)$
+#let Key(x) = $upright("invocationKey")(#x)$
+
+$
+  forall q, n,
+  Resolve(q, n) =>
+  Generation(Key(n)) = Generation(Key(q)) + 1.
+$
+#+end_src
+
+The old invocation generation remains historical evidence but loses resume authority immediately after resolution.
+
+* Stateful architecture
+
+#+name: registry-quarantine-adjudication-architecture
+#+begin_src mermaid
+flowchart LR
+  Q["Quarantine record\nstate: Disputed(key, accepted, conflicting, workers)"]
+  E["Evidence collector\nstate: Incomplete | Complete(both terminals)"]
+  A["Authority resolver\nstate: ScopePending | AuthorityBound"]
+  J["Independent adjudicator\nstate: Candidate | SeparatedFromWorkers"]
+  H["Adjudication history\nstate: AppendOnly(previousRoot)"]
+  G["Generation fence\nstate: OldRevoked | SuccessorAuthorized"]
+  R["Resolution slot\nstate: Quarantined | Resolved(decision) | Rejected"]
+
+  Q -->|"transition; state: Disputed -> EvidencePending; bind both terminals"| E
+  E -->|"guard; state: Complete -> ScopePending; exact quarantine digest"| A
+  A -->|"guard; state: AuthorityBound -> JudgePending; scope and revision exact"| J
+  J -->|"guard; state: SeparatedFromWorkers -> HistoryPending; decision"| H
+  H -->|"transition; state: AppendOnly -> GenerationPending; append record"| G
+  G -->|"capability; state: SuccessorAuthorized -> Resolved; old generation revoked"| R
+  E -->|"prohibitedEffect; state: OneSidedOrIncomplete -> Rejected"| R
+  J -->|"prohibitedEffect; state: SelfAdjudication -> Rejected"| R
+  H -->|"prohibitedEffect; state: RewriteOrErase -> Rejected"| R
+#+end_src
+
+* Adjudication state machine
+
+#+name: registry-quarantine-adjudication-state
+#+begin_src mermaid
+stateDiagram-v2
+  state "Quarantined\nstate: TwoTerminalDispute" as Quarantined
+  state "EvidenceComplete\nstate: BothTerminalsBound" as EvidenceComplete
+  state "AuthorityBound\nstate: ScopeAndRevisionExact" as AuthorityBound
+  state "Independent\nstate: JudgeDistinct" as Independent
+  state "Recorded\nstate: HistoryAppended" as Recorded
+  state "Resolved\nstate: SuccessorGeneration" as Resolved
+  state "Rejected\nstate: AuthorizationDefect" as Rejected
+
+  Quarantined --> EvidenceComplete: "guard; state: Dispute -> BothTerminalsBound"
+  Quarantined --> Rejected: "prohibitedEffect; state: OneSidedEvidence -> AuthorizationDefect"
+  EvidenceComplete --> AuthorityBound: "guard; state: Complete -> ScopeAndRevisionExact"
+  AuthorityBound --> Independent: "guard; state: Bound -> JudgeDistinct"
+  AuthorityBound --> Rejected: "prohibitedEffect; state: WorkerIsJudge -> AuthorizationDefect"
+  Independent --> Recorded: "transition; state: JudgeDistinct -> HistoryAppended"
+  Recorded --> Resolved: "capability; state: Appended -> SuccessorGeneration"
+  Resolved --> Rejected: "prohibitedEffect; state: RepeatedResolution -> AuthorizationDefect"
+#+end_src
+
+* Adjudication sequence
+
+#+name: registry-quarantine-adjudication-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant Q as "Quarantine Store [state: Disputed]"
+  participant E as "Evidence Collector [state: Incomplete]"
+  participant A as "Authority [state: ScopePending]"
+  participant J as "Adjudicator [state: Candidate]"
+  participant H as "History [state: AppendOnly]"
+  participant G as "Generation Registry [state: OldCurrent]"
+
+  Q->>E: "transition; state: Disputed -> Collecting; accepted and conflicting"
+  E->>A: "guard; state: BothBound -> ScopePending; evidence digest"
+  A->>J: "guard; state: ScopeExact -> Candidate; authority receipt"
+  alt adjudicator differs from claimant and challenger
+    J->>H: "transition; state: Independent -> RecordPending; closed decision"
+    H->>H: "transition; state: RecordPending -> Appended; preserve prior history"
+    H->>G: "guard; state: Appended -> GenerationAdvancePending"
+    G-->>Q: "capability; state: OldCurrent -> SuccessorCurrent; resolved"
+  else adjudicator is a disputed worker or evidence is incomplete
+    J-->>Q: "prohibitedEffect; state: Unauthorized -> QuarantinedUnchanged"
+  end
+#+end_src
+
+* Lean contract embedded in Org
+
+#+name: registry-quarantine-adjudication-lean-contract
+#+begin_src lean
+def EvidenceBindsCase
+    (quarantine : QuarantineCase)
+    (evidence : AdjudicationEvidence) : Prop :=
+  evidence.complete = true ∧
+  evidence.quarantineDigest = quarantine.quarantineDigest ∧
+  evidence.accepted = quarantine.accepted ∧
+  evidence.conflicting = quarantine.conflicting
+
+def AuthorizedAdjudication
+    (expectedAuthority : AdjudicationAuthority)
+    (quarantine : QuarantineCase)
+    (request : AdjudicationRequest) : Prop :=
+  request.authority = expectedAuthority ∧
+  request.adjudicatorDigest ≠ quarantine.claimantExecutorDigest ∧
+  request.adjudicatorDigest ≠ quarantine.challengerExecutorDigest ∧
+  EvidenceBindsCase quarantine request.evidence
+
+inductive AdjudicationHistoryStep where
+  | append : AdjudicationHistoryStep before record (before ++ [record])
+
+def advanceGeneration (key : StableInvocationKey) : StableInvocationKey :=
+  { key with generation := key.generation + 1 }
+#+end_src
+
+* Lean-discovered obligations
+
+Lean rejects incomplete evidence, an accepted-terminal mismatch, a conflicting-terminal mismatch, claimant self-adjudication, challenger self-adjudication, and authority mismatch independently.
+
+The resolution relation has only a quarantined source state. A resolved slot has no second resolution constructor. Its history transition can only append the adjudication record, and its target key is definitionally the successor generation. The previous generation therefore cannot satisfy current-generation authorization.
+
+This model proves authorization and state safety, not empirical truth. An independent authorized adjudicator may still make a bad decision if its evidence provenance is fraudulent. Conflating those properties would turn authority into an oracle and hide the next proof obligation.
+
+* Verification plan
+
+- build the focused Lean source and direct axiom audit;
+- execute the audit runner and emit the Lean JSON receipt;
+- admit scoped theorem families through AXLE;
+- evaluate every Typst block through parser-owned Org content on stdin;
+- run =orgize lint= and restricted =git diff --check=;
+- add no Rust implementation in this session.
+
+* Formal receipts
+
+- Lean source: =packages/proofs/ASPProof/AgentSessionHostRegistryQuarantineAdjudication.lean=
+- direct audit: =packages/proofs/ASPProof/Audit/AgentSessionHostRegistryQuarantineAdjudication.lean=
+- Lean JSON: =packages/proofs/receipts/agent-session-host-registry-quarantine-adjudication-audit-v1.json=
+- AXLE receipt: =packages/proofs/receipts/agent-session-host-registry-quarantine-adjudication-axle-audit-v1.json=
+- admitted audit SHA-256: =f2a88804462d6acb064a2e135f1af5c3b9cc336b25919f32ab3e803baad64d13=
+
+* Next boundary
+
+This boundary is refined by [[file:../10.05.38-agent-session-host-registry-adjudication-decision-certificate/00-overview.org][RFC 10.05.38 — Agent Session Host Registry Adjudication Decision Certificate]].
+
+The next formal boundary is adjudication evidence provenance and decision certificates: independently replayable evidence acquisition, provenance roots for both terminal captures, decision-to-evidence entailment, certificate revocation, and appeal without restoring the quarantined generation.

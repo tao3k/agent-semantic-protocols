@@ -121,7 +121,8 @@ pub(super) fn provider(
             .map(|extension| vec![format!("src/test{extension}")])
             .unwrap_or_default(),
         repository_candidate_generation: "test-candidate-generation".to_string(),
-        project_resolution_generation: "test-project-resolution-generation".to_string(),
+        workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
+        project_resolutions: Vec::new(),
         search_capabilities: manifest.search_capabilities().clone(),
         project_resolution: manifest.project_resolution().cloned(),
         document_resolution: manifest.document_resolution().cloned(),

@@ -146,10 +146,7 @@
       "required": [
         "packageRoots",
         "configFiles",
-        "sourceExtensions",
-        "sourcePaths",
-        "repositoryCandidateGeneration",
-        "projectResolutionGeneration"
+        "sourceExtensions"
       ],
       "properties": {
         "packageRoots": {
@@ -160,17 +157,6 @@
         },
         "sourceExtensions": {
           "$ref": "#/$defs/stringArray"
-        },
-        "sourcePaths": {
-          "$ref": "#/$defs/stringArray"
-        },
-        "repositoryCandidateGeneration": {
-          "type": "string",
-          "minLength": 1
-        },
-        "projectResolutionGeneration": {
-          "type": "string",
-          "minLength": 1
         }
       }
     },

@@ -298,27 +298,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
     }
 
     let cache_home = client_backend_state_dir(&project_root)?;
-    if let Some(request) =
-        super::language_projection_import::LanguageProjectionImportRequest::parse(&provider_args)?
-    {
-        let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
-        let invocation = provider_invocation_with_profile(
-            &runtime_profiles,
-            provider,
-            &request.provider_args(&project_root),
-        )?;
-        let output = super::provider_process::run_provider_command_with_stdin(
-            language_id,
-            provider,
-            &invocation,
-            &project_root,
-            Vec::new(),
-        )?;
-        if !output.status.success() {
-            return Err(request.provider_failure(output.status.code(), output.stderr.as_ref()));
-        }
-        return request.import_output(language_id, &project_root, output.stdout.as_ref());
-    }
     if is_search_dependency_seed(&provider_args) {
         if !provider.search_capabilities.dependency_topology {
             return run_search_dependency_seed_command(

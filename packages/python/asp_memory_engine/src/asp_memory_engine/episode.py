@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from time import time
 
 from .plan_context import (
-    GLOBAL_PROJECT_SCOPE,
+    GLOBAL_PROJECT_RESOLUTION,
     PlanMemoryContext,
     normalize_optional_plan_token,
     normalize_plan_sharing,
@@ -89,7 +89,7 @@ class Episode:
     created_at: int = field(default_factory=now_ms)
     updated_at: int = field(default_factory=now_ms)
     scope: str = GLOBAL_EPISODE_SCOPE
-    project_id: str = GLOBAL_PROJECT_SCOPE
+    project_id: str = GLOBAL_PROJECT_RESOLUTION
     session_id: str | None = None
     plan_id: str | None = None
     branch_id: str | None = None
@@ -104,7 +104,7 @@ class Episode:
             experience=draft.experience,
             outcome=draft.outcome,
             scope=normalize_scope(draft.scope),
-            project_id=normalize_plan_token(draft.project_id, GLOBAL_PROJECT_SCOPE),
+            project_id=normalize_plan_token(draft.project_id, GLOBAL_PROJECT_RESOLUTION),
             session_id=normalize_optional_plan_token(draft.session_id),
             plan_id=normalize_optional_plan_token(draft.plan_id),
             branch_id=normalize_optional_plan_token(draft.branch_id),
@@ -127,8 +127,8 @@ class Episode:
             updated_at=int(value.get("updated_at", value.get("created_at", now_ms()))),
             scope=normalize_scope(str(value.get("scope", GLOBAL_EPISODE_SCOPE))),
             project_id=normalize_plan_token(
-                str(value.get("project_id", GLOBAL_PROJECT_SCOPE)),
-                GLOBAL_PROJECT_SCOPE,
+                str(value.get("project_id", GLOBAL_PROJECT_RESOLUTION)),
+                GLOBAL_PROJECT_RESOLUTION,
             ),
             session_id=normalize_optional_plan_token(value.get("session_id")),
             plan_id=normalize_optional_plan_token(value.get("plan_id")),
@@ -163,7 +163,7 @@ class Episode:
         if self.retrieval_count < self.feedback_count:
             self.retrieval_count = self.feedback_count
         self.scope = normalize_scope(self.scope)
-        self.project_id = normalize_plan_token(self.project_id, GLOBAL_PROJECT_SCOPE)
+        self.project_id = normalize_plan_token(self.project_id, GLOBAL_PROJECT_RESOLUTION)
         self.session_id = normalize_optional_plan_token(self.session_id)
         self.plan_id = normalize_optional_plan_token(self.plan_id)
         self.branch_id = normalize_optional_plan_token(self.branch_id)

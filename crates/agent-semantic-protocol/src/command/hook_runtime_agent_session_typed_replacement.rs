@@ -108,7 +108,7 @@ pub(super) fn release_terminal_owner_before_typed_start(
 ) -> Result<(), String> {
     let registry =
         agent_semantic_client_db::AgentSessionRegistry::open_or_create_project(project_root)?;
-    let project_id = agent_semantic_client_db::AgentSessionRegistry::project_scope_id(project_root);
+    let project_id = agent_semantic_client_db::AgentSessionRegistry::workspace_id(project_root)?;
     let replacement_lease =
         crate::command::agent_session_registry::agent_session_registry_host_capability::consume_fresh_unroutable_resident_target_observation(
             &registry,

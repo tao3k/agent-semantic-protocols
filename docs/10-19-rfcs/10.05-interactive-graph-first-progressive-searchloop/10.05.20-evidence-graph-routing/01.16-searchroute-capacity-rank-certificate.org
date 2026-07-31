@@ -1,0 +1,254 @@
+#+title: SearchRoute Capacity-Rank Certificate
+#+subtitle: Axiom-free capacity fuel for internal dominance resolution
+#+startup: overview
+#+options: toc:3
+
+* Status
+
+This module is a proof-backed refinement of the bounded dominance witness
+resolver introduced by [[file:01.15-searchroute-bounded-dominance-witness-chain.org][01.15]].
+
+It changes no Rust or Python runtime.  It specifies the certificate required to
+turn a generic termination argument into a candidate-capacity interaction
+bound.
+
+* Problem
+
+01.15 proves that every selected witness edge has strict cost descent and that a
+fuel-bounded resolver cannot take more steps than its supplied fuel.  Those
+facts do not by themselves prove the stronger claim
+
+#+begin_quote
+candidate-count fuel is always sufficient to reach a retained endpoint.
+#+end_quote
+
+Strict descent in the raw =totalCost= rank proves well-foundedness, but the
+initial total cost can be much larger than the number of candidates.  A
+termination rank and a capacity-bounded rank are therefore different protocol
+artifacts.
+
+This distinction matters for an interaction-first SearchLoop:
+
+- termination says that internal routing eventually stops;
+- a capacity rank bounds how many graph-router transitions can occur;
+- neither fact requires one model turn per transition;
+- the public packet should summarize the internal chain unless an audit asks
+  for explicit edges.
+
+* Mathematical contract
+
+Let =U= be the ordered candidate universe used by =findDominator=.  A
+capacity-rank certificate provides a natural-valued rank for each candidate,
+strict descent for every witness actually selected by the deterministic
+resolver, and a rank bound below the candidate capacity.
+
+#+name: capacity-rank-certificate-model
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ "rank": U arrow.r "Nat" $
+
+$ "findDominator"(U, r) = w
+  quad "implies" quad
+  "rank"(w) < "rank"(r) $
+
+$ r in U
+  quad "implies" quad
+  "rank"(r) < |U| $
+#+end_src
+
+The executable resolver then admits the following bound.
+
+#+name: capacity-rank-retained-endpoint
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ r in U
+  quad "implies" quad
+  "status"("resolve"(U, |U|, r)) = "retained" $
+
+$ "keep"(U, "endpoint"("resolve"(U, |U|, r))) = #true $
+
+$ "steps"("resolve"(U, |U|, r)) <= |U| $
+#+end_src
+
+* Normative clauses
+
+** CRC-RANK: the capacity certificate is explicit
+
+A capacity-rank certificate MUST contain:
+
+1. a rank function over candidates;
+2. a proof that every witness selected by =findDominator= has a strictly lower
+   rank than the removed candidate;
+3. a proof that every candidate in the certified universe has rank strictly
+   below the universe length.
+
+The certificate is proof input.  A provider MUST NOT infer it from an
+unrecorded heuristic.
+
+** CRC-DESCENT: selected edges are the proof boundary
+
+The kernel theorem requires descent only for the edge selected by the
+deterministic resolver.  It does not require the public adapter to materialize
+all pairwise dominance edges.
+
+An implementation MAY retain a denser graph for diagnostics, but the compact
+receipt SHOULD bind only:
+
+- the candidate-universe digest;
+- the deterministic selection policy;
+- the capacity-rank certificate digest;
+- the resolver result.
+
+** CRC-BOUND: membership supplies the initial rank bound
+
+For a start candidate in the certified universe, its rank is below
+=candidateCount=.  The resolver therefore receives enough fuel when its fuel is
+the universe length.
+
+An empty universe cannot supply a valid start-member proof.  Empty-input
+handling remains an adapter concern and MUST be represented as a typed outcome,
+not as a fabricated retained candidate.
+
+** CRC-RETAINED: capacity fuel cannot end as exhausted
+
+Given a valid certificate and a member start candidate, resolution with
+=candidateCount= fuel MUST return =retained=.
+
+The =exhausted= status remains necessary for:
+
+- deliberately smaller diagnostic fuel;
+- an absent or rejected capacity certificate;
+- replay against a candidate universe whose digest does not match the
+  certificate.
+
+** CRC-ENDPOINT: retained means Pareto-kept
+
+The capacity theorem composes with the 01.15 endpoint theorem.  A retained
+capacity-resolution endpoint MUST satisfy =keepCandidate U endpoint = true=.
+
+This is stronger than returning a direct dominance witness.  A direct witness
+may itself be removed, while the certified endpoint is retained.
+
+** CRC-STEPS: graph transitions and model interactions are distinct
+
+The resolver performs at most =candidateCount= internal witness transitions.
+The public SearchLoop MUST NOT translate that bound into the same number of
+LLM/tool round trips.
+
+The normal projection SHOULD expose a constant-shape summary:
+
+#+begin_example
+status
+endpointId
+steps
+candidateUniverseDigest
+capacityRankCertificateDigest
+#+end_example
+
+Explicit witness edges SHOULD be an audit projection.  This preserves graph
+reachability evidence while reducing projected tokens and model-loop turns.
+
+** CRC-CACHE: cache claims bind different artifacts
+
+A search cache may reuse the candidate universe, selected edges, or capacity
+certificate.  A model prefix-cache hit may reuse the stable SearchLoop packet
+prefix.  These are separate measurements.
+
+The receipt MUST NOT report a generic =cacheHit=.  It SHOULD distinguish at
+least:
+
+- =searchCacheHit= for graph/search artifacts;
+- =modelPrefixCacheHit= for model-serving prefix reuse.
+
+A certificate digest improves both paths: it avoids retransmitting an explicit
+chain and keeps the model-visible prefix stable.
+
+** CRC-RECEIPT: default proof evidence is length-independent
+
+The proof model distinguishes:
+
+- an explicit receipt whose projected token cost grows with candidate count;
+- a summarized certificate receipt with constant field count.
+
+The summarized receipt proves the control decision by digest and theorem
+identity.  It does not claim that certificate construction itself is constant
+time.
+
+* Lean closure
+
+The executable proof is:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteCapacityRankCertificate.lean][SearchRouteCapacityRankCertificate.lean]]
+
+The axiom inventory surface is:
+
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteCapacityRankCertificate.lean][SearchRouteCapacityRankCertificate audit]]
+
+The JSON receipt target is:
+
+- [[file:../../../../packages/proofs/receipts/searchroute-capacity-rank-certificate-audit-v1.json][searchroute-capacity-rank-certificate-audit-v1.json]]
+
+The current Lean closure proves:
+
+- rank-bounded resolution returns =retained=;
+- candidate-capacity fuel is sufficient for a member start candidate;
+- the resulting endpoint is Pareto-kept;
+- resolver steps remain capacity-bounded;
+- raw cost descent alone does not supply a capacity bound;
+- an empty universe cannot produce a member start candidate;
+- the summarized receipt field count is independent of candidate count.
+
+* Logic findings
+
+** Finding 1: termination rank is not an interaction bound
+
+The 01.15 =totalCost= descent is a valid well-founded measure, but its numeric
+value is not bounded by candidate count.  Conflating these two statements would
+let the RFC claim a short SearchLoop path without proving it.
+
+The capacity-rank certificate closes that gap explicitly.
+
+** Finding 2: candidate identity uniqueness is not consumed by this kernel theorem
+
+Once a valid bounded rank certificate is supplied, the retained-status theorem
+uses:
+
+- selected-edge descent;
+- start membership;
+- the member rank bound.
+
+It does not consume unique candidate identifiers.  Identifier uniqueness is
+still required for unambiguous evidence, digest construction, replay, and for a
+future derivation of the certificate from the finite candidate graph.  It
+SHOULD NOT be misreported as a premise of the smaller kernel theorem.
+
+** Finding 3: certificate validation is still missing
+
+This stage validates the consequences of a capacity certificate; it does not
+yet construct that certificate from the evidence graph.  Trusting an
+provider-emitted rank without replay would merely move the unverified claim.
+
+The audit boundary therefore remains:
+
+#+begin_example
+candidate universe
+-> selected witness relation
+-> independently derived capacity rank
+-> Lean theorem
+-> compact resolver receipt
+#+end_example
+
+* Next proof boundary
+
+01.17 should derive, rather than assume, the capacity-rank certificate.  The
+next model should:
+
+1. prove that =findDominator= returns a member of the candidate universe;
+2. prove generic strict-dominance transitivity and irreflexivity;
+3. construct a finite topological or longest-path rank for selected witness
+   edges;
+4. prove that the constructed rank is below candidate count;
+5. bind candidate identity uniqueness to evidence and digest replay, while
+   keeping it out of the smaller theorem when it is not logically consumed.
+
+Until that derivation is axiom-free, the RFC may claim a conditional
+capacity-fuel theorem, but MUST NOT claim that every runtime candidate universe
+already carries a verified capacity certificate.

@@ -20,6 +20,8 @@
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>ThrottleInterval</key>
+  <integer>1</integer>
   <key>ProcessType</key>
   <string>Interactive</string>
 </dict>

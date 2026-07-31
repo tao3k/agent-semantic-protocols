@@ -293,13 +293,33 @@
           ],
           "properties": {
             "kind": {
-              "const": "read-provider-owner-projections"
+              "const": "read-provider-owner-snapshot"
             },
             "scope": {
               "type": "object"
             },
             "ownerPath": {
               "$ref": "#/$defs/identity"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "scope",
+            "owner"
+          ],
+          "properties": {
+            "kind": {
+              "const": "read-provider-owner-warm"
+            },
+            "scope": {
+              "type": "object"
+            },
+            "owner": {
+              "type": "object"
             }
           }
         },
@@ -689,18 +709,41 @@
           "type": "object",
           "required": [
             "state",
-            "projections"
+            "snapshot"
           ],
           "additionalProperties": false,
           "properties": {
             "state": {
-              "const": "provider-owner-projections"
+              "const": "provider-owner-snapshot"
             },
-            "projections": {
-              "type": "array",
-              "items": {
-                "type": "object"
-              }
+            "snapshot": {
+              "type": [
+                "object",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "probe",
+            "snapshot"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "provider-owner-warm"
+            },
+            "probe": {
+              "type": "object"
+            },
+            "snapshot": {
+              "type": [
+                "object",
+                "null"
+              ]
             }
           }
         },

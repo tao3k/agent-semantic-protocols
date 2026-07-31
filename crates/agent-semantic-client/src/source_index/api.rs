@@ -14,9 +14,7 @@ use sha2::{Digest as _, Sha256};
 
 use super::collect::collect_source_index_files;
 use super::config::SOURCE_INDEX_FILE_LIMIT;
-use super::generation_build::{SourceIndexGenerationRefresh, SourceIndexRefreshContext};
-use super::generation_commit::PreparedSourceIndexGeneration;
-use super::model::{SourceIndexRefreshReport, SourceIndexScopeFile};
+use super::model::SourceIndexScopeFile;
 use super::provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1,
     current_provider_source_index_snapshot_at_artifact_root_with_registry,
@@ -49,63 +47,8 @@ pub(super) fn provider_scope_digest(
     )
 }
 
-/// Refresh the DB Engine source index from the complete provider-owned source scope.
-pub fn refresh_source_index(
-    project_root: &Path,
-) -> Result<Option<SourceIndexRefreshReport>, String> {
-    let trace_started = Instant::now();
-    let Some(mut context) = source_index_refresh_context(project_root, trace_started)? else {
-        return Ok(None);
-    };
-    let report =
-        refresh_complete_source_index_generation(project_root, &mut context, trace_started)?;
-    Ok(Some(report))
-}
 
-fn source_index_refresh_context(
-    project_root: &Path,
-    trace_started: Instant,
-) -> Result<Option<SourceIndexRefreshContext>, String> {
-    let cache_report =
-        agent_semantic_client_core::ClientCacheManifest::inspect_project(project_root);
-    source_index_trace("cache-inspected", trace_started);
-    let Some(cache_root) = cache_report.cache_root.as_ref() else {
-        source_index_trace("cache-root-absent-warm-check", trace_started);
-        return Ok(None);
-    };
-    if ClientDbEngine::inspect_client_dir(cache_root).status
-        != agent_semantic_client_core::ClientDbStatus::Present
-    {
-        source_index_trace("db-absent-warm-check", trace_started);
-        return Ok(None);
-    }
-    let context = SourceIndexRefreshContext::resolve(project_root)?;
-    source_index_trace("context-resolved", trace_started);
-    Ok(Some(context))
-}
 
-fn refresh_complete_source_index_generation(
-    project_root: &Path,
-    context: &mut SourceIndexRefreshContext,
-    trace_started: Instant,
-) -> Result<SourceIndexRefreshReport, String> {
-    let snapshot = ProviderRegistrySnapshot::load(project_root)?;
-    source_index_trace("provider-registry-loaded", trace_started);
-    let registry = snapshot.evidence(project_root);
-    let files = collect_source_index_files(
-        project_root,
-        &snapshot,
-        &super::collect::SourceIndexCollectionScope::CompleteGeneration,
-    )?;
-    source_index_trace("scope-files-collected", trace_started);
-    let report = context.refresh_generation(SourceIndexGenerationRefresh {
-        index_root: project_root,
-        files: &files,
-        registry: &registry,
-    })?;
-    source_index_trace("generation-refreshed", trace_started);
-    Ok(report)
-}
 
 pub(super) fn source_index_snapshot_from_files(
     index_root: &Path,
@@ -622,87 +565,7 @@ pub(crate) fn current_runtime_source_index_snapshot(
     materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
 }
 
-/// Rebuild the DB Engine source index for a project without storing raw source.
-pub fn rebuild_source_index(project_root: &Path) -> Result<SourceIndexRefreshReport, String> {
-    prepare_rebuild_source_index(project_root)?.commit()
-}
 
-fn prepare_rebuild_source_index(
-    project_root: &Path,
-) -> Result<PreparedSourceIndexGeneration, String> {
-    let trace_started = Instant::now();
-    let context = SourceIndexRefreshContext::resolve(project_root)?;
-    source_index_trace("context-resolved", trace_started);
-    let snapshot = ProviderRegistrySnapshot::load(project_root)?;
-    source_index_trace("provider-registry-loaded", trace_started);
-    let registry = snapshot.evidence(project_root);
-    source_index_trace("rebuild-mode-selected", trace_started);
-    let files = collect_source_index_files(
-        project_root,
-        &snapshot,
-        &super::collect::SourceIndexCollectionScope::CompleteGeneration,
-    )?;
-    source_index_trace("scope-files-collected", trace_started);
-    context.prepare_generation(SourceIndexGenerationRefresh {
-        index_root: project_root,
-        files: &files,
-        registry: &registry,
-    })
-}
-
-/// Refresh source-index rows for an ASP-managed runtime source checkout.
-pub fn refresh_runtime_source_index(
-    project_root: &Path,
-    checkout_root: &Path,
-    language_id: &LanguageId,
-    provider_id: &ProviderId,
-) -> Result<SourceIndexRefreshReport, String> {
-    let mut context = SourceIndexRefreshContext::resolve(project_root)?;
-    let client_cache_dir = context.client_cache_dir();
-    let runtime_context = runtime_source_index_context(
-        (
-            checkout_root,
-            client_cache_dir,
-            language_id.as_str(),
-            provider_id.as_str(),
-        )
-            .into(),
-    )?;
-
-    let files = collect_runtime_source_index_files(
-        (
-            runtime_context.checkout_root.as_path(),
-            language_id.as_str(),
-            provider_id.as_str(),
-            SOURCE_INDEX_FILE_LIMIT,
-        )
-            .into(),
-    )?
-    .into_iter()
-    .map(|file| SourceIndexScopeFile {
-        path: file.path,
-        language_id: LanguageId::from(file.language_id),
-        provider_id: ProviderId::from(file.provider_id),
-        selector_receipts: Vec::new(),
-    })
-    .collect::<Vec<_>>();
-    if files.is_empty() {
-        return Err(format!(
-            "runtime source index found no source files in {} for language {}",
-            runtime_context.checkout_root.display(),
-            language_id
-        ));
-    }
-    let registry = ProviderRegistryEvidence {
-        fingerprint: runtime_context.registry_fingerprint,
-        scope_dirs: BTreeSet::new(),
-    };
-    context.refresh_generation(SourceIndexGenerationRefresh {
-        index_root: &runtime_context.checkout_root,
-        files: &files,
-        registry: &registry,
-    })
-}
 
 pub(super) fn source_index_trace(stage: &str, started: Instant) {
     if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {

@@ -45,6 +45,9 @@ pub(super) fn prepare_project_state(project_root: &Path) {
 fn materialize_test_org_state(state_home: &Path) {
     let org_repo = local_test_org_repo();
     let target = state_home.join("org");
+    if target.join(".git").is_dir() {
+        return;
+    }
     std::fs::create_dir_all(state_home).expect("create ASP state home");
     let output = Command::new("git")
         .args(["clone", "--quiet", "--local"])

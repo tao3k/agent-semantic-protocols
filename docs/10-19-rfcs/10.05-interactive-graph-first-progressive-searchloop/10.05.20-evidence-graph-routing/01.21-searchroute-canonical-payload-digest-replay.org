@@ -1,0 +1,274 @@
+#+title: SearchRoute Canonical Payload and Digest Replay
+#+subtitle: Assumption-free full-field identity and assumption-bound compression
+#+startup: overview
+#+options: toc:3
+
+* Status
+
+This module closes the canonical-identity boundary identified by
+[[file:01.20-searchroute-shortcut-envelope-admission.org][01.20]].
+
+It defines a versioned ordered canonical word sequence, proves its encoding is
+injective, and separates full-field replay from digest-compressed replay.  It
+does not claim collision resistance for a concrete cryptographic algorithm or
+implement serialization/runtime caching.
+
+* Canonical payload
+
+The canonical shortcut payload contains:
+
+- schema version;
+- hash-algorithm identifier;
+- the complete nine-field shortcut commitment;
+- the direct-dominance claim bit.
+
+Its ordered canonical word sequence is:
+
+#+name: canonical-shortcut-payload-model
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ "encode"(P) = (
+  "schemaVersion",
+  "hashAlgorithmId",
+  "candidateUniverseDigest",
+  "startCanonicalRouteId",
+  "endpointCanonicalRouteId",
+  "costSemanticsDigest",
+  "selectionPolicyDigest",
+  "chainLength",
+  "explicitChainAuditDigest",
+  "theoremFamilyDigest",
+  "auditReceiptDigest",
+  "directDominanceClaimed"
+) $
+
+$ "encode"(P_1) = "encode"(P_2)
+  quad "implies" quad
+  P_1 = P_2 $
+#+end_src
+
+Schema and hash-algorithm identity are part of the canonical preimage, not
+detached metadata.
+
+* Two replay modes
+
+#+name: digest-replay-assumption-model
+#+begin_src typst :lint typst-eval-stdin :runtime typst
+$ "full-field":
+  "encode"(P_1) = "encode"(P_2)
+  quad "implies" quad
+  P_1 = P_2 $
+
+$ "digest-only":
+  H("encode"(P_1)) = H("encode"(P_2))
+  and "CollisionFreeOnAdmitted"(H)
+  quad "implies" quad
+  P_1 = P_2 $
+
+$ H_0(x) = 0 $
+
+$ P_1 != P_2
+  and H_0("encode"(P_1)) = H_0("encode"(P_2)) $
+#+end_src
+
+Full-field replay needs no cryptographic assumption.  Digest-only replay needs
+an explicit collision-free-on-admitted-payloads witness.
+
+* Normative clauses
+
+** CPD-CANONICAL: encoding is ordered and injective
+
+The canonical encoding MUST preserve the exact field order specified above.
+
+If two canonical word sequences are equal, their source shortcut payloads MUST
+be equal.  Implementations MAY choose a byte representation, but must prove or
+test that byte encoding preserves this word-sequence identity.
+
+Map iteration order, host-language object order, locale formatting, and
+whitespace-sensitive rendering MUST NOT influence the canonical preimage.
+
+** CPD-SCHEMA: schema version is hashed inside the preimage
+
+Changing the schema version changes the canonical encoding even when all other
+fields are equal.
+
+Schema version MUST NOT be supplied only as uncommitted transport metadata.
+
+** CPD-HASH: algorithm identity is hashed inside the preimage
+
+Changing the hash-algorithm identifier changes the canonical encoding.
+
+This prevents the same digest bytes from being interpreted under a different
+algorithm without changing the preimage identity.  It does not by itself prove
+the security properties of the named algorithm.
+
+** CPD-FULL-FIELD: full-field replay is assumption-free
+
+An adapter MAY compare the complete canonical word sequences.  Equality then
+implies payload equality solely from encoding injectivity.
+
+This is the mandatory safe fallback when no collision-free digest assumption
+is admitted.
+
+** CPD-DIGEST: digest compression is optional
+
+An adapter MAY project a digest instead of twelve canonical fields only when
+the replay policy admits the corresponding digest function and security
+assumption.
+
+Digest compression reduces projected fields.  It does not reduce the need to
+construct and validate the canonical preimage internally.
+
+** CPD-ASSUMPTION: collision freedom is explicit and scoped
+
+=CollisionFreeOnAdmitted H A= means that, for payloads admitted by predicate
+=A=, equal digests imply equal canonical encodings.
+
+The assumption MUST name:
+
+- digest algorithm and version;
+- admitted payload/schema domain;
+- canonical encoding version;
+- trust source for the security assumption;
+- expiration or migration policy where applicable.
+
+The Lean theorem consumes this assumption explicitly.  It does not manufacture
+collision resistance from digest equality.
+
+** CPD-COUNTEREXAMPLE: digest equality alone is insufficient
+
+The proof contains a constant digest function:
+
+#+begin_example
+constantDigest _ = 0
+#+end_example
+
+Two payloads with different schema versions have equal constant digests while
+remaining distinct payloads.
+
+Therefore, the protocol MUST reject the implication:
+
+#+begin_example
+digestEqual -> payloadEqual
+#+end_example
+
+unless the collision-free assumption is present.
+
+** CPD-RECEIPT: compression mode is observable
+
+The replay receipt MUST identify whether it used:
+
+- =full-field=;
+- =digest-compressed=.
+
+For digest-compressed replay it MUST also identify the admitted assumption.
+
+The proof model assigns twelve words to the full projection and three fields to
+the compressed projection.  The compressed projection is smaller, but only the
+full projection is assumption-free.
+
+* SearchLoop implications
+
+** Safe adaptive projection
+
+The router SHOULD select:
+
+#+begin_example
+collision-free witness available -> digest-compressed projection
+otherwise                        -> full-field projection
+#+end_example
+
+Lack of a digest assumption should cost additional projection tokens, not cause
+an unsafe replay or a terminal SearchLoop failure.
+
+** Internal canonicalization remains mandatory
+
+Even when the model sees only a digest, the router must reconstruct the full
+canonical payload before computing or validating that digest.
+
+The compact packet is a projection optimization, not a shorter proof input.
+
+** Search cache key
+
+The search cache SHOULD key digest-compressed entries by:
+
+- schema version;
+- canonical encoding version;
+- hash-algorithm identity;
+- digest value;
+- collision-assumption identity.
+
+Reusing the same digest under a different assumption domain is a cache miss.
+
+** Model prefix caching
+
+A three-field compressed receipt can stabilize model-visible prefixes and
+reduce tokens.  This model-prefix-cache benefit remains distinct from the
+search cache that stores the full canonical payload and proof evidence.
+
+* Logic findings
+
+** Finding 1: canonical encoding solves identity before hashing
+
+Hashing cannot repair an ambiguous encoding.  Injective canonical encoding is
+the assumption-free identity layer; digest compression is built on top of it.
+
+** Finding 2: algorithm identity belongs to the message
+
+If algorithm identity is outside the preimage, a digest can be reinterpreted
+under a different algorithm without changing the committed message.
+
+The proof therefore includes both schema and algorithm identifiers in the
+canonical sequence.
+
+** Finding 3: collision resistance is a scoped assumption, not an axiom-free theorem
+
+The Lean module remains axiom-free because it proves a conditional theorem:
+given a collision-free witness, digest equality implies payload equality.
+
+It does not assert that a real-world hash automatically satisfies that witness.
+
+** Finding 4: compression has a trust/token tradeoff
+
+Full-field replay spends more projection tokens and requires no digest security
+assumption.  Digest replay spends fewer tokens and relies on a named security
+assumption.
+
+The SearchLoop should choose between them explicitly rather than silently
+forcing one global mode.
+
+* Lean closure
+
+The executable proof is:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteCanonicalPayloadDigestReplay.lean][SearchRouteCanonicalPayloadDigestReplay.lean]]
+
+The axiom inventory surface is:
+
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteCanonicalPayloadDigestReplay.lean][SearchRouteCanonicalPayloadDigestReplay audit]]
+
+The machine-consumable receipt is:
+
+- [[file:../../../../packages/proofs/receipts/searchroute-canonical-payload-digest-replay-audit-v1.json][searchroute-canonical-payload-digest-replay-audit-v1.json]]
+
+The receipt covers ten declarations and MUST report:
+
+#+begin_example
+axiomDependentDeclarationCount = 0
+axiomInventory = []
+#+end_example
+
+* Next proof boundary
+
+The next module should prove safe replay-mode negotiation:
+
+1. define =fullField= and =digestCompressed= replay modes;
+2. permit digest mode only when a scoped collision-free witness is present;
+3. select full-field mode automatically when the witness is absent;
+4. prove that mode negotiation never yields unassumed digest replay;
+5. prove both modes produce the same payload identity decision when their
+   premises hold;
+6. bind mode and assumption identity into the replay receipt;
+7. preserve explicit-chain fallback after either identity mode fails.
+
+This will turn the current trust/token tradeoff into a total, fail-closed
+SearchLoop decision rather than an adapter convention.

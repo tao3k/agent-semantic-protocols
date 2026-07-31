@@ -180,6 +180,14 @@ raw source.  Activation or an explicit generation refresh owns rebuilding.
 Relocation is handled before publication.  Moved owners and path attributes are
 part of the generation transaction, not query-time recovery.
 
+Each fixed owner entry carries a canonical digest of its complete source and
+derived projection identities.  The digest covers projection kind, structural
+selector, byte range, and derived bytes in order-independent canonical form.
+Owner admission compares this digest instead of scanning the workspace selector
+table or faulting every owner source page.  Consequently, process-cold owner
+identity cost is bounded by the target owner and is independent of unrelated
+workspace selector volume.
+
 * Required performance receipt
 
 Every gate sample records:
@@ -225,6 +233,8 @@ public Rust harness API, publish it through the shared V1 format, then measure:
 3. absent-selector fail-closed behavior;
 4. parallel readers against the same immutable fixture;
 5. generation replacement while readers remain pinned to the prior digest.
+6. target-owner identity in a generation containing a high volume of unrelated
+   selectors.
 
 The benchmark MUST assert result identity and zero-I/O counters in addition to
 latency.  A pure function benchmark that bypasses generation loading is

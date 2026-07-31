@@ -46,6 +46,8 @@ pub(crate) fn workspace(
     std::fs::create_dir_all(&project_root).expect("create workspace database test project");
     std::fs::create_dir(project_root.join(".git"))
         .expect("create workspace database Git identity marker");
+    let project_root =
+        std::fs::canonicalize(project_root).expect("canonicalize workspace database test project");
     let resolved = ResolvedState::resolve(&project_root).expect("resolve workspace database state");
     let scope = ProviderIncrementalScoped {
         project_root: project_root.to_string_lossy().into_owned(),

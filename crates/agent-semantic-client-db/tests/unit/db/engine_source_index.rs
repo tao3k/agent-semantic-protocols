@@ -40,6 +40,8 @@ use snapshot_helper::client_dir_snapshot;
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_control() {
     let client_dir = temp_root("db-engine-source-index-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let first_import = build_source_index_import(ClientDbSourceIndexImportRequest {
@@ -72,16 +74,16 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
         "src/source_index_active_turso.rs",
         b"pub fn source_index_active_turso_fixture() {}\n".as_slice(),
     )]);
-    let first = agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: first_import,
-            file_count: 1,
-            source_snapshot: source_snapshot.clone(),
-        },
-        &active_source_blobs,
-    )
-    .expect("refresh source-index through active Turso DB Engine path");
+    let first = fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: first_import,
+                file_count: 1,
+                source_snapshot: source_snapshot.clone(),
+            },
+            &active_source_blobs,
+        )
+        .expect("refresh source-index through active Turso DB Engine path");
     assert_eq!(first.generation_id.as_str(), "source-index-active-turso-1");
     assert!(!first.reused_generation);
     assert_eq!(first.file_count, 1);
@@ -118,9 +120,8 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
         }],
     })
     .expect("build second Turso source-index import");
-    let second =
-        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-            &client_dir,
+    let second = fixture
+        .commit_source_index_generation(
             ClientDbSourceIndexRefreshRequest {
                 import: second_import,
                 file_count: 1,
@@ -162,6 +163,8 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_candidate() {
     let client_dir = temp_root("db-engine-source-index-proof-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-proof-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let selector =
@@ -198,9 +201,8 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
         source.as_slice(),
     )]);
 
-    let refresh =
-        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-            &client_dir,
+    let refresh = fixture
+        .commit_source_index_generation(
             ClientDbSourceIndexRefreshRequest {
                 import: source_index_import,
                 file_count: 1,
@@ -257,6 +259,8 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_candidate() {
     let client_dir = temp_root("db-engine-source-index-scope-proof-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-scope-proof-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let source_path = project_root.join("src/source_index_scope_payload_proof.rs");
@@ -324,9 +328,8 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
     )
     .expect("assemble source-index scope payload proof import");
 
-    let refresh =
-        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-            &client_dir,
+    let refresh = fixture
+        .commit_source_index_generation(
             ClientDbSourceIndexRefreshRequest {
                 import,
                 file_count: 1,
@@ -370,6 +373,8 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generations() {
     let client_dir = temp_root("db-engine-source-index-dedup-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-dedup-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let rust_language_id = LanguageId::from("rust");
@@ -414,9 +419,8 @@ async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generation
             "src/source_index_dedup.rs",
             text.as_bytes(),
         )]);
-        let refresh =
-            agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-                &client_dir,
+        let refresh = fixture
+            .commit_source_index_generation(
                 ClientDbSourceIndexRefreshRequest {
                     import: source_index_import,
                     file_count: 1,
@@ -468,6 +472,8 @@ async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generation
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_import_does_not_populate_turso_fts_search_documents() {
     let client_dir = temp_root("db-engine-source-index-fts-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-fts-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let rust_language_id = LanguageId::from("rust");
@@ -503,9 +509,8 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
         b"pub fn source_index_fts_fixture() { let camel_case_identifier = true; }\n".as_slice(),
     )]);
 
-    let refresh =
-        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-            &client_dir,
+    let refresh = fixture
+        .commit_source_index_generation(
             ClientDbSourceIndexRefreshRequest {
                 import: source_index_import.clone(),
                 file_count: 1,
@@ -517,24 +522,21 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
     assert_eq!(refresh.owner_count, 1);
     assert_eq!(refresh.selector_count, 1);
 
-    let hits = ClientDbEngine::search_source_index_documents_from_client_dir(
-        &client_dir,
-        &source_snapshot,
-        "source_index_fts_fixture",
-        8,
-    )
-    .expect("search source-index documents through Turso stable search lane");
-    assert!(hits.hits.is_empty(), "hits={hits:?}");
+    assert!(
+        !client_dir.join("search-projection.turso").exists(),
+        "source-index commit must not bootstrap or populate the retired FTS projection lane"
+    );
 
-    let lookup = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-        &client_dir,
-        &refresh.source_snapshot,
-        "source_index_fts_fixture",
-        Some(&rust_language_id),
-        8,
-    )
-    .await
-    .expect("lookup source-index read model after Turso FTS smoke");
+    let lookup = fixture
+        .read_source_index(
+            project_root.clone(),
+            project_root.clone(),
+            refresh.source_snapshot.clone(),
+            "source_index_fts_fixture".to_owned(),
+            Some(rust_language_id.clone()),
+            8,
+        )
+        .expect("lookup source-index read model after Turso FTS smoke");
     assert_eq!(lookup.state, ClientDbSourceIndexLookupState::Hit);
     assert!(
         lookup
@@ -551,6 +553,8 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_file_locks() {
     let client_dir = temp_root("db-engine-source-index-concurrent-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-concurrent-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let rust_language_id = LanguageId::from("rust");
@@ -579,9 +583,8 @@ async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_fil
         "src/source_index_concurrent.rs",
         b"pub fn source_index_concurrent_fixture() {}\n".as_slice(),
     )]);
-    let refresh =
-        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-            &client_dir,
+    let refresh = fixture
+        .commit_source_index_generation(
             ClientDbSourceIndexRefreshRequest {
                 import: source_index_import,
                 file_count: 1,
@@ -643,6 +646,8 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
     use std::os::unix::fs::PermissionsExt;
 
     let client_dir = temp_root("db-engine-source-index-read-only-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-read-only-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let rust_language_id = LanguageId::from("rust");
@@ -671,9 +676,8 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
         "src/source_index_read_only.rs",
         b"pub fn source_index_read_only_fixture() {}\n".as_slice(),
     )]);
-    let refresh =
-        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-            &client_dir,
+    let refresh = fixture
+        .commit_source_index_generation(
             ClientDbSourceIndexRefreshRequest {
                 import: source_index_import,
                 file_count: 1,
@@ -697,14 +701,14 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
         .expect("make client directory read-only");
 
     let lookup_started_at = std::time::Instant::now();
-    let lookup_result = ClientDbEngine::lookup_source_index_read_model_from_client_dir(
-        &client_dir,
-        &refresh.source_snapshot,
-        "source_index_read_only_fixture",
-        Some(&rust_language_id),
+    let lookup_result = fixture.read_source_index(
+        project_root.clone(),
+        project_root.clone(),
+        refresh.source_snapshot.clone(),
+        "source_index_read_only_fixture".to_owned(),
+        Some(rust_language_id.clone()),
         8,
-    )
-    .await;
+    );
     let lookup_elapsed = lookup_started_at.elapsed();
 
     fs::set_permissions(&client_dir, fs::Permissions::from_mode(0o755))
@@ -731,6 +735,8 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lock_errors() {
     let client_dir = temp_root("db-engine-source-index-pressure-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-pressure-project");
     let rust_language_id = LanguageId::from("rust");
     let initial_source_snapshot = crate::snapshot_fixture::source_snapshot_evidence_for(1);
@@ -759,22 +765,22 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
         "src/source_index_pressure.rs",
         b"pub fn source_index_pressure_fixture() { let initial = true; }\n".as_slice(),
     )]);
-    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: initial_import,
-            file_count: 1,
-            source_snapshot: initial_source_snapshot.clone(),
-        },
-        &initial_source_blobs,
-    )
-    .expect("refresh initial pressure source-index fixture");
+    fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: initial_import,
+                file_count: 1,
+                source_snapshot: initial_source_snapshot.clone(),
+            },
+            &initial_source_blobs,
+        )
+        .expect("refresh initial pressure source-index fixture");
 
     let shared_client_dir = Arc::new(client_dir.clone());
     let shared_project_root = Arc::new(project_root.clone());
     let completed_lookup_count = Arc::new(AtomicUsize::new(0));
 
-    let writer_client_dir = Arc::clone(&shared_client_dir);
+    let writer_fixture = fixture.clone();
     let writer_project_root = Arc::clone(&shared_project_root);
     let writer_language_id = rust_language_id.clone();
     let writer = std::thread::spawn(move || {
@@ -811,18 +817,16 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
                     selectors: Vec::new(),
                 }],
             })?;
-            let report =
-                agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-                    writer_client_dir.as_ref(),
-                    ClientDbSourceIndexRefreshRequest {
-                        import,
-                        file_count: 1,
-                        source_snapshot: crate::snapshot_fixture::source_snapshot_evidence_for(
-                            round + 2,
-                        ),
-                    },
-                    &source_blobs,
-                )?;
+            let report = writer_fixture.commit_source_index_generation(
+                ClientDbSourceIndexRefreshRequest {
+                    import,
+                    file_count: 1,
+                    source_snapshot: crate::snapshot_fixture::source_snapshot_evidence_for(
+                        round + 2,
+                    ),
+                },
+                &source_blobs,
+            )?;
             committed_snapshot = Some(report.source_snapshot);
         }
         Ok::<_, String>(committed_snapshot.expect("writer must commit at least one generation"))

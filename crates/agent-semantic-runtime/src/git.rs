@@ -77,11 +77,71 @@ pub struct RepositoryCandidateSnapshot {
     pub mode: RepositoryCandidateMode,
     pub repository_identity: RepositoryIdentity,
     pub worktree_identity: WorktreeIdentity,
+    pub candidate_scope: RepositoryCandidateScope,
     pub candidate_generation: RepositoryCandidateGeneration,
     pub candidates: Vec<RepositoryCandidate>,
     pub policy_overlay_digest: String,
     pub policy_exclusions: Vec<RepositoryCandidatePolicyExclusion>,
     pub metrics: RepositoryCandidateMetrics,
+}
+
+impl RepositoryCandidateSnapshot {
+    pub fn scoped_to_project_root(
+        &self,
+        project_root: &Path,
+    ) -> Result<Self, GitWorkspaceFileScopeError> {
+        let project_root = canonicalize_if_possible(project_root);
+        let relative_scope = project_root
+            .strip_prefix(&self.candidate_scope.project_root)
+            .map_err(
+                |_| GitWorkspaceFileScopeError::ProjectOutsideCandidateScope {
+                    project_root: project_root.clone(),
+                    candidate_root: self.candidate_scope.project_root.clone(),
+                },
+            )?
+            .to_path_buf();
+        if relative_scope.as_os_str().is_empty() {
+            return Ok(self.clone());
+        }
+        let mut scoped = self.clone();
+        scoped.candidates = self
+            .candidates
+            .iter()
+            .filter_map(|candidate| {
+                candidate
+                    .path
+                    .strip_prefix(&relative_scope)
+                    .ok()
+                    .and_then(|relative_path| {
+                        (!relative_path.as_os_str().is_empty()).then(|| {
+                            let mut candidate = candidate.clone();
+                            candidate.path = relative_path.to_path_buf();
+                            candidate
+                        })
+                    })
+            })
+            .collect();
+        scoped.policy_exclusions = self
+            .policy_exclusions
+            .iter()
+            .filter_map(|exclusion| {
+                exclusion
+                    .path
+                    .strip_prefix(&relative_scope)
+                    .ok()
+                    .and_then(|relative_path| {
+                        (!relative_path.as_os_str().is_empty()).then(|| {
+                            let mut exclusion = exclusion.clone();
+                            exclusion.path = relative_path.to_path_buf();
+                            exclusion
+                        })
+                    })
+            })
+            .collect();
+        scoped.candidate_scope = RepositoryCandidateScope { project_root };
+        refresh_candidate_snapshot_metrics_and_generation(&mut scoped);
+        Ok(scoped)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -108,6 +168,12 @@ pub struct WorktreeIdentity {
     pub git_dir: PathBuf,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub head_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCandidateScope {
+    pub project_root: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -167,12 +233,33 @@ pub struct RepositoryCandidateMetrics {
 
 #[derive(Debug)]
 pub enum GitWorkspaceFileScopeError {
-    DiscoverRepository { message: String },
-    MissingWorktree { git_dir: PathBuf },
-    LoadIndex { message: String },
-    ConfigureDirwalk { message: String },
-    WalkWorktree { message: String },
-    LoadProjectConfig { path: PathBuf, message: String },
+    DiscoverRepository {
+        message: String,
+    },
+    MissingWorktree {
+        git_dir: PathBuf,
+    },
+    LoadIndex {
+        message: String,
+    },
+    ConfigureDirwalk {
+        message: String,
+    },
+    WalkWorktree {
+        message: String,
+    },
+    LoadProjectConfig {
+        path: PathBuf,
+        message: String,
+    },
+    ProjectOutsideWorktree {
+        project_root: PathBuf,
+        worktree_root: PathBuf,
+    },
+    ProjectOutsideCandidateScope {
+        project_root: PathBuf,
+        candidate_root: PathBuf,
+    },
 }
 
 impl std::fmt::Display for GitWorkspaceFileScopeError {
@@ -205,6 +292,24 @@ impl std::fmt::Display for GitWorkspaceFileScopeError {
                 formatter,
                 "failed to load ASP project discovery config {}: {message}",
                 path.display()
+            ),
+            Self::ProjectOutsideWorktree {
+                project_root,
+                worktree_root,
+            } => write!(
+                formatter,
+                "repository candidate project root {} is outside worktree {}",
+                project_root.display(),
+                worktree_root.display()
+            ),
+            Self::ProjectOutsideCandidateScope {
+                project_root,
+                candidate_root,
+            } => write!(
+                formatter,
+                "repository candidate project root {} is outside candidate scope {}",
+                project_root.display(),
+                candidate_root.display()
             ),
         }
     }
@@ -289,11 +394,81 @@ fn discover_git_workspace_file_scope(
     }))
 }
 
+fn repository_candidate_generation(
+    repository_id: &str,
+    worktree_id: &str,
+    head_id: Option<&str>,
+    candidate_scope: &RepositoryCandidateScope,
+    candidates: &[RepositoryCandidate],
+    policy_overlay_digest: &str,
+) -> RepositoryCandidateGeneration {
+    let mut generation = blake3::Hasher::new();
+    generation.update(b"agent.semantic-protocols.repository-candidate-snapshot\0");
+    generation.update(repository_id.as_bytes());
+    generation.update(b"\0");
+    generation.update(worktree_id.as_bytes());
+    generation.update(b"\0head\0");
+    generation.update(head_id.unwrap_or("unborn").as_bytes());
+    generation.update(b"\0candidate-scope\0");
+    generation.update(candidate_scope.project_root.as_os_str().as_encoded_bytes());
+    for candidate in candidates {
+        generation.update(b"\0");
+        generation.update(candidate.path.as_os_str().as_encoded_bytes());
+        generation.update(b"\0");
+        generation.update(match candidate.state {
+            RepositoryCandidateState::Tracked => b"tracked",
+            RepositoryCandidateState::Untracked => b"untracked",
+        });
+    }
+    generation.update(b"\0policy-overlay\0");
+    generation.update(policy_overlay_digest.as_bytes());
+    RepositoryCandidateGeneration {
+        algorithm: "blake3-worktree-state-v1".to_owned(),
+        digest: format!("blake3:{}", generation.finalize().to_hex()),
+        authorities: vec![
+            RepositoryCandidateAuthority::GitIndex,
+            RepositoryCandidateAuthority::GitWorktree,
+        ],
+    }
+}
+
+fn refresh_candidate_snapshot_metrics_and_generation(snapshot: &mut RepositoryCandidateSnapshot) {
+    snapshot.metrics.index_entry_count = snapshot
+        .candidates
+        .iter()
+        .filter(|candidate| candidate.state == RepositoryCandidateState::Tracked)
+        .count();
+    snapshot.metrics.worktree_addition_count =
+        snapshot.candidates.len() - snapshot.metrics.index_entry_count;
+    snapshot.metrics.candidate_count = snapshot.candidates.len();
+    snapshot.metrics.policy_exclusion_count = snapshot.policy_exclusions.len();
+    snapshot.candidate_generation = repository_candidate_generation(
+        &snapshot.repository_identity.repository_id,
+        &snapshot.worktree_identity.worktree_id,
+        snapshot.worktree_identity.head_id.as_deref(),
+        &snapshot.candidate_scope,
+        &snapshot.candidates,
+        &snapshot.policy_overlay_digest,
+    );
+}
+
 pub fn discover_repository_candidate_snapshot(
     workspace: &Path,
 ) -> Result<Option<RepositoryCandidateSnapshot>, GitWorkspaceFileScopeError> {
     let Some(scope) = discover_git_workspace_file_scope(workspace)? else {
         return Ok(None);
+    };
+    let project_root = canonicalize_if_possible(workspace);
+    let worktree_prefix = project_root
+        .strip_prefix(&scope.worktree_root)
+        .map_err(|_| GitWorkspaceFileScopeError::ProjectOutsideWorktree {
+            project_root: project_root.clone(),
+            worktree_root: scope.worktree_root.clone(),
+        })?;
+    let worktree_prefix = if worktree_prefix.as_os_str().is_empty() {
+        PathBuf::from(".")
+    } else {
+        worktree_prefix.to_path_buf()
     };
     let repository = gix::discover(workspace).map_err(|error| {
         GitWorkspaceFileScopeError::DiscoverRepository {
@@ -321,7 +496,15 @@ pub fn discover_repository_candidate_snapshot(
     let mut candidates = scope
         .files
         .iter()
-        .map(|file| {
+        .filter_map(|file| {
+            let relative_path = if worktree_prefix == Path::new(".") {
+                file.relative_path.clone()
+            } else {
+                file.relative_path
+                    .strip_prefix(&worktree_prefix)
+                    .ok()?
+                    .to_path_buf()
+            };
             let (state, authority) = match file.origin {
                 GitWorkspaceFileOrigin::Tracked => (
                     RepositoryCandidateState::Tracked,
@@ -332,11 +515,11 @@ pub fn discover_repository_candidate_snapshot(
                     RepositoryCandidateAuthority::GitWorktree,
                 ),
             };
-            RepositoryCandidate {
-                path: file.relative_path.clone(),
+            Some(RepositoryCandidate {
+                path: relative_path,
                 state,
                 authority,
-            }
+            })
         })
         .collect::<Vec<_>>();
     candidates.sort_by(|left, right| left.path.cmp(&right.path));
@@ -347,30 +530,15 @@ pub fn discover_repository_candidate_snapshot(
         .filter(|candidate| candidate.state == RepositoryCandidateState::Tracked)
         .count();
     let worktree_addition_count = candidates.len() - index_entry_count;
-    let mut generation = blake3::Hasher::new();
-    generation.update(b"agent.semantic-protocols.repository-candidate-snapshot\0");
-    generation.update(repository_id.as_bytes());
-    generation.update(b"\0");
-    generation.update(worktree_id.as_bytes());
-    for candidate in &candidates {
-        generation.update(b"\0");
-        generation.update(candidate.path.as_os_str().as_encoded_bytes());
-        generation.update(b"\0");
-        generation.update(match candidate.state {
-            RepositoryCandidateState::Tracked => b"tracked",
-            RepositoryCandidateState::Untracked => b"untracked",
-        });
-    }
-    generation.update(b"\0policy-overlay\0");
-    generation.update(policy_overlay_digest.as_bytes());
-    let candidate_generation = RepositoryCandidateGeneration {
-        algorithm: "blake3-path-set-v1".to_owned(),
-        digest: format!("blake3:{}", generation.finalize().to_hex()),
-        authorities: vec![
-            RepositoryCandidateAuthority::GitIndex,
-            RepositoryCandidateAuthority::GitWorktree,
-        ],
-    };
+    let candidate_scope = RepositoryCandidateScope { project_root };
+    let candidate_generation = repository_candidate_generation(
+        &repository_id,
+        &worktree_id,
+        head_id.as_deref(),
+        &candidate_scope,
+        &candidates,
+        &policy_overlay_digest,
+    );
 
     Ok(Some(RepositoryCandidateSnapshot {
         schema_id: "agent.semantic-protocols.repository-candidate-snapshot".to_owned(),
@@ -388,6 +556,7 @@ pub fn discover_repository_candidate_snapshot(
             git_dir,
             head_id,
         },
+        candidate_scope,
         candidate_generation,
         policy_overlay_digest,
         policy_exclusions: policy_exclusions.clone(),
@@ -582,6 +751,10 @@ mod repository_candidate_snapshot_tests {
             first.candidate_generation.digest,
             second.candidate_generation.digest
         );
+        assert_eq!(
+            first.candidate_scope.project_root,
+            std::fs::canonicalize(&fixture.root).expect("canonical fixture root")
+        );
         assert_eq!(first.metrics.index_entry_count, 2);
         assert_eq!(first.metrics.worktree_addition_count, 1);
         assert_eq!(first.metrics.candidate_count, 3);
@@ -592,6 +765,119 @@ mod repository_candidate_snapshot_tests {
                 .candidates
                 .iter()
                 .any(|candidate| candidate.path == Path::new("ignored/generated.rs"))
+        );
+    }
+
+    #[test]
+    fn checkout_identity_is_stable_while_head_advances_its_generation() {
+        let fixture = Fixture::new("worktree-generation");
+        fixture.git(&["init", "--quiet"]);
+        fixture.write("src/lib.rs", "pub fn value() -> u8 { 1 }\n");
+        fixture.git(&["add", "src/lib.rs"]);
+        fixture.git(&[
+            "-c",
+            "user.name=ASP Test",
+            "-c",
+            "user.email=asp@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "first",
+        ]);
+
+        let first = discover_repository_candidate_snapshot(&fixture.root)
+            .expect("discover primary checkout")
+            .expect("Git snapshot exists");
+
+        fixture.write("src/lib.rs", "pub fn value() -> u8 { 2 }\n");
+        fixture.git(&["add", "src/lib.rs"]);
+        fixture.git(&[
+            "-c",
+            "user.name=ASP Test",
+            "-c",
+            "user.email=asp@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "second",
+        ]);
+
+        let second = discover_repository_candidate_snapshot(&fixture.root)
+            .expect("rediscover primary checkout")
+            .expect("Git snapshot exists");
+        assert_eq!(
+            first.worktree_identity.worktree_id,
+            second.worktree_identity.worktree_id,
+            "switching Git state inside one checkout must not allocate a new workspace"
+        );
+        assert_ne!(first.worktree_identity.head_id, second.worktree_identity.head_id);
+        assert_ne!(
+            first.candidate_generation.digest,
+            second.candidate_generation.digest,
+            "HEAD changes must advance the existing workspace generation"
+        );
+
+        let linked_root = fixture.root.with_extension("linked-worktree");
+        let linked_root_arg = linked_root.to_string_lossy().into_owned();
+        fixture.git(&["worktree", "add", "--quiet", "--detach", &linked_root_arg, "HEAD~1"]);
+        let linked = discover_repository_candidate_snapshot(&linked_root)
+            .expect("discover linked worktree")
+            .expect("linked Git snapshot exists");
+        assert_eq!(
+            second.repository_identity.repository_id,
+            linked.repository_identity.repository_id,
+            "primary and linked worktrees share repository identity"
+        );
+        assert_ne!(
+            second.worktree_identity.worktree_id,
+            linked.worktree_identity.worktree_id,
+            "each concrete checkout owns a distinct workspace identity"
+        );
+        fixture.git(&["worktree", "remove", "--force", &linked_root_arg]);
+    }
+
+    #[test]
+    fn nested_project_snapshot_rebases_candidates_to_project_root() {
+        let fixture = Fixture::new("nested-project");
+        fixture.git(&["init", "--quiet"]);
+        fixture.write("Cargo.toml", "[workspace]\nmembers = [\"crates/leaf\"]\n");
+        fixture.write(
+            "crates/leaf/Cargo.toml",
+            "[package]\nname = \"leaf\"\nversion = \"0.1.0\"\n",
+        );
+        fixture.write("crates/leaf/src/lib.rs", "pub fn leaf() {}\n");
+        fixture.write("crates/sibling/src/lib.rs", "pub fn sibling() {}\n");
+        fixture.git(&["add", "."]);
+
+        let project_root = fixture.root.join("crates/leaf");
+        let repository_snapshot = discover_repository_candidate_snapshot(&fixture.root)
+            .expect("discover repository candidates")
+            .expect("Git snapshot exists");
+        let projected = repository_snapshot
+            .scoped_to_project_root(&project_root)
+            .expect("project repository candidates");
+        let snapshot = discover_repository_candidate_snapshot(&project_root)
+            .expect("discover nested repository candidates")
+            .expect("Git snapshot exists");
+
+        assert_eq!(projected, snapshot);
+        assert_eq!(
+            snapshot.candidate_scope.project_root,
+            std::fs::canonicalize(&project_root).expect("canonical nested project root")
+        );
+        assert_eq!(
+            snapshot
+                .candidates
+                .iter()
+                .map(|candidate| candidate.path.as_path())
+                .collect::<Vec<_>>(),
+            vec![Path::new("Cargo.toml"), Path::new("src/lib.rs")]
+        );
+        assert!(
+            snapshot
+                .candidates
+                .iter()
+                .all(|candidate| !candidate.path.starts_with("crates/leaf"))
         );
     }
 
@@ -639,8 +925,8 @@ mod repository_candidate_snapshot_tests {
                 .iter()
                 .map(|exclusion| (
                     exclusion.path.as_path(),
-                    exclusion.authority,
-                    exclusion.reason_kind,
+                    exclusion.authority.as_str(),
+                    exclusion.reason_kind.as_str(),
                     exclusion.matched_value.as_str(),
                 ))
                 .collect::<Vec<_>>(),

@@ -19,64 +19,17 @@ pub(super) fn provider_path_is_ignored(owner_path: &str, ignored_path_prefixes: 
 pub(super) fn collect_provider_inventory(
     provider_workspace_root: &Path,
     provider: &ActivatedProvider,
-    profiles: &agent_semantic_hook::RuntimeProfiles,
 ) -> Result<Vec<InventoryOwner>, String> {
-    let provider_workspace_root = std::fs::canonicalize(provider_workspace_root)
-        .unwrap_or_else(|_| provider_workspace_root.to_path_buf());
-    if let Some(repository_candidates) =
-        agent_semantic_runtime::git::discover_repository_candidate_snapshot(
-            &provider_workspace_root,
-        )
-        .map_err(|error| format!("failed to resolve repository candidate snapshot: {error}"))?
-    {
-        return collect_git_inventory(
-            &provider_workspace_root,
-            provider,
-            profiles,
-            &repository_candidates,
-        );
-    }
-
-    Err(format!(
-        "provider-only project resolution is required for non-Git workspace `{}`; unbounded workspace traversal is disabled",
-        provider_workspace_root.display()
-    ))
-}
-
-fn collect_git_inventory(
-    provider_workspace_root: &Path,
-    provider: &ActivatedProvider,
-    profiles: &agent_semantic_hook::RuntimeProfiles,
-    repository_candidates: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
-) -> Result<Vec<InventoryOwner>, String> {
-    let candidates = repository_candidates
-        .candidates
-        .iter()
-        .filter_map(|candidate| {
-            let absolute_path = repository_candidates
-                .worktree_identity
-                .worktree_root
-                .join(&candidate.path);
-            absolute_path
-                .strip_prefix(provider_workspace_root)
-                .ok()
-                .map(Path::to_path_buf)
-        })
-        .collect::<std::collections::BTreeSet<_>>();
-    let resolved_paths = super::provider_owner_native::run_provider_project_resolution(
-        super::provider_owner_native::ProviderOwnerNativeTransportContext {
-            language_id: provider.language_id.as_str(),
-            provider,
-            profiles,
-            project_root: provider_workspace_root,
-        },
-        repository_candidates,
-    )?;
     let mut owners = Vec::new();
-    for relative_path in resolved_paths {
-        if !candidates.contains(&relative_path) {
+    for source_path in &provider.source_paths {
+        let relative_path = PathBuf::from(source_path);
+        if relative_path.is_absolute()
+            || relative_path
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+        {
             return Err(format!(
-                "provider project-resolution escaped repository candidates: languageId={} providerId={} path={}",
+                "activated ProjectResolution contains a non-relative source path: languageId={} providerId={} path={}",
                 provider.language_id,
                 provider.provider_id,
                 relative_path.display()

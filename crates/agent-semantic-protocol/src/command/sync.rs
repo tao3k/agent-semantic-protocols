@@ -10,6 +10,7 @@ const CODEX_AGENT_REGISTRY_BEGIN: &str = "# BEGIN ASP MANAGED CODEX AGENT REGIST
 const CODEX_AGENT_REGISTRY_END: &str = "# END ASP MANAGED CODEX AGENT REGISTRY";
 
 pub(super) struct AgentConfigurationSync {
+    pub(super) published: usize,
     pub(super) projected: usize,
     pub(super) codex_registry_entries: usize,
     pub(super) codex_spawn_agent_metadata: &'static str,
@@ -35,7 +36,8 @@ pub(crate) fn run_agent_config_sync_command(args: &[String]) -> Result<(), Strin
     }
     let agent_configs = sync_global_agent_configs()?;
     println!(
-        "[asp-agent-config-sync] scope=global-agent-config trigger=explicit orgStateSync=consumer-lazy gitPulls=0 gitFetches=0 gitClones=0 agentConfigs={} codexAgentRegistry={} codexSpawnAgentMetadata={} activationWrites=0 dbOpens=0 dbTransactions=0 sessionRegistryOpens=0",
+        "[asp-agent-config-sync] scope=global-agent-config trigger=explicit orgStateSync=consumer-lazy gitPulls=0 gitFetches=0 gitClones=0 publishedAgentConfigs={} agentConfigs={} codexAgentRegistry={} codexSpawnAgentMetadata={} activationWrites=0 dbOpens=0 dbTransactions=0 sessionRegistryOpens=0",
+        agent_configs.published,
         agent_configs.projected,
         agent_configs.codex_registry_entries,
         agent_configs.codex_spawn_agent_metadata,
@@ -45,10 +47,15 @@ pub(crate) fn run_agent_config_sync_command(args: &[String]) -> Result<(), Strin
 
 fn sync_global_agent_configs() -> Result<AgentConfigurationSync, String> {
     let source_dir = agent_semantic_runtime::state_core::resolve_state_home()?.join("agents");
+    let workspace_source_dir = env::current_dir()
+        .map_err(|error| format!("failed to resolve current workspace: {error}"))?
+        .join("agents");
+    let published = publish_workspace_agent_configs(&workspace_source_dir, &source_dir)?;
     let codex_registry = load_codex_agent_registry(&source_dir)?;
     if !source_dir.exists() {
         let codex_registry_entries = sync_codex_agent_registry(&codex_registry)?;
         return Ok(AgentConfigurationSync {
+            published,
             projected: 0,
             codex_registry_entries,
             codex_spawn_agent_metadata: "visible-agent-type",
@@ -93,10 +100,90 @@ fn sync_global_agent_configs() -> Result<AgentConfigurationSync, String> {
     }
     let codex_registry_entries = sync_codex_agent_registry(&codex_registry)?;
     Ok(AgentConfigurationSync {
+        published,
         projected: synced,
         codex_registry_entries,
         codex_spawn_agent_metadata: "visible-agent-type",
     })
+}
+
+fn publish_workspace_agent_configs(
+    workspace_source_dir: &Path,
+    state_source_dir: &Path,
+) -> Result<usize, String> {
+    if !workspace_source_dir.is_dir() {
+        return Ok(0);
+    }
+    let mut published = 0usize;
+    for entry in fs::read_dir(workspace_source_dir).map_err(|error| {
+        format!(
+            "failed to read workspace agent configs {}: {error}",
+            workspace_source_dir.display()
+        )
+    })? {
+        let entry = entry.map_err(|error| {
+            format!(
+                "failed to read entry in {}: {error}",
+                workspace_source_dir.display()
+            )
+        })?;
+        let source = entry.path();
+        if !source.is_file() {
+            continue;
+        }
+        let Some(file_name) = source.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let managed_profile = file_name.ends_with("_codex.toml")
+            || file_name.ends_with("_claude.toml")
+            || file_name.ends_with("_claude.md");
+        if !managed_profile {
+            continue;
+        }
+        let bytes = fs::read(&source)
+            .map_err(|error| format!("failed to read {}: {error}", source.display()))?;
+        if file_name.ends_with(".toml") {
+            let text = std::str::from_utf8(&bytes).map_err(|error| {
+                format!("agent profile is not UTF-8 {}: {error}", source.display())
+            })?;
+            toml::from_str::<toml::Value>(text)
+                .map_err(|error| format!("failed to parse {}: {error}", source.display()))?;
+        }
+        fs::create_dir_all(state_source_dir).map_err(|error| {
+            format!(
+                "failed to create global agent config directory {}: {error}",
+                state_source_dir.display()
+            )
+        })?;
+        let target = state_source_dir.join(file_name);
+        let target_matches = fs::read(&target)
+            .map(|existing| existing == bytes)
+            .unwrap_or(false);
+        if !target_matches {
+            match fs::symlink_metadata(&target) {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    fs::remove_file(&target).map_err(|error| {
+                        format!("failed to replace symlink {}: {error}", target.display())
+                    })?;
+                }
+                Ok(metadata) if metadata.is_dir() => {
+                    return Err(format!(
+                        "cannot publish agent profile over directory {}",
+                        target.display()
+                    ));
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(format!("failed to inspect {}: {error}", target.display()));
+                }
+            }
+            fs::write(&target, &bytes)
+                .map_err(|error| format!("failed to publish {}: {error}", target.display()))?;
+        }
+        published += 1;
+    }
+    Ok(published)
 }
 
 fn load_codex_agent_registry(
@@ -555,5 +642,5 @@ fn link_or_copy_agent_config(source: &Path, target: &Path) -> Result<(), String>
 }
 
 fn usage() -> &'static str {
-    "usage: asp agent config sync\n\nExplicitly reconciles ASP-owned global agent config projections from ~/.agent-semantic-protocols/agents/*_codex.toml and *_claude.{md,toml} into the host agent directories. Run it when repairing a missing or stale host projection. It is never triggered by search, query, PreToolUse, checkpoint, or workspace activation. It does not build source indexes, start resident services, write activation state, or clone, fetch, or pull Git repositories. Org consumers synchronize missing contract or template resources lazily."
+    "usage: asp agent config sync\n\nExplicitly publishes managed profiles from the current workspace's agents/ directory into ~/.agent-semantic-protocols/agents, then reconciles those ASP-owned global profiles into the host agent directories. Run it when repairing a missing or stale host projection. It is never triggered by search, query, PreToolUse, checkpoint, or workspace activation. It does not build source indexes, start resident services, write activation state, or clone, fetch, or pull Git repositories. Org consumers synchronize missing contract or template resources lazily."
 }

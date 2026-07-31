@@ -1,4 +1,6 @@
-pub(super) fn payload_command_strings(payload: &serde_json::Value) -> Vec<String> {
+pub(in crate::command::hook_runtime) fn payload_command_strings(
+    payload: &serde_json::Value,
+) -> Vec<String> {
     let mut commands = Vec::new();
     collect_payload_command_strings(payload, &mut commands);
     commands.sort();

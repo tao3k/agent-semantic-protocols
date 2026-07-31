@@ -5,7 +5,7 @@ use agent_semantic_client_core::ProviderScopeAuthority;
 fn package_providers_use_project_resolution() {
     assert_eq!(
         provider_scope_collection_route(ProviderScopeAuthority::ProjectResolution),
-        ProviderScopeCollectionRoute::ProjectResolver
+        ProviderScopeCollectionRoute::ProjectResolution
     );
 }
 

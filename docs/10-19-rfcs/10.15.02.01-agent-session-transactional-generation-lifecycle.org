@@ -1,0 +1,185 @@
+#+title: RFC 10.15.02.01 — Agent Session Transactional Generation Lifecycle
+
+* Status
+Focused formal verification is complete. This RFC refines [[file:10.15.02-codex-resident-agent-lifecycle-v1.org][RFC 10.15.02]] from an evidence classifier into a transactional generation lifecycle. The Lean source, compiled module, direct audit, and runner pass; all 22 theorem declarations are axiom-free. No Rust implementation is authorized in this session.
+
+* Observed counterexample
+Both configured residents are =idle-resumable= but =routable=false= and =messageTargetStatus=unbound=. Their canonical paths remain occupied. The expected model is =gpt-5.6-luna= while host evidence identifies =gpt-5.4-mini=. Host-tree presence and follow-up acknowledgement exist, but neither commits a binding lease. =reconcile= reports =affected: 0=; child bootstrap is correctly rejected; the main session cannot retire and release the occupied path.
+
+The legacy classifier can therefore revisit =RebindExistingChildTarget= forever. Presence selects a branch, but no authorized transaction changes generation, binding, or path ownership.
+
+* Fundamental separation
+The lifecycle has five orthogonal durable dimensions:
+
+1. =ResidentSlot=: logical identity =(projectId, rootSessionId, residentName)=.
+2. =PhysicalGeneration=: one concrete typed child and monotone generation.
+3. =BindingLease=: verified child, root, target, and generation binding.
+4. =LifecycleTransaction=: reservation, intent, host receipt, retirement, release, and replacement.
+5. =DispatchLedger=: stable command identity, delivery generation, and terminal receipt.
+
+Host-tree presence and follow-up acknowledgement are observations, not registration authority.
+
+#+name: agent-session-evidence-separation
+#+begin_src typst
+#let Present(t) = $upright("HostTreePresent")(t)$
+#let Ack(t) = $upright("FollowupAck")(t)$
+#let Bound(s, g, t) = $upright("BindingLease")(s, g, t)$
+$
+  forall s, g, t,
+  Present(t) !=> Bound(s, g, t)
+  and Ack(t) !=> Bound(s, g, t).
+$
+#+end_src
+
+* Generation registration law
+A generation becomes registrable only from a typed host-start receipt indexed by the durable spawn intent. It binds slot, generation, stable intent key, expected profile, child identity, and canonical target.
+
+#+name: agent-session-valid-start-binding
+#+begin_src typst
+#let ValidStart(r, h) = $upright("ValidHostStart")(r, h)$
+#let Slot(x) = $upright("slot")(x)$
+#let Gen(x) = $upright("generation")(x)$
+#let Intent(x) = $upright("intentKey")(x)$
+#let Profile(x) = $upright("profile")(x)$
+$
+  forall r, h,
+  ValidStart(r, h) => Slot(h) = Slot(r) and Gen(h) = Gen(r) and
+  Intent(h) = Intent(r) and Profile(h) = Profile(r).
+$
+#+end_src
+
+Stale generation, profile drift, generic child, path-only observation, and acknowledgement-only evidence cannot register a generation.
+
+* Transactional repair decision
+An occupied, unbound, profile-drifted slot has two safe classifications: commit a durable retirement intent when retirement exists, or return =BlockedHostCapability=. It never returns =Ready= or repeats rebind. Canonical-path release is a distinct intent after retirement, and replacement is legal only after a release receipt.
+
+#+name: agent-session-repair-classification
+#+begin_src typst
+#let Classify(c, o) = $upright("classifyRepair")(c, o)$
+#let Retire(c) = $upright("canRetire")(c)$
+#let Drifted = $upright("OccupiedUnboundDrift")$
+$
+  forall c,
+  Classify(c, Drifted) =
+  cases(
+    upright("CommitRetirementIntent") & "if " Retire(c),
+    upright("BlockedHostCapability") & "otherwise",
+  ).
+$
+#+end_src
+
+* Monotone repair law
+Every committed transition strictly decreases a finite phase rank. =Ready= and =BlockedHostCapability= are terminal rank-zero outcomes. This excludes self-loops and two-cycles without assuming every host capability exists.
+
+#+name: agent-session-monotone-repair
+#+begin_src typst
+#let Step(x, y) = $upright("TransactionalRepairStep")(x, y)$
+#let Rank(x) = $upright("phaseRank")(x)$
+$ forall x, y, Step(x, y) => Rank(y) < Rank(x). $
+$
+  not exists x, Step(x, x)
+  and not exists x, y, Step(x, y) and Step(y, x).
+$
+#+end_src
+
+* State-bearing architecture
+#+begin_src mermaid
+flowchart LR
+  S["Resident slot\nstate: LogicalIdentity"]
+  O["Host observation\nstate: OccupiedUnboundDrift | Absent"]
+  T["Lifecycle transaction\nstate: IntentAbsent | Durable | ReceiptIndexed"]
+  H["Host generation\nstate: ExistingDrift | Retired | TypedStarted"]
+  L["Binding lease\nstate: Unbound | VerifiedGeneration"]
+  D["Dispatch ledger\nstate: Pending | InFlight | Orphaned | Terminal"]
+  B["Capability outcome\nstate: Ready | BlockedHostCapability"]
+  S -->|"transition; state: LogicalIdentity -> OccupiedUnboundDrift; observation only"| O
+  O -->|"guard; state: DriftAndRetireCapable -> RetirementIntentDurable"| T
+  T -->|"transition; state: RetirementIntentDurable -> RetiredReceiptIndexed"| H
+  H -->|"transition; state: Retired -> ReleaseIntentDurable -> PathReleased"| T
+  T -->|"capability; state: PathReleased -> ReplacementIntentDurable -> TypedStarted"| H
+  H -->|"guard; state: TypedStartedAndProfileMatched -> VerifiedGeneration"| L
+  L -->|"capability; state: VerifiedGeneration -> Ready"| B
+  O -->|"prohibitedEffect; state: DriftWithoutRetireCapability -> BlockedHostCapability"| B
+  L -->|"transition; state: GenerationLost -> Orphaned; preserve dispatch identity"| D
+  D -->|"guard; state: OrphanedAndNewGeneration -> InFlight; replay stable key once"| L
+#+end_src
+
+* Transaction state machine
+#+begin_src mermaid
+stateDiagram-v2
+  state "ObservedInvalid\nstate: rank8" as O
+  state "RetirementIntentDurable\nstate: rank7" as RI
+  state "RetiredReceiptIndexed\nstate: rank6" as RR
+  state "ReleaseIntentDurable\nstate: rank5" as LI
+  state "PathReleased\nstate: rank4" as PR
+  state "ReplacementIntentDurable\nstate: rank3" as SI
+  state "StartReceiptIndexed\nstate: rank2" as SR
+  state "BindingCommitted\nstate: rank1" as BC
+  state "Ready\nstate: rank0" as R
+  state "BlockedHostCapability\nstate: rank0" as B
+  O --> RI: "transition; state: rank8 -> rank7; retirement intent CAS"
+  RI --> RR: "guard; state: rank7 -> rank6; intent-indexed retired receipt"
+  RR --> LI: "transition; state: rank6 -> rank5; release intent CAS"
+  LI --> PR: "guard; state: rank5 -> rank4; canonical path release receipt"
+  PR --> SI: "transition; state: rank4 -> rank3; replacement intent CAS"
+  SI --> SR: "guard; state: rank3 -> rank2; typed SubagentStart receipt"
+  SR --> BC: "transition; state: rank2 -> rank1; generation binding CAS"
+  BC --> R: "capability; state: rank1 -> rank0; profile-valid live lease"
+  O --> B: "prohibitedEffect; state: rank8 -> rank0; required host capability absent"
+#+end_src
+
+* Transaction and dispatch sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant C as "Controller [state: ObservedInvalid]"
+  participant X as "Lifecycle Store [state: RevisionCurrent]"
+  participant H as "Host [state: CanonicalPathOccupied]"
+  participant B as "Binding Registry [state: Unbound]"
+  participant D as "Dispatch Ledger [state: StableKeyReserved]"
+  C->>X: "transition; state: RevisionCurrent -> RetirementIntentDurable; reservation CAS"
+  X->>H: "capability; state: IntentDurable -> RetirementAccepted; stable intent key"
+  H->>X: "transition; state: RetirementAccepted -> RetiredReceiptIndexed; idempotent receipt"
+  X->>H: "transition; state: RetiredReceiptIndexed -> ReleaseAccepted; release intent"
+  H->>X: "guard; state: ReleaseAccepted -> PathReleased; canonical path receipt"
+  X->>H: "capability; state: PathReleased -> TypedStartAccepted; replacement intent"
+  H->>B: "transition; state: TypedStartAccepted -> GenerationBound; indexed SubagentStart"
+  B->>D: "guard; state: GenerationBound -> DeliveryLeaseRestored; same dispatch key"
+  alt required host capability missing
+    X-->>C: "prohibitedEffect; state: MissingCapability -> BlockedHostCapability; no retry loop"
+  end
+#+end_src
+
+* Lean-discovered corrections
+1. Presence and acknowledgement cannot construct =ValidBinding=.
+2. A start receipt binds slot, generation, intent key, expected profile, and typed-start evidence.
+3. Stale generation, profile drift, and untyped start are independently rejected.
+4. Occupied/unbound drift never returns =Ready=.
+5. Missing retire or release becomes a terminal blocker instead of another rebind iteration.
+6. Strict phase-rank decrease excludes repair self-loops and two-cycles.
+7. Dispatch acceptance remains indexed by generation, stable key, and command digest.
+
+* Lean contract embedded in Org
+#+begin_src lean
+def ValidHostStart (reservation : GenerationReservation)
+    (receipt : HostStartReceipt) : Prop :=
+  receipt.slot = reservation.slot ∧
+  receipt.generation = reservation.generation ∧
+  receipt.intentKey = reservation.intentKey ∧
+  receipt.observedProfile = reservation.profile ∧
+  receipt.typedStart = true
+
+structure TransactionalRepairStep where
+  current : TransactionPhase
+  next : TransactionPhase
+  rankDecreases : phaseRank next < phaseRank current
+#+end_src
+
+* Formal receipts
+- Lean source: =packages/proofs/ASPProof/AgentSessionTransactionalGenerationLifecycle.lean=
+- direct audit: =packages/proofs/ASPProof/Audit/AgentSessionTransactionalGenerationLifecycle.lean=
+- audit runner: =packages/proofs/audit/AgentSessionTransactionalGenerationLifecycle.lean=
+- declaration count: =22=
+- axiom-free declaration count: =22=
+
+* Next boundary
+The next proof boundary is [[file:10.15.02.02-agent-session-lifecycle-crash-recovery.org][RFC 10.15.02.02 — Agent Session Lifecycle Crash Recovery]]: retirement acceptance before receipt persistence, release acceptance before delivered CAS, typed start before binding commit, and dispatch completion during generation replacement.

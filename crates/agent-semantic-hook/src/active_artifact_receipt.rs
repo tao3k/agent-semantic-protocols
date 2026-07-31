@@ -4,6 +4,7 @@ use agent_semantic_content_identity::active_artifact_merkle_v1::{
 use agent_semantic_content_identity::exact_selector_merkle::{
     blake3_content_digest_v1, parse_content_digest_v1,
 };
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -276,6 +277,33 @@ pub fn reconcile_active_asp_artifact_receipt_from_materialized_set(
             receipt_path.display()
         )
     })?;
+    let expected_provider_paths = active_provider_logical_paths(activation_path)?;
+    let materialized_provider_paths = previous_receipt
+        .leaves()
+        .iter()
+        .filter(|leaf| leaf.artifact_kind() == ActiveArtifactKindV1::ProviderBinary)
+        .map(|leaf| leaf.logical_path().to_string())
+        .collect::<BTreeSet<_>>();
+    if !expected_provider_paths.is_subset(&materialized_provider_paths) {
+        let runtime = crate::load_activation(activation_path)?;
+        let before = previous_receipt.clone();
+        materialize_active_asp_artifact_receipt_for_current_process(activation_path, &runtime)?;
+        let receipt_bytes = fs::read(&receipt_path).map_err(|error| {
+            format!(
+                "failed to read rematerialized active ASP artifact receipt {}: {error}",
+                receipt_path.display()
+            )
+        })?;
+        let receipt: ActiveAspArtifactReceiptV1 =
+            serde_json::from_slice(&receipt_bytes).map_err(|error| {
+                format!(
+                    "failed to parse rematerialized active ASP artifact receipt {}: {error}",
+                    receipt_path.display()
+                )
+            })?;
+        verify_activation_provider_artifact_coverage(activation_path, &receipt)?;
+        return Ok(receipt != before);
+    }
 
     let mut leaves = Vec::with_capacity(previous_receipt.leaves().len());
     for leaf in previous_receipt.leaves() {
@@ -328,7 +356,7 @@ pub fn reconcile_active_asp_artifact_receipt_from_materialized_set(
 
     let receipt = ActiveAspArtifactReceiptV1::build(ACTIVE_ASP_ARTIFACT_SET_ID, leaves)
         .map_err(|error| format!("failed to build active ASP artifact receipt: {error:?}"))?;
-    verify_active_provider_artifact_closure(activation_path, &receipt)?;
+    verify_activation_provider_artifact_coverage(activation_path, &receipt)?;
     if receipt == previous_receipt {
         return Ok(false);
     }
@@ -432,7 +460,9 @@ pub fn rebind_active_asp_binary_receipt_if_present(
         activation_path,
         &additional_artifacts,
     )?;
-    if materialization.receipt_writes == 0 {
+    let closure_updated =
+        reconcile_active_asp_artifact_receipt_from_materialized_set(activation_path)?;
+    if materialization.receipt_writes == 0 && !closure_updated {
         Ok(ActiveAspArtifactReconciliationV1::Current)
     } else {
         Ok(ActiveAspArtifactReconciliationV1::Updated)
@@ -659,10 +689,7 @@ struct ActiveProviderClosureIdentity {
     provider_id: ProviderId,
 }
 
-fn verify_active_provider_artifact_closure(
-    activation_path: &Path,
-    receipt: &ActiveAspArtifactReceiptV1,
-) -> Result<(), String> {
+fn active_provider_logical_paths(activation_path: &Path) -> Result<BTreeSet<String>, String> {
     let activation_bytes = fs::read(activation_path).map_err(|error| {
         format!(
             "failed to read active provider closure {}: {error}",
@@ -676,20 +703,27 @@ fn verify_active_provider_artifact_closure(
                 activation_path.display()
             )
         })?;
-    let expected = activation
+    Ok(activation
         .providers
         .iter()
         .map(|provider| active_provider_logical_path(&provider.language_id, &provider.provider_id))
-        .collect::<std::collections::BTreeSet<_>>();
+        .collect())
+}
+
+fn verify_activation_provider_artifact_coverage(
+    activation_path: &Path,
+    receipt: &ActiveAspArtifactReceiptV1,
+) -> Result<(), String> {
+    let expected = active_provider_logical_paths(activation_path)?;
     let actual = receipt
         .leaves()
         .iter()
         .filter(|leaf| leaf.artifact_kind() == ActiveArtifactKindV1::ProviderBinary)
         .map(|leaf| leaf.logical_path().to_string())
-        .collect::<std::collections::BTreeSet<_>>();
-    if actual != expected {
+        .collect::<BTreeSet<_>>();
+    if !expected.is_subset(&actual) {
         return Err(format!(
-            "active ASP provider artifact closure mismatch: expected={} actual={}",
+            "active ASP provider artifact coverage is incomplete: required={} materialized={}",
             expected.into_iter().collect::<Vec<_>>().join(","),
             actual.into_iter().collect::<Vec<_>>().join(","),
         ));
@@ -750,7 +784,7 @@ pub fn verify_active_asp_artifact_receipt(
             MaterializationMatchPolicy::Exact,
         )?);
     }
-    verify_active_provider_artifact_closure(activation_path, &receipt)?;
+    verify_activation_provider_artifact_coverage(activation_path, &receipt)?;
     remember_verified_active_receipt(
         receipt_path,
         &receipt_metadata,

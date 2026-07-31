@@ -1,0 +1,30 @@
+import ASPProof.AgentSessionDispatchRecovery
+
+namespace ASPProof.Audit.AgentSessionDispatchRecovery
+
+open ASPProof.AgentSessionDispatchRecovery
+
+#print axioms automatic_retry_decreases_measure
+#print axioms zero_budget_enters_quarantine
+#print axioms zero_budget_cannot_retry
+#print axioms quarantined_has_no_automatic_step
+#print axioms quarantined_is_not_terminal
+#print axioms quarantine_cannot_close_reservation
+#print axioms quarantine_cannot_retarget
+#print axioms attempting_cannot_close_reservation
+#print axioms timeout_is_not_negative_evidence
+#print axioms accepted_evidence_resolves_quarantine
+#print axioms rejected_evidence_resolves_quarantine
+#print axioms runtime_server_does_not_own_dispatch_recovery
+#print axioms resident_subagent_does_not_own_dispatch_recovery
+#print axioms host_runtime_owns_outcome_attestation
+#print axioms runtime_server_does_not_own_outcome_attestation
+#print axioms binary_resolution_is_not_invocation_evidence
+#print axioms catalog_readiness_is_not_invocation_evidence
+#print axioms invocation_acceptance_is_not_completed_response
+#print axioms decoded_response_is_not_replay_evidence
+#print axioms attempting_conditional_liveness
+#print axioms quarantine_conditional_liveness
+#print axioms background_recovery_reduces_llm_rounds
+
+end ASPProof.Audit.AgentSessionDispatchRecovery

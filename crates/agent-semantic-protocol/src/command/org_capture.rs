@@ -67,16 +67,14 @@ pub(crate) fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, St
     let state_root = paths.protocol_home.join("org");
     let mut sync = sync_default_org_state(&state_root)?;
     if matches!(sync.status, "updated" | "cloned") {
-        match agent_semantic_client::refresh_source_index(&state_root) {
-            Ok(Some(report)) => {
-                sync.source_index_status = if report.reused_generation() {
-                    "reused".to_string()
-                } else {
-                    "refreshed".to_string()
-                };
-                sync.source_index_generation = Some(report.generation_id().to_string());
+        match super::hook_runtime::request_runtime_generation_admission(&state_root) {
+            Ok(receipt) => {
+                sync.source_index_status = "runtime-admitted".to_string();
+                sync.source_index_generation = receipt
+                    .get("workspaceIdentity")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned);
             }
-            Ok(None) => sync.source_index_status = "cold-required".to_string(),
             Err(_) => sync.source_index_status = "deferred".to_string(),
         }
     } else {

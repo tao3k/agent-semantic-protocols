@@ -14,6 +14,9 @@ mod projection;
 mod provider_incremental;
 mod provider_incremental_probe_batch;
 mod provider_incremental_schema;
+#[cfg(test)]
+#[path = "../../../tests/unit/provider_incremental_search.rs"]
+mod provider_incremental_tests;
 mod provider_treesitter;
 mod provider_treesitter_read;
 mod provider_treesitter_write;
@@ -23,18 +26,15 @@ mod resident_selector;
 mod schema;
 mod trace;
 
-pub(crate) use core::commit_turso_source_index_generation_in_fixture;
-pub(crate) use core::load_active_workspace_generation_materialization_in_fixture;
 pub(super) use core::turso_source_index_access_lock;
 pub use core::{
-    commit_turso_source_index_generation_via_runtime_server, latest_turso_source_index_file_hashes,
-    latest_turso_source_index_scope_files, latest_turso_source_index_stats,
-    lookup_reusable_turso_source_index_generation,
+    latest_turso_source_index_file_hashes, latest_turso_source_index_scope_files,
+    latest_turso_source_index_stats, lookup_reusable_turso_source_index_generation,
 };
 pub use provider_incremental::{
-    ProviderIncrementalOwnerWrite, ProviderIncrementalScoped, ProviderIncrementalWriteReceipt,
-    ProviderOwnerDecision, ProviderOwnerFingerprint, ProviderOwnerMetadata, ProviderOwnerProbe,
-    ProviderSelectorProjection,
+    ProviderIncrementalOwnerSnapshot, ProviderIncrementalOwnerWrite, ProviderIncrementalScoped,
+    ProviderIncrementalWriteReceipt, ProviderOwnerDecision, ProviderOwnerFingerprint,
+    ProviderOwnerMetadata, ProviderOwnerProbe, ProviderSelectorProjection,
 };
 pub use provider_incremental_probe_batch::{
     ProviderOwnerBatchProbeReceipt, ProviderOwnerBatchProbeRequest, ProviderOwnerBatchProbeResult,

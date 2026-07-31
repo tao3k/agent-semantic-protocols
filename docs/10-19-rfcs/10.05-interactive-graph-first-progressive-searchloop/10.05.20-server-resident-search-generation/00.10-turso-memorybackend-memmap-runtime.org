@@ -30,6 +30,8 @@ The admitted entry owns:
 - the canonical activation reference;
 - the current Turso generation transaction identity;
 - the current MemoryBackend generation;
+- a complete-provider-owner resident read cache populated only from committed
+  Turso state or a successful workspace writer receipt;
 - the immutable mmap epoch and digest;
 - a bounded adaptive read pool;
 - one asynchronous writer lane; and
@@ -58,6 +60,13 @@ Warm reuse requires equality of every identity field.  Any drift creates and
 atomically publishes a new catalog generation.  Receipt equality limited to
 binary paths or binary digests is insufficient.
 
+A workspace activation selects a subset of this Global catalog.  Artifact
+verification therefore requires every activated provider leaf to be present
+and current in the Global materialized set; it MUST NOT require equality with
+that set and MUST NOT delete globally installed provider leaves merely because
+one workspace did not activate them.  Lazy language activation changes the
+selection, not the installed catalog authority.
+
 * Generation and rootDepth overlay
 
 The durable Turso generation is complete and immutable.  MemoryBackend combines
@@ -75,8 +84,76 @@ Turso next generation transaction
   -> atomically publish epoch pointer and receipt
 #+end_example
 
+An incremental owner refresh is part of the same writer protocol.  After the
+provider-owned complete-owner transaction commits, the refresh submits the
+identical owner bytes, content digest, and parser-owned selector byte ranges to
+the workspace writer lane.  The refresh is not complete until the resulting
+rootDepth overlay epoch is published.  Search output may not advertise a new
+provider generation while exact query remains bound to the previous owner
+epoch.
+
 Readers holding the previous epoch continue without blocking.  They never
 observe a mixture of old owner bytes, new selectors, or a half-written overlay.
+
+The resident overlay store is a writer-private staging area, not a second
+readable authority.  Owner, selector, move, and tombstone mutations become
+visible only after one complete MemoryBackend generation and its immutable mmap
+segments have been validated and activated by the atomic epoch-pointer switch.
+IPC and in-process readers MUST NOT read a staged overlay before that switch.
+
+MemoryBackend and mmap pointers are reusable acceleration artifacts, not
+durable authority.  After the lifecycle supervisor grants a new daemon the
+unique election lease, the daemon preserves the runtime workspace store and
+opens its control/data-plane endpoints without recursively visiting workspace
+artifacts.  It then restores admitted workspaces from Turso through their
+writer lanes.  A pointer published by an earlier daemon must never be accepted
+merely because its mmap segment is internally self-consistent; admission binds
+it to current durable identity before it becomes readable.  Until restore or
+admission publishes the new daemon generation, readers receive the typed
+active-generation admission state.
+
+Daemon startup MUST NOT recursively delete, scan, or rewrite the workspace
+store.  Store preparation is an idempotent O(1) directory admission.  Obsolete
+content-addressed generations are reclaimed later by a generation-aware
+maintenance lane after leases prove them unreachable; lifecycle startup is
+never the garbage collector.
+
+The Global daemon owns one durable workspace-admission catalog containing only
+=workspaceIdentity + canonicalProjectRoot=.  It is a control-plane lookup set,
+not source authority.  First admission atomically records a source scope;
+repeated admission performs no write.  On restart the daemon publishes
+=Starting=, loads this single catalog, restores all registered scopes from their
+Turso canonical materializations through the workspace writer lanes, and only
+then publishes =Healthy=.  Restore fans out across independent workspaces but
+remains single-flight per source scope.  Startup MUST NOT discover projects by
+walking =$ASP_STATE_HOME=, and query-time code MUST NOT repair a missing catalog
+by rebuilding a provider index.
+
+A missing or invalid canonical materialization degrades only its catalog scope.
+It leaves a terminal failed admission receipt for that =workspaceIdentity= and
+does not abort, restart, or hold the Global daemon in =Starting=.  Once all
+catalog entries reach a terminal state, the daemon publishes its globally
+serviceable =Healthy= status before emitting scope-local restore-failure events.
+Consequently, receipt observation is also a lifecycle barrier: after a consumer
+receives a restore-failure event, other admitted workspaces are already
+serviceable.  The failed scope remains unavailable until its writer lane
+publishes a complete canonical Turso generation; startup and query paths do not
+invoke a provider to fill the gap.
+
+The atomically published admission catalog is also the process-cold workspace
+locator projection.  A query process maps it read-only and resolves an already
+canonical =projectRoot= directly to =workspaceIdentity=.  Ordinary search and
+exact query MUST NOT call Git discovery, =ResolvedState::resolve=, filesystem
+canonicalization, or the Runtime Server control plane to rediscover that key.
+Only the lifecycle admission hook may derive a previously unknown workspace
+identity and append the resulting canonical scope to the catalog.  Conflicting
+workspace identities for one canonical project root fail publication.
+
+** Bounded generation control plane
+
+The Runtime Server IPC boundary is a control plane, never a canonical-generation transport. A client may submit only a bounded generation intent containing the workspace identity, operation identity, and optional expected content identity. It MUST NOT submit =WorkspaceCanonicalMaterialization=, owner bytes, selector projections, provider facts, or any other collection whose encoded size grows with workspace source size.
+
+The workspace writer lane resolves the admitted project scope, invokes the selected provider parsers, constructs the next canonical generation inside the daemon, commits it to Turso, builds the MemoryBackend and mmap projections, and then atomically publishes the epoch. Consequently, growing a workspace or generation MUST NOT grow an IPC control request. Protocol fixtures MUST reject source-bearing generation operations and MUST enforce a fixed control-frame budget independent of owner count and source byte count.
 
 * Query-path prohibition
 
@@ -94,6 +171,63 @@ After workspace admission, warm search and exact query must not:
 The read path is an identity lookup, epoch lease, MemoryBackend lookup, and
 projection render.  A missing or stale epoch returns a typed admission receipt
 to the Runtime Server writer lane; it does not perform a synchronous repair.
+Lifecycle hooks request admission before query execution and never wait for a
+generation build.  Search and exact consumers must not call the admission
+operation or poll its progress.
+
+=search owner <path> items= is a projection over the owner and canonical
+selectors already stored in that immutable generation.  It must not stat the
+owner, read source bytes, probe an incremental DB record, invoke a language
+provider, or publish a runtime overlay.  An absent owner is a generation
+diagnostic; changed bytes are admitted asynchronously by the workspace writer
+lane as the next complete epoch.
+
+Provider owner fingerprint probes and complete-owner snapshot reads follow the
+same rule.  A successful durable owner write atomically replaces the
+workspace-entry cache after commit.  After daemon restart, startup admission
+loads each registered complete snapshot from Turso once before =Healthy=;
+concurrent and subsequent readers reuse that immutable value.  A query-time
+cache miss never opens Turso.  Provider owner reads must not fall through to two
+independent Turso queries on every search command.  Metadata classification and
+the matching complete snapshot cross the Runtime Server transport as one typed
+request/response, not two connection and framing cycles.
+
+The singleton Runtime Server endpoint owns both its lifecycle control plane and
+the workspace database data plane.  Its =transportContractDigest= therefore
+MUST bind both =runtime-server-control.v1= and
+=workspace-db-owner-ipc.v1=.  The V1 digest is a domain-separated,
+length-prefixed composition of the two exact schema byte streams.  Hashing only
+the control schema is invalid because a data-plane operation or result change
+would allow an old daemon to pass endpoint validation.  Drift in either V1
+contract invalidates the endpoint and is recovered by the existing supervised
+reconciliation path before a request is admitted.
+
+An exact-repair selector is part of the immutable workspace generation.  The
+writer lane merges it into the owning item, advances the epoch, and publishes a
+new mmap segment.  A daemon-local selector map is not an accepted authority
+because process-cold readers and restarted daemons cannot observe it.
+
+The generation publication includes a fixed-entry exact projection mmap index.
+It is keyed by =projectionKind NUL structuralSelector= and points directly to
+owner source ranges or immutable derived projection bytes.  A process-cold
+exact read maps the pointer and this index, performs a hash binary search, and
+copies only the selected bytes.  It must not deserialize the complete
+generation JSON into a per-command heap.
+
+The same index stores one canonical complete-projection digest per owner.  A
+warm owner admission compares content identity plus that digest and never
+reconstructs the owner's selectors from the global index.  This prevents
+workspace-size-dependent page faults and makes an unchanged owner a zero-write
+operation even when the generation contains tens of thousands of unrelated
+selectors.
+
+The process-cold mmap attach boundary opens the immutable pointer and projection
+segment descriptors synchronously and maps them immediately.  This is not a
+blocking file-content read or a lifecycle loop: macOS has no Tokio-native mmap
+attach, while =tokio::fs::File::open= delegates both descriptor opens to the
+blocking pool and violates the one-millisecond gate.  All daemon supervision,
+writer lanes, publication, recovery, transport, and shutdown remain Tokio
+tasks.
 
 * Tokio lifecycle
 
@@ -107,6 +241,27 @@ task.  Process lifecycle and transport code must not create independent
 The read-pool size is adaptive.  A fixed global worker count is not an accepted
 contract: the daemon uses observed contention, available parallelism, and
 workspace pressure while preserving per-workspace isolation.
+
+Runtime Server lifecycle reconciliation prewarms its persistent control lanes
+to the current adaptive concurrency plan.  Lane allocation and Unix socket
+connection establishment are lifecycle work, not demand work charged to the
+next concurrent request wave.  Once reconciled, callers choose an existing lane
+with atomic load accounting; they MUST NOT take a pool-wide asynchronous lock
+or grow the connection pool on the request path.
+
+The public =server reconcile= operation returns the typed receipt read from the
+reconciled daemon.  Merely asking launchd or systemd to start a process is not a
+successful reconciliation receipt and MUST NOT be rendered as a synthetic
+=starting= state.  Contract or artifact drift is closed only when the latest
+endpoint validates and the daemon reports =healthy=.
+
+The macOS service definition overrides launchd's ten-second default spawn
+throttle with the smallest supported positive interval.  The default is
+incompatible with an atomic developer artifact switch because it converts a
+healthy supervised replacement into a deterministic ten-second outage.
+Throttle reduction is not the readiness protocol: reconciliation still closes
+only on the daemon's typed healthy receipt, and repeated crashes remain an
+explicit lifecycle failure.
 
 * Strong performance fixtures
 
@@ -157,3 +312,177 @@ not close this RFC.  Closure requires installed cold-to-warm evidence for every
 registered provider family, the multi-workspace stress fixtures above, exact
 zero-I/O counters, and successful moved/untracked/tombstone projection against
 the same published epoch.
+* Canonical Runtime Artifact Identity
+
+Runtime Server control, health, reconcile, and restart MUST use the immutable
+digest-addressed artifact path published by the install transaction as the
+single binary identity authority.  A warm control request MUST NOT reopen or
+hash executable bytes.  The canonical path has the form
+=runtime/artifacts/blake3-256/<digest>/asp=; any daemon or client artifact
+outside a validated digest-addressed path fails closed.
+
+This removes the former split identity in which installation published a
+BLAKE3 artifact digest while Runtime Server recomputed SHA-256 over the entire
+binary on every control request.  The warm-path receipt is
+=binaryByteReads=0=; content bytes are admitted only by the install
+transaction.
+
+* Exact Query Admission Boundary
+
+Exact query is a resident read transaction.  It MUST NOT call source-index
+admission, rebuild a generation, poll an admission state, sleep, or impose a
+query-local deadline.  The workspace registry entry owns load-once mmap
+checkpoint restoration; owner freshness opens that entry and the selector read
+uses the same generation lease and resident overlay.
+
+When no canonical checkpoint exists, exact query fails closed with typed
+generation evidence.  Hook or Runtime Server lifecycle admission is the only
+authority allowed to build and publish a new generation.
+
+** ASP-RFC-10.05-ESGA-LIFECYCLE-ADMISSION-OWNER
+
+=session-start=, =user-prompt=, and =pre-tool= are lifecycle admission
+entrypoints.  They may submit one non-blocking generation build to the Runtime
+Server owner.  Exact query and search query are resident consumers: they MUST
+NOT submit, poll, or wait for generation admission.  A consumer that observes
+no published canonical generation fails closed with typed evidence.
+
+** ASP-RFC-10.05-ESGA-PROJECT-ROOT-ISOLATION
+
+Generation admission single-flight identity is
+=(workspaceIdentity, canonicalProjectRoot)=.  Concurrent sessions for the same
+pair share one build.  Different canonical project roots under the same
+workspace identity MUST have independent admission state and MUST NOT reuse
+each other's =Building=, =Ready=, or =Failed= receipt.
+
+** ASP-RFC-10.05-ESGA-COMMIT-PUBLICATION-BINDING
+
+The writer transaction commits the canonical materialization and source-index
+scope as one operation.  Its successful typed receipt is the publication
+barrier.  MemoryBackend publication MUST use the same validated
+materialization identity submitted to that commit and MUST reject receipt or
+source-snapshot identity drift.  It MUST NOT require a second pooled
+connection read-after-write as commit authority; MVCC visibility timing on a
+different connection cannot invalidate an already committed transaction.
+
+* Workspace Handle and Source-Scope Identity
+
+=workspaceIdentity= owns exactly one resident Turso handle, adaptive read pool,
+and serial writer lane.  It does not identify a source generation.  A monorepo
+may expose several independently parsed package roots through the same
+workspace handle, and each package may contain the same relative owner path
+such as =src/lib.rs=.
+
+Every durable materialization, MemoryBackend generation, mmap pointer, owner
+overlay, and selector overlay is therefore keyed by the pair:
+
+#+begin_example
+(workspaceIdentity, canonicalProjectRoot)
+#+end_example
+
+=canonicalProjectRoot= is the canonical project root already carried by
+=asp_source_index_scope_v1.project_root=.  Provider-owned incremental facts
+remain further partitioned by =providerWorkspaceIdentityDigest=, =languageId=,
+and =providerId=.  The Runtime Server must never choose the most recently
+updated materialization for a workspace without filtering the requested
+canonical project root.
+
+The durable canonical materialization primary key and immutable reuse lookup
+MUST both contain =workspaceIdentity= and =canonicalProjectRoot=.  A generation
+identifier is unique only inside that source scope; it cannot authorize reuse
+from another package root in the same workspace.  The single workspace writer
+lane multiplexes scoped commands and carries the target scope explicitly.  It
+MUST NOT be duplicated per project root.
+
+The client canonicalizes the project root once while binding a Runtime Server
+session.  Every request on that session carries the bound source scope; warm
+selector reads do not canonicalize again.  The daemon validates that the scope
+belongs to the requested workspace before opening or restoring it.
+
+This separation preserves one database handle per workspace while preventing
+package-root promotion, cross-package owner collisions, and “latest package
+wins” generation replacement.  A map of project roots attached to one
+unscoped generation is not conforming.
+
+** ASP-RFC-10.05-ESGA-REPOSITORY-CANDIDATE-SCOPE
+
+A repository candidate snapshot is discovered and scoped only by ASP Runtime.
+Its =candidates= and =policyExclusions= are relative to the explicit
+=candidateScope.projectRoot=.  No Git worktree prefix is exposed through the
+provider contract.
+
+The complete =repository-candidate-snapshot.v1= is an ASP-internal authority.
+It may contain repository and worktree identity because ASP uses those fields
+to distinguish checkouts and construct workspace identity, but that object
+MUST NOT cross the provider ABI.  Provider requests contain only the rebased
+candidate generation, candidate paths, policy exclusions, and canonical
+project root needed to parse package-manager anchors.  They contain no
+repository id, remote URL, Git common directory, worktree id, worktree root,
+Git directory, or HEAD identity.
+
+The runtime MUST filter the Git index/worktree candidate set to the requested
+canonical project root, strip the repository prefix exactly once, and include
+the candidate-base identity in =candidateGeneration.digest=.  When an already
+discovered snapshot is reused for a nested request, the ASP consumer MUST
+derive a new scoped snapshot before provider invocation.
+
+Language harnesses MUST NOT interpret Git repository or worktree topology.
+They consume the already-scoped candidate paths, parse their package-manager
+anchors, and return zero or more semantic =ProjectResolution= receipts.  A returned
+package root may be nested below =candidateScope.projectRoot=; equality between
+the returned package root and candidate base is neither required nor valid as
+a provider invariant.  ASP alone composes those =ProjectResolution= receipts into
+the workspace graph.
+
+Provider output MUST NOT echo the repository snapshot.  It binds returned
+=ProjectResolution= receipts to the request candidate-generation digest.  ASP
+validates that digest and every returned workspace-relative path against its
+private repository snapshot before graph admission.
+
+The provider ABI is named =ProjectResolution= throughout.  Its v1 command and
+schemas are:
+
+#+begin_example
+project-resolution-stdin
+provider-project-resolution-descriptor.v1.schema.json
+provider-project-resolution-request.v1.schema.json
+provider-project-resolution-response.v1.schema.json
+project-resolution.v1.schema.json
+#+end_example
+
+The request carries =candidateBase=, =candidateGeneration=, rebased
+=candidatePaths=, and =policyExclusions=.  Paths are relative logical paths;
+the provider process working directory supplies the already-admitted project
+root.  The request MUST NOT carry an absolute checkout root or any repository,
+worktree, Git directory, remote, or HEAD identity.  The response carries only
+parser-owned package graph and source-scope facts plus the consumed candidate
+generation digest.  ASP creates project/workspace identities and binds the
+receipt to the canonical generation envelope.
+
+ASP MUST retain each complete =ProjectResolution= receipt inside that envelope.  It
+MUST NOT reduce a receipt to a list of source paths and discard the package
+graph.  The canonical generation digest, durable Turso materialization,
+immutable mmap epoch, and resident MemoryBackend are all computed from the
+same ordered set of admitted =ProjectResolution= receipts plus owner bytes and
+selectors.  Package nodes, dependency edges, and resolved source scopes are
+therefore generation facts, not activation-only hints.
+
+Each admitted receipt is paired with an ASP-owned workspace-relative
+=candidateBase=.  Rebased path identity belongs to this ASP envelope; the
+provider receipt remains exactly relative to the candidate base it parsed.
+Changing a receipt, its candidate base, or its candidate-generation binding
+MUST change the canonical generation digest.  A partial receipt set MUST NOT
+be published, and a warm query MUST NOT invoke a provider to reconstruct facts
+that activation discarded.
+
+The former =project-resolution-stdin= command and
+=provider-project-resolution-*= / =project-resolution.v1= provider schemas are
+not aliases.  They are removed from the public provider surface.  A manifest,
+provider command, fixture, or client that still exposes them is non-conforming
+and MUST fail its contract gate rather than entering a compatibility path.
+
+This is a shared v1 contract for every registered provider.  Rust, Python,
+TypeScript, Julia, Gerbil Scheme, document providers, and future lazy-loaded
+providers consume the same scoped candidate meaning.  A provider-facing
+request whose candidate paths were not rebased to its declared candidate base
+is an ASP producer defect and MUST fail before the provider process starts.

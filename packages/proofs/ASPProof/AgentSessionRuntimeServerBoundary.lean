@@ -26,23 +26,33 @@ inductive HookRoute where
   | reject
 deriving DecidableEq, Repr
 
-def Owns : Principal → Authority → Prop
-  | .runtimeServer, .workspaceAdmission => True
-  | .runtimeServer, .indexWrite => True
-  | .runtimeServer, .generationPublish => True
-  | .runtimeServer, .queryLeaseIssue => True
-  | .agentSession, .sessionGraph => True
-  | .agentSession, .subagentBinding => True
-  | .agentSession, .dispatchReceipt => True
-  | .hostRuntime, .nativeSpawn => True
-  | .hostRuntime, .nativeDispatch => True
-  | .residentSubagent, .taskExecutionReceipt => True
-  | _, _ => False
+inductive Owns : Principal → Authority → Prop where
+  | runtimeWorkspaceAdmission :
+      Owns .runtimeServer .workspaceAdmission
+  | runtimeIndexWrite :
+      Owns .runtimeServer .indexWrite
+  | runtimeGenerationPublish :
+      Owns .runtimeServer .generationPublish
+  | runtimeQueryLeaseIssue :
+      Owns .runtimeServer .queryLeaseIssue
+  | sessionGraph :
+      Owns .agentSession .sessionGraph
+  | sessionSubagentBinding :
+      Owns .agentSession .subagentBinding
+  | sessionDispatchReceipt :
+      Owns .agentSession .dispatchReceipt
+  | hostNativeSpawn :
+      Owns .hostRuntime .nativeSpawn
+  | hostNativeDispatch :
+      Owns .hostRuntime .nativeDispatch
+  | subagentTaskExecutionReceipt :
+      Owns .residentSubagent .taskExecutionReceipt
 
-def MayRequestQuery : Principal → Prop
-  | .agentSession => True
-  | .residentSubagent => True
-  | _ => False
+inductive MayRequestQuery : Principal → Prop where
+  | agentSession :
+      MayRequestQuery .agentSession
+  | residentSubagent :
+      MayRequestQuery .residentSubagent
 
 def chooseHookRoute
     (subagentBindingLive : Bool)
@@ -64,42 +74,42 @@ def DispatchAdmissible
 
 theorem runtime_server_owns_index_write :
     Owns .runtimeServer .indexWrite := by
-  exact True.intro
+  exact .runtimeIndexWrite
 
 theorem runtime_server_owns_generation_publication :
     Owns .runtimeServer .generationPublish := by
-  exact True.intro
+  exact .runtimeGenerationPublish
 
 theorem agent_session_has_no_index_write_authority :
     ¬ Owns .agentSession .indexWrite := by
-  intro impossible
-  exact impossible
+  intro ownership
+  cases ownership
 
 theorem resident_subagent_has_no_generation_publish_authority :
     ¬ Owns .residentSubagent .generationPublish := by
-  intro impossible
-  exact impossible
+  intro ownership
+  cases ownership
 
 theorem runtime_server_has_no_subagent_binding_authority :
     ¬ Owns .runtimeServer .subagentBinding := by
-  intro impossible
-  exact impossible
+  intro ownership
+  cases ownership
 
 theorem agent_session_owns_subagent_binding :
     Owns .agentSession .subagentBinding := by
-  exact True.intro
+  exact .sessionSubagentBinding
 
 theorem host_runtime_owns_native_dispatch :
     Owns .hostRuntime .nativeDispatch := by
-  exact True.intro
+  exact .hostNativeDispatch
 
 theorem query_request_does_not_confer_lease_issue_authority :
     MayRequestQuery .agentSession ∧
       ¬ Owns .agentSession .queryLeaseIssue := by
   constructor
-  · exact True.intro
+  · exact .agentSession
   · intro impossible
-    exact impossible
+    cases impossible
 
 theorem live_session_subagent_routes_natively
     (parserOwned exactBounded grammarValid languageMatches : Bool) :

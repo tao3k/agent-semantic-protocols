@@ -1,5 +1,5 @@
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{env, path::PathBuf, process::Command};
+use std::{env, path::PathBuf, process::Command, sync::Arc};
 
 use agent_semantic_client_core::{
     CacheGenerationId, ClientCacheFileHash, LanguageId, ProviderId, SemanticSchemaId,
@@ -15,34 +15,6 @@ use agent_semantic_client_db::{
     ClientDbSourceIndexScopeFile, ClientDbSourceIndexSource, build_source_index_import,
     client_db_source_index_file_count, source_index_relative_path, source_index_scope_dirs,
 };
-
-use crate::env::ENV_LOCK;
-
-struct EnvVarGuard {
-    key: &'static str,
-    previous: Option<std::ffi::OsString>,
-}
-
-impl EnvVarGuard {
-    fn set_path(key: &'static str, value: &std::path::Path) -> Self {
-        let previous = std::env::var_os(key);
-        unsafe {
-            std::env::set_var(key, value);
-        }
-        Self { key, previous }
-    }
-}
-
-impl Drop for EnvVarGuard {
-    fn drop(&mut self) {
-        unsafe {
-            match self.previous.as_ref() {
-                Some(value) => std::env::set_var(self.key, value),
-                None => std::env::remove_var(self.key),
-            }
-        }
-    }
-}
 
 #[test]
 fn schema_version_stays_on_first_turso_release_contract() {
@@ -551,12 +523,32 @@ fn agent_session_registry_project_open_uses_asp_home_db() {
         .expect("initialize project repository");
     assert!(git_status.success(), "git init project repository");
 
+    let status = Command::new(env::current_exe().expect("locate current test binary"))
+        .arg("--exact")
+        .arg("db::agent_session_registry_project_open_helper")
+        .arg("--nocapture")
+        .env("ASP_SESSION_STATE_HOME_CHILD", "1")
+        .env("ASP_SESSION_STATE_HOME", &state_home)
+        .env("ASP_SESSION_PROJECT_ROOT", &project_root)
+        .env("ASP_STATE_HOME", &state_home)
+        .status()
+        .expect("run isolated ASP_STATE_HOME contract");
+    assert!(status.success(), "isolated ASP_STATE_HOME contract failed");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn agent_session_registry_project_open_helper() {
+    if env::var("ASP_SESSION_STATE_HOME_CHILD").ok().as_deref() != Some("1") {
+        return;
+    }
+    let state_home =
+        PathBuf::from(env::var_os("ASP_SESSION_STATE_HOME").expect("ASP_SESSION_STATE_HOME"));
+    let project_root =
+        PathBuf::from(env::var_os("ASP_SESSION_PROJECT_ROOT").expect("ASP_SESSION_PROJECT_ROOT"));
     let state =
         ResolvedState::resolve_with_state_home(&project_root, &state_home).expect("resolve state");
     state.ensure_minimal_layout().expect("ensure state layout");
-
-    let _env_lock = ENV_LOCK.lock().expect("lock env");
-    let _state_home_guard = EnvVarGuard::set_path("ASP_STATE_HOME", &state_home);
     let state_root =
         AgentSessionRegistry::state_root_for_project(&project_root).expect("resolve project root");
     assert_eq!(state_root, state.state_home);
@@ -589,8 +581,6 @@ fn agent_session_registry_project_open_uses_asp_home_db() {
             .exists(),
         "agent session registry must not create a project-local DB"
     );
-
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -661,98 +651,65 @@ fn agent_session_register_moves_same_child_from_stale_root_mapping() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn agent_session_registry_process_register_helper() {
-    if env::var("ASP_TURSO_SESSION_PROCESS_STRESS_CHILD")
-        .ok()
-        .as_deref()
-        != Some("1")
-    {
-        return;
+fn concurrent_session_request(
+    writer_id: usize,
+    root_session_id: String,
+) -> AgentSessionRegisterRequest<'static> {
+    AgentSessionRegisterRequest {
+        project_id: "project-session-stress".into(),
+        root_session_id: root_session_id.into(),
+        session_id: format!("child-session-{writer_id}").into(),
+        parent_session_id: Some("main-session".into()),
+        name: "asp-explore".into(),
+        role: "asp-explore".into(),
+        model_observation: Some(agent_semantic_client_db::AgentSessionModelObservationRef {
+            model: "gpt-test",
+            source:
+                agent_semantic_client_db::AgentSessionModelObservationSource::CodexSubagentStart,
+            observed_at: 10,
+            evidence_ref: Some("turn:test"),
+        }),
+        message_target_id: None,
+        status: "active".into(),
+        expires_at: None,
+        metadata_json: "{\"route\":\"resident-owner-stress\"}".into(),
+        now: 1_800_001_000 + writer_id as i64,
     }
-    let state_root = PathBuf::from(
-        env::var("ASP_TURSO_SESSION_PROCESS_STRESS_STATE_ROOT")
-            .expect("ASP_TURSO_SESSION_PROCESS_STRESS_STATE_ROOT"),
-    );
-    let writer_id: usize = env::var("ASP_TURSO_SESSION_PROCESS_STRESS_WRITER_ID")
-        .expect("ASP_TURSO_SESSION_PROCESS_STRESS_WRITER_ID")
-        .parse()
-        .expect("parse ASP_TURSO_SESSION_PROCESS_STRESS_WRITER_ID");
-    let operation_started = std::time::Instant::now();
-    let registry =
-        AgentSessionRegistry::open_or_create_state_root(&state_root).expect("open registry");
-    let shared_route = env::var("ASP_TURSO_SESSION_PROCESS_STRESS_SHARED_ROUTE")
-        .ok()
-        .as_deref()
-        == Some("1");
-    let root_session_id = if shared_route {
-        "root-session".to_string()
-    } else {
-        format!("root-session-{writer_id}")
-    };
-    registry
-        .register_session(AgentSessionRegisterRequest {
-            project_id: "project-process-stress".into(),
-            root_session_id: (&root_session_id).into(),
-            session_id: format!("child-session-{writer_id}").into(),
-            parent_session_id: Some("main-session".into()),
-            name: "asp-explore".into(),
-            role: "asp-explore".into(),
-            model_observation: Some(agent_semantic_client_db::AgentSessionModelObservationRef {
-                model: "gpt-test",
-                source: agent_semantic_client_db::AgentSessionModelObservationSource::CodexSubagentStart,
-                observed_at: 10,
-                evidence_ref: Some("turn:test"),
-            }),
-            message_target_id: None,
-            status: "active".into(),
-            expires_at: None,
-            metadata_json: "{\"route\":\"process-stress\"}".into(),
-            now: 1_800_001_000 + writer_id as i64,
-        })
-        .expect("register process stress session");
-    assert!(
-        operation_started.elapsed() <= std::time::Duration::from_secs(3),
-        "process registry DB operation exceeded bounded CI target: writer={writer_id} elapsed={:?}",
-        operation_started.elapsed()
-    );
 }
 
 #[test]
-fn agent_session_registry_survives_concurrent_process_register_stress() {
+fn agent_session_registry_one_owner_accepts_concurrent_session_routes() {
     let root = temp_root("agent-session-registry-process-stress");
     let state_root = root.join("agent");
     let writer_count = 6usize;
-    let current_exe = env::current_exe().expect("locate current test binary");
-    let mut children = Vec::new();
-
-    for writer_id in 0..writer_count {
-        children.push(
-            Command::new(&current_exe)
-                .arg("--exact")
-                .arg("db::agent_session_registry_process_register_helper")
-                .arg("--nocapture")
-                .env("ASP_TURSO_SESSION_PROCESS_STRESS_CHILD", "1")
-                .env("ASP_TURSO_SESSION_PROCESS_STRESS_STATE_ROOT", &state_root)
-                .env(
-                    "ASP_TURSO_SESSION_PROCESS_STRESS_WRITER_ID",
-                    writer_id.to_string(),
-                )
-                .spawn()
-                .expect("spawn process registry writer"),
-        );
-    }
-
-    for mut child in children {
-        let status = child.wait().expect("wait for process registry writer");
-        assert!(status.success(), "process registry writer failed: {status}");
-    }
-
-    let registry =
-        AgentSessionRegistry::open_or_create_state_root(&state_root).expect("open registry");
+    let registry = Arc::new(
+        AgentSessionRegistry::open_or_create_state_root(&state_root).expect("open registry"),
+    );
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(4)
+        .enable_all()
+        .build()
+        .expect("build multi-session runtime")
+        .block_on(async {
+            let mut tasks = Vec::new();
+            for writer_id in 0..writer_count {
+                let registry = Arc::clone(&registry);
+                tasks.push(tokio::task::spawn_blocking(move || {
+                    registry.register_session(concurrent_session_request(
+                        writer_id,
+                        format!("root-session-{writer_id}"),
+                    ))
+                }));
+            }
+            for task in tasks {
+                task.await
+                    .expect("join resident owner session")
+                    .expect("register resident owner session");
+            }
+        });
     let sessions = registry
         .query_sessions(
-            "project-process-stress",
+            "project-session-stress",
             None,
             Some(agent_semantic_client_db::AgentSessionResidentName::from(
                 "asp-explore",
@@ -773,46 +730,44 @@ fn agent_session_registry_survives_concurrent_process_register_stress() {
 }
 
 #[test]
-fn agent_session_registry_concurrent_process_register_shared_route_does_not_unique_fail() {
+fn agent_session_registry_one_owner_converges_shared_route_with_exact_cas() {
     let root = temp_root("agent-session-registry-process-shared-route-stress");
     let state_root = root.join("agent");
     let writer_count = 6usize;
-    let current_exe = env::current_exe().expect("locate current test binary");
-    let mut children = Vec::new();
-
-    for writer_id in 0..writer_count {
-        children.push(
-            Command::new(&current_exe)
-                .arg("--exact")
-                .arg("db::agent_session_registry_process_register_helper")
-                .arg("--nocapture")
-                .env("ASP_TURSO_SESSION_PROCESS_STRESS_CHILD", "1")
-                .env("ASP_TURSO_SESSION_PROCESS_STRESS_SHARED_ROUTE", "1")
-                .env("ASP_TURSO_SESSION_PROCESS_STRESS_STATE_ROOT", &state_root)
-                .env(
-                    "ASP_TURSO_SESSION_PROCESS_STRESS_WRITER_ID",
-                    writer_id.to_string(),
-                )
-                .spawn()
-                .expect("spawn process registry shared-route writer"),
-        );
-    }
-
-    let mut successful_writers = 0usize;
-    for mut child in children {
-        let status = child.wait().expect("wait for shared-route registry writer");
-        successful_writers += usize::from(status.success());
-    }
+    let registry = Arc::new(
+        AgentSessionRegistry::open_or_create_state_root(&state_root).expect("open registry"),
+    );
+    let successful_writers = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(4)
+        .enable_all()
+        .build()
+        .expect("build shared-route runtime")
+        .block_on(async {
+            let mut tasks = Vec::new();
+            for writer_id in 0..writer_count {
+                let registry = Arc::clone(&registry);
+                tasks.push(tokio::task::spawn_blocking(move || {
+                    registry.register_session(concurrent_session_request(
+                        writer_id,
+                        "root-session".to_owned(),
+                    ))
+                }));
+            }
+            let mut successful_writers = 0usize;
+            for task in tasks {
+                successful_writers +=
+                    usize::from(task.await.expect("join shared-route session").is_ok());
+            }
+            successful_writers
+        });
     assert_eq!(
         successful_writers, 1,
         "exactly one concurrent child may activate a physical generation"
     );
 
-    let registry =
-        AgentSessionRegistry::open_or_create_state_root(&state_root).expect("open registry");
     let sessions = registry
         .query_sessions(
-            "project-process-stress",
+            "project-session-stress",
             Some(agent_semantic_client_db::AgentSessionRootSessionId::from(
                 "root-session",
             )),

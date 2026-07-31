@@ -1,0 +1,33 @@
+import ASPProof.AgentSessionHostRegistryExecutableReceiptMaterialization
+
+namespace ASPProof.Audit.AgentSessionHostRegistryExecutableReceiptMaterialization
+
+open ASPProof.AgentSessionHostRegistryExecutableReceiptMaterialization
+
+#print axioms legal_transition_from_planned_is_resolution
+#print axioms planned_cannot_skip_to_invoked
+#print axioms resolved_cannot_skip_to_captured
+#print axioms invoked_cannot_skip_effect_observation
+#print axioms captured_cannot_skip_to_sealed
+#print axioms materialized_receipt_is_sealed
+#print axioms materialized_receipt_binds_command
+#print axioms materialized_receipt_binds_artifact
+#print axioms materialized_receipt_binds_vector_suite
+#print axioms materialized_vectors_are_immutable
+#print axioms materialized_invocation_is_independent
+#print axioms materialized_capture_is_complete
+#print axioms materialized_observation_is_complete
+#print axioms materialized_receipt_is_effect_free
+#print axioms materialized_receipt_seal_matches_payload
+#print axioms unresolved_artifact_cannot_materialize
+#print axioms mutable_vectors_cannot_materialize
+#print axioms incomplete_capture_cannot_materialize
+#print axioms incomplete_effect_observation_cannot_materialize
+#print axioms wrong_stage_cannot_materialize
+#print axioms wrong_seal_cannot_materialize
+#print axioms retry_stability_binds_invocation
+#print axioms retry_stability_binds_artifact
+#print axioms retry_stability_binds_vectors
+#print axioms exit_zero_alone_is_not_complete_capture
+
+end ASPProof.Audit.AgentSessionHostRegistryExecutableReceiptMaterialization

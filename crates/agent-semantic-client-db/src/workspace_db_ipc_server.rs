@@ -224,15 +224,20 @@ async fn dispatch_workspace_db_session_operation(
                 Err(error) => Err(error),
             }
         }
-        WorkspaceDbIpcOperation::CommitSourceIndexGeneration { .. } => Err(
-            "canonical source-index generation publication is only accepted by the Runtime Server data plane"
+        WorkspaceDbIpcOperation::ReadRuntimeSelector { .. } => Err(
+            "resident runtime selector reads are only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
-        WorkspaceDbIpcOperation::EnsureRuntimeGeneration { .. } => Err(
-            "canonical generation restore is only accepted by the Runtime Server data plane"
+        WorkspaceDbIpcOperation::EnsureRuntimeOwner { .. } => Err(
+            "resident runtime owner freshness is only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
-        WorkspaceDbIpcOperation::AdmitRuntimeGeneration { .. } => Err(
+        WorkspaceDbIpcOperation::PublishRuntimeSelectorOverlay { .. } => Err(
+            "resident runtime selector writes are only accepted by the Runtime Server data plane"
+                .to_owned(),
+        ),
+        WorkspaceDbIpcOperation::AdmitRuntimeGeneration { .. }
+        | WorkspaceDbIpcOperation::EnsureRuntimeGeneration { .. } => Err(
             "canonical generation admission is only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
@@ -268,17 +273,27 @@ async fn dispatch_workspace_db_session_operation(
                 Err(error) => Err(error),
             }
         }
-        WorkspaceDbIpcOperation::ReadProviderOwnerProjections { scope, owner_path } => {
+        WorkspaceDbIpcOperation::ReadProviderOwnerSnapshot { scope, owner_path } => {
             let session = registry.acquire(&scope.project_root, &scope).await;
             match session {
                 Ok(session) => session
-                    .read_provider_owner_projections(&scope, &owner_path)
+                    .read_provider_owner_snapshot(&scope, &owner_path)
                     .await
-                    .map(
-                        |projections| WorkspaceDbIpcResult::ProviderOwnerProjections {
-                            projections,
-                        },
-                    ),
+                    .map(|snapshot| WorkspaceDbIpcResult::ProviderOwnerSnapshot { snapshot }),
+                Err(error) => Err(error),
+            }
+        }
+        WorkspaceDbIpcOperation::ReadProviderOwnerWarm { scope, owner } => {
+            let session = admitted_or_bootstrap_workspace(
+                registry,
+                workspace_identity,
+                Path::new(&scope.project_root),
+            )
+            .await;
+            match session {
+                Ok(session) => session.read_provider_owner_warm(&scope, &owner).await.map(
+                    |(probe, snapshot)| WorkspaceDbIpcResult::ProviderOwnerWarm { probe, snapshot },
+                ),
                 Err(error) => Err(error),
             }
         }
@@ -385,6 +400,9 @@ pub async fn serve_runtime_server_workspace_stream(
     registry: &WorkspaceDbRegistry,
     memory_registry: &crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
     generation_admission: Option<&crate::runtime_server_admission::WorkspaceGenerationAdmission>,
+    owner_projection_builder: Option<
+        &crate::runtime_server_workspace::WorkspaceOwnerProjectionBuilder,
+    >,
     mut drain: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), String> {
     loop {
@@ -436,52 +454,58 @@ pub async fn serve_runtime_server_workspace_stream(
             }
         } else {
             match request.operation {
-                WorkspaceDbIpcOperation::EnsureRuntimeGeneration { project_root } => {
-                    let restoration = async {
-                        let session = admitted_or_bootstrap_workspace(
-                            registry,
+                WorkspaceDbIpcOperation::ReadRuntimeSelector {
+                    project_root,
+                    projection_kind,
+                    structural_selector,
+                } => match memory_registry.read_runtime_selector(
+                    &request.workspace_identity,
+                    Path::new(&project_root),
+                    &projection_kind,
+                    &structural_selector,
+                ) {
+                    Ok(read) => WorkspaceDbIpcResult::RuntimeSelector { read },
+                    Err(message) => WorkspaceDbIpcResult::Failed {
+                        code: "runtime-server-selector-read-failed".to_owned(),
+                        message,
+                    },
+                },
+                WorkspaceDbIpcOperation::EnsureRuntimeOwner {
+                    project_root,
+                    language_id,
+                    owner_path,
+                } => match ensure_runtime_owner_freshness(
+                    memory_registry,
+                    &request.request_id,
+                    &request.workspace_identity,
+                    Path::new(&project_root),
+                    &language_id,
+                    &owner_path,
+                    owner_projection_builder,
+                )
+                .await
+                {
+                    Ok(receipt) => WorkspaceDbIpcResult::RuntimeOwnerFreshness { receipt },
+                    Err(message) => WorkspaceDbIpcResult::Failed {
+                        code: "runtime-server-owner-freshness-failed".to_owned(),
+                        message,
+                    },
+                },
+                WorkspaceDbIpcOperation::PublishRuntimeSelectorOverlay {
+                    project_root,
+                    overlay,
+                } => {
+                    match memory_registry
+                        .publish_selector_overlay(
                             &request.workspace_identity,
                             Path::new(&project_root),
+                            overlay,
                         )
-                        .await?;
-                        let materialization = session
-                            .load_active_workspace_generation_materialization()
-                            .await?;
-                        if let Some(materialization) = materialization {
-                            materialization.validate_persisted(&request.workspace_identity)?;
-                            return memory_registry
-                                .ensure_canonical_generation(
-                                    request.request_id.clone(),
-                                    &request.workspace_identity,
-                                    materialization,
-                                )
-                                .await
-                                .map(|receipt| WorkspaceDbIpcResult::RuntimeGeneration {
-                                    receipt,
-                                });
-                        }
-                        let admission = generation_admission.ok_or_else(|| {
-                            format!(
-                                "active workspace generation materialization is unavailable: workspaceIdentity={}",
-                                request.workspace_identity
-                            )
-                        })?;
-                        let receipt = admission
-                            .status(&request.workspace_identity)
-                            .await
-                            .ok_or_else(|| {
-                                format!(
-                                    "active workspace generation is not admitted: workspaceIdentity={}; hook or supervisor admission is required",
-                                    request.workspace_identity
-                                )
-                            })?;
-                        Ok(WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt })
-                    }
-                    .await;
-                    match restoration {
-                        Ok(result) => result,
+                        .await
+                    {
+                        Ok(receipt) => WorkspaceDbIpcResult::RuntimeSelectorOverlay { receipt },
                         Err(message) => WorkspaceDbIpcResult::Failed {
-                            code: "runtime-server-canonical-generation-restore-failed".to_owned(),
+                            code: "runtime-server-selector-overlay-failed".to_owned(),
                             message,
                         },
                     }
@@ -510,55 +534,45 @@ pub async fn serve_runtime_server_workspace_stream(
                         },
                     }
                 }
-                WorkspaceDbIpcOperation::CommitSourceIndexGeneration {
-                    request: refresh,
-                    materialization,
-                } => {
-                    let publication = async {
-                        materialization
-                            .validate_refresh_request(&request.workspace_identity, &refresh)?;
-                        let project_root = refresh.import.project_root.clone();
-                        let session = admitted_or_bootstrap_workspace(
-                            registry,
-                            &request.workspace_identity,
-                            Path::new(&project_root),
-                        )
-                        .await?;
-                        let durable = session
-                            .commit_source_index_generation(refresh, materialization)
-                            .await?;
-                        let materialization = session
-                            .load_active_workspace_generation_materialization()
-                            .await?
-                            .ok_or_else(|| {
-                                "durable source-index commit published no canonical materialization"
-                                    .to_owned()
-                            })?;
-                        materialization.validate_persisted(&request.workspace_identity)?;
-                        if !durable
-                            .source_snapshot
-                            .has_same_content_identity(&materialization.source_snapshot)
-                        {
-                            return Err(format!(
-                                "Turso generation evidence differs from canonical materialization: durable={:?} materialized={:?}",
-                                durable.source_snapshot, materialization.source_snapshot
-                            ));
+                WorkspaceDbIpcOperation::EnsureRuntimeGeneration { project_root } => {
+                    match generation_admission {
+                        Some(admission) => {
+                            let project_root = std::path::PathBuf::from(project_root);
+                            let ensured = async {
+                                let receipt = admission
+                                    .admit(
+                                        request.workspace_identity.clone(),
+                                        project_root.clone(),
+                                    )
+                                    .await?;
+                                if receipt.state
+                                    == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
+                                {
+                                    admission
+                                        .wait_terminal(
+                                            &request.workspace_identity,
+                                            &project_root,
+                                        )
+                                        .await
+                                } else {
+                                    Ok(receipt)
+                                }
+                            }
+                            .await;
+                            match ensured {
+                                Ok(receipt) => {
+                                    WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }
+                                }
+                                Err(message) => WorkspaceDbIpcResult::Failed {
+                                    code: "runtime-server-generation-ensure-failed".to_owned(),
+                                    message,
+                                },
+                            }
                         }
-                        memory_registry
-                            .ensure_canonical_generation(
-                                request.request_id.clone(),
-                                &request.workspace_identity,
-                                materialization,
-                            )
-                            .await?;
-                        Ok::<_, String>(durable)
-                    }
-                    .await;
-                    match publication {
-                        Ok(receipt) => WorkspaceDbIpcResult::SourceIndexGeneration { receipt },
-                        Err(message) => WorkspaceDbIpcResult::Failed {
-                            code: "runtime-server-canonical-generation-publish-failed".to_owned(),
-                            message,
+                        None => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-generation-admission-unavailable".to_owned(),
+                            message: "Runtime Server has no canonical generation builder"
+                                .to_owned(),
                         },
                     }
                 }
@@ -566,34 +580,15 @@ pub async fn serve_runtime_server_workspace_stream(
                     request: lookup_request,
                 } => {
                     let lookup = async {
-                        let lease = match memory_registry.lease(&request.workspace_identity) {
-                            Ok(lease) => lease,
-                            Err(_) => {
-                                let session = admitted_or_bootstrap_workspace(
-                                    registry,
-                                    &request.workspace_identity,
-                                    Path::new(&lookup_request.project_root),
+                        let project_root = Path::new(&lookup_request.project_root);
+                        let lease = memory_registry
+                            .lease(&request.workspace_identity, project_root)
+                            .map_err(|error| {
+                                format!(
+                                    "active workspace generation lease is required before source-index read: workspaceIdentity={} error={error}",
+                                    request.workspace_identity
                                 )
-                                .await?;
-                                let materialization = session
-                                    .load_active_workspace_generation_materialization()
-                                    .await?
-                                    .ok_or_else(|| {
-                                        format!(
-                                            "active workspace generation materialization is unavailable: workspaceIdentity={}",
-                                            request.workspace_identity
-                                        )
-                                    })?;
-                                memory_registry
-                                    .ensure_canonical_generation(
-                                        request.request_id.clone(),
-                                        &request.workspace_identity,
-                                        materialization,
-                                    )
-                                    .await?;
-                                memory_registry.lease(&request.workspace_identity)?
-                            }
-                        };
+                            })?;
                         lease.read_source_index(
                             &lookup_request.source_snapshot,
                             &lookup_request.query,
@@ -610,11 +605,15 @@ pub async fn serve_runtime_server_workspace_stream(
                         },
                     }
                 }
-                WorkspaceDbIpcOperation::PublishRuntimeOwner { owner } => {
+                WorkspaceDbIpcOperation::PublishRuntimeOwner {
+                    project_root,
+                    owner,
+                } => {
                     let publication = memory_registry
                         .publish_owner_overlay(
                             request.request_id.clone(),
                             request.workspace_identity.clone(),
+                            Path::new(&project_root),
                             owner,
                         )
                         .await;
@@ -626,11 +625,15 @@ pub async fn serve_runtime_server_workspace_stream(
                         },
                     }
                 }
-                WorkspaceDbIpcOperation::TombstoneRuntimeOwner { owner_path } => {
+                WorkspaceDbIpcOperation::TombstoneRuntimeOwner {
+                    project_root,
+                    owner_path,
+                } => {
                     let publication = memory_registry
                         .tombstone_owner_overlay(
                             request.request_id.clone(),
                             request.workspace_identity.clone(),
+                            Path::new(&project_root),
                             owner_path,
                         )
                         .await;
@@ -643,6 +646,7 @@ pub async fn serve_runtime_server_workspace_stream(
                     }
                 }
                 WorkspaceDbIpcOperation::RelocateRuntimeOwner {
+                    project_root,
                     previous_owner_path,
                     owner,
                 } => {
@@ -650,6 +654,7 @@ pub async fn serve_runtime_server_workspace_stream(
                         .relocate_owner_overlay(
                             request.request_id.clone(),
                             request.workspace_identity.clone(),
+                            Path::new(&project_root),
                             previous_owner_path,
                             owner,
                         )
@@ -687,4 +692,26 @@ pub async fn serve_runtime_server_workspace_stream(
         .await?;
     }
 }
+
+async fn ensure_runtime_owner_freshness(
+    memory_registry: &crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    request_id: &str,
+    workspace_identity: &str,
+    project_root: &Path,
+    language_id: &str,
+    owner_path: &str,
+    projection_builder: Option<&crate::runtime_server_workspace::WorkspaceOwnerProjectionBuilder>,
+) -> Result<crate::runtime_server_workspace::WorkspaceRuntimeOwnerFreshnessReceipt, String> {
+    memory_registry
+        .ensure_runtime_owner_freshness(
+            request_id,
+            workspace_identity,
+            project_root,
+            language_id,
+            owner_path,
+            projection_builder,
+        )
+        .await
+}
+
 use crate::workspace_db_ipc::transport::{read_frame, read_optional_frame, write_frame};

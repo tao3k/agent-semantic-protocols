@@ -1,0 +1,343 @@
+#+title: RFC 10.05.28 — Agent Session Host Registry Authority Ledger
+#+startup: overview
+
+* Status
+
+Draft for formal verification. This RFC extends RFC 10.05.27 from durable Host
+acceptance to rollback-safe and fork-safe authority selection. It does not
+authorize Rust implementation in this session.
+
+It refines [[file:../10.05.27-agent-session-host-acceptance-durability/00-overview.org][RFC 10.05.27 — Agent Session Host Acceptance Durability]].
+
+* Problem
+
+Durability does not establish authority. Two durable registry files may contain
+different histories. An older durable file may be restored after a newer
+accepted state. Two replicas may both claim the same authority epoch and
+registry generation while one records =Empty= and the other records
+=Accepted(receipt)=.
+
+RFC 10.05.27 prevents one valid transition from changing =Accepted= to =Empty=.
+It does not yet prove that recovery selected the latest valid state, that only
+one successor won a concurrent publication race, or that the receipt used by
+the delivered CAS belongs to the canonical ledger head.
+
+The unsafe chain is:
+
+#+begin_example
+durable accepted snapshot
+  -> crash
+  -> select older durable empty snapshot
+  -> resume because the file is well formed
+  -> accept the stable dispatch key again
+  -> duplicate external effect
+#+end_example
+
+The split-brain variant starts from one ledger head and publishes two different
+successors at the same revision. Local well-formedness, equal epoch numbers, and
+equal registry generations cannot choose a winner.
+
+* Design decision
+
+Host registry authority is selected by one monotonic, linearizable ledger head.
+A recovery candidate is admissible only when its complete canonical snapshot
+identity equals the snapshot selected by the current head. A lower revision,
+different snapshot, different slot, or unanchored replica is quarantined.
+
+The authority model separates four identities:
+
+- =authority epoch= identifies the Host authority incarnation;
+- =registry generation= identifies continuity across Host authority rotation;
+- =snapshot revision= orders mutations within one registry history;
+- =ledger revision= linearizes publication of canonical snapshots.
+
+None of these fields substitutes for another. In particular, equal numeric
+epochs or generations from two replicas do not prove a shared history.
+
+* Stateful architecture
+
+#+name: host-registry-ledger-architecture
+#+begin_src mermaid
+flowchart LR
+  C["CAS reservation\nstate: Held(expectedLedgerRevision)"]
+  P["Proposed registry snapshot\nstate: Candidate(snapshotRevision, completeIdentity)"]
+  S["Safe-successor verifier\nstate: Valid | Rollback | Discontinuous"]
+  L["Authority ledger\nstate: Head(ledgerRevision, canonicalSnapshot)"]
+  R["Recovery selector\nstate: ExactHead | Stale | Forked | Unknown"]
+  H["Host acceptance registry\nstate: Empty | Accepted(boundReceipt)"]
+  D["Session transaction\nstate: Attempting | Delivered"]
+  Q["Quarantine\nstate: Closed(candidateIdentity, reason)"]
+
+  C -->|"transition; state: Held -> Candidate; publish proposed snapshot"| P
+  P -->|"guard; state: Candidate -> ValidOrRejected; verify safe successor"| S
+  S -->|"transition; state: Valid -> Head(revision + 1); linearized CAS"| L
+  S -->|"prohibitedEffect; state: RollbackOrDiscontinuous -> Closed; never publish"| Q
+  L -->|"capability; state: Head -> ExactHeadOrMismatch; select complete identity"| R
+  R -->|"transition; state: ExactHead -> EmptyOrAccepted; recovery may resume"| H
+  R -->|"guard; state: StaleOrForkedOrUnknown -> Closed; quarantine candidate"| Q
+  H -->|"transition; state: Accepted -> Delivered; bound receipt verified at head"| D
+#+end_src
+
+The ledger is not a cache of registry locations. It is the serialization
+authority for the complete semantic snapshot identity.
+
+* Ledger and recovery state machine
+
+#+name: host-registry-ledger-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+  state "HeadReady\nstate: Head(r, snapshot)" as HeadReady
+  state "CommitPending\nstate: CAS(expected = r, candidate)" as CommitPending
+  state "SuccessorChecked\nstate: Safe(snapshot, candidate)" as SuccessorChecked
+  state "HeadAdvanced\nstate: Head(r + 1, canonicalChoice(r + 1))" as HeadAdvanced
+  state "RecoveryPending\nstate: Candidate(candidateIdentity)" as RecoveryPending
+  state "Resume\nstate: ExactHead(candidate = canonicalSnapshot)" as Resume
+  state "Quarantined\nstate: Closed(staleOrForkedCandidate)" as Quarantined
+
+  HeadReady --> CommitPending: "transition; state: HeadReady -> CommitPending; reserve expected revision"
+  CommitPending --> SuccessorChecked: "guard; state: CommitPending -> Safe; accepted history preserved"
+  SuccessorChecked --> HeadAdvanced: "transition; state: Safe -> HeadAdvanced; one canonical choice wins"
+  HeadAdvanced --> RecoveryPending: "transition; state: HeadAdvanced -> RecoveryPending; read candidate"
+  RecoveryPending --> Resume: "guard; state: Candidate -> ExactHead; complete identity equal"
+  RecoveryPending --> Quarantined: "guard; state: Candidate -> Closed; identity unequal"
+#+end_src
+
+There is no transition from a stale candidate to =Resume=. There is no pair of
+different =HeadAdvanced= states for the same ledger revision under one
+canonical choice.
+
+* Mathematical model
+
+Let =H_r= be the authority ledger head at revision =r=, =S_r= its canonical
+registry snapshot, and =C(r)= the single snapshot selected by the linearizable
+ledger decision for revision =r=.
+
+#+name: unanchored-registry-counterexamples
+#+begin_src typst
+#let Head(r, s) = $upright("Head")(#r, #s)$
+#let Empty = math.upright("Empty")
+#let Accepted(x) = $upright("Accepted")(#x)$
+#let Resume = math.upright("Resume")
+#let Unanchored(x) = $upright("UnanchoredRecovery")(#x)$
+
+$
+  H_1 = Head(1, Accepted(rho)),
+  quad Unanchored(Empty) = Resume.
+$
+
+$
+  Head(0, S_0) -> Head(1, Empty)
+  quad and quad
+  Head(0, S_0) -> Head(1, Accepted(rho)).
+$
+
+Without a canonical head, durability admits both rollback and split-brain.
+#+end_src
+
+#+name: canonical-ledger-uniqueness-law
+#+begin_src typst
+#let Commit(c, expected, before, after) = $upright("Commit")(#c, #expected, #before, #after)$
+#let Safe(x, y) = $upright("SafeSuccessor")(#x, #y)$
+#let Choice(c, r) = $upright("choice")(#c, #r)$
+
+$
+  Commit(c, r, H, H_l)
+  and Commit(c, r, H, H_r)
+  => H_l = H_r.
+$
+
+$
+  Safe(S_r, Choice(c, r + 1))
+  => H_(r + 1) = (r + 1, Choice(c, r + 1)).
+$
+
+The uniqueness theorem is conditional on one linearizable choice authority.
+It must not be read as proof that an arbitrary storage implementation provides
+that authority.
+#+end_src
+
+#+name: ledger-anchored-recovery-law
+#+begin_src typst
+#let Snapshot(h) = $upright("snapshot")(#h)$
+#let Recover(h, c) = $upright("Recover")(#h, #c)$
+#let Resume = math.upright("Resume")
+#let Quarantine = math.upright("Quarantine")
+#let Contains(h, r) = $upright("Contains")(#h, #r)$
+#let DeliveredCas(t, r) = $upright("DeliveredCAS")(#t, #r)$
+
+$
+  c = Snapshot(H) => Recover(H, c) = Resume,
+  quad c != Snapshot(H) => Recover(H, c) = Quarantine.
+$
+
+$
+  Contains(H, r) => DeliveredCas(t, r),
+  quad not Contains(H, r) => not DeliveredCas(t, r).
+$
+#+end_src
+
+* Canonical identity versus runtime digest
+
+The Lean kernel uses equality of the complete =RegistrySnapshot= value. This
+avoids silently assuming collision resistance or injectivity for a numeric hash.
+The implementation may project that identity to a snapshot root or digest, but
+runtime conformance then requires separate evidence that:
+
+- canonical serialization is deterministic;
+- the digest covers every authority, epoch, generation, snapshot revision, key,
+  payload, slot, receipt, sequence, and effect-identity field;
+- the verifier compares the current ledger-bound root, not an unanchored root;
+- digest algorithm and serialization versions are bound to the receipt;
+- collision or decoding ambiguity fails closed.
+
+A digest equality test without those premises is not the Lean equality used by
+this RFC.
+
+* Formal state model
+
+The Lean module introduces:
+
+- =RegistrySnapshot intent=: one complete registry state plus snapshot revision;
+- =LedgerHead intent=: one ledger revision and its selected snapshot;
+- =SafeSnapshotSuccessor=: only first acceptance or continuity-preserving
+  rotation; it has no =Accepted -> Empty= constructor;
+- =UnanchoredLedgerStep=: the adversarial relation that permits two successors;
+- =UnanchoredRecovery=: the adversarial relation that resumes any durable file;
+- =CanonicalLedgerCas choice=: revision CAS whose successor is the one snapshot
+  chosen for that revision and is proven safe;
+- =AnchoredRecovery=: exact head identity resumes, every unequal candidate
+  quarantines;
+- =LedgerBoundReceipt=: receipt indexed by ledger revision and complete snapshot;
+- =HeadContainsBoundReceipt=: constructible only for an accepted head;
+- =LedgerVerifiedDeliveredCasStep=: delivered CAS indexed by that accepted head.
+
+* Lean-discovered defects
+
+** D1: durable did not mean latest
+
+The RFC 10.05.27 restart relation preserved one registry, but it did not model
+selection among multiple durable snapshots. Lean can construct a recovery that
+resumes an older =Empty= snapshot while the current head is =Accepted=.
+
+** D2: revision CAS without one winner still forks
+
+A transition relation that merely checks =expectedRevision = currentRevision=
+can be instantiated twice from the same before-state. RFC 00.53 identifies this
+same missing concurrent-uniqueness premise. The new relation makes the
+linearizable ledger choice explicit and proves that two successful commits from
+the same head under that choice have equal after-states.
+
+** D3: epoch and generation numbers were not history identities
+
+Two replicas may reuse equal numeric values while carrying different slots.
+Recovery therefore compares complete canonical snapshots selected by one head,
+not maximum numeric epoch or generation.
+
+** D4: a durable receipt was not ledger-head-bound
+
+RFC 10.05.27 bound a receipt to intent, authority, epoch, and generation. A
+receipt from a stale fork could still have those fields. The strengthened type
+also indexes it by ledger revision and the exact canonical snapshot.
+
+** D5: snapshot root injectivity cannot be obtained from type names
+
+Calling a field =digest= or =root= does not make it collision-free. The proof
+uses complete-value equality and leaves digest conformance as an explicit
+implementation obligation.
+
+* Required invariants
+
+1. Ledger revisions increase exactly once on a successful canonical commit.
+2. The expected ledger revision must equal the current head revision.
+3. One authority choice maps each committed revision to one complete snapshot.
+4. Two successful commits from the same head under that choice have equal
+   after-states.
+5. A safe successor cannot change an accepted slot to empty.
+6. Recovery resumes only the exact snapshot selected by the current head.
+7. Every unequal, stale, forked, or unknown candidate is quarantined.
+8. Numeric authority epoch, registry generation, or snapshot revision equality
+   does not replace complete history identity.
+9. A delivered CAS requires a receipt bound to the current ledger head and an
+   accepted slot in that head.
+10. An empty head cannot contain a bound receipt or finalize delivery.
+11. Runtime digest equality is admissible only with executable canonicalization
+    and binding evidence.
+12. Timeout and replica availability are not evidence that a stale snapshot is
+    authoritative.
+
+* Recovery sequence
+
+#+name: host-registry-ledger-recovery-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant H as "Host Runtime [state: Restarted]"
+  participant L as "Authority Ledger [state: Head(r, canonicalSnapshot)]"
+  participant C as "Candidate Store [state: DurableCandidate]"
+  participant V as "Snapshot Verifier [state: Pending]"
+  participant G as "Recovery Gate [state: Closed]"
+  participant S as "Session Transaction [state: Attempting]"
+
+  H->>L: "transition; state: Restarted -> HeadLookup; request current head"
+  L-->>V: "transition; state: Head -> Pending; provide revision and canonical identity"
+  H->>C: "transition; state: Restarted -> CandidateLookup; load durable candidate"
+  C-->>V: "transition; state: DurableCandidate -> Pending; provide complete snapshot"
+  V->>V: "guard; state: Pending -> ExactOrMismatch; compare complete identity"
+  alt exact current head
+    V-->>G: "guard; state: Exact -> Open; candidate equals canonical snapshot"
+    G-->>H: "capability; state: Closed -> Resume; replay accepted receipt only"
+    H-->>S: "transition; state: Resume -> Attempting; return ledger-bound receipt"
+    S->>S: "transition; state: Attempting -> Delivered; verified delivered CAS"
+  else stale, forked, or unknown
+    V-->>G: "guard; state: Mismatch -> Closed; candidate is non-authoritative"
+    G-->>H: "prohibitedEffect; state: Closed -> Quarantine; never dispatch from candidate"
+  end
+#+end_src
+
+The head lookup, identity comparison, and receipt replay belong to background
+protocol execution. They do not require an LLM round. Agent judgment is needed
+only if policy chooses to resolve a quarantined authority ambiguity.
+
+* Traceability
+
+| RFC claim | Lean declaration |
+|-
+| Accepted and empty snapshots are distinct | =accepted_snapshot_ne_empty_snapshot= |
+| Unanchored publication permits split-brain | =unanchored_split_brain_constructible= |
+| Unanchored recovery permits rollback resume | =unanchored_rollback_resume_constructible= |
+| Accepted cannot safely advance to empty | =accepted_snapshot_cannot_advance_to_empty= |
+| Canonical first acceptance is constructible | =canonical_first_accept_constructible= |
+| Stale ledger revision cannot commit | =stale_ledger_revision_cannot_commit= |
+| Same-head canonical commits are unique | =canonical_same_head_commits_are_unique= |
+| Canonical commit advances revision | =canonical_commit_advances_ledger_revision= |
+| Exact head snapshot resumes | =exact_head_snapshot_resumes= |
+| Stale snapshot quarantines | =stale_snapshot_quarantines= |
+| Stale snapshot cannot resume | =stale_snapshot_cannot_resume= |
+| Accepted head contains bound receipt | =accepted_head_contains_bound_receipt= |
+| Empty head contains no bound receipt | =empty_head_cannot_contain_bound_receipt= |
+| Ledger-bound receipt can finalize | =ledger_bound_receipt_can_finalize= |
+| Empty head cannot finalize | =empty_head_cannot_finalize= |
+
+* Verification artifacts
+
+- =packages/proofs/ASPProof/AgentSessionHostRegistryLedger.lean=
+- =packages/proofs/ASPProof/Audit/AgentSessionHostRegistryLedger.lean=
+- =packages/proofs/audit/AgentSessionHostRegistryLedger.lean=
+- =packages/proofs/receipts/agent-session-host-registry-ledger-v1.json=
+
+The Lean audit must remain axiom-free. Typst blocks are evaluated from stdin.
+Mermaid source blocks are parsed from Org and rendered by the TypeScript docs
+runtime.
+
+* Implementation calibration boundary
+
+This RFC proves a specification model, not current Rust conformance. Runtime
+conformance remains =Unverified= until executable evidence demonstrates one
+linearizable ledger authority, safe-successor validation, exact current-head
+recovery, snapshot-root binding, fork rejection, and head-bound delivered CAS.
+
+The next formal boundary is multi-key registry atomicity and compaction. A
+per-intent proof does not yet show that snapshot compaction, garbage collection,
+or ledger truncation preserves every accepted key and its negative evidence.
+
+That boundary is refined by
+[[file:../10.05.29-agent-session-host-registry-compaction/00-overview.org][RFC 10.05.29 — Agent Session Multi-Key Registry Compaction]].

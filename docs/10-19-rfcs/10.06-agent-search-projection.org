@@ -43,6 +43,17 @@ selected language provider owns canonical selector and signature production;
 ASP owns provider-scoped storage, incremental generation admission, graph
 ranking, and rendering.
 
+Hook lifecycle events use the typed, non-blocking
+=admit-runtime-generation= operation so PreToolUse never waits for project
+resolution.  A Search or exact-query consumer that observes no active
+generation MUST use the distinct typed =ensure-runtime-generation= operation
+before publishing an owner or selector overlay.  Ensure joins the same
+workspace-and-project single flight, waits for its terminal receipt, and only a
+=ready= receipt permits projection publication.  A failed build is returned as
+typed generation evidence; Search MUST NOT bypass it with a filesystem scan,
+direct database open, stale generation pointer, or manual =asp sync=
+requirement.
+
 For an unchanged explicit owner, the receipt MUST report
 =decision=unchanged= and all mutation/process counters as zero.  For a changed
 or new owner it MUST report one source read, one provider parse, one owner
@@ -208,6 +219,12 @@ callables cheap to inspect without weakening selector or generation identity.
 
 ** Materialized selectors and graph-only evidence
 *** Immutable exact-projection generation
+
+A canonical structural selector is a provider parser declaration identity, not a lexical occurrence. Only a complete-owner parser projection may create it. Search, graph ranking, renderers, re-export adapters, and query clients MUST NOT infer an item kind, enclosing owner, implementation owner, trait owner, or declaration path from matched text. A reference occurrence may point to a declaration identity only through a typed parser-produced relation; without that relation it remains graph-only evidence and is not executable as an exact selector.
+
+Owner bytes, their complete declaration selector set, derived projections, content digest, and rootDepth overlay identity form one immutable epoch. Search may render a selector only from the same leased epoch that exact query uses to resolve it. A moved, replaced, deleted, untracked, or reparsed owner advances the workspace writer lane atomically; no query-time repair may combine a selector from one generation with owner bytes from another. Re-exports, modules, structs, enums, traits, impls, methods, associated items, cfg-scoped declarations, and macro-produced declarations retain their provider-emitted kind and enclosing identity without aliasing.
+
+=snapshot-item-kind-mismatch= and =item-not-in-live-owner= are valid diagnostics only for externally supplied invalid selectors or corrupted persisted evidence. A selector emitted by ASP Search and consumed against its bound generation MUST never reach either state. Cross-generation fixtures MUST prove this invariant for live edits, moves, tombstones, untracked owners, re-exports, and repeated method names.
 
 **** Active artifact handoff identity
 

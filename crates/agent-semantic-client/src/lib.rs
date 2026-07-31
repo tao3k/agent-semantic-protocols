@@ -22,7 +22,9 @@ mod tools_cli;
 
 pub use agent_semantic_client_core::LanguageId;
 pub use agent_semantic_client_local_cli::{
-    ProviderProjectScope, project_resolution_scope_from_stdout,
+    ProviderProjectResolution, ProviderProjectResolutionCandidates, ProviderProjectResolutionPolicyExclusion,
+    encode_provider_project_resolution_request, project_resolution_from_stdout,
+    provider_project_resolution_candidates,
 };
 pub use agent_semantic_runtime::{
     LanguageOwnerItemsAttempt, LanguageOwnerItemsDispatchPlan, language_owner_items_workspace_root,
@@ -33,8 +35,7 @@ pub use source_index::{
     SourceIndexCandidate, SourceIndexLookupRequest, SourceIndexLookupResult,
     SourceIndexLookupState, SourceIndexRefreshReport, SourceIndexSourceKind,
     lookup_search_pipe_source_index_for_language, lookup_source_index,
-    lookup_source_index_for_language, rebuild_source_index, rebuild_source_index_async,
-    rebuild_source_index_with_registry_async, refresh_source_index,
+    lookup_source_index_for_language, prepare_runtime_server_workspace_generation_async,
 };
 pub use syntax_query_preflight::validate_syntax_query_request as validate_client_syntax_query_request;
 

@@ -762,12 +762,22 @@ pub struct ClientDbSyntaxQueryReplay {
     pub rows: Vec<ClientDbSyntaxCaptureReplay>,
 }
 
-/// Normalize a project root into the DB Engine wire path form.
-#[must_use]
-pub fn normalized_project_root(project_root: &Path) -> String {
+/// Resolve a project root into the canonical DB Engine wire identity.
+pub fn normalized_project_root(project_root: &Path) -> Result<String, String> {
     project_root
         .canonicalize()
-        .unwrap_or_else(|_| project_root.to_path_buf())
-        .to_string_lossy()
-        .into_owned()
+        .map_err(|error| {
+            format!(
+                "failed to canonicalize DB Engine project root {}: {error}",
+                project_root.display()
+            )
+        })?
+        .into_os_string()
+        .into_string()
+        .map_err(|_| {
+            format!(
+                "DB Engine project root is not UTF-8: {}",
+                project_root.display()
+            )
+        })
 }

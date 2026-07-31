@@ -259,7 +259,8 @@ fn write_activation(root: &Path, provider: &Path) {
                 "sourceExtensions": crate::provider_manifest_scope::document_extensions(&manifest),
                 "sourcePaths": [],
                 "repositoryCandidateGeneration": "test-repository-candidate-generation",
-                "projectResolutionGeneration": "test-project-resolution-generation"
+                "workspaceSourceScopeGeneration": "test-project-resolution-generation",
+                "projectResolutions": []
             }
         }]
     });

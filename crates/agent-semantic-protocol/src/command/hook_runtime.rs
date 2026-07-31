@@ -22,6 +22,7 @@ mod hook_runtime_decision_render;
 mod hook_runtime_doctor;
 #[path = "hook_runtime_generation_admission.rs"]
 mod hook_runtime_generation_admission;
+pub(super) use hook_runtime_generation_admission::request as request_runtime_generation_admission;
 #[path = "hook_runtime_install.rs"]
 mod hook_runtime_install;
 #[path = "hook_runtime_resident_permissions.rs"]
@@ -34,6 +35,8 @@ mod hook_runtime_source_access_materialize;
 mod hook_runtime_stdin;
 #[path = "hook_runtime_subagent.rs"]
 mod hook_runtime_subagent;
+#[path = "hook_runtime_workspace_candidate.rs"]
+mod hook_runtime_workspace_candidate;
 
 pub(super) use hook_runtime_skill::active_codex_plugin_skill_path;
 
@@ -61,6 +64,7 @@ use hook_runtime_resident_permissions::{
 };
 use hook_runtime_source_access_materialize::materialize_source_access_deny_message;
 use hook_runtime_stdin::read_hook_stdin_bounded;
+use hook_runtime_workspace_candidate::hook_workspace_candidate;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -472,7 +476,7 @@ fn archive_stopped_managed_child(
     let Some(registry) = AgentSessionRegistry::open_existing_project(project_root)? else {
         return Ok(None);
     };
-    let project_id = AgentSessionRegistry::project_scope_id(project_root);
+    let project_id = AgentSessionRegistry::workspace_id(project_root)?;
     let Some(session) = registry.lookup_session(AgentSessionLookupRequest {
         project_id: (&project_id).into(),
         session_id: Some((&session_id).into()),
@@ -919,31 +923,6 @@ fn activation_root_is_global_hook_state(activation_path: &Path, activation_root:
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name == "hooks")
         })
-}
-
-pub(super) fn hook_workspace_candidate(
-    payload: &serde_json::Value,
-    project_root: &Path,
-) -> PathBuf {
-    let payload_cwd = payload
-        .get("cwd")
-        .and_then(serde_json::Value::as_str)
-        .map(PathBuf::from);
-    let Some(workdir) = payload
-        .get("tool_input")
-        .and_then(|tool_input| tool_input.get("workdir"))
-        .and_then(serde_json::Value::as_str)
-        .map(PathBuf::from)
-    else {
-        return payload_cwd.unwrap_or_else(|| project_root.to_path_buf());
-    };
-    if workdir.is_absolute() {
-        workdir
-    } else {
-        payload_cwd
-            .unwrap_or_else(|| project_root.to_path_buf())
-            .join(workdir)
-    }
 }
 
 fn project_root_arg(args: &[String]) -> Result<PathBuf, String> {

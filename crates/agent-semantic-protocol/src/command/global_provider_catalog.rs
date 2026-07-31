@@ -174,31 +174,9 @@ fn validate_catalog(catalog: &GlobalProviderCatalog) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_provider_leaf(provider: &GlobalProviderCatalogProvider) -> Result<(), String> {
-    let materialized_path = Path::new(&provider.materialized_path);
-    let artifact_metadata_digest =
-        agent_semantic_content_identity::file_artifact_metadata_digest_v1(materialized_path)?
-            .to_string();
-    if blake3_integrity_ref(&artifact_metadata_digest) != provider.artifact_metadata_digest {
-        return Err(format!(
-            "Global provider catalog artifact metadata drift: language={} path={}",
-            provider.language_id,
-            materialized_path.display()
-        ));
-    }
-    Ok(())
-}
-
 fn active_catalog() -> &'static RwLock<Option<Arc<GlobalProviderCatalog>>> {
     static ACTIVE: OnceLock<RwLock<Option<Arc<GlobalProviderCatalog>>>> = OnceLock::new();
     ACTIVE.get_or_init(Default::default)
-}
-
-type ProviderLeafVerificationV1 = Arc<agent_semantic_search::LoadOnceGenerationV1<()>>;
-
-fn verified_provider_leaves() -> &'static RwLock<Vec<(String, ProviderLeafVerificationV1)>> {
-    static VERIFIED: OnceLock<RwLock<Vec<(String, ProviderLeafVerificationV1)>>> = OnceLock::new();
-    VERIFIED.get_or_init(Default::default)
 }
 
 fn load_catalog_from_disk() -> Result<Arc<GlobalProviderCatalog>, String> {
@@ -219,40 +197,6 @@ fn load_catalog_from_disk() -> Result<Arc<GlobalProviderCatalog>, String> {
     Ok(Arc::new(catalog))
 }
 
-async fn load_catalog_from_disk_async() -> Result<Arc<GlobalProviderCatalog>, String> {
-    let path = catalog_path()?;
-    let bytes = tokio::fs::read(&path).await.map_err(|error| {
-        format!(
-            "failed to read Global provider catalog {}: {error}",
-            path.display()
-        )
-    })?;
-    let catalog: GlobalProviderCatalog = serde_json::from_slice(&bytes).map_err(|error| {
-        format!(
-            "failed to parse Global provider catalog {}: {error}",
-            path.display()
-        )
-    })?;
-    validate_catalog(&catalog)?;
-    Ok(Arc::new(catalog))
-}
-
-fn load_once_catalog() -> Result<Arc<GlobalProviderCatalog>, String> {
-    if let Some(catalog) = active_catalog()
-        .read()
-        .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?
-        .as_ref()
-    {
-        return Ok(Arc::clone(catalog));
-    }
-    let catalog = load_catalog_from_disk()?;
-    let mut active = active_catalog()
-        .write()
-        .map_err(|_| "Global provider catalog write guard is poisoned".to_owned())?;
-    let catalog = active.get_or_insert_with(|| Arc::clone(&catalog));
-    Ok(Arc::clone(catalog))
-}
-
 pub(super) fn read_global_provider_catalog_readiness()
 -> Result<GlobalProviderCatalogReadiness, String> {
     let started_at = std::time::Instant::now();
@@ -261,153 +205,6 @@ pub(super) fn read_global_provider_catalog_readiness()
         catalog_generation: catalog.catalog_generation.clone(),
         provider_count: catalog.providers.len(),
         elapsed_micros: started_at.elapsed().as_micros(),
-    })
-}
-
-fn validate_provider_leaf_once(
-    verification_key: String,
-    verify: impl FnOnce() -> Result<(), String>,
-) -> Result<(), String> {
-    let verification = {
-        let mut verified = verified_provider_leaves()
-            .write()
-            .map_err(|_| "Global provider catalog leaf write guard is poisoned".to_owned())?;
-        if let Some((_, verification)) = verified.iter().find(|(key, _)| key == &verification_key) {
-            Arc::clone(verification)
-        } else {
-            let verification = Arc::new(agent_semantic_search::LoadOnceGenerationV1::new());
-            verified.push((verification_key, Arc::clone(&verification)));
-            verification
-        }
-    };
-    verification.get_or_try_init(verify).map(|_| ())
-}
-
-pub(super) fn global_provider_for_language(
-    language_id: &str,
-) -> Result<GlobalProviderCatalogProvider, String> {
-    let catalog = load_once_catalog()?;
-    let provider = catalog
-        .providers
-        .iter()
-        .find(|provider| provider.language_id == language_id)
-        .cloned()
-        .ok_or_else(|| {
-            format!(
-                "Global provider catalog has no provider for language {language_id}; run the explicit Global plugin reconciliation"
-            )
-        })?;
-    let verification_key = format!(
-        "{}:{}:{}",
-        catalog.catalog_generation, provider.language_id, provider.artifact_digest
-    );
-    validate_provider_leaf_once(verification_key, || validate_provider_leaf(&provider))?;
-    Ok(provider)
-}
-
-pub(super) async fn global_provider_registry_snapshot_async()
--> Result<agent_semantic_client_core::ProviderRegistrySnapshot, String> {
-    let catalog = load_catalog_from_disk_async().await?;
-    tokio::task::spawn_blocking(move || provider_registry_snapshot_from_catalog(catalog))
-        .await
-        .map_err(|error| format!("Global provider registry admission task failed: {error}"))?
-}
-
-fn provider_registry_snapshot_from_catalog(
-    catalog: Arc<GlobalProviderCatalog>,
-) -> Result<agent_semantic_client_core::ProviderRegistrySnapshot, String> {
-    let manifests = agent_semantic_hook::schema_registry_provider_manifests();
-    let providers = catalog
-        .providers
-        .iter()
-        .map(|provider| {
-            let verification_key = format!(
-                "{}:{}:{}",
-                catalog.catalog_generation, provider.language_id, provider.artifact_digest
-            );
-            validate_provider_leaf_once(verification_key, || validate_provider_leaf(provider))?;
-            let manifest = manifests
-                .iter()
-                .find(|manifest| {
-                    manifest.language_id().as_str() == provider.language_id
-                        && manifest.provider_id().as_str() == provider.provider_id
-                })
-                .ok_or_else(|| {
-                    format!(
-                        "Global provider catalog has no registered manifest: language={} provider={}",
-                        provider.language_id, provider.provider_id
-                    )
-                })?;
-            let registered = agent_semantic_hook::registered_provider_catalog_identities()
-                .iter()
-                .find(|identity| identity.language_id == provider.language_id)
-                .ok_or_else(|| {
-                    format!(
-                        "Global provider catalog has no registered identity: language={}",
-                        provider.language_id
-                    )
-                })?;
-            if provider.manifest_digest != registered.manifest_digest {
-                return Err(format!(
-                    "Global provider catalog manifest digest drift: language={} expected={} actual={}",
-                    provider.language_id, registered.manifest_digest, provider.manifest_digest
-                ));
-            }
-            Ok(agent_semantic_client_core::ResolvedProvider {
-                manifest_id: manifest.manifest_id().to_owned(),
-                manifest_digest: provider.manifest_digest.clone(),
-                namespace: manifest.namespace().to_owned(),
-                language_id: agent_semantic_client_core::LanguageId::from(
-                    provider.language_id.as_str(),
-                ),
-                provider_id: agent_semantic_client_core::ProviderId::from(
-                    provider.provider_id.as_str(),
-                ),
-                binary: manifest.binary().to_owned(),
-                execution: manifest.execution(),
-                provider_command_prefix: Vec::new(),
-                execution_command_digest: provider.execution_command_digest.clone(),
-                runtime_command_argv: None,
-                runtime_profile_status: None,
-                package_roots: Vec::new(),
-                config_files: Vec::new(),
-                source_extensions: manifest
-                    .document_resolution()
-                    .map(|descriptor| descriptor.extensions.clone())
-                    .unwrap_or_default(),
-                source_paths: Vec::new(),
-                repository_candidate_generation: String::new(),
-                project_resolution_generation: String::new(),
-                scope_authority: match (
-                    manifest.project_resolution().is_some(),
-                    manifest.document_resolution().is_some(),
-                ) {
-                    (true, false) => {
-                        agent_semantic_client_core::ProviderScopeAuthority::ProjectResolution
-                    }
-                    (false, true) => {
-                        agent_semantic_client_core::ProviderScopeAuthority::DocumentResolution
-                    }
-                    _ => {
-                        return Err(format!(
-                            "provider manifest must declare exactly one scope authority: manifestId={}",
-                            manifest.manifest_id()
-                        ));
-                    }
-                },
-                search_capabilities: manifest.search_capabilities().clone(),
-                query_pack_descriptor: manifest.query_pack_descriptor().clone(),
-                semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    *active_catalog()
-        .write()
-        .map_err(|_| "Global provider catalog write guard is poisoned".to_owned())? =
-        Some(Arc::clone(&catalog));
-    Ok(agent_semantic_client_core::ProviderRegistrySnapshot {
-        activation_path: catalog_path()?,
-        providers,
     })
 }
 

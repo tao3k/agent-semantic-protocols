@@ -121,7 +121,7 @@ fn install_language_accepts_explicit_global_scope() {
 }
 
 #[test]
-fn install_language_requires_explicit_canonical_project_scope() {
+fn install_language_requires_explicit_canonical_project_resolution() {
     let current = std::env::current_dir()
         .expect("current directory")
         .canonicalize()

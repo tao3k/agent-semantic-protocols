@@ -12,9 +12,7 @@ fn builtin_manifests_include_julia_juliac_provider() {
 
     assert_eq!(julia.provider_id().as_str(), "julia-lang-project-harness");
     assert_eq!(julia.binary(), "asp-julia-harness");
-    let julia_project_resolution = julia
-        .project_resolution()
-        .expect("Julia project resolution");
+    let julia_project_resolution = julia.project_resolution().expect("Julia project scope");
     assert_eq!(julia_project_resolution.parser_id, "julia.pkg-project-toml");
     assert!(
         julia_project_resolution

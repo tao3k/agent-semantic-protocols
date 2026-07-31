@@ -40,8 +40,8 @@ wrote receipts/searchroute-inspect-certified-ledger-audit-v1.json
 * AXLE verification
 
 #+begin_src sh
-uv run --project packages/python/tools --frozen \
-  python -m tools.axle_lean_audit \
+uv run --project packages/proofs --frozen \
+  asp-axle-lean-audit \
   packages/proofs/receipts/searchroute-inspect-certified-ledger-audit-v1.json \
   --allow-axiom Classical.choice \
   --allow-axiom Quot.sound \

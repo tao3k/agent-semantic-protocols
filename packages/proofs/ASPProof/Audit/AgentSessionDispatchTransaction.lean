@@ -1,0 +1,24 @@
+import ASPProof.AgentSessionDispatchTransaction
+
+namespace ASPProof.Audit.AgentSessionDispatchTransaction
+
+open ASPProof.AgentSessionDispatchTransaction
+
+#print axioms consume_first_has_loss_window
+#print axioms dispatch_first_has_duplicate_window
+#print axioms stale_revision_cannot_reserve
+#print axioms already_reserved_turn_cannot_reserve
+#print axioms crash_preserves_transaction
+#print axioms retry_preserves_dispatch_key
+#print axioms attempting_cannot_cancel
+#print axioms delivered_cannot_cancel
+#print axioms cancelled_cannot_begin_attempt
+#print axioms host_retry_is_idempotent
+#print axioms host_accepted_retry_preserves_receipt
+#print axioms different_payload_detects_conflict
+#print axioms different_payload_cannot_be_accepted
+#print axioms finalize_receipt_is_intent_indexed
+#print axioms transaction_cannot_retarget
+#print axioms durable_native_route_strictly_dominates_legacy
+
+end ASPProof.Audit.AgentSessionDispatchTransaction

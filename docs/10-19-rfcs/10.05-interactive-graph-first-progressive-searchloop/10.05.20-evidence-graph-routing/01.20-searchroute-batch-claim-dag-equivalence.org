@@ -1,0 +1,409 @@
+#+title: RFC 10.05.20/01.20 - SearchRoute Batch Claim DAG Equivalence
+#+subtitle: Sharing execution stages without fabricating individual invocations
+#+date: 2026-07-31
+#+startup: overview
+#+options: toc:3 num:nil
+
+* Status and authority
+
+This document is the canonical batching and cost-equivalence extension of
+[[file:01.19-searchroute-provenance-evidence-execution-conformance.org][RFC 10.05.20/01.19]].
+
+RFC 01.19 intentionally defines eight typed executable provenance claims.  A
+literal runtime implementation could execute every claim separately, but that
+would duplicate serializer, resolver, verifier binary, decoder, invocation,
+replay, graph traversal, and prompt context costs.
+
+This RFC defines a canonical batch claim DAG that shares those stages without
+weakening claim-kind, subject, policy, ordered decision, or replay guarantees.
+
+The formal owner and audit artifacts are:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteBatchClaimDagEquivalence.lean][SearchRouteBatchClaimDagEquivalence.lean]]
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteBatchClaimDagEquivalence.lean][modular Lean audit]]
+- [[file:../../../../packages/proofs/receipts/searchroute-batch-claim-dag-equivalence-audit-v1.json][Lean JSON receipt]]
+- [[file:../../../../packages/proofs/receipts/searchroute-batch-claim-dag-equivalence-axle-audit-v1.json][AXLE audit receipt]]
+
+This RFC changes no Rust provider or product Python implementation.  AXLE
+remains a Lean JSON audit consumer under =packages/python/tools=.
+
+* Lean-discovered false-equivalence gap
+
+A single-claim invocation binds the digest of one canonical claim statement.
+A batch invocation binds a canonical manifest digest containing multiple claim
+statements.  These are different execution histories.
+
+Therefore the protocol MUST NOT derive eight ordinary RFC 01.19 invocation
+receipts from one batch process and claim that every statement was invoked as a
+separate process.  That would fabricate evidence.
+
+Instead, individual and batch transports project into a shared typed outcome:
+
+- claim kind;
+- subject digest;
+- policy digest;
+- verifier binary digest; and
+- accepted decision.
+
+The Lean equivalence theorem proves that a valid individual realization and a
+valid batch realization for the same claim context produce the same typed
+outcome.  It does not assert that their invocation receipts are identical.
+
+* Transport-independent claim outcome semantics
+
+The shared outcome is deliberately smaller than either transport receipt.  It
+captures what downstream SearchLoop routing may rely upon while preserving the
+transport-specific evidence needed for audit.
+
+An individual realization projects its outcome from:
+
+- canonical statement kind, subject, and policy;
+- resolved verifier binary; and
+- decoded accepted decision.
+
+A batch realization projects one outcome from the ordered decision vector at
+the corresponding manifest entry.
+
+Equivalence is membership of the same expected typed outcome in the batch
+decision vector, not byte equality between individual and batch receipts.
+
+* Canonical manifest and shared execution DAG
+
+** Nonempty unique target manifest
+
+A valid batch contains at least one claim.  Its target list must equal the
+ordered projection of its entries and must contain no duplicate target.
+
+A target contains claim kind, subject digest, and policy digest.  Duplicate
+targets are rejected even if every returned decision is accepted.
+
+** Shared execution key
+
+Every entry must share the same:
+
+- policy digest;
+- serializer digest;
+- statement schema digest;
+- verifier identifier;
+- verifier binary digest; and
+- decoder schema digest.
+
+Claim kind and subject remain per-entry values.  A claim with another policy or
+verifier binary must form another batch.
+
+** Manifest-bound invocation
+
+The shared invocation binds the canonical manifest digest, shared execution
+key, invocation executor, response bytes, and successful exit.
+
+** Ordered decision vector
+
+The decoded outcome vector must exactly equal the manifest entry order.  It is
+not enough that every element says =accepted=true=.  Permuting two accepted
+decisions is rejected because it changes which decision belongs to which
+claim.
+
+** Independent batch replay
+
+Replay binds the same manifest, execution key, and outcome vector.  Its
+executor must differ from the invocation executor.
+
+* Cost model and provable savings
+
+For =n= nonempty claims, the individual realization uses two executable tool
+rounds per claim: invocation and replay.  The batch realization uses one shared
+invocation and one shared replay.
+
+The graph-node model decomposes each individual claim into one claim node plus
+four repeated execution-stage nodes.  The batch retains =n= claim nodes but
+shares the four execution-stage nodes.
+
+The input-token model separates:
+
+- =s=: serializer, resolver, policy, tool instruction, and other shared prefix
+  tokens; and
+- =p=: per-claim kind, subject, statement, and decision-vector tokens.
+
+For every nonempty batch, Lean proves that batch tool rounds, graph nodes, and
+input tokens are no greater than the individual realization.  For at least two
+claims, tool rounds and graph nodes are strictly lower.
+
+The token theorem is conservative: it does not assume model prefix-cache hits.
+A prefix-cache hit may further reduce provider-side model work, but it is not
+part of evidence validity.
+
+* Org-Babel Typst mathematical model
+
+This block is the executable mathematical source.  It is evaluated through
+=typst eval --in -= without producing a temporary =.typ= source file.
+
+#+begin_src typst
+#let outcome = $
+  O(c) := (c.k, c.s, c.p, c.b, 1)
+$
+
+#let individual-projection = $
+  V_I(c, r)
+  => O_I(r) = O(c)
+$
+
+#let batch-projection = $
+  V_B(k, e, b)
+  and c in e
+  => O(c) in b.d
+$
+
+#let semantic-equivalence = $
+  V_I(c, r)
+  and V_B(k, e, b)
+  and c in e
+  => O_I(r) in b.d
+$
+
+#let manifest = $
+  M(e, m) :=
+    e != ()
+    and m.t = "map"(T, e)
+    and "Nodup"(m.t)
+    and m.c
+$
+
+#let batch-validity = $
+  V_B(k, e, b) :=
+    M(e, b.m)
+    and forall x in e, K(x) = k
+    and R(k, b.r)
+    and I_(b.m, b.r)(b.i)
+    and D_(e, b.m, b.i)(b.d)
+    and P_(b.m, b.i, b.d)(b.p)
+$
+
+#let tool-rounds = $
+  R_I(n) = 2 n
+  quad R_B(0) = 0
+  quad R_B(n) = 2 " for " n > 0
+$
+
+#let graph-nodes = $
+  G_I(n) = n + 4 n
+  quad G_B(0) = 0
+  quad G_B(n) = n + 4 " for " n > 0
+$
+
+#let input-tokens = $
+  T_I(s, p, n) = n (s + p)
+  quad T_B(s, p, 0) = 0
+  quad T_B(s, p, n) = s + n p " for " n > 0
+$
+
+#let savings = $
+  n > 0
+  => R_B(n) <= R_I(n)
+  and G_B(n) <= G_I(n)
+  and T_B(s, p, n) <= T_I(s, p, n)
+$
+
+#let strict-savings = $
+  n >= 2
+  => R_B(n) < R_I(n)
+  and G_B(n) < G_I(n)
+$
+
+#let ordered-vector-counterexample = $
+  "AllAccepted"(d')
+  and d' = "reverse"(d)
+  => not V_B(k, e, b')
+$
+
+#let cache-separation = $
+  C_M(x, y)
+  => not C_S(a, b)
+  quad "unless the search evidence key also matches"
+$
+#+end_src
+
+* Search cache and model cache separation
+
+The search evidence cache and model prefix cache solve different problems.
+
+** Search batch cache identity
+
+Safe search-evidence reuse binds:
+
+- manifest digest;
+- policy digest;
+- verifier binary digest;
+- decoder schema digest; and
+- time-sensitive checkpoint digest.
+
+A binary-only cache hit does not prove safe batch reuse.  Lean constructs two
+cache identities with the same verifier binary and different manifests, then
+proves that reuse is invalid.
+
+** Model prefix cache identity
+
+The model cache binds model and prompt-prefix identity.  A model prefix-cache
+hit may reduce repeated prompt computation, but supplies no manifest,
+claim-decision, invocation, replay, or checkpoint evidence.
+
+Lean proves that a valid model prefix-cache hit does not imply search-evidence
+cache reuse.
+
+* Rejected batching prefixes
+
+** Duplicate target manifest
+
+The manifest and decision vector contain the same claim target twice.  This can
+hide a missing required claim behind duplicate accepted results.
+
+** Cross-policy entry
+
+One entry uses another policy digest.  It cannot share the execution key even
+when its verifier binary happens to match.
+
+** Permuted accepted decisions
+
+Every decision is accepted, but source and recipe outcomes are reversed.  The
+ordered vector equality rejects the batch.
+
+** Wrong invocation manifest
+
+The decoder returns the expected outcomes, but invocation binds another
+manifest digest.  Downstream agreement cannot repair an unbound invocation.
+
+** Same-executor replay
+
+The replay vector agrees with the original response, but both executions share
+one executor identity.
+
+** Binary-only search cache hit
+
+The binary matches while the manifest differs.  This is not safe evidence
+reuse.
+
+* Normative clauses
+
+** ASP-RFC-10.05-BCDE-NONEMPTY-MANIFEST
+
+A batch claim DAG MUST contain at least one claim entry.
+
+** ASP-RFC-10.05-BCDE-CANONICAL-MANIFEST
+
+The invocation MUST bind a canonical manifest whose ordered targets equal the
+ordered entry projection.
+
+** ASP-RFC-10.05-BCDE-UNIQUE-TARGETS
+
+Canonical batch targets MUST be duplicate-free.
+
+** ASP-RFC-10.05-BCDE-SHARED-EXECUTION-KEY
+
+Every batched entry MUST share policy, serializer, statement schema, verifier
+identity, verifier binary, and decoder schema.
+
+** ASP-RFC-10.05-BCDE-ORDERED-DECISIONS
+
+The decoded and replayed outcome vectors MUST preserve canonical manifest
+order.  An unordered set of accepted decisions is insufficient.
+
+** ASP-RFC-10.05-BCDE-INDEPENDENT-REPLAY
+
+The batch replay executor MUST differ from the invocation executor and MUST
+reproduce the same ordered outcome vector.
+
+** ASP-RFC-10.05-BCDE-SEMANTIC-EQUIVALENCE
+
+Valid individual and batch realizations for the same claim context MUST project
+to the same typed claim outcome.
+
+** ASP-RFC-10.05-BCDE-NO-FALSE-INDIVIDUAL
+
+A batch receipt MUST NOT be represented as evidence that each claim statement
+was invoked through a separate process.
+
+** ASP-RFC-10.05-BCDE-COST-BOUND
+
+For nonempty batches, batch graph nodes, executable tool rounds, and input-token
+cost MUST be no greater than the defined individual cost model.  Claims of
+strict savings MUST state their minimum batch cardinality.
+
+** ASP-RFC-10.05-BCDE-SEARCH-CACHE-IDENTITY
+
+Search batch cache reuse MUST bind manifest, policy, verifier binary, decoder,
+and checkpoint identity.
+
+** ASP-RFC-10.05-BCDE-MODEL-CACHE-SEPARATION
+
+A model prefix-cache hit MUST NOT be treated as search evidence or executable
+verification.
+
+** ASP-RFC-10.05-BCDE-PREFIX-INSUFFICIENT
+
+Duplicate targets, cross-policy entries, unordered accepted decisions, wrong
+manifest invocation, same-executor replay, or binary-only cache hits MUST NOT
+satisfy valid batch execution.
+
+* Lean theorem map
+
+The Lean module proves:
+
+- =valid_individual_claim_projects_expected_outcome=;
+- =valid_batch_projects_each_expected_outcome=;
+- =valid_batch_and_individual_claims_have_equivalent_outcomes=;
+- =valid_batch_has_distinct_replay_executor=;
+- =valid_batch_has_nonempty_unique_manifest=;
+- =valid_batch_binds_canonical_manifest=;
+- =valid_batch_entries_share_execution_key=;
+- =batch_tool_rounds_no_more_than_individual=;
+- =batch_tool_rounds_strictly_less_for_multiple_claims=;
+- =batch_graph_nodes_no_more_than_individual=;
+- =batch_graph_nodes_strictly_less_for_multiple_claims=;
+- =batch_input_tokens_no_more_than_individual=;
+- =example_batch_is_valid=;
+- =duplicate_manifest_targets_are_rejected=;
+- =cross_policy_batch_entry_is_rejected=;
+- =permuted_decision_vector_is_rejected=;
+- =wrong_manifest_invocation_is_rejected=;
+- =same_executor_batch_replay_is_rejected=;
+- =binary_only_cache_hit_does_not_prove_search_batch_reuse=; and
+- =model_prefix_cache_hit_does_not_prove_search_evidence_reuse=;
+- =batch_semantic_equivalence_does_not_fabricate_individual_invocation=.
+
+* Audit contract
+
+The Lean audit MUST report =propext= and =Quot.sound= separately.  List
+manifest and ordered-vector membership proofs use the standard quotient
+soundness principle.  No theorem may introduce =Classical.choice= or =sorryAx=.
+
+The AXLE audit MUST require these theorem families:
+
+- =individual-outcome-projection=;
+- =batch-outcome-projection=;
+- =semantic-equivalence=;
+- =manifest-integrity=;
+- =transport-history-separation=;
+- =shared-execution-key=;
+- =independent-replay=;
+- =tool-round-bound=;
+- =graph-node-bound=;
+- =token-bound=;
+- =duplicate-target-rejection=;
+- =cross-policy-rejection=;
+- =ordered-decision-rejection=;
+- =manifest-invocation-rejection=;
+- =search-cache-separation=; and
+- =model-cache-separation=.
+
+AXLE checks Lean receipt completeness and normative-clause coverage.  It does
+not estimate real provider latency or manufacture a runtime batch capability.
+
+* Implementation boundary
+
+This session stops at RFC, Lean, Org-Babel Typst, and AXLE verification.
+
+Future provider work requires shared schemas for canonical batch manifests,
+execution keys, ordered outcome vectors, batch invocation/replay receipts, and
+separate search/model cache identities.  Real-project evidence must then
+measure command count, graph hops, input tokens, latency, search-cache hits,
+model-cache hits, and failure isolation before the protocol selects a default
+batch size.

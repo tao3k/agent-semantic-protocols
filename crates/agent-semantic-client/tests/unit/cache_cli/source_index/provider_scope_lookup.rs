@@ -1,6 +1,7 @@
 use super::fixtures::{
-    EnvVarGuard, RuntimeServerFixture, home_local_provider_path, isolate_home, make_executable,
-    temp_root, write_gerbil_activation_with_project_resolution, write_rust_activation,
+    EnvVarGuard, RuntimeServerFixture, home_local_provider_path, isolate_home, temp_root,
+    write_gerbil_activation_with_project_resolution, write_project_resolution_provider,
+    write_rust_activation,
 };
 use crate::cache_cli::run_cache;
 use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
@@ -22,7 +23,7 @@ async fn cache_source_index_refresh_respects_cargo_workspace_exclude() {
     .expect("write app manifest");
     std::fs::write(
         root.join("crates/app/src/lib.rs"),
-        "pub fn project_scope_symbol() {}\n",
+        "pub fn project_resolution_symbol() {}\n",
     )
     .expect("write app source");
     std::fs::create_dir_all(root.join("vendor/tool/src")).expect("create excluded source dir");
@@ -33,7 +34,7 @@ async fn cache_source_index_refresh_respects_cargo_workspace_exclude() {
     .expect("write excluded manifest");
     std::fs::write(
         root.join("vendor/tool/src/lib.rs"),
-        "pub fn project_scope_symbol() {}\n",
+        "pub fn project_resolution_symbol() {}\n",
     )
     .expect("write excluded source");
     let activation_path = write_rust_activation(&root);
@@ -57,7 +58,7 @@ async fn cache_source_index_refresh_respects_cargo_workspace_exclude() {
             crate::test_support::lookup_current_source_index_for_language(
                 &blocking_root,
                 Some(&LanguageId::from("rust")),
-                "project_scope_symbol",
+                "project_resolution_symbol",
                 8,
             )
             .expect("lookup source index")
@@ -204,14 +205,14 @@ async fn cache_source_index_refresh_uses_provider_project_resolution() {
     let provider_bin = home_local_provider_path(&root, "gslph");
     std::fs::create_dir_all(provider_bin.parent().expect("provider parent"))
         .expect("create home local bin");
-    std::fs::write(&provider_bin, r#"#!/bin/sh
-if [ "$1" = "project-resolution-stdin" ]; then
-  printf '%s\n' '{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","languageId":"gerbil-scheme","providerId":"gerbil-scheme-harness","state":"resolved","resolution":{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","repositoryCandidates":{"candidates":[{"path":"src/included.ss"},{"path":"extra/excluded.ss"}],"policyExclusions":[]},"resolvedSourceScopes":[{"roots":["src"],"explicitPaths":[],"extensions":[".ss"],"includeAuthority":"package-manager","exclusions":[]}]}}'
-  exit 0
-fi
-exit 2
-"#).expect("write fake provider");
-    make_executable(&provider_bin);
+    write_project_resolution_provider(
+        &provider_bin,
+        "gerbil-scheme",
+        "gerbil-scheme-harness",
+        ".ss",
+        &["src"],
+        &[],
+    );
     let activation_path =
         write_gerbil_activation_with_project_resolution(&root, &provider_bin, &["src", "extra"]);
     let _activation_env = EnvVarGuard::set(

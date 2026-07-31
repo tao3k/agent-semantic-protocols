@@ -11,6 +11,8 @@ use std::fs;
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() {
     let client_dir = temp_root("db-engine-source-index-canonical-schema-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-canonical-schema-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     fs::create_dir_all(&client_dir).expect("create client dir");
@@ -103,9 +105,8 @@ async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() 
             agent_semantic_client_db::ClientDbSourceIndexPath::new("src/canonical_schema.rs"),
             b"fn canonical_schema() {}\n".to_vec(),
         )]);
-    let refresh =
-        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-            &client_dir,
+    let refresh = fixture
+        .commit_source_index_generation(
             ClientDbSourceIndexRefreshRequest {
                 import: source_index_import,
                 file_count: 1,

@@ -1,7 +1,7 @@
-#[path = "../../src/command/runtime_server_artifact.rs"]
-mod implementation;
 #[path = "../../src/command/runtime_server_definition.rs"]
 mod definition_implementation;
+#[path = "../../src/command/runtime_server_artifact.rs"]
+mod implementation;
 
 use definition_implementation::atomic_write_if_changed;
 use implementation::{

@@ -457,7 +457,7 @@ pub(super) fn classify_session_start_bootstrap(
                         project_root,
                     )?;
                 let project_id =
-                    agent_semantic_client_db::AgentSessionRegistry::project_scope_id(project_root);
+                    agent_semantic_client_db::AgentSessionRegistry::workspace_id(project_root)?;
                 let reconciliation =
                     crate::codex::resident_session_reconcile::reconcile_resident_session(
                         &registry,
@@ -695,7 +695,7 @@ pub(super) fn classify_session_start_bootstrap(
         let registry =
             agent_semantic_client_db::AgentSessionRegistry::open_or_create_project(project_root)?;
         let project_id =
-            agent_semantic_client_db::AgentSessionRegistry::project_scope_id(project_root);
+            agent_semantic_client_db::AgentSessionRegistry::workspace_id(project_root)?;
         let reconciliation = crate::codex::resident_session_reconcile::reconcile_resident_session(
             &registry,
             &project_id,

@@ -12,6 +12,8 @@ use super::{
 #[tokio::test(flavor = "current_thread")]
 async fn db_engine_source_index_lookup_reads_canonical_snapshot() {
     let client_dir = temp_root("db-engine-source-index-canonical-snapshot-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_root = temp_root("db-engine-source-index-canonical-snapshot-project");
     let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
     let source_index_import = build_source_index_import(ClientDbSourceIndexImportRequest {
@@ -39,9 +41,8 @@ async fn db_engine_source_index_lookup_reads_canonical_snapshot() {
         "src/canonical_snapshot.rs",
         b"pub fn canonical_snapshot_fixture() {}\n".as_slice(),
     )]);
-    let refresh =
-        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-            &client_dir,
+    let refresh = fixture
+        .commit_source_index_generation(
             ClientDbSourceIndexRefreshRequest {
                 import: source_index_import,
                 file_count: 1,
@@ -70,8 +71,10 @@ async fn db_engine_source_index_lookup_reads_canonical_snapshot() {
     let _ = fs::remove_dir_all(project_root);
 }
 #[tokio::test(flavor = "current_thread")]
-async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
+async fn db_engine_source_index_lookup_request_stays_within_project_resolution() {
     let client_dir = temp_root("db-engine-source-index-scope-binding-client");
+    let fixture =
+        agent_semantic_client_db::fixture::SourceIndexFixture::for_client_dir(&client_dir);
     let project_a = temp_root("db-engine-source-index-scope-binding-project-a");
     let project_b = temp_root("db-engine-source-index-scope-binding-project-b");
     let source_snapshot_a = crate::snapshot_fixture::source_snapshot_evidence_for(10);
@@ -126,9 +129,8 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
         "src/scope_b.rs",
         b"pub fn scope_b_symbol() {}\n".as_slice(),
     )]);
-    let refresh_a =
-        agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-            &client_dir,
+    let refresh_a = fixture
+        .commit_source_index_generation(
             ClientDbSourceIndexRefreshRequest {
                 import: import_a,
                 file_count: 1,
@@ -137,16 +139,16 @@ async fn db_engine_source_index_lookup_request_stays_within_project_scope() {
             &source_blobs_a,
         )
         .expect("write project A scoped source-index snapshot");
-    agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
-        &client_dir,
-        ClientDbSourceIndexRefreshRequest {
-            import: import_b,
-            file_count: 1,
-            source_snapshot: source_snapshot_b,
-        },
-        &source_blobs_b,
-    )
-    .expect("write project B scoped source-index snapshot");
+    fixture
+        .commit_source_index_generation(
+            ClientDbSourceIndexRefreshRequest {
+                import: import_b,
+                file_count: 1,
+                source_snapshot: source_snapshot_b,
+            },
+            &source_blobs_b,
+        )
+        .expect("write project B scoped source-index snapshot");
     let expected_index_artifact_digest =
         agent_semantic_content_identity::hash_derived_artifact_key(
             agent_semantic_content_identity::DerivedArtifactKeyInput {

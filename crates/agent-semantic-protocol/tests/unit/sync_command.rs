@@ -473,3 +473,73 @@ fn sync_command_has_zero_runtime_database_or_activation_authority() {
         );
     }
 }
+#[cfg(unix)]
+#[test]
+fn sync_publishes_workspace_agent_profiles_before_host_projection() {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-sync-workspace-profiles-{}-{nonce}",
+        std::process::id()
+    ));
+    let workspace = root.join("workspace");
+    let workspace_agents = workspace.join("agents");
+    let state_home = root.join("state");
+    let codex_home = root.join("codex");
+    let claude_home = root.join("claude");
+    std::fs::create_dir_all(&workspace_agents).expect("workspace agents");
+    let profile = concat!(
+        "name = \"workspace_testing\"\n",
+        "description = \"Workspace testing lane.\"\n",
+        "model = \"gpt-5.6-luna\"\n",
+        "model_reasoning_effort = \"low\"\n",
+        "sandbox_mode = \"workspace-write\"\n",
+        "developer_instructions = \"Run tests.\"\n",
+    );
+    let workspace_profile = workspace_agents.join("workspace-testing_codex.toml");
+    std::fs::write(&workspace_profile, profile).expect("workspace profile");
+    std::fs::write(
+        workspace_agents.join("README.org"),
+        "not a managed profile\n",
+    )
+    .expect("workspace readme");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
+        .args(["agent", "config", "sync"])
+        .current_dir(&workspace)
+        .env("ASP_STATE_HOME", &state_home)
+        .env("CODEX_HOME", &codex_home)
+        .env("CLAUDE_HOME", &claude_home)
+        .env("HOME", &root)
+        .output()
+        .expect("run asp agent config sync");
+
+    assert!(
+        output.status.success(),
+        "sync failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("utf8 stdout");
+    assert!(stdout.contains("publishedAgentConfigs=1"), "{stdout}");
+    let global_profile = state_home
+        .join("agents")
+        .join("workspace-testing_codex.toml");
+    assert_eq!(
+        std::fs::read_to_string(&global_profile).expect("global profile"),
+        profile
+    );
+    assert!(!state_home.join("agents").join("README.org").exists());
+    let projection = codex_home.join("agents").join("workspace-testing.toml");
+    assert_eq!(
+        std::fs::read_link(&projection).expect("Codex projection symlink"),
+        global_profile
+    );
+    assert_eq!(
+        std::fs::read_to_string(&projection).expect("projected profile"),
+        profile
+    );
+    std::fs::remove_dir_all(root).expect("cleanup");
+}

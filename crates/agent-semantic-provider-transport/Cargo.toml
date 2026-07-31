@@ -6,6 +6,8 @@ license = "MIT"
 description = "Tokio process transport for external ASP language providers."
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 fs2.workspace = true
 bstr = "1"
 bytes = "1"

@@ -1,0 +1,285 @@
+#+title: RFC 10.05.31 — Agent Session Authenticated Registry Projection
+#+startup: overview
+
+* Status
+
+Focused formal verification is complete. This RFC refines [[file:../10.05.30-agent-session-host-registry-canonical-manifest/00-overview.org][RFC 10.05.30 — Agent
+Session Canonical Registry Manifest]]. It defines semantic admission for
+authenticated inclusion, exclusion, and incremental manifest publication. The
+source module and direct audit compile, all 25 audited theorem declarations are
+axiom-free, and the module is imported by the proof-package root. It does not
+authorize Rust implementation in this session.
+
+The aggregate =lake build ASPProof= gate remains outside this focused claim. As
+recorded by RFC 10.05.30, unrelated proof modules currently fail on an
+unavailable =Mathlib= prefix and missing =Decidable= instances. This RFC claims
+focused proof closure, not aggregate proof-package closure.
+
+* Problem
+
+RFC 10.05.30 proves complete canonical manifest semantics. Requiring every
+receipt or recovery check to materialize that complete manifest would preserve
+correctness but defeat the foreground token, latency, and round-trip goals of
+SearchLoop and Agent Session.
+
+A root digest alone is not a proof. Existing RFC evidence already warns that a
+bare =rootDigest= does not define membership semantics. Four failures remain:
+
+- an inclusion claim can name a record without binding it to the committed root;
+- an exclusion claim can name a key without proving absence from the same root;
+- an incremental update can publish from a stale base root or replace unrelated
+  keys while presenting itself as a one-key update;
+- an update can delete covered tombstone knowledge and resurrect a retired
+  generation.
+
+Cryptographic collision resistance is also not a theorem of the protocol state
+machine. Lean can prove what follows from an injective commitment function, but
+the executable digest implementation and its artifact identity require a
+separate runtime conformance receipt.
+
+* Evidence alignment
+
+This RFC composes existing boundaries rather than inventing a second Merkle
+authority:
+
+- the Merkle-pinned exact-selector RFC binds projection evidence to
+  =sourceSnapshot.rootDigest= and parser identity;
+- native incremental owner admission permits a warm path only for an explicitly
+  declared capability and requires atomic complete-generation visibility;
+- the Runtime Server incremental-index RFC requires base generation and source
+  snapshot identity, rejects stale deltas, and preserves the prior complete
+  generation until publication succeeds;
+- RFC 10.05.30 supplies the full canonical manifest semantics beneath the root;
+- durable GC-floor and tombstone rules prohibit deletion that enables
+  resurrection.
+
+* Design decision
+
+An authenticated registry state is not =(rootDigest)=. It is the relation:
+
+#+name: authenticated-registry-state-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Auth(c, s, rho) = $upright("Authenticated")(#c, #s, #rho)$
+#let Canonical(s) = $upright("Canonical")(#s)$
+#let Input(s) = $upright("CommitmentInput")(#s)$
+
+$
+  Auth(C, S, rho)
+  <=> Canonical(S) and rho = C(Input(S)).
+$
+
+The semantic kernel binds the complete canonical input. Runtime collision
+resistance is an independently attested property of $C$.
+#+end_src
+
+Inclusion and exclusion MUST refer to the same authenticated snapshot and root.
+They are mutually inconsistent for the same canonical key:
+
+#+name: authenticated-inclusion-exclusion-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Inc(r, S, rho) = $upright("Inclusion")(#r, #S, #rho)$
+#let Exc(k, S, rho) = $upright("Exclusion")(#k, #S, #rho)$
+#let Key(r) = $upright("key")(#r)$
+
+$
+  Inc(r, S, rho) and Exc(Key(r), S, rho) => bot.
+$
+
+Claims that merely repeat the same digest without a root-bound semantic witness
+do not satisfy this law.
+#+end_src
+
+* Stateful architecture
+
+#+name: authenticated-registry-projection-architecture
+#+begin_src mermaid
+flowchart LR
+  C["Canonical manifest\nstate: Certified(snapshot, fullInput)"]
+  R["Commitment builder\nstate: RootBound(root, schema, serialization)"]
+  P["Projection verifier\nstate: Inclusion | Exclusion | Rejected"]
+  D["Incremental delta\nstate: BaseBound(key, baseRoot, nextRoot)"]
+  T["Tombstone guard\nstate: CoveredPreserved | Resurrection"]
+  W["Runtime writer lane\nstate: Active(old) | Staged(next)"]
+  L["Authority ledger\nstate: Head(revision, root)"]
+  Q["Quarantine\nstate: Closed(reason, evidenceIdentity)"]
+
+  C -->|"transition; state: Certified -> RootBound; commit complete canonical input"| R
+  R -->|"capability; state: RootBound -> InclusionOrExclusion; verify root-bound witness"| P
+  R -->|"transition; state: RootBound -> BaseBound; stage one-key delta"| D
+  D -->|"guard; state: BaseBound -> CoveredCheck; preserve unrelated keys and floor"| T
+  T -->|"transition; state: CoveredPreserved -> Staged(next); admit complete next state"| W
+  W -->|"transition; state: Staged(next) -> Head(revision + 1); single CAS"| L
+  P -->|"prohibitedEffect; state: UnboundOrConflicting -> Closed; no receipt acceptance"| Q
+  D -->|"prohibitedEffect; state: StaleBase -> Closed; old head remains active"| Q
+  T -->|"prohibitedEffect; state: Resurrection -> Closed; no publication"| Q
+#+end_src
+
+* Projection verification state machine
+
+#+name: authenticated-registry-projection-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+  state "Candidate\nstate: Unverified(root, claim)" as Candidate
+  state "RootBound\nstate: Authenticated(snapshot, root)" as RootBound
+  state "Included\nstate: Member(record)" as Included
+  state "Excluded\nstate: Absent(key)" as Excluded
+  state "DeltaStaged\nstate: BaseExact(key, old, next)" as DeltaStaged
+  state "Published\nstate: Head(revision + 1, nextRoot)" as Published
+  state "Rejected\nstate: Quarantine(defect)" as Rejected
+
+  Candidate --> RootBound: "guard; state: Unverified -> Authenticated; bind canonical input"
+  Candidate --> Rejected: "prohibitedEffect; state: DigestOnly -> Quarantine"
+  RootBound --> Included: "guard; state: Authenticated -> Member; verify inclusion"
+  RootBound --> Excluded: "guard; state: Authenticated -> Absent; verify exclusion"
+  RootBound --> DeltaStaged: "transition; state: CurrentRoot -> BaseExact; stage delta"
+  DeltaStaged --> Published: "transition; state: BaseExact -> Head(revision + 1); canonical CAS"
+  DeltaStaged --> Rejected: "prohibitedEffect; state: StaleOrResurrecting -> Quarantine"
+  Included --> Rejected: "guard; state: ConflictsWithSameRootExclusion -> Quarantine"
+  Excluded --> Rejected: "guard; state: ConflictsWithSameRootInclusion -> Quarantine"
+#+end_src
+
+* Incremental publication sequence
+
+#+name: authenticated-registry-projection-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant A as "Agent/Recovery [state: ClaimPending]"
+  participant V as "Projection Verifier [state: RootBound]"
+  participant W as "Writer Lane [state: Active(r, oldRoot)]"
+  participant T as "Tombstone Guard [state: Pending]"
+  participant L as "Authority Ledger [state: Head(r, oldRoot)]"
+
+  A->>V: "guard; state: ClaimPending -> RootCheck; submit inclusion/exclusion"
+  V-->>A: "transition; state: RootCheck -> VerifiedOrRejected; bind same snapshot root"
+  A->>W: "transition; state: Verified -> DeltaPending; submit key + baseRoot"
+  W->>T: "guard; state: DeltaPending -> PreservationCheck; compare floor and tombstones"
+  T-->>W: "transition; state: PreservationCheck -> PreservedOrRejected"
+  alt base exact, canonical next state, tombstones preserved
+    W->>L: "transition; state: Staged(nextRoot) -> Head(r + 1, nextRoot); single CAS"
+    L-->>A: "capability; state: Head(r + 1) -> ReceiptDelivered; root-bound receipt"
+  else stale base, unbound proof, or resurrection
+    W-->>A: "prohibitedEffect; state: Rejected -> OldHeadPreserved; typed quarantine"
+  end
+#+end_src
+
+* Incremental semantic contract
+
+An admitted delta binds one =updatedKey=, exact before and after authenticated
+states, one revision advance, a monotone GC floor, preservation of every other
+record and entry, and preservation of every covered tombstone.
+
+#+name: authenticated-incremental-delta-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Delta(k, S, S2, rho, rho2) = $upright("Delta")(#k, #S, #S2, #rho, #rho2)$
+#let Rev(S) = $upright("revision")(#S)$
+#let Floor(S) = $upright("floor")(#S)$
+#let Input(S) = $upright("CommitmentInput")(#S)$
+#let Other(k, S, S2) = $upright("OtherKeysPreserved")(#k, #S, #S2)$
+#let Tomb(S, S2) = $upright("CoveredTombstonesPreserved")(#S, #S2)$
+
+$
+  Delta(k, S, S', rho, rho') =>
+  Rev(S') = Rev(S) + 1 and
+  Input(S) != Input(S') and rho != rho' and
+  Floor(S) <= Floor(S') and
+  Other(k, S, S') and Tomb(S, S').
+$
+#+end_src
+
+A stale base is rejected rather than merged. The old complete root remains the
+only active state until the next complete canonical state wins one CAS.
+
+#+name: authenticated-publication-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Head(r, rho) = $upright("Head")(#r, #rho)$
+#let Publish(h, h2) = $upright("Publish")(#h, #h2)$
+#let Current(rho) = $upright("CurrentRoot")(#rho)$
+
+$
+  Publish(Head(r, rho), Head(r + 1, rho'))
+  => Current(rho) and rho != rho'.
+$
+
+$
+  Publish(H, H_1) and Publish(H, H_2) => H_1 = H_2.
+$
+#+end_src
+
+* Lean contract embedded in Org
+
+The executable proof owner is
+=packages/proofs/ASPProof/AgentSessionHostRegistryAuthenticatedProjection.lean=.
+The central types are kept here as Org-Babel Lean so the RFC, mathematical
+model, and proof implementation remain directly comparable.
+
+#+name: authenticated-registry-projection-lean-contract
+#+begin_src lean
+abbrev ManifestCommitment := CanonicalManifestInput → Nat
+
+inductive AuthenticatedManifest (commitment : ManifestCommitment) :
+    ManifestSnapshot → Nat → Prop where
+  | certified (snapshot) (canonical : CanonicalManifest snapshot) :
+      AuthenticatedManifest commitment snapshot
+        (commitment (canonicalManifestInput snapshot))
+
+inductive AuthenticatedInclusion (commitment) (snapshot) (root) (record) : Prop
+inductive AuthenticatedExclusion (commitment) (snapshot) (root) (key) : Prop
+
+structure AuthenticatedManifestDelta (commitment : ManifestCommitment) where
+  updatedKey : KeyId
+  before after : ManifestSnapshot
+  baseRoot nextRoot : Nat
+  beforeAuthenticated : AuthenticatedManifest commitment before baseRoot
+  afterAuthenticated : AuthenticatedManifest commitment after nextRoot
+  revisionAdvances : after.snapshotRevision = before.snapshotRevision + 1
+  semanticInputChanges :
+    canonicalManifestInput before ≠ canonicalManifestInput after
+  rootChanges : baseRoot ≠ nextRoot
+  floorMonotone : before.gcFloor ≤ after.gcFloor
+  otherRecordsPreserved : OtherRecordsPreserved updatedKey before after
+  otherEntriesPreserved : OtherEntriesPreserved updatedKey before after
+  coveredTombstonesPreserved : CoveredTombstonesPreserved before after
+#+end_src
+
+* Lean-discovered design obligations
+
+The model intentionally separates four layers:
+
+1. =CanonicalManifest= proves full semantic validity.
+2. =AuthenticatedManifest= binds that semantic state to one commitment input.
+3. Inclusion and exclusion consume the same authenticated state, making
+   conflicting claims impossible.
+4. =AuthenticatedManifestDelta= proves both semantic-input and root change,
+   preserves unrelated keys and covered tombstones, and advances one revision
+   from an exact base root.
+
+The model constructs the unsafe alternatives instead of merely describing
+them: conflicting unbound claims, digest collisions, stale-base claims, and a
+naive tombstone-to-live replacement are all representable. The admitted types
+exclude them by construction.
+
+The injectivity theorem is parameterized by =Function.Injective commitment=.
+The RFC MUST NOT translate that theorem into a claim that BLAKE3, SHA-256, or
+another runtime digest is mathematically injective. Runtime conformance must
+bind the algorithm, canonical serialization version, implementation artifact,
+test vectors, and collision-resistance policy.
+
+* Verification plan
+
+- build the focused Lean source module;
+- run the direct audit source and require every declaration to report no axioms;
+- execute the audit runner and validate its JSON receipt;
+- validate every Typst block through stdin =typst eval=;
+- run =orgize lint=;
+- keep aggregate proof-package failures separate from focused closure;
+- add no Rust implementation during this session.
+
+* Next boundary
+
+After this semantic layer closes, the next formal boundary is executable Merkle
+path conformance: canonical leaf encoding, ordered left/right sibling paths,
+root-bound gap proofs for exclusion, proof-size bounds, and equivalence between
+the runtime verifier and these Lean inclusion/exclusion relations.
+
+That boundary is refined by [[file:../10.05.32-agent-session-host-registry-merkle-path-conformance/00-overview.org][RFC 10.05.32 — Agent Session Registry Merkle Path
+Conformance]].

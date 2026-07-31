@@ -27,7 +27,11 @@ pub async fn call_runtime_server(
         owner_epoch: endpoint.owner_epoch,
         binding_token: endpoint.binding_token.clone(),
     };
-    let receipt = connection_pool(endpoint).await.exchange(request).await?;
+    let pool = connection_pool(endpoint).await;
+    let receipt = pool.exchange(request).await?;
+    if operation == RuntimeServerOperation::Reconcile {
+        pool.prewarm().await?;
+    }
     if receipt.schema_id != RECEIPT_SCHEMA_ID
         || receipt.schema_version != SCHEMA_VERSION
         || receipt.request_id != request_id

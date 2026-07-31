@@ -100,6 +100,56 @@ Owns:
 Formerly command-shaped flows such as prime search belong here only as
 bootstrap policies.
 
+** Canonical item identity and atomic projection generations
+
+Exact search identity is a language-neutral typed tuple.  Every registered
+language provider MUST project the tuple fields that apply to its grammar:
+
+- =kind= identifies the parser-owned declaration category;
+- =symbol= identifies the declaration name;
+- =lexicalOwner= identifies the nearest enclosing declaration when the item is
+  nested;
+- =implementationOwner= identifies the implemented type or receiver;
+- =traitOwner= identifies the implemented interface, trait, protocol, or
+  equivalent language construct.
+
+Absent dimensions are omitted, never guessed and never encoded as empty text.
+Two items with the same =kind= and =symbol= remain distinct when any owner
+dimension differs.  A provider MUST NOT collapse an inherent method, a trait
+method declaration, and a trait implementation method into one selector.
+
+ASP owns workspace identity, Git/worktree scope, snapshot evidence, generation
+publication, and resident lifecycle.  A language provider owns package-manager
+scope parsing and syntax projection.  The provider receives an ASP-selected,
+bounded batch of changed owner snapshots; it MUST NOT rediscover or rescan the
+worktree.  The batch header carries only paths, leaf digests, and byte lengths;
+owner bytes follow as bounded length-delimited frames.  Source bytes MUST NOT
+be base64-expanded into a generation JSON document.  One batch response
+contains owners, canonical item identities, selectors, relations, and the
+source leaf digests from which they were parsed.  Projections for unchanged
+owners are reused from the previous complete generation by digest identity.
+
+The per-workspace Tokio writer lane builds a complete next generation off the
+read path.  Owner bytes, canonical selectors, relations, moves, tombstones,
+root-depth evidence, MemoryBackend state, and the immutable mmap segment are
+validated together and published with one epoch transition.  Readers retain a
+lease on the previous complete generation until publication succeeds.  A
+generation with owner bytes but missing required provider projections is not
+admissible.
+
+Search and exact query are immutable consumers.  They MUST NOT invoke a
+provider, open or bootstrap Turso, refresh activation, write manifests, or
+repair a generation.  Filesystem change observation and stale-generation
+reconciliation belong to the resident Tokio supervisor and the affected
+workspace writer lane.  Different workspaces reconcile independently; one
+workspace has one writer lane and an adaptive resident read pool.
+
+Health and cache status read only the resident status snapshot.  A live process
+with a stale admitted generation is =reconciling= or =degraded=, never
+=healthy=.  Installed performance gates MUST exercise cold admission, warm
+reads, multi-workspace parallelism, multi-session contention, move/tombstone
+publication, and provider projection completeness.
+
 ** 10.05.20 Evidence graph and routing
 
 Owns:

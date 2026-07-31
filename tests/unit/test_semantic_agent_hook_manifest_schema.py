@@ -28,8 +28,6 @@ def minimal_provider_manifest() -> dict[str, object]:
         "source": {
             "defaultExtensions": [".ts", ".tsx"],
             "defaultConfigFiles": ["package.json", "tsconfig.json"],
-            "defaultSourceRoots": ["src", "tests"],
-            "defaultIgnoredPathPrefixes": ["node_modules", "dist"],
         },
         "policy": {
             "directSourceRead": "block",
@@ -175,6 +173,23 @@ class SemanticAgentHookManifestSchemaTests(unittest.TestCase):
 
         self.assertTrue(
             any("should not be valid" in message for message in self.manifest_errors(manifest))
+        )
+
+    def test_provider_manifest_rejects_retired_hardcoded_scope_defaults(self) -> None:
+        manifest = minimal_provider_manifest()
+        source = copy.deepcopy(manifest["source"])
+        source["defaultSourceRoots"] = ["src"]
+        source["defaultIgnoredPathPrefixes"] = ["node_modules"]
+        manifest["source"] = source
+
+        errors = self.manifest_errors(manifest)
+        self.assertTrue(
+            any(
+                "Additional properties are not allowed" in message
+                and "defaultSourceRoots" in message
+                and "defaultIgnoredPathPrefixes" in message
+                for message in errors
+            )
         )
 
     def test_provider_manifest_requires_core_routes(self) -> None:

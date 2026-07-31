@@ -1,6 +1,6 @@
 use super::{
-    model::WorkspaceMemoryBackend, pointer::WorkspaceGenerationPointerReader,
-    registry::WorkspaceGenerationLease, segment::MappedWorkspaceGeneration,
+    lease::WorkspaceGenerationLease, model::WorkspaceMemoryBackend,
+    pointer::WorkspaceGenerationPointerReader, segment::MappedWorkspaceGeneration,
 };
 use parking_lot::RwLock;
 use std::{path::Path, sync::Arc};

@@ -1,0 +1,290 @@
+#+title: RFC 10.05.33 — Agent Session Registry Verifier Attestation
+#+startup: overview
+
+* Status
+
+Focused formal attestation verification is complete. This RFC refines
+[[file:../10.05.32-agent-session-host-registry-merkle-path-conformance/00-overview.org][RFC 10.05.32 — Agent Session Registry Merkle Path Conformance]]. It defines
+byte-level verifier attestation, Lean audit, and AXLE receipt identity. The
+source module and direct audit compile, all 23 declarations are axiom-free, the
+Lean JSON audit is admitted by the repository AXLE consumer across five scoped
+theorem families and five RFC clauses, and the module is imported by the
+proof-package root. It does not authorize Rust implementation.
+
+This closure validates the formal attestation contract and its audit inventory.
+It does not claim that an installed runtime verifier artifact has already been
+replayed. Runtime artifact execution remains the next boundary.
+
+The aggregate =lake build ASPProof= gate remains outside this focused claim;
+unrelated proof modules retain the previously recorded =Mathlib= and
+=Decidable= failures.
+
+* Problem
+
+RFC 10.05.32 proves the abstract path fold and semantic bridge. It does not bind
+that proof to the bytes, decoder, executable verifier artifact, or test-vector
+suite used at runtime.
+
+Five gaps remain:
+
+- naive concatenation is ambiguous before hashing;
+- a decoder may accept a wrong domain, inconsistent length, invalid direction,
+  truncation, or trailing bytes;
+- a digest implementation may ignore its domain or disagree with golden vectors;
+- an otherwise conforming verifier result may come from a different executable;
+- an AXLE receipt may say “pass” without binding the Lean module, Lean audit,
+  verifier artifact, and vector-suite identities.
+
+The attestation chain is complete only when all five identities agree.
+
+* Evidence alignment
+
+Existing contracts already require domain-separated length-prefixed Merkle
+parts, exact artifact identity, malformed-packet fail-closed behavior, and
+scoped Lean/AXLE receipts. RFC33 composes those requirements into one verifier
+attestation boundary. It does not replace the source-snapshot Merkle authority
+or claim mathematical injectivity for a runtime digest.
+
+* Canonical field framing
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASVA-FRAME
+:END:
+
+#+name: registry-verifier-length-prefix-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Frame(x) = $upright("Frame")(#x)$
+#let Len(x) = $upright("length")(#x)$
+#let Payload(f) = $upright("payload")(#f)$
+#let Prefix(f) = $upright("encodedLength")(#f)$
+
+$
+  Frame(x) = (Len(x), x),
+  quad Prefix(Frame(x)) = Len(Payload(Frame(x))).
+$
+
+$
+  Frame(x) = Frame(y) => x = y.
+$
+#+end_src
+
+Every leaf field is framed independently. A single concatenated byte sequence
+without field boundaries is not a canonical leaf preimage.
+
+* Decoder contract
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASVA-DECODER
+:END:
+
+#+name: registry-verifier-decoder-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Decode(b) = $upright("decode")(#b)$
+#let Malformed(b) = $upright("Malformed")(#b)$
+#let Error(e) = $upright("Error")(#e)$
+
+$
+  forall b, exists r, Decode(b) = r.
+$
+
+$
+  Malformed(b) => exists e, Decode(b) = Error(e).
+$
+#+end_src
+
+Lean function totality proves termination of the model decoder. Executable
+attestation must additionally prove that every malformed class returns an
+error rather than a default packet.
+
+* Stateful architecture
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASVA-ARTIFACT
+:END:
+
+#+name: registry-verifier-attestation-architecture
+#+begin_src mermaid
+flowchart LR
+  F["Field framer\nstate: LengthExact | Ambiguous"]
+  D["Packet decoder\nstate: Decoded | Rejected(error) | Drifted"]
+  V["Digest vectors\nstate: AllPassed | DomainMismatch"]
+  A["Verifier artifact\nstate: IdentityBound(algorithm, binary, schema, decoder)"]
+  L["Lean audit\nstate: AxiomFree(moduleDigest, auditDigest)"]
+  X["AXLE admission\nstate: Bound(module, audit, artifact, vectors)"]
+  C["Receipt consumer\nstate: Accepted | Quarantined"]
+
+  F -->|"transition; state: LengthExact -> DecodePending; framed bytes"| D
+  D -->|"guard; state: DecodedOrRejected -> VectorPending; no default packet"| V
+  V -->|"guard; state: AllPassed -> IdentityBound; exact domain vectors"| A
+  A -->|"transition; state: IdentityBound -> AxiomAuditPending"| L
+  L -->|"transition; state: AxiomFree -> ReceiptPending"| X
+  X -->|"capability; state: Bound -> Accepted; all identities exact"| C
+  F -->|"prohibitedEffect; state: Ambiguous -> Quarantined"| C
+  D -->|"prohibitedEffect; state: DriftedOrMalformedAccepted -> Quarantined"| C
+  V -->|"prohibitedEffect; state: DomainMismatch -> Quarantined"| C
+  X -->|"prohibitedEffect; state: UnboundOrMismatched -> Quarantined"| C
+#+end_src
+
+* Attestation state machine
+
+#+name: registry-verifier-attestation-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+  state "Candidate\nstate: Unverified(bytes, artifact, vectors)" as Candidate
+  state "Framed\nstate: CanonicalLengths" as Framed
+  state "DecoderSafe\nstate: TotalAndMalformedRejecting" as DecoderSafe
+  state "VectorsPassed\nstate: DomainSeparated" as VectorsPassed
+  state "ArtifactBound\nstate: ExactIdentity" as ArtifactBound
+  state "Audited\nstate: LeanAndAXLEBound" as Audited
+  state "Rejected\nstate: Quarantine(defect)" as Rejected
+
+  Candidate --> Framed: "guard; state: Unverified -> CanonicalLengths"
+  Candidate --> Rejected: "prohibitedEffect; state: AmbiguousConcat -> Quarantine"
+  Framed --> DecoderSafe: "guard; state: CanonicalLengths -> TotalAndMalformedRejecting"
+  Framed --> Rejected: "prohibitedEffect; state: InvalidFrameAccepted -> Quarantine"
+  DecoderSafe --> VectorsPassed: "transition; state: DecoderSafe -> DomainSeparated"
+  VectorsPassed --> ArtifactBound: "guard; state: AllPassed -> ExactIdentity"
+  VectorsPassed --> Rejected: "prohibitedEffect; state: VectorMismatch -> Quarantine"
+  ArtifactBound --> Audited: "transition; state: ExactIdentity -> LeanAndAXLEBound"
+  ArtifactBound --> Rejected: "prohibitedEffect; state: ArtifactDrift -> Quarantine"
+#+end_src
+
+* Runtime sequence
+
+#+name: registry-verifier-attestation-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant P as "Packet Producer [state: RawBytes]"
+  participant D as "Decoder [state: AwaitingFrame]"
+  participant V as "Verifier [state: ArtifactBound]"
+  participant L as "Lean Audit [state: ModuleBound]"
+  participant X as "AXLE [state: ReceiptPending]"
+  participant C as "Consumer [state: Closed]"
+
+  P->>D: "transition; state: RawBytes -> DecodePending; framed packet"
+  D->>V: "guard; state: DecodePending -> DecodedOrRejected"
+  V->>V: "guard; state: Decoded -> VectorsPassed; exact artifact"
+  V->>L: "transition; state: VectorsPassed -> AxiomAuditPending"
+  L->>X: "transition; state: AxiomFree -> IdentityAdmissionPending"
+  X->>C: "guard; state: IdentityAdmissionPending -> AcceptedOrQuarantined"
+  alt module, audit, artifact, and vectors match
+    C-->>P: "capability; state: Accepted -> BoundReceipt"
+  else malformed accepted, vector mismatch, or identity drift
+    C-->>P: "prohibitedEffect; state: Quarantined -> TypedFailure"
+  end
+#+end_src
+
+* Digest vectors
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASVA-VECTORS
+:END:
+
+#+name: registry-verifier-vector-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Digest(d, x) = $upright("digest")(#d, #x)$
+#let Expected(v) = $upright("expected")(#v)$
+#let Domain(v) = $upright("domain")(#v)$
+#let Input(v) = $upright("input")(#v)$
+#let Member(v, suite) = $upright("member")(#v, #suite)$
+
+$
+  Member(v, V) => Digest(Domain(v), Input(v)) = Expected(v).
+$
+
+Leaf, branch, and empty vectors are distinct members of the attested suite.
+#+end_src
+
+* AXLE identity law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASVA-AXLE
+:END:
+
+#+name: registry-verifier-axle-law
+#+begin_src typst :runtime typst :lint "typst eval --in - 'none'"
+#let Receipt(m, a, v, t) = $upright("AxleReceipt")(#m, #a, #v, #t)$
+#let Expected = $upright("ExpectedIdentity")$
+#let Accepted(r) = $upright("Accepted")(#r)$
+
+$
+  Accepted(Receipt(m, a, v, t)) =>
+  (m, a, v, t) = Expected.
+$
+
+The four components are the Lean module digest, Lean audit digest, verifier
+artifact digest, and vector-suite digest.
+#+end_src
+
+* Lean contract embedded in Org
+
+#+name: registry-verifier-attestation-lean-contract
+#+begin_src lean
+structure LengthPrefixedBytes where
+  payload : ByteString
+  encodedLength : Nat
+  lengthExact : encodedLength = payload.length
+
+def DecoderRejectsMalformed (decoder : PacketDecoder) : Prop :=
+  ∀ raw, MalformedEnvelope raw →
+    ∃ error, decoder raw = .error error
+
+structure VerifierAttestationData where
+  artifact : VerifierArtifactIdentity
+  vectors : List DigestTestVector
+
+structure VerifierAttestation
+    (expectedArtifact : VerifierArtifactIdentity)
+    (data : VerifierAttestationData)
+    (digest : DomainDigest)
+    (decoder : PacketDecoder)
+    (verifier : RuntimePathVerifier)
+    (leafHash : LeafHasher)
+    (branch : BranchHasher) : Prop where
+  artifactMatches : data.artifact = expectedArtifact
+  decoderTerminates : DecoderTerminates decoder
+  malformedRejected : DecoderRejectsMalformed decoder
+  vectorsPass : ∀ vector, vector ∈ data.vectors → VectorPasses digest vector
+  verifierConforms : RuntimeVerifierConforms verifier leafHash branch
+#+end_src
+
+* Lean-discovered obligations
+
+The model separates transport and identity data in =Type= from attestation
+evidence in =Prop=. It constructs four unsafe alternatives:
+
+- two different field partitions with the same naive concatenation;
+- an always-decode implementation that returns a packet for malformed input;
+- an always-zero digest that fails a non-zero vector;
+- an unbound AXLE receipt carrying only a pass bit and note digest.
+
+The admitted receipt binds module, audit, artifact, and vector-suite identities
+independently. One aggregate “passed” value cannot substitute for those fields.
+
+Lean decoder totality is not executable termination evidence by itself. The
+runtime artifact must be replayed against malformed classes and golden vectors;
+the resulting evidence must be admitted by AXLE without granting undeclared
+axioms to the Lean theorem family.
+
+* Verification plan
+
+- build the focused Lean source and direct axiom audit;
+- execute the audit runner and emit the Lean JSON receipt;
+- construct and validate the scoped AXLE identity receipt;
+- evaluate all Typst blocks through stdin;
+- run =orgize lint= and restricted =git diff --check=;
+- add no Rust implementation in this session.
+
+* Formal receipts
+
+- Lean source: =packages/proofs/ASPProof/AgentSessionHostRegistryVerifierAttestation.lean=
+- direct audit: =packages/proofs/ASPProof/Audit/AgentSessionHostRegistryVerifierAttestation.lean=
+- Lean JSON: =packages/proofs/receipts/agent-session-host-registry-verifier-attestation-audit-v1.json=
+- AXLE receipt: =packages/proofs/receipts/agent-session-host-registry-verifier-attestation-axle-audit-v1.json=
+- admitted audit SHA-256:
+  =9d4b7ed886d368fd260c73ba1460bcfaca77dc85a3c819b7649d5bc0b64eb06f=
+
+* Next boundary
+
+This boundary is refined by [[file:../10.05.34-agent-session-host-registry-cross-runtime-replay/00-overview.org][RFC 10.05.34 — Agent Session Host Registry Cross-Runtime Replay]].
+
+After verifier attestation closes, the next formal boundary is replayable
+cross-runtime conformance: generate canonical byte vectors once, replay them
+through Lean reference semantics and the installed verifier artifact, bind
+stdout/stderr/exit status and timing to one receipt, and prove that warm-path
+verification adds no provider launch, persistent write, or agent round trip.

@@ -1,9 +1,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{
-    ActiveAspArtifactReconciliationV1, materialize_active_asp_artifact_receipt,
-    rebind_active_asp_binary_receipt_if_present, reconcile_active_asp_artifact_receipt_if_present,
+    ActiveAspArtifactInput, ActiveAspArtifactReconciliationV1,
+    materialize_active_asp_artifact_receipt, rebind_active_asp_binary_receipt_if_present,
+    reconcile_active_asp_artifact_receipt_if_present, verify_active_asp_artifact_receipt,
 };
+use agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1;
 
 fn fixture_root(label: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
@@ -100,6 +102,55 @@ fn materialized_receipt_is_reconciled_after_activation_changes() {
             .expect("rebind current ASP binary"),
         ActiveAspArtifactReconciliationV1::Current
     );
+
+    std::fs::remove_dir_all(root).expect("remove fixture");
+}
+
+#[test]
+fn reconciliation_preserves_globally_installed_provider_leaves_outside_activation() {
+    let root = fixture_root("provider-closure-shrink");
+    let binary = root.join("runtime/bin/asp");
+    let provider = root.join("runtime/bin/rs-harness");
+    let activation = root.join("hooks/state/activation.json");
+    std::fs::create_dir_all(binary.parent().expect("binary parent")).expect("create binary parent");
+    std::fs::create_dir_all(activation.parent().expect("activation parent"))
+        .expect("create activation parent");
+    std::fs::write(&binary, b"asp-v1").expect("write binary");
+    std::fs::write(&provider, b"provider-v1").expect("write provider");
+    std::fs::write(
+        &activation,
+        br#"{"providers":[{"languageId":"rust","providerId":"rs-harness"}]}"#,
+    )
+    .expect("write activation");
+    let binary_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&binary).expect("binary digest");
+    let provider_digest = agent_semantic_content_identity::file_content_digest_v1(&provider)
+        .expect("provider digest");
+    materialize_active_asp_artifact_receipt(
+        &binary,
+        &binary_digest,
+        &activation,
+        &[ActiveAspArtifactInput {
+            logical_path: "providers/rust/rs-harness".to_owned(),
+            artifact_kind: ActiveArtifactKindV1::ProviderBinary,
+            materialized_path: provider,
+            artifact_digest: provider_digest,
+        }],
+    )
+    .expect("materialize provider receipt");
+
+    std::fs::write(&activation, br#"{"providers":[]}"#).expect("shrink activation closure");
+    assert_eq!(
+        rebind_active_asp_binary_receipt_if_present(&binary, &binary_digest, &activation)
+            .expect("rebind binary with shrunken provider closure"),
+        ActiveAspArtifactReconciliationV1::Updated
+    );
+    let receipt = verify_active_asp_artifact_receipt(&activation, &[&binary])
+        .expect("verify reconciled active receipt");
+    assert!(receipt.leaves().iter().any(|leaf| {
+        leaf.artifact_kind() == ActiveArtifactKindV1::ProviderBinary
+            && leaf.logical_path() == "providers/rust/rs-harness"
+    }));
 
     std::fs::remove_dir_all(root).expect("remove fixture");
 }

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .plan_context import (
-    GLOBAL_PROJECT_SCOPE,
+    GLOBAL_PROJECT_RESOLUTION,
     PlanMemoryContext,
     normalize_plan_sharing,
     normalize_plan_token,
@@ -97,8 +97,8 @@ def _context_score(
     if branch and context.branch_id == branch:
         return 0.80
     if project and normalize_plan_token(
-        context.project_id, GLOBAL_PROJECT_SCOPE
-    ) == normalize_plan_token(project, GLOBAL_PROJECT_SCOPE):
+        context.project_id, GLOBAL_PROJECT_RESOLUTION
+    ) == normalize_plan_token(project, GLOBAL_PROJECT_RESOLUTION):
         return 0.35
     return 0.0
 
@@ -140,7 +140,7 @@ class _PlanMemoryRankIndex:
         *,
         checkpoint_signature: dict[str, object] | None = None,
     ) -> float:
-        project_id = normalize_plan_token(context.project_id, GLOBAL_PROJECT_SCOPE)
+        project_id = normalize_plan_token(context.project_id, GLOBAL_PROJECT_RESOLUTION)
         resolved_plan_id = _optional_token(plan_id or context.plan_id)
         scores = [self.global_score, self.project_scores.get(project_id, 0.0)]
         if context.branch_id:
@@ -165,7 +165,7 @@ class _PlanMemoryRankIndex:
     def _index_episode(self, store: EpisodeStore, episode: object) -> None:
         base_score = _episode_rank_score(store, episode)
         project_id = normalize_plan_token(
-            getattr(episode, "project_id", None), GLOBAL_PROJECT_SCOPE
+            getattr(episode, "project_id", None), GLOBAL_PROJECT_RESOLUTION
         )
         plan_id = _optional_token(getattr(episode, "plan_id", None))
         if plan_id:
@@ -278,7 +278,7 @@ def _checkpoint_visible(
     plan_id: str | None,
 ) -> bool:
     checkpoint_project = normalize_plan_token(
-        getattr(checkpoint, "project_id", None), GLOBAL_PROJECT_SCOPE
+        getattr(checkpoint, "project_id", None), GLOBAL_PROJECT_RESOLUTION
     )
     if checkpoint_project != project_id:
         return False

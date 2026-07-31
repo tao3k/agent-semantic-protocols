@@ -16,10 +16,12 @@ use super::workspace_db_owner::{
     WorkspaceDbWriterClient, run_workspace_db_writer_actor, workspace_db_writer_channel,
 };
 use super::{
-    ProviderIncrementalOwnerWrite, ProviderIncrementalWriteReceipt, ProviderOwnerBatchProbeReceipt,
-    ProviderOwnerBatchProbeRequest, ProviderOwnerInventoryWrite,
-    ProviderOwnerInventoryWriteReceipt, ProviderTreeSitterOwnerResult,
-    ProviderTreeSitterOwnerWriteReceipt, ProviderTreeSitterQueryIdentity,
+    ProviderIncrementalOwnerSnapshot, ProviderIncrementalOwnerWrite,
+    ProviderIncrementalWriteReceipt, ProviderOwnerBatchProbeReceipt,
+    ProviderOwnerBatchProbeRequest, ProviderOwnerBatchProbeResult, ProviderOwnerDecision,
+    ProviderOwnerInventoryWrite, ProviderOwnerInventoryWriteReceipt, ProviderOwnerProbe,
+    ProviderTreeSitterOwnerResult, ProviderTreeSitterOwnerWriteReceipt,
+    ProviderTreeSitterQueryIdentity,
 };
 
 /// Process-lifetime counters for workspace database resource reuse.
@@ -54,8 +56,9 @@ pub struct WorkspaceDbWriteFinishReceipt {
 }
 
 /// A process-resident registry with one independent initialization slot per workspace.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct WorkspaceDbRegistry {
+    state_home: Result<PathBuf, String>,
     slots: Mutex<HashMap<String, Arc<WorkspaceDbSlot>>>,
     admission_sessions: Mutex<HashMap<String, Arc<OnceCell<ProviderSearchWorkspaceSession>>>>,
     database_open_count: AtomicU64,
@@ -64,6 +67,12 @@ pub struct WorkspaceDbRegistry {
     registry_hit_count: AtomicU64,
     workspace_resolution_count: AtomicU64,
     project_root_canonicalization_count: AtomicU64,
+}
+
+impl Default for WorkspaceDbRegistry {
+    fn default() -> Self {
+        Self::with_state_home_result(agent_semantic_client_core::state_core::resolve_state_home())
+    }
 }
 
 #[derive(Debug)]
@@ -89,11 +98,26 @@ struct WorkspaceDbEntry {
             )>,
         >,
     >,
+    active_materializations:
+        Mutex<HashMap<String, crate::runtime_server_workspace::WorkspaceCanonicalMaterialization>>,
+    provider_owner_cache: Mutex<HashMap<ProviderOwnerCacheKey, ProviderOwnerCacheEntry>>,
     writer_client: WorkspaceDbWriterClient,
     writer_task: tokio::task::JoinHandle<()>,
     next_request_id: AtomicU64,
     writer_transaction_count: AtomicU64,
     max_active_writer_count: AtomicU64,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ProviderOwnerCacheKey {
+    scope: ProviderIncrementalScoped,
+    owner_path: String,
+}
+
+#[derive(Clone, Debug)]
+struct ProviderOwnerCacheEntry {
+    snapshot: ProviderIncrementalOwnerSnapshot,
+    generation: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -146,6 +170,33 @@ pub struct ProviderSearchWorkspaceSession {
 }
 
 impl WorkspaceDbRegistry {
+    /// Create a resident registry pinned to one State Root for its full lifetime.
+    pub fn with_state_home(state_home: impl AsRef<Path>) -> Self {
+        Self::with_state_home_result(Ok(state_home.as_ref().to_path_buf()))
+    }
+
+    fn with_state_home_result(state_home: Result<PathBuf, String>) -> Self {
+        Self {
+            state_home,
+            slots: Mutex::default(),
+            admission_sessions: Mutex::default(),
+            database_open_count: AtomicU64::default(),
+            connection_create_count: Arc::new(AtomicU64::default()),
+            schema_bootstrap_count: AtomicU64::default(),
+            registry_hit_count: AtomicU64::default(),
+            workspace_resolution_count: AtomicU64::default(),
+            project_root_canonicalization_count: AtomicU64::default(),
+        }
+    }
+
+    fn resolve_workspace_state(&self, project_root: &Path) -> Result<ResolvedState, String> {
+        let state_home = self
+            .state_home
+            .as_ref()
+            .map_err(|error| format!("failed to resolve resident registry State Root: {error}"))?;
+        ResolvedState::resolve_with_state_home(project_root, state_home)
+    }
+
     pub fn workspace_entry_counts(&self) -> (usize, usize) {
         let (slot_count, loaded) = {
             let slots = self.slots.lock();
@@ -192,7 +243,7 @@ impl WorkspaceDbRegistry {
             .get_or_try_init(|| async {
                 self.workspace_resolution_count
                     .fetch_add(1, Ordering::Relaxed);
-                let resolved = ResolvedState::resolve(project_root)?;
+                let resolved = self.resolve_workspace_state(project_root)?;
                 self.acquire_resolved(project_root, scope, resolved).await
             })
             .await?;
@@ -205,12 +256,28 @@ impl WorkspaceDbRegistry {
     ) -> Result<ProviderSearchWorkspaceSession, String> {
         self.workspace_resolution_count
             .fetch_add(1, Ordering::Relaxed);
-        let resolved = ResolvedState::resolve(project_root)?;
+        let resolved = self.resolve_workspace_state(project_root.as_ref())?;
         let entry = self
             .entry_for_resolved(
                 resolved.workspace.workspace_id.as_str(),
                 resolved.paths.client_db_path,
             )
+            .await?;
+        Ok(ProviderSearchWorkspaceSession { entry })
+    }
+
+    pub(crate) async fn bootstrap_fixture_workspace(
+        &self,
+        workspace_identity: &str,
+        client_db_path: PathBuf,
+    ) -> Result<ProviderSearchWorkspaceSession, String> {
+        if workspace_identity.trim().is_empty() {
+            return Err(
+                "fixture workspace admission requires a non-empty workspace identity".to_owned(),
+            );
+        }
+        let entry = self
+            .entry_for_resolved(workspace_identity, client_db_path)
             .await?;
         Ok(ProviderSearchWorkspaceSession { entry })
     }
@@ -308,8 +375,10 @@ impl WorkspaceDbRegistry {
                     || slot.client_db_path != client_db_path
                 {
                     return Err(format!(
-                        "workspace registry identity/path mismatch for {}",
-                        resolved_workspace_identity
+                        "workspace registry identity/path mismatch for {}: admittedClientDbPath={} resolvedClientDbPath={}",
+                        resolved_workspace_identity,
+                        slot.client_db_path.display(),
+                        client_db_path.display(),
                     ));
                 }
                 self.registry_hit_count.fetch_add(1, Ordering::Relaxed);
@@ -328,18 +397,19 @@ impl WorkspaceDbRegistry {
         let entry = slot
             .entry
             .get_or_try_init(|| async {
-                if let Some(parent) = client_db_path.parent() {
-                    tokio::fs::create_dir_all(parent).await.map_err(|error| {
-                        format!(
-                            "failed to create canonical workspace client DB directory {}: {error}",
-                            parent.display()
-                        )
-                    })?;
+                let prepared_db_path =
+                    crate::engine::turso::prepare_turso_client_db_path(&client_db_path)?;
+                if prepared_db_path != client_db_path {
+                    return Err(format!(
+                        "workspace registry client DB path is not canonical: requested={} prepared={}",
+                        client_db_path.display(),
+                        prepared_db_path.display(),
+                    ));
                 }
-                let path = client_db_path.to_str().ok_or_else(|| {
+                let path = prepared_db_path.to_str().ok_or_else(|| {
                     format!(
                         "canonical workspace client DB path is not UTF-8: {}",
-                        client_db_path.display()
+                        prepared_db_path.display()
                     )
                 })?;
                 let database = turso::Builder::new_local(path)
@@ -373,6 +443,7 @@ impl WorkspaceDbRegistry {
                     Ordering::Relaxed,
                 );
                 super::bootstrap_turso_source_index_schema(&writer_connection).await?;
+                crate::engine::turso::write_turso_0_7_format_receipt(&prepared_db_path)?;
                 self.schema_bootstrap_count.fetch_add(1, Ordering::Relaxed);
                 let (writer_queue_capacity, writer_batch_limit) =
                     workspace_db_writer_concurrency_plan();
@@ -393,6 +464,8 @@ impl WorkspaceDbRegistry {
                     source_index_read_cache: (0..read_parallelism)
                         .map(|_| tokio::sync::Mutex::new(None))
                         .collect(),
+                    active_materializations: Mutex::new(HashMap::new()),
+                    provider_owner_cache: Mutex::new(HashMap::new()),
                     writer_client,
                     writer_task,
                     next_request_id: AtomicU64::new(0),
@@ -501,28 +574,80 @@ impl ProviderSearchWorkspaceSession {
         request: crate::ClientDbSourceIndexRefreshRequest,
         materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
     ) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
-        match self
+        if materialization.workspace_identity != self.workspace_identity() {
+            return Err(format!(
+                "workspace materialization identity mismatch: admitted={} requested={}",
+                self.workspace_identity(),
+                materialization.workspace_identity,
+            ));
+        }
+        let project_root = materialization.project_root.clone();
+        let committed_materialization = materialization.clone();
+        let receipt = match self
             .submit_write(WorkspaceDbWriteOperation::CommitSourceIndexGeneration {
                 request,
                 materialization,
             })
             .await?
         {
-            WorkspaceDbWriteResult::SourceIndexGeneration(receipt) => Ok(receipt),
-            _ => Err(
-                "workspace writer returned an unexpected source-index generation result".to_owned(),
-            ),
-        }
+            WorkspaceDbWriteResult::SourceIndexGeneration(receipt) => receipt,
+            _ => {
+                return Err(
+                    "workspace writer returned an unexpected source-index generation result"
+                        .to_owned(),
+                );
+            }
+        };
+        self.entry
+            .active_materializations
+            .lock()
+            .insert(project_root, committed_materialization);
+        Ok(receipt)
     }
 
     pub async fn load_active_workspace_generation_materialization(
         &self,
+        project_root: &std::path::Path,
     ) -> Result<Option<crate::runtime_server_workspace::WorkspaceCanonicalMaterialization>, String>
     {
+        use crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad;
+
+        match self
+            .load_active_workspace_generation_materialization_state(project_root)
+            .await?
+        {
+            WorkspaceCanonicalMaterializationLoad::Ready(materialization) => {
+                Ok(Some(materialization))
+            }
+            WorkspaceCanonicalMaterializationLoad::Missing => Ok(None),
+            WorkspaceCanonicalMaterializationLoad::Incompatible { reason } => Err(reason),
+        }
+    }
+
+    pub async fn load_active_workspace_generation_materialization_state(
+        &self,
+        project_root: &std::path::Path,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad, String>
+    {
+        let project_root_key = crate::types::normalized_project_root(project_root)?;
+        if let Some(materialization) = self
+            .entry
+            .active_materializations
+            .lock()
+            .get(project_root_key.as_str())
+            .cloned()
+        {
+            return Ok(
+                crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Ready(
+                    materialization,
+                ),
+            );
+        }
         let read_lease = self.read_connection();
         super::materialization::load_active_workspace_generation_materialization(
             read_lease.shared_connection().as_ref(),
             self.workspace_identity(),
+            project_root_key.as_str(),
         )
         .await
     }
@@ -531,15 +656,32 @@ impl ProviderSearchWorkspaceSession {
         &self,
         request: &ProviderIncrementalOwnerWrite,
     ) -> Result<ProviderIncrementalWriteReceipt, String> {
-        match self
+        let receipt = match self
             .submit_write(WorkspaceDbWriteOperation::WriteProviderOwner(
                 request.clone(),
             ))
             .await?
         {
-            WorkspaceDbWriteResult::ProviderOwner(receipt) => Ok(receipt),
-            _ => Err("workspace owner returned mismatched provider owner receipt".to_owned()),
-        }
+            WorkspaceDbWriteResult::ProviderOwner(receipt) => receipt,
+            _ => {
+                return Err("workspace owner returned mismatched provider owner receipt".to_owned());
+            }
+        };
+        self.entry.provider_owner_cache.lock().insert(
+            ProviderOwnerCacheKey {
+                scope: request.scope.clone(),
+                owner_path: request.owner_path.clone(),
+            },
+            ProviderOwnerCacheEntry {
+                snapshot: ProviderIncrementalOwnerSnapshot {
+                    fingerprint: request.fingerprint.clone(),
+                    source_bytes: request.source_bytes.clone(),
+                    projections: request.projections.clone(),
+                },
+                generation: Some(receipt.generation_after.clone()),
+            },
+        );
+        Ok(receipt)
     }
 
     pub async fn read_provider_treesitter_query(
@@ -592,20 +734,106 @@ impl ProviderSearchWorkspaceSession {
         scope: &ProviderIncrementalScoped,
         owners: &[ProviderOwnerBatchProbeRequest],
     ) -> Result<ProviderOwnerBatchProbeReceipt, String> {
+        let cached = {
+            let cache = self.entry.provider_owner_cache.lock();
+            owners
+                .iter()
+                .map(|owner| {
+                    cache
+                        .get(&ProviderOwnerCacheKey {
+                            scope: scope.clone(),
+                            owner_path: owner.owner_path.clone(),
+                        })
+                        .cloned()
+                })
+                .collect::<Vec<_>>()
+        };
+        if cached.iter().all(Option::is_some) {
+            return Ok(ProviderOwnerBatchProbeReceipt {
+                results: owners
+                    .iter()
+                    .zip(cached.into_iter())
+                    .map(|(owner, cached)| {
+                        let cached = cached.expect("all provider owner cache entries checked");
+                        ProviderOwnerBatchProbeResult {
+                            owner_path: owner.owner_path.clone(),
+                            probe: ProviderOwnerProbe {
+                                decision: if cached.snapshot.fingerprint.metadata == owner.metadata
+                                {
+                                    ProviderOwnerDecision::Unchanged
+                                } else {
+                                    ProviderOwnerDecision::Changed
+                                },
+                                generation_before: cached.generation,
+                                content_digest: Some(
+                                    cached.snapshot.fingerprint.content_digest.clone(),
+                                ),
+                            },
+                        }
+                    })
+                    .collect(),
+                read_lock_count: 0,
+                connection_open_count: 0,
+                scope_scan_count: 0,
+            });
+        }
         super::provider_incremental_probe_batch::probe_provider_owners_in_session(
             self, scope, owners,
         )
         .await
     }
 
-    pub async fn read_provider_owner_projections(
+    pub async fn read_provider_owner_snapshot(
         &self,
         scope: &ProviderIncrementalScoped,
         owner_path: &str,
-    ) -> Result<Vec<super::ProviderSelectorProjection>, String> {
+    ) -> Result<Option<super::ProviderIncrementalOwnerSnapshot>, String> {
+        let key = ProviderOwnerCacheKey {
+            scope: scope.clone(),
+            owner_path: owner_path.to_owned(),
+        };
+        if let Some(cached) = self.entry.provider_owner_cache.lock().get(&key) {
+            return Ok(Some(cached.snapshot.clone()));
+        }
         let read_lease = self.read_connection();
-        super::provider_incremental::read_provider_owner_projections(&read_lease, scope, owner_path)
-            .await
+        let snapshot = super::provider_incremental::read_provider_owner_snapshot(
+            &read_lease,
+            scope,
+            owner_path,
+        )
+        .await?;
+        if let Some(snapshot) = &snapshot {
+            self.entry.provider_owner_cache.lock().insert(
+                key,
+                ProviderOwnerCacheEntry {
+                    snapshot: snapshot.clone(),
+                    generation: None,
+                },
+            );
+        }
+        Ok(snapshot)
+    }
+
+    pub async fn read_provider_owner_warm(
+        &self,
+        scope: &ProviderIncrementalScoped,
+        owner: &ProviderOwnerBatchProbeRequest,
+    ) -> Result<(ProviderOwnerProbe, Option<ProviderIncrementalOwnerSnapshot>), String> {
+        let probe = self
+            .probe_provider_owners(scope, std::slice::from_ref(owner))
+            .await?
+            .results
+            .into_iter()
+            .next()
+            .ok_or_else(|| "provider owner warm read returned no probe".to_owned())?
+            .probe;
+        let snapshot = if probe.decision == ProviderOwnerDecision::Unchanged {
+            self.read_provider_owner_snapshot(scope, &owner.owner_path)
+                .await?
+        } else {
+            None
+        };
+        Ok((probe, snapshot))
     }
 
     pub async fn upsert_provider_owner_inventory(

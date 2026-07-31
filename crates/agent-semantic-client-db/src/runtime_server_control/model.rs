@@ -13,6 +13,12 @@ const STATUS_SNAPSHOT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-status-snapshot.v1";
 
 static RUNTIME_SERVER_TRANSPORT_CONTRACT_DIGEST: OnceLock<String> = OnceLock::new();
+const RUNTIME_SERVER_TRANSPORT_CONTRACT_DOMAIN: &[u8] =
+    b"agent.semantic-protocols.runtime-server-transport.v1";
+const RUNTIME_SERVER_CONTROL_CONTRACT: &[u8] =
+    include_bytes!("../../../../schemas/runtime-server-control.v1.schema.json");
+const WORKSPACE_DB_OWNER_IPC_CONTRACT: &[u8] =
+    include_bytes!("../../../../schemas/workspace-db-owner-ipc.v1.schema.json");
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -103,8 +109,7 @@ impl RuntimeServerControlRequest {
 
     pub fn requires_restart(&self, endpoint: &RuntimeServerEndpoint) -> Result<bool, String> {
         self.validate_for_endpoint(endpoint)?;
-        Ok(self.operation == RuntimeServerOperation::Restart
-            && self.expected_runtime_artifact_digest != endpoint.runtime_artifact_digest)
+        Ok(self.operation == RuntimeServerOperation::Restart)
     }
 }
 
@@ -261,13 +266,24 @@ impl std::error::Error for RuntimeServerRequestReadError {}
 fn runtime_server_transport_contract_digest_ref() -> &'static str {
     RUNTIME_SERVER_TRANSPORT_CONTRACT_DIGEST
         .get_or_init(|| {
-            format!(
-                "blake3-256:{}",
-                blake3::hash(include_bytes!(
-                    "../../../../schemas/runtime-server-control.v1.schema.json"
-                ))
-                .to_hex()
-            )
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(RUNTIME_SERVER_TRANSPORT_CONTRACT_DOMAIN);
+            for (contract_name, contract_bytes) in [
+                (
+                    b"runtime-server-control.v1".as_slice(),
+                    RUNTIME_SERVER_CONTROL_CONTRACT,
+                ),
+                (
+                    b"workspace-db-owner-ipc.v1".as_slice(),
+                    WORKSPACE_DB_OWNER_IPC_CONTRACT,
+                ),
+            ] {
+                hasher.update(&(contract_name.len() as u64).to_le_bytes());
+                hasher.update(contract_name);
+                hasher.update(&(contract_bytes.len() as u64).to_le_bytes());
+                hasher.update(contract_bytes);
+            }
+            format!("blake3-256:{}", hasher.finalize().to_hex())
         })
         .as_str()
 }

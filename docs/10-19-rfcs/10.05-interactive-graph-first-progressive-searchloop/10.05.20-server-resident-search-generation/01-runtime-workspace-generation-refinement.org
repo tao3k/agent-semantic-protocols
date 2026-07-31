@@ -1,0 +1,93 @@
+#+title: Runtime Workspace Generation Refinement
+
+* Status
+
+Normative refinement of the single-writer authority defined by
+=ASP-RFC-10.05-SRSG-AUTHORITY=.  The corresponding proof model is
+=packages/proofs/ASPProof/RuntimeWorkspaceGeneration.lean=.
+
+* Unique contract authority
+
+=ASP-RFC-10.05-SRSG-SCHEMA-AUTHORITY=: Root JSON Schema version 1 is the only
+wire-contract authority.  Rust types, provider output, runtime receipts, and
+Lean admission statements MUST refine that schema.  They MUST NOT independently
+copy optional compatibility fields.
+
+Activation declares only stable provider capability, provider artifact identity,
+and the admitted provider-schema digest.  Activation MUST NOT contain resolved
+workspace paths, repository candidate generations, project-resolution results,
+source roots, selectors, or an active workspace generation.
+
+A language provider reads its distributed JSON Schema and returns a typed project
+scope and source-snapshot evidence.  It MUST NOT choose, activate, invalidate, or
+publish a workspace generation.
+
+* Server-owned generation identity
+
+For one canonical workspace identity, the Runtime Server derives one generation
+identity from all of the following inputs:
+
+- admitted provider schema digest;
+- typed project-scope digest;
+- committed source root and live-overlay root;
+- module-graph digest;
+- canonical selector-set digest;
+- MemoryBackend digest.
+
+The selector set is not a derived side cache.  It participates in the same
+generation identity and publication transaction as source bytes, graph facts,
+and owner envelopes.
+
+* Publication transaction
+
+=ASP-RFC-10.05-SRSG-ATOMIC-PUBLICATION=: A generation becomes readable only
+through one publication receipt binding workspace identity, generation identity,
+provider-schema digest, project-scope digest, source roots, module graph,
+selector set, MemoryBackend segment, and durable Turso commit.
+
+The active state MUST be represented as one committed receipt.  A pointer-only,
+segment-only, selector-only, or database-only active state is invalid.  The
+previous committed generation remains readable until the new receipt has been
+durably committed and atomically installed.
+
+* Reconciliation and query purity
+
+Supervisor reconciliation may stage a replacement generation while the current
+generation remains readable.  Failure, cancellation, or writer unavailability
+MUST discard or retain only the staged generation; it MUST NOT invalidate the
+last committed generation.
+
+Search and exact query acquire a generation-pinned read lease.  They MUST NOT
+load, synchronize, repair, rebuild, activate, or publish configuration or index
+state.  A resident read receipt is admissible only when it reports a memory hit
+and zero database opens.
+
+* Multi-workspace isolation
+
+Each canonical workspace owns an independent writer lane and read-lease set.
+Changing one workspace MUST NOT change the active generation, staged generation,
+leases, or provider readiness of another workspace.  There is no cross-workspace
+publication lock.
+
+* Verification boundary
+
+Lean proves the state-machine safety invariants:
+
+- deterministic generation identity for equal inputs;
+- single-writer staging and publication;
+- atomic publication-field agreement;
+- writer failure and stale reconciliation preserve the active generation;
+- read leases do not mutate the active generation;
+- transitions are isolated by workspace identity.
+
+Rust refinement gates MUST additionally demonstrate:
+
+- every runtime transition emits the schema-valid receipt represented in Lean;
+- Tokio tasks implement the server, workspace writer lanes, read leases, and
+  shutdown lifecycle without blocking filesystem or process management on the
+  data plane;
+- concurrent multi-workspace and multi-session stress never observes a torn
+  generation or a Turso lock failure;
+- resident query fixtures report zero database opens;
+- installed cold-workspace and warm-query latency satisfy their separate
+  percentile budgets.

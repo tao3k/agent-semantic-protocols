@@ -1,0 +1,265 @@
+#+title: RFC 10.05.35 — Agent Session Host Registry Executable Receipt Materialization
+#+language: en
+
+* Status
+
+Focused formal verification is complete. This RFC refines [[file:../10.05.34-agent-session-host-registry-cross-runtime-replay/00-overview.org][RFC 10.05.34 — Agent Session Host Registry Cross-Runtime Replay]]. The Lean source and direct audit compile, all 25 theorem declarations are axiom-free, and the module is imported by the proof-package root.
+
+No concrete registry verifier command or immutable vector generator was confirmed by parser-owned repository discovery. Therefore this RFC defines and verifies executable receipt materialization, but it does not claim that a runtime receipt has been produced. No Rust implementation is authorized in this session.
+
+* Problem
+
+RFC 10.05.34 defines when cross-runtime outcomes may be accepted. An acceptance relation alone does not prevent software or documentation from labelling incomplete evidence as “executed”. In particular, the following partial states are not executable closure:
+
+- an artifact name without resolution to an exact command and artifact digest;
+- generated vectors without immutable suite and byte identities;
+- an invocation start without complete stdout, stderr, exit, and duration capture;
+- a complete capture without warm-path effect observation;
+- a sealed flag without a seal over the complete payload;
+- a retry that silently changes artifact, vectors, or invocation identity.
+
+Materialization is a lifecycle, not one Boolean field.
+
+* Evidence alignment
+
+The command boundary reuses =executionCommandDigest=, which binds the ordered command prefix and receipt-validated executable artifacts. The artifact boundary reuses canonical =materializedPath= and artifact digest identity. The invocation/replay boundary reuses the independent executor rule from executable verifier conformance. RFC35 adds the missing lifecycle and sealing relation across those owners.
+
+ASP discovery also exposed two tooling defects during this audit: stale activation state briefly contained unsupported =projectScopeGeneration=, and the Org search adapter emitted a =search lexical= recommendation that its wrapper did not accept. Those are search lifecycle defects, not evidence that a registry verifier exists, and cannot be used to weaken the fail-closed materialization rule.
+
+* Lifecycle law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASRM-LIFECYCLE
+:END:
+
+#+name: registry-receipt-materialization-lifecycle-law
+#+begin_src typst
+#let Step(a, b) = $upright("LegalStageTransition")(#a, #b)$
+#let P = $upright("Planned")$
+#let R = $upright("Resolved")$
+#let I = $upright("Invoked")$
+#let C = $upright("Captured")$
+#let O = $upright("EffectsObserved")$
+#let S = $upright("Sealed")$
+
+$
+  Step(P, R) and Step(R, I) and Step(I, C) and Step(C, O) and Step(O, S),
+  quad not Step(P, I),
+  quad not Step(C, S).
+$
+#+end_src
+
+Only adjacent transitions are legal. A crash preserves the last completed state; recovery resumes from that state rather than inventing later evidence.
+
+* Materialization law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASRM-MATERIALIZED
+:END:
+
+#+name: registry-receipt-materialization-acceptance-law
+#+begin_src typst
+#let M(r) = $upright("Materialized")(#r)$
+#let Resolved(r) = $upright("ArtifactResolved")(#r)$
+#let Immutable(r) = $upright("VectorsImmutable")(#r)$
+#let Independent(r) = $upright("ExecutorIndependent")(#r)$
+#let Captured(r) = $upright("ChannelsCaptured")(#r)$
+#let Observed(r) = $upright("EffectsObserved")(#r)$
+#let EffectFree(r) = $upright("EffectFree")(#r)$
+#let Sealed(r) = $upright("PayloadSealed")(#r)$
+
+$
+  forall r,
+  M(r) =>
+  Resolved(r) and Immutable(r) and Independent(r) and
+  Captured(r) and Observed(r) and EffectFree(r) and Sealed(r).
+$
+#+end_src
+
+Each predicate binds exact identities. “Observed” is not inferred from the absence of an error message.
+
+* Payload sealing law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASRM-SEAL
+:END:
+
+#+name: registry-receipt-materialization-seal-law
+#+begin_src typst
+#let Seal(r) = $upright("sealedPayloadDigest")(#r)$
+#let Payload(r) = $upright("payload")(#r)$
+#let Digest(x) = $upright("digestPayload")(#x)$
+#let M(r) = $upright("Materialized")(#r)$
+
+$
+  forall r,
+  M(r) => Seal(r) = Digest(Payload(r)).
+$
+#+end_src
+
+The digest function is a parameter owned by the concrete serialization contract. Lean proves binding, not cryptographic collision resistance.
+
+* Retry stability law
+:PROPERTIES:
+:ID: ASP-RFC-10.05-ASRM-RETRY
+:END:
+
+#+name: registry-receipt-materialization-retry-law
+#+begin_src typst
+#let Stable(a, b) = $upright("RetryStable")(#a, #b)$
+#let Artifact(x) = $upright("artifactIdentity")(#x)$
+#let Vectors(x) = $upright("vectorIdentity")(#x)$
+#let Invocation(x) = $upright("invocationDigest")(#x)$
+
+$
+  forall a, b,
+  Stable(a, b) =>
+  Artifact(a) = Artifact(b) and
+  Vectors(a) = Vectors(b) and
+  Invocation(a) = Invocation(b).
+$
+#+end_src
+
+A retry may change attempt-local timing or capture completion, but it may not switch the experiment being certified.
+
+* Stateful architecture
+
+#+name: registry-receipt-materialization-architecture
+#+begin_src mermaid
+flowchart LR
+  P["Materialization controller\nstate: Planned(command, suite)"]
+  A["Artifact resolver\nstate: Resolved(commandDigest, artifactDigest, pathDigest)"]
+  V["Vector materializer\nstate: Immutable(suiteDigest, bytesDigest)"]
+  I["Independent executor\nstate: Invoked(invocationDigest)"]
+  C["Channel collector\nstate: Captured(stdout, stderr, exit, duration)"]
+  O["Effect observer\nstate: EffectsObserved(launch, write, round)"]
+  S["Receipt sealer\nstate: Sealed(payloadDigest) | Quarantined"]
+
+  P -->|"transition; state: Planned -> Resolved; exact command and artifact"| A
+  A -->|"guard; state: Resolved -> VectorPending; identity admitted"| V
+  V -->|"transition; state: Immutable -> Invoked; exact vector bytes"| I
+  I -->|"transition; state: Invoked -> CapturePending; stable invocation identity"| C
+  C -->|"transition; state: Captured -> ObservationPending; all channels complete"| O
+  O -->|"guard; state: EffectsObserved -> Sealed; counters zero and payload digest exact"| S
+  A -->|"prohibitedEffect; state: UnresolvedOrDrifted -> Quarantined"| S
+  V -->|"prohibitedEffect; state: MutableOrRegenerated -> Quarantined"| S
+  C -->|"prohibitedEffect; state: PartialCapture -> Quarantined"| S
+  O -->|"prohibitedEffect; state: IncompleteOrNonZero -> Quarantined"| S
+#+end_src
+
+* Materialization state machine
+
+#+name: registry-receipt-materialization-state
+#+begin_src mermaid
+stateDiagram-v2
+  state "Planned\nstate: CommandAndSuiteDeclared" as Planned
+  state "Resolved\nstate: ArtifactIdentityExact" as Resolved
+  state "Invoked\nstate: IndependentExecutionStarted" as Invoked
+  state "Captured\nstate: ChannelsComplete" as Captured
+  state "EffectsObserved\nstate: CountersComplete" as Observed
+  state "Sealed\nstate: PayloadDigestBound" as Sealed
+  state "Quarantined\nstate: TypedDefect" as Quarantined
+
+  Planned --> Resolved: "guard; state: Declared -> ArtifactIdentityExact"
+  Planned --> Quarantined: "prohibitedEffect; state: ResolutionMissing -> TypedDefect"
+  Resolved --> Invoked: "transition; state: Exact -> IndependentExecutionStarted"
+  Invoked --> Captured: "transition; state: Started -> ChannelsComplete"
+  Invoked --> Quarantined: "prohibitedEffect; state: CrashOrPartialOutput -> TypedDefect"
+  Captured --> Observed: "transition; state: Complete -> CountersComplete"
+  Captured --> Quarantined: "prohibitedEffect; state: ObservationMissing -> TypedDefect"
+  Observed --> Sealed: "capability; state: EffectFree -> PayloadDigestBound"
+  Observed --> Quarantined: "prohibitedEffect; state: NonZeroEffectOrWrongSeal -> TypedDefect"
+#+end_src
+
+* Crash and retry sequence
+
+#+name: registry-receipt-materialization-retry-sequence
+#+begin_src mermaid
+sequenceDiagram
+  participant M as "Materializer [state: Planned]"
+  participant A as "Resolver [state: ArtifactPending]"
+  participant E as "Executor [state: Independent]"
+  participant C as "Collector [state: CapturePending]"
+  participant O as "Observer [state: ObservationPending]"
+  participant S as "Sealer [state: SealPending]"
+
+  M->>A: "transition; state: Planned -> ResolutionPending; command identity"
+  A-->>M: "guard; state: ResolutionPending -> Resolved; artifact receipt"
+  M->>E: "transition; state: Resolved -> Invoked; stable invocation digest"
+  E-->>C: "transition; state: Invoked -> CapturePending; raw channels"
+  alt crash before capture completion
+    C-->>M: "prohibitedEffect; state: PartialCapture -> RetryRequired"
+    M->>E: "guard; state: RetryRequired -> Invoked; same artifact, vectors, invocation"
+  else complete capture
+    C->>O: "transition; state: ChannelsComplete -> ObservationPending"
+    O->>S: "guard; state: CountersComplete -> SealPending; zero effects"
+    S-->>M: "capability; state: SealPending -> Sealed; exact payload digest"
+  end
+#+end_src
+
+* Lean contract embedded in Org
+
+#+name: registry-receipt-materialization-lean-contract
+#+begin_src lean
+inductive MaterializationStage where
+  | planned | resolved | invoked | captured | effectsObserved | sealed
+
+inductive LegalStageTransition : MaterializationStage → MaterializationStage → Prop where
+  | resolve : LegalStageTransition .planned .resolved
+  | invoke : LegalStageTransition .resolved .invoked
+  | capture : LegalStageTransition .invoked .captured
+  | observe : LegalStageTransition .captured .effectsObserved
+  | seal : LegalStageTransition .effectsObserved .sealed
+
+def ExecutableReceiptMaterialized
+    (expectedCommandDigest expectedArtifactDigest expectedSuiteDigest : Nat)
+    (producerExecutorDigest : Nat)
+    (digestPayload : PayloadDigest)
+    (receipt : SealedMaterializationReceipt) : Prop :=
+  receipt.payload.stage = .sealed ∧
+  receipt.payload.artifact.resolved = true ∧
+  receipt.payload.artifact.executionCommandDigest = expectedCommandDigest ∧
+  receipt.payload.artifact.artifactDigest = expectedArtifactDigest ∧
+  receipt.payload.vectors.immutable = true ∧
+  receipt.payload.vectors.suiteDigest = expectedSuiteDigest ∧
+  receipt.payload.invocation.executorDigest ≠ producerExecutorDigest ∧
+  receipt.payload.capture.complete = true ∧
+  receipt.payload.observation.complete = true ∧
+  EffectFree receipt.payload.observation.effects ∧
+  receipt.sealedPayloadDigest = digestPayload receipt.payload
+#+end_src
+
+* Lean-discovered obligations
+
+Lean proves that legal transition constructors prohibit direct =Planned -> Invoked=, =Resolved -> Captured=, =Invoked -> EffectsObserved=, and =Captured -> Sealed= jumps. These are structural impossibilities, not runtime conventions.
+
+The acceptance relation additionally rejects:
+
+- unresolved artifact evidence;
+- mutable vector evidence;
+- incomplete channel capture, even when =exitCode = 0=;
+- incomplete effect observation;
+- a non-sealed lifecycle state;
+- a sealed digest that does not equal the payload digest.
+
+Retry stability preserves artifact evidence, vector evidence, invocation digest, command digest, artifact digest, vector-bytes digest, and executor identity. This prevents crash recovery from quietly certifying a different run.
+
+* Verification plan
+
+- build the focused Lean source and direct axiom audit;
+- execute the audit runner and emit a Lean JSON audit;
+- admit scoped theorem families through the AXLE consumer;
+- evaluate all four named Typst blocks using parser-owned Org content on stdin;
+- run =orgize lint= and restricted =git diff --check=;
+- do not emit an executable runtime receipt until a real command and vector generator exist.
+
+* Formal receipts
+
+- Lean source: =packages/proofs/ASPProof/AgentSessionHostRegistryExecutableReceiptMaterialization.lean=
+- direct audit: =packages/proofs/ASPProof/Audit/AgentSessionHostRegistryExecutableReceiptMaterialization.lean=
+- Lean JSON: =packages/proofs/receipts/agent-session-host-registry-executable-receipt-materialization-audit-v1.json=
+- AXLE receipt: =packages/proofs/receipts/agent-session-host-registry-executable-receipt-materialization-axle-audit-v1.json=
+- admitted audit SHA-256: =befca46d724cf63ba3fd7171cc19f74e2af6f6237f95ed3c2f1183e7fe292bdb=
+
+* Next boundary
+
+This boundary is refined by [[file:../10.05.36-agent-session-host-registry-crash-safe-materialization-recovery/00-overview.org][RFC 10.05.36 — Agent Session Host Registry Crash-Safe Materialization Recovery]].
+
+The next formal boundary is crash-safe materialization recovery: durable intent before invocation, stable invocation keys across retries, append-only partial capture, single-winner receipt sealing, and quarantine of conflicting terminal captures. That model must distinguish retry from a second experiment and prove that two competing sealers cannot both publish different receipts for one invocation identity.

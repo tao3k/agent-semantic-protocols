@@ -70,6 +70,8 @@ mod provider_exact_diagnostic;
 mod provider_exact_query_args;
 #[path = "unit/command/provider_language_facade.rs"]
 mod provider_language_facade;
+#[path = "unit/provider_manifest_scope.rs"]
+mod provider_manifest_scope;
 #[path = "unit/provider_selector.rs"]
 mod provider_selector;
 #[path = "unit/query_owner_freshness.rs"]
@@ -98,5 +100,3 @@ mod sync_command;
 mod tree_sitter_query_diagnostics;
 #[path = "unit/workspace_tree_sitter_query_diagnostics.rs"]
 mod workspace_tree_sitter_query_diagnostics;
-#[path = "unit/provider_manifest_scope.rs"]
-mod provider_manifest_scope;

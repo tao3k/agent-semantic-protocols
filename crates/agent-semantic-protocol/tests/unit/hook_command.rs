@@ -27,6 +27,33 @@ const _: fn() -> Option<std::path::PathBuf> = protocol_binary::protocol_binary_o
 const _: fn() -> protocol_binary::ProtocolBinaryShellProbe =
     protocol_binary::protocol_binary_in_codex_hook_shell;
 
+#[tokio::test]
+async fn hook_binary_module_preserves_digest_addressed_identity_helpers() {
+    let root =
+        std::env::temp_dir().join(format!("asp-hook-binary-identity-{}", std::process::id()));
+    let digest = "b".repeat(64);
+    let artifact = root.join("blake3-256").join(&digest).join("asp");
+    tokio::fs::create_dir_all(artifact.parent().expect("artifact parent"))
+        .await
+        .expect("create digest artifact");
+    tokio::fs::write(&artifact, b"fixture")
+        .await
+        .expect("write digest artifact");
+    assert_eq!(
+        protocol_binary::protocol_binary_artifact_path_digest(&artifact).as_deref(),
+        Some(digest.as_str())
+    );
+    assert_eq!(
+        protocol_binary::canonical_protocol_binary_artifact_digest(&artifact)
+            .await
+            .expect("canonical digest identity"),
+        digest
+    );
+    tokio::fs::remove_dir_all(root)
+        .await
+        .expect("remove digest artifact fixture");
+}
+
 #[test]
 fn protocol_binary_capture_requires_the_real_asp_entrypoint() {
     let result = protocol_binary::ProtocolBinaryInstallPlan::capture_for_target(
