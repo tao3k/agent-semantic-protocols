@@ -12,7 +12,7 @@ pub struct SourceIndexFixture {
 impl SourceIndexFixture {
     pub fn commit_source_index_generation(
         &self,
-        request: crate::ClientDbSourceIndexRefreshRequest,
+        mut request: crate::ClientDbSourceIndexRefreshRequest,
         source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
     ) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
         let registry = Arc::clone(&self.registry);
@@ -21,6 +21,7 @@ impl SourceIndexFixture {
             let project_root = request.import.project_root.clone();
             let session = registry.bootstrap_workspace(&project_root).await?;
             let canonical_source_snapshot = canonical_source_snapshot(&request);
+            request.source_snapshot = canonical_source_snapshot.clone();
             let materialization =
                 crate::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
                     session.workspace_identity(),
@@ -95,12 +96,23 @@ fn canonical_source_snapshot(
     request: &crate::ClientDbSourceIndexRefreshRequest,
 ) -> agent_semantic_content_identity::SourceSnapshotEvidence {
     agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-        request.import.file_hashes.iter().map(|file| {
-            (
-                file.path.as_str().to_owned(),
-                file.sha256.as_str().to_owned(),
-            )
-        }),
+        request
+            .import
+            .file_hashes
+            .iter()
+            .filter(|file| {
+                request
+                    .import
+                    .owners
+                    .iter()
+                    .any(|owner| owner.owner_path.as_str() == file.path.as_str())
+            })
+            .map(|file| {
+                (
+                    file.path.as_str().to_owned(),
+                    file.sha256.as_str().to_owned(),
+                )
+            }),
     )
     .evidence(
         request.source_snapshot.source_kind.clone(),

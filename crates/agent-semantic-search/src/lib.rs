@@ -202,10 +202,9 @@ pub use search_subagent_receipt::{
     search_subagent_graph_route_receipt_is_compact,
 };
 pub use source_index_lookup::{
-    SourceIndexClientCacheLookupRequest, SourceIndexClientCachePlannerLookupRequest,
-    SourceIndexLookupRequest, lookup_source_index, lookup_source_index_for_language,
-    lookup_source_index_in_cache, lookup_source_index_in_client_cache_dir,
-    lookup_source_index_in_client_cache_dir_with_planner, rank_source_index_lookup_result,
+    SourceIndexLookupRequest, SourceIndexPlannerLookupRequest, lookup_source_index,
+    lookup_source_index_for_language, lookup_source_index_in_cache,
+    lookup_source_index_with_planner, rank_source_index_lookup_result,
     search_pipe_source_index_lookup_from_client_result,
 };
 pub use source_index_rank::{

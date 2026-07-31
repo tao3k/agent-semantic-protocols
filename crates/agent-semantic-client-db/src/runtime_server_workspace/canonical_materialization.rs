@@ -24,6 +24,25 @@ pub struct WorkspaceCanonicalMaterialization {
 }
 
 impl WorkspaceCanonicalMaterialization {
+    /// Whether two materializations commit the same canonical owner generation.
+    ///
+    /// Source acquisition provenance may differ while the provider-bound
+    /// content identity and every materialized owner remain equal.
+    pub fn has_same_generation_identity(&self, other: &Self) -> bool {
+        self.schema_id == other.schema_id
+            && self.schema_version == other.schema_version
+            && self.workspace_identity == other.workspace_identity
+            && self.workspace_snapshot == other.workspace_snapshot
+            && self
+                .source_snapshot
+                .has_same_content_identity(&other.source_snapshot)
+            && self.workspace_generation == other.workspace_generation
+            && self.import_digest == other.import_digest
+            && self.file_count == other.file_count
+            && self.root_depth == other.root_depth
+            && self.owners == other.owners
+    }
+
     fn generation_evidence(
         source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
         root_depth: [u8; 2],
@@ -138,12 +157,26 @@ impl WorkspaceCanonicalMaterialization {
     ) -> Result<Self, String> {
         let file_count = u32::try_from(owners.len())
             .map_err(|_| "workspace canonical materialization file count overflow".to_owned())?;
+        let file_hashes = import
+            .file_hashes
+            .iter()
+            .map(|file| (file.path.as_str(), file.sha256.as_str()))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let source_file_hashes = owners
+            .iter()
+            .map(|owner| {
+                let hash = file_hashes.get(owner.owner_path.as_str()).ok_or_else(|| {
+                    format!(
+                        "workspace canonical materialization missing source hash: ownerPath={}",
+                        owner.owner_path
+                    )
+                })?;
+                Ok((owner.owner_path.as_str(), *hash))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         let workspace_snapshot =
             agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-                import
-                    .file_hashes
-                    .iter()
-                    .map(|file| (file.path.clone(), file.sha256.clone())),
+                source_file_hashes,
             );
         if workspace_snapshot.root_digest() != source_snapshot.root_digest {
             return Err(format!(
@@ -201,10 +234,13 @@ impl WorkspaceCanonicalMaterialization {
                 self.file_count
             ));
         }
-        if self.source_snapshot != *source_snapshot {
+        if !self
+            .source_snapshot
+            .has_same_content_identity(source_snapshot)
+        {
             return Err(format!(
-                "workspace canonical materialization source snapshot drift: expected={} actual={}",
-                source_snapshot.root_digest, self.source_snapshot.root_digest
+                "workspace canonical materialization source snapshot drift: expected={source_snapshot:?} actual={:?}",
+                self.source_snapshot
             ));
         }
         let expected_import_digest = Self::typed_digest(import)?;

@@ -337,7 +337,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         let provider_context = ProviderGraphFactsContext {
             provider,
             profiles: &runtime_profiles,
-            cache_home: &cache_home,
         };
         return run_search_dependency_seed_command(
             language_id,
@@ -387,7 +386,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             let provider_context = ProviderGraphFactsContext {
                 provider,
                 profiles: &runtime_profiles,
-                cache_home: &cache_home,
             };
             return super::search_pipe::run_asp_incremental_owner_search_command(
                 &provider_args,
@@ -472,7 +470,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             let provider_context = ProviderGraphFactsContext {
                 provider,
                 profiles: &runtime_profiles,
-                cache_home: &cache_home,
             };
             return run_asp_fast_search_command(
                 &provider_args,

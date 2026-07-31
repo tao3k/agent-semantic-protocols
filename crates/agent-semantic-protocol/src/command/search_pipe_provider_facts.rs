@@ -47,7 +47,6 @@ fn provider_graph_facts_intent_receipt(
 pub(super) struct ProviderGraphFactsContext<'a> {
     pub(super) provider: &'a ActivatedProvider,
     pub(super) profiles: &'a RuntimeProfiles,
-    pub(super) cache_home: &'a Path,
 }
 
 pub(super) fn collect_provider_graph_facts(

@@ -1,0 +1,272 @@
+#+title: RFC 10.05.85 — Activation Repair Conditional Liveness
+#+subtitle: Explicit progress assumptions, durable publication, and bounded repair completion
+#+language: en
+#+options: toc:3 num:t
+
+* Status
+
+Draft for Lean-backed architectural audit.
+
+RFC 10.05.84 proves repair admission and one-winner safety. This RFC defines
+the environmental assumptions under which an admitted repair can make bounded
+progress. It does not promote those assumptions into unconditional facts.
+
+* Live counterexample
+
+The development environment currently demonstrates the distinction between
+activation state and executable progress:
+
+- provider inspection reports the Org provider as =activated=;
+- the authoritative resident registry for the root session contains no
+  resident sessions;
+- an exact Org owner search prescribes resuming =asp-explore=;
+- that resident does not exist in the registry; and
+- policy correctly forbids raw source fallback.
+
+Thus =activated= does not imply =CanAdvance=. A lifecycle protocol needs a
+proof of the next authorized transition, not merely a label describing a past
+activation.
+
+The same inspection also reports no Lean language facade. A proof package may
+exist and compile while the search control plane has no parser-owned Lean
+discovery route. Provider availability is therefore a capability relation, not
+a repository-wide Boolean.
+
+* Progress milestones
+
+Repair completion is decomposed into observable stages:
+
+#+name: activation-repair-liveness-stages
+#+begin_src typst
+$ "needs-repair"
+  arrow.r
+  "capability-issued"
+  arrow.r
+  "candidate-committed"
+  arrow.r
+  "publication-enqueued"
+  arrow.r
+  "candidate-published"
+  arrow.r
+  "host-observed"
+  arrow.r
+  "dispatch-reconciled"
+  arrow.r
+  "trusted-ready"
+  arrow.r
+  "rollback-closed"
+  arrow.r
+  "retired" $
+
+"ok"
+#+end_src
+
+No stage may be collapsed into another:
+
+- candidate commit is not durable publication;
+- durable enqueue is not delivery;
+- delivery is not host observation;
+- host observation is not dispatch reconciliation;
+- reconciliation is not fresh readiness;
+- readiness is not rollback-window closure; and
+- rollback closure is not durable retirement.
+
+* Explicit progress guarantees
+
+Let the environment guarantee vector be:
+
+#+name: activation-repair-progress-guarantees
+#+begin_src typst
+$ Gamma = (
+  A,
+  C,
+  S,
+  O,
+  P,
+  H,
+  D,
+  F,
+  R,
+  G,
+) $
+
+#table(
+  columns: 2,
+  [Symbol], [Required environmental progress],
+  [$A$], [authority eventually answers],
+  [$C$], [capability remains valid through commit],
+  [$S$], [one admissible writer is eventually scheduled],
+  [$O$], [durable outbox accepts the publication],
+  [$P$], [publication delivery is fair],
+  [$H$], [a fresh host-observation lease becomes available],
+  [$D$], [ambiguous dispatch is eventually reconciled],
+  [$F$], [fresh readiness evidence becomes available],
+  [$R$], [the rollback clock advances],
+  [$G$], [retirement persistence becomes available],
+)
+
+"ok"
+#+end_src
+
+These are protocol inputs. A registry =ready= field, provider manifest, or
+successful local compilation does not prove any member of $Gamma$.
+
+* Conditional liveness proposition
+
+Let $Step_Gamma$ be the transition relation whose edge constructors require
+the corresponding member of $Gamma$.
+
+#+name: activation-repair-conditional-liveness-proposition
+#+begin_src typst
+$ (
+  A and C and S and O and P and H and D and F and R and G
+)
+arrow.r.double
+"Reachable"_Gamma("needs-repair", "retired") $
+
+$ "Step"_Gamma(x, y)
+arrow.r.double
+mu(y) < mu(x) $
+
+$ mu("needs-repair") = 9
+quad
+mu("retired") = 0 $
+
+"ok"
+#+end_src
+
+The first proposition is conditional reachability. The second gives a strictly
+decreasing finite ranking function, excluding cycles from the successful
+milestone path. Neither proposition proves that the environment satisfies
+$Gamma$.
+
+* Normative requirements
+
+** ASP-RFC-10.05-ARCL-NEXT
+
+An activation status MUST NOT be treated as progress evidence unless the
+current state has an authorized executable next transition.
+
+** ASP-RFC-10.05-ARCL-AUTHORITY
+
+Repair liveness MUST state how authority becomes reachable independently of
+the failed activation closure. Missing authority is a terminal progress
+blocker, not a retryable resident-search result.
+
+** ASP-RFC-10.05-ARCL-CAPABILITY
+
+A capability used for repair MUST remain valid through the linearization point.
+Expiry or revocation before commit invalidates progress and requires a new
+proposal from a fresh head.
+
+** ASP-RFC-10.05-ARCL-SCHEDULER
+
+One admissible repair writer MUST eventually be scheduled. CAS guarantees a
+single winner but does not guarantee that any writer runs.
+
+** ASP-RFC-10.05-ARCL-OUTBOX
+
+Candidate commit and publication enqueue MUST be distinct durable milestones.
+The commit transaction MUST leave replayable intent when immediate enqueue is
+unavailable.
+
+** ASP-RFC-10.05-ARCL-DELIVERY
+
+Outbox durability does not imply delivery. Delivery liveness MUST name a
+fairness or bounded-retry assumption and MUST preserve idempotent sink
+acceptance.
+
+** ASP-RFC-10.05-ARCL-HOST-LEASE
+
+Host reachability MUST be represented by an expiring observation lease bound to
+candidate generation and authority revision. A historical host observation
+cannot advance the current repair.
+
+** ASP-RFC-10.05-ARCL-DISPATCH
+
+Quarantine admits safe repair but does not discharge the old dispatch.
+=TrustedReady= MUST require terminal reconciliation or a separately proven
+effect-isolation policy.
+
+** ASP-RFC-10.05-ARCL-FRESHNESS
+
+Readiness evidence MUST be reacquired after publication and MUST bind the
+current authority revision. Repair commit invalidates every earlier readiness
+observation.
+
+** ASP-RFC-10.05-ARCL-ROLLBACK
+
+The rollback window MUST use an explicit monotone clock or revision source.
+Silence and elapsed wall-clock assumptions without authority evidence MUST NOT
+retire the previous generation.
+
+** ASP-RFC-10.05-ARCL-RETIREMENT
+
+Rollback closure and retirement persistence are separate operations. Failed
+generation garbage collection MUST occur only after durable retirement.
+
+* Lean model
+
+The executable model is:
+
+- =packages/proofs/ASPProof/ActivationRepairLiveness.lean=
+
+It defines:
+
+- ten observable repair stages;
+- ten explicit environmental guarantees;
+- a constructor-owned transition relation;
+- a transitive reachability relation;
+- a decreasing nine-step ranking function;
+- conditional reachability from =needsRepair= to =retired=; and
+- counterexamples for missing authority, unstable capability, unavailable
+  scheduler, unavailable outbox, unfair publication, unavailable host lease,
+  unreconciled dispatch, missing fresh evidence, a frozen rollback clock, and
+  unavailable retirement persistence.
+
+* Logic bugs found
+
+** Activated is not executable
+
+Activation status records configuration history. It does not prove that the
+required resident, authority, transport, or parser-owned route currently
+exists. The lifecycle API needs =CanAdvance(state)= evidence.
+
+** CAS safety is orthogonal to scheduling liveness
+
+One-winner linearization prevents duplicate winners. It cannot make an
+admissible writer execute. Scheduler fairness must be visible.
+
+** Durable intent and delivery were previously conflated
+
+A committed candidate may be lost from the publication path if outbox enqueue
+is not independently durable. Conversely, a durable outbox can remain
+undelivered forever. The two milestones require separate evidence.
+
+** Quarantine postpones an obligation
+
+Quarantine is not reconciliation. Permitting =TrustedReady= solely because old
+work was quarantined can hide duplicate external effects indefinitely.
+
+** Rollback time was underspecified
+
+A “rollback window” has no protocol meaning without a monotone authority-bound
+clock or revision. Local wall time cannot safely authorize retirement under
+clock drift or suspended execution.
+
+* Remaining proof boundary
+
+The finite model proves bounded milestone reachability under a complete
+guarantee vector. It does not yet model:
+
+- guarantee leases expiring between transitions;
+- capability renewal concurrent with revocation;
+- crash recovery between CAS commit and outbox enqueue;
+- duplicate outbox delivery and sink acknowledgement;
+- effect-isolation semantics for quarantined dispatch;
+- multiple generations repairing concurrently; or
+- garbage-collection safety after durable retirement.
+
+The next proof should refine the commit/outbox boundary into an atomic durable
+repair journal with replay, idempotent delivery, and crash-state
+counterexamples.

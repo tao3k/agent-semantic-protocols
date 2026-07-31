@@ -1,0 +1,413 @@
+#+title: RFC 10.05.88 — Unified Hook–Session Lifecycle Authority
+#+subtitle: Materialization, resident binding, generation-safe dispatch, and receipt-chain authority
+#+language: en
+#+options: toc:3 num:t
+
+* Status
+
+Draft replacement contract for Lean-backed architectural audit.
+
+This RFC supersedes conflicting bootstrap, resume, and materialization semantics
+across the hook and resident-session control planes. It does not remove
+provider, workspace, or language-generation RFCs; it makes them consumers of
+one lifecycle authority.
+
+* Live failure that motivated replacement
+
+The configured agent registry contained the =asp_explorer= role, while the
+current root session's resident registry contained no child sessions. The hook
+returned “resume =asp-explore=” as its only recovery action.
+
+After an explicitly authorized native subagent start:
+
+- a child session was created;
+- =messageTargetId= was bound;
+- =parentSessionId= and =rootSessionId= were recorded;
+- =physicalGeneration= became 1;
+- status became =active=; and
+- parser-owned ASP discovery became directly executable by the child.
+
+The configured role was never missing. The missing transition was role
+materialization into the current root-session authority.
+
+* Existing ownership and supersession map
+
+The following RFCs retain their domain ownership but defer lifecycle transition
+semantics to this RFC:
+
+- =10.05.12-normal-thread-control-plane-test.org=: message-target identity and
+  bootstrap-blocked observations;
+- =10.05.14-hook-matcher-dispatch-authority.org=: hook dispatch and activation
+  recovery exceptions;
+- =10.05.62-provider-scoped-lazy-activation-and-runtime-publication.org=:
+  bootstrap-before-activation and not-materialized receipts;
+- =10.05.65-process-resident-workspace-db-registry-v1.org=: resident registry
+  ownership;
+- =10.05.66-resource-sync-and-resident-workspace-authority-v1.org=: resident
+  workspace authority;
+- =10.05.68-language-projection-generation-transaction-v1.org=: active
+  generation binding;
+- =10.05.69-turso-resident-memory-search-v1.org=: cold-required and materializer
+  constraints; and
+- =10.15.02-codex-resident-agent-lifecycle-v1.org=: physical-generation
+  definition.
+
+Any clause in those RFCs that routes a registered-but-absent child to
+=resume= or child-facing =bootstrap= is superseded.
+
+* Implementation calibration
+
+Live Rust/runtime evidence is the implementation baseline. Documentation alone
+does not establish implementation conformance.
+
+| Surface | Current evidence | Calibration status |
+|-
+| Agent role configuration | =asp_explorer= is registered | Observed |
+| Resident materialization | native subagent start created an active generation-1 child | Observed |
+| Message-target binding | child and message target ids are durably present | Observed |
+| Root hook routing | root command still prescribed =bootstrap asp-explore= after resident activation | Contradicted |
+| Rust provider manifest | reports =activated= and contract valid | Observed local status |
+| Rust activation schema | rejects unknown field =workspaceScope= | Contradicted |
+| Workspace-owner endpoint | connection fails with =Operation not permitted= | Contradicted |
+| Active provider generation | recovery reports =active-generation-missing= | Contradicted |
+| Parser-owned Rust source route | prime, pipe, and owner evidence unavailable | Blocked |
+| Exact Rust implementation selectors | unavailable while the provider route is blocked | Unverified |
+| Unified transition semantics in this RFC | Lean model only | Proposed and proved, not implemented |
+
+A Rust behavior becomes =Verified Implemented= only after an exact
+parser-owned source selector and focused runtime/test receipt agree. Until
+then, this RFC records =Observed=, =Contradicted=, or =Unverified= rather than
+inferring implementation from the specification.
+
+* Unified state model
+
+#+name: hook-session-lifecycle-state
+#+begin_src typst
+$ S = (
+  c,
+  o,
+  d,
+  b_r,
+  b_m,
+  h,
+  g_p,
+  g_a,
+  r_a,
+  i_r,
+  i_c,
+  i_m,
+) $
+
+#table(
+  columns: 2,
+  [$c$], [role configured],
+  [$o$], [native child observed],
+  [$d$], [resident registry record durable],
+  [$b_r$], [root-session binding matches],
+  [$b_m$], [message target is bound],
+  [$h$], [heartbeat is fresh],
+  [$g_p$], [physical generation],
+  [$g_a$], [authority generation],
+  [$r_a$], [authority revision],
+  [$i_r$], [root session id],
+  [$i_c$], [child session id],
+  [$i_m$], [message target id],
+)
+
+"ok"
+#+end_src
+
+* Derived lifecycle predicates
+
+#+name: hook-session-lifecycle-predicates
+#+begin_src typst
+$ "Materialized"(S)
+:=
+c and o and d and b_r and g_p = g_a $
+
+$ "Active"(S)
+:=
+"Materialized"(S) and b_m and h $
+
+$ "CanDispatch"(S, rho)
+:=
+"Active"(S) and "ReceiptBound"(S, rho) $
+
+"ok"
+#+end_src
+
+=configured= is an intent-level fact. =materialized= is a generation-bound
+resident fact. =active= additionally requires a live message route.
+
+* Total hook decision
+
+#+name: hook-session-lifecycle-decision
+#+begin_src typst
+#table(
+  columns: 3,
+  [Observed state], [Required action], [Forbidden action],
+  [role not configured], [reject-unconfigured], [resume],
+  [configured, child absent], [materialize-resident], [resume],
+  [child observed, registry absent], [reconcile-registry], [dispatch],
+  [registry present, target absent], [bind-message-target], [dispatch],
+  [root or generation mismatch], [replace-generation], [dispatch],
+  [heartbeat stale], [replace-generation], [resume],
+  [active plus bound receipt], [dispatch], [bootstrap],
+)
+
+"ok"
+#+end_src
+
+There is no child-facing =bootstrap= action. Bootstrap is a root lifecycle-loop
+entry operation. There is no unbound =resume= action. Resuming useful work is a
+normal dispatch to a bound active resident.
+
+* Ecosystem execution boundary
+
+A resident can be active while end-to-end search remains impossible:
+
+#+name: hook-session-ecosystem-execution
+#+begin_src typst
+$ "ProviderExecutable"(P)
+:=
+a and s and w and g and q $
+
+$ "EndToEndExecutable"(E)
+:=
+"ActiveResident"(S)
+and b_h
+and "ProviderExecutable"(P)
+and b_rho $
+
+#table(
+  columns: 2,
+  [$a$], [provider manifest reports activated],
+  [$s$], [activation schema is valid],
+  [$w$], [workspace owner is reachable],
+  [$g$], [active provider generation exists],
+  [$q$], [parser-owned query route executes],
+  [$b_h$], [hook routes to the bound resident],
+  [$b_rho$], [lifecycle receipt is present],
+)
+
+"ok"
+#+end_src
+
+The live observation has =ActiveResident=true= and
+=manifestActivated=true=, but hook routing, activation schema, workspace owner,
+provider generation, and parser route are not all executable.
+
+#+name: hook-session-ecosystem-recovery
+#+begin_src typst
+$ "reconcile-hook-routing"
+arrow.r
+"repair-activation-schema"
+arrow.r
+"restore-workspace-owner"
+arrow.r
+"materialize-provider-generation"
+arrow.r
+"reconcile-parser-route"
+arrow.r
+"dispatch-search" $
+
+"ok"
+#+end_src
+
+* Materialization transaction
+
+Native child start MUST logically publish:
+
+1. child-session observation;
+2. durable registry membership;
+3. root/parent binding;
+4. message-target binding;
+5. physical-generation binding;
+6. model/profile evidence;
+7. fresh heartbeat; and
+8. authority receipt.
+
+#+name: hook-session-materialization
+#+begin_src typst
+$ "Materialize"(S, i_c, i_m) = S' $
+
+$ "Active"(S') $
+
+$ "next-action"(S') = "dispatch" $
+
+$ g_p' = g_a
+quad
+r_a' = r_a $
+
+"ok"
+#+end_src
+
+Implementations MAY persist these facts through a recoverable journal rather
+than one physical database transaction. Until every required fact is durable,
+the hook MUST return a reconciliation action and MUST NOT dispatch.
+
+* Replacement and receipt chain
+
+Replacement creates a new physical generation and authority revision:
+
+#+name: hook-session-replacement
+#+begin_src typst
+$ g_p' = g_a' = g_a + 1 $
+
+$ r_a' = r_a + 1 $
+
+$ rho = (i_r, i_c, i_m, g_p, r_a, h_"prev") $
+
+$ "CanDispatch"(S', rho)
+arrow.r.double
+(g_p = g_p' and r_a = r_a') $
+
+"ok"
+#+end_src
+
+Therefore a receipt from the previous child generation cannot authorize
+dispatch to its replacement.
+
+* Normative requirements
+
+** ASP-RFC-10.05-HSLA-CONFIGURED
+
+A configured role MUST be treated as materialization intent only. It MUST NOT
+be treated as evidence that a child session or message target exists.
+
+** ASP-RFC-10.05-HSLA-MATERIALIZE
+
+When a role is configured and no current-generation child is observed, the
+unique recovery action MUST be =materialize-resident=.
+
+** ASP-RFC-10.05-HSLA-RECONCILE
+
+Partial native-start states MUST route to explicit registry or message-target
+reconciliation. They MUST NOT route to dispatch.
+
+** ASP-RFC-10.05-HSLA-BOOTSTRAP
+
+Lifecycle bootstrap is root-only. A resident child MUST execute parser-owned
+query/search directly and MUST NOT re-enter bootstrap.
+
+** ASP-RFC-10.05-HSLA-RESUME
+
+=resume= is removed as an unbound hook action. Continuing work is represented
+as dispatch to a bound, active, generation-matching message target.
+
+** ASP-RFC-10.05-HSLA-GENERATION
+
+Every resident dispatch MUST bind the current physical generation and authority
+revision. Stale generations MUST route to replacement.
+
+** ASP-RFC-10.05-HSLA-TARGET
+
+Dispatch MUST bind =rootSessionId=, =childSessionId=, and =messageTargetId=.
+Display name or configured role is insufficient routing authority.
+
+** ASP-RFC-10.05-HSLA-RECEIPT
+
+Lifecycle receipts MUST bind root session, child session, message target,
+physical generation, authority revision, and previous receipt digest.
+
+** ASP-RFC-10.05-HSLA-ACTION
+
+The hook decision MUST be total and deterministic. =dispatch= is legal only
+when =ActiveResident= holds and a matching receipt is available.
+
+** ASP-RFC-10.05-HSLA-REPLACEMENT
+
+Replacing a dead or stale resident MUST increment physical generation and
+authority revision and MUST invalidate every previous dispatch receipt.
+
+** ASP-RFC-10.05-HSLA-ECOSYSTEM
+
+Resident readiness and provider activation status MUST NOT be promoted to
+end-to-end executability. Dispatch requires active resident binding, hook
+routing, valid provider activation schema, reachable workspace owner, active
+provider generation, executable parser route, and a matching lifecycle
+receipt.
+
+** ASP-RFC-10.05-HSLA-CALIBRATION
+
+RFC conformance MUST be calibrated against exact parser-owned Rust selectors,
+focused tests, and live runtime receipts. When those routes are blocked,
+implementation status MUST remain =Unverified= or =Contradicted=.
+
+* Lean audit
+
+The executable model is:
+
+- =packages/proofs/ASPProof/HookSessionLifecycle.lean=
+
+It proves:
+
+- registered absence routes to materialization;
+- legacy resume is not executable without a child and target;
+- partial spawn routes to registry reconciliation;
+- an unbound resident routes to message-target binding;
+- generation drift routes to replacement;
+- materialization constructs an active resident;
+- only an active resident selects dispatch;
+- dispatch selection implies active residency;
+- a matching receipt authorizes dispatch;
+- replacement increments generation and authority revision;
+- an old receipt cannot dispatch to the replacement; and
+- materialization eliminates the registered-absence deadlock.
+
+The ecosystem extension additionally proves:
+
+- manifest activation does not imply provider execution;
+- active residency does not imply end-to-end execution;
+- the observed ecosystem repairs hook routing before provider activation;
+- schema, workspace-owner, and provider-generation failures are ordered;
+- ecosystem dispatch implies every end-to-end predicate; and
+- a fully executable ecosystem dispatches.
+
+* Logic bugs replaced
+
+** Registration was conflated with instantiation
+
+The configured agent registry describes roles that may be instantiated. The
+resident registry describes concrete children of one root session. No proof
+connects them until materialization occurs.
+
+** Resume was prescribed without a message target
+
+A resume instruction naming =asp-explore= is not executable when no
+=messageTargetId= exists. The replacement action is materialization.
+
+** Bootstrap crossed the root/child boundary
+
+Bootstrap owns entry into the root lifecycle loop. A child already created by
+native spawn must perform its assigned parser-owned search rather than
+bootstrapping another lifecycle.
+
+** Hook and session authority used different evidence moments
+
+The hook observed configured intent while the session registry observed
+physical instances. The unified receipt binds both to one authority revision.
+
+** Provider activation status was also local
+
+The Rust provider reports =activated= while its activation schema is rejected,
+workspace owner is unreachable, active generation is missing, and no parser
+route executes. Provider activation must become a derived capability aggregate
+just like resident readiness.
+
+* Remaining proof boundary
+
+The next refinement must prove:
+
+- exactly-once materialization under competing hooks;
+- crash recovery between native spawn and durable registry binding;
+- child termination concurrent with dispatch;
+- heartbeat lease expiry during a query;
+- message-target rebinding without generation confusion;
+- generic lifecycle management for roles other than =asp-explore=; and
+- recovery graph/token bounds for materialize, reconcile, replace, and dispatch.
+
+Exact Rust implementation calibration remains blocked until the invalid
+=workspaceScope= activation field and workspace-owner endpoint failure are
+resolved. This is an implementation-evidence blocker, not permission to treat
+the proposed Lean model as already landed.

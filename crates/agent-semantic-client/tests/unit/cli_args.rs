@@ -56,14 +56,18 @@ fn selector_dot_does_not_count_as_extra_project_root() {
             ".".to_string(),
             "--selector".to_string(),
             ".".to_string(),
-            "--code".to_string(),
+            "--projection".to_string(),
+            "source".to_string(),
         ],
         cwd.clone(),
         Some("rust"),
     )
     .expect("selector dot is an option value");
 
-    assert_eq!(parsed.forwarded_args, vec!["--selector", ".", "--code"]);
+    assert_eq!(
+        parsed.forwarded_args,
+        vec!["--selector", ".", "--projection", "source"]
+    );
     let _ = fs::remove_dir_all(cwd);
 }
 
@@ -76,15 +80,12 @@ fn workspace_flag_selects_project_root_without_provider_forwarding() {
     let parsed = parse_client_args(
         vec![
             "query".to_string(),
-            "--from-hook".to_string(),
-            "direct-source-read".to_string(),
             "--workspace".to_string(),
             "workspace".to_string(),
             "--selector".to_string(),
             "crates/example/src/lib.rs:1:20".to_string(),
-            "--source".to_string(),
-            "worktree".to_string(),
-            "--code".to_string(),
+            "--projection".to_string(),
+            "source".to_string(),
         ],
         cwd.clone(),
         Some("rust"),
@@ -98,13 +99,10 @@ fn workspace_flag_selects_project_root_without_provider_forwarding() {
     assert_eq!(
         parsed.forwarded_args,
         vec![
-            "--from-hook",
-            "direct-source-read",
             "--selector",
             "crates/example/src/lib.rs:1:20",
-            "--source",
-            "worktree",
-            "--code",
+            "--projection",
+            "source",
         ]
     );
     let _ = fs::remove_dir_all(cwd);
@@ -156,7 +154,8 @@ fn workspace_flag_allows_explicit_project_root_outside_activation_root() {
             outside.display().to_string(),
             "--selector".to_string(),
             "src/lib.rs:1:20".to_string(),
-            "--code".to_string(),
+            "--projection".to_string(),
+            "source".to_string(),
         ],
         cwd.clone(),
         Some("rust"),
@@ -170,7 +169,7 @@ fn workspace_flag_allows_explicit_project_root_outside_activation_root() {
     );
     assert_eq!(
         parsed.forwarded_args,
-        vec!["--selector", "src/lib.rs:1:20", "--code"]
+        vec!["--selector", "src/lib.rs:1:20", "--projection", "source"]
     );
     let _ = fs::remove_dir_all(parsed.activation_root);
     let _ = fs::remove_dir_all(outside);

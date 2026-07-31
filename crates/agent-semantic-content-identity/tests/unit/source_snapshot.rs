@@ -49,6 +49,20 @@ fn evidence_uses_versioned_schema_ids() {
 }
 
 #[test]
+fn content_identity_ignores_snapshot_provenance_but_not_provider_binding() {
+    let snapshot = WorkspaceSnapshot::from_file_hashes([("src/lib.rs", "sha256:lib")]);
+    let filesystem = snapshot.evidence(SourceSnapshotKind::Filesystem, "provider-a");
+    let mut overlay = snapshot.evidence(SourceSnapshotKind::DerivedOverlay, "provider-a");
+    overlay.base_root_digest = Some("base-root".to_owned());
+    overlay.dirty_paths_digest = Some("dirty-paths".to_owned());
+
+    assert!(filesystem.has_same_content_identity(&overlay));
+
+    overlay.provider_digest = "provider-b".to_owned();
+    assert!(!filesystem.has_same_content_identity(&overlay));
+}
+
+#[test]
 fn chained_live_overlays_fold_into_one_canonical_root_depth() {
     let base =
         WorkspaceSnapshot::from_file_hashes([("src/lib.rs", "lib-v1"), ("src/main.rs", "main-v1")]);

@@ -1,0 +1,235 @@
+#+title: RFC 10.05.79 — SearchRoute Cache Rejoin Publication Outbox
+#+startup: overview
+
+* Status
+
+Draft proof-bearing extension of RFC 10.05.78.
+
+* Abstract
+
+RFC 10.05.78 identifies the winning admission mutation and the graph edge that
+its committed revision authorizes.  A process can still crash after the
+admission CAS commits but before the graph edge is published.  Publishing first
+creates the dual failure: an edge can become visible without durable admission.
+
+This RFC makes a pending publication obligation part of the activation commit.
+The obligation progresses through =pending=, =published=, and =acknowledged=
+phases.  Pending and published obligations retain one stable edge identity and
+may be retried.  Acknowledgement closes the obligation and prevents further
+publication or closure transitions.
+
+This is exactly-once obligation closure, not a proof of exactly-once network
+delivery.
+
+* Scope
+
+The model requires admission state and its pending outbox obligation to be one
+atomic durable object.  It does not prove that a particular transaction engine
+provides this atomicity.
+
+The external graph sink is not modeled in this RFC.  Therefore the transition
+to =published= records a local publication action, not independently verified
+sink acceptance.
+
+* Normative clauses
+
+** ASP-RFC-10.05-CRPO-ATOMIC — Activation commit creates its obligation atomically
+
+A successful reads-enabled activation commit MUST atomically persist:
+
+- the revisioned admission successor;
+- the winning claim;
+- the authorized graph edge;
+- a =pending= publication obligation for that edge.
+
+Neither the committed admission state nor the obligation MAY become durable
+without the other.
+
+** ASP-RFC-10.05-CRPO-AUTHORIZATION — Publication requires the winning state
+
+An obligation MAY publish only when its edge is authorized by the accompanying
+revisioned admission state.  The claim and committed revision MUST both match.
+
+A stale, losing, or conflicting edge MUST fail closed.
+
+** ASP-RFC-10.05-CRPO-PENDING — Pending is a recoverable crash state
+
+A crash after activation commit and before publication MUST recover the
+=pending= obligation.  Recovery MUST NOT reconstruct an edge from mutable
+ambient state; it MUST use the edge stored in the obligation.
+
+** ASP-RFC-10.05-CRPO-RETRY — Publication retry preserves stable edge identity
+
+Publishing a =pending= obligation changes only its phase to =published=.
+Retrying a =published= obligation MUST retain the identical edge, including its
+claim, terminal digest, and committed revision.
+
+The graph sink MUST use this stable edge identity as its idempotency key or
+provide equivalent duplicate coalescing.
+
+** ASP-RFC-10.05-CRPO-ACK — Only a published obligation may be acknowledged
+
+An obligation MAY transition to =acknowledged= only from =published= and only
+while its edge remains authorized by the admission state.
+
+** ASP-RFC-10.05-CRPO-CLOSE — Acknowledgement closes the obligation once
+
+An acknowledged obligation MUST NOT be published again or acknowledged again.
+Acknowledgement MUST preserve the edge being closed.
+
+** ASP-RFC-10.05-CRPO-NONIMPLICATION — Local publication is not sink acceptance
+
+The local =published= phase does not by itself prove that an external graph sink
+durably accepted the edge.  Sink acceptance requires a separately modeled
+receipt before it can justify acknowledgement.
+
+* Mathematical model
+
+The executable model represents the admission state and outbox as one bundle.
+Both publication and acknowledgement assert their admission predicates.
+
+#+name: searchroute-cache-rejoin-publication-outbox-model
+#+begin_src typst
+#let claim(replica, epoch, terminal) = (
+  replica: replica,
+  epoch: epoch,
+  terminal: terminal,
+)
+#let admission(active, revision) = (
+  active: active,
+  revision: revision,
+)
+#let edge(candidate, revision) = (
+  claim: candidate,
+  revision: revision,
+)
+#let obligation(published-edge, phase) = (
+  edge: published-edge,
+  phase: phase,
+)
+#let bundle(current, outbox) = (
+  admission: current,
+  obligation: outbox,
+)
+#let edge-authorized(current, published-edge) = (
+  current.revision == published-edge.revision
+  and current.active == published-edge.claim
+)
+#let publishable-phase(phase) = (
+  phase == "pending" or phase == "published"
+)
+#let can-publish(value) = (
+  edge-authorized(value.admission, value.obligation.edge)
+  and publishable-phase(value.obligation.phase)
+)
+#let publish(value) = {
+  assert(can-publish(value))
+  bundle(
+    value.admission,
+    obligation(value.obligation.edge, "published"),
+  )
+}
+#let can-acknowledge(value) = (
+  edge-authorized(value.admission, value.obligation.edge)
+  and value.obligation.phase == "published"
+)
+#let acknowledge(value) = {
+  assert(can-acknowledge(value))
+  bundle(
+    value.admission,
+    obligation(value.obligation.edge, "acknowledged"),
+  )
+}
+#let accepted = claim(3, 7, 104)
+#let winner-edge = edge(accepted, 8)
+#let committed = admission(accepted, 8)
+#let pending = bundle(
+  committed,
+  obligation(winner-edge, "pending"),
+)
+#assert(can-publish(pending))
+#let published = publish(pending)
+#assert(published.obligation.edge == pending.obligation.edge)
+#assert(can-publish(published))
+#assert(publish(published) == published)
+#assert(can-acknowledge(published))
+#let acknowledged = acknowledge(published)
+#assert(acknowledged.obligation.edge == winner-edge)
+#assert(not can-publish(acknowledged))
+#assert(not can-acknowledge(acknowledged))
+#let stale = bundle(
+  admission(none, 9),
+  obligation(winner-edge, "pending"),
+)
+#assert(not can-publish(stale))
+"ok"
+#+end_src
+
+The atomic obligation and closure propositions are:
+
+#+name: searchroute-cache-rejoin-publication-outbox-proposition
+#+begin_src typst
+#let atomic-obligation = $upright("CommitActivation")(S, C)
+  = (S', O_"pending") arrow.r.double
+  upright("Authorized")(S', upright("edge")(O))$
+#let closure = $upright("phase")(O) = upright("acknowledged")
+  arrow.r.double
+  not upright("CanPublish")(O)
+  and not upright("CanAcknowledge")(O)$
+#assert(type(atomic-obligation) == content)
+#assert(type(closure) == content)
+"ok"
+#+end_src
+
+* Lean correspondence
+
+The Lean model is
+=ASPProof.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox=.
+
+| RFC clause | Lean witness |
+|-
+| CRPO-ATOMIC, CRPO-AUTHORIZATION | =atomic_activation_commit_creates_authorized_pending_obligation= |
+| CRPO-PENDING | =pending_commit_is_recoverably_publishable= |
+| CRPO-RETRY | =publication_preserves_edge_and_marks_published= |
+| CRPO-RETRY | =published_bundle_remains_retryable= |
+| CRPO-RETRY | =publication_retry_is_idempotent= |
+| CRPO-AUTHORIZATION | =stale_revision_obligation_cannot_publish= |
+| CRPO-ACK | =published_bundle_can_be_acknowledged= |
+| CRPO-ACK, CRPO-CLOSE | =acknowledgement_preserves_edge_and_closes_obligation= |
+| CRPO-CLOSE | =acknowledged_bundle_cannot_publish_again= |
+| CRPO-CLOSE | =acknowledged_bundle_cannot_close_twice= |
+
+CRPO-NONIMPLICATION is the explicit boundary of this model: no theorem derives
+external sink acceptance from =PublicationPhase.published=.
+
+The JSON audit is isolated in
+=ASPProof.Audit.SearchRouteAdmissionRetryCacheRejoinPublicationOutbox=.
+
+* SearchLoop and graph-router consequence
+
+The router can distinguish an admission winner from publication visibility:
+
+#+begin_example
+pending      -> committed, edge publication recoverable
+published    -> stable edge may be retried
+acknowledged -> obligation closed
+#+end_example
+
+An agent inspecting a missing edge receives the pending obligation and one
+publish action instead of restarting cache rejoin or replaying the entire
+evidence graph.
+
+* Remaining proof boundary
+
+The local =published= transition has no external acceptance witness.  A process
+could send an edge, crash before recording the result, or incorrectly mark it
+published after a transport failure.
+
+A follow-up RFC must add sink-bound delivery evidence:
+
+- a sink identity and protocol version;
+- an idempotency key derived from the committed edge;
+- a sink-issued acceptance receipt;
+- receipt binding to edge digest and committed revision;
+- acknowledgement admission only from a verified acceptance receipt;
+- rejection of forged, stale, or cross-sink receipts.

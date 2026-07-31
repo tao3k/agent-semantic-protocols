@@ -1,13 +1,13 @@
 use super::fixtures::{
-    EnvVarGuard, isolate_home, temp_root, write_gerbil_activation_with_command_prefix,
-    write_rust_activation_with_ignored_prefixes,
+    EnvVarGuard, RuntimeServerFixture, isolate_home, temp_root,
+    write_gerbil_activation_with_command_prefix, write_rust_activation,
 };
 use crate::cache_cli::run_cache;
 use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
 use agent_semantic_client_db::ClientDbEngine;
 
-#[test]
-fn cache_source_index_refresh_builds_db_engine_rows() {
+#[tokio::test(flavor = "multi_thread")]
+async fn cache_source_index_refresh_builds_db_engine_rows() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -44,45 +44,51 @@ fn cache_source_index_refresh_builds_db_engine_rows() {
     )
     .expect("write ignored plugin cache source");
 
-    let rebuild_started = std::time::Instant::now();
-    run_cache(
-        &root,
-        None,
-        &["source-index".to_string(), "rebuild".to_string()],
-        false,
-    )
-    .expect("rebuild source index");
-    let rebuild_elapsed = rebuild_started.elapsed();
+    let server = RuntimeServerFixture::start(&root).await;
+    let blocking_root = root.clone();
+    let (rebuild_elapsed, result) = server
+        .blocking(move || {
+            let rebuild_started = std::time::Instant::now();
+            run_cache(
+                &blocking_root,
+                None,
+                &["source-index".to_string(), "rebuild".to_string()],
+                false,
+            )
+            .expect("rebuild source index");
+            let rebuild_elapsed = rebuild_started.elapsed();
+            run_cache(
+                &blocking_root,
+                None,
+                &["source-index".to_string(), "refresh".to_string()],
+                false,
+            )
+            .expect("reuse refreshed source index");
+            let engine = ClientDbEngine::resolve(&blocking_root).expect("resolve DB Engine");
+            assert!(
+                engine.db_path().exists(),
+                "source-index refresh must write the active DB Engine path"
+            );
+            let result = crate::test_support::lookup_current_source_index_for_language(
+                &blocking_root,
+                Some(&LanguageId::from("gerbil-scheme")),
+                "gerbil-poo",
+                8,
+            )
+            .expect("lookup source index");
+            (rebuild_elapsed, result)
+        })
+        .await;
     assert!(
         rebuild_elapsed < std::time::Duration::from_secs(5),
         "source-index cold rebuild exceeded fixture gate: elapsedMs={}",
         rebuild_elapsed.as_millis()
     );
-    run_cache(
-        &root,
-        None,
-        &["source-index".to_string(), "refresh".to_string()],
-        false,
-    )
-    .expect("reuse refreshed source index");
-
-    let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
-    assert!(
-        engine.db_path().exists(),
-        "source-index refresh must write the active DB Engine path"
-    );
-    let result = crate::test_support::lookup_current_source_index_for_language(
-        &root,
-        Some(&LanguageId::from("gerbil-scheme")),
-        "gerbil-poo",
-        8,
-    )
-    .expect("lookup source index");
-
     assert_eq!(result.state.as_str(), "hit");
     assert_eq!(result.candidates.len(), 1);
     assert_eq!(result.candidates[0].path, "src/usage.ss");
     assert_eq!(result.candidates[0].line_count, Some(3));
+    server.shutdown().await;
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -98,7 +104,7 @@ fn cache_source_index_refresh_without_generation_is_bounded_warm_check() {
         "[workspace]\nmembers = []\nresolver = \"2\"\n",
     )
     .expect("write workspace manifest");
-    let activation_path = write_rust_activation_with_ignored_prefixes(&root, &[]);
+    let activation_path = write_rust_activation(&root);
     let _activation_env = EnvVarGuard::set(
         ASP_PROVIDER_ACTIVATION_PATH_ENV,
         activation_path.as_os_str(),
@@ -122,8 +128,8 @@ fn cache_source_index_refresh_without_generation_is_bounded_warm_check() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_file() {
+#[tokio::test(flavor = "multi_thread")]
+async fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_file() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -150,45 +156,56 @@ fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_file() {
         activation_path.as_os_str(),
     );
 
-    run_cache(
-        &root,
-        None,
-        &["source-index".to_string(), "rebuild".to_string()],
-        false,
-    )
-    .expect("rebuild source index");
-    run_cache(
-        &root,
-        None,
-        &["source-index".to_string(), "refresh".to_string()],
-        false,
-    )
-    .expect("reuse source index");
+    let server = RuntimeServerFixture::start(&root).await;
+    let initial_root = root.clone();
+    server
+        .blocking(move || {
+            run_cache(
+                &initial_root,
+                None,
+                &["source-index".to_string(), "rebuild".to_string()],
+                false,
+            )
+            .expect("rebuild source index");
+            run_cache(
+                &initial_root,
+                None,
+                &["source-index".to_string(), "refresh".to_string()],
+                false,
+            )
+            .expect("reuse source index");
+        })
+        .await;
     std::fs::write(
         extra_dir.join("new_usage.ss"),
         "(def (new-scope-symbol input)\n  input)\n",
     )
     .expect("write new extra source");
-    run_cache(
-        &root,
-        None,
-        &["source-index".to_string(), "rebuild".to_string()],
-        false,
-    )
-    .expect("rebuild changed source index");
-
-    let engine = ClientDbEngine::resolve(&root).expect("resolve DB Engine");
-    assert!(engine.db_path().exists());
-    let result = crate::test_support::lookup_current_source_index_for_language(
-        &root,
-        Some(&LanguageId::from("gerbil-scheme")),
-        "new-scope-symbol",
-        8,
-    )
-    .expect("lookup source index");
+    let changed_root = root.clone();
+    let result = server
+        .blocking(move || {
+            run_cache(
+                &changed_root,
+                None,
+                &["source-index".to_string(), "rebuild".to_string()],
+                false,
+            )
+            .expect("rebuild changed source index");
+            let engine = ClientDbEngine::resolve(&changed_root).expect("resolve DB Engine");
+            assert!(engine.db_path().exists());
+            crate::test_support::lookup_current_source_index_for_language(
+                &changed_root,
+                Some(&LanguageId::from("gerbil-scheme")),
+                "new-scope-symbol",
+                8,
+            )
+            .expect("lookup source index")
+        })
+        .await;
 
     assert_eq!(result.state.as_str(), "hit");
     assert_eq!(result.candidates.len(), 1);
     assert_eq!(result.candidates[0].path, "extra/new_usage.ss");
+    server.shutdown().await;
     let _ = std::fs::remove_dir_all(root);
 }

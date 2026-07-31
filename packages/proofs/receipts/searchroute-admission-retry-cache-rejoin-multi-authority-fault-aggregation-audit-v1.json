@@ -1,0 +1,68 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module":
+ "ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {SnapshotId : Type}\n  (candidate :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.AuthorityBoundCandidate SnapshotId)\n  (candidates :\n    List\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.AuthorityBoundCandidate SnapshotId)),\n  candidate ∈ candidates →\n    candidate.declaredFaultBound ≤\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.maximumCandidateBound candidates",
+   "theoremFamily": "candidate-maximum-bound",
+   "rfcClauseIds": ["MAFA-COVERAGE", "MAFA-MAX"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.candidate_bound_is_at_most_maximum",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {SnapshotId : Type}\n  (actualFaultWeight : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight)\n  (witness :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.AuthorityBoundCandidate SnapshotId)\n  (candidates :\n    List\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.AuthorityBoundCandidate SnapshotId)),\n  witness ∈ candidates →\n    actualFaultWeight ≤ witness.declaredFaultBound →\n      actualFaultWeight ≤\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.maximumCandidateBound candidates",
+   "theoremFamily": "conservative-witness-safety",
+   "rfcClauseIds": ["MAFA-MAX", "MAFA-WITNESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.conservative_witness_makes_maximum_safe",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {SnapshotId : Type}\n  (candidate :\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.AuthorityBoundCandidate SnapshotId)\n  (candidates :\n    List\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.AuthorityBoundCandidate SnapshotId)),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.maximumCandidateBound candidates ≤\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.maximumCandidateBound\n      (candidate :: candidates)",
+   "theoremFamily": "monotone-progressive-aggregation",
+   "rfcClauseIds": ["MAFA-LOOP", "MAFA-MONOTONE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.adding_candidate_does_not_decrease_maximum",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ actualFaultWeight lowReport conservativeReport,\n  lowReport < actualFaultWeight ∧\n    actualFaultWeight ≤ conservativeReport ∧ Nat.min lowReport conservativeReport < actualFaultWeight",
+   "theoremFamily": "unsafe-minimum-counterexample",
+   "rfcClauseIds": ["MAFA-REJECT", "MAFA-WITNESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.minimum_aggregation_can_understate_actual_fault_weight",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∃ totalWeight quorumWeight partialBound expandedBound,\n  partialBound ≤ expandedBound ∧\n    totalWeight + partialBound < quorumWeight + quorumWeight ∧\n      ¬totalWeight + expandedBound < quorumWeight + quorumWeight",
+   "theoremFamily": "premature-stop-counterexample",
+   "rfcClauseIds": ["MAFA-LOOP", "MAFA-REJECT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.partial_authority_search_can_pass_before_final_bound_fails",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (actualFaultWeight aggregateBound : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.VotingWeight)\n  (authenticReports : Prop),\n  authenticReports → aggregateBound < actualFaultWeight → authenticReports ∧ ¬actualFaultWeight ≤ aggregateBound",
+   "theoremFamily": "authenticity-not-soundness",
+   "rfcClauseIds": ["MAFA-AUTHENTIC", "MAFA-WITNESS"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinMultiAuthorityFaultAggregation.authentic_reports_without_conservative_witness_are_insufficient",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 6,
+ "axiomDependentDeclarationCount": 0}

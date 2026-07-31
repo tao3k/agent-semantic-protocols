@@ -375,6 +375,9 @@ fn provider_registry_snapshot_from_catalog(
                     .document_resolution()
                     .map(|descriptor| descriptor.extensions.clone())
                     .unwrap_or_default(),
+                source_paths: Vec::new(),
+                repository_candidate_generation: String::new(),
+                project_resolution_generation: String::new(),
                 search_capabilities: manifest.search_capabilities().clone(),
                 query_pack_descriptor: manifest.query_pack_descriptor().clone(),
                 semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),

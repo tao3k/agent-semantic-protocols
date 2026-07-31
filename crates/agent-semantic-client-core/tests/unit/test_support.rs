@@ -44,7 +44,6 @@ pub(super) fn resolved_provider() -> crate::ResolvedProvider {
         agent_semantic_hook::provider_manifest_digest(&manifest).expect("Rust manifest digest");
     let routes =
         agent_semantic_hook::materialize_provider_routes(&manifest).expect("Rust provider routes");
-    let source = manifest.source().clone();
     let provider = agent_semantic_hook::ActivatedProvider {
         manifest_id: manifest.manifest_id().to_owned(),
         manifest_digest,
@@ -56,11 +55,14 @@ pub(super) fn resolved_provider() -> crate::ResolvedProvider {
         execution_command_digest: "test-execution-command-digest".to_string(),
         namespace: manifest.namespace().to_owned(),
         package_roots: vec![".".to_string()],
-        source_extensions: source.default_extensions,
-        config_files: source.default_config_files,
-        source_roots: source.default_source_roots,
-        ignored_path_prefixes: source.default_ignored_path_prefixes,
+        source_extensions: vec!["rs".to_string()],
+        config_files: vec!["Cargo.toml".to_string()],
+        source_paths: vec!["src/lib.rs".to_string()],
+        repository_candidate_generation: "test-candidate-generation".to_string(),
+        project_resolution_generation: "test-project-resolution-generation".to_string(),
         search_capabilities: manifest.search_capabilities().clone(),
+        project_resolution: manifest.project_resolution().cloned(),
+        document_resolution: manifest.document_resolution().cloned(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
         query_pack_descriptor: manifest.query_pack_descriptor().clone(),
         semantic_registry_digest: agent_semantic_hook::semantic_registry_digest(),

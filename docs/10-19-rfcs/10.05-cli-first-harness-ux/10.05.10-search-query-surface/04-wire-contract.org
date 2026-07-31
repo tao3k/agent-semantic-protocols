@@ -8,7 +8,12 @@ independent from starting a provider process: execution remains plan-driven,
 but query composition MUST NOT drop the descriptor merely because the current
 plan can use only the local Merkle snapshot and parser projection.
 
-Workspace-scope capability names are provider-owned contract values. =cargo-workspace-membership= denotes Rust/Cargo membership evidence, while =package-manager-workspace-scope= denotes language-neutral package-manager workspace-scope search evidence. Every emitted capability name MUST validate against the active package-local capability schema; the common registry schema continues to own descriptor shape rather than a global cross-language name enum.
+Project-resolution capabilities are provider-owned contract values. Cargo
+membership and other package-manager facts are emitted inside the provider's
+typed =LanguagePackageGraph= extension. Every emitted capability name MUST
+validate against the active package-local capability schema; the common
+registry schema continues to own descriptor shape rather than a global
+cross-language name enum.
 
 Language registration and activation are part of the query-pack authority chain, not compatibility surfaces. The provider manifest, language registry record, serialized activation, and resolved runtime provider MUST carry the same required typed descriptor and canonical content identity. Missing, omitted, or drifted descriptors MUST fail closed before the language becomes routable; activation resolution MUST NOT restore descriptor content from an embedded Rust manifest.
 

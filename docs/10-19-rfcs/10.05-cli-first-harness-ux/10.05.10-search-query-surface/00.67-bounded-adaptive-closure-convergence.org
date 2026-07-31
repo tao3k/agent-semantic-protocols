@@ -1,0 +1,192 @@
+#+title: 10.05.10.00.67 Bounded Adaptive Closure Convergence
+#+startup: overview
+
+* Status
+
+Draft proof refinement for SearchLoop interaction bounds and adaptive graph
+closure.  This document changes no Rust or Python implementation.
+
+* Problem
+
+Successor closure says which evidence-enabled routes must eventually enter the
+catalog.  It does not by itself prove that the interactive SearchLoop reaches
+that closure in finitely many agent/LLM turns.
+
+The inspect potential used before adaptive discovery is insufficient as a
+termination measure.  Discovering a route can legitimately create new inspect
+obligations.  The active inspect potential may therefore increase even though
+the system has made real global progress.  Conversely, an inspect potential of
+zero does not mean closure when undiscovered routes remain.
+
+A router that ignores this distinction has two unsound options:
+
+- reject productive discovery because the old potential increased;
+- accept a zero-potential state as complete while an evidence-enabled route is
+  still absent.
+
+* Finite-universe assumption
+
+A finite interaction bound requires an explicit finite route universe for the
+bound graph generation and expansion-rule digest.  This universe can be a
+complete finite provider projection or a deliberately bounded subgraph.
+
+If the route universe is infinite, generated lazily without a finite bound, or
+changed during the run, this RFC provides no global round bound.  The receipt
+MUST then report =bounded= or =open= rather than =closed=.
+
+* Bounded discovery assumption
+
+Let =B= be the maximum active inspect potential introduced by discovering one
+new route.  The certificate MUST bind =B= to the graph generation, expansion
+rules, completion policy, and evidence projection.
+
+An implementation cannot infer =B= from observed average behavior.  It must
+derive or validate the bound from the provider contract.
+
+* Weighted closure measure
+
+For a state with =U= undiscovered routes and active inspect potential =P=,
+define:
+
+#+begin_quote
+closure measure = U × (B + 1) + P
+#+end_quote
+
+This measure correctly recognizes two forms of progress:
+
+1. an inspect transition keeps =U= fixed and strictly lowers =P=;
+2. a discovery transition lowers =U= by one and introduces at most =B= new
+   inspect potential.
+
+In the discovery case, losing one =(B + 1)= route credit pays for at most =B=
+new inspect obligations, so the total measure still decreases by at least one.
+
+* Interaction bound
+
+Each certified SearchLoop transition consumes one agent/LLM interaction round
+and strictly decreases the natural-number closure measure.  A certified run
+therefore has at most its initial closure measure many transitions.
+
+This is an upper bound, not permission to spend all rounds.  Pareto routing,
+cache hits, and multi-axis inspect packets should reduce the observed cost.  The
+bound exists to prevent hidden loops and to make worst-case interaction cost
+auditable.
+
+* No-progress rejection
+
+A transition that leaves the complete closure state unchanged is never
+certified.  A repeated CLI call returning the same catalog, the same active
+potential, and no new evidence is a no-progress self-loop.  SearchLoop MUST stop,
+change strategy, or return an incomplete receipt instead of silently retrying.
+
+* Normative clauses
+
+- =ASP-RFC-10.05-BAC-DECREASE=: every certified inspect or discovery transition
+  strictly decreases the weighted closure measure.
+- =ASP-RFC-10.05-BAC-ROUND-BOUND=: the number of certified agent/LLM interaction
+  rounds is bounded by the initial closure measure.
+- =ASP-RFC-10.05-BAC-ZERO=: the weighted measure is zero exactly when no routes
+  remain undiscovered and no active inspect obligations remain.
+- =ASP-RFC-10.05-BAC-NO-LOOP=: no unchanged state can carry a certified
+  transition.
+- =ASP-RFC-10.05-BAC-DISCOVERY=: discovering one route with at most =B= new
+  inspect obligations is a valid transition.
+- =ASP-RFC-10.05-BAC-WEIGHTED=: the weighted measure decreases across productive
+  discovery.
+- =ASP-RFC-10.05-BAC-INSPECT-ONLY=: inspect potential alone can increase during
+  productive discovery and is not a global termination measure.
+- =ASP-RFC-10.05-BAC-NOT-CLOSED=: zero inspect potential alone does not imply
+  adaptive closure.
+- =ASP-RFC-10.05-BAC-UNCERTIFIED-LOOP=: an unchanged loop may exist at the raw
+  execution level but cannot be promoted to a certified SearchLoop step.
+
+* SearchLoop receipt
+
+Every transition receipt SHOULD expose:
+
+- route-universe digest and finite/bounded status;
+- undiscovered-route count;
+- active inspect potential;
+- maximum inspect potential introduced per route;
+- closure measure before and after;
+- interaction-round index and remaining certified bound;
+- progress kind: =inspect= or =discover=;
+- newly emitted evidence and newly enabled route identities.
+
+The agent sees one compact next-transition receipt.  It does not need a large
+CLI command language for manually maintaining termination bookkeeping.
+
+* Consequences for Python Turbo Graph
+
+The future Python graph router should keep the closure measure as a certified
+projection, not a mutable heuristic counter.  Evidence expansion owns the
+per-route contribution bound; SearchLoop owns transition sequencing; the graph
+catalog owns the undiscovered count; the audit layer checks monotonicity.
+
+Search cache and model-prefix cache may reduce measured cost, but neither cache
+hit is evidence that closure measure decreased.  Cache accounting and
+termination accounting remain orthogonal.
+
+* Executable mathematical witness
+
+The Typst block is evaluated directly from the named Org-Babel block through
+stdin.  It creates no =.typ= source and no PDF.
+
+#+name: bounded-adaptive-closure-convergence-math
+#+begin_src typst
+#let max-inspect-per-route = 3
+
+#let before-discovery = (
+  undiscoveredRoutes: 1,
+  activeInspectPotential: 0,
+)
+
+#let after-discovery = (
+  undiscoveredRoutes: 0,
+  activeInspectPotential: 3,
+)
+
+#let closure-measure(state) = (
+  state.undiscoveredRoutes * (max-inspect-per-route + 1)
+  + state.activeInspectPotential
+)
+
+#let inspect-only-measure(state) = state.activeInspectPotential
+
+(
+  discovery-increases-inspect-only-measure:
+    inspect-only-measure(before-discovery)
+    < inspect-only-measure(after-discovery),
+  discovery-decreases-weighted-measure:
+    closure-measure(after-discovery)
+    < closure-measure(before-discovery),
+  initial-round-bound: closure-measure(before-discovery),
+  after-discovery-round-bound: closure-measure(after-discovery),
+  zero-inspect-is-not-closed:
+    before-discovery.activeInspectPotential == 0
+    and before-discovery.undiscoveredRoutes > 0,
+  unchanged-loop-decreases-measure:
+    closure-measure(before-discovery)
+    < closure-measure(before-discovery),
+)
+#+end_src
+
+* Machine-checked proof status
+
+The theorem owner is =ASPProof.SearchRouteBoundedAdaptiveClosure=.  The
+machine-readable audit remains independent in
+=ASPProof.Audit.SearchRouteBoundedAdaptiveClosure= and is emitted by
+=packages/proofs/audit/SearchRouteBoundedAdaptiveClosureAudit.lean=.
+
+The Lean receipt is
+=packages/proofs/receipts/searchroute-bounded-adaptive-closure-audit-v1.json=.
+It contains nine declarations: three concrete witnesses are axiom-free and six
+general transition, run-bound, completion, and rejection theorems depend only
+on =propext=.  No declaration depends on =Quot.sound= and none contains
+=sorryAx=.
+
+AXLE allows only =propext= and requires all nine theorem families plus all nine
+normative clause identifiers.  Its receipt is
+=packages/proofs/receipts/searchroute-bounded-adaptive-closure-axle-audit-v1.json=
+and binds the Lean audit with SHA-256
+=61a036a117086a706380b06e3039b07f65b5046a81f561f06f2d99ae94eb1ae3=.

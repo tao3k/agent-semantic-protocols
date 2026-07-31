@@ -1,0 +1,111 @@
+#+title: 10.05.10.00.73 Temporal Certificate Validity
+#+startup: overview
+
+* Status
+
+Draft proof refinement for historical audit, replay, revocation, and new
+SearchLoop decisions.  No Rust or Python runtime code is introduced.
+
+* Problem
+
+A single =valid= flag conflates historical truth with present authorization.
+Revoking a registry snapshot must stop new certificates and Pareto decisions,
+but it must not erase an execution that was valid before revocation.
+
+* Three validity relations
+
+- =valid-at-execution=: the certificate had been issued and not yet revoked at
+  the recorded execution time.
+- =valid-for-historical-audit=: execution validity holds and the audit time is
+  not earlier than the execution.
+- =valid-for-historical-replay=: historical audit validity holds and the exact
+  registry/policy snapshot remains archived.
+- =valid-for-new-issuance=: the current time is still before revocation.
+
+New Pareto decisions require new-issuance validity.  Historical evidence needs
+only execution validity; deterministic replay additionally needs the archive.
+
+* Append-only revocation
+
+Revocation appends a lifecycle fact.  It does not mutate or delete the earlier
+execution receipt.  A certificate valid at time 7 and revoked at time 10 remains
+historically auditable at time 12, but cannot authorize a new route decision at
+time 12.
+
+* Normative clauses
+
+- =ASP-RFC-10.05-TCV-HISTORY=: later revocation preserves valid historical
+  execution evidence.
+- =ASP-RFC-10.05-TCV-ISSUANCE=: reaching the revocation epoch rejects new
+  issuance.
+- =ASP-RFC-10.05-TCV-EXECUTION=: an execution before revocation is valid.
+- =ASP-RFC-10.05-TCV-AUDIT=: historical audit remains valid after revocation.
+- =ASP-RFC-10.05-TCV-REPLAY=: an archived snapshot enables historical replay.
+- =ASP-RFC-10.05-TCV-NEW-DECISION=: a revoked certificate cannot issue a new
+  decision.
+- =ASP-RFC-10.05-TCV-PARETO=: a revoked certificate cannot authorize new Pareto
+  pruning.
+- =ASP-RFC-10.05-TCV-LATE=: execution after revocation is invalid.
+- =ASP-RFC-10.05-TCV-ARCHIVE=: missing archive blocks deterministic replay.
+- =ASP-RFC-10.05-TCV-PRE-REVOCATION=: issuance remains authorized before the
+  revocation epoch.
+
+* SearchLoop and Turbo Graph consequences
+
+Receipts SHOULD carry issuance, execution, revocation, audit, and replay times
+as distinct fields.  Evidence graph nodes remain append-only.  Python Turbo
+Graph should never rewrite historical validity when current authorization
+changes.
+
+* Executable mathematical witness
+
+#+name: temporal-certificate-validity-math
+#+begin_src typst
+#let lifecycle = (
+  issuedAt: 5,
+  executionAt: 7,
+  revokedAt: 10,
+  now: 12,
+  archiveAvailable: true,
+)
+
+(
+  valid-at-execution:
+    lifecycle.issuedAt <= lifecycle.executionAt
+    and lifecycle.executionAt < lifecycle.revokedAt,
+  valid-for-historical-audit:
+    lifecycle.executionAt <= lifecycle.now,
+  valid-for-historical-replay:
+    lifecycle.archiveAvailable,
+  valid-for-new-issuance:
+    lifecycle.now < lifecycle.revokedAt,
+)
+#+end_src
+
+* Machine-checked status
+
+- Lean module:
+  ~packages/proofs/ASPProof/SearchRouteTemporalCertificateValidity.lean~
+- Modular Lean audit:
+  ~packages/proofs/ASPProof/Audit/SearchRouteTemporalCertificateValidity.lean~
+- Audit driver:
+  ~packages/proofs/audit/SearchRouteTemporalCertificateValidityAudit.lean~
+- Lean audit receipt:
+  ~packages/proofs/receipts/searchroute-temporal-certificate-validity-audit-v1.json~
+- AXLE receipt:
+  ~packages/proofs/receipts/searchroute-temporal-certificate-validity-axle-audit-v1.json~
+- Verified declarations: 10 total, 10 axiom-free, 0 axiom-dependent,
+  no ~sorryAx~.
+- AXLE audit SHA-256:
+  ~450140719eec6d9e3c9eece15a025f2225cf8b95dd1c16e40e7faa75cd3f1dbc~
+- The named Org-Babel Typst block was extracted by ~orgize eval plan~ and
+  evaluated through interactive standard input with
+  ~typst eval --in - none~; the evaluator exited successfully.
+
+The proof identifies a lifecycle distinction that must remain explicit in the
+search protocol.  Revocation blocks new issuance and new Pareto decisions, but
+does not retroactively invalidate a route decision that was valid at its
+recorded execution time.  Historical replay is stronger than historical audit:
+replay additionally requires the archived registry snapshot.  Therefore a
+missing archive blocks reproduction without erasing the validity of the
+recorded audit fact.

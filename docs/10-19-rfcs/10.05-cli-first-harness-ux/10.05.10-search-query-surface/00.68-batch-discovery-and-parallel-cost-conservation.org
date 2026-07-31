@@ -1,0 +1,217 @@
+#+title: 10.05.10.00.68 Batch Discovery and Parallel Cost Conservation
+#+startup: overview
+
+* Status
+
+Draft proof refinement for batched SearchLoop discovery, fan-out/fan-in graph
+routing, and cost receipts.  This document adds no Rust or Python runtime code.
+
+* Problem
+
+The single-route convergence model proves a round bound by charging one route
+discovery per certified transition.  A practical graph router may discover
+several independent routes in one fan-out/fan-in interaction.  Treating that
+batch as either several sequential LLM rounds or as zero additional work gives
+the wrong cost model.
+
+Parallel execution changes the critical path.  It does not erase:
+
+- the number of semantic route expansions;
+- tool calls issued to providers;
+- branch input and output tokens;
+- fan-in synthesis tokens;
+- evidence and audit receipts produced by each branch.
+
+A one-round batch can therefore be cheaper in interaction latency while being
+strictly more expensive in total work than a one-route batch.
+
+* Batch closure transition
+
+Let a batch discover =K > 0= routes.  The transition MUST certify:
+
+- the undiscovered-route count decreases by exactly =K=;
+- each discovered route introduces at most =B= inspect potential;
+- the total newly introduced inspect potential is at most =K × B=.
+
+Using the weighted closure measure from RFC 00.67, the batch transition satisfies:
+
+#+begin_quote
+measure(after) + K <= measure(before)
+#+end_quote
+
+It therefore decreases the measure by at least the number of routes discovered.
+Batching does not weaken the termination proof.
+
+* Interaction rounds versus semantic work
+
+The shared receipt keeps the following dimensions separate:
+
+- =llmRounds=: externally visible agent/LLM interaction rounds;
+- =toolCalls=: provider invocations or equivalent semantic expansions;
+- =branchTokens=: aggregate tokens spent by independent branches;
+- =synthesisTokens=: tokens spent combining branch evidence;
+- =criticalPathLatency=: elapsed latency along the slowest required dependency
+  path.
+
+No one of these values can be derived from another.  In particular,
+=llmRounds = 1= does not imply =toolCalls = 1= or negligible token cost.
+
+* Work-conservation rules
+
+For a batch discovering =K= routes:
+
+- tool calls MUST be at least =K= unless a provider receipt explicitly proves
+  one call realized multiple route expansions;
+- branch tokens MUST satisfy the provider-bound per-route lower bound;
+- synthesis tokens MUST be added rather than hidden inside a cache-hit claim;
+- every non-empty batch consumes at least one certified interaction round.
+
+If a provider supports multi-route expansion in one call, the receipt may use a
+separate =realizedRouteCount= field.  It must not silently equate tool-call count
+with discovered-route count.
+
+* Parallelism boundary
+
+Client runtime capabilities such as multi-agent execution or tool parallelism
+are accelerators, not protocol requirements.  The protocol remains valid when
+the same independent branches execute sequentially.  Consequently:
+
+- feature flags MUST NOT appear in the shared correctness certificate;
+- branch evidence and cost totals MUST be identical across parallel and
+  sequential schedules;
+- only critical-path latency and schedule-specific round grouping may differ.
+
+* Cache boundary
+
+Search-cache and model-prefix-cache hits can reduce branch tokens or synthesis
+tokens only when their own identity-bound receipts justify the credit.  A cache
+hit cannot reduce =discoveredRoutes=, fabricate closure progress, or erase tool
+work that actually occurred.
+
+* Normative clauses
+
+- =ASP-RFC-10.05-BCC-BATCH-DECREASE=: a =K=-route certified discovery decreases
+  weighted closure measure by at least =K=.
+- =ASP-RFC-10.05-BCC-STRICT=: every positive certified batch strictly decreases
+  weighted closure measure.
+- =ASP-RFC-10.05-BCC-ROUND-BOUND=: batched certified runs remain bounded by the
+  initial closure measure in interaction rounds.
+- =ASP-RFC-10.05-BCC-TOOLS=: valid accounting conserves semantic tool work.
+- =ASP-RFC-10.05-BCC-TOKENS=: valid accounting conserves branch and synthesis
+  token cost.
+- =ASP-RFC-10.05-BCC-NONEMPTY=: every non-empty batch consumes a certified
+  interaction round.
+- =ASP-RFC-10.05-BCC-VALID=: the concrete parallel batch satisfies all
+  accounting invariants.
+- =ASP-RFC-10.05-BCC-ROUND-NOT-WORK=: equal LLM round counts do not imply equal
+  tool work or token cost.
+- =ASP-RFC-10.05-BCC-UNDERREPORT=: round-only accounting underreports a parallel
+  batch.
+- =ASP-RFC-10.05-BCC-ZERO-ROUND=: a non-empty zero-round batch is invalid.
+- =ASP-RFC-10.05-BCC-FOUR=: the four-route witness decreases weighted measure by
+  at least four.
+
+* SearchLoop receipt
+
+A batch receipt SHOULD include:
+
+- before and after adaptive catalog digests;
+- discovered-route count and identities;
+- closure measure before and after;
+- maximum inspect potential per discovered route;
+- tool-call and realized-route counts;
+- branch and synthesis tokens;
+- LLM round count;
+- critical-path latency;
+- branch evidence receipts and one fan-in synthesis receipt.
+
+The agent still sees a compact interactive transition.  The router, rather than
+a complex CLI grammar, owns fan-out selection and proof-carrying fan-in.
+
+* Consequences for Python Turbo Graph
+
+The Python graph architecture should model schedule-independent semantic cost
+separately from schedule-dependent latency.  Its graph router may execute
+independent branches concurrently, but the persistent evidence graph must
+record every branch edge, cost contribution, and synthesis dependency.
+
+The proof model deliberately does not prescribe asyncio, processes, threads,
+subagents, or provider batching.  Those are implementation choices beneath the
+shared receipt.
+
+* Executable mathematical witness
+
+The named Typst block is evaluated through Org-Babel and stdin.  It generates no
+=.typ= file or PDF.
+
+#+name: batch-discovery-and-parallel-cost-conservation-math
+#+begin_src typst
+#let max-inspect-per-route = 3
+#let discovered-routes = 4
+
+#let before = (
+  undiscoveredRoutes: 4,
+  activeInspectPotential: 0,
+)
+
+#let after = (
+  undiscoveredRoutes: 0,
+  activeInspectPotential: 12,
+)
+
+#let measure(state) = (
+  state.undiscoveredRoutes * (max-inspect-per-route + 1)
+  + state.activeInspectPotential
+)
+
+#let sequential = (
+  discoveredRoutes: 1,
+  toolCalls: 1,
+  branchTokens: 10,
+  synthesisTokens: 5,
+  llmRounds: 1,
+  criticalPathLatency: 10,
+)
+
+#let parallel = (
+  discoveredRoutes: 4,
+  toolCalls: 4,
+  branchTokens: 40,
+  synthesisTokens: 8,
+  llmRounds: 1,
+  criticalPathLatency: 12,
+)
+
+#let total-tokens(batch) = batch.branchTokens + batch.synthesisTokens
+
+(
+  batch-decrease-credit: measure(before) - measure(after),
+  decrease-covers-discovered-routes:
+    measure(after) + discovered-routes <= measure(before),
+  same-llm-rounds: sequential.llmRounds == parallel.llmRounds,
+  same-tool-work: sequential.toolCalls == parallel.toolCalls,
+  same-total-tokens: total-tokens(sequential) == total-tokens(parallel),
+  parallel-total-tokens: total-tokens(parallel),
+  parallel-work-exceeds-round-count:
+    parallel.toolCalls > parallel.llmRounds,
+)
+#+end_src
+
+* Machine-checked proof status
+
+The theorem owner is =ASPProof.SearchRouteBatchCostConservation=.  Its
+machine-readable audit remains independent in
+=ASPProof.Audit.SearchRouteBatchCostConservation= and is emitted by
+=packages/proofs/audit/SearchRouteBatchCostConservationAudit.lean=.
+
+The Lean receipt is
+=packages/proofs/receipts/searchroute-batch-cost-conservation-audit-v1.json=.
+It contains eleven declarations.  Seven work-accounting and finite witness
+theorems are axiom-free.  Four general weighted-measure and batched-run theorems
+depend only on =propext=.  No declaration contains =sorryAx=.
+
+AXLE allows only =propext= and requires all eleven theorem families plus all
+eleven normative clause identifiers.  Its receipt is
+=packages/proofs/receipts/searchroute-batch-cost-conservation-axle-audit-v1.json=
+and binds the Lean audit with SHA-256
+=51a73d6b9f34b2983d02a3a46a4b51a6a8515e8d0fcdbd133c49e4cc599443bb=.

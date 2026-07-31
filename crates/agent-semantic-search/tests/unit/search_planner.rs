@@ -6,8 +6,7 @@ use agent_semantic_search::search_planner::{
     SearchPlannerRequest, SearchPlannerRoute, plan_search_route,
 };
 use agent_semantic_search::{
-    SourceIndexClientCacheLookupRequest, SourceIndexClientCachePlannerLookupRequest,
-    lookup_source_index_in_client_cache_dir_with_planner,
+    SourceIndexLookupRequest, SourceIndexPlannerLookupRequest, lookup_source_index_with_planner,
 };
 
 #[test]
@@ -73,23 +72,19 @@ fn planner_file_locator_hot_path_stays_under_two_milliseconds() {
 fn source_index_adapter_uses_file_locator_on_cache_miss() {
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let project_root = tempfile::tempdir().expect("project tempdir");
-    let cache_root = tempfile::tempdir().expect("cache tempdir");
     let locator = FileLocatorIndex::build(vec![PathBuf::from("src/search_planner.rs")]);
 
-    let lookup = lookup_source_index_in_client_cache_dir_with_planner(
-        SourceIndexClientCachePlannerLookupRequest {
-            source_index: SourceIndexClientCacheLookupRequest {
-                cache_root: cache_root.path(),
-                indexed_project_root: project_root.path(),
-                language_id: None,
-                query: "search_planner.rs",
-                limit: 8,
-                source_snapshot: &fixture.evidence,
-                live_import: None,
-            },
-            file_locator: Some(&locator),
+    let lookup = lookup_source_index_with_planner(SourceIndexPlannerLookupRequest {
+        source_index: SourceIndexLookupRequest {
+            cache_project_root: project_root.path(),
+            indexed_project_root: project_root.path(),
+            language_id: None,
+            query: "search_planner.rs",
+            limit: 8,
+            source_snapshot: &fixture.evidence,
         },
-    )
+        file_locator: Some(&locator),
+    })
     .expect("lookup with file locator planner");
 
     assert_eq!(

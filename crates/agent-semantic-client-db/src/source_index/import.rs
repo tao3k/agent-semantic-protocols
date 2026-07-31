@@ -50,6 +50,7 @@ pub fn source_index_import_from_language_projection(
     let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
         file_hashes
             .iter()
+            .take(rows.scope_files.len())
             .map(|file_hash| (file_hash.path.as_str(), file_hash.sha256.as_str())),
     );
     let source_snapshot = workspace_snapshot.evidence(

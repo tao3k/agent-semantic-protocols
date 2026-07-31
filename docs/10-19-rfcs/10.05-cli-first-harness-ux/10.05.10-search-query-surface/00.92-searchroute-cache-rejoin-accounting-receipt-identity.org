@@ -1,0 +1,212 @@
+#+title: SearchRoute Cache Rejoin Accounting Receipt Identity
+#+subtitle: Two-tier cache identity for concrete accounting and fault-bounded verdicts
+#+options: toc:3 num:t
+
+* Status
+
+This proof-backed RFC follows RFC 10.05.91. It specifies cache identity,
+invalidation, and Lean/Typst semantics only. Rust and Python implementation are
+out of scope.
+
+* Problem
+
+RFC 10.05.91 derives concrete pairwise accounting from canonical membership and
+two signer sets. The result is suitable for a compact reusable graph edge, but
+its semantic cache identity was still prose.
+
+A naive identity has two opposite failure modes:
+
+- under-binding reuses accounting after a semantic owner changes; or
+- over-binding invalidates expensive accounting when only a downstream policy
+  input changes.
+
+The fault-bound snapshot exposes the second problem. Concrete intersection
+weight does not depend on that snapshot. Only the honest-overlap verdict does.
+Binding the snapshot directly into the accounting receipt would discard valid
+reusable graph work.
+
+* Two-tier identity
+
+The protocol defines two identities:
+
+1. an accounting receipt identity for concrete membership projection; and
+2. an honest-overlap verdict identity for applying a fault-bound snapshot to
+   that accounting receipt.
+
+This is semantic cache layering, not merely storage organization.
+
+* Normative clauses
+
+** CARI-PAIR: unordered certificate-pair identity
+
+The accounting receipt MUST bind an unordered pair of certificate identities.
+Swapping left and right certificates MUST preserve the pair identity.
+
+Equality of pair identities MUST imply that the original certificate pairs are
+equal either in the same order or in swapped order.
+
+** CARI-ACCOUNTING: accounting receipt owners
+
+The accounting receipt payload MUST contain exactly:
+
+- canonical membership digest;
+- canonical unordered certificate-pair identity; and
+- concrete projection algorithm version.
+
+The fault-bound snapshot MUST NOT be an accounting owner.
+
+** CARI-PROJECTION: algorithm identity
+
+Changing the projection algorithm version MUST invalidate the accounting
+receipt even when current numeric outputs happen to match.
+
+This prevents a coincidental value match from hiding changed accounting
+semantics.
+
+** CARI-VERDICT: honest-overlap verdict owners
+
+The honest-overlap verdict payload MUST contain:
+
+- accounting receipt identity; and
+- fault-bound snapshot identity.
+
+Changing the fault-bound snapshot identity MUST preserve the accounting receipt
+identity while invalidating the verdict identity. Binding only the numeric bound
+is insufficient because stale and current snapshots can carry the same value.
+
+** CARI-INVALIDATE: fail-closed accounting reuse
+
+Changing membership digest, unordered certificate pair, or projection version
+MUST prevent accounting receipt reuse.
+
+Receipt equality MUST reflect equality of all semantic owners.
+
+** CARI-COLLISION: identity commitment
+
+Accounting and verdict commitments MUST be collision-free in the formal model.
+An implementation MUST use a content-identity mechanism whose collision
+assumptions are explicit in its evidence policy.
+
+Digest equality alone is not a proof of cryptographic collision resistance; the
+Lean scheme records that boundary as an assumption.
+
+** CARI-CACHE: cache-class separation
+
+The two identity layers apply to the search/evidence cache:
+
+#+begin_example
+membership + certificate pair + projection version
+  -> accounting receipt
+
+accounting receipt + fault-bound snapshot
+  -> honest-overlap verdict
+#+end_example
+
+Model prefix caching may reuse inference prefixes independently. It MUST NOT
+create, validate, or extend either evidence identity.
+
+* Executable mathematical model
+
+#+name: searchroute-cache-rejoin-accounting-receipt-identity-model
+#+begin_src typst
+#let pair(left, right) = if left <= right {
+  (left, right)
+} else {
+  (right, left)
+}
+#let accounting(membership, left, right, version) = (
+  membership: membership,
+  pair: pair(left, right),
+  version: version,
+)
+#let verdict(accounting-id, snapshot-id) = (
+  accounting: accounting-id,
+  snapshot: snapshot-id,
+)
+#let base = accounting("m1", 10, 20, "p1")
+#assert(base == accounting("m1", 20, 10, "p1"))
+#assert(base != accounting("m2", 10, 20, "p1"))
+#assert(base != accounting("m1", 10, 30, "p1"))
+#assert(base != accounting("m1", 10, 20, "p2"))
+#assert(verdict(base, "s1") != verdict(base, "s2"))
+"ok"
+#+end_src
+
+The two commitments are:
+
+#+name: searchroute-cache-rejoin-accounting-receipt-identity-proposition
+#+begin_src typst
+#let layered-identity = $
+  A = H(M, upright("unordered-pair")(C_L, C_R), V)
+  quad
+  R = G(A, S_B)
+  quad
+  A(C_L, C_R) = A(C_R, C_L)
+$
+#assert(type(layered-identity) == content)
+"ok"
+#+end_src
+
+Both blocks are extracted by =orgize eval plan= and evaluated through stdin
+with =typst eval=. They create no generated Typst source or PDF.
+
+* Lean model
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.lean
+#+end_example
+
+The model defines:
+
+- =AccountingReceiptPayload=;
+- =HonestOverlapVerdictPayload=;
+- =AccountingReceiptIdentityScheme=;
+- =accountingReceiptIdentity=; and
+- =honestOverlapVerdictIdentity=.
+
+The focused proofs establish:
+
+1. certificate swapping preserves accounting identity;
+2. accounting identity equality reflects all accounting owners;
+3. membership change invalidates accounting reuse;
+4. unordered certificate-pair change invalidates accounting reuse;
+5. projection-version change invalidates accounting reuse;
+6. fault-bound snapshot change preserves accounting but invalidates the
+   verdict; and
+7. verdict equality reflects accounting owners plus snapshot identity.
+
+* Modular audit
+
+#+begin_example
+packages/proofs/ASPProof/Audit/SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentity.lean
+packages/proofs/audit/SearchRouteAdmissionRetryCacheRejoinAccountingReceiptIdentityAudit.lean
+packages/proofs/receipts/searchroute-admission-retry-cache-rejoin-accounting-receipt-identity-audit-v1.json
+#+end_example
+
+* Search efficiency consequence
+
+The router can reuse expensive concrete accounting across multiple fault-policy
+queries. Only the small verdict node changes with =B=.
+
+This shortens the graph path for policy exploration:
+
+#+begin_example
+cached concrete accounting
+  + current fault-bound snapshot
+  -> current honest-overlap verdict
+#+end_example
+
+It also avoids returning full signer and membership subgraphs to the model.
+The receipt identity is enough to establish the exact evidence owners.
+
+* Proof-discovered next boundary
+
+Identity binding proves that a verdict used the stated fault-bound snapshot. It
+does not prove that the snapshot is authorized, current, conservative, or
+applicable to the committed membership epoch.
+
+The next proof boundary must model fault-bound authority and temporal scope. A
+stale or unauthorized low fault bound can satisfy the arithmetic threshold
+while producing an unsound honest-overlap conclusion.

@@ -41,13 +41,13 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
   "providerCommands": [
     {
       "startedAtMs": 222222,
-      "argv": ["rs-harness", "query", "--selector", "src/lib.rs:1-10", "--code"],
+      "argv": ["rs-harness", "query", "--selector", "src/lib.rs:1-10", "--projection", "source"],
       "languageId": "rust",
       "projectRoot": "__PROJECT_ROOT__"
     },
     {
       "eventTimestampMs": 333333,
-      "argv": ["rs-harness", "query", "--selector", "src/main.rs:20-24", "--workspace", ".", "--code"],
+      "argv": ["rs-harness", "query", "--selector", "src/main.rs:20-24", "--workspace", ".", "--projection", "source"],
       "languageId": "rust",
       "projectRoot": "__PROJECT_ROOT__"
     }
@@ -125,7 +125,7 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
     assert!(
         events.iter().any(|event| {
             event.artifact_path() == "prompt-output/rust-query-code-abc123.command.json"
-                && event.method() == "query/code"
+                && event.method() == "query/source"
                 && event.target() == "src/lib.rs:1-10"
                 && event.timestamp_ms() == 222222
         }),
@@ -134,7 +134,7 @@ fn search_history_backfills_artifacts_and_passes_db_engine_events() {
     assert!(
         events.iter().any(|event| {
             event.artifact_path() == "prompt-output/rust-query-code-abc123.command.json"
-                && event.method() == "query/code"
+                && event.method() == "query/source"
                 && event.target() == "src/main.rs:20-24"
                 && event.timestamp_ms() == 333333
         }),

@@ -183,7 +183,8 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let project_root = hook_workspace_candidate(&payload, &activation_project_root);
     runtime.project_root = project_root.display().to_string();
     let runtime_generation_admission = matches!(classification_event, "pre-tool" | "session-start")
-        .then(|| hook_runtime_generation_admission::request(&project_root));
+        .then(|| hook_runtime_generation_admission::request(&project_root))
+        .transpose()?;
     let config_path = flag_value(args, "--config")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));

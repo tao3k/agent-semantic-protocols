@@ -8,10 +8,7 @@ use agent_semantic_client_core::{
     ClientCacheFileHash, ClientCacheGeneration, ClientCacheManifest, ClientCachePath, LanguageId,
     ProviderId, state_core::ResolvedState,
 };
-use agent_semantic_client_db::{
-    ClientDbEngine, ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexQueryKey,
-    TursoClientDbSearchHit,
-};
+use agent_semantic_client_db::{ClientDbEngine, TursoClientDbSearchHit};
 use agent_semantic_runtime::runtime_block_on_current_thread;
 use serde_json::{Value, json};
 use std::{
@@ -113,156 +110,161 @@ fn cache_status_survives_concurrent_process_readers() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn cache_runtime_source_acquire_clones_versioned_source() {
+#[tokio::test(flavor = "multi_thread")]
+async fn cache_runtime_source_acquire_clones_versioned_source() {
     let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("runtime-source-acquire");
     let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     let upstream = root.join("upstream-gerbil");
     create_tagged_repo(&upstream, "v0.18.2");
 
-    run_cache(
-        &root,
-        None,
-        &[
-            "runtime-source".to_string(),
-            "acquire".to_string(),
-            "--language-id".to_string(),
-            "gerbil-scheme".to_string(),
-            "--repository".to_string(),
-            upstream.display().to_string(),
-            "--checkout".to_string(),
-            "v0.18.2".to_string(),
-            "--state-namespace".to_string(),
-            "runtime-source/gerbil-scheme".to_string(),
-            "--index-owner".to_string(),
-            "asp-structural-index".to_string(),
-        ],
-        false,
-    )
-    .expect("runtime source acquire");
+    let server =
+        crate::cache_cli_source_index_tests::fixtures::RuntimeServerFixture::start(&root).await;
+    let operation_root = root.clone();
+    server
+        .blocking(move || {
+            let root = operation_root;
+            run_cache(
+                &root,
+                None,
+                &[
+                    "runtime-source".to_string(),
+                    "acquire".to_string(),
+                    "--language-id".to_string(),
+                    "gerbil-scheme".to_string(),
+                    "--repository".to_string(),
+                    upstream.display().to_string(),
+                    "--checkout".to_string(),
+                    "v0.18.2".to_string(),
+                    "--state-namespace".to_string(),
+                    "runtime-source/gerbil-scheme".to_string(),
+                    "--index-owner".to_string(),
+                    "asp-structural-index".to_string(),
+                ],
+                false,
+            )
+            .expect("runtime source acquire");
 
-    let checkout_dir = ResolvedState::resolve(&root)
-        .expect("state core")
-        .paths
-        .client_dir
-        .join("runtime-source")
-        .join("gerbil-scheme")
-        .join("v0.18.2");
-    assert_eq!(
-        std::fs::read_to_string(checkout_dir.join("runtime.ss")).expect("runtime source file"),
-        ";; runtime source fixture\n"
-    );
-    assert!(!root.join(".cache/agent-semantic-protocol").exists());
-    let cache_root = ClientCacheManifest::inspect_project(&root)
-        .cache_root
-        .expect("cache root");
-    let gerbil_language = LanguageId::from("gerbil-scheme");
-    let index_owner = agent_semantic_client_core::ProviderId::from("asp-structural-index");
-    let baseline = crate::source_index::refresh_runtime_source_index(
-        &root,
-        &checkout_dir,
-        &gerbil_language,
-        &index_owner,
-    )
-    .expect("reuse unchanged runtime source generation");
-    assert!(baseline.reused_generation);
-    let lookup = ClientDbEngine::lookup_source_index_from_client_dir(
-        ClientDbSourceIndexClientDirLookupRequest {
-            client_dir: &cache_root,
-            indexed_project_root: &checkout_dir,
-            language_id: Some(&gerbil_language),
-            query_keys: vec![ClientDbSourceIndexQueryKey::from("runtime")],
-            limit: 8,
-            expected_snapshot_root: &baseline.source_snapshot.root_digest,
-            expected_index_artifact_digest: &baseline.index_artifact_digest,
-            live_facts: None,
-        },
-    )
-    .expect("lookup runtime source index");
-    assert_eq!(lookup.candidates.len(), 1, "lookup={lookup:?}");
-    assert_eq!(lookup.candidates[0].path, "runtime.ss");
-    assert_eq!(
-        lookup.candidates[0]
-            .provider_id
-            .as_ref()
-            .expect("runtime source index owner")
-            .as_str(),
-        "asp-structural-index"
-    );
+            let checkout_dir = ResolvedState::resolve(&root)
+                .expect("state core")
+                .paths
+                .client_dir
+                .join("runtime-source")
+                .join("gerbil-scheme")
+                .join("v0.18.2");
+            assert_eq!(
+                std::fs::read_to_string(checkout_dir.join("runtime.ss"))
+                    .expect("runtime source file"),
+                ";; runtime source fixture\n"
+            );
+            assert!(!root.join(".cache/agent-semantic-protocol").exists());
+            let gerbil_language = LanguageId::from("gerbil-scheme");
+            let index_owner = agent_semantic_client_core::ProviderId::from("asp-structural-index");
+            let baseline = crate::source_index::refresh_runtime_source_index(
+                &root,
+                &checkout_dir,
+                &gerbil_language,
+                &index_owner,
+            )
+            .expect("reuse unchanged runtime source generation");
+            assert!(baseline.reused_generation);
+            let lookup =
+                agent_semantic_client_db::workspace_db_ipc::read_source_index_via_runtime_server(
+                    agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest {
+                        project_root: root.clone(),
+                        indexed_project_root: checkout_dir.clone(),
+                        source_snapshot: baseline.source_snapshot.clone(),
+                        query: "runtime".to_string(),
+                        language_id: Some(gerbil_language.clone()),
+                        limit: 8,
+                    },
+                )
+                .expect("lookup runtime source index");
+            assert_eq!(lookup.candidates.len(), 1, "lookup={lookup:?}");
+            assert_eq!(lookup.candidates[0].path, "runtime.ss");
+            assert_eq!(
+                lookup.candidates[0]
+                    .provider_id
+                    .as_ref()
+                    .expect("runtime source index owner")
+                    .as_str(),
+                "asp-structural-index"
+            );
 
-    std::fs::write(
-        checkout_dir.join("added-runtime.ss"),
-        "(def (fresh-runtime-term) #t)\n",
-    )
-    .expect("add runtime source without dirty hint");
-    let refreshed = crate::source_index::refresh_runtime_source_index(
-        &root,
-        &checkout_dir,
-        &gerbil_language,
-        &index_owner,
-    )
-    .expect("refresh runtime source after adding file");
-    assert!(!refreshed.reused_generation);
+            std::fs::write(
+                checkout_dir.join("added-runtime.ss"),
+                "(def (fresh-runtime-term) #t)\n",
+            )
+            .expect("add runtime source without dirty hint");
+            let refreshed = crate::source_index::refresh_runtime_source_index(
+                &root,
+                &checkout_dir,
+                &gerbil_language,
+                &index_owner,
+            )
+            .expect("refresh runtime source after adding file");
+            assert!(!refreshed.reused_generation);
 
-    let added_lookup = ClientDbEngine::lookup_source_index_from_client_dir(
-        ClientDbSourceIndexClientDirLookupRequest {
-            client_dir: &cache_root,
-            indexed_project_root: &checkout_dir,
-            language_id: Some(&gerbil_language),
-            query_keys: vec![ClientDbSourceIndexQueryKey::from("fresh-runtime-term")],
-            limit: 8,
-            expected_snapshot_root: &refreshed.source_snapshot.root_digest,
-            expected_index_artifact_digest: &refreshed.index_artifact_digest,
-            live_facts: None,
-        },
-    )
-    .expect("lookup newly added runtime source");
-    assert_eq!(added_lookup.candidates.len(), 1);
-    assert_eq!(added_lookup.candidates[0].path, "added-runtime.ss");
+            let added_lookup =
+                agent_semantic_client_db::workspace_db_ipc::read_source_index_via_runtime_server(
+                    agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest {
+                        project_root: root.clone(),
+                        indexed_project_root: checkout_dir.clone(),
+                        source_snapshot: refreshed.source_snapshot.clone(),
+                        query: "fresh-runtime-term".to_string(),
+                        language_id: Some(gerbil_language.clone()),
+                        limit: 8,
+                    },
+                )
+                .expect("lookup newly added runtime source");
+            assert_eq!(added_lookup.candidates.len(), 1);
+            assert_eq!(added_lookup.candidates[0].path, "added-runtime.ss");
 
-    let stable = crate::source_index::refresh_runtime_source_index(
-        &root,
-        &checkout_dir,
-        &gerbil_language,
-        &index_owner,
-    )
-    .expect("reuse stable runtime source generation");
-    assert!(stable.reused_generation);
-    assert_eq!(refreshed.generation_id, stable.generation_id);
+            let stable = crate::source_index::refresh_runtime_source_index(
+                &root,
+                &checkout_dir,
+                &gerbil_language,
+                &index_owner,
+            )
+            .expect("reuse stable runtime source generation");
+            assert!(stable.reused_generation);
+            assert_eq!(refreshed.generation_id, stable.generation_id);
 
-    run_cache(
-        &root,
-        Some(&gerbil_language),
-        &[
-            "source-index".to_string(),
-            "lookup".to_string(),
-            "--query".to_string(),
-            "runtime".to_string(),
-            "--index-root".to_string(),
-            checkout_dir.display().to_string(),
-            "--index-owner".to_string(),
-            "asp-structural-index".to_string(),
-        ],
-        false,
-    )
-    .expect("source index lookup hit");
-    run_cache(
-        &root,
-        Some(&gerbil_language),
-        &[
-            "source-index".to_string(),
-            "lookup".to_string(),
-            "--query".to_string(),
-            "definitely-missing-runtime-symbol".to_string(),
-            "--index-root".to_string(),
-            checkout_dir.display().to_string(),
-            "--index-owner".to_string(),
-            "asp-structural-index".to_string(),
-        ],
-        false,
-    )
-    .expect("source index lookup miss");
+            run_cache(
+                &root,
+                Some(&gerbil_language),
+                &[
+                    "source-index".to_string(),
+                    "lookup".to_string(),
+                    "--query".to_string(),
+                    "runtime".to_string(),
+                    "--index-root".to_string(),
+                    checkout_dir.display().to_string(),
+                    "--index-owner".to_string(),
+                    "asp-structural-index".to_string(),
+                ],
+                false,
+            )
+            .expect("source index lookup hit");
+            run_cache(
+                &root,
+                Some(&gerbil_language),
+                &[
+                    "source-index".to_string(),
+                    "lookup".to_string(),
+                    "--query".to_string(),
+                    "definitely-missing-runtime-symbol".to_string(),
+                    "--index-root".to_string(),
+                    checkout_dir.display().to_string(),
+                    "--index-owner".to_string(),
+                    "asp-structural-index".to_string(),
+                ],
+                false,
+            )
+            .expect("source index lookup miss");
+        })
+        .await;
+    server.shutdown().await;
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -320,9 +322,21 @@ fn cache_import_replays_structural_index_artifact_into_db() {
     let _state_home =
         crate::test_support::EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     let provider_binary = root.join(".asp-state/runtime/bin/rs-harness");
-    crate::test_support::write_hermetic_provider_executable(&provider_binary);
+    crate::cache_cli_source_index_tests::fixtures::write_project_resolution_provider(
+        &provider_binary,
+        "rust",
+        "rs-harness",
+        ".rs",
+        &["src"],
+        &[],
+    );
     crate::test_support::write_hermetic_provider_registry_config(&root, "rust", "rs-harness");
     crate::test_support::write_hermetic_provider_install_receipt(&root, "rust", &provider_binary);
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"cache-import-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Cargo manifest");
     std::fs::create_dir_all(root.join("src")).expect("create source directory");
     std::fs::write(
         root.join("src/lib.rs"),
@@ -450,7 +464,8 @@ fn temp_root(label: &str) -> std::path::PathBuf {
         .expect("time")
         .as_nanos();
     let root = std::env::temp_dir().join(format!("agent-client-cache-cli-{label}-{nanos}"));
-    std::fs::create_dir_all(root.join(".git")).expect("create temp project root");
+    std::fs::create_dir_all(&root).expect("create temp project root");
+    git(&root, ["init", "-q"]);
     root
 }
 

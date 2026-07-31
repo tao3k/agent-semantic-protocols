@@ -29,9 +29,7 @@ pub use crate::workspace_db_owner_election::{
 pub(super) const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
 fn workspace_db_ipc_read_lane_capacity() -> usize {
-    std::thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(1)
+    crate::runtime_concurrency::RuntimeConcurrencyPlan::current().reader_limit()
 }
 
 pub async fn connect_runtime_server_workspace_session(
@@ -77,6 +75,15 @@ pub fn commit_source_index_generation_via_runtime_server(
         session
             .commit_source_index_generation(&request, materialization)
             .await
+    })
+}
+
+pub fn read_source_index_via_runtime_server(
+    request: WorkspaceDbSourceIndexLookupRequest,
+) -> Result<ClientDbSourceIndexLookupResult, String> {
+    crate::engine::facade::block_on_db_engine_async(async move {
+        let session = connect_runtime_server_workspace_session(&request.project_root).await?;
+        session.read_source_index(&request).await
     })
 }
 /// Typed workspace operation accepted by the Runtime Server data-plane protocol.

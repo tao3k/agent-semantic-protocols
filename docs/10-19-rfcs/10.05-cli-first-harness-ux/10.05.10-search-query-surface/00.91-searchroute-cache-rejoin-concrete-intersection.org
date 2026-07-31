@@ -1,0 +1,212 @@
+#+title: SearchRoute Cache Rejoin Concrete Intersection
+#+subtitle: Deriving pairwise quorum accounting from finite canonical membership
+#+options: toc:3 num:t
+
+* Status
+
+This document closes the trusted-accounting gap identified by RFC 10.05.90.
+It changes proof models and RFC semantics only. Rust and Python implementation
+remain out of scope.
+
+* Problem
+
+RFC 10.05.90 proves that accepted certificates share honest voting authority
+when pairwise accounting satisfies inclusion-exclusion and the quorum threshold
+dominates the fault budget.
+
+Its =PairWeightAccounting= structure still accepted the
+=inclusionExclusionBound= as an input. A verifier could therefore attach an
+arbitrary intersection weight and a claimed bound without deriving either from
+the canonical membership.
+
+The graph would then contain a short but unsound route: a fabricated accounting
+edge could connect two valid certificate nodes to an honest-overlap conclusion.
+
+* Design decision
+
+Voting weight is projected by iterating the canonical membership exactly once.
+For each committed member, signer lists answer only Boolean selection
+questions. They do not contribute multiplicities or weights.
+
+This makes member identity the accounting owner:
+
+#+begin_example
+committed member
+  -> selected by left signer set?
+  -> selected by right signer set?
+  -> weight contributes to left, right, intersection, or neither
+#+end_example
+
+* Normative clauses
+
+** CRCI-SELECT: Boolean signer selection
+
+=signerSelected(S, id)= MUST return a Boolean existence result. Repeating =id=
+inside =S= MUST NOT change that result.
+
+Signer lists are selectors, not multisets of voting claims.
+
+** CRCI-PROJECTION: realized voting weight
+
+Realized voting weight MUST be the fold over committed members. A member weight
+is added once when its identity is selected and zero times otherwise.
+
+The verifier MUST NOT sum certificate-provided signer weights.
+
+** CRCI-INTERSECTION: concrete intersection weight
+
+Concrete intersection weight MUST be the fold over committed members whose
+identities are selected by both signer sets.
+
+Every contribution therefore has one canonical member owner and one committed
+weight.
+
+** CRCI-DUPLICATE: duplicate resistance
+
+Adding an adjacent duplicate signer identity MUST NOT change realized weight or
+intersection weight. Together with the signer-set validity rule from RFC
+10.05.89, this provides both:
+
+- rejection of malformed duplicate-bearing certificates; and
+- non-inflating accounting if duplicate input reaches the projection boundary.
+
+** CRCI-BOUND: finite inclusion-exclusion
+
+For every committed member, the sum of its left and right contributions is at
+most its total committed weight plus its intersection contribution.
+
+Folding this local inequality over the finite member list MUST derive:
+
+#+begin_example
+leftWeight + rightWeight <= totalWeight + intersectionWeight
+#+end_example
+
+Intersection weight MUST also be at most total committed weight.
+
+** CRCI-ACCOUNTING: constructible evidence
+
+=PairWeightAccounting= MUST be constructed from the concrete projection. The
+inclusion-exclusion proof MUST be derived by the verifier and MUST NOT be
+accepted as an unaudited external assertion.
+
+** CRCI-ROUTER: evidence-graph ownership
+
+The pairwise accounting edge is owned by:
+
+- canonical membership identity;
+- left certificate signer identity;
+- right certificate signer identity; and
+- the concrete projection algorithm version.
+
+Changing any owner invalidates a cached accounting receipt.
+
+* Executable mathematical model
+
+Formal arithmetic and presentation are owned by Org-Babel Typst.
+
+#+name: searchroute-cache-rejoin-concrete-intersection-model
+#+begin_src typst
+#let contribution(selected, weight) = if selected { weight } else { 0 }
+#let intersection(left, right, weight) = (
+  contribution(left and right, weight)
+)
+#let local-bound(left, right, weight) = (
+  contribution(left, weight) + contribution(right, weight)
+    <= weight + intersection(left, right, weight)
+)
+#assert(local-bound(false, false, 3))
+#assert(local-bound(false, true, 3))
+#assert(local-bound(true, false, 3))
+#assert(local-bound(true, true, 3))
+#assert(intersection(true, true, 3) <= 3)
+#assert((true or true) == true)
+"ok"
+#+end_src
+
+The finite projection is expressed as:
+
+#+name: searchroute-cache-rejoin-concrete-intersection-proposition
+#+begin_src typst
+#let concrete-accounting = $
+  W(S) = sum_(m in M) upright("selected")(S, m.id) dot m.w
+  quad
+  I(L, R) = sum_(m in M)
+    upright("selected")(L, m.id)
+    dot upright("selected")(R, m.id)
+    dot m.w
+  quad
+  W(L) + W(R) <= T(M) + I(L, R)
+$
+#assert(type(concrete-accounting) == content)
+"ok"
+#+end_src
+
+Both source blocks are extracted with =orgize eval plan= and sent to
+=typst eval= through stdin. No generated Typst source or PDF is required.
+
+* Lean model
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.lean
+#+end_example
+
+RFC 10.05.89's =realizedVotingWeight= is refined to use
+=projectedVotingWeight=, a Boolean per-member fold. The new module defines:
+
+- =intersectionVotingWeightForMembers=;
+- =intersectionVotingWeight=; and
+- =concretePairWeightAccounting=.
+
+The focused proof establishes:
+
+1. Boolean signer selection ignores a duplicate head;
+2. projected voting weight ignores a duplicate signer head;
+3. intersection weight ignores a duplicate signer head;
+4. intersection weight is bounded by total committed weight;
+5. finite membership derives inclusion-exclusion; and
+6. pair accounting is constructible without an external bound.
+
+* Modular audit
+
+#+begin_example
+packages/proofs/ASPProof/Audit/SearchRouteAdmissionRetryCacheRejoinConcreteIntersection.lean
+packages/proofs/audit/SearchRouteAdmissionRetryCacheRejoinConcreteIntersectionAudit.lean
+packages/proofs/receipts/searchroute-admission-retry-cache-rejoin-concrete-intersection-audit-v1.json
+#+end_example
+
+Because RFC 10.05.91 refines the realized-weight definition used by RFCs
+10.05.89 and 10.05.90, all three focused proof and audit chains MUST be
+revalidated together.
+
+* Search efficiency consequence
+
+Concrete pair accounting remains a compact graph edge. Its receipt can carry
+the four totals required by RFC 10.05.90 without returning full signer or
+membership subgraphs to the model.
+
+This separates:
+
+- search-result caching, which may reuse the accounting receipt under identical
+  evidence owners; and
+- model prefix caching, which may reduce inference cost but does not establish
+  evidence validity.
+
+The shortest safe route is now derived rather than asserted:
+
+#+begin_example
+canonical member fold
+  -> concrete left/right/intersection weights
+  -> derived inclusion-exclusion
+  -> fault-bounded honest intersection
+#+end_example
+
+* Proof-discovered next boundary
+
+The projection is concrete, but cache identity is still described in prose.
+The next proof boundary must bind the accounting receipt to ordered certificate
+identities, canonical membership digest, projection version, and fault-bound
+snapshot. It must prove that changing any semantic owner prevents receipt
+reuse, while swapping the left and right certificates preserves the symmetric
+intersection result.

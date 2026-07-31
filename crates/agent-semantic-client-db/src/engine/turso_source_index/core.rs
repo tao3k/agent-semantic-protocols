@@ -150,14 +150,28 @@ pub async fn refresh_turso_source_index_import_on_connection(
     let trace_started = std::time::Instant::now();
     let requested_source_snapshot = request.source_snapshot;
     let import = request.import;
-    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-        import.file_hashes.iter().map(|file| {
-            (
-                file.path.as_str().to_owned(),
-                file.sha256.as_str().to_owned(),
-            )
-        }),
-    );
+    let file_hashes_by_path = import
+        .file_hashes
+        .iter()
+        .map(|file| (file.path.as_str(), file.sha256.as_str()))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let source_file_hashes = import
+        .owners
+        .iter()
+        .map(|owner| {
+            let hash = file_hashes_by_path
+                .get(owner.owner_path.as_str())
+                .ok_or_else(|| {
+                    format!(
+                        "source index import is missing owner content hash: ownerPath={}",
+                        owner.owner_path
+                    )
+                })?;
+            Ok((owner.owner_path.as_str(), *hash))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let workspace_snapshot =
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(source_file_hashes);
     let mut source_snapshot = workspace_snapshot.evidence(
         requested_source_snapshot.source_kind.clone(),
         requested_source_snapshot.provider_digest.clone(),
@@ -253,7 +267,6 @@ pub async fn refresh_turso_source_index_import_on_connection(
         &import,
         &project_root,
         &file_hashes_json,
-        &source_snapshot_json,
         &source_snapshot,
         request.file_count,
     )
@@ -268,7 +281,7 @@ pub async fn refresh_turso_source_index_import_on_connection(
         )
         .await?
         {
-            Some(existing) if existing == materialization => {
+            Some(existing) if existing.has_same_generation_identity(&materialization) => {
                 source_index_db_trace("generation-reused", trace_started);
                 return Ok(refresh);
             }
@@ -603,7 +616,6 @@ async fn reusable_turso_source_index_generation(
     import: &ClientDbSourceIndexImport,
     project_root: &str,
     file_hashes_json: &str,
-    source_snapshot_json: &str,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     file_count: u32,
 ) -> Result<Option<ClientDbSourceIndexRefreshReport>, String> {
@@ -612,21 +624,21 @@ async fn reusable_turso_source_index_generation(
         || async {
             connection
                 .query(
-                    "SELECT generation_id, owner_count, selector_count
+                    "SELECT generation_id, owner_count, selector_count, source_snapshot_json
                      FROM asp_source_index_scope_v1
                      WHERE project_root = ?1
                        AND schema_id = ?2
                        AND schema_version = ?3
                        AND file_hashes_json = ?4
-                       AND source_snapshot_json = ?5
-                       AND selector_fingerprint = ?6
+                       AND source_snapshot_json <> ''
+                       AND selector_fingerprint = ?5
                        AND EXISTS (
                            SELECT 1
                            FROM asp_source_index_layout_v1 AS layout
                            WHERE layout.project_root = asp_source_index_scope_v1.project_root
                              AND layout.schema_id = asp_source_index_scope_v1.schema_id
                              AND layout.schema_version = asp_source_index_scope_v1.schema_version
-                             AND layout.term_projection_version = ?7
+                             AND layout.term_projection_version = ?6
                              AND layout.token_projection_generation_id = asp_source_index_scope_v1.generation_id
                        )
                        AND EXISTS (
@@ -656,13 +668,13 @@ async fn reusable_turso_source_index_generation(
                                  AND selector.generation_id = asp_source_index_scope_v1.generation_id
                            )
                        )
-                     LIMIT 1",
+                     ORDER BY updated_at_ms DESC, generation_id DESC
+                     LIMIT 8",
                     (
                         project_root,
                         import.schema_id.as_str(),
                         import.schema_version.as_str(),
                         file_hashes_json,
-                        source_snapshot_json,
                         selector_fingerprint.as_str(),
                         TURSO_SOURCE_INDEX_TERM_PROJECTION_VERSION,
                     ),
@@ -673,11 +685,23 @@ async fn reusable_turso_source_index_generation(
         "failed to query Turso reusable source-index generation",
     )
     .await?;
-    let Some(row) = rows.next().await.map_err(|error| {
-        format!("failed to read Turso reusable source-index generation: {error}")
-    })?
-    else {
-        return Ok(None);
+    let row = loop {
+        let Some(row) = rows.next().await.map_err(|error| {
+            format!("failed to read Turso reusable source-index generation: {error}")
+        })?
+        else {
+            return Ok(None);
+        };
+        let persisted_snapshot_json = row.get::<String>(3).map_err(|error| {
+            format!("failed to read reusable source-index snapshot evidence: {error}")
+        })?;
+        let persisted_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence =
+            serde_json::from_str(&persisted_snapshot_json).map_err(|error| {
+                format!("failed to decode reusable source-index snapshot evidence: {error}")
+            })?;
+        if persisted_snapshot.has_same_content_identity(source_snapshot) {
+            break row;
+        }
     };
     let generation_id = row
         .get::<String>(0)

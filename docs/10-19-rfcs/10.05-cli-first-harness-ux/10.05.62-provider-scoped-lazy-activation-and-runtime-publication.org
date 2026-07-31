@@ -189,7 +189,7 @@ MUST NOT own or override a corpus remote, commit, or provider mapping.
 Corpus admission is language-surface admission, not ecosystem or implementation
 affinity. The materializer MUST obtain =sourceExtensions= from the selected
 activated =ProviderDescriptorV1=. Those extensions are materialized from the
-provider/harness workspace-scope contract; the materializer MUST NOT invoke an
+provider/harness =ProjectResolution= contract; the materializer MUST NOT invoke an
 ad hoc provider view or maintain another extension table. It counts Git-indexed
 files whose suffix matches that descriptor. The lock may declare minimum
 matching-file count and ratio, but MUST NOT duplicate the extension list.

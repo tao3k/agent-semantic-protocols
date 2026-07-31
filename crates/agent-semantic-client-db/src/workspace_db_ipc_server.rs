@@ -535,11 +535,13 @@ pub async fn serve_runtime_server_workspace_stream(
                                     .to_owned()
                             })?;
                         materialization.validate_persisted(&request.workspace_identity)?;
-                        if durable.source_snapshot != materialization.source_snapshot {
+                        if !durable
+                            .source_snapshot
+                            .has_same_content_identity(&materialization.source_snapshot)
+                        {
                             return Err(format!(
-                                "Turso generation evidence differs from canonical materialization: durableRoot={} materializedRoot={}",
-                                durable.source_snapshot.root_digest,
-                                materialization.source_snapshot.root_digest
+                                "Turso generation evidence differs from canonical materialization: durable={:?} materialized={:?}",
+                                durable.source_snapshot, materialization.source_snapshot
                             ));
                         }
                         memory_registry
@@ -556,6 +558,54 @@ pub async fn serve_runtime_server_workspace_stream(
                         Ok(receipt) => WorkspaceDbIpcResult::SourceIndexGeneration { receipt },
                         Err(message) => WorkspaceDbIpcResult::Failed {
                             code: "runtime-server-canonical-generation-publish-failed".to_owned(),
+                            message,
+                        },
+                    }
+                }
+                WorkspaceDbIpcOperation::ReadSourceIndex {
+                    request: lookup_request,
+                } => {
+                    let lookup = async {
+                        let lease = match memory_registry.lease(&request.workspace_identity) {
+                            Ok(lease) => lease,
+                            Err(_) => {
+                                let session = admitted_or_bootstrap_workspace(
+                                    registry,
+                                    &request.workspace_identity,
+                                    Path::new(&lookup_request.project_root),
+                                )
+                                .await?;
+                                let materialization = session
+                                    .load_active_workspace_generation_materialization()
+                                    .await?
+                                    .ok_or_else(|| {
+                                        format!(
+                                            "active workspace generation materialization is unavailable: workspaceIdentity={}",
+                                            request.workspace_identity
+                                        )
+                                    })?;
+                                memory_registry
+                                    .ensure_canonical_generation(
+                                        request.request_id.clone(),
+                                        &request.workspace_identity,
+                                        materialization,
+                                    )
+                                    .await?;
+                                memory_registry.lease(&request.workspace_identity)?
+                            }
+                        };
+                        lease.read_source_index(
+                            &lookup_request.source_snapshot,
+                            &lookup_request.query,
+                            lookup_request.language_id.as_ref(),
+                            lookup_request.limit,
+                        )
+                    }
+                    .await;
+                    match lookup {
+                        Ok(lookup) => WorkspaceDbIpcResult::SourceIndex { lookup },
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-source-index-read-failed".to_owned(),
                             message,
                         },
                     }

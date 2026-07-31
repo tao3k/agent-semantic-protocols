@@ -428,8 +428,8 @@ for any specific query that still reaches a bounded cold backend.
   ranking, and memory budgets. The Scheme search surface is limited to
   package-only metadata, index-free receipts, light prime seeds, and an exact
   explicit owner file.
-- =search workspace-scope= is a package-topology receipt, not a hidden source
-  inventory. Its Scheme adapter may read the package manifest and inspect a
+- =project-resolution-stdin= is a package-topology receipt, not a hidden source
+  inventory. Its Scheme adapter may parse the package manifest and inspect a
   fixed set of root configuration anchors, but it MUST NOT call
   =collect-source-files=, sort a full owner list, or build a source index merely
   to render =filePreview=. Complete owner discovery and authoritative counts

@@ -299,6 +299,7 @@ pub(crate) struct WorkspaceMemoryBackend {
     generation: Arc<WorkspaceMemoryGeneration>,
     owner_index: HashMap<String, usize>,
     selector_index: HashMap<String, (usize, usize)>,
+    term_index: HashMap<String, Vec<usize>>,
 }
 
 impl WorkspaceMemoryBackend {
@@ -306,8 +307,13 @@ impl WorkspaceMemoryBackend {
         generation.validate()?;
         let mut owner_index = HashMap::with_capacity(generation.owners.len());
         let mut selector_index = HashMap::new();
+        let mut term_index = HashMap::<String, Vec<usize>>::new();
         for (owner_position, owner) in generation.owners.iter().enumerate() {
             owner_index.insert(owner.owner_path.clone(), owner_position);
+            let text = std::str::from_utf8(&owner.bytes).unwrap_or_default();
+            for term in crate::source_index::source_query_keys(&owner.owner_path, text) {
+                term_index.entry(term).or_default().push(owner_position);
+            }
             for (selector_position, selector) in owner.selectors.iter().enumerate() {
                 selector_index.insert(
                     selector.selector.clone(),
@@ -319,6 +325,7 @@ impl WorkspaceMemoryBackend {
             generation: Arc::new(generation),
             owner_index,
             selector_index,
+            term_index,
         })
     }
 
@@ -340,6 +347,47 @@ impl WorkspaceMemoryBackend {
         Some(Arc::from(
             self.generation.owners[owner_position].bytes.as_slice(),
         ))
+    }
+
+    pub(crate) fn source_index_owner_positions(&self, query: &str, limit: usize) -> Vec<usize> {
+        let query_terms = crate::source_index::source_query_keys("", query);
+        let query = query.trim();
+        if !query.is_empty()
+            && query.chars().all(|character| {
+                character.is_alphanumeric() || character == '-' || character == '_'
+            })
+            && query.contains(['-', '_'])
+        {
+            return self
+                .term_index
+                .get(&query.to_ascii_lowercase())
+                .into_iter()
+                .flatten()
+                .copied()
+                .take(limit)
+                .collect();
+        }
+        let mut scores = HashMap::<usize, usize>::new();
+        for term in query_terms {
+            if let Some(positions) = self.term_index.get(&term) {
+                for &position in positions {
+                    *scores.entry(position).or_default() += 1;
+                }
+            }
+        }
+        let mut ranked = scores.into_iter().collect::<Vec<_>>();
+        ranked.sort_unstable_by(
+            |(left_position, left_score), (right_position, right_score)| {
+                right_score
+                    .cmp(left_score)
+                    .then_with(|| left_position.cmp(right_position))
+            },
+        );
+        ranked.truncate(limit);
+        ranked
+            .into_iter()
+            .map(|(position, _score)| position)
+            .collect()
     }
 }
 

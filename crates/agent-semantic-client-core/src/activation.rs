@@ -37,6 +37,9 @@ pub struct ResolvedProvider {
     pub package_roots: Vec<String>,
     pub config_files: Vec<String>,
     pub source_extensions: Vec<String>,
+    pub source_paths: Vec<String>,
+    pub repository_candidate_generation: String,
+    pub project_resolution_generation: String,
     pub search_capabilities: agent_semantic_hook::ProviderSearchCapabilities,
     pub query_pack_descriptor: agent_semantic_hook::ProviderQueryPackDescriptor,
     pub semantic_facts_descriptor: Option<agent_semantic_hook::ProviderSemanticFactsDescriptor>,
@@ -106,6 +109,9 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
             package_roots: provider.package_roots.clone(),
             config_files: provider.config_files.clone(),
             source_extensions: provider.source_extensions.clone(),
+            source_paths: provider.source_paths.clone(),
+            repository_candidate_generation: provider.repository_candidate_generation.clone(),
+            project_resolution_generation: provider.project_resolution_generation.clone(),
             search_capabilities: provider.search_capabilities.clone(),
             query_pack_descriptor: provider.query_pack_descriptor.clone(),
             semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
@@ -259,7 +265,6 @@ fn provider_registry_scope_dirs(
     snapshot: &ProviderRegistrySnapshot,
 ) -> BTreeSet<String> {
     let mut dirs = BTreeSet::new();
-    dirs.insert(".".to_string());
     for provider in &snapshot.providers {
         append_provider_scope_dirs(project_root, provider, &mut dirs);
     }
@@ -271,24 +276,23 @@ fn append_provider_scope_dirs(
     provider: &ResolvedProvider,
     dirs: &mut BTreeSet<String>,
 ) {
-    let package_roots = if provider.package_roots.is_empty() {
-        vec![".".to_string()]
-    } else {
-        provider.package_roots.clone()
-    };
-    for package_root in package_roots {
+    for package_root in &provider.package_roots {
         insert_existing_scope_dir(project_root, &project_root.join(&package_root), dirs);
-        for source_root in &provider.package_roots {
-            insert_existing_scope_dir(
-                project_root,
-                &project_root.join(&package_root).join(source_root),
-                dirs,
-            );
-        }
-        for config_file in &provider.config_files {
-            if let Some(parent) = project_root.join(&package_root).join(config_file).parent() {
-                insert_existing_scope_dir(project_root, parent, dirs);
-            }
+    }
+    for source_path in &provider.source_paths {
+        let source_path = project_root.join(source_path);
+        let source_dir = if source_path.is_dir() {
+            source_path.as_path()
+        } else if let Some(parent) = source_path.parent() {
+            parent
+        } else {
+            continue;
+        };
+        insert_existing_scope_dir(project_root, source_dir, dirs);
+    }
+    for config_file in &provider.config_files {
+        if let Some(parent) = project_root.join(config_file).parent() {
+            insert_existing_scope_dir(project_root, parent, dirs);
         }
     }
 }
@@ -332,11 +336,19 @@ fn provider_fingerprint(provider: &ResolvedProvider) -> String {
                 .unwrap_or_default()
         ),
         format!("packageRoots={}", provider.package_roots.join("\u{1f}")),
-        format!("packageRoots={}", provider.package_roots.join("\u{1f}")),
         format!("configFiles={}", provider.config_files.join("\u{1f}")),
         format!(
             "sourceExtensions={}",
             provider.source_extensions.join("\u{1f}")
+        ),
+        format!("sourcePaths={}", provider.source_paths.join("\u{1f}")),
+        format!(
+            "repositoryCandidateGeneration={}",
+            provider.repository_candidate_generation
+        ),
+        format!(
+            "projectResolutionGeneration={}",
+            provider.project_resolution_generation
         ),
         format!(
             "searchCapabilities={}",

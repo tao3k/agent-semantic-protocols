@@ -1,0 +1,170 @@
+#+title: 00.75 Certified Registry Epoch Transition
+#+startup: overview
+
+* Status
+
+This module refines registry snapshot resolution and authority-scoped logical
+time.  It specifies proof obligations only; it does not implement a Rust or
+Python search runtime.
+
+* Problem
+
+A new registry snapshot and a new logical epoch must not become trusted merely
+because they were observed after an old snapshot.  Conversely, replacing a
+snapshot must not erase the audit status of decisions that were valid before
+the replacement.
+
+SearchLoop therefore needs a transition certificate.  The certificate does not
+make sequence numbers from two clock domains comparable.  It proves a narrower
+fact: one domain is the unique authorized successor of another domain, the old
+domain has an explicit execution cutoff, and historical replay has an explicit
+archive dependency.
+
+* Contract
+
+** ASP-RFC-10.05-CRET-CERTIFICATE
+
+A transition certificate MUST identify the old and new clock domains, the old
+domain cutoff, the certificate authority digest, and whether the old registry
+snapshot is archived.
+
+** ASP-RFC-10.05-CRET-AUTHORITY
+
+The certificate authority digest MUST equal the old domain authority digest.
+Any authority rotation MUST be represented by the registry-owned
+~authorized-successor~ relation rather than inferred from digest inequality.
+
+** ASP-RFC-10.05-CRET-SNAPSHOT
+
+A valid transition MUST change the registry snapshot digest and therefore the
+clock domain.
+
+** ASP-RFC-10.05-CRET-NO-CROSS-ORDER
+
+A transition MUST NOT make old-domain and new-domain sequence numbers directly
+comparable.  It establishes successor causality between domains, not an
+arithmetic order between their sequence values.
+
+** ASP-RFC-10.05-CRET-CUTOFF
+
+An old-domain execution is covered only when its receipt names the old domain
+and its execution sequence is at or before the certified cutoff.  A later old
+execution MUST be rejected.
+
+** ASP-RFC-10.05-CRET-AUDIT
+
+A covered old-domain execution under a valid transition MUST retain historical
+audit validity.
+
+** ASP-RFC-10.05-CRET-REPLAY
+
+Historical replay MUST additionally require the archived old snapshot.
+Missing archive evidence blocks replay but does not erase historical audit
+validity.
+
+** ASP-RFC-10.05-CRET-NEW-DECISION
+
+After a valid transition, only receipts bound to the successor domain may
+authorize new decisions.  Old-domain receipts and invalid transitions MUST
+authorize none.
+
+** ASP-RFC-10.05-CRET-UNIQUE-SUCCESSOR
+
+The registry successor relation MUST be functional for one transition step.
+Two valid certificates from the same origin MUST resolve to the same successor
+domain; otherwise the router MUST treat the transition as a fork and fail
+closed.
+
+** ASP-RFC-10.05-CRET-NEXT-EPOCH
+
+A single transition certificate MUST advance exactly one logical epoch.  Longer
+migrations require a chain of individually audited transition certificates.
+
+* Org-Babel Typst model
+
+#+name: certified-registry-epoch-transition-math
+#+begin_src typst
+#let old-domain = (
+  snapshot: 101,
+  authority: 17,
+  epoch: 3,
+)
+
+#let new-domain = (
+  snapshot: 202,
+  authority: 23,
+  epoch: 4,
+)
+
+#let transition = (
+  from: old-domain,
+  to: new-domain,
+  cutoff: 40,
+  certificate-authority: 17,
+  old-snapshot-archived: true,
+  successor-authorized: true,
+)
+
+#let old-receipt = (domain: old-domain, execution-sequence: 31)
+#let late-old-receipt = (domain: old-domain, execution-sequence: 41)
+#let new-receipt = (domain: new-domain, execution-sequence: 2)
+
+(
+  valid-transition:
+    transition.successor-authorized
+    and transition.certificate-authority == old-domain.authority
+    and old-domain.snapshot != new-domain.snapshot
+    and old-domain.epoch + 1 == new-domain.epoch,
+  old-audit-covered:
+    old-receipt.domain == old-domain
+    and old-receipt.execution-sequence <= transition.cutoff,
+  late-old-covered:
+    late-old-receipt.execution-sequence <= transition.cutoff,
+  historical-replay:
+    transition.old-snapshot-archived,
+  new-decision-domain:
+    new-receipt.domain == new-domain,
+  cross-domain-sequence-comparable:
+    old-receipt.domain == new-receipt.domain,
+)
+#+end_src
+
+The expected record makes the transition, old audit, replay, and new-domain
+decision fields true.  The late old execution and cross-domain comparability
+fields are false.
+
+* SearchLoop consequence
+
+The transition proof belongs in the receipt graph, not in another user-facing
+CLI subcommand.  When the router encounters a new snapshot or epoch, it should
+inspect the transition edge progressively.  A missing edge, ambiguous
+successor, uncovered old receipt, or missing replay archive is a focused
+evidence gap.  This preserves a small command surface while ensuring that a
+short graph route cannot cross registry generations without proof.
+
+* Machine-checked status
+
+- Lean module:
+  ~packages/proofs/ASPProof/SearchRouteCertifiedRegistryEpochTransition.lean~
+- Modular Lean audit:
+  ~packages/proofs/ASPProof/Audit/SearchRouteCertifiedRegistryEpochTransition.lean~
+- Audit driver:
+  ~packages/proofs/audit/SearchRouteCertifiedRegistryEpochTransitionAudit.lean~
+- Lean audit receipt:
+  ~packages/proofs/receipts/searchroute-certified-registry-epoch-transition-audit-v1.json~
+- AXLE receipt:
+  ~packages/proofs/receipts/searchroute-certified-registry-epoch-transition-axle-audit-v1.json~
+- Verified declarations: 14 total, 14 axiom-free, 0 axiom-dependent,
+  and no ~sorryAx~.
+- AXLE audit SHA-256:
+  ~5d43eeb58185fd1efb9d939d1b7123609cb0ecaa5b89af28b966c41c052b2641~
+- The named Org-Babel Typst block was extracted by ~orgize eval plan~ and
+  evaluated through interactive standard input with
+  ~typst eval --in - none~; the evaluator exited successfully.
+
+The proof process rejected a vacuous first formulation of cross-domain
+comparability.  The corrected model defines direct sequence comparability
+independently as clock-domain equality, then proves that a valid transition
+changes that domain.  AXLE also rejected the first audit receipt because one
+multi-clause declaration was not canonically sorted; the Lean-owned receipt was
+corrected and re-audited without weakening the consumer.

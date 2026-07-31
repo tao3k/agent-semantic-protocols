@@ -1,0 +1,259 @@
+#+title: RFC 10.05.89 — Exactly-Once Resident Materialization
+#+subtitle: Claim linearization, host idempotency, crash reconciliation, and lease-safe dispatch
+#+language: en
+#+options: toc:3 num:t
+
+* Status
+
+Draft Lean-backed refinement of RFC 10.05.88.
+
+Rust implementation conformance remains unverified while the parser-owned Rust
+route is blocked by activation-schema, workspace-owner, and generation
+failures.
+
+* Problem
+
+RFC 10.05.88 defines =materialize-resident= as the only valid action for a
+configured-but-absent role. That is insufficient under concurrency:
+
+- two hooks can observe absence concurrently;
+- both can attempt native child creation;
+- the host can create a child before the local registry commits;
+- the process can crash after host acceptance but before registry binding;
+- heartbeat expiry can race with dispatch; and
+- replacement can overlap delayed messages from the previous generation.
+
+The materialization protocol therefore needs two different linearization
+boundaries:
+
+1. an authority CAS that selects one claim token and generation; and
+2. an idempotent native-host operation keyed by that claim token.
+
+Cross-system atomicity is not assumed.
+
+* Claim transaction
+
+#+name: resident-materialization-claim
+#+begin_src typst
+$ H = (p, r_a, g_p, k, i_c, i_m) $
+
+$ P = (r_"expected", g_"target", k_P) $
+
+$ "CanClaim"(H, P)
+:=
+p in {"absent", "failed"}
+and r_"expected" = r_a
+and g_"target" = g_p + 1
+and k_P != 0 $
+
+$ "claim"(H, P)
+=
+("claimed", r_a + 1, g_p + 1, k_P, 0, 0) $
+
+"ok"
+#+end_src
+
+After one successful claim, every competing proposal for the previous
+authority revision is stale.
+
+* Native-host idempotency
+
+#+name: resident-materialization-host-idempotency
+#+begin_src typst
+$ N = (K_N, i_c) $
+
+$ "spawn"(N, k, i)
+:=
+cases(
+  "accept"(k, i) & K_N = "none",
+  N & K_N = k,
+  N & K_N != k,
+) $
+
+$ "spawn"("spawn"(N, k, i), k, j)
+=
+"spawn"(N, k, i) $
+
+"ok"
+#+end_src
+
+If the host accepted claim token $k$ and the caller crashes before recording a
+spawn receipt, replay with the same $k$ returns the same child. A different
+claim token cannot replace that child in the same host slot.
+
+* Recoverable stages
+
+#+name: resident-materialization-stages
+#+begin_src typst
+$ "absent"
+arrow.r
+"claimed"
+arrow.r
+"spawned"
+arrow.r
+"bound"
+arrow.r
+"active" $
+
+#table(
+  columns: 3,
+  [Phase], [Required next action], [Forbidden shortcut],
+  [absent], [claim], [spawn],
+  [claimed], [create native child with claim token], [dispatch],
+  [spawned], [reconcile registry and target], [respawn],
+  [bound], [observe heartbeat lease], [dispatch],
+  [active with fresh lease], [dispatch], [bootstrap],
+  [active with expired lease], [replace generation], [dispatch],
+)
+
+"ok"
+#+end_src
+
+The =spawned= phase is durable evidence that native creation already happened.
+Recovery reconciles binding; it does not create another child.
+
+* Lease-bound dispatch
+
+#+name: resident-materialization-dispatch
+#+begin_src typst
+$ "LeaseFresh"(S)
+:=
+p = "active"
+and r_h <= r_a
+and r_a <= r_x $
+
+$ "CanDispatch"(S, rho)
+:=
+"LeaseFresh"(S)
+and b_d
+and b_m
+and rho = (i_r, k, g_p, r_a, i_c, i_m) $
+
+$ r_a > r_x
+arrow.r.double
+not "CanDispatch"(S, rho) $
+
+"ok"
+#+end_src
+
+Heartbeat is a revision lease, not a timeless Boolean.
+
+* Normative requirements
+
+** ASP-RFC-10.05-EORM-CLAIM
+
+Materialization MUST begin with a CAS over expected authority revision and
+target physical generation. The winning claim MUST persist a non-zero claim
+token.
+
+** ASP-RFC-10.05-EORM-ONE-WINNER
+
+After claim commit, every competing proposal for the previous head MUST fail
+closed. Hook-local observation does not grant spawn authority.
+
+** ASP-RFC-10.05-EORM-HOST-KEY
+
+Native child creation MUST use the committed claim token as an idempotency key.
+Replay of the same token MUST resolve the same child identity.
+
+** ASP-RFC-10.05-EORM-SPAWN-RECEIPT
+
+A spawn receipt MUST bind root session, claim token, physical generation, and
+child session id.
+
+** ASP-RFC-10.05-EORM-RECONCILE
+
+After durable spawn evidence, recovery MUST reconcile registry and
+message-target binding. It MUST NOT create another child.
+
+** ASP-RFC-10.05-EORM-BIND
+
+Registry and message-target binding MUST match claim token, physical
+generation, and child session id.
+
+** ASP-RFC-10.05-EORM-LEASE
+
+Activation MUST require a generation-bound heartbeat lease whose observation
+and expiry revisions cover the current authority revision.
+
+** ASP-RFC-10.05-EORM-DISPATCH
+
+Dispatch MUST bind root session, claim token, physical generation, authority
+revision, child session, and message target. Expired leases MUST route to
+replacement.
+
+** ASP-RFC-10.05-EORM-CALIBRATION
+
+Rust implementation status remains =Unverified= until exact parser-owned owner
+selectors and focused crash/concurrency tests are available.
+
+* Lean audit
+
+The executable model is:
+
+- =packages/proofs/ASPProof/HookSessionMaterialization.lean=
+
+It proves:
+
+- the first claim is admissible;
+- a committed claim rejects the competing writer;
+- claim advances generation and authority revision;
+- repeated host spawn with the same token is idempotent;
+- a conflicting token cannot replace the host winner;
+- crash recovery reuses the same child;
+- recorded spawn routes to binding reconciliation rather than respawn;
+- binding requires the exact generation and child;
+- a bound state requires heartbeat observation;
+- fresh active state dispatches;
+- a fully bound dispatch receipt is admitted;
+- expired heartbeat blocks dispatch; and
+- expired active state routes to replacement.
+
+* Architectural defects exposed
+
+** CAS alone does not prevent duplicate external spawn
+
+The authority store can select one winner while a retried caller duplicates the
+native-host side effect. The claim token must cross the system boundary as an
+idempotency key.
+
+** Native spawn is not registry materialization
+
+Child creation, registry durability, and message-target binding are distinct
+facts. A child can exist while the control plane still cannot address it.
+
+** Boolean heartbeat admits stale dispatch
+
+Without observation and expiry revisions, an old =healthy=true= value can
+authorize dispatch after replacement or suspension.
+
+** Recovery must know which side effect already occurred
+
+A generic =retry materialization= action cannot distinguish “no child created”
+from “child created, receipt lost.” Durable stage evidence is required.
+
+* Rust implementation audit boundary
+
+The source-of-truth audit is currently blocked before exact Rust source access:
+
+- activation rejects =workspaceScope= as an unknown field;
+- workspace-owner connection fails with =Operation not permitted=;
+- active provider generation is missing; and
+- owner/query selectors cannot be materialized.
+
+No Rust implementation claim is inferred from this RFC. Once the provider route
+is restored, the first exact audit targets are:
+
+- hook materialization claim/CAS owner;
+- native subagent-start receipt owner;
+- resident registry insertion transaction;
+- =physicalGeneration= update owner;
+- =messageTargetId= binding owner;
+- heartbeat/status lease representation; and
+- dispatch receipt verification tests.
+
+* Next proof boundary
+
+The next refinement should model generic multi-role lifecycle authority,
+materialization quotas, child termination concurrent with dispatch, and
+recovery graph/token costs for the shortest safe transition path.

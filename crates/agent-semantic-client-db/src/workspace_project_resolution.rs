@@ -262,9 +262,8 @@ pub fn spawn_workspace_project_resolution_actor(
     workspace_identity: WorkspaceResolutionIdentity,
     resolver: Arc<dyn WorkspaceProjectResolver>,
 ) -> WorkspaceProjectResolutionHandle {
-    let queue_capacity = std::thread::available_parallelism()
-        .map_or(16, usize::from)
-        .saturating_mul(8)
+    let queue_capacity = crate::runtime_concurrency::RuntimeConcurrencyPlan::current()
+        .writer_queue_capacity()
         .clamp(16, 256);
     let (sender, receiver) = mpsc::channel(queue_capacity);
     tokio::spawn(run_actor(

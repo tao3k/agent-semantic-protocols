@@ -1,0 +1,234 @@
+#+title: RFC 10.05.87 — Activation Repair Multi-Generation Ledger
+#+subtitle: Stale replay rejection, tombstone-safe compaction, and minimal recovery frontiers
+#+language: en
+#+options: toc:3 num:t
+
+* Status
+
+Draft for Lean-backed architectural audit.
+
+This RFC generalizes the single-entry repair journal from RFC 10.05.86 into a
+multi-generation ledger and introduces an agent-facing recovery-cost model.
+
+* Structured entry identity
+
+A sink idempotency key MUST be a structural generation identity:
+
+#+name: activation-repair-ledger-key
+#+begin_src typst
+$ k = (i, g, r) $
+
+$ "Current"(L, k)
+:=
+(i_k = i_L and g_k = g_L and r_k = r_L) $
+
+$ "Replayable"(L, e)
+arrow.r.double
+("Current"(L, k_e) and f_G < g_e
+  and p_e in {"committed", "enqueued"}) $
+
+"ok"
+#+end_src
+
+Here $f_G$ is the monotone garbage-collection floor. A random request id is
+insufficient because it does not prove which canonical activation identity,
+generation, and authority revision the sink acceptance belongs to.
+
+* Ack and replay isolation
+
+For an acknowledgement $a$:
+
+#+name: activation-repair-ledger-ack-isolation
+#+begin_src typst
+$ g_a < g_L
+arrow.r.double
+not "AckAdmissible"(L, a) $
+
+$ g_e < g_L
+arrow.r.double
+not "Replayable"(L, e) $
+
+$ "record-ack"(L, a).g = L.g
+quad
+"record-ack"(L, a).r = L.r $
+
+"ok"
+#+end_src
+
+Late acknowledgement delivery is expected. It may update historical evidence,
+but it cannot acknowledge the current generation unless the full structured
+key matches the current head.
+
+* Tombstone and compaction model
+
+Deleting a journal entry is safe only after:
+
+1. the entry is tombstoned;
+2. its generation is strictly older than the active generation;
+3. the GC floor covers its generation;
+4. a current-generation acknowledgement is durable; and
+5. compaction preserves the GC floor.
+
+#+name: activation-repair-ledger-gc
+#+begin_src typst
+$ "CanCollect"(L, e)
+arrow.r.double
+(
+  p_e = "tombstoned"
+  and g_e <= f_G
+  and g_e < g_L
+  and "CurrentAckDurable"(L)
+) $
+
+$ g_e <= f_G
+arrow.r.double
+not "ImportAdmissible"(L, e) $
+
+"ok"
+#+end_src
+
+The GC floor is a durable tombstone summary. Deleting both the entry and its
+tombstone knowledge reopens import eligibility and resurrects retired work.
+
+* Minimal recovery frontier
+
+Agent recovery MUST project only unresolved, current, non-GC entries. Historical
+tombstones and acknowledged entries remain verifiable by exact query but do not
+belong in the default recovery prompt.
+
+#+name: activation-repair-ledger-cost
+#+begin_src typst
+$ C(P) = (u(P), h(P), q(P), t(P)) $
+
+$ C(P_f) <= C(P_L) $
+
+$ q(P_f) < q(P_L)
+quad
+t(P_f) < t(P_L) $
+
+$ t(P_f) <= b + c dot u(P_f) $
+
+#table(
+  columns: 3,
+  [Metric], [Full ledger], [Unresolved frontier],
+  [Unresolved entries], [2], [1],
+  [Graph hops], [5], [2],
+  [Agent/LLM rounds], [4], [1],
+  [Exposed tokens], [1200], [240],
+)
+
+"ok"
+#+end_src
+
+The numeric witness is not a universal performance claim. It is an executable
+counterexample to the assumption that full-ledger exposure is necessary for
+correct recovery. The normative contract is component-wise non-increase plus
+explicit strict reduction where claimed.
+
+* Normative requirements
+
+** ASP-RFC-10.05-ARML-KEY
+
+Journal and sink identities MUST bind canonical identity, generation, and
+authority revision. A provider-private random id MAY be carried as metadata but
+MUST NOT replace this structural binding.
+
+** ASP-RFC-10.05-ARML-REPLAY
+
+Replay MUST require a current structured key, a generation above the GC floor,
+and an unresolved phase. Stale-generation replay MUST fail closed.
+
+** ASP-RFC-10.05-ARML-ACK
+
+Acknowledgement admission MUST resolve an exact ledger entry and match the
+current structured key. Ack arrival order MUST NOT mutate the activation head.
+
+** ASP-RFC-10.05-ARML-TOMBSTONE
+
+Every retired generation MUST leave durable monotone tombstone knowledge,
+either as an entry or through the GC floor.
+
+** ASP-RFC-10.05-ARML-GC
+
+Compaction MUST require a tombstoned old entry, a covering GC floor, and durable
+current-generation acknowledgement. Compaction MUST preserve the GC floor.
+
+** ASP-RFC-10.05-ARML-IMPORT
+
+An entry at or below the GC floor MUST NOT be reimported from cache, registry,
+resident state, delayed transport, or provider discovery.
+
+** ASP-RFC-10.05-ARML-FRONTIER
+
+Default agent recovery output MUST include only unresolved current entries.
+Historical entries MUST remain available through exact evidence queries.
+
+** ASP-RFC-10.05-ARML-COST
+
+Recovery receipts MUST report unresolved-entry count, graph hops,
+agent/LLM interaction rounds, and exposed-token count. An optimization claim
+MUST state which components are non-increasing and which are strictly reduced.
+
+** ASP-RFC-10.05-ARML-TOKEN-BOUND
+
+The default recovery projection SHOULD enforce a visible bound of the form
+$t(P) <= b + c dot u(P)$, where constants are receipt-visible policy inputs.
+
+* Lean audit
+
+The executable model is:
+
+- =packages/proofs/ASPProof/ActivationRepairLedger.lean=
+
+It proves:
+
+- stale generations cannot replay or acknowledge the current head;
+- current acknowledgement is admitted and old acknowledgement is rejected;
+- acknowledgement reordering preserves generation, revision, and GC floor;
+- a covered old tombstone is collectable;
+- compaction preserves head identity and the GC floor;
+- the GC floor blocks old-generation resurrection;
+- deleting tombstone knowledge without advancing the floor allows
+  resurrection;
+- the unresolved current entry remains replayable;
+- the unresolved frontier component-wise dominates full-ledger recovery;
+- frontier projection strictly reduces interaction rounds and token exposure;
+  and
+- the projected token count satisfies an explicit linear bound.
+
+* Logic bugs found
+
+** Random idempotency ids do not isolate generations
+
+A stable integer id prevents accidental retry duplication only if every
+producer preserves it. Structural identity makes cross-generation mismatch
+locally auditable even when transport metadata is reordered.
+
+** Tombstone deletion can resurrect retired work
+
+Removing an old entry without preserving a GC floor causes delayed provider or
+resident evidence to look importable again. “No longer present” is not proof of
+retirement.
+
+** Ack ordering and head mutation must be orthogonal
+
+An old acknowledgement can arrive after a newer repair wins. Recording
+historical evidence must not change current generation or revision.
+
+** Token reduction needs a safety projection
+
+Dropping history saves tokens only when the projection retains every unresolved
+current entry and exact historical evidence remains queryable. Truncation by
+byte count alone has no safety meaning.
+
+* Remaining proof boundary
+
+The next proof should replace the fixed witness ledger with a graph-indexed
+recovery frontier and prove:
+
+- frontier completeness for every unresolved obligation;
+- shortest safe graph paths to repair authority and evidence;
+- router decisions that do not re-enter GC-covered generations;
+- cache semantics separated into search-result cache and model-prefix cache;
+- bounds on loop/DAG interaction rounds; and
+- token monotonicity under incremental evidence refinement.

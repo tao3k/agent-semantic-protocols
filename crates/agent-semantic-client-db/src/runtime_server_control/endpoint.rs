@@ -65,16 +65,13 @@ pub async fn publish_runtime_server_endpoint(
 }
 
 pub fn runtime_server_listener_backlog() -> u32 {
-    std::thread::available_parallelism()
-        .map(usize::from)
-        .unwrap_or(1)
+    crate::runtime_concurrency::RuntimeConcurrencyPlan::current()
+        .reader_limit()
         .saturating_mul(64) as u32
 }
 
 pub fn runtime_server_connection_pool_size() -> usize {
-    std::thread::available_parallelism()
-        .map(usize::from)
-        .unwrap_or(1)
+    crate::runtime_concurrency::RuntimeConcurrencyPlan::current().reader_limit()
 }
 
 pub fn runtime_server_connection_pool_capacity() -> usize {

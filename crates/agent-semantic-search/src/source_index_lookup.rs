@@ -3,14 +3,13 @@
 use std::path::Path;
 
 use agent_semantic_client_core::LanguageId;
-use agent_semantic_client_db::{
-    ClientDbEngine, ClientDbSourceIndexClientDirLookupRequest, ClientDbSourceIndexLookupResult,
-    ClientDbSourceIndexProjectLookupRequest, ClientDbSourceIndexQueryKey,
-};
+use agent_semantic_client_db::ClientDbSourceIndexLookupResult;
+use agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest;
 
-use crate::{reorder_source_index_candidates, source_index_lookup_terms};
+use crate::reorder_source_index_candidates;
 
 /// Request for looking up source-index owners from one project's cache.
+#[derive(Clone, Copy, Debug)]
 pub struct SourceIndexLookupRequest<'a> {
     pub cache_project_root: &'a Path,
     pub indexed_project_root: &'a Path,
@@ -18,20 +17,6 @@ pub struct SourceIndexLookupRequest<'a> {
     pub query: &'a str,
     pub limit: u32,
     pub source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
-    pub live_import: Option<&'a agent_semantic_client_db::ClientDbSourceIndexImport>,
-}
-
-/// Request for looking up source-index owners from an already resolved client
-/// cache directory.
-#[derive(Clone, Copy, Debug)]
-pub struct SourceIndexClientCacheLookupRequest<'a> {
-    pub cache_root: &'a Path,
-    pub indexed_project_root: &'a Path,
-    pub language_id: Option<&'a LanguageId>,
-    pub query: &'a str,
-    pub limit: u32,
-    pub source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
-    pub live_import: Option<&'a agent_semantic_client_db::ClientDbSourceIndexImport>,
 }
 
 fn source_index_artifact_digest(
@@ -42,9 +27,9 @@ fn source_index_artifact_digest(
 
 /// Request for source-index lookup with an optional warm search planner.
 #[derive(Clone, Copy, Debug)]
-pub struct SourceIndexClientCachePlannerLookupRequest<'a> {
+pub struct SourceIndexPlannerLookupRequest<'a> {
     /// Existing source-index lookup request.
-    pub source_index: SourceIndexClientCacheLookupRequest<'a>,
+    pub source_index: SourceIndexLookupRequest<'a>,
     /// Optional warm path index used before falling through to provider work.
     pub file_locator: Option<&'a crate::file_locator::FileLocatorIndex>,
 }
@@ -74,7 +59,6 @@ pub fn lookup_source_index_for_language(
         query,
         limit,
         source_snapshot,
-        live_import: None,
     })
 }
 
@@ -83,22 +67,14 @@ pub fn lookup_source_index_for_language(
 pub fn lookup_source_index_in_cache(
     request: SourceIndexLookupRequest<'_>,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
-    let expected_index_artifact_digest = source_index_artifact_digest(request.source_snapshot);
-    let lookup = ClientDbEngine::lookup_source_index_from_project(
-        ClientDbSourceIndexProjectLookupRequest {
-            cache_project_root: request.cache_project_root,
-            indexed_project_root: request.indexed_project_root,
-            language_id: request.language_id,
-            query_keys: source_index_lookup_query_keys(request.query),
+    let lookup = agent_semantic_client_db::workspace_db_ipc::read_source_index_via_runtime_server(
+        WorkspaceDbSourceIndexLookupRequest {
+            project_root: request.cache_project_root.to_path_buf(),
+            indexed_project_root: request.indexed_project_root.to_path_buf(),
+            source_snapshot: request.source_snapshot.clone(),
+            query: request.query.to_owned(),
+            language_id: request.language_id.cloned(),
             limit: request.limit,
-            expected_snapshot_root: &request.source_snapshot.root_digest,
-            expected_index_artifact_digest: &expected_index_artifact_digest,
-            live_facts: request.live_import.map(|import| {
-                agent_semantic_client_db::ClientDbLiveSourceIndexFacts {
-                    source_snapshot: request.source_snapshot,
-                    import,
-                }
-            }),
         },
     )?;
     let lookup = rank_source_index_lookup_result(lookup, request.query);
@@ -111,57 +87,21 @@ pub fn lookup_source_index_in_cache(
     Ok(lookup)
 }
 
-/// Lookup source-index owners from an already resolved client cache directory.
-pub fn lookup_source_index_in_client_cache_dir(
-    request: SourceIndexClientCacheLookupRequest<'_>,
+/// Use a warm file locator first, then query the resident workspace owner.
+pub fn lookup_source_index_with_planner(
+    request: SourceIndexPlannerLookupRequest<'_>,
 ) -> Result<ClientDbSourceIndexLookupResult, String> {
-    let expected_index_artifact_digest = source_index_artifact_digest(request.source_snapshot);
-    let lookup = ClientDbEngine::lookup_source_index_from_client_dir(
-        ClientDbSourceIndexClientDirLookupRequest {
-            client_dir: request.cache_root,
-            indexed_project_root: request.indexed_project_root,
-            language_id: request.language_id,
-            query_keys: source_index_lookup_query_keys(request.query),
-            limit: request.limit,
-            expected_snapshot_root: &request.source_snapshot.root_digest,
-            expected_index_artifact_digest: &expected_index_artifact_digest,
-            live_facts: request.live_import.map(|import| {
-                agent_semantic_client_db::ClientDbLiveSourceIndexFacts {
-                    source_snapshot: request.source_snapshot,
-                    import,
-                }
-            }),
-        },
-    )?;
-    let lookup = rank_source_index_lookup_result(lookup, request.query);
-    if !lookup.candidates.is_empty() {
-        return Ok(lookup);
-    }
-
-    // Keep the client-dir route consistent with project-root lookup semantics.
-    Ok(lookup)
-}
-
-/// Lookup source-index owners, then use a warm file locator on DB misses.
-pub fn lookup_source_index_in_client_cache_dir_with_planner(
-    request: SourceIndexClientCachePlannerLookupRequest<'_>,
-) -> Result<ClientDbSourceIndexLookupResult, String> {
-    let lookup = lookup_source_index_in_client_cache_dir(request.source_index)?;
-    if !lookup.candidates.is_empty() {
-        return Ok(lookup);
-    }
     if let Some(file_locator) = request.file_locator
         && let Some(file_lookup) =
-            source_index_file_locator_lookup(&lookup, request.source_index, file_locator)
+            source_index_file_locator_lookup(request.source_index, file_locator)
     {
         return Ok(file_lookup);
     }
-    Ok(lookup)
+    lookup_source_index_in_cache(request.source_index)
 }
 
 fn source_index_file_locator_lookup(
-    base_lookup: &ClientDbSourceIndexLookupResult,
-    request: SourceIndexClientCacheLookupRequest<'_>,
+    request: SourceIndexLookupRequest<'_>,
     file_locator: &crate::file_locator::FileLocatorIndex,
 ) -> Option<ClientDbSourceIndexLookupResult> {
     let decision =
@@ -195,29 +135,12 @@ fn source_index_file_locator_lookup(
         return None;
     }
     Some(agent_semantic_client_db::ClientDbSourceIndexLookupResult {
-        db_path: base_lookup.db_path.clone(),
+        db_path: std::path::PathBuf::new(),
         state: agent_semantic_client_db::ClientDbSourceIndexLookupState::Hit,
         candidates,
-        source_snapshot: base_lookup.source_snapshot.clone(),
-        index_artifact_digest: base_lookup.index_artifact_digest.clone(),
+        source_snapshot: Some(request.source_snapshot.clone()),
+        index_artifact_digest: Some(source_index_artifact_digest(request.source_snapshot)),
     })
-}
-
-fn source_index_lookup_query_keys(query: &str) -> Vec<ClientDbSourceIndexQueryKey> {
-    let mut terms = source_index_lookup_terms(query);
-    if terms
-        .iter()
-        .any(|term| term == "02-codex-resident-agent-lifecycle-v2")
-        && terms
-            .iter()
-            .all(|term| term != "02-codex-resident-agent-lifecycle-v1")
-    {
-        terms.push("02-codex-resident-agent-lifecycle-v1".to_string());
-    }
-    terms
-        .into_iter()
-        .map(ClientDbSourceIndexQueryKey::from)
-        .collect()
 }
 
 pub fn rank_source_index_lookup_result(

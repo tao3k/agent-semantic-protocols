@@ -1,0 +1,181 @@
+#+title: 10.05.10.00.66 Adaptive Route Catalog Closure
+#+startup: overview
+
+* Status
+
+Draft proof refinement for SearchLoop, the evidence graph, and the graph router.
+This document specifies no Rust or Python implementation.
+
+* Problem
+
+A static route catalog can be complete for the routes known before an inspect
+step and still be incomplete for the adaptive search.  SearchLoop observes new
+evidence, and that evidence can enable graph-router transitions that were not
+admissible in the preceding state.  A frontier certificate over only the current
+catalog therefore proves local coverage, not coverage of all routes reachable
+through future evidence.
+
+The defect is easy to hide:
+
+1. the initial route is present in the catalog;
+2. the static frontier covers every catalog member;
+3. executing the initial route emits an evidence atom;
+4. that evidence enables a new route;
+5. the new route is absent from both the catalog and the frontier.
+
+Every static check succeeds while the adaptive search misses a reachable route.
+
+* Mathematical model
+
+** Evidence-dependent reachability
+
+A route is adaptively reachable when it is either an initial route or is enabled
+by evidence emitted from an already reachable route.  Reachability is an
+inductive relation rather than a one-shot list membership test.
+
+This matters for the interactive agent design.  SearchLoop does not need an
+increasingly complex CLI command that predicts every future branch.  It needs a
+small inspect transition whose receipt identifies newly enabled routes and a
+router that maintains the inductive closure certificate.
+
+** Initial coverage and successor closure
+
+An adaptive enumeration certificate has two independent proof obligations:
+
+- every initial route belongs to the catalog;
+- for every catalog route, each evidence atom it may emit, and every successor
+  enabled by that atom, the successor also belongs to the catalog.
+
+Initial coverage without successor closure is not an adaptive enumeration
+certificate.
+
+** Coverage versus soundness
+
+Two set inclusions have different jobs:
+
+- =reachable ⊆ catalog= is sufficient to prove that every reachable route is
+  covered by the certified frontier;
+- =catalog ⊆ reachable= is additionally required to prove that a globally
+  undominated reachable route must be retained.
+
+Without catalog soundness, an unreachable phantom route can appear in the
+catalog, dominate a reachable route, and justify an invalid Pareto pruning
+decision.  Over-approximation is therefore safe for coverage but not for global
+undominated-retention claims.
+
+** Identity boundary
+
+The adaptive enumeration certificate MUST bind the graph generation, expansion
+rule digest, completion-policy digest, cost policy, search-cache context, and
+model-prefix-cache context.  A new provider rule, graph generation, or cache
+context invalidates the closure proof even if the current static catalog has not
+changed.
+
+* Normative clauses
+
+- =ASP-RFC-10.05-ARC-REACHABLE=: initial coverage plus successor closure places
+  every adaptively reachable route in the catalog.
+- =ASP-RFC-10.05-ARC-FRONTIER=: a frontier over an adaptively closed catalog
+  covers every reachable route.
+- =ASP-RFC-10.05-ARC-UNDOMINATED=: retaining every globally undominated
+  reachable route additionally requires catalog soundness.
+- =ASP-RFC-10.05-ARC-DISCOVERY=: an evidence-enabled successor is inductively
+  reachable even when absent from the initial catalog.
+- =ASP-RFC-10.05-ARC-STATIC=: a static frontier can validly cover an incomplete
+  current catalog.
+- =ASP-RFC-10.05-ARC-MISS=: that static frontier can still miss a reachable
+  route.
+- =ASP-RFC-10.05-ARC-NOT-CLOSED=: a catalog omitting an evidence-enabled
+  successor cannot carry a successor-closure certificate.
+- =ASP-RFC-10.05-ARC-INITIAL-INSUFFICIENT=: initial-route coverage alone does not
+  imply adaptive route coverage.
+
+* SearchLoop contract
+
+Each progressive inspect transition SHOULD return:
+
+- the evidence atoms newly realized by the transition;
+- the expansion-rule digest used to interpret those atoms;
+- the newly enabled route identities;
+- an updated adaptive catalog digest;
+- a closure status: =closed=, =bounded=, or =open=;
+- the remaining inspect potential.
+
+=closed= means the current certificate covers the complete evidence-dependent
+successor relation for the bound identity.  =bounded= means closure holds only
+to an explicit depth, token budget, or rule subset.  =open= forbids a global
+frontier-completeness claim.
+
+The agent-facing CLI remains a small interactive protocol: inspect the current
+receipt, select or accept a certified next transition, and repeat.  Adaptive
+complexity belongs in the evidence graph and router certificate rather than in a
+large human-oriented search command surface.
+
+* Consequences for Python Turbo Graph
+
+The future Python graph layer will need distinct owners for:
+
+- evidence emission;
+- evidence-to-route expansion rules;
+- inductive reachability;
+- catalog closure;
+- catalog soundness;
+- frontier coverage.
+
+A single =routes: list= field cannot represent these proof obligations.  The
+runtime packet should carry identities and receipts, while Lean remains the
+model used to reject unsound shortcuts before implementation.
+
+* Executable mathematical witness
+
+The following Typst block is evaluated from Org-Babel through stdin.  It is an
+executable witness, not a generated =.typ= source or PDF.
+
+#+name: adaptive-route-catalog-closure-math
+#+begin_src typst
+#let initial = ("seed",)
+#let current-catalog = ("seed",)
+#let static-frontier = ("seed",)
+#let emitted-evidence = ("unlock",)
+#let enabled-successors = ("discovered",)
+#let reachable-after-inspect = initial + enabled-successors
+
+#let covers(container, routes) = routes.all(
+  route => container.contains(route)
+)
+
+(
+  initial-is-covered: covers(current-catalog, initial),
+  static-frontier-covers-current-catalog:
+    covers(static-frontier, current-catalog),
+  successor-closure-holds:
+    covers(current-catalog, enabled-successors),
+  adaptive-reachability-is-covered:
+    covers(current-catalog, reachable-after-inspect),
+  discovered-route-is-reachable:
+    reachable-after-inspect.contains("discovered"),
+  discovered-route-is-retained:
+    static-frontier.contains("discovered"),
+  evidence-enabled-expansion:
+    emitted-evidence.contains("unlock")
+    and enabled-successors.contains("discovered"),
+)
+#+end_src
+
+* Machine-checked proof status
+
+The theorem owner is =ASPProof.SearchRouteAdaptiveCatalogClosure=.  The
+machine-readable audit is kept in the independent module
+=ASPProof.Audit.SearchRouteAdaptiveCatalogClosure= and emitted by
+=packages/proofs/audit/SearchRouteAdaptiveCatalogClosureAudit.lean=.
+
+The Lean audit receipt is
+=packages/proofs/receipts/searchroute-adaptive-catalog-closure-audit-v1.json=.
+All eight declarations are axiom-free and none contains =sorryAx=.  The audit
+therefore has an empty axiom inventory.
+
+AXLE requires all eight theorem families and all eight normative RFC clause
+identifiers without an axiom allowlist.  Its receipt is
+=packages/proofs/receipts/searchroute-adaptive-catalog-closure-axle-audit-v1.json=
+and binds the Lean audit with SHA-256
+=012f4a97b1ee48dad1a2ba69807bdb6fb60285c3b33accdc2db229f0fc5eee80=.

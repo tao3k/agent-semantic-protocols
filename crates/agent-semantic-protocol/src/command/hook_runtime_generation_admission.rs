@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const WORKSPACE_ADMISSION_EVENTS: [&str; 2] = ["session-start", "user-prompt"];
 
@@ -8,13 +8,18 @@ pub(super) fn admit_hook_workspace_generation(args: &[String]) -> Result<(), Str
     }
 
     let project_root = hook_workspace_root()?;
-    super::runtime_server::block_on_runtime_server_client(async move {
+    request(&project_root).map(|_| ())
+}
+
+pub(super) fn request(project_root: &Path) -> Result<serde_json::Value, String> {
+    let project_root = project_root.to_path_buf();
+    crate::command::runtime_server::block_on_runtime_server_client(async move {
         let session =
-            super::runtime_server::runtime_server_workspace_session_async(&project_root).await?;
-        session
-            .admit_runtime_generation(&project_root)
-            .await
-            .map(|_| ())
+            crate::command::runtime_server::runtime_server_workspace_session_async(&project_root)
+                .await?;
+        let receipt = session.admit_runtime_generation(&project_root).await?;
+        serde_json::to_value(receipt)
+            .map_err(|error| format!("failed to encode runtime generation admission: {error}"))
     })?
 }
 

@@ -13,11 +13,10 @@ A programming-language provider owns package-manager parsing and emits a typed
 =projectResolution= receipt.  ASP derives source scope only from the
 intersection of those two authorities.
 
-Provider manifests MUST NOT publish =source.defaultExtensions=,
-=source.defaultConfigFiles=, =source.defaultProjectMarkers=,
-=source.defaultDependencyMarkers=, or a =workspaceScope= capability.  Those
-fields guess project meaning without parsing the package manager and are
-removed from the shared manifest contract.
+Provider manifests MUST NOT publish default extensions, configuration files,
+project markers, dependency markers, or any capability that guesses a source
+scope without parsing the package manager.  Such fields are absent from the
+shared manifest contract.
 
 A programming-language provider MUST declare =projectResolution=.  Its
 project-resolution command MUST:

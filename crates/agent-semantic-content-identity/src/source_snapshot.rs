@@ -72,6 +72,18 @@ impl SourceSnapshotEvidence {
             dirty_paths_digest: None,
         }
     }
+
+    /// Whether two receipts identify the same provider-bound source content.
+    ///
+    /// Snapshot kind and overlay lineage describe how the content was obtained;
+    /// they do not change the identity of an equal canonical root.
+    pub fn has_same_content_identity(&self, other: &Self) -> bool {
+        self.schema_id == other.schema_id
+            && self.algorithm == other.algorithm
+            && self.root_digest == other.root_digest
+            && self.leaf_count == other.leaf_count
+            && self.provider_digest == other.provider_digest
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

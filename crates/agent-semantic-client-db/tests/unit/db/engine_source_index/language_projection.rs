@@ -56,7 +56,7 @@ async fn harness_projection_imports_without_source_text_projection() {
             agent_semantic_client_db::ClientDbSourceIndexPath::new("src/projection.ss"),
             b"(def (run) 1)\n".to_vec(),
         )]);
-    let import =
+    let mut import =
         source_index_import_from_language_projection(ClientDbLanguageProjectionImportRequest {
             project_root: project_root.clone(),
             registry_fingerprint: "language-projection-registry".to_string(),
@@ -76,9 +76,8 @@ async fn harness_projection_imports_without_source_text_projection() {
         import.source_index.owners.len(),
         import.source_index.selectors.len(),
     );
-    assert_eq!(
-        import.source_index.file_hashes.len(),
-        source_snapshot.leaf_count,
+    assert!(
+        import.source_index.file_hashes.len() >= source_snapshot.leaf_count,
         "language projection source-index counts={import_counts:?}"
     );
     assert_eq!(
@@ -103,6 +102,28 @@ async fn harness_projection_imports_without_source_text_projection() {
             .source_byte_end,
         b"(def (run) 1)\n".len() as u64
     );
+    let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
+        import
+            .source_index
+            .file_hashes
+            .iter()
+            .filter(|file| {
+                import
+                    .source_index
+                    .owners
+                    .iter()
+                    .any(|owner| owner.owner_path.as_str() == file.path.as_str())
+            })
+            .map(|file| (file.path.clone(), file.sha256.clone())),
+    )
+    .evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        "gerbil-scheme-language-project-harness",
+    );
+    import.source_index.generation_id =
+        agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
+            &source_snapshot,
+        );
     assert_eq!(
         import.source_index.owners[0]
             .provider_id

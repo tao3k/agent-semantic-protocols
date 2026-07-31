@@ -148,12 +148,12 @@ nodes.  A separate static class list is contract drift because it can advertise
 
 Workspace admission is provider-owned.  Every language provider that claims
 source candidates in its activation coverage MUST implement
-=search workspace-scope --json= against the shared semantic workspace-scope
+=project-resolution-stdin= against the shared =project-resolution.v1=
 schema and derive package membership from its language harness package-manager
-parser.  ASP MUST NOT replace a missing provider packet with hard-coded Cargo,
+parser over the Git candidate snapshot.  ASP MUST NOT replace a missing provider packet with hard-coded Cargo,
 package.json, Python, Gerbil, Julia, Org, or filename heuristics.  A provider
-manifest may advertise =workspaceScope=true= only when that command is covered
-by provider tests.
+manifest may advertise project resolution only when that command is covered
+by provider package-manager scenarios.
 
 A source-index lookup must not rediscover readiness through a serial chain of
 table-existence, schema-version, generation, scope, candidate, and owner-row

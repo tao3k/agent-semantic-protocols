@@ -54,10 +54,8 @@ pub use api::{refresh_runtime_source_index, refresh_source_index};
 #[cfg(test)]
 pub(crate) use lookup::search_pipe_source_index_lookup_from_client_result;
 pub use lookup::{
-    SourceIndexClientCacheLookupRequest, SourceIndexLookupRequest,
-    lookup_search_pipe_source_index_for_language, lookup_source_index,
+    SourceIndexLookupRequest, lookup_search_pipe_source_index_for_language, lookup_source_index,
     lookup_source_index_for_language, lookup_source_index_in_cache,
-    lookup_source_index_in_client_cache_dir,
 };
 pub use model::{
     SourceIndexCandidate, SourceIndexLookupResult, SourceIndexLookupState,

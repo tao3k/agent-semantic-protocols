@@ -1,0 +1,122 @@
+#+TITLE: Global Runtime Generation Admission
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+This RFC defines the v1 admission contract for the single Global ASP Runtime
+Server.  It narrows three authorities that MUST NOT be inferred from the
+process which happens to issue a healthcheck or query:
+
+- the executable authorized to own the Global Runtime;
+- the providers authorized to resolve a workspace scope;
+- the immutable generation authorized to serve exact queries.
+
+* Canonical runtime binary authority
+
+The Global Runtime binary authority is the canonical runtime link together
+with its active artifact receipt.  The executable that invokes =healthcheck=
+is never an authority.
+
+A supervisor reconciliation MUST compare all of the following before reporting
+=healthy=:
+
+- canonical runtime link target;
+- active artifact receipt digest;
+- resident endpoint binary digest;
+- resident transport contract digest;
+- resident lifecycle state.
+
+=draining= is not healthy.  A missing endpoint, a non-current lifecycle state,
+or any digest disagreement MUST trigger one bounded supervisor reconciliation.
+The replacement process MUST be launched from the canonical runtime link, not
+from =current_exe()=.  A debug or release checkout binary may inspect health,
+but MUST NOT replace the installed Global Runtime.
+
+The health receipt MUST expose the compared digests and the reconciliation
+outcome.  It MUST NOT collapse a stale resident into =status=ok=.
+
+* Provider-kind scoped workspace publication
+
+Provider admission is descriptor-driven.
+
+- A provider with =projectResolution= participates in package-manager workspace
+  resolution through its declared =commandBinding=.
+- A provider with =documentResolution= participates in Git-scoped document
+  discovery and MUST NOT receive =project-resolution-stdin=.
+- A provider that declares neither capability cannot be inferred from its
+  language id, binary name, file extension, or activation membership.
+
+Source-index refresh MUST first build a typed publication plan from the Global
+provider catalog.  It MUST execute only the bindings present in that plan.
+Activation membership alone is not authorization to invoke a provider.
+
+Rust, TypeScript, Python, Julia, and Gerbil Scheme remain independently lazy
+package-language providers.  Org and Markdown remain Git-scoped document
+providers.  No hard-coded language allowlist is permitted in the consumer.
+
+* Canonical generation and rootDepth
+
+Turso is the durable MVCC authority for canonical generations.  The Runtime
+Server owns one resident workspace entry per canonical workspace identity.
+
+For each committed generation, the writer lane MUST:
+
+1. build and validate the next =MemoryBackend= generation;
+2. build the immutable memmap2 segment for the same generation identity;
+3. persist the segment identity and publication evidence with the Turso
+   generation;
+4. atomically publish the next epoch;
+5. retain the previous epoch until all old read leases are released.
+
+The =rootDepth={1,0}= live/untracked overlay is part of the published generation
+evidence.  It MUST NOT be reconstructed independently by an exact-query
+consumer.
+
+* Cold and warm query admission
+
+Runtime startup or writer publication owns generation construction.  An exact
+query owns only:
+
+- workspace identity lookup;
+- resident entry lookup;
+- concurrent read lease acquisition;
+- selector lookup and projection.
+
+An exact query MUST NOT open Turso, bootstrap a schema, run a provider, encode a
+segment, rewrite a pointer, or synchronously rebuild a =MemoryBackend=.
+
+The immutable memmap2 epoch is persisted at writer commit.  Runtime startup may
+validate and map that epoch once.  It MUST NOT serialize the generation again.
+
+* Required receipts and gates
+
+The v1 closure requires all of the following:
+
+- invoking healthcheck from a checkout debug binary cannot change the resident
+  binary digest;
+- an installed healthcheck rejects or reconciles a resident whose binary digest
+  differs from the active artifact receipt;
+- a Rust-only workspace refresh never invokes an Org or Markdown project
+  resolution command;
+- document providers are admitted through =documentResolution= and Git scope;
+- concurrent sessions for the same workspace reuse one resident entry and read
+  pool;
+- different workspaces initialize independently without a global lock;
+- old readers continue reading the previous epoch during atomic publication;
+- cold exact-query admission is below one millisecond after Runtime startup;
+- warm exact-query p99 is below one hundred microseconds;
+- query receipts report zero database opens, schema bootstraps, provider
+  processes, segment encodes, segment writes, and source rehashes.
+
+Performance gates MUST run with multiple workspaces, multiple sessions, parallel
+readers, a concurrent writer, moved owners, tombstones, and rootDepth overlays.
+Thresholds MUST NOT be raised to hide first-run initialization.
+
+* Breaking-delete policy
+
+The exact-query surface accepts only typed =--projection source= or
+=--projection callable-skeleton=.  Removed flags such as =--code= and
+=--names-only= have no parser, compatibility warning, fallback, or default
+projection.  Negative regression tests may name removed inputs only to prove
+that the real CLI rejects them; production guidance and recommended next
+commands MUST never emit them.

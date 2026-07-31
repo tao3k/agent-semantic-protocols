@@ -4,9 +4,8 @@ use agent_semantic_client_db::{ClientDbSourceIndexLookupResult, ClientDbSourceIn
 use agent_semantic_search::{SearchPipeSourceIndexCandidate, SearchPipeSourceIndexLookup};
 
 pub use agent_semantic_search::{
-    SourceIndexClientCacheLookupRequest, SourceIndexLookupRequest, lookup_source_index,
-    lookup_source_index_for_language, lookup_source_index_in_cache,
-    lookup_source_index_in_client_cache_dir,
+    SourceIndexLookupRequest, lookup_source_index, lookup_source_index_for_language,
+    lookup_source_index_in_cache,
 };
 
 /// Lookup stable source-index owner candidates for search-pipe source acquisition.

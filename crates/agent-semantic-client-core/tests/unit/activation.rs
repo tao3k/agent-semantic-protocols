@@ -70,10 +70,9 @@ fn provider_registry_evidence_tracks_provider_identity_and_existing_scope_dirs()
     .expect("write config file");
     let mut provider = resolved_provider();
     provider.package_roots = vec!["crates/core".to_string()];
-    provider.source_roots = vec!["src".to_string()];
-    provider.config_files = vec!["Cargo.toml".to_string()];
+    provider.source_paths = vec!["crates/core/src/lib.rs".to_string()];
+    provider.config_files = vec!["crates/core/Cargo.toml".to_string()];
     provider.source_extensions = vec!["rs".to_string()];
-    provider.ignored_path_prefixes = vec!["target".to_string()];
     let snapshot = ProviderRegistrySnapshot {
         activation_path: root.join(".cache/activation.json"),
         providers: vec![provider],
@@ -84,7 +83,6 @@ fn provider_registry_evidence_tracks_provider_identity_and_existing_scope_dirs()
     assert!(evidence.fingerprint.contains("language=rust"));
     assert!(evidence.fingerprint.contains("provider=rs-harness"));
     assert!(evidence.fingerprint.contains("sourceExtensions=rs"));
-    assert!(evidence.scope_dirs.contains("."));
     assert!(evidence.scope_dirs.contains("crates/core"));
     assert!(evidence.scope_dirs.contains("crates/core/src"));
     std::fs::remove_dir_all(root).expect("remove temp root");
@@ -204,7 +202,7 @@ fn provider_evidence_fingerprint(root: &std::path::Path, provider: ResolvedProvi
 }
 
 #[test]
-fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
+fn activation_snapshot_rejects_legacy_provider_command_prefix() {
     let root = temp_root("activation-prefix-snapshot");
     let activation_path = root.join("activation.json");
     let manifest = builtin_provider_manifests()
@@ -214,7 +212,6 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
         .expect("python provider routes");
-    let source = manifest.source().clone();
     let activation = agent_semantic_hook::HookActivation {
         schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
@@ -227,6 +224,7 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
             version: "test".to_string(),
         },
         generated_at: None,
+        rankers: Vec::new(),
         providers: vec![agent_semantic_hook::ActivatedProviderConfig {
             manifest_id: manifest.manifest_id().to_owned(),
             manifest_digest,
@@ -243,10 +241,11 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
                 package_roots: vec![".".to_string()],
-                source_roots: source.default_source_roots,
-                config_files: source.default_config_files,
-                source_extensions: source.default_extensions,
-                ignored_path_prefixes: source.default_ignored_path_prefixes,
+                config_files: vec!["pyproject.toml".to_string()],
+                source_extensions: vec!["py".to_string()],
+                source_paths: vec!["src/package.py".to_string()],
+                repository_candidate_generation: "test-candidate-generation".to_string(),
+                project_resolution_generation: "test-project-resolution-generation".to_string(),
             },
         }],
     };
@@ -256,17 +255,12 @@ fn activation_snapshot_skips_runtime_profile_when_prefix_is_present() {
     )
     .expect("write activation");
 
-    let snapshot = ProviderRegistrySnapshot::load_from_path(&activation_path).expect("snapshot");
-    let provider = snapshot
-        .provider_for_language(&LanguageId::from("python"))
-        .expect("python provider");
-
-    assert_eq!(
-        provider.provider_command_prefix,
-        vec!["missing-python-provider-prefix".to_string()]
+    let error = ProviderRegistrySnapshot::load_from_path(&activation_path)
+        .expect_err("legacy provider command prefix must fail closed");
+    assert!(
+        error.contains("provider activation command prefix must be empty"),
+        "{error}"
     );
-    assert_eq!(provider.runtime_command_argv, None);
-    assert_eq!(provider.runtime_profile_status, None);
     std::fs::remove_dir_all(root).expect("remove temp root");
 }
 
@@ -291,7 +285,6 @@ fn explicit_activation_path_keeps_requested_project_root() {
     let expected_project_root = child.display().to_string();
     let routes = agent_semantic_hook::materialize_provider_routes(&manifest)
         .expect("python provider routes");
-    let source = manifest.source().clone();
     let activation = agent_semantic_hook::HookActivation {
         schema_id: HOOK_ACTIVATION_SCHEMA_ID.to_string(),
         schema_version: HOOK_ACTIVATION_SCHEMA_VERSION.to_string(),
@@ -304,6 +297,7 @@ fn explicit_activation_path_keeps_requested_project_root() {
             version: "test".to_string(),
         },
         generated_at: None,
+        rankers: Vec::new(),
         providers: vec![agent_semantic_hook::ActivatedProviderConfig {
             manifest_id: manifest.manifest_id().to_owned(),
             manifest_digest,
@@ -311,7 +305,7 @@ fn explicit_activation_path_keeps_requested_project_root() {
             provider_id: manifest.provider_id().clone(),
             binary: manifest.binary().to_owned(),
             execution: manifest.execution(),
-            provider_command_prefix: vec!["py-harness".to_string()],
+            provider_command_prefix: Vec::new(),
             execution_command_digest: "test-execution-command-digest".to_string(),
             search_capabilities: manifest.search_capabilities().clone(),
             semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
@@ -320,10 +314,11 @@ fn explicit_activation_path_keeps_requested_project_root() {
             routes,
             coverage: agent_semantic_hook::ActivationCoverage {
                 package_roots: vec![".".to_string()],
-                source_roots: source.default_source_roots,
-                config_files: source.default_config_files,
-                source_extensions: source.default_extensions,
-                ignored_path_prefixes: source.default_ignored_path_prefixes,
+                config_files: vec!["pyproject.toml".to_string()],
+                source_extensions: vec!["py".to_string()],
+                source_paths: vec!["src/package.py".to_string()],
+                repository_candidate_generation: "test-candidate-generation".to_string(),
+                project_resolution_generation: "test-project-resolution-generation".to_string(),
             },
         }],
     };

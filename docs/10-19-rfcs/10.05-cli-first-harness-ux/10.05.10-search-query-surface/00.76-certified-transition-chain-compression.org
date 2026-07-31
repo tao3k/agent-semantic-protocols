@@ -1,0 +1,166 @@
+#+title: 00.76 Certified Transition Chain Compression
+#+startup: overview
+
+* Status
+
+This module defines proof-preserving compression for multi-epoch registry
+transition chains.  It does not implement a Rust or Python runtime.
+
+* Problem
+
+SearchLoop should minimize graph hops, LLM rounds, and disclosed tokens.  A
+router may therefore replace an expanded transition chain with a
+content-addressed summary.  That optimization becomes unsound if “one summary
+hop” is confused with “one trust edge”.
+
+The model must preserve two different quantities:
+
+#+begin_example
+presentation hops = evidence nodes disclosed to the agent now
+trust edges       = transition certificates verified by the proof
+#+end_example
+
+A summary may reduce presentation hops to one.  It MUST NOT reduce the number
+of registry transitions required by the epoch span.
+
+* Contract
+
+** ASP-RFC-10.05-CTCC-CHAIN
+
+A valid chain MUST be inductive: the empty chain relates a domain to itself,
+and every non-empty step contains a valid transition certificate whose target
+is the source of the remaining chain.
+
+** ASP-RFC-10.05-CTCC-COMPOSE
+
+Two valid chains sharing a middle domain MUST compose by list append into one
+valid chain.
+
+** ASP-RFC-10.05-CTCC-COVERAGE
+
+A valid chain MUST prove every transition certificate in its underlying list.
+A summary MUST NOT replace this proof obligation with a digest equality alone.
+
+** ASP-RFC-10.05-CTCC-NO-SKIP
+
+For a valid chain, the start epoch plus the number of transition certificates
+MUST equal the end epoch.  Therefore no certificate can jump over an
+intermediate epoch.
+
+** ASP-RFC-10.05-CTCC-REPLAY
+
+Full historical replay of a chain MUST require every old registry snapshot to
+be archived.  One missing archive blocks full replay without invalidating the
+remaining transition proofs.
+
+** ASP-RFC-10.05-CTCC-SUMMARY
+
+A chain summary MUST commit to the start domain, end domain, exact trust-edge
+count, and chain digest.
+
+** ASP-RFC-10.05-CTCC-DIGEST
+
+Digest equality identifies a unique transition list only under an explicit
+injectivity or collision-resistance assumption.  The finite Lean model proves
+injective identity transport and separately proves that an admitted collision
+destroys uniqueness; it does not claim cryptographic collision resistance.
+
+** ASP-RFC-10.05-CTCC-PRESENTATION
+
+A non-empty certified chain summary MAY render as one presentation hop, while
+its trust-edge count remains the full chain length.
+
+** ASP-RFC-10.05-CTCC-CACHE
+
+Search caching and model prefix caching MAY reuse the content-addressed summary
+after its expanded chain has been verified.  A cache hit MUST bind the same
+summary digest, start domain, end domain, and edge count.  Cache reuse changes
+disclosure cost, not proof coverage.
+
+** ASP-RFC-10.05-CTCC-ROUTER
+
+The router MAY prefer the certified summary when it lowers graph hops, LLM
+rounds, or tokens.  It MUST reject summaries whose epoch span and edge count do
+not agree, whose digest identity is ambiguous, or whose expanded trust chain
+has not been verified.
+
+* Org-Babel Typst model
+
+#+name: certified-transition-chain-compression-math
+#+begin_src typst
+#let domains = (
+  (snapshot: 101, authority: 17, epoch: 3),
+  (snapshot: 202, authority: 23, epoch: 4),
+  (snapshot: 303, authority: 29, epoch: 5),
+)
+
+#let transitions = (
+  (
+    from: domains.at(0),
+    to: domains.at(1),
+    cutoff: 40,
+    archived: true,
+  ),
+  (
+    from: domains.at(1),
+    to: domains.at(2),
+    cutoff: 28,
+    archived: true,
+  ),
+)
+
+#let summary = (
+  start: domains.first(),
+  end: domains.last(),
+  edge-count: transitions.len(),
+  digest: 9001,
+)
+
+(
+  trust-edge-count: transitions.len(),
+  epoch-span: summary.end.epoch - summary.start.epoch,
+  no-skip:
+    summary.start.epoch + summary.edge-count == summary.end.epoch,
+  all-archives:
+    transitions.all(transition => transition.archived),
+  presentation-hops: 1,
+  presentation-compresses:
+    1 < transitions.len(),
+)
+#+end_src
+
+The expected record has two trust edges and one presentation hop.  The no-skip,
+archive, and presentation-compression fields are true.
+
+* SearchLoop consequence
+
+The agent first sees the compact summary and may inspect the expanded chain
+only when policy, cache identity, or ambiguity requires it.  This creates the
+short router path sought by SearchLoop without deleting trust edges.  The
+provider receipt remains the proof owner; the CLI exposes only the progressive
+inspection action rather than a family of chain-management commands.
+
+* Machine-checked status
+
+- Lean module:
+  ~packages/proofs/ASPProof/SearchRouteCertifiedTransitionChainCompression.lean~
+- Modular Lean audit:
+  ~packages/proofs/ASPProof/Audit/SearchRouteCertifiedTransitionChainCompression.lean~
+- Audit driver:
+  ~packages/proofs/audit/SearchRouteCertifiedTransitionChainCompressionAudit.lean~
+- Lean audit receipt:
+  ~packages/proofs/receipts/searchroute-certified-transition-chain-compression-audit-v1.json~
+- AXLE receipt:
+  ~packages/proofs/receipts/searchroute-certified-transition-chain-compression-axle-audit-v1.json~
+- Verified declarations: 13 total, 9 axiom-free, 4 dependent only on
+  ~propext~, and no ~sorryAx~.
+- AXLE audit SHA-256:
+  ~2e8c07904071a3ee5368a1bbdfcb87f8468e442c6be7254b7b70d5ce69ac3764~
+- The named Org-Babel Typst block was extracted by ~orgize eval plan~ and
+  evaluated through interactive standard input with
+  ~typst eval --in - none~; the evaluator exited successfully.
+
+The four ~propext~ dependencies arise from list and conditional simplification
+in the epoch-span, non-empty-chain, one-hop-presentation, and summarized
+no-skip theorems.  Chain composition, complete trust-edge coverage, archive
+replay, cache identity, and digest uniqueness/collision results are axiom-free.

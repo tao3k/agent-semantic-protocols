@@ -1,0 +1,209 @@
+#+title: SearchRoute Cache Rejoin Fault-Bound Authority
+#+subtitle: Authorized, epoch-scoped, and temporally current safety bounds
+#+options: toc:3 num:t
+
+* Status
+
+This proof-backed RFC follows RFC 10.05.92. It specifies fault-bound snapshot
+admission and its composition with quorum-intersection safety. Rust and Python
+implementation remain out of scope.
+
+* Problem
+
+RFC 10.05.92 binds an honest-overlap verdict to a fault-bound snapshot identity.
+Identity prevents accidental reuse across different snapshots, but says nothing
+about whether the selected snapshot is trustworthy.
+
+A low numeric bound makes the honest-overlap inequality easier to satisfy. An
+attacker can therefore present a snapshot that is:
+
+- issued by an unauthorized authority;
+- scoped to another membership or epoch;
+- not backed by a valid attestation; or
+- expired at the evaluation time.
+
+Pure arithmetic still accepts some of these values. Snapshot admission must be
+a separate proof boundary before the bound enters the intersection theorem.
+
+* Normative clauses
+
+** FBAS-SCOPE: membership binding
+
+A fault-bound snapshot MUST contain the canonical membership digest to which
+its claim applies. Snapshot admission MUST require equality with the current
+membership digest.
+
+** FBAS-EPOCH: epoch binding
+
+A snapshot MUST bind an epoch identity. Admission MUST reject a snapshot from
+another epoch even when the membership digest or numeric bound happens to
+match.
+
+** FBAS-AUTHORITY: authorization and attestation
+
+A snapshot MUST identify its issuing authority and carry an attestation.
+
+Admission requires both:
+
+- the authority is authorized by the active fault-bound policy; and
+- the attestation verifies for the complete snapshot content.
+
+Authorization without verification and verification without authorization are
+independently insufficient.
+
+** FBAS-TIME: temporal validity
+
+At evaluation time =t=, admission requires:
+
+#+begin_example
+issuedAt <= t < expiresAt
+#+end_example
+
+The expiration boundary is exclusive. A snapshot evaluated exactly at
+=expiresAt= is stale.
+
+** FBAS-SOUND: conservative authority contract
+
+The authority verification contract MUST establish that actual faulty voting
+weight is at most the declared bound.
+
+This is the semantic assumption consumed by Lean. Merely verifying a signature
+does not prove the bound is conservative unless the authority policy gives that
+signature this meaning.
+
+** FBAS-COMPOSE: honest-overlap conclusion
+
+The router may conclude that actual faulty weight is below concrete
+intersection weight only after combining:
+
+- valid membership and epoch scope;
+- authorized, verified, current fault-bound snapshot;
+- authority soundness;
+- two accepted quorum certificates;
+- concrete pair accounting; and
+- the fault-aware threshold from RFC 10.05.90.
+
+** FBAS-REJECT: arithmetic is not admission
+
+Passing the numeric threshold MUST NOT imply snapshot admission. Unauthorized
+and stale low-bound counterexamples are part of the Lean proof surface.
+
+** FBAS-CACHE: snapshot identity ownership
+
+The honest-overlap verdict from RFC 10.05.92 MUST bind the content identity of
+the validated snapshot, not only its numeric bound.
+
+Snapshots carrying equal numeric bounds but different authority, epoch,
+attestation, or validity interval are distinct evidence owners.
+
+* Executable mathematical model
+
+#+name: searchroute-cache-rejoin-fault-bound-authority-model
+#+begin_src typst
+#let arithmetic(total, bound, quorum) = (
+  total + bound < quorum + quorum
+)
+#let admitted(
+  membership,
+  epoch,
+  authorized,
+  verified,
+  current,
+) = (
+  membership and epoch and authorized and verified and current
+)
+#assert(arithmetic(3, 0, 2))
+#assert(not admitted(true, true, false, true, true))
+#assert(not admitted(true, true, true, true, false))
+#assert(admitted(true, true, true, true, true))
+"ok"
+#+end_src
+
+The safety composition is:
+
+#+name: searchroute-cache-rejoin-fault-bound-authority-proposition
+#+begin_src typst
+#let authority-safety = $
+  upright("ValidSnapshot")(S, M, E, t)
+  and F_"actual" <= B_S
+  and T + B_S < Q + Q
+  and Q <= W_L
+  and Q <= W_R
+  and W_L + W_R <= T + I
+  arrow.r.double
+  F_"actual" < I
+$
+#assert(type(authority-safety) == content)
+"ok"
+#+end_src
+
+Both blocks are extracted by =orgize eval plan= and evaluated through stdin
+with =typst eval=. No generated Typst source or PDF is required.
+
+* Lean model
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.lean
+#+end_example
+
+The model defines:
+
+- =FaultBoundSnapshot=;
+- =FaultBoundAuthorityPolicy=;
+- =FaultBoundSnapshotValid=;
+- =FaultBoundAdmissionObservation=; and
+- separate arithmetic and admission predicates.
+
+The focused proofs establish:
+
+1. a valid snapshot conservatively bounds actual faulty weight;
+2. validity reflects membership and epoch scope;
+3. validity reflects the half-open time interval;
+4. validated bounds compose with quorum intersection to prove actual honest
+   overlap;
+5. an unauthorized low bound can pass arithmetic but not admission; and
+6. a stale low bound can pass arithmetic but not admission.
+
+* Modular audit
+
+#+begin_example
+packages/proofs/ASPProof/Audit/SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthority.lean
+packages/proofs/audit/SearchRouteAdmissionRetryCacheRejoinFaultBoundAuthorityAudit.lean
+packages/proofs/receipts/searchroute-admission-retry-cache-rejoin-fault-bound-authority-audit-v1.json
+#+end_example
+
+RFC 10.05.92 is also re-audited because this RFC strengthens its verdict owner
+from a numeric bound to a complete snapshot identity.
+
+* Search efficiency consequence
+
+Snapshot admission becomes a compact reusable graph node:
+
+#+begin_example
+snapshot content identity
+  -> membership and epoch scope
+  -> authority and attestation
+  -> temporal validity
+  -> conservative bound
+#+end_example
+
+The router can reject an unauthorized or stale snapshot before traversing
+certificate and intersection subgraphs. A valid admission receipt lets
+different pairwise accounting receipts reuse the same current snapshot proof.
+
+Search-result caching may reuse that admission node only for the identical
+snapshot content and validation-policy identity. Model prefix caching remains
+independent and carries no evidence authority.
+
+* Proof-discovered next boundary
+
+One authorized authority with a sound verification contract is sufficient in
+the current model. A deployed system may admit multiple authorities that issue
+different current bounds for the same membership epoch.
+
+The next proof boundary must define conservative multi-authority aggregation,
+equivocation handling, policy identity, and authority-set rotation. Selecting
+the minimum valid-looking bound is unsafe even when each individual signature
+is authentic.

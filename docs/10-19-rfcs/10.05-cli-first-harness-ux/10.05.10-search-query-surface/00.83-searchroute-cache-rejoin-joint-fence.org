@@ -1,0 +1,131 @@
+#+title: RFC 10.05.83 — SearchRoute Cache Rejoin Joint Fence
+#+startup: overview
+
+* Status
+
+Draft proof-bearing extension of RFC 10.05.82.
+
+* Abstract
+
+RFC 10.05.82 compares admission and policy revisions, but independent stores
+can change between those comparisons.  This RFC combines joint sequence,
+admission revision, policy revision, and policy digest into one composite fence.
+
+Acknowledgement requires exact equality with the current fence plus the full
+RFC 10.05.82 predicate.  Commit increments the joint sequence once and closes
+the obligation.  A second proposal derived from the same fence loses.
+
+* Normative clauses
+
+** ASP-RFC-10.05-CRJF-CONTENT — A fence commits both heads
+
+The composite fence MUST contain joint sequence, admission revision, policy
+revision, and policy digest.  Policy and graph-edge digest domains MUST remain
+distinct.
+
+** ASP-RFC-10.05-CRJF-GATE — Commit requires exact composite equality
+
+Acknowledgement commit MUST require exact composite-fence equality and the
+complete RFC 10.05.82 acknowledgement predicate.
+
+** ASP-RFC-10.05-CRJF-MISMATCH — Any mismatched component fails closed
+
+A stale sequence, mismatched admission head, mismatched policy head, or
+mismatched policy digest MUST reject the proposal.
+
+** ASP-RFC-10.05-CRJF-COMMIT — Commit advances the joint sequence once
+
+A successful commit MUST close the obligation, retain its acknowledgement
+evidence, and advance joint sequence from =j= to =j + 1=.
+
+** ASP-RFC-10.05-CRJF-ONE-WINNER — Same-fence proposals have one winner
+
+After one proposal commits, another proposal carrying the old fence MUST fail,
+even when its receipt was locally valid.
+
+** ASP-RFC-10.05-CRJF-NONIMPLICATION — A fence type is not a consensus implementation
+
+The mathematical composite token does not prove that a distributed storage
+system creates or commits it atomically.
+
+* Mathematical model
+
+#+name: searchroute-cache-rejoin-joint-fence-model
+#+begin_src typst
+#let fence(sequence, admission, policy, digest) = (
+  sequence: sequence,
+  admission: admission,
+  policy: policy,
+  digest: digest,
+)
+#let proposal(expected, admitted) = (
+  expected: expected,
+  admitted: admitted,
+)
+#let can-commit(current, candidate) = (
+  candidate.expected == current
+  and candidate.admitted
+)
+#let commit(current, candidate) = {
+  assert(can-commit(current, candidate))
+  fence(
+    current.sequence + 1,
+    current.admission,
+    current.policy,
+    current.digest,
+  )
+}
+#let current = fence(30, 8, 20, ("policy-20",))
+#let winner = proposal(current, true)
+#let loser = proposal(current, true)
+#assert(can-commit(current, winner))
+#let successor = commit(current, winner)
+#assert(successor.sequence == 31)
+#assert(not can-commit(successor, loser))
+#let wrong-admission = proposal(fence(30, 7, 20, ("policy-20",)), true)
+#let wrong-policy = proposal(fence(30, 8, 19, ("policy-20",)), true)
+#let wrong-digest = proposal(fence(30, 8, 20, ("other",)), true)
+#assert(not can-commit(current, wrong-admission))
+#assert(not can-commit(current, wrong-policy))
+#assert(not can-commit(current, wrong-digest))
+"ok"
+#+end_src
+
+#+name: searchroute-cache-rejoin-joint-fence-proposition
+#+begin_src typst
+#let one-winner = $upright("Commit")(F, P) = F'
+  and upright("expected")(Q) = F
+  arrow.r.double not upright("CanCommit")(F', Q)$
+#assert(type(one-winner) == content)
+"ok"
+#+end_src
+
+* Lean correspondence
+
+The Lean model is
+=ASPProof.SearchRouteAdmissionRetryCacheRejoinJointFence=.
+
+| RFC clause | Lean witness |
+|-
+| CRJF-CONTENT, CRJF-GATE | =committable_joint_acknowledgement_matches_all_heads= |
+| CRJF-MISMATCH | =stale_joint_fence_cannot_commit= |
+| CRJF-MISMATCH | =mismatched_admission_head_cannot_commit_joint_acknowledgement= |
+| CRJF-MISMATCH | =mismatched_policy_head_cannot_commit_joint_acknowledgement= |
+| CRJF-MISMATCH | =mismatched_policy_digest_cannot_commit_joint_acknowledgement= |
+| CRJF-COMMIT | =joint_commit_advances_sequence_and_closes_obligation= |
+| CRJF-ONE-WINNER | =same_snapshot_second_joint_acknowledgement_loses= |
+
+CRJF-NONIMPLICATION is the remaining implementation boundary.
+
+* SearchLoop consequence
+
+The closed graph edge needs only one compact joint-fence reference.  A losing
+agent retry can inspect the winner at the successor fence instead of rerunning
+admission, policy verification, and publication history.
+
+* Remaining proof boundary
+
+The fence authority itself still needs a durable one-winner implementation.
+A follow-up RFC must model consensus term or transaction epoch, durable commit
+receipt, leader change, and recovery of a fence commit whose client response
+was lost.

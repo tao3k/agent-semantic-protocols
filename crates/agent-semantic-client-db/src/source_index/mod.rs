@@ -4,6 +4,11 @@ mod import;
 pub(crate) mod language_projection;
 mod text;
 mod types;
+pub(crate) use text::source_query_keys;
+
+#[cfg(test)]
+#[path = "../../tests/unit/source_index_text.rs"]
+mod text_tests;
 
 pub use agent_semantic_content_identity::exact_selector_cache::{
     ExactSelectorMerkleLookupKeyV1, ExactSelectorMerkleMissV1,

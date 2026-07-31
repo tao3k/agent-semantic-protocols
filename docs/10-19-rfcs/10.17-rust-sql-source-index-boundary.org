@@ -89,9 +89,9 @@ hashes from the prior generation when path, byte length, and mtime are
 unchanged, so unchanged files do not need to be read again just to recompute
 SHA-256. It should also retain scope evidence for the provider registry,
 provider-declared package roots, source roots, config parents, and indexed
-source directories. When that evidence is unchanged, refresh may rebuild
-the candidate file list from the latest owner rows and skip provider
-=workspace-scope= calls and recursive source-root discovery entirely. Agent-
+source directories. When that evidence is unchanged, refresh may reuse the
+digest-bound =ProjectResolution= and latest owner rows without reinvoking the
+provider package-manager resolver. Recursive source-root discovery is forbidden. Agent-
 facing receipts must expose whether the source-index generation was reused.
 =asp cache source-index lookup= is the read-side debug and agent-routing
 surface for this index. It must read from the active project client DB while

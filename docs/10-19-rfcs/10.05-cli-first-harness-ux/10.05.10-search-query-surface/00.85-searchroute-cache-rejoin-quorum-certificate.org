@@ -1,0 +1,102 @@
+#+title: RFC 10.05.85 — SearchRoute Cache Rejoin Quorum Certificate
+#+startup: overview
+
+* Status
+
+Draft proof-bearing extension of RFC 10.05.84.
+
+* Abstract
+
+RFC 10.05.84 fences leaders by term but does not establish majority durability.
+This RFC requires every recoverable fence receipt to have a quorum certificate
+whose signers voted for that exact receipt at one term and log index.
+
+Quorum intersection plus a single-valued per-node vote ledger proves that two
+valid certificates for the same slot bind the same receipt.
+
+* Normative clauses
+
+** ASP-RFC-10.05-CRQC-QUORUM — Certificates require a configured quorum
+
+Certificate signers MUST satisfy the active quorum system.  A minority
+certificate MUST fail closed.
+
+** ASP-RFC-10.05-CRQC-VOTE — Every signer voted for the exact receipt
+
+For every signer, the vote ledger at certificate term/index MUST contain the
+certificate receipt.  Membership in a signer list alone is insufficient.
+
+** ASP-RFC-10.05-CRQC-INTERSECTION — Quorums intersect
+
+The configured quorum system MUST guarantee that any two quorums intersect.
+
+** ASP-RFC-10.05-CRQC-UNIQUENESS — One slot has one certified receipt
+
+Two valid certificates with equal term and log index MUST bind equal receipts.
+
+** ASP-RFC-10.05-CRQC-RECOVERY — Only certified receipts are recoverable commits
+
+Leader recovery MUST treat a receipt as committed only when a valid quorum
+certificate exists.  An old leader's uncommitted suffix MUST not reappear.
+
+** ASP-RFC-10.05-CRQC-NONIMPLICATION — Abstract intersection is not deployment evidence
+
+The Lean =QuorumSystem.intersects= field is a required assumption.  It does not
+prove that runtime membership, failure domains, or signature verification
+satisfy it.
+
+* Mathematical model
+
+#+name: searchroute-cache-rejoin-quorum-certificate-model
+#+begin_src typst
+#let quorum(signers) = signers.len() >= 2
+#let intersects(left, right) = left.any(node => node in right)
+#let certificate(term, index, receipt, signers, votes-match) = (
+  term: term,
+  index: index,
+  receipt: receipt,
+  signers: signers,
+  votes-match: votes-match,
+)
+#let valid(value) = quorum(value.signers) and value.votes-match
+#let left = certificate(4, 9, "R", ("A", "B"), true)
+#let right = certificate(4, 9, "R", ("B", "C"), true)
+#let minority = certificate(4, 9, "R", ("A",), true)
+#let inconsistent = certificate(4, 9, "X", ("B", "C"), false)
+#assert(intersects(left.signers, right.signers))
+#assert(valid(left))
+#assert(valid(right))
+#assert(left.receipt == right.receipt)
+#assert(not valid(minority))
+#assert(not valid(inconsistent))
+"ok"
+#+end_src
+
+#+name: searchroute-cache-rejoin-quorum-certificate-proposition
+#+begin_src typst
+#let uniqueness = $upright("Valid")(C_1)
+  and upright("Valid")(C_2)
+  and upright("slot")(C_1) = upright("slot")(C_2)
+  arrow.r.double upright("receipt")(C_1) = upright("receipt")(C_2)$
+#assert(type(uniqueness) == content)
+"ok"
+#+end_src
+
+* Lean correspondence
+
+The Lean model is
+=ASPProof.SearchRouteAdmissionRetryCacheRejoinQuorumCertificate=.
+
+| RFC clause | Lean witness |
+|-
+| CRQC-INTERSECTION, CRQC-UNIQUENESS | =valid_same_slot_certificates_bind_same_receipt= |
+| CRQC-QUORUM | =nonquorum_certificate_is_not_valid= |
+| CRQC-VOTE | =inconsistent_signer_vote_invalidates_certificate= |
+| CRQC-RECOVERY | =valid_certificate_makes_receipt_recoverable= |
+| CRQC-UNIQUENESS, CRQC-RECOVERY | =recoverable_same_slot_receipts_are_equal= |
+
+* Remaining proof boundary
+
+The quorum configuration is fixed.  A follow-up RFC must model joint consensus
+for membership changes, preventing disjoint old/new configurations from each
+certifying a different fence receipt.

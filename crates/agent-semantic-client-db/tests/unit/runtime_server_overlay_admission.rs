@@ -57,41 +57,39 @@ fn generation(workspace_identity: &str, epoch: u64, bytes: &[u8]) -> WorkspaceMe
 
 #[test]
 fn canonical_materialization_binds_snapshot_import_and_complete_owner_count() {
-    let import = agent_semantic_client_db::ClientDbSourceIndexImport {
-        generation_id: agent_semantic_client_core::CacheGenerationId::from(
-            "canonical-materialization-generation",
-        ),
-        project_root: std::path::PathBuf::from("/canonical-materialization-fixture"),
-        schema_id: agent_semantic_client_core::SemanticSchemaId::from(
-            agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
-        ),
-        schema_version: agent_semantic_client_core::SemanticSchemaVersion::from(
-            agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION,
-        ),
-        file_hashes: vec![
-            agent_semantic_client_core::ClientCacheFileHash {
+    use sha2::Digest as _;
+
+    let import = agent_semantic_client_db::build_source_index_import(
+        agent_semantic_client_db::ClientDbSourceIndexImportRequest {
+            generation_id: agent_semantic_client_core::CacheGenerationId::from(
+                "canonical-materialization-generation",
+            ),
+            project_root: std::path::PathBuf::from("/canonical-materialization-fixture"),
+            schema_id: agent_semantic_client_core::SemanticSchemaId::from(
+                agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
+            ),
+            schema_version: agent_semantic_client_core::SemanticSchemaVersion::from(
+                agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION,
+            ),
+            selector_source: agent_semantic_client_db::ClientDbSourceIndexSource::from(
+                agent_semantic_client_db::CLIENT_DB_SOURCE_INDEX_PROVIDER_ID,
+            ),
+            file_hashes: vec![agent_semantic_client_core::ClientCacheFileHash {
                 path: "src/lib.rs".to_owned(),
-                sha256: "a".repeat(64),
+                sha256: format!("{:x}", sha2::Sha256::digest(b"source")),
                 byte_len: 6,
                 mtime_ms: 1,
-            },
-            agent_semantic_client_core::ClientCacheFileHash {
-                path: "Cargo.toml".to_owned(),
-                sha256: "b".repeat(64),
-                byte_len: 0,
-                mtime_ms: 1,
-            },
-        ],
-        owners: vec![agent_semantic_client_db::ClientDbSourceIndexOwner {
-            owner_path: "src/lib.rs".into(),
-            language_id: Some("rust".into()),
-            provider_id: Some("rs-harness".into()),
-            source_kind: "file".into(),
-            line_count: Some(1),
-            query_keys: Vec::new(),
-        }],
-        selectors: Vec::new(),
-    };
+            }],
+            files: vec![agent_semantic_client_db::ClientDbSourceIndexImportFile {
+                relative_path: "src/lib.rs".to_owned(),
+                language_id: "rust".into(),
+                provider_id: "rs-harness".into(),
+                text: "source".to_owned(),
+                selectors: Vec::new(),
+            }],
+        },
+    )
+    .expect("build canonical materialization source-index import");
     let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
         import
             .file_hashes
@@ -186,7 +184,7 @@ fn canonical_materialization_binds_snapshot_import_and_complete_owner_count() {
         generation.workspace_generation.root_digest,
         generation.source_snapshot.root_digest
     );
-    assert_eq!(generation.workspace_generation.leaf_count, 2);
+    assert_eq!(generation.workspace_generation.leaf_count, 1);
     assert_eq!(generation.workspace_generation.owner_count, 1);
 }
 

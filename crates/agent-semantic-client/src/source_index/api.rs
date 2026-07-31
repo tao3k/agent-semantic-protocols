@@ -10,6 +10,7 @@ use agent_semantic_client_core::{
 };
 use agent_semantic_client_db::{ClientDbEngine, source_index_file_hashes};
 use agent_semantic_runtime::{collect_runtime_source_index_files, runtime_source_index_context};
+use sha2::{Digest as _, Sha256};
 
 use super::collect::collect_source_index_files;
 use super::config::SOURCE_INDEX_FILE_LIMIT;
@@ -20,6 +21,33 @@ use super::provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1,
     current_provider_source_index_snapshot_at_artifact_root_with_registry,
 };
+
+pub(super) fn provider_scope_digest(
+    registry: &ProviderRegistryEvidence,
+    files: &[SourceIndexScopeFile],
+) -> String {
+    let mut scope = files
+        .iter()
+        .map(|file| {
+            format!(
+                "{}\u{1f}{}\u{1f}{}",
+                file.path.display(),
+                file.language_id,
+                file.provider_id
+            )
+        })
+        .collect::<Vec<_>>();
+    scope.sort();
+    scope.dedup();
+    agent_semantic_artifacts::provider_digest(
+        format!(
+            "registry={}\u{1e}scope={}",
+            registry.fingerprint,
+            scope.join("\u{1e}")
+        )
+        .as_bytes(),
+    )
+}
 
 /// Refresh the DB Engine source index from the complete provider-owned source scope.
 pub fn refresh_source_index(
@@ -113,7 +141,7 @@ pub(super) fn source_index_snapshot_from_files(
             .replace('\\', "/");
         workspace_file_hashes.push((
             snapshot_path.clone(),
-            blake3::hash(&bytes).to_hex().to_string(),
+            format!("{:x}", Sha256::digest(&bytes)),
         ));
         source_blobs.push((
             agent_semantic_client_db::ClientDbSourceIndexPath::new(snapshot_path),
@@ -133,7 +161,7 @@ pub(super) fn source_index_snapshot_from_files(
         agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(workspace_file_hashes);
     let source_snapshot = workspace_snapshot.evidence(
         agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
-        agent_semantic_artifacts::provider_digest(registry.fingerprint.as_bytes()),
+        provider_scope_digest(registry, files),
     );
     Ok((
         file_hashes,

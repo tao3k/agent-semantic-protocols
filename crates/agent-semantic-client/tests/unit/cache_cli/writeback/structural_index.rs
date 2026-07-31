@@ -4,8 +4,11 @@ use agent_semantic_client_core::{
 use agent_semantic_client_db::ClientDbEngine;
 use serde_json::{Value, json};
 
-use super::{gerbil_scheme_provider, rust_provider, temp_root};
+use super::temp_root;
 use crate::cache_cli::writeback::write_prompt_output_cache_after_provider_success;
+use crate::cache_cli_source_index_tests::fixtures::{
+    isolate_home, write_gerbil_activation_with_command_prefix, write_rust_activation,
+};
 use crate::test_support::artifacts_root_from_cache_root;
 
 #[test]
@@ -14,7 +17,12 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
         .lock()
         .expect("cache test lock");
     let root = temp_root("structural-index-writeback");
-    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    let _home = isolate_home(&root);
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"writeback-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Cargo manifest");
     std::fs::create_dir_all(root.join("src")).expect("create source directory");
     std::fs::write(
         root.join("src/lib.rs"),
@@ -23,10 +31,9 @@ fn structural_index_packet_writeback_applies_refresh_rows() {
     .expect("write lib source");
     std::fs::write(root.join("src/unchanged.rs"), "fn cached_helper() {}\n")
         .expect("write unchanged source");
-    let snapshot = ProviderRegistrySnapshot {
-        activation_path: root.join("activation.json"),
-        providers: vec![rust_provider()],
-    };
+    let activation_path = write_rust_activation(&root);
+    let snapshot =
+        ProviderRegistrySnapshot::load_from_path(&activation_path).expect("load Rust activation");
     let current_snapshot =
         crate::source_index::current_source_index_snapshot_with_registry(&root, &snapshot)
             .expect("capture current Rust source snapshot");
@@ -89,19 +96,18 @@ fn gerbil_scheme_structural_index_packet_writeback_is_queryable() {
         .lock()
         .expect("cache test lock");
     let root = temp_root("gerbil-structural-index-writeback");
-    std::fs::create_dir_all(root.join(".git")).expect("create git marker");
+    let _home = isolate_home(&root);
+    std::fs::write(root.join("gerbil.pkg"), "(package writeback-fixture)\n")
+        .expect("write Gerbil package manifest");
     std::fs::create_dir_all(root.join("src/commands")).expect("create source directory");
     std::fs::write(
         root.join("src/commands/search.ss"),
         "(def (search-main) #t)\n",
     )
     .expect("write source file");
-    let mut provider = gerbil_scheme_provider();
-    provider.source_extensions = vec!["ss".to_string()];
-    let snapshot = ProviderRegistrySnapshot {
-        activation_path: root.join("activation.json"),
-        providers: vec![provider],
-    };
+    let activation_path = write_gerbil_activation_with_command_prefix(&root, Vec::new(), &["src"]);
+    let snapshot =
+        ProviderRegistrySnapshot::load_from_path(&activation_path).expect("load Gerbil activation");
     let current_snapshot =
         crate::source_index::current_source_index_snapshot_with_registry(&root, &snapshot)
             .expect("capture current Gerbil source snapshot");

@@ -132,11 +132,7 @@ fn provider_project_scope_invocation(
                     project_root.display()
                 )
             })?;
-    provider_project_scope_invocation_with_candidates(
-        provider,
-        project_root,
-        repository_candidates,
-    )
+    provider_project_scope_invocation_with_candidates(provider, project_root, repository_candidates)
 }
 
 fn provider_project_scope_invocation_with_candidates(
@@ -228,12 +224,9 @@ pub async fn provider_project_scope_files_with_candidates_async(
     package_root_path: &Path,
     repository_candidates: agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<ProviderProjectScopeFiles, String> {
-    let ProviderProjectScope::Supported(packet) = provider_project_scope_with_candidates_async(
-        provider,
-        project_root,
-        repository_candidates,
-    )
-    .await?
+    let ProviderProjectScope::Supported(packet) =
+        provider_project_scope_with_candidates_async(provider, project_root, repository_candidates)
+            .await?
     else {
         return Ok(ProviderProjectScopeFiles::Unsupported);
     };
@@ -277,7 +270,10 @@ async fn provider_project_scope_files_from_packet_async(
     package_root_path: &Path,
     packet: ProviderProjectScopePacket,
 ) -> Result<Vec<ProviderProjectScopePathFile>, String> {
-    let concurrency = tokio::runtime::Handle::current().metrics().num_workers().max(1);
+    let concurrency = tokio::runtime::Handle::current()
+        .metrics()
+        .num_workers()
+        .max(1);
     let mut files = packet.files.into_iter();
     let mut tasks = tokio::task::JoinSet::new();
     let mut admitted = Vec::new();

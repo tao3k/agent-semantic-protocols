@@ -25,22 +25,6 @@ pub(crate) fn write_hermetic_provider_registry_config(
     std::fs::write(config_path, config).expect("write hermetic provider registry config");
 }
 
-pub(crate) fn write_hermetic_provider_executable(path: &Path) {
-    std::fs::create_dir_all(path.parent().expect("hermetic provider parent"))
-        .expect("create hermetic provider parent");
-    std::fs::write(path, "#!/bin/sh\nexit 0\n").expect("write hermetic provider executable");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = std::fs::metadata(path)
-            .expect("hermetic provider metadata")
-            .permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(path, permissions)
-            .expect("set hermetic provider executable permissions");
-    }
-}
-
 pub(crate) fn write_hermetic_provider_install_receipt(
     root: &Path,
     active_language_id: &str,
@@ -176,7 +160,6 @@ pub(super) fn resolved_provider(language_id: &str) -> agent_semantic_client_core
     )
     .unwrap_or_else(|error| panic!("{language_id} execution command digest: {error}"));
     let provider = agent_semantic_hook::ActivatedProvider {
-        project_resolution: None,
         manifest_id: manifest.manifest_id().to_owned(),
         manifest_digest,
         language_id: manifest.language_id().clone(),
@@ -187,9 +170,14 @@ pub(super) fn resolved_provider(language_id: &str) -> agent_semantic_client_core
         execution_command_digest,
         namespace: manifest.namespace().to_owned(),
         package_roots: vec![".".to_string()],
-        source_extensions: manifest.source().default_extensions.clone(),
-        config_files: manifest.source().default_config_files.clone(),
+        source_extensions: Vec::new(),
+        config_files: Vec::new(),
+        source_paths: Vec::new(),
+        repository_candidate_generation: "test-repository-candidate-generation".to_string(),
+        project_resolution_generation: "test-project-resolution-generation".to_string(),
         search_capabilities: manifest.search_capabilities().clone(),
+        project_resolution: manifest.project_resolution().cloned(),
+        document_resolution: manifest.document_resolution().cloned(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
         query_pack_descriptor: manifest.query_pack_descriptor().clone(),
         semantic_registry_digest,

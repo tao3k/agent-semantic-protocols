@@ -1,0 +1,251 @@
+#+title: SearchRoute Cache Rejoin Quorum Realization
+#+subtitle: Weighted signer realization and failure-domain coverage after canonical membership commitment
+#+options: toc:3 num:t
+
+* Status
+
+This document is a proof-backed refinement of the SearchLoop rejoin path.
+It follows the canonical membership commitment defined by RFC 10.05.88.
+
+The RFC is intentionally limited to protocol semantics, Lean verification,
+and executable Typst mathematics. It does not authorize a Rust or Python
+implementation.
+
+* Problem
+
+RFC 10.05.88 closes an identity ambiguity: member order cannot change the
+committed membership digest, while quorum weight and minimum failure-domain
+requirements must change it.
+
+That result is necessary but insufficient. A verifier can possess the correct
+membership digest and still accept a certificate whose signers:
+
+- carry less voting weight than the committed threshold;
+- cover fewer failure domains than the committed policy requires;
+- include an identity absent from the committed membership;
+- repeat a signer identity; or
+- refer to a policy whose threshold cannot be realized by all available
+  members.
+
+The last case is a logic defect in the previous boundary. Positivity and unique
+member identities make a policy syntactically well formed, but do not make its
+quorum requirements feasible.
+
+* Design objective
+
+The verifier must distinguish three facts:
+
+1. the membership policy has a stable committed identity;
+2. the policy is feasible against its own total resources; and
+3. this concrete signer set realizes both committed quorum dimensions.
+
+These facts must remain separate in the audit surface. A digest match is not a
+compressed substitute for quorum realization.
+
+* Normative clauses
+
+** CRQR-FEASIBLE: policy feasibility
+
+A membership policy is feasible only when it is well formed and:
+
+- its quorum weight is at most the sum of all committed member weights; and
+- its minimum failure-domain count is at most the number of distinct committed
+  failure domains.
+
+The rejoin verifier MUST reject an infeasible policy before certificate
+realization is considered.
+
+** CRQR-SIGNER: signer-set validity
+
+A signer set is valid only when signer identities are unique and every signer
+resolves to a member of the committed policy.
+
+Repeated signer identities MUST NOT multiply voting weight. Unknown signer
+identities MUST NOT contribute weight or domain coverage and MUST cause
+rejection.
+
+** CRQR-WEIGHT: realized voting weight
+
+Realized voting weight is the sum of the committed voting weights of selected
+members. The certificate realizes the weight dimension only when that sum is
+at least the committed quorum weight.
+
+** CRQR-DOMAIN: realized failure-domain coverage
+
+Realized failure-domain coverage is represented by an explicit, duplicate-free
+domain witness carried by the certificate. Every witnessed domain must resolve
+to at least one selected committed member. The certificate realizes the domain
+dimension only when the witness length is at least the committed minimum.
+
+Multiple signers in one failure domain contribute their voting weights, but
+that domain contributes only one unit of domain coverage.
+
+** CRQR-ACCEPT: conjunctive acceptance
+
+A certificate is accepted only when all of the following hold:
+
+- the membership policy is feasible;
+- the certificate membership digest equals the digest of that policy;
+- the signer set is valid;
+- realized voting weight reaches the committed quorum threshold; and
+- realized distinct-domain coverage reaches the committed domain threshold.
+
+No one conjunct implies another.
+
+** CRQR-REJECT: fail-closed adversarial cases
+
+Insufficient weight, insufficient domain coverage, an unknown signer, or a
+duplicate signer is independently sufficient for rejection.
+
+** CRQR-GAP: well-formedness is not feasibility
+
+The one-member policy with member weight 1, quorum weight 2, and one required
+failure domain is well formed under RFC 10.05.88 but infeasible. This
+counterexample requires the new feasibility gate; it is not merely an
+implementation recommendation.
+
+* Mathematical model
+
+Let =P= name the committed membership policy, =S= the certificate signer set,
+=Q(P)= its weight threshold, and =F(P)= its minimum distinct-domain threshold.
+In prose these names only identify the model; the executable mathematical
+content is owned by the following Org-Babel Typst block.
+
+#+name: searchroute-cache-rejoin-quorum-realization-model
+#+begin_src typst
+#let feasible(total-weight, available-domains, quorum-weight, minimum-domains) = (
+  quorum-weight <= total-weight
+    and minimum-domains <= available-domains
+)
+#let realizes(
+  signer-valid,
+  realized-weight,
+  realized-domains,
+  quorum-weight,
+  minimum-domains,
+) = (
+  signer-valid
+    and quorum-weight <= realized-weight
+    and minimum-domains <= realized-domains
+)
+#let accepts(
+  policy-feasible,
+  digest-matches,
+  signer-valid,
+  realized-weight,
+  realized-domains,
+  quorum-weight,
+  minimum-domains,
+) = (
+  policy-feasible
+    and digest-matches
+    and realizes(
+      signer-valid,
+      realized-weight,
+      realized-domains,
+      quorum-weight,
+      minimum-domains,
+    )
+)
+#assert(feasible(4, 2, 3, 2))
+#assert(not feasible(1, 1, 2, 1))
+#assert(accepts(true, true, true, 4, 2, 3, 2))
+#assert(not accepts(true, true, true, 2, 2, 3, 2))
+#assert(not accepts(true, true, true, 4, 1, 3, 2))
+#assert(not accepts(true, true, false, 4, 2, 3, 2))
+"ok"
+#+end_src
+
+The acceptance proposition is:
+
+#+name: searchroute-cache-rejoin-quorum-realization-proposition
+#+begin_src typst
+#let quorum-realization = $
+  upright("Accept")(P, C)
+  arrow.r.double
+  upright("Feasible")(P)
+  and D_C = D(P)
+  and upright("ValidSigners")(P, S_C)
+  and Q(P) <= W(P, S_C)
+  and F(P) <= C(P, S_C)
+$
+#assert(type(quorum-realization) == content)
+"ok"
+#+end_src
+
+Both blocks are evaluated from stdin with =typst eval=. They are not compiled
+to side-effect files.
+
+* Lean model
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteAdmissionRetryCacheRejoinQuorumRealization.lean
+#+end_example
+
+The model defines:
+
+- =selectedMembers= as committed members selected by signer identity;
+- =realizedVotingWeight= as the selected members' weight sum;
+- =FailureDomainWitnessValid= as a duplicate-free list whose domains are each
+  backed by a selected committed member;
+- =MembershipPolicyFeasible= as well-formedness plus total-resource bounds;
+- =SignerSetValid= as unique, membership-bounded signer identities;
+- =RealizesQuorum= as signer validity plus both realized thresholds; and
+- =AcceptsQuorumCertificate= as feasibility, digest equality, and realization.
+
+The proof does not treat a signature as an arbitrary weight claim. Weight and
+domain identity are projected from the committed policy. The explicit domain
+witness also avoids hiding coverage behind a runtime de-duplication function:
+the certificate says exactly which distinct domains justify its count.
+
+* Proof obligations
+
+The focused Lean module proves:
+
+1. acceptance implies the realized weight threshold;
+2. acceptance implies the realized failure-domain threshold;
+3. insufficient realized weight rejects the certificate;
+4. insufficient realized domain coverage rejects the certificate;
+5. an unknown signer rejects the certificate;
+6. a duplicate signer rejects the certificate; and
+7. RFC 10.05.88 well-formedness does not imply policy feasibility.
+
+The modular JSON audit owns these declarations:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/SearchRouteAdmissionRetryCacheRejoinQuorumRealization.lean
+packages/proofs/audit/SearchRouteAdmissionRetryCacheRejoinQuorumRealizationAudit.lean
+packages/proofs/receipts/searchroute-admission-retry-cache-rejoin-quorum-realization-audit-v1.json
+#+end_example
+
+* Consequence for SearchLoop
+
+The rejoin path gains a strict verification order:
+
+#+begin_example
+canonical membership digest
+  -> feasible membership policy
+  -> unique membership-bounded signer set
+  -> realized voting weight
+  -> realized distinct-domain coverage
+  -> certificate acceptance
+#+end_example
+
+This order reduces wasted search and verification work. An infeasible policy or
+invalid signer identity terminates the path before the verifier explores
+downstream evidence edges. It also keeps the agent-facing result compact: the
+receipt needs to expose failed predicates and measured totals, not a complex
+command surface.
+
+* Proof-discovered next boundary
+
+Quorum realization still does not prove quorum intersection. If the committed
+weight threshold is too small relative to total voting weight, two different
+certificates can each realize the policy while their signer sets are disjoint.
+Failure-domain coverage alone does not repair that defect.
+
+The next proof boundary must therefore model weighted quorum intersection and
+state the threshold conditions under which independently accepted certificates
+share sufficient committed voting authority.

@@ -1,0 +1,228 @@
+#+title: RFC 10.05.78 — SearchRoute Cache Rejoin Linearized Admission
+#+startup: overview
+
+* Status
+
+Draft proof-bearing extension of RFC 10.05.77.
+
+* Abstract
+
+RFC 10.05.77 prevents stale-chain replay when one authority serializes the
+admission state.  With concurrent authorities, two writers can observe the same
+empty active slot or the same current attempt epoch and both attempt a mutation.
+
+This RFC places both reads-enabled activation and begin-attempt transitions
+behind one revisioned compare-and-swap boundary.  Every proposal carries the
+revision it observed.  Commit requires both an exact revision match and the
+underlying mutation's admission predicate.  A successful commit increments the
+revision exactly once, so another proposal from the same snapshot loses the
+revision race.
+
+The committed revision and winning claim also authorize the compact graph edge
+exposed to SearchLoop.
+
+* Scope
+
+This RFC models the semantics required from a linearizable compare-and-swap
+authority.  It does not prove that a particular database, consensus protocol,
+filesystem primitive, or network deployment implements linearizability.
+
+* Normative clauses
+
+** ASP-RFC-10.05-CRLA-REVISION — Every admission mutation observes a revision
+
+The per-replica admission state MUST carry an authority-owned revision.  Every
+activation or begin-attempt proposal MUST state the exact revision from which
+it was derived.
+
+Revision order is logical authority order.  Wall-clock timestamps MUST NOT
+replace it.
+
+** ASP-RFC-10.05-CRLA-GATE — Revision match does not replace mutation admission
+
+A proposal MAY commit only when its expected revision equals the current
+revision and its underlying mutation satisfies the RFC 10.05.77 admission
+predicate.  A matching revision does not authorize a stale epoch, conflicting
+claim, cross-replica activation, or non-increasing attempt transition.
+
+** ASP-RFC-10.05-CRLA-CAS — Commit advances the revision exactly once
+
+A successful commit MUST apply one admitted mutation and advance revision from
+=r= to =r + 1= as one linearized state transition.  The model MUST NOT expose a
+commit constructor for a proposal lacking the combined admission proof.
+
+** ASP-RFC-10.05-CRLA-ONE-WINNER — Same-snapshot proposals have one winner
+
+After one proposal derived from revision =r= commits, every other proposal
+whose expected revision remains =r= MUST fail.  This applies across mutation
+kinds: an activation and a begin-attempt proposal cannot both commit from the
+same revision.
+
+** ASP-RFC-10.05-CRLA-EDGE — A graph edge is bound to the winning commit
+
+A published reads-enabled graph edge MUST contain the winning claim and the
+committed revision.  It is authorized only when both match the current
+revisioned admission state.
+
+A losing or conflicting claim MUST NOT publish an edge using the winner's
+revision.
+
+** ASP-RFC-10.05-CRLA-STALE — Superseded revisions cannot authorize edges
+
+An edge whose committed revision is older than the current admission revision
+MUST NOT be treated as current authorization.
+
+** ASP-RFC-10.05-CRLA-NONIMPLICATION — Local eligibility does not imply commit
+
+A mutation can satisfy its local epoch and replica rules yet still lose the CAS
+race.  Local admissibility therefore does not imply committed state or
+permission to publish a graph edge.
+
+* Mathematical model
+
+The executable model uses one revision boundary for both mutation kinds.
+=commit= asserts =can-commit= before constructing the successor state.
+
+#+name: searchroute-cache-rejoin-linearized-admission-model
+#+begin_src typst
+#let claim(replica, epoch, terminal) = (
+  replica: replica,
+  epoch: epoch,
+  terminal: terminal,
+)
+#let state(replica, current, active, revision) = (
+  replica: replica,
+  current: current,
+  active: active,
+  revision: revision,
+)
+#let activate-proposal(expected, candidate) = (
+  expected: expected,
+  kind: "activate",
+  value: candidate,
+)
+#let begin-proposal(expected, next) = (
+  expected: expected,
+  kind: "begin",
+  value: next,
+)
+#let mutation-allowed(current, proposal) = if proposal.kind == "activate" {
+  (
+    proposal.value.replica == current.replica
+    and proposal.value.epoch == current.current
+    and current.active == none
+  )
+} else if proposal.kind == "begin" {
+  current.current < proposal.value
+} else {
+  false
+}
+#let can-commit(current, proposal) = (
+  proposal.expected == current.revision
+  and mutation-allowed(current, proposal)
+)
+#let apply-mutation(current, proposal) = if proposal.kind == "activate" {
+  state(current.replica, current.current, proposal.value, current.revision)
+} else {
+  state(current.replica, proposal.value, none, current.revision)
+}
+#let commit(current, proposal) = {
+  assert(can-commit(current, proposal))
+  let applied = apply-mutation(current, proposal)
+  state(applied.replica, applied.current, applied.active, current.revision + 1)
+}
+#let edge(candidate, revision) = (
+  claim: candidate,
+  revision: revision,
+)
+#let edge-authorized(current, published) = (
+  current.revision == published.revision
+  and current.active == published.claim
+)
+#let initial = state(3, 7, none, 7)
+#let accepted = claim(3, 7, 104)
+#let conflicting = claim(3, 7, 999)
+#let activation = activate-proposal(7, accepted)
+#let concurrent-begin = begin-proposal(7, 8)
+#let committed = commit(initial, activation)
+#let winner-edge = edge(accepted, 8)
+#let conflicting-edge = edge(conflicting, 8)
+#assert(can-commit(initial, activation))
+#assert(can-commit(initial, concurrent-begin))
+#assert(committed.revision == 8)
+#assert(not can-commit(committed, concurrent-begin))
+#assert(edge-authorized(committed, winner-edge))
+#assert(not edge-authorized(committed, conflicting-edge))
+#let next-begin = begin-proposal(8, 8)
+#let advanced = commit(committed, next-begin)
+#assert(advanced.revision == 9)
+#assert(not edge-authorized(advanced, winner-edge))
+"ok"
+#+end_src
+
+The CAS and one-winner propositions are:
+
+#+name: searchroute-cache-rejoin-linearized-admission-proposition
+#+begin_src typst
+#let commit-gate = $upright("CanCommit")(S, P) arrow.r.double
+  upright("expected")(P) = upright("revision")(S)
+  and upright("Allowed")(upright("state")(S), upright("mutation")(P))$
+#let one-winner = $upright("Commit")(S, P) = S'
+  and upright("expected")(Q) = upright("revision")(S)
+  arrow.r.double not upright("CanCommit")(S', Q)$
+#assert(type(commit-gate) == content)
+#assert(type(one-winner) == content)
+"ok"
+#+end_src
+
+* Lean correspondence
+
+The Lean model is
+=ASPProof.SearchRouteAdmissionRetryCacheRejoinLinearization=.
+
+| RFC clause | Lean witness |
+|-
+| CRLA-GATE | =committable_proposal_has_exact_revision_and_allowed_mutation= |
+| CRLA-CAS | =committed_mutation_advances_revision_once= |
+| CRLA-REVISION, CRLA-STALE | =stale_revision_proposal_cannot_commit= |
+| CRLA-ONE-WINNER, CRLA-NONIMPLICATION | =same_snapshot_second_proposal_loses_revision_race= |
+| CRLA-ONE-WINNER | =concurrent_activation_and_epoch_advance_have_one_revision_winner= |
+| CRLA-EDGE | =activation_commit_authorizes_bound_graph_edge= |
+| CRLA-EDGE, CRLA-NONIMPLICATION | =conflicting_claim_cannot_share_winner_edge= |
+| CRLA-EDGE, CRLA-STALE | =stale_revision_edge_is_not_authorized= |
+
+=CanCommit= is the conjunction of exact revision equality and
+=MutationAllowed=.  The =commit= function requires this proposition as a proof
+argument.
+
+The JSON audit is isolated in
+=ASPProof.Audit.SearchRouteAdmissionRetryCacheRejoinLinearization=.
+
+* SearchLoop and graph-router consequence
+
+The agent-facing router can expose one compact, revision-qualified fact:
+
+#+begin_example
+reads-enabled(replica, attempt, terminalDigest)
+authorized-by admissionRevision
+#+end_example
+
+An agent retry carrying the losing revision receives a focused revision-race
+receipt and can inspect the winner instead of repeating the entire search or
+rejoin loop.  This shortens both graph traversal and interaction count.
+
+* Remaining proof boundary
+
+The model atomically commits admission state, then describes the edge that is
+authorized by that state.  A real process can crash after the CAS succeeds but
+before the graph edge is published, or publish an edge before durable commit
+acknowledgement.
+
+A follow-up RFC must bind CAS commit to graph publication through a durable
+outbox or equivalent protocol:
+
+- the committed mutation creates a publication obligation;
+- only the winning revision may discharge it;
+- crash recovery republishes an undischarged obligation idempotently;
+- edge publication cannot precede durable commit;
+- acknowledgement closes the obligation exactly once.

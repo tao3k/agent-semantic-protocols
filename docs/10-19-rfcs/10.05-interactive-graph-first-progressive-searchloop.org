@@ -1,0 +1,295 @@
+#+title: Interactive Graph-First Progressive SearchLoop
+#+subtitle: Canonical agent search, reasoning, and evidence-navigation architecture
+#+options: toc:3 num:t
+
+* Status
+
+This document is the canonical architectural root for RFC 10.05.
+
+It replaces the conceptual =CLI-first= framing with three coequal principles:
+
+- interactive-first;
+- graph-first; and
+- progressive-first.
+
+The historical =10.05-cli-first-harness-ux= paths remain compatibility
+locators during reference migration. Their location does not make CLI behavior
+architecturally primary.
+
+* Naming decision
+
+The canonical short name is:
+
+#+begin_example
+Interactive Graph-First Progressive SearchLoop
+#+end_example
+
+The three adjectives describe different protocol dimensions.
+
+** Interactive-first
+
+The primary consumer is an agent participating in a stateful reasoning loop.
+Each turn observes current evidence state, chooses a bounded next action,
+receives a compact receipt, and updates the session frontier.
+
+Interaction does not mean a terminal prompt or a human menu. It means that
+search semantics are organized around state transitions rather than one large
+request.
+
+** Graph-first
+
+The searchable substrate is an evidence graph:
+
+- semantic owners are nodes;
+- dependencies and proof obligations are edges;
+- routers select short valid paths;
+- receipts record traversed evidence; and
+- cache identity binds reusable graph conclusions.
+
+Commands are transports for graph operations. They are not the ontology.
+
+** Progressive-first
+
+Every turn expands only enough evidence to support the next decision.
+
+Progressive search minimizes:
+
+- graph distance to a justified conclusion;
+- evidence tokens returned to the model;
+- agent/tool interaction rounds;
+- repeated traversal of already proven subgraphs; and
+- invalid cache reuse.
+
+Progressive does not mean incomplete or best-effort evidence. Every accepted
+conclusion remains fail-closed and receipt-backed.
+
+* Primary protocol loop
+
+The canonical SearchLoop is:
+
+#+begin_example
+observe evidence state
+  -> classify the unresolved frontier
+  -> choose one bounded graph action
+  -> execute through the owning provider
+  -> validate and merge its receipt
+  -> stop, branch, or continue
+#+end_example
+
+The loop state, not a command transcript, is the durable protocol object.
+
+* Architecture layers
+
+** 10.05.00 Foundations and invariants
+
+Owns terminology, state-machine invariants, safety boundaries, and the
+relationship among interaction, graph navigation, progressive disclosure, and
+proof receipts.
+
+** 10.05.10 Interactive SearchLoop
+
+Owns:
+
+- session bootstrap;
+- current evidence state;
+- bounded next-action choice;
+- loop continuation and termination;
+- branch and fan-in semantics; and
+- interaction-round accounting.
+
+Formerly command-shaped flows such as prime search belong here only as
+bootstrap policies.
+
+** 10.05.20 Evidence graph and routing
+
+Owns:
+
+- evidence nodes and edges;
+- graph router semantics;
+- action frontiers;
+- shortest justified paths;
+- DAG branching and synthesis;
+- competing evidence; and
+- proof-path reachability.
+
+** 10.05.30 Progressive projection and cost
+
+Owns:
+
+- minimal sufficient projections;
+- callable skeletons and exact-source expansion;
+- token-cost accounting;
+- graph-distance objectives;
+- interaction-round cost;
+- stopping rules; and
+- progressive detail disclosure.
+
+** 10.05.40 Receipts, cache identity, and replay
+
+Owns:
+
+- evidence receipts;
+- search-result cache identity;
+- replay protection;
+- semantic invalidation;
+- layered accounting and verdict caches; and
+- the distinction between evidence caching and model prefix caching.
+
+** 10.05.50 Adapters and transports
+
+Owns:
+
+- CLI adapter behavior;
+- plugin and tool-call adapters;
+- API and host integration;
+- human debugging surfaces; and
+- transport-specific rendering.
+
+No adapter may redefine SearchLoop, graph, receipt, or projection semantics.
+
+** 10.05.60 Lean, Typst, and audit
+
+Owns:
+
+- mathematical models;
+- Lean proof modules;
+- Org-Babel Typst presentation;
+- modular JSON audit receipts;
+- counterexamples; and
+- proof-discovered RFC corrections.
+
+** 10.05.70 Migration and compatibility
+
+Owns:
+
+- legacy CLI facade removal;
+- compatibility locators;
+- reference migration;
+- schema transition; and
+- removal criteria for historical paths.
+
+* Existing RFC migration map
+
+The existing tree is reclassified as follows:
+
+- =10.05.10-search-query-surface= is no longer a command-surface root. Its
+  SearchLoop, router, projection, cache, and proof documents migrate logically
+  into layers 10.05.10 through 10.05.60.
+- =10.05.20-prime-search-flow= becomes an interactive bootstrap policy under
+  10.05.10.
+- evidence-graph router and graph-action-frontier documents belong to 10.05.20.
+- cache, replay, receipt identity, and rejoin safety proofs belong to 10.05.40
+  and 10.05.60.
+- legacy facade removal belongs to 10.05.70.
+
+Physical path migration occurs only after parser-owned Org reference discovery
+can produce a complete owner and inbound-link receipt.
+
+* CLI adapter boundary
+
+CLI remains useful for:
+
+- human inspection;
+- deterministic debugging;
+- CI and shell composition;
+- provider conformance tests; and
+- environments without a native agent tool transport.
+
+The CLI SHOULD expose a small stable adapter over graph actions. It SHOULD NOT
+require an agent to synthesize a large command grammar before it can navigate
+evidence.
+
+A complex CLI command is justified only when it represents a stable human or
+automation workflow that cannot be expressed as a bounded SearchLoop action.
+
+* Interaction receipt
+
+Every loop step SHOULD emit a compact interaction receipt containing:
+
+- prior evidence-state identity;
+- selected graph action;
+- semantic owners consulted;
+- new evidence nodes or conclusions;
+- rejected alternatives and failed predicates;
+- updated frontier;
+- recommended next action;
+- token and interaction-round cost; and
+- cache identities consumed or produced.
+
+The receipt is designed for direct agent consumption and machine audit.
+
+* Optimization objective
+
+Search quality is multi-dimensional. The protocol seeks to minimize:
+
+#+begin_example
+graph path length
+  + returned evidence tokens
+  + interaction rounds
+  + repeated uncached work
+#+end_example
+
+subject to:
+
+#+begin_example
+semantic ownership
+  + proof-path validity
+  + fail-closed admission
+  + receipt completeness
+#+end_example
+
+No single metric may be reduced by hiding an unresolved proof obligation.
+
+* Cache distinction
+
+Search/evidence caching and model prefix caching are separate:
+
+- evidence caching reuses a conclusion only when semantic owner identity and
+  validation policy permit reuse;
+- model prefix caching reuses inference computation when prompt prefixes align.
+
+A model cache hit does not validate evidence. An evidence cache miss does not
+imply a model cache miss.
+
+* Structural migration policy
+
+The migration has two phases.
+
+** Phase one: canonical semantic root
+
+- this document becomes the normative 10.05 root;
+- new RFCs use interactive, graph, progressive, receipt, or adapter vocabulary;
+- CLI-first terminology is retained only when describing legacy behavior; and
+- historical paths receive compatibility bridges.
+
+** Phase two: physical tree migration
+
+After parser-owned reference discovery is restored:
+
+1. enumerate every inbound link and Org owner;
+2. move documents into the new layer directories;
+3. update links through parser-owned patches;
+4. retain explicit compatibility redirects where required;
+5. lint the complete Org corpus; and
+6. remove legacy paths only after zero unresolved inbound references.
+
+* Proof obligation
+
+Future proof work must evaluate not only safety but search efficiency:
+
+- whether a new receipt shortens a justified graph path;
+- whether a cache layer avoids recomputation without under-binding identity;
+- whether an extra loop turn is logically necessary;
+- whether a projection returns the minimum sufficient evidence; and
+- whether a CLI addition duplicates an agent-native graph action.
+
+The RFC-to-Lean-to-RFC loop remains authoritative:
+
+#+begin_example
+interactive architecture
+  -> graph and cost model
+  -> Lean counterexample or theorem
+  -> corrected RFC invariant
+  -> Typst mathematical presentation
+  -> modular JSON audit
+#+end_example

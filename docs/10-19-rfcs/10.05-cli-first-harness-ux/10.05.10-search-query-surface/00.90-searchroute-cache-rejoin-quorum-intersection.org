@@ -1,0 +1,217 @@
+#+title: SearchRoute Cache Rejoin Quorum Intersection
+#+subtitle: From independently realized certificates to fault-bounded common voting authority
+#+options: toc:3 num:t
+
+* Status
+
+This document is a proof-backed refinement of RFC 10.05.89. It specifies Lean
+semantics and executable Org-Babel Typst mathematics only. It does not
+authorize Rust or Python implementation.
+
+* Problem
+
+RFC 10.05.89 proves that each accepted certificate independently:
+
+- binds to a feasible canonical membership policy;
+- uses unique, membership-bounded signer identities;
+- reaches the committed voting-weight threshold; and
+- reaches the committed failure-domain threshold.
+
+Independent realization is not agreement safety. Two signer sets can each
+reach the threshold while sharing no voting authority. Even when strict
+majority forces a positive intersection, all intersecting weight can still be
+faulty.
+
+The verifier and graph router therefore need a pairwise proof boundary. They
+must not infer common honest authority merely from two successful
+single-certificate receipts.
+
+* Normative clauses
+
+** CRQI-ACCOUNTING: pairwise weight accounting
+
+For two signer sets under one canonical membership policy, pairwise accounting
+MUST expose:
+
+- the realized weight of each signer set;
+- the total committed membership weight;
+- the weight of their signer intersection; and
+- an inclusion-exclusion bound stating that the sum of the two realized
+  weights is at most total weight plus intersection weight.
+
+The intersection value is voting weight, not signer count.
+
+** CRQI-PAIR: accepted-pair lower bound
+
+If both certificates are accepted under the same membership policy, their
+realized weights are each at least the committed quorum threshold. Combined
+with CRQI-ACCOUNTING, this implies that twice the quorum threshold is at most
+total weight plus intersection weight.
+
+** CRQI-MAJORITY: positive intersection
+
+If total committed weight is strictly less than twice the quorum threshold,
+two accepted certificates have positive intersection weight.
+
+Equality is insufficient. A total weight of 2 with quorum threshold 1 permits
+two disjoint weight-1 quorums.
+
+** CRQI-HONEST: fault-bounded intersection
+
+Let =B= denote the maximum faulty voting weight. To establish that the
+intersection contains more weight than the entire fault budget, the verifier
+MUST require:
+
+#+begin_example
+totalWeight + B < quorumWeight + quorumWeight
+#+end_example
+
+Under CRQI-PAIR this implies:
+
+#+begin_example
+B < intersectionWeight
+#+end_example
+
+If actual faulty weight is bounded by =B=, the common intersection cannot be
+entirely faulty.
+
+** CRQI-COUNTEREXAMPLE: reject weaker implications
+
+The protocol MUST NOT encode either of these invalid implications:
+
+1. two independently realized quorums always intersect; or
+2. positive quorum intersection always contains honest authority.
+
+The Lean model contains a counterexample for each implication.
+
+** CRQI-ROUTER: graph routing consequence
+
+When the SearchLoop compares competing rejoin certificates, the graph router
+MUST route through pairwise intersection evidence before treating the
+certificates as agreement-compatible.
+
+The shortest valid proof path is:
+
+#+begin_example
+accepted left certificate
+  + accepted right certificate
+  + shared canonical membership
+  + pairwise weight accounting
+  + fault-bound threshold
+  -> common honest voting authority
+#+end_example
+
+Two independent acceptance nodes without this pairwise edge are not sufficient
+evidence.
+
+* Executable mathematical model
+
+The prose uses =T= for total committed weight, =Q= for quorum weight, =I= for
+intersection weight, and =B= for maximum faulty weight. Formal mathematical
+content is owned by Org-Babel Typst.
+
+#+name: searchroute-cache-rejoin-quorum-intersection-model
+#+begin_src typst
+#let accounting(left, right, total, intersection) = (
+  left + right <= total + intersection
+)
+#let both-realize(quorum, left, right) = (
+  quorum <= left and quorum <= right
+)
+#let positive-overlap-threshold(total, quorum) = (
+  total < quorum + quorum
+)
+#let honest-overlap-threshold(total, fault-bound, quorum) = (
+  total + fault-bound < quorum + quorum
+)
+#assert(accounting(2, 2, 3, 1))
+#assert(both-realize(2, 2, 2))
+#assert(positive-overlap-threshold(3, 2))
+#assert(not honest-overlap-threshold(3, 1, 2))
+#assert(accounting(1, 1, 2, 0))
+#assert(both-realize(1, 1, 1))
+"ok"
+#+end_src
+
+The central implication is:
+
+#+name: searchroute-cache-rejoin-quorum-intersection-proposition
+#+begin_src typst
+#let honest-intersection = $
+  Q <= W_L
+  and Q <= W_R
+  and W_L + W_R <= T + I
+  and T + B < Q + Q
+  arrow.r.double
+  B < I
+$
+#assert(type(honest-intersection) == content)
+"ok"
+#+end_src
+
+Both blocks are extracted by =orgize eval plan= and evaluated through stdin
+with =typst eval=. They do not create a side-effect Typst source or PDF.
+
+* Lean model
+
+The proof owner is:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.lean
+#+end_example
+
+=PairWeightAccounting= binds a pair of signer sets to an intersection weight
+and the inclusion-exclusion bound. It deliberately consumes the concrete
+realized-weight functions from RFC 10.05.89 instead of accepting arbitrary
+certificate-reported weights.
+
+The focused module proves:
+
+1. two accepted certificates establish the overlap lower bound;
+2. the fault-aware threshold forces intersection weight above the fault bound;
+3. strict weighted majority forces positive intersection;
+4. a half-total threshold admits two disjoint realized quorums; and
+5. strict-majority overlap can still be entirely faulty.
+
+* Modular audit
+
+The proof audit remains separate from the mathematical model:
+
+#+begin_example
+packages/proofs/ASPProof/Audit/SearchRouteAdmissionRetryCacheRejoinQuorumIntersection.lean
+packages/proofs/audit/SearchRouteAdmissionRetryCacheRejoinQuorumIntersectionAudit.lean
+packages/proofs/receipts/searchroute-admission-retry-cache-rejoin-quorum-intersection-audit-v1.json
+#+end_example
+
+The JSON receipt maps each theorem to its RFC clauses and records transitive
+axiom dependencies.
+
+* Search and token-cost consequence
+
+Pairwise intersection is a graph edge, not another complex CLI command. The
+agent should receive a compact receipt containing:
+
+- the two certificate identities;
+- canonical membership identity;
+- =T=, =Q=, =B=, and =I=;
+- the inclusion-exclusion verdict;
+- the honest-overlap threshold verdict; and
+- the next failed predicate, if any.
+
+This avoids repeated traversal of the two complete signer subgraphs. A valid
+pairwise receipt becomes a short reusable route from competing certificates to
+their common-authority conclusion. Search-result caching may reuse that receipt
+only while both certificate identities, membership identity, fault bound, and
+accounting inputs remain unchanged. Model prefix caching is a separate
+optimization and MUST NOT substitute for evidence identity.
+
+* Proof-discovered next boundary
+
+The current Lean theorem assumes =PairWeightAccounting.inclusionExclusionBound=
+as evidence. It does not yet derive that bound from the concrete canonical
+membership list and the two signer sets.
+
+The next proof boundary must construct intersection weight from member identity,
+prove that duplicates cannot inflate it, and derive inclusion-exclusion from
+the finite committed membership itself. Until then, an implementation must not
+treat an unaudited externally supplied accounting value as authoritative.

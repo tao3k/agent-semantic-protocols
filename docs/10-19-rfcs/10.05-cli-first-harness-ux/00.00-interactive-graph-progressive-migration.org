@@ -1,0 +1,40 @@
+#+title: RFC 10.05 Canonical Architecture Migration
+#+options: toc:nil num:nil
+
+* Canonical root
+
+The canonical RFC 10.05 architecture is now:
+
+#+begin_example
+docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop.org
+#+end_example
+
+This historical directory remains a compatibility locator while parser-owned
+Org reference migration is incomplete.
+
+* Interpretation
+
+Documents under this path MUST be interpreted through three principles:
+
+- interactive-first SearchLoop state transitions;
+- graph-first evidence ownership and routing; and
+- progressive-first minimal sufficient expansion.
+
+CLI behavior is an adapter concern. A historical filename containing
+=cli-first= does not make CLI semantics normative.
+
+* Migration rule
+
+Do not add new command-centered architecture to this directory.
+
+New or revised documents must identify their logical owner layer:
+
+- interactive SearchLoop;
+- evidence graph and routing;
+- progressive projection and cost;
+- receipt and cache identity;
+- adapter and transport; or
+- Lean, Typst, and audit.
+
+Physical moves are deferred until parser-owned reference discovery produces a
+complete inbound-link receipt.

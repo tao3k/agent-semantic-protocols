@@ -1,0 +1,102 @@
+#+title: RFC 10.05.86 — SearchRoute Cache Rejoin Joint Configuration
+#+startup: overview
+
+* Status
+
+Draft proof-bearing extension of RFC 10.05.85.
+
+* Abstract
+
+RFC 10.05.85 assumes one fixed quorum configuration.  During membership change,
+an old quorum and a new quorum may be disjoint.  This RFC requires a transition
+certificate containing both an old-config quorum and a new-config quorum, with
+all signers voting for the same receipt at the same term/index.
+
+The joint certificate bridges old committed history to new committed history
+without assuming direct old/new quorum intersection.
+
+* Normative clauses
+
+** ASP-RFC-10.05-CRJC-JOINT — Transition requires both quorums
+
+A reconfiguration transition MUST contain valid old-config and new-config
+quorums.  Missing either side MUST fail closed.
+
+** ASP-RFC-10.05-CRJC-VOTE — Both signer sets bind one receipt
+
+Every old and new signer MUST vote for the same transition receipt at the
+certificate term/index.
+
+** ASP-RFC-10.05-CRJC-OLD — Joint history agrees with old committed history
+
+An old-config certificate and joint certificate for the same slot MUST bind
+the same receipt.
+
+** ASP-RFC-10.05-CRJC-NEW — Joint history agrees with new committed history
+
+A new-config certificate and joint certificate for the same slot MUST bind the
+same receipt.
+
+** ASP-RFC-10.05-CRJC-ACTIVATION — New-only quorum activates after joint commit
+
+The new configuration MUST NOT become independently authoritative before the
+joint transition certificate is committed and recoverable.
+
+** ASP-RFC-10.05-CRJC-NONIMPLICATION — Joint predicates are not membership deployment
+
+Lean does not prove node identity, configuration distribution, or that runtime
+voters used the intended old/new membership lists.
+
+* Mathematical model
+
+#+name: searchroute-cache-rejoin-joint-configuration-model
+#+begin_src typst
+#let quorum(signers) = signers.len() >= 2
+#let joint(old-signers, new-signers, votes-match) = (
+  old: old-signers,
+  new: new-signers,
+  votes-match: votes-match,
+)
+#let valid(value) = (
+  quorum(value.old)
+  and quorum(value.new)
+  and value.votes-match
+)
+#let transition = joint(("A", "B"), ("C", "D"), true)
+#let missing-old = joint(("A",), ("C", "D"), true)
+#let missing-new = joint(("A", "B"), ("C",), true)
+#let inconsistent = joint(("A", "B"), ("C", "D"), false)
+#assert(valid(transition))
+#assert(not valid(missing-old))
+#assert(not valid(missing-new))
+#assert(not valid(inconsistent))
+"ok"
+#+end_src
+
+#+name: searchroute-cache-rejoin-joint-configuration-proposition
+#+begin_src typst
+#let bridge = $upright("OldValid")(O)
+  and upright("JointValid")(J)
+  and upright("slot")(O) = upright("slot")(J)
+  arrow.r.double upright("receipt")(O) = upright("receipt")(J)$
+#assert(type(bridge) == content)
+"ok"
+#+end_src
+
+* Lean correspondence
+
+The Lean model is
+=ASPProof.SearchRouteAdmissionRetryCacheRejoinJointConfiguration=.
+
+| RFC clause | Lean witness |
+|-
+| CRJC-OLD, CRJC-VOTE | =old_certificate_and_joint_certificate_same_slot_agree= |
+| CRJC-NEW, CRJC-VOTE | =new_certificate_and_joint_certificate_same_slot_agree= |
+| CRJC-JOINT | =missing_new_quorum_cannot_finalize_reconfiguration= |
+| CRJC-JOINT | =missing_old_quorum_cannot_finalize_reconfiguration= |
+
+* Remaining proof boundary
+
+The model does not yet encode a configuration epoch in votes and certificates.
+A follow-up RFC must bind old/new configuration digests and transition epoch,
+preventing votes from another membership generation from being reused.

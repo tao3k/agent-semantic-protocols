@@ -17,7 +17,7 @@ pub(super) async fn persist_workspace_generation_materialization(
     )
     .await?
     {
-        if existing != *materialization {
+        if !existing.has_same_generation_identity(materialization) {
             return Err(format!(
                 "immutable workspace generation materialization drift: workspaceIdentity={} generationId={generation_id}",
                 materialization.workspace_identity
@@ -149,10 +149,13 @@ pub(super) async fn load_active_workspace_generation_materialization(
         serde_json::from_str(&source_snapshot_json).map_err(|error| {
             format!("failed to decode active workspace generation source snapshot: {error}")
         })?;
-    if materialization.source_snapshot != source_snapshot {
+    if !materialization
+        .source_snapshot
+        .has_same_content_identity(&source_snapshot)
+    {
         return Err(format!(
-            "active workspace generation materialization root drift: materialized={} durable={}",
-            materialization.source_snapshot.root_digest, source_snapshot.root_digest
+            "active workspace generation materialization root drift: materialized={:?} durable={source_snapshot:?}",
+            materialization.source_snapshot
         ));
     }
     Ok(Some(materialization))

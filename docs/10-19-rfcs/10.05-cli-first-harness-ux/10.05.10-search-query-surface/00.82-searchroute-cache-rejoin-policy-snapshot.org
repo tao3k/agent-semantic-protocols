@@ -1,0 +1,192 @@
+#+title: RFC 10.05.82 — SearchRoute Cache Rejoin Policy Snapshot
+#+startup: overview
+
+* Status
+
+Draft proof-bearing extension of RFC 10.05.81.
+
+* Abstract
+
+RFC 10.05.81 evaluates a sink receipt against one verifier-lifecycle snapshot.
+That result can become stale before acknowledgement commits: admission state
+may advance, or trust policy may rotate or revoke an epoch.
+
+This RFC makes acknowledgement a proof-gated dual-snapshot commit.  A proposal
+carries the admission revision, policy revision, and policy digest it observed.
+Commit rechecks all three and reruns lifecycle admission against the current
+bound policy snapshot.  The resulting acknowledgement records the exact
+snapshots that authorized closure.
+
+* Scope
+
+The model treats admission state and policy snapshot as simultaneously visible
+inputs to one commit predicate.  It does not yet prove atomic observation when
+they live in separate storage or consensus domains.
+
+* Normative clauses
+
+** ASP-RFC-10.05-CRPS-POLICY — Policy snapshots are revisioned and content-bound
+
+Each lifecycle snapshot MUST carry a monotone policy revision and a digest
+committing to current epoch, previous epoch, overlap boundary, and revocation
+state.
+
+** ASP-RFC-10.05-CRPS-OBSERVATION — Proposals carry both observed revisions
+
+An acknowledgement proposal MUST carry its observed admission revision, policy
+revision, and policy digest.  Ambient or most-recent values MUST NOT be silently
+substituted.
+
+** ASP-RFC-10.05-CRPS-GATE — Commit revalidates both snapshots
+
+Commit MUST require exact equality with the current admission revision, policy
+revision, and policy digest, followed by RFC 10.05.81 lifecycle admission
+against that current policy.
+
+** ASP-RFC-10.05-CRPS-STALE — Either changed snapshot invalidates validation
+
+A proposal derived from an older admission revision or policy revision MUST
+fail.  A proposal with a matching policy revision but wrong policy digest MUST
+also fail.
+
+** ASP-RFC-10.05-CRPS-COMMIT — Closure records its authorization snapshots
+
+The committed acknowledgement MUST retain the admission revision, policy
+revision, policy digest, receipt, and closed publication obligation.
+
+** ASP-RFC-10.05-CRPS-DIGEST — Equal trusted digests identify equal policy content
+
+The proof model requires an injective policy commitment.  Runtime deployments
+MUST declare the concrete digest algorithm and collision policy; Lean does not
+prove a cryptographic hash collision-free.
+
+** ASP-RFC-10.05-CRPS-NONIMPLICATION — Dual comparison is not cross-store atomicity
+
+Checking two revisions does not establish an atomic snapshot when the values
+can change independently between checks and commit.
+
+* Mathematical model
+
+The executable model uses structural policy content as its idealized digest.
+
+#+name: searchroute-cache-rejoin-policy-snapshot-model
+#+begin_src typst
+#let policy(content, revision) = (
+  content: content,
+  revision: revision,
+  digest: content,
+)
+#let publication(admission-revision, phase) = (
+  admission-revision: admission-revision,
+  phase: phase,
+)
+#let proposal(
+  expected-admission,
+  expected-policy,
+  expected-digest,
+  lifecycle-admitted,
+) = (
+  expected-admission: expected-admission,
+  expected-policy: expected-policy,
+  expected-digest: expected-digest,
+  lifecycle-admitted: lifecycle-admitted,
+)
+#let can-commit(current-policy, current-publication, candidate) = (
+  candidate.expected-admission == current-publication.admission-revision
+  and candidate.expected-policy == current-policy.revision
+  and candidate.expected-digest == current-policy.digest
+  and candidate.lifecycle-admitted
+)
+#let commit(current-policy, current-publication, candidate) = {
+  assert(can-commit(current-policy, current-publication, candidate))
+  (
+    admission-revision: current-publication.admission-revision,
+    policy-revision: current-policy.revision,
+    policy-digest: current-policy.digest,
+    phase: "acknowledged",
+  )
+}
+#let current-policy = policy(
+  (current: 5, previous: 4, overlap-end: 15, revoked-at: 12),
+  20,
+)
+#let published = publication(8, "published")
+#let valid = proposal(8, 20, current-policy.digest, true)
+#let stale-admission = proposal(7, 20, current-policy.digest, true)
+#let stale-policy = proposal(8, 19, current-policy.digest, true)
+#let wrong-digest = proposal(8, 20, ("other-policy",), true)
+#assert(can-commit(current-policy, published, valid))
+#assert(not can-commit(current-policy, published, stale-admission))
+#assert(not can-commit(current-policy, published, stale-policy))
+#assert(not can-commit(current-policy, published, wrong-digest))
+#let closed = commit(current-policy, published, valid)
+#assert(closed.admission-revision == 8)
+#assert(closed.policy-revision == 20)
+#assert(closed.policy-digest == current-policy.digest)
+#assert(closed.phase == "acknowledged")
+#let rotated-policy = policy(
+  (current: 6, previous: 5, overlap-end: 25, revoked-at: none),
+  21,
+)
+#assert(not can-commit(rotated-policy, published, valid))
+"ok"
+#+end_src
+
+The dual-snapshot gate is:
+
+#+name: searchroute-cache-rejoin-policy-snapshot-proposition
+#+begin_src typst
+#let gate = $upright("CanCommitAck")(A, P, Q)
+  arrow.r.double
+  upright("expectedAdmission")(Q) = upright("revision")(A)
+  and upright("expectedPolicy")(Q) = upright("revision")(P)
+  and upright("expectedDigest")(Q) = upright("digest")(P)
+  and upright("LifecycleAdmitted")(P, Q)$
+#assert(type(gate) == content)
+"ok"
+#+end_src
+
+* Lean correspondence
+
+The Lean model is
+=ASPProof.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot=.
+
+| RFC clause | Lean witness |
+|-
+| CRPS-OBSERVATION, CRPS-GATE | =committable_acknowledgement_is_bound_to_current_snapshots= |
+| CRPS-COMMIT | =committed_acknowledgement_records_snapshots_and_closes= |
+| CRPS-STALE | =stale_admission_snapshot_cannot_commit_acknowledgement= |
+| CRPS-STALE | =stale_policy_revision_cannot_commit_acknowledgement= |
+| CRPS-POLICY, CRPS-STALE | =wrong_policy_digest_cannot_commit_acknowledgement= |
+| CRPS-STALE | =newer_policy_snapshot_rejects_old_validation= |
+| CRPS-STALE | =changed_admission_snapshot_rejects_old_validation= |
+| CRPS-DIGEST | =equal_bound_policy_digest_implies_equal_lifecycle= |
+
+CRPS-NONIMPLICATION is the remaining storage-linearization boundary.
+
+The JSON audit is isolated in
+=ASPProof.Audit.SearchRouteAdmissionRetryCacheRejoinPolicySnapshot=.
+
+* SearchLoop and graph-router consequence
+
+The closed edge can expose one compact authorization tuple:
+
+#+begin_example
+(admissionRevision, policyRevision, policyDigest, receiptReference)
+#+end_example
+
+An audit expands this tuple only when policy freshness or revocation is in
+question.
+
+* Remaining proof boundary
+
+If admission and policy use independent stores, one can change after its check
+but before the other comparison commits.
+
+A follow-up RFC must establish a joint linearization mechanism:
+
+- one composite fencing token or transaction revision;
+- atomic observation of admission and policy heads;
+- one-winner acknowledgement commit;
+- retry after either head changes;
+- durable binding from the joint fence to the closed graph edge.

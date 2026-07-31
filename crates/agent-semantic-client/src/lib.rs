@@ -27,12 +27,11 @@ pub use agent_semantic_runtime::{
 };
 pub use cli::{run_cli_args, run_cli_from_env};
 pub use source_index::{
-    SourceIndexCandidate, SourceIndexClientCacheLookupRequest, SourceIndexLookupRequest,
-    SourceIndexLookupResult, SourceIndexLookupState, SourceIndexRefreshReport,
-    SourceIndexSourceKind, lookup_search_pipe_source_index_for_language, lookup_source_index,
-    lookup_source_index_for_language, lookup_source_index_in_client_cache_dir,
-    rebuild_source_index, rebuild_source_index_async, rebuild_source_index_with_registry_async,
-    refresh_source_index,
+    SourceIndexCandidate, SourceIndexLookupRequest, SourceIndexLookupResult,
+    SourceIndexLookupState, SourceIndexRefreshReport, SourceIndexSourceKind,
+    lookup_search_pipe_source_index_for_language, lookup_source_index,
+    lookup_source_index_for_language, rebuild_source_index, rebuild_source_index_async,
+    rebuild_source_index_with_registry_async, refresh_source_index,
 };
 pub use syntax_query_preflight::validate_syntax_query_request as validate_client_syntax_query_request;
 

@@ -96,11 +96,12 @@ fn tree_sitter_request_fingerprint_changes_when_compiled_abi_plan_changes() {
 fn search_prime_request_fingerprint_records_prompt_output_render_abi() {
     let prime = prompt_output_render_abi_provenance(&CacheExportMethod::from("search/prime"));
     let package = prompt_output_render_abi_provenance(&CacheExportMethod::from("search/package"));
-    let query_code = prompt_output_render_abi_provenance(&CacheExportMethod::from("query/code"));
+    let query_source =
+        prompt_output_render_abi_provenance(&CacheExportMethod::from("query/source"));
 
     assert!(prime.starts_with("prompt-output-render-abi:fnv64:"));
     assert_eq!(prime, package);
-    assert_eq!(query_code, "prompt-output-render-abi:none");
+    assert_eq!(query_source, "prompt-output-render-abi:none");
 }
 
 #[test]
@@ -120,55 +121,60 @@ fn tree_sitter_generation_probe_defers_to_ast_row_lookup() {
 }
 
 #[test]
-fn selector_code_query_uses_code_export_method_not_direct_source_read() {
+fn selector_source_projection_uses_source_export_method() {
     let request = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
         "--selector".to_string(),
         "src/lib.rs:10:20".to_string(),
         "--workspace".to_string(),
         ".".to_string(),
-        "--code".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
     ]);
 
     assert_eq!(
         request_export_method(&request)
             .expect("export method")
             .as_str(),
-        "query/code"
+        "query/source"
     );
 }
 
 #[test]
-fn selector_code_query_is_source_content_output() {
+fn selector_source_projection_is_source_content_output() {
     let split_selector = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
         "--selector".to_string(),
         "src/lib.rs:1:12".to_string(),
-        "--code".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
         ".".to_string(),
     ]);
     let inline_selector = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
         "--selector=src/lib.rs:1:12".to_string(),
-        "--code".to_string(),
+        "--projection=source".to_string(),
         ".".to_string(),
     ]);
     let json_selector = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
         "--selector".to_string(),
         "src/lib.rs:1:12".to_string(),
-        "--code".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
         "--json".to_string(),
         ".".to_string(),
     ]);
-    let tree_sitter_code = ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
-        "--treesitter-query".to_string(),
-        "(function_item name: (identifier) @function.name)".to_string(),
-        "--selector".to_string(),
-        "src/lib.rs:1:12".to_string(),
-        "--code".to_string(),
-        ".".to_string(),
-    ]);
+    let tree_sitter_source =
+        ClientRequest::new(ClientMethod::Query, ".").with_forwarded_args(vec![
+            "--treesitter-query".to_string(),
+            "(function_item name: (identifier) @function.name)".to_string(),
+            "--selector".to_string(),
+            "src/lib.rs:1:12".to_string(),
+            "--projection".to_string(),
+            "source".to_string(),
+            ".".to_string(),
+        ]);
 
     assert!(split_selector.is_source_content_output());
     assert!(inline_selector.is_source_content_output());
-    assert!(tree_sitter_code.is_source_content_output());
+    assert!(tree_sitter_source.is_source_content_output());
     assert!(!json_selector.is_source_content_output());
 }
 

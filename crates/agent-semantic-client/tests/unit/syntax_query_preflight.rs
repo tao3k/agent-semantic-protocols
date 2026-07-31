@@ -14,92 +14,7 @@ fn accepts_valid_inline_tree_sitter_query() {
 }
 
 #[test]
-fn rejects_tree_sitter_query_code_output_without_exact_selector() {
-    let request = query_request(vec![
-        "--treesitter-query".to_string(),
-        "(function_item name: (identifier) @function.name)".to_string(),
-        "--code".to_string(),
-    ]);
-
-    let error = validate_syntax_query_request(&request).expect_err("missing exact selector");
-
-    assert_eq!(
-        error,
-        "tree-sitter query --code requires an exact --selector; run without --code for a capture frontier or add --selector <path-or-range> for pure code"
-    );
-}
-
-#[test]
-fn accepts_tree_sitter_query_code_output_with_exact_selector() {
-    let request = query_request(vec![
-        "--treesitter-query".to_string(),
-        "(function_item name: (identifier) @function.name)".to_string(),
-        "--selector".to_string(),
-        "src/lib.rs:1:10".to_string(),
-        "--code".to_string(),
-    ]);
-
-    validate_syntax_query_request(&request).expect("exact selector tree-sitter code query");
-}
-
-#[test]
-fn rejects_query_code_trailing_project_root_before_cache_replay() {
-    let request = query_request(vec![
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
-        "--selector".to_string(),
-        "src/lib.rs:1:2".to_string(),
-        "--code".to_string(),
-        ".".to_string(),
-    ]);
-
-    let error = validate_syntax_query_request(&request).expect_err("trailing project root");
-
-    assert_eq!(
-        error,
-        "query/search --code does not accept a trailing PROJECT_ROOT; use --workspace PROJECT_ROOT"
-    );
-}
-
-#[test]
-fn rejects_search_code_trailing_project_root_before_cache_replay() {
-    let request = ClientRequest::new(ClientMethod::Search, ".")
-        .with_language("rust")
-        .with_forwarded_args(vec![
-            "owner".to_string(),
-            "src/lib.rs".to_string(),
-            "items".to_string(),
-            "--query".to_string(),
-            "target".to_string(),
-            "--code".to_string(),
-            ".".to_string(),
-        ]);
-
-    let error = validate_syntax_query_request(&request).expect_err("trailing project root");
-
-    assert_eq!(
-        error,
-        "query/search --code does not accept a trailing PROJECT_ROOT; use --workspace PROJECT_ROOT"
-    );
-}
-
-#[test]
-fn accepts_query_code_with_workspace_before_cache_replay() {
-    let request = query_request(vec![
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
-        "--selector".to_string(),
-        "src/lib.rs:1:2".to_string(),
-        "--workspace".to_string(),
-        ".".to_string(),
-        "--code".to_string(),
-    ]);
-
-    validate_syntax_query_request(&request).expect("workspace code query");
-}
-
-#[test]
-fn rejects_query_code_directory_selector_before_provider_execution() {
+fn rejects_exact_projection_directory_selector_before_provider_execution() {
     let request = query_request(vec![
         "--selector".to_string(),
         "src".to_string(),
@@ -107,38 +22,39 @@ fn rejects_query_code_directory_selector_before_provider_execution() {
         "owner items".to_string(),
         "--workspace".to_string(),
         ".".to_string(),
-        "--code".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
     ]);
 
     let error =
         validate_syntax_query_request(&request).expect_err("directory selector should fail");
 
     assert!(
-        error.contains("query --selector with --code requires an exact file"),
+        error.contains("exact query requires a parser-owned structural selector"),
         "{error}"
     );
     assert!(error.contains("`src` is a directory"), "{error}");
 }
 
 #[test]
-fn rejects_query_code_file_selector_before_provider_execution() {
+fn rejects_exact_projection_file_selector_before_provider_execution() {
     let request = query_request(vec![
         "--selector".to_string(),
         "src/lib.rs".to_string(),
         "--workspace".to_string(),
         ".".to_string(),
-        "--code".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
     ]);
 
     let error = validate_syntax_query_request(&request).expect_err("file selector should fail");
 
     assert!(
-        error.contains("invalid query --code selector `src/lib.rs`"),
+        error.contains("invalid exact-query selector `src/lib.rs`"),
         "{error}"
     );
     assert!(error.contains("search owner <path> items"), "{error}");
     assert!(error.contains("rust://path#item/function/name"), "{error}");
-    assert!(!error.contains("direct-source-read"), "{error}");
 }
 
 #[test]
@@ -148,14 +64,15 @@ fn rejects_non_structural_selector_without_manifest_extension_defaults() {
         "src/lib.future-language".to_string(),
         "--workspace".to_string(),
         ".".to_string(),
-        "--code".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
     ]);
 
     let error =
         validate_syntax_query_request(&request).expect_err("non-structural selector should fail");
 
     assert!(
-        error.contains("invalid query --code selector `src/lib.future-language`"),
+        error.contains("invalid exact-query selector `src/lib.future-language`"),
         "{error}"
     );
     assert!(error.contains("requiredSelector=rust://"), "{error}");
@@ -168,7 +85,8 @@ fn rejects_stale_exact_selector_path_before_provider_execution() {
         "rust://crates/agent-semantic-client/src/search_pipe_source.rs#item/function/collect_search_pipe_auto_acquisition".to_string(),
         "--workspace".to_string(),
         ".".to_string(),
-        "--code".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
     ]);
 
     let error =
@@ -187,10 +105,7 @@ fn rejects_stale_exact_selector_path_before_provider_execution() {
 
 #[test]
 fn rejects_missing_query_owner_path_under_workspace_before_provider_execution() {
-    let request = query_request(vec![
-        "src/types/facade.ss".to_string(),
-        "--names-only".to_string(),
-    ]);
+    let request = query_request(vec!["src/types/facade.ss".to_string()]);
 
     let error =
         validate_syntax_query_request(&request).expect_err("missing owner path should fail");
@@ -203,7 +118,7 @@ fn rejects_missing_query_owner_path_under_workspace_before_provider_execution() 
 
 #[test]
 fn accepts_existing_query_owner_path_under_workspace() {
-    let request = query_request(vec!["src/lib.rs".to_string(), "--names-only".to_string()]);
+    let request = query_request(vec!["src/lib.rs".to_string()]);
 
     validate_syntax_query_request(&request).expect("existing owner path");
 }

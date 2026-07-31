@@ -286,7 +286,7 @@ or conflicts remain unresolved. They MUST NOT repair the condition by scanning
 the workspace or opening a database directly.
 * Provider-owned package-manager scenario authority
 
-=provider_workspace_scope= is a receipt consumer.  It MUST NOT infer package
+=provider_project_scope= is a receipt consumer.  It MUST NOT infer package
 roots, source roots, targets, configuration files, or exclusions locally.
 Those facts are owned by the activated language harness and are published as a
 typed =ProjectResolution= containing a =LanguagePackageGraph= and

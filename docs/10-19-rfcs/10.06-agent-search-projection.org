@@ -2789,8 +2789,8 @@ ranking boundary.  Selecting this view MUST NOT, by itself, suppress bounded
 provider =search semantic-facts= enrichment when semantic intent, provider
 capability/context, and bounded candidates are present.  The search facade MUST
 consume the active source-index generation derived from =ProjectResolution=;
-the removed =search workspace-scope= provider command, semantic-workspace-scope
-packet, and package-root topology walk are not fallback routes.  Unsupported providers,
+no retired scope-discovery command, scope packet, or package-root topology walk
+is a fallback route.  Unsupported providers,
 provider errors, missing context/capability, non-semantic queries, and empty
 bounded candidate sets remain valid empty enrichment outcomes and SHOULD be
 distinguished by an explicit =sourceTrace= reason rather than collapsed into an

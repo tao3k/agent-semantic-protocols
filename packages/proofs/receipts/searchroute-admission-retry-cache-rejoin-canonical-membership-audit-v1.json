@@ -1,0 +1,67 @@
+{"sourcePath":
+ "ASPProof/SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy),\n  left.members.Perm right.members →\n    left.quorumWeight = right.quorumWeight →\n      left.minimumFailureDomains = right.minimumFailureDomains →\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.membershipDigest scheme left =\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.membershipDigest scheme right",
+   "theoremFamily": "membership-order-invariance",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCM-CANONICAL"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.member_order_does_not_change_membership_digest",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.membershipDigest scheme left =\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.membershipDigest scheme right →\n    scheme.canonicalize left = scheme.canonicalize right",
+   "theoremFamily": "canonical-commitment-injectivity",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCM-DIGEST"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.equal_membership_digest_implies_equal_canonical_policy",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy),\n  left.quorumWeight ≠ right.quorumWeight →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.membershipDigest scheme left ≠\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.membershipDigest scheme right",
+   "theoremFamily": "quorum-weight-sensitivity",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCM-POLICY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.changed_quorum_weight_changes_membership_digest",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (scheme : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.CanonicalMembershipScheme)\n  (left right : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy),\n  left.minimumFailureDomains ≠ right.minimumFailureDomains →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.membershipDigest scheme left ≠\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.membershipDigest scheme right",
+   "theoremFamily": "failure-domain-sensitivity",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCM-POLICY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.changed_failure_domain_requirement_changes_membership_digest",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy),\n  ¬(List.map ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipEntry.nodeId\n          policy.members).Nodup →\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicyWellFormed policy",
+   "theoremFamily": "duplicate-node-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCM-UNIQUE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.duplicate_node_identity_is_not_well_formed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (policy : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicy)\n  (member : ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipEntry),\n  member ∈ policy.members →\n    member.votingWeight = 0 →\n      ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.MembershipPolicyWellFormed policy",
+   "theoremFamily": "zero-weight-counterexample",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCM-WEIGHT"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinCanonicalMembership.zero_weight_member_is_not_well_formed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 6,
+ "axiomDependentDeclarationCount": 0}

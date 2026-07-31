@@ -1,0 +1,291 @@
+#+title: RFC 10.05.84 — Activation Repair Transaction
+#+subtitle: Independent recovery authority, linearizable candidate publication, and proof-gated evolution
+#+language: en
+#+options: toc:3 num:t
+
+* Status
+
+Draft for Lean-backed architectural audit.
+
+This RFC specifies safety properties only. It does not claim repair liveness
+without explicit scheduler, authority-service, and host-progress assumptions.
+
+* Motivation
+
+RFC 10.05.83 established that activation readiness must be a fresh derived
+proof rather than a cached registry label. The next unresolved problem is more
+fundamental: a failed activation cannot safely repair itself when recovery
+authority, discovery, and execution all depend on the failed resident artifact.
+
+The live development session supplied a concrete counterexample:
+
+- parser-owned source access required resuming the resident =asp-explore= child;
+- the authoritative resident registry returned an empty =sessions= set for the
+  current root session;
+- the hook nevertheless prescribed that absent child as the only recovery
+  route;
+- raw source fallback correctly remained forbidden.
+
+The system therefore failed closed, but it had no authorized progress
+transition. Safety without an independent repair path becomes permanent
+unavailability.
+
+* Design conclusion
+
+Repair is not an imperative command such as “restart the resident.” It is a
+proof-gated, compare-and-swap transaction over a canonical activation head.
+
+A valid repair transaction binds all of the following:
+
+1. an independently issued and revocable repair capability;
+2. the canonical runtime identity;
+3. the exact failed source generation;
+4. the exact observed authority revision;
+5. a strictly newer bounded candidate generation;
+6. schema and binary identity for that candidate;
+7. a compatibility witness;
+8. a rollback checkpoint;
+9. quarantine evidence for ambiguous dispatched work; and
+10. a fresh readiness derivation after candidate publication.
+
+The repair capability must not require the broken executable, missing resident
+child, or stale registry record to validate or invoke it.
+
+* State model
+
+Let the repair head be
+
+#+name: activation-repair-head-model
+#+begin_src typst
+#let repair-head = (
+  identity: $i$,
+  revision: $r$,
+  generation: $g$,
+  phase: $p$,
+  dispatch: $d$,
+)
+
+#let capability = (
+  identity: $i_c$,
+  source-generation: $g_c$,
+  max-target-generation: $g_max$,
+  issued-revision: $r_0$,
+  expires-revision: $r_1$,
+  authority-digest: $a$,
+  revoked: $v$,
+)
+
+#let proposal = (
+  identity: $i_p$,
+  expected-generation: $g_p$,
+  expected-revision: $r_p$,
+  target-generation: $g'$,
+  schema: $s'$,
+  binary: $b'$,
+  compatible: $w_c$,
+  rollback: $w_r$,
+  quarantine: $w_q$,
+)
+
+$ H = (i, r, g, p, d) $
+
+$ C = (i_c, g_c, g_max, r_0, r_1, a, v) $
+
+$ P = (i_p, g_p, r_p, g', s', b', w_c, w_r, w_q) $
+
+"ok"
+#+end_src
+
+The block intentionally uses =typst eval= through standard input. It does not
+create a source-side =.typ= file and does not use =typst compile=.
+
+* Admission predicate
+
+#+name: activation-repair-admission-model
+#+begin_src typst
+#let authorized = $not v
+  and i_c = i
+  and i_c = i_p
+  and g_c = g
+  and r_0 <= r
+  and r <= r_1
+  and g' <= g_max$
+
+#let admissible = $p in {"degraded", "repairing"}
+  and "activation-readable"
+  and "independent-repair-capability"
+  and "authorized"
+  and g_p = g
+  and r_p = r
+  and g < g'
+  and w_c
+  and w_r
+  and ("dispatch-recoverable" or w_q)
+  and b' != epsilon$
+
+$ "CanCommitRepair"(C, P, H)
+  := "Authorized"(C, P, H) and "Admissible"(P, H) $
+
+"ok"
+#+end_src
+
+This separates authorization from admissibility. Possession of a repair tool is
+not sufficient authority, and an authority token does not erase runtime safety
+obligations.
+
+* Normative requirements
+
+** ASP-RFC-10.05-ART-INDEPENDENCE
+
+At least one emergency repair capability MUST be discoverable and verifiable
+without executing the activation artifact, contacting the resident being
+repaired, or trusting its cached readiness record.
+
+** ASP-RFC-10.05-ART-IDENTITY
+
+A repair capability, proposal, and repair head MUST bind the same canonical
+runtime identity. Display names and executable paths are insufficient identity
+proofs.
+
+** ASP-RFC-10.05-ART-LEASE
+
+A repair capability MUST bind issuance and expiry revisions and MUST support
+revocation. Expired or revoked capabilities MUST fail closed.
+
+** ASP-RFC-10.05-ART-CAS
+
+Candidate publication MUST compare both expected generation and expected
+authority revision. A successful commit MUST increment the authority revision,
+making every competing proposal for the previous head stale.
+
+** ASP-RFC-10.05-ART-GENERATION
+
+The target generation MUST strictly exceed the failed source generation and
+MUST NOT exceed the capability's authorized generation bound.
+
+** ASP-RFC-10.05-ART-DISPATCH
+
+If dispatch evidence is =missingAfterDispatch=, repair MUST NOT publish a
+candidate until the ambiguous work is terminally reconciled or quarantined
+under an explicit policy.
+
+** ASP-RFC-10.05-ART-ROLLBACK
+
+Candidate publication MUST carry both a compatibility witness and a rollback
+checkpoint. A repair without either proof MUST be rejected before mutation.
+
+** ASP-RFC-10.05-ART-PUBLICATION
+
+Commit publishes candidate intent and enters =activating=. It MUST NOT publish
+=ready=. Readiness is derived later from fresh host, registry, transport,
+dispatch, runtime-identity, and authority-revision observations.
+
+* Linearization and concurrency
+
+For a valid proposal at revision $r$, commit produces revision $r + 1$.
+
+#+name: activation-repair-linearization-proposition
+#+begin_src typst
+$ "CanCommitRepair"(C, P, H_r)
+  arrow.r.double
+  "revision"("commit"(C, P, H_r)) = r + 1 $
+
+$ r_P = r
+  and "revision"("commit"(C, P, H_r)) = r + 1
+  arrow.r.double
+  not "CanCommitRepair"(C, P, H_(r + 1)) $
+
+"ok"
+#+end_src
+
+This is a safety statement, not a distributed consensus claim. The authority
+store still owns durable compare-and-swap linearization. Lean proves that the
+protocol predicate rejects a losing stale proposal.
+
+* Repair transaction
+
+1. Observe the canonical repair head and authority revision.
+2. Capture ambiguous dispatch evidence and quarantine if required.
+3. Obtain an independent, unexpired, unrevoked repair capability.
+4. Construct a candidate with a strict generation advance.
+5. Attach compatibility and rollback witnesses.
+6. Compare-and-swap the exact generation and authority revision.
+7. Publish the candidate in =activating=, never =ready=.
+8. Reacquire host, registry, transport, dispatch, runtime identity, and current
+   authority observations.
+9. Derive =TrustedReady= only from that fresh observation aggregate.
+10. Retire the failed generation only after the rollback window closes.
+
+* Lean audit
+
+The executable model is:
+
+- =packages/proofs/ASPProof/ActivationRepairTransaction.lean=
+
+The model proves:
+
+- a valid base repair is committable;
+- expired, revoked, or cross-identity capabilities are rejected;
+- stale-revision and generation-regression proposals are rejected;
+- rollback evidence is mandatory;
+- ambiguous dispatch requires reconciliation or quarantine;
+- commit advances generation and authority revision;
+- commit preserves canonical identity;
+- commit returns to =activating=; and
+- the winning commit makes the same proposal stale at the new head.
+
+* Logic bugs found
+
+** Capability presence is not capability independence
+
+RFC 10.05.83 required a repair tool or emergency capability, but did not prove
+that the capability remains reachable when the activated artifact and resident
+child are absent. This RFC strengthens the requirement: emergency repair
+authority must be validated and invoked outside the failed activation closure.
+
+** Generation-only CAS admits ABA-like authority drift
+
+Two observations can share a generation while differing in registry binding,
+revocation state, or dispatch reconciliation. Generation equality alone is not
+a sufficient compare-and-swap coordinate. The authority revision is therefore
+part of every proposal.
+
+** Successful repair is not successful activation
+
+Publishing a candidate proves only that one repair proposal won. It does not
+prove host reachability, transport binding, dispatch recovery, or runtime
+identity. Commit deliberately invalidates readiness and returns to
+=activating=.
+
+** Quarantine is a policy boundary
+
+Quarantine prevents an ambiguous dispatch from blocking all repair forever,
+but may duplicate external effects if policy is unsound. Lean can prove that a
+quarantine witness is required; it cannot prove the external policy safe
+without an effect model.
+
+* Explicit liveness boundary
+
+The following claims are not established by this RFC:
+
+- an authority service will issue a capability;
+- a scheduler will execute a winning proposal;
+- the host will become reachable;
+- candidate publication will eventually be observed;
+- an external side effect can always be rolled back; or
+- a quarantined dispatch will eventually become terminal.
+
+Future liveness work must introduce a transition system plus explicit fairness,
+bounded-failure, and authority-availability assumptions. These assumptions must
+not be hidden inside a safety theorem named “repair succeeds.”
+
+* Next proof frontier
+
+The next RFC should model repair liveness under bounded environmental failure:
+
+- authority capability renewal and revocation races;
+- durable candidate-publication outbox semantics;
+- host observation leases and freshness expiry;
+- rollback-window closure;
+- retirement and garbage collection of failed generations; and
+- eventual reconciliation of quarantined dispatches.

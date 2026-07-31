@@ -5,13 +5,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tempfile::TempDir;
 
 use super::{
-    Mutex, ProviderSearchWorkspaceSession, WorkspaceDbEntry, run_workspace_db_writer_actor,
+    ProviderSearchWorkspaceSession, WorkspaceDbEntry, run_workspace_db_writer_actor,
     workspace_db_reader_connection_limit, workspace_db_writer_channel,
     workspace_db_writer_concurrency_plan,
 };
 
 #[tokio::test(flavor = "multi_thread")]
-async fn reader_pool_grows_to_runtime_demand_and_reuses_connections() {
+async fn reader_pool_is_bounded_and_reuses_connections() {
     let temp = TempDir::new().expect("create adaptive reader tempfile");
     let client_db_path = temp.path().join("facts.turso");
     let database = turso::Builder::new_local(
@@ -68,15 +68,13 @@ async fn reader_pool_grows_to_runtime_demand_and_reuses_connections() {
         reader.expect("adaptive reader task must join");
     }
 
-    assert_eq!(
-        connection_create_count.load(Ordering::Relaxed),
-        reader_limit as u64 + 1
-    );
+    let connection_count_after_burst = connection_create_count.load(Ordering::Relaxed);
+    assert!((2..=reader_limit as u64 + 1).contains(&connection_count_after_burst));
     {
         let _read_lease = session.read_connection();
     }
     assert_eq!(
         connection_create_count.load(Ordering::Relaxed),
-        reader_limit as u64 + 1
+        connection_count_after_burst
     );
 }

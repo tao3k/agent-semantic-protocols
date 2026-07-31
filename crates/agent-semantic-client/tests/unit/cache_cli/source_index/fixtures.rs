@@ -9,10 +9,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-pub(super) fn write_rust_activation_with_ignored_prefixes(
-    root: &Path,
-    _ignored: &[&str],
-) -> std::path::PathBuf {
+pub(crate) fn write_rust_activation(root: &Path) -> std::path::PathBuf {
     let manifest = builtin_provider_manifests()
         .into_iter()
         .find(|manifest| manifest.language_id().as_str() == "rust")
@@ -20,6 +17,14 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
     let manifest_digest = provider_manifest_digest(&manifest).expect("manifest digest");
     let semantic_registry_digest = agent_semantic_hook::semantic_registry_digest();
     let installed_provider = ensure_state_home_v1_provider(root, manifest.binary());
+    write_project_resolution_provider(
+        &installed_provider,
+        "rust",
+        "rs-harness",
+        ".rs",
+        &["."],
+        &["vendor"],
+    );
     let resolved_execution_prefix = vec![installed_provider.display().to_string()];
     let verified_executable_artifact_digest =
         agent_semantic_content_identity::file_content_digest_v1(&installed_provider)
@@ -71,6 +76,14 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
                     "vendor/tool/Cargo.toml".to_string(),
                 ],
                 source_extensions: vec!["rs".to_string()],
+                source_paths: vec![
+                    "crates/app/src/lib.rs".to_string(),
+                    "vendor/tool/src/lib.rs".to_string(),
+                ],
+                repository_candidate_generation: "test-rust-repository-candidate-generation"
+                    .to_string(),
+                project_resolution_generation: "test-rust-project-resolution-generation"
+                    .to_string(),
             },
         }],
     };
@@ -90,11 +103,13 @@ pub(super) fn write_gerbil_activation_with_project_resolution(
     )
 }
 
-pub(super) fn write_gerbil_activation_with_command_prefix(
+pub(crate) fn write_gerbil_activation_with_command_prefix(
     root: &Path,
     provider_command_prefix: Vec<String>,
     source_roots: &[&str],
 ) -> std::path::PathBuf {
+    let project_resolution_generation =
+        agent_semantic_artifacts::provider_digest(source_roots.join("\u{1f}").as_bytes());
     let manifest = builtin_provider_manifests()
         .into_iter()
         .find(|manifest| manifest.language_id().as_str() == "gerbil-scheme")
@@ -105,6 +120,16 @@ pub(super) fn write_gerbil_activation_with_command_prefix(
         .first()
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| ensure_state_home_v1_provider(root, manifest.binary()));
+    if provider_command_prefix.is_empty() {
+        write_project_resolution_provider(
+            &installed_provider,
+            "gerbil-scheme",
+            "gerbil-scheme-harness",
+            ".ss",
+            source_roots,
+            &[],
+        );
+    }
     let resolved_execution_prefix = vec![installed_provider.display().to_string()];
     let verified_executable_artifact_digest =
         agent_semantic_content_identity::file_content_digest_v1(&installed_provider)
@@ -152,6 +177,10 @@ pub(super) fn write_gerbil_activation_with_command_prefix(
                 package_roots: vec![".".to_string()],
                 config_files: vec!["gerbil.pkg".to_string()],
                 source_extensions: vec!["ss".to_string()],
+                source_paths: source_roots.iter().map(ToString::to_string).collect(),
+                repository_candidate_generation: "test-gerbil-repository-candidate-generation"
+                    .to_string(),
+                project_resolution_generation,
             },
         }],
     };
@@ -187,7 +216,103 @@ fn ensure_state_home_v1_provider(root: &Path, binary: &str) -> std::path::PathBu
     provider_bin
 }
 
-pub(super) fn isolate_home(root: &Path) -> EnvVarGuard {
+pub(crate) fn write_project_resolution_provider(
+    provider_bin: &Path,
+    language_id: &str,
+    provider_id: &str,
+    extension: &str,
+    source_roots: &[&str],
+    excluded_roots: &[&str],
+) {
+    std::fs::create_dir_all(provider_bin.parent().expect("provider parent"))
+        .expect("create typed project-resolution provider parent");
+    let project_entry = match language_id {
+        "rust" => "Cargo.toml",
+        "python" => "pyproject.toml",
+        "gerbil-scheme" => "gerbil.pkg",
+        _ => "Project.toml",
+    };
+    let resolution_inputs = serde_json::json!({
+        "languageId": language_id,
+        "providerId": provider_id,
+        "extension": extension,
+        "sourceRoots": source_roots,
+        "excludedRoots": excluded_roots,
+        "projectEntry": project_entry,
+    });
+    let resolution_generation = agent_semantic_artifacts::provider_digest(
+        serde_json::to_string(&resolution_inputs)
+            .expect("serialize fixture project-resolution inputs")
+            .as_bytes(),
+    );
+    let mut configuration = resolution_inputs;
+    configuration["resolutionGeneration"] = serde_json::Value::String(resolution_generation);
+    let configuration = configuration.to_string();
+    let script = format!(
+        r#"#!/usr/bin/env python3
+import json
+import sys
+
+CONFIG = json.loads({configuration:?})
+
+if len(sys.argv) != 2 or sys.argv[1] != "project-resolution-stdin":
+    raise SystemExit(2)
+
+request = json.load(sys.stdin)
+extension = "." + CONFIG["extension"].lstrip(".")
+source_roots = [root.strip("/") for root in CONFIG["sourceRoots"]]
+excluded_roots = [root.strip("/") for root in CONFIG["excludedRoots"]]
+
+def belongs_to(root, path):
+    return root in ("", ".") or path == root or path.startswith(root + "/")
+
+files = []
+for candidate in request["repositoryCandidates"]["candidates"]:
+    path = candidate["path"]
+    if not path.endswith(extension):
+        continue
+    if any(belongs_to(root, path) for root in excluded_roots):
+        continue
+    if not any(belongs_to(root, path) for root in source_roots):
+        continue
+    files.append({{"path": path}})
+
+response = {{
+    "schemaId": "agent.semantic-protocols.provider-project-resolution-response",
+    "schemaVersion": "1",
+    "languageId": CONFIG["languageId"],
+    "providerId": CONFIG["providerId"],
+    "state": "resolved",
+    "resolution": {{
+        "schemaId": "agent.semantic-protocols.project-resolution",
+        "schemaVersion": "1",
+        "state": "resolved",
+        "completeness": "exact",
+        "projectIdentity": {{"projectEntry": CONFIG["projectEntry"]}},
+        "repositoryCandidates": {{
+            "candidates": files,
+            "policyExclusions": [],
+        }},
+        "resolvedSourceScopes": [{{
+            "roots": CONFIG["sourceRoots"],
+            "extensions": [CONFIG["extension"]],
+            "includeAuthority": "package-manager",
+            "exclusions": [
+                {{"prefix": root, "authority": "package-manager"}}
+                for root in CONFIG["excludedRoots"]
+            ],
+        }}],
+        "resolutionGeneration": CONFIG["resolutionGeneration"],
+    }},
+}}
+json.dump(response, sys.stdout, separators=(",", ":"))
+"#
+    );
+    std::fs::write(provider_bin, script).expect("write typed project-resolution provider");
+    make_executable(provider_bin);
+}
+
+pub(crate) fn isolate_home(root: &Path) -> EnvVarGuard {
     let home = root.join("home");
     std::fs::create_dir_all(&home).expect("create isolated home");
     EnvVarGuard::set("HOME", home.as_os_str())
@@ -199,7 +324,7 @@ pub(super) fn home_local_provider_path(root: &Path, binary: &str) -> std::path::
         .join(binary)
 }
 
-pub(super) struct EnvVarGuard {
+pub(crate) struct EnvVarGuard {
     name: &'static str,
     previous: Option<OsString>,
 }
@@ -240,12 +365,83 @@ pub(super) fn run_git(project_root: &Path, args: impl IntoIterator<Item = &'stat
     );
 }
 
+pub(crate) struct RuntimeServerFixture {
+    shutdown: agent_semantic_client_db::runtime_server::RuntimeServerShutdownHandle,
+    task: tokio::task::JoinHandle<
+        Result<agent_semantic_client_db::runtime_server::RuntimeServerExit, String>,
+    >,
+    runtime_base: std::path::PathBuf,
+}
+
+impl RuntimeServerFixture {
+    pub(crate) async fn start(root: &Path) -> Self {
+        let runtime_base = std::path::PathBuf::from("/tmp").join(format!(
+            "asp-test-rs-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("runtime fixture time")
+                .as_nanos()
+        ));
+        let endpoint =
+            agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint_in(
+                &runtime_base,
+                &std::env::current_exe().expect("current test executable"),
+                "test-runtime-artifact-digest",
+                1,
+                "test-source-index-binding",
+            )
+            .await
+            .expect("prepare fixture Runtime Server endpoint");
+        let state_home = std::env::var_os("ASP_STATE_HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| root.join("home/.agent-semantic-protocols"));
+        let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(&state_home);
+        let server = agent_semantic_client_db::runtime_server::RuntimeServer::bind_and_publish(
+            endpoint,
+            std::sync::Arc::new(agent_semantic_client_db::WorkspaceDbRegistry::default()),
+            &endpoint_path,
+        )
+        .await
+        .expect("bind fixture Runtime Server");
+        let shutdown = server.shutdown_handle();
+        let task = tokio::spawn(server.serve());
+        Self {
+            shutdown,
+            task,
+            runtime_base,
+        }
+    }
+
+    pub(crate) async fn blocking<T: Send + 'static>(
+        &self,
+        operation: impl FnOnce() -> T + Send + 'static,
+    ) -> T {
+        tokio::task::spawn_blocking(operation)
+            .await
+            .expect("join Runtime Server fixture client")
+    }
+
+    pub(crate) async fn shutdown(self) {
+        self.shutdown.shutdown();
+        assert_eq!(
+            self.task
+                .await
+                .expect("join fixture Runtime Server")
+                .expect("serve fixture Runtime Server"),
+            agent_semantic_client_db::runtime_server::RuntimeServerExit::ShutdownRequested
+        );
+        let _ = std::fs::remove_dir_all(self.runtime_base);
+    }
+}
+
 pub(super) fn temp_root(label: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("time")
         .as_nanos();
     let root = std::env::temp_dir().join(format!("agent-client-source-index-{label}-{nanos}"));
-    std::fs::create_dir_all(root.join(".git")).expect("create temp project root");
+    std::fs::create_dir_all(&root).expect("create temp project root");
+    run_git(&root, ["init", "-q"]);
     root
 }

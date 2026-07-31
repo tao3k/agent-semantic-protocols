@@ -63,7 +63,7 @@ fn owner_items_search_writeback_replays_prompt_output_artifact() {
 }
 
 #[test]
-fn query_selector_code_output_is_not_written_to_prompt_cache() {
+fn query_selector_source_projection_is_not_written_to_prompt_cache() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -86,7 +86,8 @@ fn query_selector_code_output_is_not_written_to_prompt_cache() {
             "tests/unit/test_query_packet.py:1-3".to_string(),
             "--term".to_string(),
             "contentBlocks".to_string(),
-            "--code".to_string(),
+            "--projection".to_string(),
+            "source".to_string(),
             ".".to_string(),
         ]);
     let stdout = "def test_blocks():\n    contentBlocks = []\n    assert contentBlocks == []\n";
@@ -142,11 +143,11 @@ fn query_selector_content_writeback_does_not_export_provider_packet() {
 }
 
 #[test]
-fn hook_direct_source_read_code_output_is_not_written_to_prompt_cache() {
+fn exact_source_projection_is_not_written_to_prompt_cache() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
-    let root = temp_root("hook-direct-source-read-no-writeback");
+    let root = temp_root("exact-source-no-writeback");
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(root.join("src")).expect("create source dir");
     std::fs::write(root.join("src/lib.rs"), "pub fn direct_read() {}\n").expect("write source");
@@ -157,11 +158,10 @@ fn hook_direct_source_read_code_output_is_not_written_to_prompt_cache() {
     let request = ClientRequest::new(ClientMethod::Query, &root)
         .with_language(LanguageId::from("rust"))
         .with_forwarded_args(vec![
-            "--from-hook".to_string(),
-            "direct-source-read".to_string(),
             "--selector".to_string(),
             "src/lib.rs:1:1".to_string(),
-            "--code".to_string(),
+            "--projection".to_string(),
+            "source".to_string(),
             ".".to_string(),
         ]);
     let stdout = "pub fn direct_read() {}\n";

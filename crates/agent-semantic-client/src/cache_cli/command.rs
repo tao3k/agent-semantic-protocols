@@ -378,7 +378,6 @@ pub(crate) fn run_cache(
     query: &spec.query,
     limit: spec.limit,
     source_snapshot: &source_snapshot.source_snapshot,
-    live_import: None,
 })?;
             if result.candidates.is_empty() {
                 println!(

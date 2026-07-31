@@ -1,0 +1,181 @@
+#+title: 10.05.10.00.69 Provider Batch Realization Certificate
+#+startup: overview
+
+* Status
+
+Draft proof refinement for provider-native batching and unique route-progress
+accounting.  This document introduces no Rust or Python runtime implementation.
+
+* Problem
+
+RFC 00.68 used the conservative invariant
+=discoveredRoutes <= toolCalls=.  That invariant is sound for one-call-per-route
+execution but is too strong for a provider that realizes several route
+expansions in one native call.
+
+Replacing it with a scalar =realizedRouteCount= is not sound.  A provider can
+return multiplicity two by reporting the same route identity twice:
+
+#+begin_example
+expected:  [alpha, beta]
+reported:  [alpha, alpha]
+#+end_example
+
+The list lengths match, but =beta= has no realization witness.  Scalar count
+equality therefore proves neither coverage nor unique closure progress.
+
+* Identity-covered realization
+
+A provider batch certificate contains:
+
+- a duplicate-free list of discovered route identities;
+- the scheduled provider-call identities;
+- a =realizes(call, route)= relation;
+- coverage: every discovered route has a scheduled call witness;
+- soundness: every route realized by a scheduled call belongs to the discovered
+  route set.
+
+The two directions make the discovered route set equal to the realized route
+image of the scheduled calls.  Neither a missing route nor an unreported
+realized route is allowed.
+
+* Unique progress credit
+
+Closure progress is credited from the duplicate-free discovered route list.
+The credit equals its length only when the list satisfies =Nodup=.
+
+Repeated claims for the same identity may be useful as retry or corroboration
+evidence, but they MUST NOT decrease the undiscovered-route count more than
+once.
+
+* One call, multiple routes
+
+The realization relation is many-to-many.  One provider call may realize
+multiple distinct routes, and several calls may corroborate the same route.
+Therefore =toolCalls < uniqueRoutes= can be valid.
+
+The certificate replaces the invalid one-call-per-route assumption; it does not
+erase cost:
+
+- call-level tokens remain charged once to the provider call;
+- synthesis tokens remain a separate batch cost;
+- route progress is charged once per distinct realized identity;
+- any later per-route cost attribution requires an explicit shared-cost policy.
+
+* Count-only rejection
+
+The protocol MUST reject a count-only receipt when it cannot reconstruct the
+route identity coverage relation.  A matching count is metadata, not a
+realization proof.
+
+This is especially important for cache hits.  A cached provider batch may reuse
+one call receipt for several routes only when the cache entry binds the exact
+route identities and realization relation.  A cached scalar multiplicity is
+insufficient.
+
+* Normative clauses
+
+- =ASP-RFC-10.05-PBR-COVERAGE=: every certified discovered route has a scheduled
+  call realization witness.
+- =ASP-RFC-10.05-PBR-SOUNDNESS=: every route realized by a scheduled call belongs
+  to the certified discovered set.
+- =ASP-RFC-10.05-PBR-UNIQUE-CREDIT=: certified closure progress is based on
+  duplicate-free route identities.
+- =ASP-RFC-10.05-PBR-ALPHA=: the bundled provider call realizes route =alpha=.
+- =ASP-RFC-10.05-PBR-BETA=: the same bundled provider call realizes route
+  =beta=.
+- =ASP-RFC-10.05-PBR-ONE-CALL=: one call may soundly cover two distinct routes.
+- =ASP-RFC-10.05-PBR-COST=: the aggregate cost must bind unique-route and
+  scheduled-call counts to the realization certificate.
+- =ASP-RFC-10.05-PBR-MULTI=: one-call multi-route realization preserves the
+  complete call and synthesis token cost.
+- =ASP-RFC-10.05-PBR-COUNT-COUNTEREXAMPLE=: equal scalar counts do not imply
+  route identity coverage.
+- =ASP-RFC-10.05-PBR-DUPLICATE-CREDIT=: duplicate route claims cannot earn
+  multiple closure credits.
+- =ASP-RFC-10.05-PBR-NO-BETA=: duplicate =alpha= receipts provide no =beta=
+  witness.
+- =ASP-RFC-10.05-PBR-REJECT=: a duplicate-only realization relation cannot cover
+  the distinct expected route set.
+
+* SearchLoop receipt
+
+The compact provider-batch receipt SHOULD contain:
+
+- batch and provider-call identities;
+- duplicate-free discovered route identities;
+- call-to-route realization edges;
+- call-level token and latency cost;
+- synthesis tokens;
+- cache identities for reused call receipts;
+- unique closure-progress credit.
+
+SearchLoop consumes this receipt as one progressive transition.  It does not
+need a CLI flag for each provider batching strategy.
+
+* Consequences for Python Turbo Graph
+
+The future Python graph layer should persist provider calls as graph nodes and
+realization claims as typed edges to route identities.  Unique route progress is
+then a graph projection, not an integer trusted from provider output.
+
+This also permits honest many-to-many batching without hardcoding
+one-call-per-route behavior into the shared schema.
+
+* Executable mathematical witness
+
+The Typst block is evaluated from Org-Babel through stdin.  It produces neither
+a =.typ= file nor a PDF.
+
+#+name: provider-batch-realization-certificate-math
+#+begin_src typst
+#let expected-routes = ("alpha", "beta")
+#let duplicate-claims = ("alpha", "alpha")
+#let bundled-realization = ("alpha", "beta")
+
+#let bundled-cost = (
+  uniqueRoutes: 2,
+  toolCalls: 1,
+  callTokens: 20,
+  synthesisTokens: 5,
+)
+
+#let total-tokens(cost) = cost.callTokens + cost.synthesisTokens
+#let covers(claims, expected) = expected.all(
+  route => claims.contains(route)
+)
+
+(
+  scalar-counts-match:
+    duplicate-claims.len() == expected-routes.len(),
+  duplicate-claims-cover-identities:
+    covers(duplicate-claims, expected-routes),
+  duplicate-claims-cover-beta:
+    duplicate-claims.contains("beta"),
+  bundled-call-covers-identities:
+    covers(bundled-realization, expected-routes),
+  one-call-realizes-multiple-routes:
+    bundled-cost.toolCalls < bundled-cost.uniqueRoutes,
+  complete-token-cost: total-tokens(bundled-cost),
+)
+#+end_src
+
+* Machine-checked proof status
+
+The theorem owner is =ASPProof.SearchRouteProviderBatchRealization=.  Its
+machine-readable audit remains independent in
+=ASPProof.Audit.SearchRouteProviderBatchRealization= and is emitted by
+=packages/proofs/audit/SearchRouteProviderBatchRealizationAudit.lean=.
+
+The Lean receipt is
+=packages/proofs/receipts/searchroute-provider-batch-realization-audit-v1.json=.
+It contains twelve declarations.  Five generic coverage, soundness, unique
+credit, cost, and missing-witness theorems are axiom-free.  Seven finite
+membership and counterexample theorems depend only on =propext=.  No declaration
+depends on =Quot.sound= and none contains =sorryAx=.
+
+AXLE allows only =propext= and requires all twelve theorem families plus all
+twelve normative clause identifiers.  Its receipt is
+=packages/proofs/receipts/searchroute-provider-batch-realization-axle-audit-v1.json=
+and binds the Lean audit with SHA-256
+=d9271f659934bbd177ca2c7856b5d28793d7844a385a93a0af123b27c342e1e3=.

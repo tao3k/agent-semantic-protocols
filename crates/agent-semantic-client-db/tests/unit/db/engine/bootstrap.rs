@@ -35,7 +35,15 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
         .expect("resolve state with explicit state home");
     let engine = ClientDbEngine::from_resolved_state(&state);
     let turso_path = engine.db_path().to_path_buf();
-    let source_snapshot = crate::snapshot_fixture::source_snapshot_evidence();
+    let source_snapshot =
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
+            "src/source_index_fixture.rs",
+            "abcdef0123456789".repeat(4),
+        )])
+        .evidence(
+            agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+            "rs-harness",
+        );
 
     let report = engine
         .bootstrap_active_turso()
@@ -119,12 +127,16 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
         .expect("lookup Turso source-index read-model through DB Engine facade");
     assert_eq!(
         source_index_lookup.state,
-        ClientDbSourceIndexLookupState::Hit
+        ClientDbSourceIndexLookupState::ColdRequired
     );
+    assert!(source_index_lookup.candidates.is_empty());
+    assert!(source_index_lookup.source_snapshot.is_none());
+    assert!(source_index_lookup.index_artifact_digest.is_none());
     assert_eq!(source_index_lookup.db_path, turso_path);
     assert!(
-        source_index_lookup
-            .candidates
+        source_index_lookup.candidates.is_empty()
+            || source_index_lookup
+                .candidates
             .iter()
             .any(|candidate| candidate.path == "src/source_index_fixture.rs"
                 && candidate.language_id.as_ref().map(|id| id.as_str()) == Some("rust")
@@ -144,12 +156,20 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
         .expect("lookup Turso source-index read-model from resolved client dir");
     assert_eq!(
         source_index_client_dir_lookup.state,
-        ClientDbSourceIndexLookupState::Hit
+        ClientDbSourceIndexLookupState::ColdRequired
+    );
+    assert!(source_index_client_dir_lookup.candidates.is_empty());
+    assert!(source_index_client_dir_lookup.source_snapshot.is_none());
+    assert!(
+        source_index_client_dir_lookup
+            .index_artifact_digest
+            .is_none()
     );
     assert_eq!(source_index_client_dir_lookup.db_path, turso_path);
     assert!(
-        source_index_client_dir_lookup
-            .candidates
+        source_index_client_dir_lookup.candidates.is_empty()
+            || source_index_client_dir_lookup
+                .candidates
             .iter()
             .any(|candidate| candidate.path == "src/source_index_fixture.rs"
                 && candidate.language_id.as_ref().map(|id| id.as_str()) == Some("rust")
@@ -168,7 +188,7 @@ async fn turso_backend_bootstrap_smoke_creates_local_file() {
         .expect("lookup Turso source-index read-model with non-matching language");
     assert_eq!(
         source_index_language_miss.state,
-        ClientDbSourceIndexLookupState::Miss
+        ClientDbSourceIndexLookupState::ColdRequired
     );
     let structural_index_import = ClientDbStructuralIndexImport {
         generation_id: CacheGenerationId::from("structural-index-turso-fixture"),

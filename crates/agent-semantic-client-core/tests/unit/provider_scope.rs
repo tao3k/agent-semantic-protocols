@@ -1,9 +1,8 @@
 use std::path::Path;
 
 use super::{
-    ResolvedProvider, normalize_project_path, project_child_path, provider_ignores_path,
-    provider_supports_source_file, relative_project_path, scoped_child_path,
-    test_support::resolved_provider,
+    ResolvedProvider, normalize_project_path, project_child_path, provider_supports_source_file,
+    relative_project_path, scoped_child_path, test_support::resolved_provider,
 };
 
 #[test]
@@ -49,46 +48,17 @@ fn provider_source_extension_matching_is_case_insensitive() {
     ));
 }
 
-#[test]
-fn provider_ignore_prefix_matching_is_project_relative() {
-    let provider = provider()
-        .with_ignored_path_prefixes(vec!["target".to_string(), ".cache/generated".to_string()]);
-    let root = Path::new("/repo");
-
-    assert!(provider_ignores_path(
-        root,
-        &provider,
-        Path::new("/repo/target/debug/lib.rlib")
-    ));
-    assert!(provider_ignores_path(
-        root,
-        &provider,
-        Path::new("/repo/.cache/generated/file.rs")
-    ));
-    assert!(!provider_ignores_path(
-        root,
-        &provider,
-        Path::new("/repo/src/targeted.rs")
-    ));
-}
-
 fn provider() -> ResolvedProvider {
     resolved_provider()
 }
 
 trait ProviderFixtureExt {
     fn with_source_extensions(self, source_extensions: Vec<String>) -> Self;
-    fn with_ignored_path_prefixes(self, ignored_path_prefixes: Vec<String>) -> Self;
 }
 
 impl ProviderFixtureExt for ResolvedProvider {
     fn with_source_extensions(mut self, source_extensions: Vec<String>) -> Self {
         self.source_extensions = source_extensions;
-        self
-    }
-
-    fn with_ignored_path_prefixes(mut self, ignored_path_prefixes: Vec<String>) -> Self {
-        self.ignored_path_prefixes = ignored_path_prefixes;
         self
     }
 }

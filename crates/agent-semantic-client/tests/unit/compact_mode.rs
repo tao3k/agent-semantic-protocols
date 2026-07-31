@@ -7,8 +7,6 @@ use crate::compact_mode::{
 #[test]
 fn infers_frontier_mode_by_default() {
     let request = query_request(vec![
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
         "--selector".to_string(),
         "src/lib.py:1:10".to_string(),
         ".".to_string(),
@@ -23,8 +21,6 @@ fn infers_frontier_mode_by_default() {
 #[test]
 fn infers_source_mode_from_typed_projection() {
     let request = query_request(vec![
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
         "--selector".to_string(),
         "src/lib.py:1:10".to_string(),
         "--projection".to_string(),
@@ -41,8 +37,6 @@ fn infers_source_mode_from_typed_projection() {
 #[test]
 fn read_packet_mode_overrides_source_projection() {
     let request = query_request(vec![
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
         "--selector".to_string(),
         "src/lib.py:1:10".to_string(),
         "--projection".to_string(),
@@ -62,8 +56,6 @@ fn read_packet_mode_overrides_source_projection() {
 #[test]
 fn rejects_inline_code_lines_in_frontier_mode() {
     let request = query_request(vec![
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
         "--selector".to_string(),
         "src/lib.py:1:10".to_string(),
         ".".to_string(),
@@ -83,8 +75,6 @@ fn rejects_inline_code_lines_in_frontier_mode() {
 #[test]
 fn rejects_text_fields_in_frontier_mode() {
     let request = query_request(vec![
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
         "--selector".to_string(),
         "src/lib.py:1:10".to_string(),
         ".".to_string(),
@@ -103,8 +93,6 @@ fn rejects_text_fields_in_frontier_mode() {
 #[test]
 fn allows_inline_source_in_source_and_read_packet_modes() {
     let source_request = query_request(vec![
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
         "--selector".to_string(),
         "src/lib.py:1:10".to_string(),
         "--projection".to_string(),
@@ -112,8 +100,6 @@ fn allows_inline_source_in_source_and_read_packet_modes() {
         ".".to_string(),
     ]);
     let read_packet_request = query_request(vec![
-        "--from-hook".to_string(),
-        "direct-source-read".to_string(),
         "--selector".to_string(),
         "src/lib.py:1:10".to_string(),
         "--projection".to_string(),
