@@ -22,6 +22,6 @@ pub(super) fn query_projection_suffix(language_id: &str) -> &'static str {
     if query_projection_kind(language_id) == "content" {
         " --projection content"
     } else {
-        ""
+        " --projection source"
     }
 }

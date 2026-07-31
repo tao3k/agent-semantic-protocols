@@ -173,7 +173,6 @@ fn codex_main_session_denies_reasoning_flow_commands_for_every_language_facade()
         "asp gerbil-scheme search owner src/main.ss items --workspace . --view seeds",
         "asp org search owner docs/spec.org items --workspace . --view seeds",
         "asp md search owner docs/spec.md items --workspace . --view seeds",
-        "asp rust query --term run --workspace .",
     ];
 
     for command in commands {
@@ -200,7 +199,7 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
 
     let decision = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query --term demo --workspace . --code"),
+        codex_asp_query_payload("asp rust search pipe demo --workspace . --view seeds"),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000001")],
     );
 
@@ -209,7 +208,7 @@ fn codex_main_session_denies_asp_query_when_asp_explore_registered() {
 
     let repeated = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query --term demo --workspace . --code"),
+        codex_asp_query_payload("asp rust search pipe demo --workspace . --view seeds"),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000001")],
     );
     assert_eq!(repeated["fields"]["denyReplay"].as_str(), Some("repeated"));
@@ -236,7 +235,7 @@ fn codex_main_session_denies_env_prefixed_asp_query_when_asp_explore_registered(
         codex_asp_query_payload(
             "env CODEX_THREAD_ID=019f126d-0000-7000-8000-000000000102 \
              ASP_ROOT_SESSION_ID=019f126d-0000-7000-8000-000000000002 \
-         ./target/debug/asp rust query --term demo --workspace . --code",
+             ./target/debug/asp rust search pipe demo --workspace . --view seeds",
         ),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000002")],
     );
@@ -258,7 +257,7 @@ fn codex_main_session_denies_registered_language_reasoning_query_and_search() {
 
     let commands = [
         (
-            "asp typescript query --term useEffect --workspace . --code",
+            "asp typescript search pipe useEffect --workspace . --view seeds",
             "typescript",
         ),
         (
@@ -269,13 +268,16 @@ fn codex_main_session_denies_registered_language_reasoning_query_and_search() {
             "direnv exec . asp python search pipe 'import django' --workspace . --view seeds",
             "python",
         ),
-        ("asp julia query --term graph --workspace . --code", "julia"),
+        (
+            "asp julia search pipe graph --workspace . --view seeds",
+            "julia",
+        ),
         (
             "asp gerbil-scheme search pipe 'session case' --workspace . --view seeds",
             "gerbil-scheme",
         ),
         (
-            "asp org query --term lifecycle --workspace . --content",
+            "asp org search pipe lifecycle --workspace . --view seeds",
             "org",
         ),
         (
@@ -324,12 +326,12 @@ fn codex_main_session_allows_registered_language_exact_item_queries() {
     );
 
     let commands = [
-        "asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --code",
-        "asp typescript query --selector typescript://src/app.ts#item/function/run --workspace . --code",
-        "asp python query --selector python://src/app.py#item/function/run --workspace . --code",
-        "asp julia query --selector julia://src/app.jl#item/function/run --workspace . --code",
-        "asp gerbil-scheme query --selector gerbil-scheme://src/main.ss#item/function/run --workspace . --code",
-        "asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --names-only",
+        "asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --projection source",
+        "asp typescript query --selector typescript://src/app.ts#item/function/run --workspace . --projection source",
+        "asp python query --selector python://src/app.py#item/function/run --workspace . --projection source",
+        "asp julia query --selector julia://src/app.jl#item/function/run --workspace . --projection source",
+        "asp gerbil-scheme query --selector gerbil-scheme://src/main.ss#item/function/run --workspace . --projection source",
+        "asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --projection callable-skeleton",
     ];
 
     for command in commands {
@@ -386,7 +388,7 @@ fn codex_main_session_routes_model_drifted_asp_explore_through_canonical_dispatc
 
     let decision = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query --term demo --workspace . --code"),
+        codex_asp_query_payload("asp rust search pipe demo --workspace . --view seeds"),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000011")],
     );
 
@@ -404,7 +406,16 @@ fn asp_binary_does_not_deny_main_session_query_when_asp_explore_registered() {
     );
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args(["rust", "query", "src/lib.rs", "--workspace", ".", "--code"])
+        .args([
+            "rust",
+            "query",
+            "--selector",
+            "rust://src/lib.rs#item/function/run",
+            "--workspace",
+            ".",
+            "--projection",
+            "source",
+        ])
         .current_dir(&root)
         .env("CODEX_HOME", root.join(".codex-home"))
         .env("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000040")
@@ -466,7 +477,16 @@ fn asp_binary_session_gate_does_not_apply_outside_agent_session() {
     let root = claude_fixture();
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_asp"))
-        .args(["rust", "query", "src/lib.rs", "--workspace", ".", "--code"])
+        .args([
+            "rust",
+            "query",
+            "--selector",
+            "rust://src/lib.rs#item/function/run",
+            "--workspace",
+            ".",
+            "--projection",
+            "source",
+        ])
         .current_dir(&root)
         .env("PATH", prepend_path(&root.join(".bin")))
         .env("CODEX_HOME", root.join(".codex-home"))
@@ -500,7 +520,7 @@ fn codex_main_session_denies_asp_query_when_asp_explore_is_expired() {
 
     let decision = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query --term demo --workspace . --code"),
+        codex_asp_query_payload("asp rust search pipe demo --workspace . --view seeds"),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000006")],
     );
 
@@ -516,7 +536,7 @@ fn codex_main_session_denies_asp_query_without_asp_explore_registered() {
 
     let decision = run_codex_pre_tool_decision_with_env(
         &root,
-        codex_asp_query_payload("asp rust query --term src/lib.rs --workspace . --code"),
+        codex_asp_query_payload("asp rust search pipe src/lib.rs --workspace . --view seeds"),
         &[("CODEX_THREAD_ID", "019f126d-0000-7000-8000-000000000002")],
     );
 

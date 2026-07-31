@@ -1,0 +1,175 @@
+#+title: RFC 10.05.32 — SearchRoute Admission Receipt Retention and Safe GC
+#+author: ASP contributors
+#+language: en
+
+* Status
+
+Draft.
+
+RFC 10.05.31 stores the receipt identities required to reconstruct a lost
+acknowledgement.  This RFC defines when the payloads named by those identities
+must remain reachable and when garbage collection is safe.
+
+* Problem
+
+A durable admission record containing two receipt identities is not sufficient
+when the corresponding payload store has deleted either receipt.  The run
+remains committed and rejects recommit, but the acknowledgement can no longer
+be reconstructed.
+
+Keeping every receipt forever is also not acceptable.  Retention must be
+bounded by an explicit run-retention policy, while garbage collection must
+preserve every payload referenced by a run still inside that policy horizon.
+
+* Normative clauses
+
+** ASP-RFC-10.05-ARR-RESOLUTION
+
+For a retained admission record, both receipt identities MUST resolve to
+payloads.  Recomputing each payload's content identity MUST reproduce the
+identity stored in the admission record.
+
+Resolution therefore proves both reachability and content-addressed integrity.
+
+** ASP-RFC-10.05-ARR-RETENTION
+
+Every committed run inside the configured retention horizon MUST have a
+resolvable baseline receipt and extension receipt.
+
+The retention horizon MUST be explicit and policy-controlled.  Silence or lack
+of a recent lookup MUST NOT shorten it implicitly.
+
+** ASP-RFC-10.05-ARR-SAFE-GC
+
+Garbage collection MUST preserve the store value of every receipt referenced by
+a retained committed run.  It MAY delete unreferenced payloads and payloads
+whose last referencing run has left the authorized retention horizon.
+
+Safe GC MUST preserve the retention invariant.
+
+** ASP-RFC-10.05-ARR-HORIZON
+
+Leaving the retention horizon is a policy transition, not a cache accident.
+The transition MUST be auditable and MUST occur no earlier than the
+acknowledgement-recovery, dispute, and audit windows attached to the run.
+
+** ASP-RFC-10.05-ARR-NONIMPLICATION
+
+None of the following implies acknowledgement recoverability:
+
+- a committed admission record;
+- a boolean committed marker;
+- two syntactically valid receipt identities;
+- successful resolution of only one receipt;
+- a payload that resolves under a different content identity; or
+- GC completion without a retained-reference proof.
+
+* Mathematical model
+
+The following Org-Babel Typst block is evaluated through stdin.
+
+#+name: searchroute-admission-retention-model
+#+begin_src typst
+#let Resolvable = $ "Resolvable"(c, S, A) "iff"
+  exists p_b, p_e, cases(
+    S(A_"baseline") = "some"(p_b),
+    S(A_"extension") = "some"(p_e),
+    c(p_b) = A_"baseline",
+    c(p_e) = A_"extension",
+  ) $
+
+#let RetainedAt = $ "RetainedAt"(P, t, u) "iff"
+  t <= P_"retain-until"(u) $
+
+#let AuthorizedRetirement = $ "AuthorizedRetirement"(P, t, u) "iff"
+  P_"retain-until"(u) < t $
+
+#let HorizonLaw = $ "RetainedAt"(P, t, u)
+  "implies" "not" "AuthorizedRetirement"(P, t, u) $
+
+#let AckRecoverable = $ "AckRecoverable"(c, L, S, u) "iff"
+  exists A, cases(
+    L_"record"(u) = "some"(A),
+    "Resolvable"(c, S, A),
+  ) $
+
+#let RetentionInvariant = $ "RetentionInvariant"(R, c, L, S) "iff"
+  forall u, A, cases(
+    R(u),
+    L_"record"(u) = "some"(A),
+  ) "implies" "Resolvable"(c, S, A) $
+
+#let Referenced = $ "Referenced"(R, L, i) "iff"
+  exists u, A, cases(
+    R(u),
+    L_"record"(u) = "some"(A),
+    cases(
+      i = A_"baseline",
+      i = A_"extension",
+    ),
+  ) $
+
+#let SafeGC = $ "SafeGC"(R, L, S_0, S_1) "iff"
+  forall i,
+  "Referenced"(R, L, i) "implies" S_1(i) = S_0(i) $
+
+#let RecoveryLaw = $ cases(
+  "RetentionInvariant"(R, c, L, S),
+  R(u),
+  L_"record"(u) = "some"(A),
+) "implies" "AckRecoverable"(c, L, S, u) $
+
+#let PreservationLaw = $ cases(
+  "RetentionInvariant"(R, c, L, S_0),
+  "SafeGC"(R, L, S_0, S_1),
+) "implies" "RetentionInvariant"(R, c, L, S_1) $
+
+#let MissingPayloadCounterexample = $ cases(
+  L_"record"(u) = "some"(A),
+  S(A_"baseline") = "none",
+) "implies" "not" "AckRecoverable"(c, L, S, u) $
+
+#let UnsafeGCCounterexample = $ cases(
+  "Resolvable"(c, S_0, A),
+  S_1(A_"baseline") = "none",
+) "implies" "not" "Resolvable"(c, S_1, A) $
+
+#let Main = (
+  Resolvable,
+  RetainedAt,
+  AuthorizedRetirement,
+  HorizonLaw,
+  AckRecoverable,
+  RetentionInvariant,
+  Referenced,
+  SafeGC,
+  RecoveryLaw,
+  PreservationLaw,
+  MissingPayloadCounterexample,
+  UnsafeGCCounterexample,
+)
+#+end_src
+
+* Lean correspondence
+
+The executable model is:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteAdmissionRetention.lean
+#+end_example
+
+The Lean module proves:
+
+- retained committed runs have recoverable acknowledgements;
+- safe GC preserves record resolvability;
+- safe GC preserves the global retention invariant;
+- a committed record does not imply payload reachability; and
+- deleting a referenced payload breaks acknowledgement recovery.
+
+* SearchLoop consequence
+
+A lost acknowledgement should be recovered through one run-record lookup and
+two content-addressed receipt lookups.  If retention is correct, SearchLoop does
+not need to repeat evidence-graph traversal, model inference, or cache warming.
+The retention proof therefore directly protects token and interaction-round
+savings established by the earlier SearchLoop RFCs.

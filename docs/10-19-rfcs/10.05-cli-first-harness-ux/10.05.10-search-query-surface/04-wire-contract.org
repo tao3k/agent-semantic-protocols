@@ -114,12 +114,12 @@ asking the agent to execute a path/range source transport.  If the owner is
 known, recovery should route to =asp rust search owner <owner> items --query
 <symbol-or-term> --workspace <workspace-root> --view seeds=.  If the frontier
 already contains a parser-owned item identity, the next action is =asp rust
-query --selector <rust://...#item/...> --workspace <workspace-root> --code=.
+query --selector <rust://...#item/...> --workspace <workspace-root> --projection source=.
 =--from-hook direct-source-read= remains an internal low-priority fallback for
 bounded exact-window recovery after parser-owned frontier evidence has already
 failed; it must not be the prompt-facing guide or recovery default.
 
-=guide --code= extends =guide.v1= instead of introducing another search or query
+=guide --projection source= extends =guide.v1= instead of introducing another search or query
 subcommand.  Its job is to teach the agent one high-quality, source-backed code
 pattern with the smallest useful prompt surface: a short source comment when one
 is present and the complete function/macro/use block that demonstrates the
@@ -176,8 +176,8 @@ Follow this flow after the hook recovery command gives you a frontier or exact p
 4. When syntax location is needed, read `asp <language> query guide treesitter .`.
 5. Execute `asp <language> query --treesitter-query '<pattern>' .` for a capture/frontier result.
 6. Select one exact parser-owned item locator from the frontier.
-7. Extract pure code with `asp <language> query --selector <language://path#item/kind/name> --workspace . --code`.
-8. Treat stdout from `query --code` as pure source code only.
+7. Extract pure code with `asp <language> query --selector <language://path#item/kind/name> --workspace . --projection source`.
+8. Treat stdout from `query --projection source` as pure source code only.
 9. Patch with `apply_patch` by default, or use provider `ast-patch` only when hook config enables semantic AST patching and a provider dry-run receipt validates the structural/mechanical edit.
 
 ## Rules
@@ -269,7 +269,7 @@ avoid=raw-read,full-json,broad-lexical
 =--treesitter-query= is precise syntax locate/capture/frontier.  Adding
 =--code= to an exact selector turns it into pure code extraction.  Search and
 read-plan flows must return locators/frontier rather than inline code.  Plain
-=query --code= writes only code to stdout, and =--workspace <workspace-root>=
+=query --projection source= writes only code to stdout, and =--workspace <workspace-root>=
 is the independent workspace override when a root must be specified.  JSON
 artifacts, DB Engine cache ids, and receipts are debugging/integration surfaces
 and should not appear in the default guide output or non-JSON query output.
@@ -290,7 +290,7 @@ guide-main        command="asp <language> guide --workspace ." lowFrequency=true
 guide-help        command="asp <language> guide --help ." output=help code=false json=false
 search-prime      output=handles/profiles/frontier code=false json=false
 syntax-locate     command="query --treesitter-query <pattern>" output=locator/frontier code=false
-syntax-code       command="query --selector <exact> --treesitter-query <pattern> --code" output=pure-code
+syntax-code       command="query --selector <exact> --treesitter-query <pattern> --projection source" output=pure-code
 hook-recovery     output=markdown-prompt runNext=owner-items detectedBinaries=runtime-profile
 debug-surfaces    json,receipts,cachePaths,artifactIds hiddenFromDefault=true
 retired-routes    agent-prefixed-guide,search-wrapper-hook-query,ts-query,syntax-query rejectedFromGuides=true

@@ -1,0 +1,63 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryPublicationDigest.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryPublicationDigest",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Payload : Type u} {Digest : Type v}\n  {digest : ASPProof.SearchRouteAdmissionRetryPublicationDigest.DigestPreimage Payload → Digest},\n  ASPProof.SearchRouteAdmissionRetryPublicationDigest.CollisionFree digest →\n    ∀ {left right : ASPProof.SearchRouteAdmissionRetryPublicationDigest.DigestPreimage Payload},\n      digest left = digest right → left.domain = right.domain ∧ left.payload = right.payload",
+   "theoremFamily": "conditional digest equality",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPDB-COLLISION-ASSUMPTION", "ASP-RFC-10.05-RPDB-EQUALITY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationDigest.collision_free_digest_equality_preserves_domain_and_payload",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublicationDigest.retryKeyPreimage ≠\n    ASPProof.SearchRouteAdmissionRetryPublicationDigest.evidencePreimage ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationDigest.constantDigest\n        ASPProof.SearchRouteAdmissionRetryPublicationDigest.retryKeyPreimage =\n      ASPProof.SearchRouteAdmissionRetryPublicationDigest.constantDigest\n        ASPProof.SearchRouteAdmissionRetryPublicationDigest.evidencePreimage ∧\n    ¬ASPProof.SearchRouteAdmissionRetryPublicationDigest.CollisionFree\n        ASPProof.SearchRouteAdmissionRetryPublicationDigest.constantDigest",
+   "theoremFamily": "constant-digest counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPDB-COLLISION-ASSUMPTION",
+    "ASP-RFC-10.05-RPDB-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationDigest.domain_tagged_preimages_do_not_make_arbitrary_digest_collision_free",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublicationDigest.retryKeyPreimage ≠\n    ASPProof.SearchRouteAdmissionRetryPublicationDigest.evidencePreimage ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationDigest.omitDomainDigest\n      ASPProof.SearchRouteAdmissionRetryPublicationDigest.retryKeyPreimage =\n    ASPProof.SearchRouteAdmissionRetryPublicationDigest.omitDomainDigest\n      ASPProof.SearchRouteAdmissionRetryPublicationDigest.evidencePreimage",
+   "theoremFamily": "domain-tag counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPDB-DOMAIN", "ASP-RFC-10.05-RPDB-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationDigest.omitting_domain_tag_aliases_equal_payloads_across_protocols",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublicationDigest.blakeReference ≠\n    ASPProof.SearchRouteAdmissionRetryPublicationDigest.shaReference ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationDigest.omitAlgorithm\n      ASPProof.SearchRouteAdmissionRetryPublicationDigest.blakeReference =\n    ASPProof.SearchRouteAdmissionRetryPublicationDigest.omitAlgorithm\n      ASPProof.SearchRouteAdmissionRetryPublicationDigest.shaReference",
+   "theoremFamily": "algorithm-identity counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPDB-ALGORITHM", "ASP-RFC-10.05-RPDB-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationDigest.omitting_algorithm_identity_aliases_distinct_digest_references",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "1 ≠ 11 ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationDigest.truncatedDigest 1 =\n      ASPProof.SearchRouteAdmissionRetryPublicationDigest.truncatedDigest 11 ∧\n    ¬Function.Injective ASPProof.SearchRouteAdmissionRetryPublicationDigest.truncatedDigest",
+   "theoremFamily": "digest-truncation counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPDB-NO-TRUNCATION", "ASP-RFC-10.05-RPDB-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationDigest.digest_truncation_is_not_collision_free",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 5,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 5,
+ "axiomDependentDeclarationCount": 0}

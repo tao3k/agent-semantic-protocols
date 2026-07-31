@@ -714,7 +714,7 @@ The JSON side is the machine packet:
   },
   "recommendedNext": {
     "kind": "selector",
-    "command": "asp rust query crates/agent-semantic-search/src/dynamic_overlay.rs items --workspace . --code",
+    "command": "asp rust query crates/agent-semantic-search/src/dynamic_overlay.rs items --workspace . --projection source",
     "selector": "rust:item:agent_semantic_search::dynamic_overlay",
     "reason": "owner evidence is needed before edit synthesis"
   },
@@ -741,7 +741,7 @@ The JSON side is the machine packet:
   "searchPlan": [
     {
       "stepId": "search.owner",
-      "command": "asp rust query crates/agent-semantic-search/src/dynamic_overlay.rs items --workspace . --code",
+      "command": "asp rust query crates/agent-semantic-search/src/dynamic_overlay.rs items --workspace . --projection source",
       "expectedEvidence": ["owner selector", "route source", "test owner"]
     }
   ],

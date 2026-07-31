@@ -275,7 +275,7 @@ pub(super) fn write_cache_source_fixture(root: &Path) {
 
 pub(crate) fn asp_command(root: &Path) -> Command {
     let runtime_bin = state_runtime_bin(root);
-    write_default_workspace_scope_provider_shims(&runtime_bin);
+    write_default_project_resolution_provider_shims(&runtime_bin);
     write_provider_install_receipts(root);
     let mut command = Command::new(env!("CARGO_BIN_EXE_asp"));
     command
@@ -366,10 +366,10 @@ pub(crate) fn write_marker_provider(bin_dir: &Path, binary: &str, marker: &Path)
         binary,
         &format!(
             r#"#!/bin/sh
-# agent-semantic-protocol-test-workspace-scope-shim-v1
-if [ "$1" = "search" ] && [ "$2" = "workspace-scope" ] && [ "$3" = "--json" ]; then
-  root=$(pwd -P)
-  printf '{{"schemaId":"agent.semantic-protocols.semantic-workspace-scope","schemaVersion":"1","workspaceId":"test:%s","languageId":"{language_id}","providerId":"{provider_id}","packageManager":"test","sourceExtensions":{source_extensions},"discoveryRoot":"%s","anchors":[{{"kind":"test-manifest","path":"%s/Cargo.toml","sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}],"packages":[{{"packageId":"test:%s","name":"fixture","languageId":"{language_id}","root":"%s","manifestPath":"%s/Cargo.toml"}}],"admittedRoots":["%s"],"fingerprint":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}\n' "$root" "$root" "$root" "$root" "$root" "$root" "$root"
+# agent-semantic-protocol-test-project-resolution-shim-v1
+if [ "$1" = "project-resolution-stdin" ]; then
+  candidates=$(git ls-files --cached --others --exclude-standard | awk 'BEGIN {{ sep="" }} {{ gsub(/\\\\/, "\\\\\\\\"); gsub(/"/, "\\\\\""); printf "%s{{\\\"path\\\":\\\"%s\\\"}}", sep, $0; sep="," }}')
+  printf '{{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","languageId":"{language_id}","providerId":"{provider_id}","state":"resolved","resolution":{{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","repositoryCandidates":{{"candidates":[%s],"policyExclusions":[]}},"resolvedSourceScopes":[{{"roots":["."],"extensions":{source_extensions},"includeAuthority":"package-manager","exclusions":[]}}]}}}}\n' "$candidates"
   exit 0
 fi
 if [ -x '{}' ]; then
@@ -384,7 +384,7 @@ printf called > '{}'
     );
 }
 
-fn write_default_workspace_scope_provider_shims(bin_dir: &Path) {
+fn write_default_project_resolution_provider_shims(bin_dir: &Path) {
     std::fs::create_dir_all(bin_dir).expect("create default provider shim directory");
     for binary in [
         "rs-harness",
@@ -397,7 +397,7 @@ fn write_default_workspace_scope_provider_shims(bin_dir: &Path) {
         if !provider.exists() {
             continue;
         }
-        if is_default_workspace_scope_provider_shim(&provider) {
+        if is_default_project_resolution_provider_shim(&provider) {
             continue;
         }
         let delegate = bin_dir.join(format!(".{binary}-delegate"));
@@ -410,14 +410,14 @@ fn write_default_workspace_scope_provider_shims(bin_dir: &Path) {
     }
 }
 
-fn is_default_workspace_scope_provider_shim(provider: &Path) -> bool {
+fn is_default_project_resolution_provider_shim(provider: &Path) -> bool {
     std::fs::read_to_string(provider)
         .ok()
-        .is_some_and(|source| source.starts_with(DEFAULT_WORKSPACE_SCOPE_PROVIDER_SHIM_PREFIX))
+        .is_some_and(|source| source.starts_with(DEFAULT_PROJECT_RESOLUTION_PROVIDER_SHIM_PREFIX))
 }
 
-const DEFAULT_WORKSPACE_SCOPE_PROVIDER_SHIM_PREFIX: &str =
-    "#!/bin/sh\n# agent-semantic-protocol-test-workspace-scope-shim-v1\n";
+const DEFAULT_PROJECT_RESOLUTION_PROVIDER_SHIM_PREFIX: &str =
+    "#!/bin/sh\n# agent-semantic-protocol-test-project-resolution-shim-v1\n";
 
 pub(super) fn write_guide_provider(bin_dir: &Path, binary: &str) {
     write_provider_script(

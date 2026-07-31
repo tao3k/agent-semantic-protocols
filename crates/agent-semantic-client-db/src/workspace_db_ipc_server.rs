@@ -232,6 +232,10 @@ async fn dispatch_workspace_db_session_operation(
             "canonical generation restore is only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
+        WorkspaceDbIpcOperation::AdmitRuntimeGeneration { .. } => Err(
+            "canonical generation admission is only accepted by the Runtime Server data plane"
+                .to_owned(),
+        ),
         WorkspaceDbIpcOperation::WriteProviderIncrementalOwner { request } => {
             let session = registry
                 .acquire(&request.scope.project_root, &request.scope)
@@ -337,7 +341,9 @@ async fn dispatch_workspace_db_session_operation(
                 Err(error) => Err(error),
             }
         }
-        WorkspaceDbIpcOperation::PublishRuntimeOwner { .. } => Err(
+        WorkspaceDbIpcOperation::PublishRuntimeOwner { .. }
+        | WorkspaceDbIpcOperation::TombstoneRuntimeOwner { .. }
+        | WorkspaceDbIpcOperation::RelocateRuntimeOwner { .. } => Err(
             "Runtime owner publication is only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
@@ -348,7 +354,7 @@ async fn dispatch_workspace_db_session_operation(
     })
 }
 
-async fn admitted_or_bootstrap_workspace(
+pub(crate) async fn admitted_or_bootstrap_workspace(
     registry: &WorkspaceDbRegistry,
     workspace_identity: &str,
     project_root: &Path,
@@ -378,6 +384,7 @@ pub async fn serve_runtime_server_workspace_stream(
     endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
     registry: &WorkspaceDbRegistry,
     memory_registry: &crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    generation_admission: Option<&crate::runtime_server_admission::WorkspaceGenerationAdmission>,
     mut drain: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), String> {
     loop {
@@ -437,20 +444,69 @@ pub async fn serve_runtime_server_workspace_stream(
                             Path::new(&project_root),
                         )
                         .await?;
-                        crate::runtime_server_workspace::restore_active_turso_generation(
-                            memory_registry,
-                            &session,
-                            request.request_id.clone(),
-                            &request.workspace_identity,
-                        )
-                        .await
+                        let materialization = session
+                            .load_active_workspace_generation_materialization()
+                            .await?;
+                        if let Some(materialization) = materialization {
+                            materialization.validate_persisted(&request.workspace_identity)?;
+                            return memory_registry
+                                .ensure_canonical_generation(
+                                    request.request_id.clone(),
+                                    &request.workspace_identity,
+                                    materialization,
+                                )
+                                .await
+                                .map(|receipt| WorkspaceDbIpcResult::RuntimeGeneration {
+                                    receipt,
+                                });
+                        }
+                        let admission = generation_admission.ok_or_else(|| {
+                            format!(
+                                "active workspace generation materialization is unavailable: workspaceIdentity={}",
+                                request.workspace_identity
+                            )
+                        })?;
+                        let receipt = admission
+                            .status(&request.workspace_identity)
+                            .await
+                            .ok_or_else(|| {
+                                format!(
+                                    "active workspace generation is not admitted: workspaceIdentity={}; hook or supervisor admission is required",
+                                    request.workspace_identity
+                                )
+                            })?;
+                        Ok(WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt })
                     }
                     .await;
                     match restoration {
-                        Ok(receipt) => WorkspaceDbIpcResult::RuntimeGeneration { receipt },
+                        Ok(result) => result,
                         Err(message) => WorkspaceDbIpcResult::Failed {
                             code: "runtime-server-canonical-generation-restore-failed".to_owned(),
                             message,
+                        },
+                    }
+                }
+                WorkspaceDbIpcOperation::AdmitRuntimeGeneration { project_root } => {
+                    match generation_admission {
+                        Some(admission) => match admission
+                            .admit(
+                                request.workspace_identity.clone(),
+                                std::path::PathBuf::from(project_root),
+                            )
+                            .await
+                        {
+                            Ok(receipt) => {
+                                WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }
+                            }
+                            Err(message) => WorkspaceDbIpcResult::Failed {
+                                code: "runtime-server-generation-admission-failed".to_owned(),
+                                message,
+                            },
+                        },
+                        None => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-generation-admission-unavailable".to_owned(),
+                            message: "Runtime Server has no canonical generation builder"
+                                .to_owned(),
                         },
                     }
                 }
@@ -516,6 +572,42 @@ pub async fn serve_runtime_server_workspace_stream(
                         Ok(receipt) => WorkspaceDbIpcResult::RuntimeGeneration { receipt },
                         Err(message) => WorkspaceDbIpcResult::Failed {
                             code: "runtime-server-generation-publish-failed".to_owned(),
+                            message,
+                        },
+                    }
+                }
+                WorkspaceDbIpcOperation::TombstoneRuntimeOwner { owner_path } => {
+                    let publication = memory_registry
+                        .tombstone_owner_overlay(
+                            request.request_id.clone(),
+                            request.workspace_identity.clone(),
+                            owner_path,
+                        )
+                        .await;
+                    match publication {
+                        Ok(receipt) => WorkspaceDbIpcResult::RuntimeGeneration { receipt },
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-owner-tombstone-failed".to_owned(),
+                            message,
+                        },
+                    }
+                }
+                WorkspaceDbIpcOperation::RelocateRuntimeOwner {
+                    previous_owner_path,
+                    owner,
+                } => {
+                    let publication = memory_registry
+                        .relocate_owner_overlay(
+                            request.request_id.clone(),
+                            request.workspace_identity.clone(),
+                            previous_owner_path,
+                            owner,
+                        )
+                        .await;
+                    match publication {
+                        Ok(receipt) => WorkspaceDbIpcResult::RuntimeGeneration { receipt },
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-owner-relocation-failed".to_owned(),
                             message,
                         },
                     }

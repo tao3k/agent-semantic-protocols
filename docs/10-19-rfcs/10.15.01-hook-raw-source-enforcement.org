@@ -20,7 +20,7 @@ single provider can be selected.
   dumps must not bypass the policy merely because they target one file.
 - Precise model-visible source evidence is provider-authorized only after a
   parser-owned selector is known and the provider query projects it through
-  =asp <language> query --selector <selector> --workspace <root> --code= (or
+  =asp <language> query --selector <selector> --workspace <root> --projection source= (or
   =--content= for document providers).
 - Explicit user-approved filesystem access is a separate control-plane
   capability expressed through =asp source-access read-file --activation

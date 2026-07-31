@@ -20,6 +20,8 @@ mod hook_runtime_config_recovery;
 mod hook_runtime_decision_render;
 #[path = "hook_runtime_doctor.rs"]
 mod hook_runtime_doctor;
+#[path = "hook_runtime_generation_admission.rs"]
+mod hook_runtime_generation_admission;
 #[path = "hook_runtime_install.rs"]
 mod hook_runtime_install;
 #[path = "hook_runtime_resident_permissions.rs"]
@@ -104,6 +106,7 @@ fn run_paths(args: &[String]) -> Result<(), String> {
 mod hook_workspace_candidate_tests;
 
 fn run_hook(args: &[String]) -> Result<(), String> {
+    hook_runtime_generation_admission::admit_hook_workspace_generation(args)?;
     let client = flag_value(args, "--client")
         .ok_or_else(|| "missing required --client <client>".to_string())?;
     ensure_supported_client(client)?;
@@ -179,6 +182,8 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         hook_runtime_project_root(&activation_path, &runtime.project_root);
     let project_root = hook_workspace_candidate(&payload, &activation_project_root);
     runtime.project_root = project_root.display().to_string();
+    let runtime_generation_admission = matches!(classification_event, "pre-tool" | "session-start")
+        .then(|| hook_runtime_generation_admission::request(&project_root));
     let config_path = flag_value(args, "--config")
         .map(PathBuf::from)
         .unwrap_or_else(|| default_client_config_path(&project_root.to_string_lossy()));
@@ -322,6 +327,11 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             "activationRecoveryStatus".to_string(),
             serde_json::Value::String("reloaded-and-classified".to_string()),
         );
+    }
+    if let Some(receipt) = runtime_generation_admission {
+        decision
+            .fields
+            .insert("runtimeGenerationAdmission".to_owned(), receipt);
     }
     if matches!(event, "subagent-start" | "subagent-stop") {
         let mut payload_keys = payload

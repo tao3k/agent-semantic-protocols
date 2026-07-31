@@ -97,7 +97,7 @@ The receipt summary owns the audit counters used by deep-question budgets:
 =aspCommands=, =searchCommands=, =queryCommands=, =directReadCommands=,
 =repeatedCommands=, and =repeatedSearches=.  A good run should spend most of its
 budget on compact =search= and targeted =query= commands, avoid repeated argv,
-and keep =query --selector --code= behind an exact selector chosen from parser-owned
+and keep =query --selector --projection source= behind an exact selector chosen from parser-owned
 frontier output.  =directReadCommands= is a compatibility total, not an
 absolute deletion target: a bounded exact-window fallback after parser-owned
 frontier evidence may be acceptable, while broad or unbounded

@@ -104,8 +104,8 @@ route=query-owner/request -> query-owner/runner -> facade-tests
 state=selector-ready
 evidence=E1 kind=item role=primary owner=crates/agent-semantic-protocol/src/command/query_owner/request.rs selector=rust://crates/agent-semantic-protocol/src/command/query_owner/request.rs#item/method/parse_structural_selector relation=admits-query-selector
 evidence=E2 kind=test role=guard owner=crates/agent-semantic-protocol/tests/unit/provider_command/facade/search_output_snapshots.rs selector=rust://crates/agent-semantic-protocol/tests/unit/provider_command/facade/search_output_snapshots.rs#item/function/asp_rust_query_file_selector_code_without_item_is_rejected relation=covers-deny
-next=E1 asp rust query --selector 'rust://crates/agent-semantic-protocol/src/command/query_owner/request.rs#item/method/parse_structural_selector' --workspace . --code
-alt=E2 asp rust query --selector 'rust://crates/agent-semantic-protocol/tests/unit/provider_command/facade/search_output_snapshots.rs#item/function/asp_rust_query_file_selector_code_without_item_is_rejected' --workspace . --code
+next=E1 asp rust query --selector 'rust://crates/agent-semantic-protocol/src/command/query_owner/request.rs#item/method/parse_structural_selector' --workspace . --projection source
+alt=E2 asp rust query --selector 'rust://crates/agent-semantic-protocol/tests/unit/provider_command/facade/search_output_snapshots.rs#item/function/asp_rust_query_file_selector_code_without_item_is_rejected' --workspace . --projection source
 avoid=raw-read,file-level-query-code,repeat-same-search
 omit=source,line-range,confidence,long-explanation
 #+end_src
@@ -121,7 +121,7 @@ compact graph-route receipts; the parent should not replace the child or read
 source directly just because the receipt was malformed.
 The parent owns intent synthesis, final exact reads, edits, and validation. Once
 a subagent returns a primary =next= action, the parent runs one exact =asp
-<language> query --selector <parser-owned-selector> --workspace . --code= or
+<language> query --selector <parser-owned-selector> --workspace . --projection source= or
 document =--content= command and reasons over the returned code/content itself.
 Display line ranges and =sourceLocatorHint= remain metadata; they are not
 subagent return identities.
@@ -295,7 +295,7 @@ query command have different cost, ambiguity, and recovery rules.
 | Intent | Command shape | Main-session behavior |
 |-
 | =control-plane= | =asp agent session ...= and other configured lifecycle controls | Allow |
-| =exact-evidence-read= | =asp <language> query --selector <parser-owned item selector> --code= or =--names-only= | Allow |
+| =exact-evidence-read= | =asp <language> query --selector <parser-owned item selector> --projection source= or =--projection source= | Allow |
 | =reasoning-flow= | =search prime=, =search pipe=, =search owner=, =rg=, =fd=, =query --term=, a file selector, or any selector that is not parser-owned | Deny and enter the resident =asp-explore= interactive loop |
 | =unknown= | Any command outside the explicit classes | Apply the configured control-plane allowlist; otherwise deny |
 

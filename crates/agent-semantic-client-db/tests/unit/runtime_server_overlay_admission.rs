@@ -228,6 +228,60 @@ async fn owner_overlay_cannot_manufacture_a_canonical_generation() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn moved_owner_overlay_publishes_one_atomic_relocation_epoch() {
+    let root = fixture_root();
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(root.clone()).expect("create workspace registry");
+    let workspace_identity = "workspace-owner-move";
+    registry
+        .publish(
+            "publish-canonical-before-move",
+            WorkspaceRecoverySource::TursoGeneration,
+            generation(workspace_identity, 1, b"fn moved() {}\n"),
+        )
+        .await
+        .expect("publish canonical generation");
+    let moved_bytes = b"fn moved() { println!(\"moved\"); }\n";
+    registry
+        .relocate_owner_overlay(
+            "relocate-owner-atomically",
+            workspace_identity,
+            "src/lib.rs",
+            WorkspaceOwnerSnapshot {
+                owner_path: "src/moved.rs".to_owned(),
+                content_digest: format!("blake3-256:{}", blake3::hash(moved_bytes).to_hex()),
+                bytes: moved_bytes.to_vec(),
+                selectors: Vec::new(),
+            },
+        )
+        .await
+        .expect("relocate owner in one writer epoch");
+
+    let lease = registry
+        .lease(workspace_identity)
+        .expect("lease moved generation");
+    assert_eq!(lease.epoch(), 2);
+    assert!(lease.owner("src/lib.rs").is_none());
+    assert_eq!(
+        lease.owner("src/moved.rs").as_deref(),
+        Some(moved_bytes.as_slice())
+    );
+    assert_eq!(lease.generation().root_depth, [1, 0]);
+    assert_eq!(lease.generation().source_snapshot.leaf_count, 1);
+    assert_eq!(lease.generation().workspace_generation.owner_count, 1);
+    assert_eq!(
+        lease.generation().workspace_generation.root_digest,
+        lease.generation().source_snapshot.root_digest
+    );
+
+    registry
+        .shutdown()
+        .await
+        .expect("drain moved owner writer lane");
+    let _ = tokio::fs::remove_dir_all(root).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
     let root = fixture_root();
     let registry = std::sync::Arc::new(

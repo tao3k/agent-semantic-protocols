@@ -184,10 +184,6 @@ fn provider_registry_fingerprint_binds_complete_search_capabilities() {
         .search_capabilities
         .dependency_topology_metadata;
     mutations.push(dependency_topology_metadata);
-    let mut workspace_scope = baseline_provider.clone();
-    workspace_scope.search_capabilities.workspace_scope =
-        !workspace_scope.search_capabilities.workspace_scope;
-    mutations.push(workspace_scope);
     let mut source_snapshot = baseline_provider;
     source_snapshot.search_capabilities.source_snapshot = None;
     mutations.push(source_snapshot);

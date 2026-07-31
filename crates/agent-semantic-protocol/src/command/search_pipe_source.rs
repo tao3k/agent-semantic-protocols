@@ -307,62 +307,6 @@ fn candidate_acquisition_from_search(
     }
 }
 
-pub(super) fn collect_workspace_scope_topology_acquisition(
-    scope: &agent_semantic_search::SemanticWorkspaceScope,
-    locator_root: &Path,
-    ignore_dirs: &[String],
-    include_hidden_dirs: &[String],
-) -> Result<CandidateAcquisition, String> {
-    agent_semantic_search::collect_search_pipe_scope_topology_acquisition(
-        agent_semantic_search::SearchPipeScopeTopologyAcquisitionRequest {
-            workspace_scope: scope,
-            locator_root,
-            ignore_dirs,
-            include_hidden_dirs,
-            entry_visit_limit: agent_semantic_search::SEARCH_PIPE_SCOPE_TOPOLOGY_ENTRY_VISIT_LIMIT,
-            candidate_limit: agent_semantic_search::SEARCH_PIPE_SCOPE_TOPOLOGY_CANDIDATE_LIMIT,
-        },
-    )
-    .map(candidate_acquisition_from_search)
-}
-
-pub(super) fn merge_candidate_acquisitions(
-    primary: &mut CandidateAcquisition,
-    secondary: CandidateAcquisition,
-) {
-    let mut seen = primary
-        .candidates
-        .iter()
-        .map(|candidate| {
-            (
-                candidate.path.clone(),
-                candidate.line,
-                candidate.end_line,
-                candidate.symbol.clone(),
-            )
-        })
-        .collect::<std::collections::BTreeSet<_>>();
-    primary
-        .candidates
-        .extend(secondary.candidates.into_iter().filter(|candidate| {
-            seen.insert((
-                candidate.path.clone(),
-                candidate.line,
-                candidate.end_line,
-                candidate.symbol.clone(),
-            ))
-        }));
-    for source in secondary.candidate_sources {
-        if !primary.candidate_sources.contains(&source) {
-            primary.candidate_sources.push(source);
-        }
-    }
-    primary.source_trace.extend(secondary.source_trace);
-    if primary.source_snapshot.is_none() {
-        primary.source_snapshot = secondary.source_snapshot;
-    }
-}
-
 fn search_source_trace(trace: SearchPipeSourceAcquisitionTrace) -> SearchPipeSourceTrace {
     let mut source_trace = SearchPipeSourceTrace::new(
         trace.source.as_str(),

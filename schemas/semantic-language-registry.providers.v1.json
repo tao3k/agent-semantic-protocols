@@ -1957,7 +1957,8 @@
               "{owner}",
               "--workspace",
               "{workspace}",
-              "--names-only"
+              "--projection",
+              "source"
             ]
           }
         },

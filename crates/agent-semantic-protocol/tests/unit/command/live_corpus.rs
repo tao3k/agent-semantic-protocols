@@ -32,7 +32,7 @@ fn corpus(admission: Option<LiveCorpusExtensionAdmissionV1>) -> LiveCorpusLockEn
 #[test]
 fn extension_admission_rejects_processor_shaped_corpus() {
     let evidence = LiveCorpusLanguageExtensionEvidenceV1 {
-        authority: "provider-workspace-scope".to_string(),
+        authority: "provider-project-resolution".to_string(),
         candidate_set_authority: "provider-registry-extension-index".to_string(),
         source_extensions: vec![".org".to_string()],
         matching_file_count: 4,
@@ -40,7 +40,7 @@ fn extension_admission_rejects_processor_shaped_corpus() {
     };
     let error = validate_extension_admission(
         &corpus(Some(LiveCorpusExtensionAdmissionV1 {
-            extension_authority: "provider-workspace-scope".to_string(),
+            extension_authority: "provider-project-resolution".to_string(),
             minimum_matching_files: 100,
             minimum_matching_file_ratio: 0.8,
         })),

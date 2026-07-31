@@ -13,6 +13,7 @@ mod dependency_index;
 pub mod engine;
 mod runtime_concurrency;
 pub mod runtime_server;
+pub mod runtime_server_admission;
 pub mod runtime_server_control;
 pub mod runtime_server_runtime;
 pub mod runtime_server_workspace;

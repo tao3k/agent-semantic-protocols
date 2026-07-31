@@ -1,6 +1,6 @@
 use super::fixtures::{
     EnvVarGuard, home_local_provider_path, isolate_home, make_executable, temp_root,
-    write_gerbil_activation_with_provider_scope, write_rust_activation_with_ignored_prefixes,
+    write_gerbil_activation_with_project_resolution, write_rust_activation_with_ignored_prefixes,
 };
 use crate::cache_cli::run_cache;
 use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
@@ -85,7 +85,7 @@ fn cache_source_index_refresh_respects_provider_ignored_path_prefixes() {
     .expect("write app manifest");
     std::fs::write(
         root.join("crates/app/src/lib.rs"),
-        "pub fn workspace_scope_symbol() {}\n",
+        "pub fn project_scope_symbol() {}\n",
     )
     .expect("write app source");
     std::fs::create_dir_all(root.join("vendor/tool/src")).expect("create excluded source dir");
@@ -96,7 +96,7 @@ fn cache_source_index_refresh_respects_provider_ignored_path_prefixes() {
     .expect("write excluded manifest");
     std::fs::write(
         root.join("vendor/tool/src/lib.rs"),
-        "pub fn workspace_scope_symbol() {}\n",
+        "pub fn project_scope_symbol() {}\n",
     )
     .expect("write excluded source");
     let activation_path = write_rust_activation_with_ignored_prefixes(&root, &["vendor"]);
@@ -116,7 +116,7 @@ fn cache_source_index_refresh_respects_provider_ignored_path_prefixes() {
     let result = crate::test_support::lookup_current_source_index_for_language(
         &root,
         Some(&LanguageId::from("rust")),
-        "workspace_scope_symbol",
+        "project_scope_symbol",
         8,
     )
     .expect("lookup source index");
@@ -218,11 +218,11 @@ fn source_index_lookup_ranks_query_dense_owner_before_low_coverage_path() {
 }
 
 #[test]
-fn cache_source_index_refresh_prefers_provider_workspace_scope_packet() {
+fn cache_source_index_refresh_uses_provider_project_resolution() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
-    let root = temp_root("source-index-provider-workspace-scope");
+    let root = temp_root("source-index-provider-project-resolution");
     let _home_env = isolate_home(&root);
     std::fs::write(
         root.join("gerbil.pkg"),
@@ -245,15 +245,15 @@ fn cache_source_index_refresh_prefers_provider_workspace_scope_packet() {
     std::fs::create_dir_all(provider_bin.parent().expect("provider parent"))
         .expect("create home local bin");
     std::fs::write(&provider_bin, r#"#!/bin/sh
-if [ "$1" = "search" ] && [ "$2" = "workspace-scope" ]; then
-  printf '%s\n' '{"schemaId":"agent.semantic-protocols.semantic-workspace-scope","schemaVersion":"1","status":"ready","languageId":"gerbil-scheme","providerId":"gerbil-scheme-harness","files":[{"path":"src/included.ss"}]}'
+if [ "$1" = "project-resolution-stdin" ]; then
+  printf '%s\n' '{"schemaId":"agent.semantic-protocols.provider-project-resolution-response","schemaVersion":"1","languageId":"gerbil-scheme","providerId":"gerbil-scheme-harness","state":"resolved","resolution":{"schemaId":"agent.semantic-protocols.project-resolution","schemaVersion":"1","state":"resolved","completeness":"exact","repositoryCandidates":{"candidates":[{"path":"src/included.ss"},{"path":"extra/excluded.ss"}],"policyExclusions":[]},"resolvedSourceScopes":[{"roots":["src"],"extensions":[".ss"],"includeAuthority":"package-manager","exclusions":[]}]}}'
   exit 0
 fi
 exit 2
 "#).expect("write fake provider");
     make_executable(&provider_bin);
     let activation_path =
-        write_gerbil_activation_with_provider_scope(&root, &provider_bin, &["src", "extra"]);
+        write_gerbil_activation_with_project_resolution(&root, &provider_bin, &["src", "extra"]);
     let _activation_env = EnvVarGuard::set(
         ASP_PROVIDER_ACTIVATION_PATH_ENV,
         activation_path.as_os_str(),

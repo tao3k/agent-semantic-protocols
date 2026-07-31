@@ -121,7 +121,7 @@ fn search_pipe_finder_respects_gitignore_and_configured_hidden_dirs() {
     std::fs::write(root.join(".gitignore"), "ignored/\n").expect("write gitignore");
     std::fs::write(
         root.join("asp.toml"),
-        "[search]\nincludeHiddenDirs = [\".allowed\"]\n",
+        "[discovery]\nincludeHiddenDirNames = [\".allowed\"]\n",
     )
     .expect("write asp config");
     std::fs::write(root.join("src/lib.rs"), "pub struct VisibleHit;\n").expect("write visible");

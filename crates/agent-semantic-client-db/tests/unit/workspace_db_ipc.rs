@@ -14,6 +14,55 @@ use agent_semantic_client_db::{
 };
 
 #[test]
+fn runtime_owner_tombstone_has_one_typed_v1_wire_shape() {
+    let value = serde_json::to_value(WorkspaceDbIpcOperation::TombstoneRuntimeOwner {
+        owner_path: "src/previous.rs".to_owned(),
+    })
+    .expect("encode runtime owner tombstone");
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "kind": "tombstone-runtime-owner",
+            "ownerPath": "src/previous.rs"
+        })
+    );
+}
+
+#[test]
+fn runtime_owner_relocation_has_one_atomic_v1_wire_shape() {
+    let value = serde_json::to_value(WorkspaceDbIpcOperation::RelocateRuntimeOwner {
+        previous_owner_path: "src/previous.rs".to_owned(),
+        owner: agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
+            owner_path: "src/current.rs".to_owned(),
+            content_digest:
+                "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    .to_owned(),
+            bytes: b"fn current() {}\n".to_vec(),
+            selectors: Vec::new(),
+        },
+    })
+    .expect("encode runtime owner relocation");
+    assert_eq!(value["kind"], "relocate-runtime-owner");
+    assert_eq!(value["previousOwnerPath"], "src/previous.rs");
+    assert_eq!(value["owner"]["ownerPath"], "src/current.rs");
+}
+
+#[test]
+fn runtime_generation_project_root_uses_the_v1_camel_case_field() {
+    let value = serde_json::to_value(WorkspaceDbIpcOperation::EnsureRuntimeGeneration {
+        project_root: "/workspace".to_owned(),
+    })
+    .expect("encode runtime generation ensure");
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "kind": "ensure-runtime-generation",
+            "projectRoot": "/workspace"
+        })
+    );
+}
+
+#[test]
 fn canonical_owner_runtime_root_ignores_long_process_temp_directory() {
     let runtime = workspace_db_owner_runtime_base();
     assert_eq!(runtime.parent(), Some(std::path::Path::new("/tmp")));

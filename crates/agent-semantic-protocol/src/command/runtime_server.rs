@@ -90,7 +90,7 @@ pub(super) async fn runtime_server_workspace_generation_client_async(
             WorkspaceGenerationDataPlaneOpen::Missing => "active-generation-missing".to_owned(),
             WorkspaceGenerationDataPlaneOpen::RecoveryRequired { reason } => reason,
         };
-    runtime_server_workspace_session_async(project_root)
+    let ensure = runtime_server_workspace_session_async(project_root)
         .await?
         .ensure_runtime_generation(project_root)
         .await
@@ -101,6 +101,14 @@ pub(super) async fn runtime_server_workspace_generation_client_async(
                 recovery_reason
             )
         })?;
+    if let agent_semantic_client_db::workspace_db_ipc::RuntimeGenerationEnsure::Admission(receipt) =
+        ensure
+    {
+        return Err(format!(
+            "cold-index-required workspaceIdentity={} state={:?} accepted={} attempt={}",
+            receipt.workspace_identity, receipt.state, receipt.accepted, receipt.attempt
+        ));
+    }
     match agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient::open_state(
         &pointer_path,
     )
@@ -343,6 +351,9 @@ async fn run_daemon() -> Result<(), String> {
     let runtime_artifact_path = std::env::current_exe()
         .map_err(|error| format!("failed to resolve running ASP artifact: {error}"))?;
     let runtime_artifact_digest = digest_file(&runtime_artifact_path).await?;
+    let provider_registry = std::sync::Arc::new(
+        super::global_provider_catalog::global_provider_registry_snapshot_async().await?,
+    );
     let (owner_epoch, binding_token) = daemon_identity().await?;
     let endpoint = prepare_runtime_server_endpoint(
         &runtime_artifact_path,
@@ -361,7 +372,20 @@ async fn run_daemon() -> Result<(), String> {
         std::sync::Arc::new(WorkspaceDbRegistry::default()),
         &runtime_server_endpoint_path(&state_home),
     )
-    .await?;
+    .await?
+    .with_workspace_generation_builder(std::sync::Arc::new(
+        move |_workspace_identity, project_root| {
+            let provider_registry = std::sync::Arc::clone(&provider_registry);
+            Box::pin(async move {
+                agent_semantic_client::rebuild_source_index_with_registry_async(
+                    project_root,
+                    (*provider_registry).clone(),
+                )
+                .await
+                .map(|_| ())
+            })
+        },
+    ));
     let result = server.serve().await.map(|_| ());
     cleanup_endpoint(&state_home, &endpoint).await;
     drop(election);

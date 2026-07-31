@@ -25,7 +25,7 @@ positiveCommands = [
   "asp md search pipe architecture --workspace . --view seeds",
 ]
 negativeCommands = [
-  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --code",
+  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
   "asp healthcheck",
 ]
 
@@ -79,7 +79,7 @@ positiveCommands = [
   "read crates/agent-semantic-hook/src/lib.rs",
 ]
 negativeCommands = [
-  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --code",
+  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
   "git mv old.rs new.rs",
 ]
 
@@ -94,7 +94,7 @@ positiveTools = [
   { name = "functions.apply_patch", input = { patch = "*** Begin Patch\n*** Update File: crates/agent-semantic-hook/src/lib.rs\n@@\n-old\n+new\n*** End Patch" } },
 ]
 negativeTools = [
-  { name = "functions.exec_command", input = { cmd = "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --code" } },
+  { name = "functions.exec_command", input = { cmd = "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source" } },
 ]
 wrapperExemption = "apply-patch is a typed host action, not a shell command"
 
@@ -115,14 +115,14 @@ positiveCommands = [
   "custom-runner read_to_string('crates/agent-semantic-hook/src/lib.rs')",
 ]
 negativeCommands = [
-  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --code",
+  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
 ]
 
 [[rules]]
 id = "deny-uncontrolled-source-search-commands"
 positiveCommands = ["rg HookDecision Cargo.lock", "git ls-files Cargo.lock"]
 negativeCommands = [
-  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --code",
+  "asp rust query --selector 'rust://src/lib.rs#item/function/run' --workspace . --projection source",
 ]
 
 [[rules]]

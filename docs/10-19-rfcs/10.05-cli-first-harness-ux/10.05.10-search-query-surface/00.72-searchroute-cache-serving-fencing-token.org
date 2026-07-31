@@ -1,0 +1,156 @@
+#+title: RFC 10.05.72 — SearchRoute Cache Serving Fencing Token
+#+author: ASP Search Protocol Working Notes
+#+startup: overview
+
+* Status
+
+This RFC is a proof-oriented refinement of RFC 10.05.71.  It defines the
+monotonic fencing token required for a cache replica to enter or re-enter the
+authoritative serving set.  It does not implement a distributed cache runtime.
+
+* Abstract
+
+Removing a replica from the serving set is not durable fencing when a
+partitioned process can later set a local =serving=true= flag.  Serving
+authority must be represented by a token containing:
+
+- replica identity;
+- fence generation.
+
+A token permits serving only when it was issued by the fence authority and its
+generation equals the authority's current generation for that replica.
+Authenticity and generation currentness are independent:
+
+- an old token may remain authentic but become stale;
+- a fabricated token may carry the current number but lack authoritative
+  issuance.
+
+Fence generations advance monotonically, so a stale token cannot become
+current again after additional authority transitions.
+
+* Normative requirements
+
+** ASP-RFC-10.05-CSFT-TOKEN
+
+Every serving token MUST bind replica identity and fence generation.  A
+process-local Boolean serving flag is not authoritative.
+
+** ASP-RFC-10.05-CSFT-AUTHENTICITY
+
+The fence authority MUST record or cryptographically attest token issuance.
+Generation equality alone MUST NOT establish serving authority.
+
+** ASP-RFC-10.05-CSFT-CURRENT
+
+A token generation MUST equal the authority's current fence generation for the
+same replica.  A formerly authentic token from an earlier generation MUST be
+rejected.
+
+** ASP-RFC-10.05-CSFT-MONOTONE
+
+Fence generations MUST be monotonic per replica.  Authority restart, leader
+transition, replica rejoin, or configuration reload MUST NOT decrease the
+generation.
+
+** ASP-RFC-10.05-CSFT-REJOIN
+
+A rejoining replica MUST acquire a newly issued current token after installing
+the required invalidation generation.  Possession of an old token, local cache
+state, or prior serving membership MUST NOT restore eligibility.
+
+** ASP-RFC-10.05-CSFT-NONIMPLICATION
+
+The protocol MUST preserve these explicit non-implications:
+
+- formerly authentic token does not imply currently valid token;
+- current generation number does not imply token authenticity;
+- replica health does not imply serving authority;
+- local serving flag does not imply membership in the authoritative set;
+- monotonic fencing does not by itself prove token issuer authenticity;
+- fencing safety does not prove graph-route optimality.
+
+* Mathematical model
+
+#+name: searchroute-cache-serving-fencing-token-model
+#+begin_src typst
+#let issued(authority, token) = $upright("Issued")(#authority, #token)$
+#let tokenGeneration(token) = $upright("TokenGeneration")(#token)$
+#let current(authority, replica) = $upright("CurrentFence")(#authority, #replica)$
+#let replica(token) = $upright("Replica")(#token)$
+#let canServe(authority, token) = $upright("CanServe")(#authority, #token)$
+#let monotone(before, after) = $upright("FenceMonotone")(#before, #after)$
+
+#[
+  Serving authority requires authenticity and currentness:
+  $
+    #canServe($A$, $T$)
+    equiv
+    #issued($A$, $T$)
+    and #tokenGeneration($T$)
+      = #current($A$, replica($T$)).
+  $
+
+  Fence monotonicity is
+  $
+    #monotone($A_0$, $A_1$)
+    equiv
+    (
+      forall r,
+      #current($A_0$, $r$) <= #current($A_1$, $r$)
+    ).
+  $
+
+  If a token is already stale under $A_0$, monotonicity entails it remains
+  unable to serve under $A_1$.
+
+  The countermodels establish:
+  $
+    #issued($A$, $T_0$)
+    arrow.r.double.not #canServe($A$, $T_0$),
+  $
+  when its generation is stale, and
+  $
+    #tokenGeneration($T_f$) = #current($A$, replica($T_f$))
+    arrow.r.double.not #canServe($A$, $T_f$),
+  $
+  when the current-number token was never issued.
+]
+#+end_src
+
+* Lean correspondence
+
+The executable model is
+=packages/proofs/ASPProof/SearchRouteAdmissionRetryCacheFencingToken.lean=.
+
+- =ServingToken= binds replica and generation.
+- =FenceAuthority= owns current generations and the issuance relation.
+- =CanServe= requires authenticity and currentness.
+- =FenceMonotone= defines per-replica monotonic advance.
+- =serving_token_is_authentic_and_generation_current= proves both serving
+  consequences.
+- =monotonic_fence_advance_keeps_old_token_stale= proves non-revival.
+- =formerly_authentic_old_token_cannot_serve_after_fence_advance= proves the
+  old-authentic counterexample.
+- =forged_current_generation_without_issuance_cannot_serve= proves the
+  forged-current counterexample.
+- =boolean_serving_flag_can_reenable_replica_with_stale_token= proves the local
+  flag failure.
+
+The JSON proof audit remains modular and scoped only to this RFC.
+
+* SearchLoop cost relevance
+
+Fencing prevents a rejoined replica from serving revoked route evidence.
+Correct rejoin avoids globally disabling healthy current replicas, preserving
+search-result reuse, lower token cost, fewer rounds, and model-prefix cache
+stability.
+
+* Non-goals and next proof boundary
+
+This RFC does not prove fence-authority leader uniqueness, token signature
+security, replica-state installation before token issue, or graph optimality.
+
+The next proof layer should order rejoin steps: install authorization/cache
+generation, obtain the new fence token, publish serving membership, and only
+then accept reads.  It must formalize the counterexample where a current token
+is issued before replica state catches up.

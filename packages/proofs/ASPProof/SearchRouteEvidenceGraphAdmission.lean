@@ -12,6 +12,7 @@ structure MeasurementContext where
   semanticSearchCacheIdentity : Nat
   modelPrefixCacheIdentity : Nat
   measurementProtocolIdentity : Nat
+  uncertaintyProtocolIdentity : Nat
 deriving DecidableEq, Repr
 
 def NoWorse (candidate baseline : RouteCost) : Prop :=
@@ -21,6 +22,20 @@ def NoWorse (candidate baseline : RouteCost) : Prop :=
 
 def StrictlyBetter (candidate baseline : RouteCost) : Prop :=
   NoWorse candidate baseline ∧ candidate ≠ baseline
+
+structure RouteCostInterval where
+  lower : RouteCost
+  upper : RouteCost
+deriving DecidableEq, Repr
+
+def WellFormedCostInterval (interval : RouteCostInterval) : Prop :=
+  NoWorse interval.lower interval.upper
+
+def RobustlyBetter
+    (candidate baseline : RouteCostInterval) : Prop :=
+  WellFormedCostInterval candidate ∧
+  WellFormedCostInterval baseline ∧
+  StrictlyBetter candidate.upper baseline.lower
 
 def ExternalityBound
     (budget baseline candidate : RouteCost) : Prop :=
@@ -39,6 +54,16 @@ structure EvidenceRoute (Evidence : Type) where
 def SoundRoute (route : EvidenceRoute Evidence) : Prop :=
   route.reachesGoal → route.evidenceValid
 
+def EvidenceItemsValid
+    (validEvidence : Evidence → Prop)
+    (route : EvidenceRoute Evidence) : Prop :=
+  ∀ evidence, evidence ∈ route.evidence → validEvidence evidence
+
+def EvidenceComplete
+    (requiredEvidence : Evidence → Prop)
+    (route : EvidenceRoute Evidence) : Prop :=
+  ∀ evidence, requiredEvidence evidence → evidence ∈ route.evidence
+
 def PreservesReachability
     (baseline extended : Workload → EvidenceRoute Evidence) : Prop :=
   ∀ workload, (baseline workload).reachesGoal →
@@ -52,6 +77,7 @@ def CertifiedImprovement
     (baseline extended : EvidenceRoute Evidence) : Prop :=
   baseline.measurementContext = extended.measurementContext ∧
   baseline.reachesGoal ∧
+  baseline.evidenceValid ∧
   extended.reachesGoal ∧
   extended.evidenceValid ∧
   StrictlyBetter extended.cost baseline.cost
@@ -164,24 +190,36 @@ structure CoreAdmissionCertificate
     (authorizedPolicy :
       (Owner → Owner → Prop) →
       (Workload → Prop) →
+      (Workload → Prop) →
       RouteCost →
       SharedComplexity →
       Prop)
-    (evidenceVerifier : MeasurementContext → List Evidence → Prop)
+    (evidenceVerifier :
+      Workload → MeasurementContext → List Evidence → Prop)
     (authorizedVerifier :
-      (MeasurementContext → List Evidence → Prop) → Prop)
-    (admittedWorkload affected : Workload → Prop)
+      (Workload → MeasurementContext → List Evidence → Prop) → Prop)
+    (admittedWorkload affected measuredWorkload : Workload → Prop)
     (baseline extended : Workload → EvidenceRoute Evidence)
     (externalityBudget : RouteCost)
     (complexityBudget complexityDelta : SharedComplexity) where
   policyAuthorized :
-    authorizedPolicy independentOwners affected
+    authorizedPolicy independentOwners affected measuredWorkload
       externalityBudget complexityBudget
+  measurementCoverage :
+    ∀ workload, admittedWorkload workload → measuredWorkload workload
   verifierAuthorized : authorizedVerifier evidenceVerifier
+  baselineEvidenceValidityBound :
+    ∀ workload,
+      (baseline workload).evidenceValid ↔
+        evidenceVerifier
+          workload
+          (baseline workload).measurementContext
+          (baseline workload).evidence
   evidenceValidityBound :
     ∀ workload,
       (extended workload).evidenceValid ↔
         evidenceVerifier
+          workload
           (extended workload).measurementContext
           (extended workload).evidence
   independenceIrreflexive :
@@ -194,6 +232,7 @@ structure CoreAdmissionCertificate
     IndependentValue owner independentOwners admittedWorkload
       baseline extended
   reachability : PreservesReachability baseline extended
+  baselineEvidenceSoundness : PreservesEvidenceSoundness baseline
   evidenceSoundness : PreservesEvidenceSoundness extended
   boundedExternality :
     BoundedExternality externalityBudget
@@ -215,7 +254,7 @@ theorem admitted_change_has_two_independent_beneficiaries
       CoreAdmissionCertificate Owner Workload Evidence BaseState ExtendedState
         owner independentOwners authorizedPolicy
         evidenceVerifier authorizedVerifier
-        admittedWorkload affected baseline extended
+        admittedWorkload affected measuredWorkload baseline extended
         externalityBudget complexityBudget complexityDelta) :
     IndependentValue owner independentOwners admittedWorkload
       baseline extended :=
@@ -226,7 +265,7 @@ theorem admitted_change_beneficiary_owners_are_distinct
       CoreAdmissionCertificate Owner Workload Evidence BaseState ExtendedState
         owner independentOwners authorizedPolicy
         evidenceVerifier authorizedVerifier
-        admittedWorkload affected baseline extended
+        admittedWorkload affected measuredWorkload baseline extended
         externalityBudget complexityBudget complexityDelta) :
     ∃ left right,
       admittedWorkload left ∧
@@ -247,18 +286,21 @@ theorem admitted_change_preserves_search_correctness
       CoreAdmissionCertificate Owner Workload Evidence BaseState ExtendedState
         owner independentOwners authorizedPolicy
         evidenceVerifier authorizedVerifier
-        admittedWorkload affected baseline extended
+        admittedWorkload affected measuredWorkload baseline extended
         externalityBudget complexityBudget complexityDelta) :
     PreservesReachability baseline extended ∧
+    PreservesEvidenceSoundness baseline ∧
     PreservesEvidenceSoundness extended :=
-  ⟨certificate.reachability, certificate.evidenceSoundness⟩
+  ⟨certificate.reachability,
+    certificate.baselineEvidenceSoundness,
+    certificate.evidenceSoundness⟩
 
 theorem admitted_change_has_bounded_externality
     (certificate :
       CoreAdmissionCertificate Owner Workload Evidence BaseState ExtendedState
         owner independentOwners authorizedPolicy
         evidenceVerifier authorizedVerifier
-        admittedWorkload affected baseline extended
+        admittedWorkload affected measuredWorkload baseline extended
         externalityBudget complexityBudget complexityDelta) :
     BoundedExternality externalityBudget
       (fun workload => (baseline workload).cost)
@@ -271,7 +313,7 @@ theorem admitted_change_is_isolated_and_deletable
       CoreAdmissionCertificate Owner Workload Evidence BaseState ExtendedState
         owner independentOwners authorizedPolicy
         evidenceVerifier authorizedVerifier
-        admittedWorkload affected baseline extended
+        admittedWorkload affected measuredWorkload baseline extended
         externalityBudget complexityBudget complexityDelta) :
     Isolated affected
       (fun workload => (baseline workload).cost)
@@ -285,33 +327,55 @@ theorem admitted_change_uses_authorized_policy
       CoreAdmissionCertificate Owner Workload Evidence BaseState ExtendedState
         owner independentOwners authorizedPolicy
         evidenceVerifier authorizedVerifier
-        admittedWorkload affected baseline extended
+        admittedWorkload affected measuredWorkload baseline extended
         externalityBudget complexityBudget complexityDelta) :
-    authorizedPolicy independentOwners affected
+    authorizedPolicy independentOwners affected measuredWorkload
       externalityBudget complexityBudget :=
   certificate.policyAuthorized
+
+theorem admitted_change_has_authorized_measurement_coverage
+    (certificate :
+      CoreAdmissionCertificate Owner Workload Evidence BaseState ExtendedState
+        owner independentOwners authorizedPolicy
+        evidenceVerifier authorizedVerifier
+        admittedWorkload affected measuredWorkload baseline extended
+        externalityBudget complexityBudget complexityDelta) :
+    (∀ workload,
+      admittedWorkload workload → measuredWorkload workload) ∧
+    authorizedPolicy independentOwners affected measuredWorkload
+      externalityBudget complexityBudget :=
+  ⟨certificate.measurementCoverage, certificate.policyAuthorized⟩
 
 theorem admitted_change_binds_authorized_evidence_verifier
     (certificate :
       CoreAdmissionCertificate Owner Workload Evidence BaseState ExtendedState
         owner independentOwners authorizedPolicy
         evidenceVerifier authorizedVerifier
-        admittedWorkload affected baseline extended
+        admittedWorkload affected measuredWorkload baseline extended
         externalityBudget complexityBudget complexityDelta) :
     authorizedVerifier evidenceVerifier ∧
+    (∀ workload,
+      (baseline workload).evidenceValid ↔
+        evidenceVerifier
+          workload
+          (baseline workload).measurementContext
+          (baseline workload).evidence) ∧
     ∀ workload,
       (extended workload).evidenceValid ↔
         evidenceVerifier
+          workload
           (extended workload).measurementContext
           (extended workload).evidence :=
-  ⟨certificate.verifierAuthorized, certificate.evidenceValidityBound⟩
+  ⟨certificate.verifierAuthorized,
+    certificate.baselineEvidenceValidityBound,
+    certificate.evidenceValidityBound⟩
 
 theorem admitted_change_has_bounded_lifecycle
     (certificate :
       CoreAdmissionCertificate Owner Workload Evidence BaseState ExtendedState
         owner independentOwners authorizedPolicy
         evidenceVerifier authorizedVerifier
-        admittedWorkload affected baseline extended
+        admittedWorkload affected measuredWorkload baseline extended
         externalityBudget complexityBudget complexityDelta) :
     WellFormedLifecycle certificate.lifecyclePolicy :=
   certificate.lifecycleWellFormed
@@ -338,12 +402,12 @@ theorem authorized_timely_renewal_extends_lifecycle
     (authorizedRenewal : RenewalReceipt → Prop)
     (receipt : RenewalReceipt)
     (issuedInTime : receipt.issuedAt ≤ policy.expiresAt)
-    (extends : policy.expiresAt < receipt.newExpiresAt)
+    (extendsUntil : policy.expiresAt < receipt.newExpiresAt)
     (authorized : authorizedRenewal receipt)
     (notExpiredAgain : now ≤ receipt.newExpiresAt) :
     LifecycleValidAt now policy authorizedRenewal (some receipt) := by
   right
-  exact ⟨receipt, rfl, ⟨issuedInTime, extends, authorized⟩, notExpiredAgain⟩
+  exact ⟨receipt, rfl, ⟨issuedInTime, extendsUntil, authorized⟩, notExpiredAgain⟩
 
 def twoHopBaseline : RouteCost :=
   { graphHops := 2, tokenCost := 4, interactionRounds := 2 }
@@ -354,7 +418,7 @@ def oneHopPayloadDetour : RouteCost :=
 theorem fewer_graph_hops_do_not_imply_lower_agent_cost :
     oneHopPayloadDetour.graphHops < twoHopBaseline.graphHops ∧
     ¬ NoWorse oneHopPayloadDetour twoHopBaseline := by
-  decide
+  simp [oneHopPayloadDetour, twoHopBaseline, NoWorse]
 
 def localBaseline (_ : Bool) : RouteCost :=
   { graphHops := 2, tokenCost := 4, interactionRounds := 2 }
@@ -374,6 +438,7 @@ def successfulRoute (cost : RouteCost) : EvidenceRoute Unit :=
       semanticSearchCacheIdentity := 0
       modelPrefixCacheIdentity := 0
       measurementProtocolIdentity := 0
+      uncertaintyProtocolIdentity := 0
     }
     cost := cost
   }
@@ -393,7 +458,7 @@ theorem one_owner_improvement_does_not_establish_shared_value :
       localBaselineRoute
       localExtensionRoute := by
   constructor
-  · decide
+  · simp [CertifiedImprovement, localBaselineRoute, localExtensionRoute, StrictlyBetter, NoWorse, successfulRoute, localBaseline, localExtension]
   · intro evidence
     rcases evidence with
       ⟨left, right, _, _, ownersDiffer, leftBetter, rightBetter⟩
@@ -417,7 +482,7 @@ theorem bounded_externality_does_not_imply_isolation :
   constructor
   · intro workload
     cases workload <;>
-      decide
+  simp [ExternalityBound, unitBudget, boundedBaseline, boundedButLeaky]
   · intro isolated
     have equality := isolated false (by simp)
     simp [boundedBaseline, boundedButLeaky] at equality
@@ -428,7 +493,7 @@ theorem unchanged_router_has_no_admission_value
       baseline baseline := by
   intro evidence
   rcases evidence with ⟨left, _, _, _, _, leftBetter, _⟩
-  exact leftBetter.2.2.2.2.2 rfl
+  exact leftBetter.2.2.2.2.2.2 rfl
 
 def coldMeasurementContext : MeasurementContext :=
   {
@@ -437,6 +502,7 @@ def coldMeasurementContext : MeasurementContext :=
     semanticSearchCacheIdentity := 0
     modelPrefixCacheIdentity := 0
     measurementProtocolIdentity := 3
+    uncertaintyProtocolIdentity := 5
   }
 
 def warmSemanticCacheContext : MeasurementContext :=
@@ -446,6 +512,7 @@ def warmSemanticCacheContext : MeasurementContext :=
     semanticSearchCacheIdentity := 1
     modelPrefixCacheIdentity := 0
     measurementProtocolIdentity := 3
+    uncertaintyProtocolIdentity := 5
   }
 
 def coldBaselineRoute : EvidenceRoute Unit :=
@@ -469,7 +536,50 @@ def warmCacheRoute : EvidenceRoute Unit :=
 theorem lower_cost_under_different_cache_context_is_not_certified :
     StrictlyBetter warmCacheRoute.cost coldBaselineRoute.cost ∧
     ¬ CertifiedImprovement coldBaselineRoute warmCacheRoute := by
-  decide
+  simp [StrictlyBetter, NoWorse, warmCacheRoute, coldBaselineRoute, CertifiedImprovement, coldMeasurementContext, warmSemanticCacheContext]
+
+def uncertainBaselineCost : RouteCostInterval :=
+  {
+    lower := { graphHops := 5, tokenCost := 5, interactionRounds := 5 }
+    upper := { graphHops := 9, tokenCost := 9, interactionRounds := 9 }
+  }
+
+def uncertainCandidateCost : RouteCostInterval :=
+  {
+    lower := { graphHops := 4, tokenCost := 4, interactionRounds := 4 }
+    upper := { graphHops := 10, tokenCost := 10, interactionRounds := 10 }
+  }
+
+theorem better_point_estimate_does_not_imply_robust_improvement :
+    StrictlyBetter uncertainCandidateCost.lower uncertainBaselineCost.lower ∧
+    ¬ RobustlyBetter uncertainCandidateCost uncertainBaselineCost := by
+  simp [StrictlyBetter, NoWorse, RobustlyBetter, uncertainCandidateCost, uncertainBaselineCost]
+
+def partialEvidenceRoute : EvidenceRoute Bool :=
+  {
+    evidence := [true]
+    reachesGoal := True
+    evidenceValid := True
+    measurementContext := {
+      graphSnapshotIdentity := 17
+      modelProfileIdentity := 4
+      semanticSearchCacheIdentity := 0
+      modelPrefixCacheIdentity := 0
+      measurementProtocolIdentity := 6
+      uncertaintyProtocolIdentity := 2
+    }
+    cost := { graphHops := 1, tokenCost := 1, interactionRounds := 1 }
+  }
+
+theorem valid_returned_evidence_does_not_imply_required_evidence_completeness :
+    EvidenceItemsValid (fun _ : Bool => True) partialEvidenceRoute ∧
+    ¬ EvidenceComplete (fun _ : Bool => True) partialEvidenceRoute := by
+  constructor
+  · intro evidence _
+    trivial
+  · intro complete
+    have missingFalse := complete false (by trivial)
+    simp [partialEvidenceRoute] at missingFalse
 
 structure PersistentGraphState where
   featureEnabled : Bool
@@ -515,14 +625,14 @@ theorem deleting_router_code_does_not_delete_derived_search_state :
       (eraseRouterCodeOnly featureDerivedPersistentState) = true ∧
     eraseRouterCodeOnly featureDerivedPersistentState ≠
       baselinePersistentState := by
-  decide
+  simp [eraseRouterCodeOnly, featureDerivedPersistentState, persistentStateSelectsFeatureRoute, baselinePersistentState]
 
 theorem erasing_feature_causal_closure_restores_baseline_state :
     eraseFeatureCausalClosure featureDerivedPersistentState =
       baselinePersistentState ∧
     persistentStateSelectsFeatureRoute
       (eraseFeatureCausalClosure featureDerivedPersistentState) = false := by
-  decide
+  simp [eraseFeatureCausalClosure, baselinePersistentState, persistentStateSelectsFeatureRoute]
 
 theorem expired_silent_feature_requires_causal_closure_erasure
     (policy : LifecyclePolicy)

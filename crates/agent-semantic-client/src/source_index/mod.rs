@@ -1,7 +1,11 @@
 //! DB Engine-owned source index refresh and lookup facade.
 
 mod api;
+mod async_rebuild;
+mod async_snapshot;
 mod collect;
+mod generation_build;
+mod generation_commit;
 pub use api::current_live_provider_source_index_snapshot_with_registry;
 mod projection;
 mod provider_envelope;
@@ -17,6 +21,7 @@ pub use api::{
     current_source_index_snapshot_for_owner_from_activation,
     current_workspace_search_source_index_snapshot,
 };
+pub use async_rebuild::{rebuild_source_index_async, rebuild_source_index_with_registry_async};
 pub use projection::{LanguageProjectionImportReport, import_language_projection};
 pub use provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1, ProviderSourceSnapshotEnvelopePublicationV1,

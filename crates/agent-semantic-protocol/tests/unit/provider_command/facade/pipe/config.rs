@@ -21,7 +21,7 @@ fn asp_toml_search_ignore_dirs_apply_to_fast_discovery() {
     .expect("write generated");
     std::fs::write(
         root.join("asp.toml"),
-        "[search]\nignoreDirs = [\"generated\"]\n",
+        "[discovery]\nignoredDirNames = [\"generated\"]\n",
     )
     .expect("write asp.toml");
     write_marker_provider(&bin_dir, "rs-harness", &marker);

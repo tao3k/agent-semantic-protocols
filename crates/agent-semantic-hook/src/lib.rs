@@ -45,6 +45,7 @@ mod provider_registry;
 pub use provider_registry::registered_language_ids;
 pub use provider_registry::{
     RegisteredProviderBinaryV1, registered_provider_binaries_v1, registered_provider_binary_v1,
+    registered_provider_matches_candidate_paths,
 };
 pub use provider_registry::{
     materialize_provider_routes, registered_language_descriptor_digest,

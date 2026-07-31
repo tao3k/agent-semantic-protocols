@@ -503,7 +503,7 @@ space:
 2. Make hook-deny and provider-guide routes replay against the active binary.
 3. Implement Rust =read-frontier= for wide =direct-source-read= ranges.
 4. Align Python and TypeScript read-plan behavior to the same shared schema.
-5. Route selected frontier entries into parser-owned compact =query --code=.
+5. Route selected frontier entries into parser-owned compact =query --projection source=.
 6. Add sandtable and black-box gates for command count, token cost, stale
    routes, and manual window scans.
 7. Defer relation-frontier and causal-path commands until provider relation

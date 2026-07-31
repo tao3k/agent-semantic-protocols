@@ -23,7 +23,7 @@ fn workspace_tree_sitter_discovery_materializes_as_search() {
 }
 
 #[test]
-fn source_query_projection_uses_the_default_exact_surface() {
+fn source_query_projection_is_explicit_on_the_exact_surface() {
     let action = ActionNode {
         id: "A1".to_string(),
         kind: "query-projection".to_string(),
@@ -43,7 +43,7 @@ fn source_query_projection_uses_the_default_exact_surface() {
     assert_eq!(
         action.materialized_command().as_deref(),
         Some(
-            "asp rust query --selector 'rust://src/lib.rs#item/function/load' --workspace ."
+            "asp rust query --selector 'rust://src/lib.rs#item/function/load' --workspace . --projection source"
         )
     );
 }

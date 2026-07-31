@@ -1,0 +1,208 @@
+#+title: RFC 10.05.76 — SearchRoute Cache Rejoin Receipt Chain Binding
+#+startup: overview
+
+* Status
+
+Draft proof-bearing extension of RFC 10.05.75.
+
+* Abstract
+
+RFC 10.05.75 requires a complete, strictly ordered transition-receipt chain
+before a cache replica may re-enable reads.  Strict generation order is
+necessary but insufficient: receipts from different rejoin attempts or
+different replicas can still be arranged in increasing order, and a receipt
+payload can be replaced unless its digest commits to the complete content.
+
+This RFC binds every receipt to:
+
+- one rejoin attempt;
+- one cache replica;
+- one transition step;
+- one authority-issued generation;
+- the predecessor receipt digest;
+- the transition result digest.
+
+A reads-enabled chain is admissible only when every adjacent pair has one scope
+and the successor names the predecessor digest exactly.
+
+* Scope
+
+This RFC specifies logical content binding and chain admission.  It does not
+claim that an arbitrary concrete hash function is collision-free.  The Lean
+model therefore takes digest commitment injectivity as an explicit
+=DigestScheme= assumption.  A runtime must discharge that assumption through
+its selected content-addressing or cryptographic policy.
+
+* Normative clauses
+
+** ASP-RFC-10.05-CRCB-SCOPE — One chain has one attempt and replica
+
+Every receipt in an admitted reads-enabled chain MUST carry the same
+=attemptId= and =replicaId=.  A consumer MUST reject cross-attempt and
+cross-replica receipt composition even when generations are strictly
+increasing.
+
+** ASP-RFC-10.05-CRCB-CONTENT — A digest commits to complete receipt content
+
+The committed content MUST include =attemptId=, =replicaId=, transition step,
+generation, predecessor digest, and result digest.  Changing any committed
+field while retaining the receipt digest MUST be treated as a digest collision,
+not as an equivalent receipt.
+
+** ASP-RFC-10.05-CRCB-LINK — Every successor names its exact predecessor
+
+The =token-issued= receipt MUST name the =state-installed= receipt digest.
+The =membership-published= receipt MUST name the =token-issued= receipt digest.
+The =reads-enabled= receipt MUST name the =membership-published= receipt digest.
+
+A generation relationship alone MUST NOT substitute for an exact predecessor
+digest link.
+
+** ASP-RFC-10.05-CRCB-ROOT — The first receipt is explicitly rooted
+
+The =state-installed= receipt MUST have no predecessor digest.  A detached
+receipt or an arbitrary receipt presented as the root MUST fail closed.
+
+** ASP-RFC-10.05-CRCB-DIGEST — Digest assumptions are contract-visible
+
+The selected digest scheme MUST expose the property required by receipt
+admission.  The proof model uses an injective commitment abstraction.  Runtime
+documentation MUST identify the concrete approximation, collision policy, and
+algorithm/version domain instead of claiming that Lean proved a cryptographic
+primitive collision-free.
+
+** ASP-RFC-10.05-CRCB-NONIMPLICATION — Order does not imply identity
+
+Strictly increasing generations do not imply common attempt identity, common
+replica identity, predecessor linkage, or content integrity.  These predicates
+MUST be checked independently.
+
+* Mathematical model
+
+The executable model uses an identity commitment so that content binding is
+structural and exact.  This is the idealized model represented by Lean's
+injective commitment requirement, not a recommendation to serialize raw
+content as a production digest.
+
+#+name: searchroute-cache-rejoin-receipt-chain-binding-model
+#+begin_src typst
+#let content(attempt, replica, step, generation, predecessor, result) = (
+  attempt: attempt,
+  replica: replica,
+  step: step,
+  generation: generation,
+  predecessor: predecessor,
+  result: result,
+)
+#let commit(value) = value
+#let receipt(value) = (content: value, digest: commit(value))
+#let rooted-state(value) = (
+  value.content.step == "state-installed"
+  and value.content.predecessor == none
+)
+#let linked(predecessor, successor, predecessor-step, successor-step) = (
+  predecessor.content.step == predecessor-step
+  and successor.content.step == successor-step
+  and predecessor.content.attempt == successor.content.attempt
+  and predecessor.content.replica == successor.content.replica
+  and predecessor.content.generation < successor.content.generation
+  and successor.content.predecessor == predecessor.digest
+)
+#let supports-reads(state, token, membership, reads) = (
+  rooted-state(state)
+  and linked(state, token, "state-installed", "token-issued")
+  and linked(token, membership, "token-issued", "membership-published")
+  and linked(membership, reads, "membership-published", "reads-enabled")
+)
+#let state = receipt(content(7, 3, "state-installed", 10, none, 101))
+#let token = receipt(content(7, 3, "token-issued", 20, state.digest, 102))
+#let membership = receipt(
+  content(7, 3, "membership-published", 30, token.digest, 103)
+)
+#let reads = receipt(
+  content(7, 3, "reads-enabled", 40, membership.digest, 104)
+)
+#let cross-attempt-token = receipt(
+  content(8, 3, "token-issued", 20, state.digest, 102)
+)
+#let cross-replica-membership = receipt(
+  content(7, 4, "membership-published", 30, token.digest, 103)
+)
+#let detached-reads = receipt(
+  content(7, 3, "reads-enabled", 40, token.digest, 104)
+)
+#let changed-result-token = receipt(
+  content(7, 3, "token-issued", 20, state.digest, 999)
+)
+#assert(supports-reads(state, token, membership, reads))
+#assert(not supports-reads(state, cross-attempt-token, membership, reads))
+#assert(not supports-reads(state, token, cross-replica-membership, reads))
+#assert(not supports-reads(state, token, membership, detached-reads))
+#assert(token.digest != changed-result-token.digest)
+"ok"
+#+end_src
+
+The final-chain proposition separates scope equality from predecessor linkage:
+
+#+name: searchroute-cache-rejoin-receipt-chain-binding-proposition
+#+begin_src typst
+#let proposition = $upright("Support")(C) arrow.r.double
+  A(s) = A(t) = A(m) = A(r)
+  and R(s) = R(t) = R(m) = R(r)
+  and P(t) = D(s)
+  and P(m) = D(t)
+  and P(r) = D(m)$
+#assert(type(proposition) == content)
+"ok"
+#+end_src
+
+Here =A= denotes attempt identity, =R= replica identity, =P= predecessor
+digest, and =D= the receipt digest.  The symbols =s=, =t=, =m=, and =r=
+denote the state, token, membership, and reads receipts.
+
+* Lean correspondence
+
+The Lean model is
+=ASPProof.SearchRouteAdmissionRetryCacheRejoinReceiptBinding=.
+
+| RFC clause | Lean witness |
+|-
+| CRCB-ROOT | =supported_reads_chain_has_rooted_state_receipt= |
+| CRCB-SCOPE, CRCB-NONIMPLICATION | =supported_reads_chain_has_single_attempt_and_replica= |
+| CRCB-LINK | =supported_reads_chain_is_predecessor_digest_linked= |
+| CRCB-SCOPE, CRCB-NONIMPLICATION | =cross_attempt_receipts_cannot_support_reads= |
+| CRCB-SCOPE, CRCB-NONIMPLICATION | =cross_replica_receipts_cannot_support_reads= |
+| CRCB-LINK, CRCB-NONIMPLICATION | =detached_predecessor_digest_cannot_support_reads= |
+| CRCB-CONTENT, CRCB-DIGEST | =equal_receipt_digest_implies_equal_content= |
+| CRCB-CONTENT, CRCB-DIGEST | =changed_result_cannot_reuse_receipt_digest= |
+
+The JSON audit is isolated in
+=ASPProof.Audit.SearchRouteAdmissionRetryCacheRejoinReceiptBinding=.
+
+* SearchLoop and graph-router consequence
+
+The graph router may now treat an admitted chain as one compact evidence edge:
+
+#+begin_example
+replica state -> reads-enabled
+  supported by: scoped, predecessor-linked, content-bound receipt chain
+#+end_example
+
+The agent does not need to traverse each crash-recovery event during ordinary
+search.  It expands the chain only when auditing the admission edge.  This
+reduces routine graph path length and token exposure without hiding the proof
+objects required for a deeper inspection.
+
+* Remaining proof boundary
+
+Content binding still does not establish freshness or uniqueness of the rejoin
+attempt.  An old, internally valid receipt chain can be replayed unless the
+serving authority relates =attemptId= to a monotone admission epoch and records
+consumption or supersession.
+
+A follow-up RFC must therefore model replay protection:
+
+- authority-issued attempt epochs;
+- supersession of older completed chains;
+- at-most-one active reads-enabled chain per replica;
+- rejection of a valid but stale chain after a newer attempt begins.

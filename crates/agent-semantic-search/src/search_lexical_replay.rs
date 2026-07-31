@@ -13,12 +13,7 @@ pub fn search_lexical_packet_matches_request(
     packet: &Value,
     request: SearchLexicalReplayRequest<'_>,
 ) -> bool {
-    if !request.is_search_method
-        || request
-            .forwarded_args
-            .iter()
-            .any(|arg| arg == "--json" || arg == "--code")
-    {
+    if !request.is_search_method || !has_only_replay_safe_lexical_args(request.forwarded_args) {
         return false;
     }
     if string_field(packet, "schemaId") != Some("agent.semantic-protocols.semantic-search-packet") {
@@ -28,6 +23,26 @@ pub fn search_lexical_packet_matches_request(
         return false;
     }
     string_field(packet, "query") == request_search_lexical_query(request.forwarded_args)
+}
+
+fn has_only_replay_safe_lexical_args(args: &[String]) -> bool {
+    let mut index = 2;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--workspace" | "--view" => {
+                if args.get(index + 1).is_none() {
+                    return false;
+                }
+                index += 2;
+            }
+            arg if arg.starts_with("--workspace=") || arg.starts_with("--view=") => {
+                index += 1;
+            }
+            arg if arg.starts_with('-') => return false,
+            _ => index += 1,
+        }
+    }
+    true
 }
 
 fn request_search_lexical_query(forwarded_args: &[String]) -> Option<&str> {

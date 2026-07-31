@@ -1,0 +1,260 @@
+#+title: 00.64 Certified Route Frontier Coverage
+#+startup: overview
+
+* Status
+
+Draft.
+
+This module specifies how a route enumerator and a Pareto frontier builder
+compose into a globally complete Graph Router result.
+
+* Discovered Design Gap
+
+A Pareto frontier can be internally perfect and globally wrong.
+
+If the route catalog omits an admissible path, the frontier algorithm never
+sees it.  It can truthfully prove:
+
+- every listed route is retained or dominated;
+- no retained route is dominated by another listed route;
+
+while still omitting the globally cheapest or shortest route.
+
+Therefore frontier coverage and route-enumeration coverage are separate proof
+obligations.
+
+* Two-Layer Certificate
+
+** Enumeration certificate
+
+For global admissibility predicate =A= and catalog predicate =E=:
+
+=forall route, A(route) -> E(route)=.
+
+This certificate proves that every globally admissible,
+completion-equivalent route is enumerated.
+
+** Frontier certificate
+
+For frontier predicate =F= and dominance relation =D=:
+
+- every frontier route is enumerated and admissible;
+- no frontier route is dominated by an admissible enumerated route;
+- every admissible enumerated route is either in the frontier or dominated by a
+  frontier route.
+
+Neither certificate can substitute for the other.
+
+* Mathematical Model
+
+#+name: certified-route-frontier-coverage-math
+#+begin_src typst
+#let globally-admissible = (
+  "exact-selector",
+  "owner-then-query",
+  "cached-read-plan",
+)
+
+#let incomplete-catalog = (
+  "owner-then-query",
+  "cached-read-plan",
+)
+
+#let local-frontier = (
+  "cached-read-plan",
+)
+
+#let complete-catalog = globally-admissible
+#let global-frontier = (
+  "exact-selector",
+  "cached-read-plan",
+)
+
+(
+  local-frontier-covers-local-catalog:
+    local-frontier.len() <= incomplete-catalog.len(),
+  local-catalog-misses-admissible-route:
+    not incomplete-catalog.contains("exact-selector"),
+  complete-catalog-covers-route:
+    complete-catalog.contains("exact-selector"),
+  global-frontier-retains-undominated-route:
+    global-frontier.contains("exact-selector"),
+)
+#+end_src
+
+* Machine-checked proof status
+
+The proof boundary is implemented by
+=ASPProof.SearchRouteCertifiedFrontierCoverage=.  Its audit is intentionally
+split from the theorem module:
+
+- Lean-owned audit module:
+  =ASPProof.Audit.SearchRouteCertifiedFrontierCoverage=
+- executable JSON driver:
+  =packages/proofs/audit/SearchRouteCertifiedFrontierCoverageAudit.lean=
+- Lean receipt:
+  =packages/proofs/receipts/searchroute-certified-frontier-coverage-audit-v1.json=
+- AXLE receipt:
+  =packages/proofs/receipts/searchroute-certified-frontier-coverage-axle-audit-v1.json=
+
+The audit contains eight theorem declarations.  Five are axiom-free:
+=global_frontier_coverage=,
+=globally_undominated_route_is_retained=,
+=frontier_route_is_globally_undominated=,
+=certified_frontier_is_exactly_global_undominated=, and
+=aligned_certificates_use_current_generation=.  The remaining declarations
+have the following exact Lean axiom surface:
+
+- =stale_catalog_identity_is_rejected=: =propext=
+- =local_frontier_can_miss_global_undominated_route=: =Quot.sound= and
+  =propext=
+- =incomplete_catalog_has_no_global_enumeration_certificate=: =propext=
+
+No audited declaration contains =sorryAx=.  AXLE accepts only the explicitly
+listed =Quot.sound= and =propext= dependencies, requires all eight theorem
+families, and requires all eight RFC clause identifiers.  Its receipt binds the
+Lean audit with SHA-256
+=27589fc5df3462d75f6ef05b362c8356ac47a5ce31d729e10ee7563392c576a8=.
+
+* Catalog Identity
+
+Both certificates bind the same catalog identity:
+
+- graph generation;
+- graph digest;
+- completion digest;
+- cost-policy digest;
+- cache-context digest;
+- initial potential;
+- final potential.
+
+This prevents:
+
+- using a frontier from an older graph generation;
+- comparing exact and incomplete completion groups;
+- mixing token-first and round-first cost policies;
+- applying a warm-cache frontier to a cold-cache request;
+- mixing routes with different potential endpoints.
+
+* Global Coverage Theorem
+
+When certificates are aligned:
+
+For every globally admissible route =r=:
+
+- =r= is in the frontier; or
+- there exists frontier route =f= such that =f= dominates =r=.
+
+Consequently:
+
+- every globally undominated admissible route is retained;
+- every retained route is globally undominated;
+- the frontier predicate equals the globally undominated admissible predicate.
+
+The theorem does not require the agent to read every route.  The compact
+frontier receipt commits to the enumeration and dominance witnesses.
+
+* Why Local Frontier Proofs Are Insufficient
+
+The Lean counterexample uses two routes:
+
+- =listed= is enumerated and retained;
+- =missed= is globally admissible but not enumerated;
+- no route dominates another.
+
+The local frontier certificate is valid for the incomplete catalog.  The
+globally undominated =missed= route is absent.  No global enumeration
+certificate can exist for that catalog.
+
+This is the route-level analogue of RFC 00.61: local exhaustion is not global
+coverage.
+
+* Enumerator Requirements
+
+A concrete DAG enumerator may avoid materializing all paths, but its certificate
+must still justify coverage through one of:
+
+- explicit finite path enumeration;
+- a branch-and-bound proof that every omitted branch is dominated or
+  infeasible;
+- an AND/OR obligation decomposition with complete child certificates;
+- a committed-universe proof plus admissibility filtering.
+
+An omitted branch cannot be justified by a heuristic score alone.
+
+* Search Efficiency
+
+Complete certification does not require sending the full catalog to the model.
+
+The provider can retain:
+
+- catalog digest;
+- enumerated count;
+- frontier count;
+- dominated count;
+- infeasible count;
+- omitted-branch certificates.
+
+SearchLoop receives only the non-dominated frontier and the next inspect
+locator.  This preserves short prompts while keeping global completeness
+auditable.
+
+* Cache Semantics
+
+Catalog identity includes cache context because realized costs can change the
+Pareto relation.
+
+- Search-result cache context changes graph/tool/search-payload costs.
+- Model-prefix cache context changes uncached model work.
+- Cache changes do not change route completion identity.
+- A frontier may be transported across cache contexts only with a proof that
+  all relevant dominance comparisons remain valid.
+
+* Agent-Facing Receipt
+
+#+begin_src json
+{
+  "catalogDigest": "sha256:...",
+  "generation": 8,
+  "completionDigest": "sha256:...",
+  "costPolicyDigest": "sha256:...",
+  "cacheContextDigest": "sha256:...",
+  "enumeratedCount": 37,
+  "frontierCount": 3,
+  "dominatedCount": 21,
+  "infeasibleCount": 13,
+  "globalCoverageCertified": true
+}
+#+end_src
+
+* Python Turbo Graph Consequences
+
+A future Python Turbo Graph implementation should keep enumeration and frontier
+certificates as separate typed artifacts.  The router should reject a frontier
+whose enumeration certificate is absent, stale, or bound to another cost/cache
+context.
+
+* Lean Obligations
+
+The accompanying Lean model establishes:
+
+1. =ASP-RFC-10.05-CRF-GLOBAL=: aligned enumeration and frontier certificates
+   cover every globally admissible route;
+2. =ASP-RFC-10.05-CRF-RETAIN=: every globally undominated route is retained;
+3. =ASP-RFC-10.05-CRF-SOUND=: every frontier route is globally undominated;
+4. =ASP-RFC-10.05-CRF-EXACT=: the certified frontier equals the global
+   undominated set;
+5. =ASP-RFC-10.05-CRF-IDENTITY=: aligned certificates share current catalog
+   generation;
+6. =ASP-RFC-10.05-CRF-STALE=: stale catalog identity is rejected;
+7. =ASP-RFC-10.05-CRF-COUNTEREXAMPLE=: a locally valid frontier can omit a
+   globally undominated route;
+8. =ASP-RFC-10.05-CRF-NO-CERTIFICATE=: the incomplete example catalog cannot
+   produce a global enumeration certificate.
+
+The model does not yet prove:
+
+- correctness of a concrete DAG enumerator;
+- termination of branch-and-bound enumeration;
+- completeness of omitted-branch lower bounds;
+- distributed catalog identity agreement.

@@ -51,7 +51,6 @@ reference_patterns = [
   "turso_overlay_search",
   "unit_test",
   "unit_test_smoke",
-  "workspace_scope",
 ]
 inputs = "inputs"
 expected = "expected"

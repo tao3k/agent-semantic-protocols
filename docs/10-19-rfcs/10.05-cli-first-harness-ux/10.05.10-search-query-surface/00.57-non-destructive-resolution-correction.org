@@ -1,0 +1,263 @@
+#+title: RFC 10.05.10.00.57 — Non-Destructive Resolution Correction
+#+startup: overview
+
+* Status
+
+Draft research specification.
+
+This RFC defines how authoritative contradictory evidence corrects a final
+resource outcome without rewriting the original resolution history. It does not
+add CLI commands or authorize implementation.
+
+* Problem
+
+RFC 00.56 makes consumed and no-effect terminal under ordinary refinement. That
+is necessary for stable accounting and bounded progress.
+
+Authoritative later evidence can still prove a final receipt wrong:
+
+- a provider reverses a charge;
+- an idempotency lookup reveals that no effect occurred;
+- a delayed transaction proves the effect completed;
+- an earlier provider response was malformed; or
+- an audit proves the receipt belonged to another request.
+
+Allowing ordinary refinement to flip the value destroys finality. Refusing all
+correction preserves known false state.
+
+Mutating the old receipt in place is also unsafe because previous admission,
+feedback, and accounting decisions referred to it.
+
+* Decision
+
+Correction is a separate lineage.
+
+An authorized correction:
+
+- retains the original final receipt unchanged;
+- binds original receipt, request, effect, resource dimension, and outcome;
+- carries contradictory evidence and correction authority;
+- has a strictly greater correction revision;
+- produces a new effective view; and
+- records any ledger compensation as a new event.
+
+Correction is not =OutcomeRefines= and does not weaken ordinary finality.
+
+* Executable mathematical surface
+
+#+name: non-destructive-resolution-correction-math
+#+begin_src typst
+#let correction-bound(original, authority, correction) = (
+  correction.original-digest == original.digest
+  and correction.request == original.request
+  and correction.dimension == original.dimension
+  and correction.before == original.outcome
+  and correction.authority == authority.digest
+  and correction.revision > original.revision
+)
+
+#let effective-outcome(original, authority, correction) = {
+  if correction-bound(original, authority, correction) {
+    correction.after
+  } else {
+    original.outcome
+  }
+}
+
+#let original = (
+  digest: 151,
+  request: 111,
+  dimension: "money",
+  outcome: "consumed",
+  revision: 2,
+)
+#let authority = (digest: 161)
+#let correction = (
+  original-digest: 151,
+  request: 111,
+  dimension: "money",
+  before: "consumed",
+  after: "no-effect",
+  authority: 161,
+  contradiction-digest: 171,
+  revision: 3,
+)
+
+(
+  bound: correction-bound(original, authority, correction),
+  historical-outcome: original.outcome,
+  effective-outcome:
+    effective-outcome(original, authority, correction),
+)
+#+end_src
+
+The block is extracted through
+=orgize eval plan --json non-destructive-resolution-correction-math ...= and
+evaluated using =typst eval --in -=. It is not written to a separate Typst
+source.
+
+* Original final receipt
+
+The original receipt binds:
+
+- receipt digest;
+- request and effect identity;
+- resource dimension;
+- final outcome;
+- resolution revision;
+- evidence digest; and
+- original accounting/ledger event.
+
+Correction never changes these fields.
+
+Historical queries can reconstruct exactly what the system knew and applied at
+the original revision.
+
+* Correction authority
+
+A correction requires an authority appropriate for the resource dimension and
+evidence class. For example:
+
+- provider billing authority for money;
+- model runtime accounting authority for prompt tokens;
+- provider quota authority for request quota; or
+- an explicit operator/audit authority.
+
+Authority identity is not interchangeable across dimensions.
+
+* Contradiction witness
+
+The correction carries evidence explaining why the old final outcome is
+superseded. A different opinion or lower-confidence heuristic is insufficient.
+
+The witness binds:
+
+- original evidence digest;
+- new evidence digest;
+- contradiction type;
+- authority;
+- observation time/generation; and
+- affected scope.
+
+* Effective view
+
+For an authorized, bound correction:
+
+#+begin_quote
+=effective outcome = corrected outcome=.
+#+end_quote
+
+The historical outcome remains the original value.
+
+This supports both:
+
+- immutable audit history; and
+- corrected current routing/accounting.
+
+* Ledger compensation
+
+Correction does not delete the original ledger transition.
+
+If accounting requires a reversal:
+
+- append a compensating ledger event;
+- bind it to the correction receipt;
+- preserve the conservation theorem under the resource owner's compensation
+  semantics; and
+- create a new ledger revision.
+
+A money refund, token credit, and provider-quota restoration may have different
+semantics. They are not inferred from the corrected outcome alone.
+
+* Correction chain
+
+A correction may itself later be superseded only through another authorized
+correction:
+
+- revision strictly increases;
+- parent correction digest matches;
+- CAS linearizability selects one correction at each revision; and
+- effective view uses the latest valid lineage head.
+
+Ordinary partial-resolution updates cannot enter the correction chain.
+
+* Example
+
+Original money receipt:
+
+- outcome consumed;
+- resolution revision 2.
+
+Authorized correction:
+
+- before consumed;
+- after no-effect;
+- correction revision 3;
+- correct authority and contradiction witness.
+
+Results:
+
+- historical outcome remains consumed;
+- effective outcome becomes no-effect;
+- ordinary =consumed -> no-effect= refinement remains invalid;
+- any refund/release is appended separately.
+
+* SearchLoop consequence
+
+The compact packet exposes:
+
+#+begin_src json
+{
+  "dimension": "money",
+  "historicalOutcome": "consumed",
+  "effectiveOutcome": "no-effect",
+  "resolutionRevision": 2,
+  "correctionRevision": 3,
+  "correctionReceiptDigest": "...",
+  "compensationStatus": "pending"
+}
+#+end_src
+
+The agent can distinguish corrected belief from completed compensation.
+
+* Feedback and cache consequence
+
+Correction creates a new problem generation. Cached bounds and decisions that
+depend on the corrected dimension require transport or recomputation.
+
+The old feedback remains historical training data marked superseded. It is not
+silently deleted from model calibration datasets.
+
+* Python Turbo Graph consequence
+
+The future Python runtime SHOULD:
+
+- store immutable original receipts;
+- keep corrections in a linked lineage;
+- verify dimension-specific authority;
+- derive current effective view from the lineage head;
+- append compensating ledger events separately;
+- invalidate affected graph/cost frontiers; and
+- reject in-place outcome mutation.
+
+* Required Lean obligations
+
+The companion Lean model MUST prove:
+
+- ordinary consumed-to-no-effect refinement remains invalid;
+- a correctly bound authorized correction changes the effective view;
+- applying correction preserves the original receipt;
+- correction revision is greater than original revision;
+- mismatched authority rejects correction;
+- mismatched request or dimension rejects correction; and
+- effective outcome cannot change without a bound correction proof.
+
+The modular audit emits these theorem families as Lean-generated JSON.
+
+* Design finding
+
+Terminal outcomes provide monotonicity only within an ordinary lineage. Lean
+needs a different constructor to express authoritative contradiction without
+adding forbidden edges to =OutcomeRefines=. The correction view carries both
+the immutable original and the proof-authorized effective outcome.
+

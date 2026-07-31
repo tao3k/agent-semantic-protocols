@@ -345,7 +345,7 @@ Required provider commands:
   returns owner-local parser facts only.
 - =asp <language> query --selector '<structuralSelector|nativeFactId>' --workspace . --view skeleton|outline|signature|comments|names|unsafe-blocks|diagnostic-capsule|flow-capsule --json=
   performs exact provider projection after Rust has selected identity.
-- =asp <language> query --selector '<structuralSelector|nativeFactId>' --workspace . --code=
+- =asp <language> query --selector '<structuralSelector|nativeFactId>' --workspace . --projection source=
   returns exact code only for parser-owned identity.
 
 Forbidden provider commands and advertised methods:
@@ -374,7 +374,7 @@ Provider CLIs are fact authorities, not performance control planes. A language p
 - =index export --scope changed|owner|workspace --json= for bounded native fact packets
 - =search owner <owner> items --json= for owner-local facts only
 - =query --selector <structural-selector|native-fact-id> --view ... --json= for bounded projections
-- =query --selector <structural-selector|native-fact-id> --code= for exact code transport
+- =query --selector <structural-selector|native-fact-id> --projection source= for exact code transport
 
 Provider CLIs must not own broad recursive source search, workspace ranking, graph-turbo orchestration, source-content caches, dependency caches, or prompt graph rendering. If the Rust index state needed for a command is missing, the command must return an explicit missing-index or missing-capability response with the next Rust index command. It must not silently perform a slow provider-local workspace scan.
 * Native Fact Index Import

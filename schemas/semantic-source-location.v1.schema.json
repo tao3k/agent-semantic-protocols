@@ -115,7 +115,7 @@
         "code-after-exact-selector",
         "requires-exact-code"
       ],
-      "description": "Boundary for when a source locator hint may be materialized into --code transport."
+      "description": "Boundary for when a source locator hint may be materialized through an exact selector with projection=source."
     }
   }
 }

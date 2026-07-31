@@ -1,0 +1,237 @@
+#+title: RFC 10.05.10.00.42 — Certified Ambiguity Witness
+#+startup: overview
+
+* Status
+
+Draft research specification.
+
+This RFC makes the ambiguity rank from RFC 00.41 proof-carrying. It does not
+add CLI commands or authorize implementation.
+
+* Problem
+
+RFC 00.41 bounds SearchLoop refinement rounds by a strictly decreasing
+=ambiguity= natural number. A raw integer does not prove information progress.
+A provider could:
+
+- omit unresolved action conflicts;
+- report a lower number without refining the projection;
+- report zero while two indistinguishable worlds require different actions; or
+- change the possible-world scope between measurements.
+
+The termination theorem would remain arithmetically valid but would no longer
+describe the real decision problem.
+
+* Decision
+
+Every ambiguity rank is derived from a =ConflictCertificate= bound to:
+
+- decision-scope identity;
+- projection identity;
+- possible-world set identity;
+- required-action function identity; and
+- evidence/runtime generation.
+
+The certificate enumerates action-conflicting world pairs. It proves:
+
+- soundness: every listed pair has equal projections and different required
+  actions;
+- completeness: every pair with equal projections and different required
+  actions is listed.
+
+The ambiguity rank is the length of this certified list.
+
+* Executable mathematical surface
+
+#+name: certified-ambiguity-witness-math
+#+begin_src typst
+#let conflict(project, required-action, left, right) = (
+  project(left) == project(right)
+  and required-action(left) != required-action(right)
+)
+
+#let sound(worlds, pairs, project, required-action) = {
+  pairs.all(pair =>
+    conflict(
+      project,
+      required-action,
+      pair.first(),
+      pair.last(),
+    )
+  )
+}
+
+#let complete(worlds, pairs, project, required-action) = {
+  worlds.all(left =>
+    worlds.all(right =>
+      not conflict(project, required-action, left, right)
+      or (left, right) in pairs
+    )
+  )
+}
+
+#let worlds = ("selector-ready", "selector-missing")
+#let required-action(world) = {
+  if world == "selector-ready" {
+    "execute"
+  } else {
+    "resolve-selector"
+  }
+}
+#let tiny-project(_world) = "provider-ready"
+#let status-project(world) = world
+
+#let tiny-pairs = (
+  ("selector-ready", "selector-missing"),
+  ("selector-missing", "selector-ready"),
+)
+#let status-pairs = ()
+
+(
+  tiny-sound:
+    sound(worlds, tiny-pairs, tiny-project, required-action),
+  tiny-complete:
+    complete(worlds, tiny-pairs, tiny-project, required-action),
+  tiny-ambiguity: tiny-pairs.len(),
+  status-sound:
+    sound(worlds, status-pairs, status-project, required-action),
+  status-complete:
+    complete(worlds, status-pairs, status-project, required-action),
+  status-ambiguity: status-pairs.len(),
+)
+#+end_src
+
+The block is extracted through
+=orgize eval plan --json certified-ambiguity-witness-math ...= and evaluated
+using =typst eval --in -=. It is not copied to a separate Typst file.
+
+* Action conflict
+
+For worlds =left= and =right=, an action conflict exists when:
+
+#+begin_quote
+=project(left) = project(right)=
+
+and
+
+=requiredAction(left) != requiredAction(right)=.
+#+end_quote
+
+Projection equality means inspect cannot distinguish the worlds. Action
+inequality means the distinction matters to the agent.
+
+World pairs whose required actions are equal do not contribute to ambiguity,
+even if their internal graph states differ.
+
+* Certificate soundness
+
+Soundness prevents inflated or irrelevant ranks. Every listed pair must be a
+real action conflict under the bound projection and action function.
+
+An implementation MAY retain additional diagnostic distinctions outside the
+certificate. They do not count toward the progress rank.
+
+* Certificate completeness
+
+Completeness prevents hidden ambiguity. Every action-conflicting pair in the
+declared world scope must be listed.
+
+This is the essential fail-closed property. A short conflict list is useful only
+when omission has been ruled out.
+
+Completeness can be proven through:
+
+- exhaustive finite enumeration;
+- a symbolic partition certificate;
+- a BDD/SAT proof object;
+- a provider-owned exhaustive domain theorem; or
+- a composition theorem over independently complete frontier families.
+
+The shared contract describes the proof obligation, not one required solver.
+
+* Zero-rank theorem
+
+If a complete conflict certificate has an empty pair list, then:
+
+#+begin_quote
+equal projection implies equal required action.
+#+end_quote
+
+This is decision sufficiency from RFC 00.40.
+
+A raw =claimedAmbiguity= value of zero has no such theorem.
+
+* Refinement theorem
+
+A certified refinement from projection A to projection B requires:
+
+- identical decision scope and world-set identity;
+- complete and sound conflict certificates for A and B; and
+- strictly fewer conflicts in B.
+
+The rank decrease in RFC 00.41 is therefore a consequence of proof-visible
+partition refinement, not provider telemetry.
+
+Changing world scope, evidence generation, or required-action semantics
+requires an explicit scope reset.
+
+* Example
+
+For the two worlds:
+
+- selector ready, requiring =execute=;
+- selector missing, requiring =resolve-selector=;
+
+the constant tiny projection has two ordered conflict pairs. The selector-status
+projection has none.
+
+The certified ambiguity decreases from 2 to 0. The empty complete certificate
+proves that selector status is decision-sufficient.
+
+* SearchLoop consequence
+
+The normal agent packet does not dump all world pairs. It carries:
+
+- ambiguity count;
+- conflict-certificate digest;
+- certificate method;
+- decision-scope digest;
+- a compact representative unresolved pair when ambiguity is nonzero; and
+- the fact proposed to split that pair.
+
+The full certificate remains available through inspect/audit projection.
+
+This preserves token efficiency while keeping the progress claim auditable.
+
+* Python Turbo Graph consequence
+
+The future Python layer SHOULD represent action-conflict classes with sparse
+partitions rather than materializing all quadratic world pairs when possible.
+
+It MUST still expose a certificate whose semantics are equivalent to sound and
+complete pair enumeration. Matrix sparsity is an encoding optimization, not a
+weaker completeness rule.
+
+* Required Lean obligations
+
+The companion Lean model MUST prove:
+
+- an empty complete certificate implies decision sufficiency;
+- the tiny projection is not decision-sufficient;
+- the tiny example certificate is sound and complete;
+- the status example certificate is sound and complete;
+- the tiny certified ambiguity is two;
+- the status certified ambiguity is zero; and
+- the status certificate is a strict certified refinement; and
+- scope or evidence-generation drift rejects an alleged refinement even when
+  its reported ambiguity is lower.
+
+The modular audit emits these theorem families as Lean-generated JSON.
+
+* Design finding
+
+The first monotone-refinement model trusted =ambiguity : Nat=. Lean can prove
+termination from any decreasing numbers, including dishonest ones. Adding
+soundness and completeness connects the arithmetic rank to the actual inspect
+decision problem and makes zero ambiguity strong enough to derive the decoder
+invariant.

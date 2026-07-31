@@ -13,15 +13,7 @@ futures-util = "0.3"
 libc = "0.2"
 memchr = "2"
 sha2 = "0.10"
-tokio = { version = "1", features = [
-    "io-std",
-    "io-util",
-    "macros",
-    "net",
-    "process",
-    "rt",
-    "time",
-] }
+tokio.workspace = true
 tokio-util = { version = "0.7", features = ["codec"] }
 tracing = "0.1"
 

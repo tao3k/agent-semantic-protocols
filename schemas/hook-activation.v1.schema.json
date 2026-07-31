@@ -206,9 +206,6 @@
         "dependencyTopologyMetadata": {
           "$ref": "#/$defs/commandTemplate"
         },
-        "workspaceScope": {
-          "$ref": "#/$defs/commandTemplate"
-        },
         "exportIndex": {
           "$ref": "#/$defs/commandTemplate"
         },

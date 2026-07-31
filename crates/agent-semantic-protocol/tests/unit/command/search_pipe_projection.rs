@@ -50,13 +50,13 @@ fn query_projection_uses_content_mode_for_document_languages() {
 }
 
 #[test]
-fn query_projection_uses_default_source_mode_for_programming_languages() {
+fn query_projection_uses_explicit_source_mode_for_programming_languages() {
     assert_eq!(
         search_pipe_projection::query_projection_kind("rust"),
         "source"
     );
     assert_eq!(
         search_pipe_projection::query_projection_suffix("rust"),
-        ""
+        " --projection source"
     );
 }

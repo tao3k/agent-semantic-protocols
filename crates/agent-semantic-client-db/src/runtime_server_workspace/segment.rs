@@ -77,11 +77,9 @@ impl WorkspaceGenerationPublisher {
         fs::write(&temporary_path, segment)
             .await
             .map_err(|error| format!("write workspace generation segment: {error}"))?;
-        sync_file(&temporary_path).await?;
         fs::rename(&temporary_path, &final_path)
             .await
             .map_err(|error| format!("publish workspace generation segment: {error}"))?;
-        sync_directory(&self.directory).await?;
         let mapped = MappedWorkspaceGeneration::open(&final_path).await?;
         let snapshot = WorkspaceGenerationSnapshot {
             schema_id: WORKSPACE_GENERATION_SCHEMA_ID.to_owned(),
@@ -153,22 +151,4 @@ fn decode_segment(mapping: &[u8]) -> Result<WorkspaceMemoryGeneration, String> {
     }
     generation.validate()?;
     Ok(generation)
-}
-
-async fn sync_file(path: &Path) -> Result<(), String> {
-    fs::File::open(path)
-        .await
-        .map_err(|error| format!("open workspace generation segment for sync: {error}"))?
-        .sync_all()
-        .await
-        .map_err(|error| format!("sync workspace generation segment: {error}"))
-}
-
-async fn sync_directory(path: &Path) -> Result<(), String> {
-    fs::File::open(path)
-        .await
-        .map_err(|error| format!("open workspace generation directory for sync: {error}"))?
-        .sync_all()
-        .await
-        .map_err(|error| format!("sync workspace generation directory: {error}"))
 }

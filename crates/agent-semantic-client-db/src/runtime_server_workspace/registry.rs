@@ -46,6 +46,19 @@ enum WorkspaceWriteCommand {
         owner: WorkspaceOwnerSnapshot,
         reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
     },
+    TombstoneOwnerOverlay {
+        request_id: String,
+        workspace_identity: String,
+        owner_path: String,
+        reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
+    },
+    RelocateOwnerOverlay {
+        request_id: String,
+        workspace_identity: String,
+        previous_owner_path: String,
+        owner: WorkspaceOwnerSnapshot,
+        reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
+    },
     EnsureCanonicalGeneration {
         request_id: String,
         workspace_identity: String,
@@ -207,6 +220,56 @@ impl RuntimeServerWorkspaceRegistry {
             .send(WorkspaceWriteCommand::PublishOwnerOverlay {
                 request_id: request_id.into(),
                 workspace_identity,
+                owner,
+                reply,
+            })
+            .await
+            .map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?;
+        receive
+            .await
+            .map_err(|_| "runtime workspace writer lane dropped its receipt".to_owned())?
+    }
+
+    pub async fn tombstone_owner_overlay(
+        &self,
+        request_id: impl Into<String>,
+        workspace_identity: impl Into<String>,
+        owner_path: impl Into<String>,
+    ) -> Result<WorkspaceRecoveryReceipt, String> {
+        let workspace_identity = workspace_identity.into();
+        let entry = self.entry(&workspace_identity).await?;
+        let (reply, receive) = oneshot::channel();
+        entry
+            .writer
+            .send(WorkspaceWriteCommand::TombstoneOwnerOverlay {
+                request_id: request_id.into(),
+                workspace_identity,
+                owner_path: owner_path.into(),
+                reply,
+            })
+            .await
+            .map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?;
+        receive
+            .await
+            .map_err(|_| "runtime workspace writer lane dropped its receipt".to_owned())?
+    }
+
+    pub async fn relocate_owner_overlay(
+        &self,
+        request_id: impl Into<String>,
+        workspace_identity: impl Into<String>,
+        previous_owner_path: impl Into<String>,
+        owner: WorkspaceOwnerSnapshot,
+    ) -> Result<WorkspaceRecoveryReceipt, String> {
+        let workspace_identity = workspace_identity.into();
+        let entry = self.entry(&workspace_identity).await?;
+        let (reply, receive) = oneshot::channel();
+        entry
+            .writer
+            .send(WorkspaceWriteCommand::RelocateOwnerOverlay {
+                request_id: request_id.into(),
+                workspace_identity,
+                previous_owner_path: previous_owner_path.into(),
                 owner,
                 reply,
             })
@@ -409,11 +472,81 @@ async fn workspace_writer_lane(
                 owner,
                 reply,
             } => {
-                let result = prepare_owner_overlay(&current, workspace_identity, owner).and_then(
-                    |(active_epoch, generation)| {
-                        generation.validate().map(|()| (active_epoch, generation))
-                    },
-                );
+                let result =
+                    super::overlay::prepare_owner_overlay(&current, workspace_identity, owner)
+                        .and_then(|(active_epoch, generation)| {
+                            generation.validate().map(|()| (active_epoch, generation))
+                        });
+                let result = match result {
+                    Ok((active_epoch, generation)) => {
+                        publish_generation(
+                            &current,
+                            &publisher,
+                            request_id,
+                            WorkspaceRecoverySource::ProviderOwnerOverlay,
+                            active_epoch,
+                            generation,
+                            &counters,
+                        )
+                        .await
+                    }
+                    Err(error) => Err(error),
+                };
+                if let Ok(receipt) = &result {
+                    last_receipt = Some(receipt.clone());
+                }
+                let _ = reply.send(result);
+            }
+            WorkspaceWriteCommand::TombstoneOwnerOverlay {
+                request_id,
+                workspace_identity,
+                owner_path,
+                reply,
+            } => {
+                let result = super::overlay::prepare_owner_tombstone(
+                    &current,
+                    workspace_identity,
+                    owner_path,
+                )
+                .and_then(|(active_epoch, generation)| {
+                    generation.validate().map(|()| (active_epoch, generation))
+                });
+                let result = match result {
+                    Ok((active_epoch, generation)) => {
+                        publish_generation(
+                            &current,
+                            &publisher,
+                            request_id,
+                            WorkspaceRecoverySource::ProviderOwnerOverlay,
+                            active_epoch,
+                            generation,
+                            &counters,
+                        )
+                        .await
+                    }
+                    Err(error) => Err(error),
+                };
+                if let Ok(receipt) = &result {
+                    last_receipt = Some(receipt.clone());
+                }
+                let _ = reply.send(result);
+            }
+            WorkspaceWriteCommand::RelocateOwnerOverlay {
+                request_id,
+                workspace_identity,
+                previous_owner_path,
+                owner,
+                reply,
+            } => {
+                let result = super::overlay::prepare_owner_relocation(
+                    &current,
+                    workspace_identity,
+                    previous_owner_path,
+                    owner,
+                )
+                .and_then(|(active_epoch, generation)| {
+                    generation.validate().map(|()| (active_epoch, generation))
+                });
                 let result = match result {
                     Ok((active_epoch, generation)) => {
                         publish_generation(
@@ -534,98 +667,6 @@ fn active_epoch(current: &watch::Sender<Option<Arc<WorkspaceMemoryBackend>>>) ->
         .map_or(0, |backend| backend.generation().active_epoch)
 }
 
-fn prepare_owner_overlay(
-    current: &watch::Sender<Option<Arc<WorkspaceMemoryBackend>>>,
-    workspace_identity: String,
-    owner: WorkspaceOwnerSnapshot,
-) -> Result<(u64, WorkspaceMemoryGeneration), String> {
-    let active = current.borrow().clone().ok_or_else(|| {
-        format!(
-            "runtime owner overlay requires an admitted canonical generation: workspaceIdentity={workspace_identity}"
-        )
-    })?;
-    if active.generation().workspace_identity != workspace_identity {
-        return Err(format!(
-            "runtime owner overlay workspace identity mismatch: requested={workspace_identity} active={}",
-            active.generation().workspace_identity
-        ));
-    }
-    let active_epoch = active.generation().active_epoch;
-    let overlay_owner_path = owner.owner_path.clone();
-    let overlay_owner_digest = owner.content_digest.clone();
-    let mut owners = active.generation().owners.clone();
-    if let Some(position) = owners
-        .iter()
-        .position(|candidate| candidate.owner_path == owner.owner_path)
-    {
-        if owners[position].content_digest == owner.content_digest
-            && owners[position].bytes == owner.bytes
-        {
-            for selector in owner.selectors {
-                if let Some(selector_position) = owners[position]
-                    .selectors
-                    .iter()
-                    .position(|candidate| candidate.selector == selector.selector)
-                {
-                    owners[position].selectors[selector_position] = selector;
-                } else {
-                    owners[position].selectors.push(selector);
-                }
-            }
-            owners[position]
-                .selectors
-                .sort_by(|left, right| left.selector.cmp(&right.selector));
-        } else {
-            owners[position] = owner;
-        }
-    } else {
-        owners.push(owner);
-    }
-    owners.sort_by(|left, right| left.owner_path.cmp(&right.owner_path));
-    let workspace_snapshot = active
-        .generation()
-        .workspace_snapshot
-        .with_overlay([(overlay_owner_path, overlay_owner_digest)]);
-    let source_snapshot = workspace_snapshot.evidence(
-        agent_semantic_content_identity::SourceSnapshotKind::DerivedOverlay,
-        active.generation().source_snapshot.provider_digest.clone(),
-    );
-    let workspace_generation =
-        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
-            root_digest: source_snapshot.root_digest.clone(),
-            root_depth: u32::from(active.generation().root_depth[0]),
-            leaf_count: u64::try_from(source_snapshot.leaf_count)
-                .map_err(|_| "workspace generation leaf count overflow".to_owned())?,
-            owner_count: u64::try_from(owners.len())
-                .map_err(|_| "workspace generation owner count overflow".to_owned())?,
-        };
-    agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1::new(
-        workspace_generation.clone(),
-    )
-    .map_err(|error| format!("workspace overlay generation evidence is incomplete: {error}"))?;
-    let generation_digest = generation_digest(
-        &workspace_identity,
-        &source_snapshot,
-        &workspace_generation,
-        &owners,
-    )?;
-    Ok((
-        active_epoch,
-        WorkspaceMemoryGeneration {
-            workspace_identity,
-            state: WorkspaceGenerationState::Ready,
-            active_epoch: active_epoch + 1,
-            generation_digest: generation_digest.clone(),
-            root_depth: [1, 0],
-            workspace_snapshot,
-            source_snapshot,
-            workspace_generation,
-            memory_backend_digest: generation_digest,
-            owners,
-        },
-    ))
-}
-
 async fn publish_generation(
     current: &watch::Sender<Option<Arc<WorkspaceMemoryBackend>>>,
     publisher: &WorkspaceGenerationPublisher,
@@ -704,7 +745,7 @@ async fn restore_checkpoint(
     Ok(receipt)
 }
 
-fn generation_digest(
+pub(super) fn generation_digest(
     workspace_identity: &str,
     source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
     workspace_generation: &agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,

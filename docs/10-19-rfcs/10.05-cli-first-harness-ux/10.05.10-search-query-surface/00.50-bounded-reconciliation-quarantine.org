@@ -1,0 +1,252 @@
+#+title: RFC 10.05.10.00.50 — Bounded Reconciliation and Quarantine
+#+startup: overview
+
+* Status
+
+Draft research specification.
+
+This RFC adds progress, termination, and ledger-disposition rules to the
+reconciliation phase from RFC 00.49. It does not add CLI commands or authorize
+implementation.
+
+* Problem
+
+Reconciliation prevents an ambiguous external effect from being blindly
+retried. It can itself become an unbounded loop:
+
+- remote status remains unknown;
+- SearchLoop repeatedly polls or replays an idempotent request;
+- ledger reservation remains held;
+- rounds, tokens, and latency accumulate; and
+- no terminal receipt is produced.
+
+Automatically releasing the reservation when a timeout expires is unsafe. The
+external effect may later prove successful.
+
+Automatically marking the action failed is also unsafe. Unknown is not failure.
+
+* Decision
+
+A reconciliation state carries three strictly decreasing recovery ranks:
+
+- attempts remaining;
+- rounds remaining; and
+- transitions remaining.
+
+An unknown-outcome continuation is legal only when:
+
+- current and next phases are =reconciling=;
+- ledger disposition remains =held=; and
+- all three ranks strictly decrease.
+
+When any rank is exhausted and outcome remains unknown, the only automatic
+terminal disposition is:
+
+#+begin_quote
+=phase = quarantined=
+
+=ledger = quarantined=.
+#+end_quote
+
+Quarantine is a bounded, fail-closed terminal state. It is not safe release.
+
+* Executable mathematical surface
+
+#+name: bounded-reconciliation-quarantine-math
+#+begin_src typst
+#let continue-step(current, next) = (
+  current.phase == "reconciling"
+  and current.ledger == "held"
+  and next.phase == "reconciling"
+  and next.ledger == "held"
+  and next.attempts-remaining < current.attempts-remaining
+  and next.rounds-remaining < current.rounds-remaining
+  and next.transitions-remaining < current.transitions-remaining
+)
+
+#let exhausted(state) = (
+  state.attempts-remaining == 0
+  or state.rounds-remaining == 0
+  or state.transitions-remaining == 0
+)
+
+#let quarantine-resolution(current, next) = (
+  current.phase == "reconciling"
+  and current.ledger == "held"
+  and exhausted(current)
+  and next.phase == "quarantined"
+  and next.ledger == "quarantined"
+)
+
+#let exhausted-state = (
+  phase: "reconciling",
+  ledger: "held",
+  attempts-remaining: 0,
+  rounds-remaining: 1,
+  transitions-remaining: 1,
+)
+
+(
+  self-loop:
+    continue-step(exhausted-state, exhausted-state),
+  quarantine:
+    quarantine-resolution(
+      exhausted-state,
+      (
+        phase: "quarantined",
+        ledger: "quarantined",
+        attempts-remaining: 0,
+        rounds-remaining: 1,
+        transitions-remaining: 1,
+      ),
+    ),
+  unsafe-release:
+    quarantine-resolution(
+      exhausted-state,
+      (
+        phase: "safe-released",
+        ledger: "released",
+        attempts-remaining: 0,
+        rounds-remaining: 1,
+        transitions-remaining: 1,
+      ),
+    ),
+)
+#+end_src
+
+The block is extracted through
+=orgize eval plan --json bounded-reconciliation-quarantine-math ...= and
+evaluated using =typst eval --in -=. It is not written to a separate Typst
+source.
+
+* Recovery ranks
+
+Attempts bound calls to an external reconciliation mechanism. Rounds and
+transitions bind SearchLoop/agent interaction independently.
+
+All ranks decrease on continuation. This deliberately rejects:
+
+- free polling;
+- no-op idempotent replay;
+- retries that only decrement one accounting field; and
+- re-rendering the same unknown state.
+
+An implementation may use a lexicographic rank in a future schema version. The
+v1 rule uses strict componentwise decrease because every reconciliation action
+consumes each resource.
+
+* Bounded-run theorem
+
+For an unknown-outcome continuation run with =n= steps:
+
+#+begin_quote
+=n <= initial attempts=
+
+=n <= initial rounds=
+
+=n <= initial transitions=.
+#+end_quote
+
+Therefore, continuation cannot be infinite.
+
+The theorem does not assume the remote system eventually responds. It bounds
+local work even under permanent uncertainty.
+
+* Terminal observations
+
+Reconciliation can terminate before exhaustion when authoritative evidence
+establishes:
+
+- completed effect: ledger becomes =consumed=;
+- no effect occurred: ledger becomes =released=; or
+- indeterminate effect at budget exhaustion: ledger becomes =quarantined=.
+
+Only a proof of no effect permits safe release. Timeout, missing logs, transport
+errors, and exhausted recovery budgets do not prove no effect.
+
+* Quarantine
+
+Quarantine preserves:
+
+- admission and request identity;
+- effect nonce/idempotency identity;
+- reserved resource amount;
+- last known remote status;
+- reconciliation history;
+- remaining or exhausted budgets; and
+- required external authority for resolution.
+
+Quarantined resources are unavailable to new route admission. This prevents
+overspending if the old effect later proves successful.
+
+Quarantine may be resolved by a later explicitly authorized process. It cannot
+silently reenter ordinary SearchLoop execution.
+
+* SearchLoop consequence
+
+The compact terminal packet exposes:
+
+#+begin_src json
+{
+  "phase": "quarantined",
+  "requestDigest": "...",
+  "effectNonce": "...",
+  "remoteStatus": "unknown",
+  "ledgerStatus": "quarantined",
+  "recovery": {
+    "attemptsRemaining": 0,
+    "roundsRemaining": 1,
+    "transitionsRemaining": 1
+  },
+  "nextAction": "request authorized quarantine resolution"
+}
+#+end_src
+
+The agent does not receive another automatic retry recommendation.
+
+* Cache and feedback consequence
+
+An unknown or quarantined outcome:
+
+- does not create a model prefix-cache hit/miss claim;
+- does not update observed cost as final;
+- does not release semantic evidence;
+- does not generate ordinary success/failure feedback; and
+- remains excluded from exact accounting aggregates.
+
+Later resolution appends a causal outcome receipt; it does not rewrite the
+quarantine history.
+
+* Python Turbo Graph consequence
+
+The future Python runtime SHOULD:
+
+- persist recovery rank and ledger disposition atomically;
+- reject continuation without strict rank decrease;
+- quarantine ambiguous reservations at exhaustion;
+- exclude quarantined capacity from admission;
+- expose an authorized resolution interface; and
+- append final resolution to the original trace.
+
+* Required Lean obligations
+
+The companion Lean model MUST prove:
+
+- reconciliation cannot step to itself;
+- no continuation exists when any required rank is zero;
+- continuation-run length is bounded by attempts;
+- continuation-run length is bounded by rounds;
+- continuation-run length is bounded by transitions;
+- exhausted unknown state admits quarantine; and
+- exhausted unknown state does not admit safe release.
+
+The modular audit emits these theorem families as Lean-generated JSON.
+
+* Design finding
+
+RFC 00.49 correctly routes unknown outcomes into reconciliation but does not
+bound that phase or specify what happens when evidence never arrives. Lean
+requires a decreasing constructor and a terminal case. Quarantine supplies the
+only fail-closed automatic terminal state without converting uncertainty into
+failure or free capacity.
+

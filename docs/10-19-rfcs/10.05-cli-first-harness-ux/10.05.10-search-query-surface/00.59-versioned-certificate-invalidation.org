@@ -1,0 +1,212 @@
+#+title: 00.59 Versioned Certificate Invalidation
+#+startup: overview
+
+* Status
+
+Draft.
+
+This module continues =00.58-append-only-compensation-ledger.org=.  A
+compensation can change route feasibility, ranking, and completion without
+changing the immutable historical evidence graph.  This RFC specifies the
+smallest safe invalidation set for derived graph certificates.
+
+* Problem
+
+After an authorized correction, a SearchLoop implementation can make either of
+two unsafe choices:
+
+1. invalidate only the corrected fact and continue to reuse certificates that
+   transitively depended on it; or
+2. clear every graph and search cache, including artifacts unrelated to the
+   correction.
+
+The first choice can make the Graph Router reuse an impossible route or an
+obsolete completion claim.  The second choice is safe but destroys the token,
+latency, and loop-count benefits of evidence reuse.
+
+The required operation is dependency-closure invalidation.
+
+* Versioned Artifact Keys
+
+Every reusable fact or certificate is addressed by a versioned key:
+
+=ArtifactKey = (artifactId, revision)=.
+
+Dependency edges connect exact keys, not unversioned logical names.  If
+certificate =C@4= was derived from ledger projection =L@7=, its dependency edge
+is =C@4 -> L@7=.  A correction superseding =L@7= invalidates =L@7= and the
+transitive dependents of =L@7=.
+
+A recomputed certificate =C@5= that depends on =L@8= is not a dependent of
+=L@7=.  It can therefore become reusable.  An artifact-id-only invalidation
+model would invalidate every future version of =C= forever; version identity is
+part of correctness, not merely an optimization.
+
+* Mathematical Model
+
+Let =D(a, p)= mean that artifact key =a= directly depends on prerequisite key
+=p=.  Let =D+(a, r)= be the non-empty transitive closure of =D=.  For corrected
+root set =R=:
+
+#+name: versioned-certificate-invalidation-math
+#+begin_src typst
+#let key(id, revision) = (id: id, revision: revision)
+
+#let old-effect = key("effect", 7)
+#let old-feasibility = key("feasibility", 12)
+#let old-ranking = key("ranking", 4)
+#let old-completion = key("completion", 3)
+
+#let new-effect = key("effect", 8)
+#let new-feasibility = key("feasibility", 13)
+#let unrelated = key("provider-capability", 21)
+
+#let corrected-roots = (old-effect,)
+#let invalidation-closure = (
+  old-effect,
+  old-feasibility,
+  old-ranking,
+  old-completion,
+)
+
+#let invalidated(artifact) = invalidation-closure.contains(artifact)
+
+(
+  corrected-root-invalidated: invalidated(old-effect),
+  transitive-completion-invalidated: invalidated(old-completion),
+  refreshed-certificate-reusable: not invalidated(new-feasibility),
+  unrelated-certificate-reusable: not invalidated(unrelated),
+  old-and-new-effect-are-distinct: old-effect != new-effect,
+  roots-are-versioned: corrected-roots.first().revision == 7,
+)
+#+end_src
+
+The canonical invalidation predicate is:
+
+=Invalidated(D, R, a) := R(a) or exists r, R(r) and D+(a, r)=.
+
+An artifact is reusable only if it is not invalidated and its other lease,
+generation, and capability guards remain valid.
+
+* Closure Requirements
+
+The invalidation set MUST satisfy:
+
+- every corrected root is invalidated;
+- every direct dependent of an invalidated key is invalidated;
+- every transitive dependent of a corrected root is invalidated;
+- enlarging the corrected-root set cannot shrink the invalidation set;
+- it is the least dependency-closed set containing the corrected roots.
+
+The last condition prevents a provider from silently converting targeted
+invalidation into a global cache flush.
+
+* Certificate Dependency Classes
+
+The shared graph contract should distinguish dependency purpose without
+changing the closure law:
+
+- =evidence=: a certificate used exact evidence facts;
+- =accounting=: feasibility used a ledger projection;
+- =bound=: route rank used a lower or upper bound;
+- =completion=: a completion receipt used a ranked frontier;
+- =capability=: a route used a provider capability lease;
+- =projection=: an inspect/search projection used a source certificate.
+
+The relation remains provider-independent.  Provider-specific facts may extend
+edge metadata, but they may not omit an edge required to replay a certificate.
+
+* Correction Transaction
+
+An authorized correction transaction has two distinct commits:
+
+1. the append-only accounting adjustment from RFC 00.58; and
+2. publication of the corrected versioned root plus its invalidation closure.
+
+SearchLoop MUST NOT expose the compensated resource as feasible while
+transitively dependent old certificates are still reusable.  Implementations
+may realize the two commits atomically or publish an intermediate fail-closed
+barrier that prevents route admission.
+
+Recomputation creates new artifact keys and exact dependency edges.  It never
+removes the old keys or rewrites their historical edges.
+
+* Graph Router Rule
+
+Before choosing a route, the Graph Router checks each candidate certificate:
+
+#+begin_src json
+{
+  "certificate": {"artifactId": "completion", "revision": 3},
+  "dependencyRoot": {"artifactId": "effect", "revision": 7},
+  "invalidation": "transitive",
+  "reusable": false,
+  "next": "recompute-feasibility-frontier"
+}
+#+end_src
+
+The router should receive this compact decision projection.  Complete
+dependency paths remain available through inspect when diagnosis is needed.
+This avoids repeating graph paths and receipts in each agent loop.
+
+* Cache Semantics
+
+Search-result caching and model-prefix caching remain separate.
+
+- A search-result cache entry is reusable only when its versioned dependency
+  certificate is outside the invalidation closure.
+- A model-prefix cache hit can reduce model computation, but it cannot revive an
+  invalid search-result certificate.
+- A correction should invalidate only prompt fragments that embed a stale
+  decision artifact.  Stable instruction and schema prefixes remain cacheable.
+- Cache identity MUST include the versioned certificate root or a digest that
+  commits to it.
+
+Thus dependency closure reduces stale reuse without sacrificing unrelated
+prefix-cache hits.
+
+* Python Turbo Graph Consequences
+
+A future Python Turbo Graph should maintain:
+
+- immutable versioned nodes;
+- exact dependency edges;
+- a reverse-dependency index for bounded closure traversal;
+- current-version pointers as a projection, not as node identity;
+- certificate state =valid | invalidated | recomputing=;
+- compact invalidation receipts for SearchLoop and detailed paths for inspect.
+
+The hot path should traverse the reverse dependency frontier from corrected
+roots.  It should not scan all graph nodes, and it should not use artifact-name
+string heuristics.
+
+* Lean Obligations
+
+The accompanying Lean model establishes:
+
+1. =ASP-RFC-10.05-VCI-ROOT=: every corrected root is invalidated;
+2. =ASP-RFC-10.05-VCI-DIRECT=: every direct dependent is invalidated;
+3. =ASP-RFC-10.05-VCI-CLOSED=: invalidation is closed under direct dependence;
+4. =ASP-RFC-10.05-VCI-MONOTONE=: adding roots cannot reduce invalidation;
+5. =ASP-RFC-10.05-VCI-MINIMAL=: invalidation is the least dependency-closed
+   superset of the roots;
+6. =ASP-RFC-10.05-VCI-VERSION=: dependency reachability preserves revision when
+   every dependency edge preserves revision;
+7. =ASP-RFC-10.05-VCI-STALE=: an old completion certificate is invalidated
+   through the feasibility and ranking chain;
+8. =ASP-RFC-10.05-VCI-REFRESHED=: a refreshed version is not invalidated by the
+   old corrected root;
+9. =ASP-RFC-10.05-VCI-UNRELATED=: an unrelated artifact remains reusable.
+
+The Lean kernel audit reports eight axiom-free declarations and two
+axiom-dependent declarations.  Only the two concrete non-invalidation examples
+depend on =propext=.  The closure, monotonicity, minimality, and revision
+transport theorems are axiom-free, and no declaration depends on =sorryAx=.
+
+The model does not yet prove:
+
+- bounded traversal cost for a concrete reverse index;
+- atomic publication with the compensation ledger;
+- distributed convergence of invalidation state;
+- garbage collection of superseded keys;
+- provider receipt completeness for dependency-edge emission.

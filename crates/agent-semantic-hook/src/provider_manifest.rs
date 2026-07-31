@@ -79,9 +79,22 @@ pub fn build_default_activation_from_selections(
             registry_started.elapsed().as_secs_f64() * 1_000.0
         );
     }
+    let repository_candidates =
+        agent_semantic_runtime::git::discover_repository_candidate_snapshot(project_root)
+            .map_err(|error| format!("discover activation repository candidates: {error}"))?
+            .ok_or_else(|| {
+                format!(
+                    "provider activation requires a Git candidate snapshot: workspace={}",
+                    project_root.display()
+                )
+            })?;
     let mut providers = Vec::new();
     for (manifest, selection) in selected_providers {
-        let coverage = resolve_activation_coverage(project_root, manifest, selection)?;
+        if !provider_applies_to_repository_candidates(manifest, &repository_candidates) {
+            continue;
+        }
+        let coverage =
+            resolve_activation_coverage(project_root, manifest, selection, &repository_candidates)?;
         providers.push(activate_provider(
             manifest,
             selection.manifest_digest.clone(),
@@ -107,6 +120,84 @@ pub fn build_default_activation_from_selections(
         rankers,
         providers,
     })
+}
+
+fn provider_applies_to_repository_candidates(
+    manifest: &ProviderManifest,
+    snapshot: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
+) -> bool {
+    let candidate_paths = snapshot
+        .candidates
+        .iter()
+        .filter_map(|candidate| candidate.path.to_str())
+        .collect::<Vec<_>>();
+    provider_applies_to_candidate_paths(manifest, &candidate_paths)
+}
+
+fn provider_applies_to_candidate_paths(
+    manifest: &ProviderManifest,
+    candidate_paths: &[&str],
+) -> bool {
+    if let Some(descriptor) = manifest.project_resolution() {
+        candidate_paths.iter().any(|candidate| {
+            descriptor.entry_markers.iter().any(|marker| {
+                *candidate == marker.as_str()
+                    || candidate
+                        .strip_suffix(marker.as_str())
+                        .is_some_and(|prefix| prefix.ends_with('/'))
+            })
+        })
+    } else if let Some(descriptor) = manifest.document_resolution() {
+        candidate_paths.iter().any(|candidate| {
+            descriptor
+                .extensions
+                .iter()
+                .any(|extension| candidate.ends_with(extension))
+        })
+    } else {
+        false
+    }
+}
+
+#[cfg(test)]
+mod provider_candidate_applicability_tests {
+    use super::{provider_applies_to_candidate_paths, provider_manifests};
+
+    #[test]
+    fn project_provider_requires_a_git_candidate_entry_marker() {
+        let manifests = provider_manifests();
+        let typescript = manifests
+            .iter()
+            .find(|manifest| manifest.provider_id().as_str() == "ts-harness")
+            .expect("typescript provider manifest");
+
+        assert!(!provider_applies_to_candidate_paths(
+            typescript,
+            &["Cargo.toml", "src/lib.rs"],
+        ));
+        assert!(provider_applies_to_candidate_paths(
+            typescript,
+            &["apps/web/package.json", "apps/web/src/index.ts"],
+        ));
+    }
+
+    #[test]
+    fn document_provider_requires_a_git_candidate_document_extension() {
+        let manifests = provider_manifests();
+        let org = manifests
+            .iter()
+            .find(|manifest| manifest.language_id().as_str() == "org")
+            .expect("org provider manifest");
+
+        assert!(!provider_applies_to_candidate_paths(
+            org,
+            &["Cargo.toml", "src/lib.rs"],
+        ));
+        assert!(provider_applies_to_candidate_paths(
+            org,
+            &["docs/design.org"],
+        ));
+    }
 }
 
 fn capture_current_asp_binary_selection(
@@ -651,8 +742,8 @@ fn validate_source_snapshot_capability(
 }
 
 fn resolve_document_activation_coverage(
-    project_root: &Path,
     manifest: &ProviderManifest,
+    snapshot: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<ActivationCoverage, String> {
     let descriptor = manifest.document_resolution().ok_or_else(|| {
         format!(
@@ -660,15 +751,6 @@ fn resolve_document_activation_coverage(
             manifest.provider_id()
         )
     })?;
-    let snapshot =
-        agent_semantic_runtime::git::discover_repository_candidate_snapshot(project_root)
-            .map_err(|error| format!("discover document repository candidates: {error}"))?
-            .ok_or_else(|| {
-                format!(
-                    "document resolution requires a Git candidate snapshot: workspace={}",
-                    project_root.display()
-                )
-            })?;
     let candidate_generation = snapshot.candidate_generation.digest.clone();
     let snapshot = serde_json::to_value(snapshot)
         .map_err(|error| format!("encode document repository candidates: {error}"))?;
@@ -709,12 +791,13 @@ fn resolve_activation_coverage(
     project_root: &Path,
     manifest: &ProviderManifest,
     selection: &ProviderCommandSelection,
+    snapshot: &agent_semantic_runtime::git::RepositoryCandidateSnapshot,
 ) -> Result<ActivationCoverage, String> {
     use std::io::Write as _;
     use std::process::Stdio;
 
     if manifest.document_resolution().is_some() {
-        return resolve_document_activation_coverage(project_root, manifest);
+        return resolve_document_activation_coverage(manifest, snapshot);
     }
     let descriptor = manifest.project_resolution().ok_or_else(|| {
         format!(
@@ -722,15 +805,6 @@ fn resolve_activation_coverage(
             manifest.provider_id()
         )
     })?;
-    let snapshot =
-        agent_semantic_runtime::git::discover_repository_candidate_snapshot(project_root)
-            .map_err(|error| format!("discover provider repository candidates: {error}"))?
-            .ok_or_else(|| {
-                format!(
-                    "provider project resolution requires a Git candidate snapshot: workspace={}",
-                    project_root.display()
-                )
-            })?;
     let repository_candidate_generation = snapshot.candidate_generation.digest.clone();
     let snapshot_value = serde_json::to_value(&snapshot)
         .map_err(|error| format!("encode repository candidate snapshot: {error}"))?;
@@ -901,7 +975,8 @@ fn resolve_activation_coverage(
         source_extensions.extend(extensions.iter().map(|extension| (*extension).to_string()));
         for candidate in &candidate_paths {
             let within_root = roots.iter().any(|root| {
-                *candidate == *root
+                *root == "."
+                    || *candidate == *root
                     || candidate
                         .strip_prefix(root)
                         .is_some_and(|suffix| suffix.starts_with('/'))

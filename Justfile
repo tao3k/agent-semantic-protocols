@@ -237,7 +237,6 @@ agent-tools-install-language language bin_dir="" target="" scope="global" projec
       julia)
         direnv exec "${repo_root}" env \
           ASP_JULIA_BUILD_DIR="${repo_root}/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local" \
-          ASP_JULIA_ALLOW_WRAPPER_FALLBACK=0 \
           "${repo_root}/languages/JuliaLangProjectHarness.jl/juliac/build_provider.sh"
         provider="julia"
         binary="asp-julia-harness"
@@ -322,17 +321,17 @@ agent-tools-build-gerbil bin_dir="":
       if [ "$(uname -s)" = "Darwin" ]; then \
         env SDKROOT= CC="$(xcrun --find clang)" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
           -e '(import :gslph/src/build-api/native-build)' \
-          -e '(compile-package-api-if-stale)'; \
+          -e '(gslph/src/build-api/native-build#compile-package-api-if-stale)'; \
         env SDKROOT= CC="$(xcrun --find clang)" GERBIL_PATH="${package_dir}/.gerbil" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
           -e '(import :gslph/src/build-api/native-build)' \
-          -e '(install-target #f #f #f #f #f #t (quote asp))'; \
+          -e '(gslph/src/build-api/native-build#install-target #f #f #f #f #f #t (quote asp))'; \
       else \
         env SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
           -e '(import :gslph/src/build-api/native-build)' \
-          -e '(compile-package-api-if-stale)'; \
+          -e '(gslph/src/build-api/native-build#compile-package-api-if-stale)'; \
         env GERBIL_PATH="${package_dir}/.gerbil" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
           -e '(import :gslph/src/build-api/native-build)' \
-          -e '(install-target #f #f #f #f #f #t (quote asp))'; \
+          -e '(gslph/src/build-api/native-build#install-target #f #f #f #f #f #t (quote asp))'; \
       fi; \
     launcher="${bin_dir}/gslph"; \
       test -x "${launcher}"; \

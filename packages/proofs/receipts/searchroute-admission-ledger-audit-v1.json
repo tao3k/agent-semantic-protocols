@@ -1,0 +1,69 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteAdmissionLedger.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionLedger",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Identity : Type} {before after : SearchRouteAdmissionLedger.ReplayLedger Identity}\n  {runIdentity baselineReceiptIdentity extendedReceiptIdentity : Identity},\n  SearchRouteAdmissionLedger.AtomicRunCommit before after runIdentity baselineReceiptIdentity extendedReceiptIdentity →\n    after.committedRun runIdentity ∧\n      after.consumedReceipt baselineReceiptIdentity ∧ after.consumedReceipt extendedReceiptIdentity",
+   "theoremFamily": "atomic-commit-effect",
+   "rfcClauseIds": ["ASP-RFC-10.05-EAL-ATOMIC-COMMIT"],
+   "name":
+   "SearchRouteAdmissionLedger.atomic_commit_marks_run_and_both_receipts",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Identity : Type} {before after : SearchRouteAdmissionLedger.ReplayLedger Identity}\n  {runIdentity baselineReceiptIdentity extendedReceiptIdentity : Identity},\n  SearchRouteAdmissionLedger.AtomicRunCommit before after runIdentity baselineReceiptIdentity extendedReceiptIdentity →\n    ¬SearchRouteAdmissionLedger.CanCommit after runIdentity baselineReceiptIdentity extendedReceiptIdentity",
+   "theoremFamily": "exactly-once-retry-rejection",
+   "rfcClauseIds": ["ASP-RFC-10.05-EAL-EXACTLY-ONCE"],
+   "name": "SearchRouteAdmissionLedger.committed_run_rejects_exact_retry",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Identity : Type} {before after recovered : SearchRouteAdmissionLedger.ReplayLedger Identity}\n  {runIdentity baselineReceiptIdentity extendedReceiptIdentity : Identity},\n  SearchRouteAdmissionLedger.AtomicRunCommit before after runIdentity baselineReceiptIdentity extendedReceiptIdentity →\n    SearchRouteAdmissionLedger.CrashConsistent recovered before after →\n      ¬recovered.committedRun runIdentity ∧\n          ¬recovered.consumedReceipt baselineReceiptIdentity ∧ ¬recovered.consumedReceipt extendedReceiptIdentity ∨\n        recovered.committedRun runIdentity ∧\n          recovered.consumedReceipt baselineReceiptIdentity ∧ recovered.consumedReceipt extendedReceiptIdentity",
+   "theoremFamily": "crash-linearizability",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-EAL-ATOMIC-COMMIT", "ASP-RFC-10.05-EAL-CRASH-RECOVERY"],
+   "name":
+   "SearchRouteAdmissionLedger.crash_recovery_observes_pre_or_post_state",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "¬SearchRouteAdmissionLedger.CrashConsistent SearchRouteAdmissionLedger.partialLedger\n    SearchRouteAdmissionLedger.emptyLedger SearchRouteAdmissionLedger.committedLedger",
+   "theoremFamily": "partial-state-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-EAL-CRASH-RECOVERY", "ASP-RFC-10.05-EAL-NONIMPLICATION"],
+   "name":
+   "SearchRouteAdmissionLedger.partial_ledger_is_not_a_crash_consistent_state",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "SearchRouteAdmissionLedger.AtomicRunCommit SearchRouteAdmissionLedger.emptyLedger\n    SearchRouteAdmissionLedger.committedLedger SearchRouteAdmissionLedger.LedgerIdentity.run\n    SearchRouteAdmissionLedger.LedgerIdentity.baselineReceipt\n    SearchRouteAdmissionLedger.LedgerIdentity.extendedReceipt ∧\n  ¬SearchRouteAdmissionLedger.CrashConsistent SearchRouteAdmissionLedger.partialLedger\n      SearchRouteAdmissionLedger.emptyLedger SearchRouteAdmissionLedger.committedLedger",
+   "theoremFamily": "durability-witness-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-EAL-CRASH-RECOVERY", "ASP-RFC-10.05-EAL-NONIMPLICATION"],
+   "name":
+   "SearchRouteAdmissionLedger.atomic_relation_alone_does_not_prove_durable_recovery",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "SearchRouteAdmissionLedger.CanCommit SearchRouteAdmissionLedger.emptyLedger\n    SearchRouteAdmissionLedger.LedgerIdentity.run SearchRouteAdmissionLedger.LedgerIdentity.baselineReceipt\n    SearchRouteAdmissionLedger.LedgerIdentity.extendedReceipt ∧\n  ¬SearchRouteAdmissionLedger.CrashConsistent SearchRouteAdmissionLedger.partialLedger\n      SearchRouteAdmissionLedger.emptyLedger SearchRouteAdmissionLedger.committedLedger",
+   "theoremFamily": "read-check-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-EAL-NONIMPLICATION", "ASP-RFC-10.05-EAL-PRECONDITION"],
+   "name":
+   "SearchRouteAdmissionLedger.read_check_then_partial_write_is_not_atomic_admission",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 6,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 3,
+ "axiomDependentDeclarationCount": 3}

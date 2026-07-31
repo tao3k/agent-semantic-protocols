@@ -866,8 +866,8 @@ decides the next search phase.
 ## Output contract for subagents (line protocol)
 
 ```text
-[asp-search-subagent] owner=src/http/client.rs read=rust://src/http/client.rs#item/function/send_request next=asp rust query --selector rust://src/http/client.rs#item/function/send_request --workspace . --code
-[asp-search-subagent] owner=tests/unit/http/client.rs read=rust://tests/unit/http/client.rs#item/function/times_out_request next=asp rust query --selector rust://tests/unit/http/client.rs#item/function/times_out_request --workspace . --code
+[asp-search-subagent] owner=src/http/client.rs read=rust://src/http/client.rs#item/function/send_request next=asp rust query --selector rust://src/http/client.rs#item/function/send_request --workspace . --projection source
+[asp-search-subagent] owner=tests/unit/http/client.rs read=rust://tests/unit/http/client.rs#item/function/times_out_request next=asp rust query --selector rust://tests/unit/http/client.rs#item/function/times_out_request --workspace . --projection source
 ```
 
 Parent merges into:

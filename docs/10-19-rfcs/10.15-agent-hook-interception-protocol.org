@@ -669,7 +669,7 @@ provider registry before attaching language policy.
 
 | ASP command intent | Public command shapes | Meaning | Hook treatment |
 | =reasoning= | =asp <language> guide=, =search prime|pipe|owner|lexical|deps|dependency|failure|reasoning|ingest|guide=, non-projecting =query=, or =query --term= | discovers, refines, ranks, or explains evidence | route from a main session to the managed resident child; apply repeated-prime/pipe feedback and prompt reasoning budget inside the permitted reasoning context |
-| =exact-evidence= | =asp <language> query --selector <structural-selector> --code|--content= or =--view metadata= | projects precise evidence after parser-owned identity exists | allow independently of the reasoning-command budget |
+| =exact-evidence= | =asp <language> query --selector <structural-selector> --projection source|--content= or =--view metadata= | projects precise evidence after parser-owned identity exists | allow independently of the reasoning-command budget |
 | =direct-read-fallback= | =query --from-hook direct-source-read --selector <bounded-range>= | audited low-priority fallback after an evidence frontier | enforce frontier and bounded-range policy; never treat as exact structural evidence |
 | =invalid-evidence= | projecting =query= with a missing, file-level, line-range, malformed, or cross-language selector | attempts precise projection without parser-owned identity | deny and route back to owner/items reasoning |
 
@@ -1106,7 +1106,7 @@ asp <language> search owner <path> items --workspace . --view seeds
 1. Start from asp <language> guide --workspace . when the tool map is needed.
 2. Use search prime for project mapping.
 3. Use query guide treesitter only for syntax pattern work.
-4. Use query --code only after a parser-owned exact item selector or unique match.
+4. Use query --projection source only after a parser-owned exact item selector or unique match.
 5. Patch with apply_patch unless the loaded hook config enables semantic ast-patch.
 #+end_example
 

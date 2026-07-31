@@ -47,6 +47,14 @@ def targets : List Target :=
         "ASP-RFC-10.05-EGA-ISOLATION"
       ] },
     { name :=
+        ``SearchRouteEvidenceGraphAdmission.admitted_change_has_authorized_measurement_coverage
+      theoremFamily := "measurement-coverage"
+      rfcClauseIds := [
+        "ASP-RFC-10.05-EGA-COVERAGE",
+        "ASP-RFC-10.05-EGA-MEASUREMENT",
+        "ASP-RFC-10.05-EGA-POLICY"
+      ] },
+    { name :=
         ``SearchRouteEvidenceGraphAdmission.admitted_change_binds_authorized_evidence_verifier
       theoremFamily := "evidence-verifier-binding"
       rfcClauseIds := [
@@ -118,6 +126,21 @@ def targets : List Target :=
         "ASP-RFC-10.05-EGA-NONIMPLICATION"
       ] },
     { name :=
+        ``SearchRouteEvidenceGraphAdmission.better_point_estimate_does_not_imply_robust_improvement
+      theoremFamily := "uncertainty-counterexample"
+      rfcClauseIds := [
+        "ASP-RFC-10.05-EGA-MEASUREMENT",
+        "ASP-RFC-10.05-EGA-NONIMPLICATION"
+      ] },
+    { name :=
+        ``SearchRouteEvidenceGraphAdmission.valid_returned_evidence_does_not_imply_required_evidence_completeness
+      theoremFamily := "evidence-completeness-counterexample"
+      rfcClauseIds := [
+        "ASP-RFC-10.05-EGA-EVIDENCE",
+        "ASP-RFC-10.05-EGA-CORRECTNESS",
+        "ASP-RFC-10.05-EGA-NONIMPLICATION"
+      ] },
+    { name :=
         ``SearchRouteEvidenceGraphAdmission.deleting_router_code_does_not_delete_derived_search_state
       theoremFamily := "deletion-footprint-counterexample"
       rfcClauseIds := [
@@ -127,7 +150,14 @@ def targets : List Target :=
     { name :=
         ``SearchRouteEvidenceGraphAdmission.erasing_feature_causal_closure_restores_baseline_state
       theoremFamily := "deletion-causal-closure"
-      rfcClauseIds := ["ASP-RFC-10.05-EGA-DELETION"] }
+      rfcClauseIds := ["ASP-RFC-10.05-EGA-DELETION"] },
+    { name :=
+        ``SearchRouteEvidenceGraphAdmission.expired_silent_feature_requires_causal_closure_erasure
+      theoremFamily := "sunset-deletion"
+      rfcClauseIds := [
+        "ASP-RFC-10.05-EGA-SUNSET",
+        "ASP-RFC-10.05-EGA-DELETION"
+      ] }
   ]
 
 def auditJson : Elab.Term.TermElabM Json :=

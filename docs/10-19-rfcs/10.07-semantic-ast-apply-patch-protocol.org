@@ -77,7 +77,7 @@ tell the agent one command shape instead of causing another broad search for
 The normal source-edit flow is:
 
 #+begin_src shell
-asp <language> query --from-hook direct-source-read --selector <path:start:end> --code .
+asp <language> query --from-hook direct-source-read --selector <path:start:end> --projection source .
 asp ast-patch template --language <language> --owner <path> --read <path:start:end> --op <operation> [--snippet '<exact source or inserted snippet>'] [--field <key=value> ...] > semantic-ast-patch.json
 asp <language> ast-patch dry-run --packet semantic-ast-patch.json .
 # If the receipt says mutationSource=provider-native:
@@ -297,7 +297,7 @@ manual hunks for supported AST operations.  The normal hook-guided source edit
 flow is:
 
 #+begin_src shell
-asp <language> query --from-hook direct-source-read --selector <path:start:end> --code .
+asp <language> query --from-hook direct-source-read --selector <path:start:end> --projection source .
 asp ast-patch template --language <language> --owner <path> --read <path:start:end> --op <operation> --field <key=value> > semantic-ast-patch.json
 asp <language> ast-patch dry-run --packet semantic-ast-patch.json .
 asp <language> ast-patch apply --packet semantic-ast-patch.json .

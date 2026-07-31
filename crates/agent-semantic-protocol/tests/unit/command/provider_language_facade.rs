@@ -9,7 +9,7 @@ fn workspace_root() -> PathBuf {
 }
 
 #[test]
-fn structural_item_code_query_routes_to_provider_backend() {
+fn structural_item_source_query_routes_to_provider_backend() {
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
             "typescript",
@@ -18,7 +18,8 @@ fn structural_item_code_query_routes_to_provider_backend() {
             "typescript://languages/typescript-lang-project-harness/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery",
             "--workspace",
             ".",
-            "--code",
+            "--projection",
+            "source",
         ])
         .current_dir(workspace_root())
         .output()
@@ -43,18 +44,17 @@ fn exact_structural_selector_does_not_require_a_term() {
     let selector = "typescript://languages/typescript-lang-project-harness/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery";
     let mut failures = Vec::new();
 
-    for projection in [None, Some("--names-only")] {
-        let mut args = vec![
+    for projection in ["source", "callable-skeleton"] {
+        let args = vec![
             "typescript",
             "query",
             "--selector",
             selector,
             "--workspace",
             ".",
+            "--projection",
+            projection,
         ];
-        if let Some(projection) = projection {
-            args.push(projection);
-        }
 
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
             .args(args)
@@ -65,13 +65,43 @@ fn exact_structural_selector_does_not_require_a_term() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !output.status.success() || stderr.contains("query requires at least one --term") {
             failures.push(format!(
-                "projection={projection:?} status={} stderr={stderr}",
+                "projection={projection} status={} stderr={stderr}",
                 output.status
             ));
         }
     }
 
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn removed_exact_query_flags_are_rejected_by_cli_admission() {
+    for removed_flag in ["--code", "--names-only"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_asp"))
+            .args([
+                "typescript",
+                "query",
+                "--selector",
+                "typescript://languages/typescript-lang-project-harness/src/cli/semantic-search/item-query.ts#item/function/renderOwnerItemQuery",
+                "--workspace",
+                ".",
+                removed_flag,
+            ])
+            .current_dir(workspace_root())
+            .output()
+            .expect("run removed exact-query flag");
+
+        assert!(!output.status.success(), "{removed_flag} was admitted");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("unexpected argument"),
+            "removed flag did not use ordinary CLI rejection: flag={removed_flag} stderr={stderr}"
+        );
+        assert!(
+            !stderr.contains("legacy") && !stderr.contains("unsupported"),
+            "removed flag leaked compatibility guidance: flag={removed_flag} stderr={stderr}"
+        );
+    }
 }
 
 #[test]
@@ -84,7 +114,8 @@ fn document_exact_selector_crosses_the_language_neutral_owner_boundary() {
             "org://docs/missing.org#item/heading/missing",
             "--workspace",
             ".",
-            "--code",
+            "--projection",
+            "content",
         ])
         .current_dir(workspace_root())
         .output()

@@ -21,30 +21,32 @@ fn infers_frontier_mode_by_default() {
 }
 
 #[test]
-fn infers_code_mode_from_code_flag() {
+fn infers_source_mode_from_typed_projection() {
     let request = query_request(vec![
         "--from-hook".to_string(),
         "direct-source-read".to_string(),
         "--selector".to_string(),
         "src/lib.py:1:10".to_string(),
-        "--code".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
         ".".to_string(),
     ]);
 
     assert_eq!(
         request_compact_output_mode(&request),
-        CompactOutputMode::Code
+        CompactOutputMode::Source
     );
 }
 
 #[test]
-fn read_packet_mode_overrides_code_flag() {
+fn read_packet_mode_overrides_source_projection() {
     let request = query_request(vec![
         "--from-hook".to_string(),
         "direct-source-read".to_string(),
         "--selector".to_string(),
         "src/lib.py:1:10".to_string(),
-        "--code".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
         "--view".to_string(),
         "read-packet".to_string(),
         "--json".to_string(),
@@ -99,13 +101,14 @@ fn rejects_text_fields_in_frontier_mode() {
 }
 
 #[test]
-fn allows_inline_source_in_code_and_read_packet_modes() {
-    let code_request = query_request(vec![
+fn allows_inline_source_in_source_and_read_packet_modes() {
+    let source_request = query_request(vec![
         "--from-hook".to_string(),
         "direct-source-read".to_string(),
         "--selector".to_string(),
         "src/lib.py:1:10".to_string(),
-        "--code".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
         ".".to_string(),
     ]);
     let read_packet_request = query_request(vec![
@@ -113,14 +116,15 @@ fn allows_inline_source_in_code_and_read_packet_modes() {
         "direct-source-read".to_string(),
         "--selector".to_string(),
         "src/lib.py:1:10".to_string(),
-        "--code".to_string(),
+        "--projection".to_string(),
+        "source".to_string(),
         "--view=read-packet".to_string(),
         "--json".to_string(),
         ".".to_string(),
     ]);
     let stdout = br#"|code path=src/lib.py lineRange=1:2 text="def ok():\n    pass""#;
 
-    validate_compact_provider_stdout(&code_request, stdout).expect("code mode");
+    validate_compact_provider_stdout(&source_request, stdout).expect("source projection");
     validate_compact_provider_stdout(&read_packet_request, stdout).expect("read-packet mode");
 }
 

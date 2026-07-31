@@ -48,6 +48,8 @@ pub struct RuntimeServer {
     shutdown_handle: RuntimeServerShutdownHandle,
     status_memory: RuntimeServerStatusMemoryWriter,
     events: Option<mpsc::UnboundedSender<RuntimeServerEvent>>,
+    generation_admission:
+        Option<Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>>,
 }
 
 impl RuntimeServer {
@@ -59,6 +61,7 @@ impl RuntimeServer {
 
     pub async fn serve(self) -> Result<RuntimeServerExit, String> {
         let workspace_registry = std::sync::Arc::clone(&self.workspace_registry);
+        let generation_admission = self.generation_admission.clone();
         let shutdown_handle = self.shutdown_handle();
         let serve = self.serve_inner();
         tokio::pin!(serve);
@@ -75,6 +78,17 @@ impl RuntimeServer {
             }
         };
         let shutdown_result = workspace_registry.shutdown().await;
+        let admission_shutdown_result = match generation_admission {
+            Some(admission) => admission.shutdown().await.map(|_| ()),
+            None => Ok(()),
+        };
+        let shutdown_result = match (shutdown_result, admission_shutdown_result) {
+            (Ok(_), Ok(())) => Ok(()),
+            (Err(error), Ok(())) | (Ok(_), Err(error)) => Err(error),
+            (Err(workspace_error), Err(admission_error)) => Err(format!(
+                "workspace lane shutdown failed: {workspace_error}; admission lane shutdown failed: {admission_error}"
+            )),
+        };
         match (serve_result, shutdown_result) {
             (Ok(exit), Ok(_)) => Ok(exit),
             (Err(error), Ok(_)) => Err(error),
@@ -123,6 +137,7 @@ impl RuntimeServer {
             },
             status_memory,
             events: None,
+            generation_admission: None,
         })
     }
 
@@ -163,6 +178,67 @@ impl RuntimeServer {
         self
     }
 
+    pub fn with_workspace_generation_builder(
+        mut self,
+        source_builder: crate::runtime_server_admission::WorkspaceGenerationBuilder,
+    ) -> Self {
+        let durable_registry = Arc::clone(&self.registry);
+        let memory_registry = Arc::clone(&self.workspace_registry);
+        let builder = Arc::new(
+            move |workspace_identity: String, project_root: std::path::PathBuf| {
+                let durable_registry = Arc::clone(&durable_registry);
+                let memory_registry = Arc::clone(&memory_registry);
+                let source_builder = Arc::clone(&source_builder);
+                let workspace_for_build = workspace_identity.clone();
+                Box::pin(async move {
+                    let session = crate::workspace_db_ipc_server::admitted_or_bootstrap_workspace(
+                        &durable_registry,
+                        &workspace_identity,
+                        &project_root,
+                    )
+                    .await?;
+                    if let Some(materialization) = session
+                        .load_active_workspace_generation_materialization()
+                        .await?
+                    {
+                        materialization.validate_persisted(&workspace_identity)?;
+                        memory_registry
+                            .ensure_canonical_generation(
+                                format!("daemon-admission-restore-{workspace_identity}"),
+                                &workspace_identity,
+                                materialization,
+                            )
+                            .await?;
+                        return Ok(());
+                    }
+                    source_builder(workspace_for_build, project_root.clone()).await?;
+                    let materialization = session
+                    .load_active_workspace_generation_materialization()
+                    .await?
+                    .ok_or_else(|| {
+                        format!(
+                            "workspace generation builder published no canonical materialization: workspaceIdentity={workspace_identity}"
+                        )
+                    })?;
+                    materialization.validate_persisted(&workspace_identity)?;
+                    memory_registry
+                        .ensure_canonical_generation(
+                            format!("daemon-admission-build-{workspace_identity}"),
+                            &workspace_identity,
+                            materialization,
+                        )
+                        .await?;
+                    Ok(())
+                })
+                    as crate::runtime_server_admission::WorkspaceGenerationBuildFuture
+            },
+        );
+        self.generation_admission = Some(Arc::new(
+            crate::runtime_server_admission::WorkspaceGenerationAdmission::new(builder),
+        ));
+        self
+    }
+
     async fn serve_inner(self) -> Result<RuntimeServerExit, String> {
         let Self {
             workspace_registry,
@@ -175,6 +251,7 @@ impl RuntimeServer {
             shutdown_handle: _,
             mut status_memory,
             events,
+            generation_admission,
         } = self;
         let mut connections = JoinSet::new();
         let (drain_sender, drain_receiver) = watch::channel(false);
@@ -198,6 +275,7 @@ impl RuntimeServer {
                     let endpoint = endpoint.clone();
                     let registry = Arc::clone(&registry);
                     let memory_registry = Arc::clone(&workspace_registry);
+                    let generation_admission = generation_admission.clone();
                     let connection_drain = drain_receiver.clone();
                     connections.spawn(async move {
                         crate::workspace_db_ipc_server::serve_runtime_server_workspace_stream(
@@ -205,6 +283,7 @@ impl RuntimeServer {
                             &endpoint,
                             &registry,
                             &memory_registry,
+                            generation_admission.as_deref(),
                             connection_drain,
                         )
                         .await?;

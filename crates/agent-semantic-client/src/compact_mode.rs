@@ -7,8 +7,8 @@ use agent_semantic_client_core::{ClientMethod, ClientRequest};
 pub(crate) enum CompactOutputMode {
     /// Compact frontier/read-plan output. This mode must not inline source.
     Frontier,
-    /// Pure byte-preserving code output requested with `--code`.
-    Code,
+    /// Pure byte-preserving source selected by the typed projection contract.
+    Source,
     /// Structured source packet requested with `--json --view read-packet`.
     ReadPacket,
     /// Other structured JSON output.
@@ -21,8 +21,8 @@ pub(crate) fn request_compact_output_mode(request: &ClientRequest) -> CompactOut
     {
         return CompactOutputMode::ReadPacket;
     }
-    if has_flag(&request.forwarded_args, "--code") {
-        return CompactOutputMode::Code;
+    if request.exact_projection() == Some("source") {
+        return CompactOutputMode::Source;
     }
     if has_flag(&request.forwarded_args, "--json") {
         return CompactOutputMode::Json;
@@ -54,7 +54,7 @@ pub(crate) fn validate_compact_provider_stdout(
 
 fn inline_code_error(line_number: usize, field: &str) -> String {
     format!(
-        "provider violated ASP compact frontier mode at stdout line {line_number}: `{field}` inline source is forbidden; use --code for pure code or --json --view read-packet for structured source"
+        "provider violated ASP compact frontier mode at stdout line {line_number}: `{field}` inline source is forbidden; use an exact selector with --projection source"
     )
 }
 

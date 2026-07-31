@@ -12,6 +12,8 @@
     "worktreeIdentity",
     "candidateGeneration",
     "candidates",
+    "policyOverlayDigest",
+    "policyExclusions",
     "metrics"
   ],
   "properties": {
@@ -37,6 +39,16 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/candidate"
+      }
+    },
+    "policyOverlayDigest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    },
+    "policyExclusions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/policyExclusion"
       }
     },
     "metrics": {
@@ -164,6 +176,30 @@
         }
       }
     },
+    "policyExclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "authority",
+        "reasonKind",
+        "matchedValue"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/path"
+        },
+        "authority": {
+          "const": "user-policy"
+        },
+        "reasonKind": {
+          "const": "ignored-dir-name"
+        },
+        "matchedValue": {
+          "$ref": "#/$defs/path"
+        }
+      }
+    },
     "metrics": {
       "type": "object",
       "additionalProperties": false,
@@ -171,6 +207,7 @@
         "indexEntryCount",
         "worktreeAdditionCount",
         "candidateCount",
+        "policyExclusionCount",
         "fullWorkspaceReads",
         "fullMerkleRebuilds",
         "directDbOpens"
@@ -185,6 +222,10 @@
           "minimum": 0
         },
         "candidateCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "policyExclusionCount": {
           "type": "integer",
           "minimum": 0
         },

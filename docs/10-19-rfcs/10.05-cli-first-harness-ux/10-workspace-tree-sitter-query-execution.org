@@ -8,7 +8,7 @@
 - an exact =--selector= selects one owner/item projection;
 - no selector executes the query across the requested =--workspace=.
 
-=--code= remains exact-selector only.  A workspace query returns compact capture
+=--projection source= remains exact-selector only.  A workspace query returns compact capture
 locators and native fact references; it never returns capture text or source
 windows.
 

@@ -41,7 +41,7 @@
         "candidateLanguageFileCount"
       ],
       "properties": {
-        "authority": { "const": "provider-workspace-scope" },
+        "authority": { "const": "provider-project-resolution" },
         "candidateSetAuthority": {
           "const": "provider-registry-extension-index"
         },

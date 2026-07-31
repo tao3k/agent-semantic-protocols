@@ -1,0 +1,71 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryPublicationLedger.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryPublicationLedger",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {RetryKey : Type u} {Certificate : Type v} [inst : DecidableEq RetryKey] (validate : Certificate → Prop)\n  [inst_1 : DecidablePred validate]\n  (ledger : ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublicationLedger RetryKey Certificate)\n  (retryKey : RetryKey) (candidate winner : Certificate),\n  ledger retryKey = some winner →\n    ASPProof.SearchRouteAdmissionRetryPublicationLedger.atomicPublish validate ledger retryKey candidate =\n      (ledger, ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublishOutcome.existing winner)",
+   "theoremFamily": "lookup-first recovery",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPL-LOOKUP-FIRST", "ASP-RFC-10.05-RPL-RECOVERY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationLedger.existing_winner_is_returned_without_republication",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {RetryKey : Type u} {Certificate : Type v} [inst : DecidableEq RetryKey] (validate : Certificate → Prop)\n  [inst_1 : DecidablePred validate]\n  (ledger : ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublicationLedger RetryKey Certificate)\n  (retryKey : RetryKey) (candidate : Certificate),\n  ledger retryKey = none →\n    ¬validate candidate →\n      ASPProof.SearchRouteAdmissionRetryPublicationLedger.atomicPublish validate ledger retryKey candidate =\n        (ledger, ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublishOutcome.rejected)",
+   "theoremFamily": "invalid empty-cell candidate",
+   "rfcClauseIds": ["ASP-RFC-10.05-RPL-EMPTY-INSTALL"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationLedger.invalid_candidate_cannot_win_empty_key",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {RetryKey : Type u} {Certificate : Type v} [inst : DecidableEq RetryKey] (validate : Certificate → Prop)\n  [inst_1 : DecidablePred validate]\n  (ledger : ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublicationLedger RetryKey Certificate)\n  (retryKey : RetryKey) (candidate : Certificate),\n  ledger retryKey = none →\n    validate candidate →\n      (ASPProof.SearchRouteAdmissionRetryPublicationLedger.atomicPublish validate ledger retryKey candidate).fst\n            retryKey =\n          some candidate ∧\n        (ASPProof.SearchRouteAdmissionRetryPublicationLedger.atomicPublish validate ledger retryKey candidate).snd =\n          ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublishOutcome.won candidate",
+   "theoremFamily": "valid empty-cell installation",
+   "rfcClauseIds": ["ASP-RFC-10.05-RPL-EMPTY-INSTALL"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationLedger.valid_candidate_wins_empty_key",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {RetryKey : Type u} {Certificate : Type v} [inst : DecidableEq RetryKey] (validate : Certificate → Prop)\n  [inst_1 : DecidablePred validate]\n  (ledger : ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublicationLedger RetryKey Certificate)\n  (retryKey : RetryKey) (firstCandidate laterCandidate : Certificate),\n  ledger retryKey = none →\n    validate firstCandidate →\n      have first :=\n        ASPProof.SearchRouteAdmissionRetryPublicationLedger.atomicPublish validate ledger retryKey firstCandidate;\n      have later :=\n        ASPProof.SearchRouteAdmissionRetryPublicationLedger.atomicPublish validate first.fst retryKey laterCandidate;\n      first.snd = ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublishOutcome.won firstCandidate ∧\n        later.fst retryKey = some firstCandidate ∧\n          later.snd = ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublishOutcome.existing firstCandidate",
+   "theoremFamily": "winner stickiness",
+   "rfcClauseIds": ["ASP-RFC-10.05-RPL-WINNER-STICKY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationLedger.installed_winner_is_sticky_for_any_later_candidate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "∀ {RetryKey : Type u} {Certificate : Type v} [inst : DecidableEq RetryKey] (validate : Certificate → Prop)\n  [inst_1 : DecidablePred validate]\n  (ledger : ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublicationLedger RetryKey Certificate)\n  (retryKey : RetryKey) (invalidCandidate winner : Certificate),\n  ledger retryKey = some winner →\n    ¬validate invalidCandidate →\n      ASPProof.SearchRouteAdmissionRetryPublicationLedger.atomicPublish validate ledger retryKey invalidCandidate =\n        (ledger, ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublishOutcome.existing winner)",
+   "theoremFamily": "loser recovery",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPL-LOOKUP-FIRST",
+    "ASP-RFC-10.05-RPL-NONIMPLICATION",
+    "ASP-RFC-10.05-RPL-RECOVERY"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationLedger.invalid_losing_retry_still_recovers_existing_winner",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryPublicationLedger.naiveCheckThenWrite none true =\n    ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublishOutcome.won true ∧\n  ASPProof.SearchRouteAdmissionRetryPublicationLedger.naiveCheckThenWrite none false =\n      ASPProof.SearchRouteAdmissionRetryPublicationLedger.PublishOutcome.won false ∧\n    true ≠ false",
+   "theoremFamily": "double-winner counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-RPL-EMPTY-INSTALL", "ASP-RFC-10.05-RPL-NONIMPLICATION"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryPublicationLedger.non_atomic_check_then_write_admits_two_distinct_winner_claims",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 6,
+ "axiomInventory": ["propext"],
+ "axiomFreeDeclarationCount": 1,
+ "axiomDependentDeclarationCount": 5}

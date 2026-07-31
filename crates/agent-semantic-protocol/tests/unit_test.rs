@@ -66,6 +66,8 @@ mod paths_command;
 mod provider_command;
 #[path = "unit/provider_exact_diagnostic.rs"]
 mod provider_exact_diagnostic;
+#[path = "unit/provider_exact_query_args.rs"]
+mod provider_exact_query_args;
 #[path = "unit/command/provider_language_facade.rs"]
 mod provider_language_facade;
 #[path = "unit/provider_selector.rs"]

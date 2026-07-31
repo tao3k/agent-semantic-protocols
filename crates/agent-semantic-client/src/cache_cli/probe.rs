@@ -36,7 +36,7 @@ pub(crate) fn provider_cache_probe(
     snapshot: &ProviderRegistrySnapshot,
     request: &ClientRequest,
 ) -> Option<ProviderCacheProbe> {
-    if request.is_source_content_output() || is_structural_item_code_query(request) {
+    if request.is_source_content_output() || is_structural_item_source_query(request) {
         return None;
     }
     let effective_project_root = cache_project_root_for_request(project_root, request);
@@ -153,8 +153,8 @@ pub(crate) fn provider_cache_probe(
     })
 }
 
-fn is_structural_item_code_query(request: &ClientRequest) -> bool {
-    if !request.forwarded_args.iter().any(|arg| arg == "--code") {
+fn is_structural_item_source_query(request: &ClientRequest) -> bool {
+    if request.exact_projection() != Some("source") {
         return false;
     }
     request
@@ -251,7 +251,7 @@ fn is_fresh_prime_reuse_request(
         && !request
             .forwarded_args
             .iter()
-            .any(|arg| arg == "--json" || arg == "--code")
+            .any(|arg| arg == "--json" || arg == "--projection" || arg.starts_with("--projection="))
 }
 
 fn is_fresh_lexical_reuse_request(
@@ -268,7 +268,7 @@ fn is_fresh_lexical_reuse_request(
         && !request
             .forwarded_args
             .iter()
-            .any(|arg| arg == "--json" || arg == "--code")
+            .any(|arg| arg == "--json" || arg == "--projection" || arg.starts_with("--projection="))
 }
 
 fn request_wants_seed_view(args: &[String]) -> bool {

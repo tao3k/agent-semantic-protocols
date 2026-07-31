@@ -101,14 +101,14 @@ stronger native-parser-backed language syntax search system.
    syntax query ABI, because that can silently redirect a query to the wrong
    owner.
 
-=query --selector <selector> --code= is a narrower transport boundary than
+=query --selector <selector> --projection source= is a narrower transport boundary than
 syntax frontier matching.  It requires an exact source file, source range, or
 parser-owned structural selector.  A directory selector may bound capture
 frontiers or cache containment checks, but it must not be treated as an exact
 code selector, and =--query <terms>= must not reinterpret it as recursive
 directory search.  Agents should use =search lexical=, =search owner=, or
 =search pipe= for directory-scoped discovery, then follow the returned exact
-=query --selector ... --code= action.
+=query --selector ... --projection source= action.
 
 9. /Normalized row replay is keyed by query AST/ABI./  Turso syntax rows may be
    replayed only when the request query compiles to the same tree-sitter ABI
@@ -184,7 +184,7 @@ artifact data showed the failure mode:
 This is a protocol guidance failure even when each individual direct read is
 bounded and provider-owned.  Agents follow the cheapest executable command in
 hook recovery and skill text; if those surfaces make
-=query --from-hook direct-source-read --code= more prominent than syntax
+=query --from-hook direct-source-read --projection source= more prominent than syntax
 locate, owner-local item query, read-plan frontier, or tree-sitter-compatible
 S-expression capture, the public workflow collapses back into manual range
 scanning.
@@ -198,7 +198,7 @@ recovery route: it is acceptable only after =search pipe= or equivalent
 parser-owned frontier output, with an exact bounded selector, and with a span
 small enough for the current policy threshold.  Discovery should route through
 =search prime=, =search lexical=, =search owner ... items=, normal =query
---names-only=, or =query --treesitter-query= locator/frontier output.  Wide or
+--projection source=, or =query --treesitter-query= locator/frontier output.  Wide or
 unbounded source recovery should return read-plan or syntax frontier refs before
 any inline code.  The graph-turbo history audit must keep
 =query/direct-source-read=, =query/code=, and =query/tree-sitter= as distinct
@@ -454,7 +454,7 @@ The core packet shape is:
 The packet should not store raw source by default.  Capture text may be omitted
 or summarized unless an explicit machine consumer requests bounded exact text
 and the provider policy allows it.  Source windows remain =semantic-read-packet=
-or provider =query --code= output, not the default syntax query packet.
+or provider =query --projection source= output, not the default syntax query packet.
 
 * Query input model
 
@@ -752,7 +752,7 @@ fallback from retired rendered text or incomplete packet fields.
 The syntax query stdout contract is intentionally smaller than the JSON packet.
 Non-=--code= output is a locator/frontier surface for choosing the next exact
 query, read, or code extraction; it must not inline source windows or cache
-debugging state.  =--code= output is the only default prompt-facing syntax query
+debugging state.  =--projection source= output is the only default prompt-facing syntax query
 mode that writes source text, and it must write only the selected code.
 
 Providers may choose one of two render profiles while sharing the same
@@ -773,14 +773,14 @@ default non-JSON output.
 The code contract is stricter than the locate contract:
 
 #+begin_example
-asp <language> query --treesitter-query <query> --selector <exact-locator> --code
+asp <language> query --treesitter-query <query> --selector <exact-locator> --projection source
   -> stdout contains only provider-selected source code
 
 asp <language> query --treesitter-query <query> --selector <range-or-path>
   -> stdout contains locator/frontier facts only
 #+end_example
 
-When a non-=--code= query matches many captures, the renderer should cap prompt
+When a non-=--projection source= query matches many captures, the renderer should cap prompt
 output and state the cap with =matches=, =shown=, =omitted=, and =omit= rather
 than printing hidden source or JSON.  When =--code= would select multiple code
 windows, providers should reject the request or require a more exact selector or
@@ -894,7 +894,7 @@ default guide output.
 
 | Capability | V1 accepted | V2/deferred |
 |------------+-------------+-------------|
-| Public command surface | =asp <language> query= with =--treesitter-query=, catalog id, selector, and =--code= modes | New public families such as =ts-query=, =syntax-query=, or raw provider query surfaces |
+| Public command surface | =asp <language> query= with =--treesitter-query=, catalog id, selector, and =--projection source= modes | New public families such as =ts-query=, =syntax-query=, or raw provider query surfaces |
 | Runtime dependency | Native provider projection without grammar-specific tree-sitter runtime crates | Complete tree-sitter runtime compatibility claims for every provider |
 | Query plan | ASP-compiled flat plan facts: captures, node types, fields, predicates, selector, catalog/profile fingerprints | ASP-compiled pattern graph with nested children, optional children, anchors, alternation, quantifiers, and directives |
 | Match row | Single-capture rows that can locate an enclosing item or syntax frontier | Multi-capture match rows with capture-to-capture predicates and native relation groups |
@@ -955,7 +955,7 @@ stronger tree-sitter behavior.
    shared boundary and agent-facing render contract: language providers must
    not depend on tree-sitter runtime packages; Rust may render
    =compact-graph-frontier= and TypeScript/Python may render =corpus-locator=,
-   but all three must prove ASP-compiled query input, non-=--code=
+   but all three must prove ASP-compiled query input, non-=--projection source=
    locator/frontier output without cache noise, and pure-code =--code= output.
    The composite =python -m tools tree-sitter validate contracts= command also
    runs =python -m tools tree-sitter validate json-abi-corpus= so the JSON
@@ -969,7 +969,7 @@ exercise native parser facts without requiring another runtime boundary.
 1. Add catalog loading and fingerprinting to ASP so query catalog id, grammar
    id, and grammar profile version become part of cache provenance.
 2. Add artifact family =semantic-tree-sitter-query/<id>.json= or a compatible
-   query artifact namespace, and replay exact non-=--code= syntax locator
+   query artifact namespace, and replay exact non-=--projection source= syntax locator
    output from validated packet artifacts.
 3. Normalize syntax query rows into Turso from validated
    =semantic-tree-sitter-query.v1= packets; rows store project-relative ranges,
@@ -1193,7 +1193,7 @@ rules before richer v2 projection layers move into default guide output.
 1. =asp <language> query --treesitter-query <pattern> .= prints locator/frontier
    output by default.
    Prompt-noise ban: without source windows, cache ids, DB paths, receipt JSON, or artifact ids.
-2. =asp <language> query --selector <exact> --treesitter-query <pattern> --workspace . --code=
+2. =asp <language> query --selector <exact> --treesitter-query <pattern> --workspace . --projection source=
    prints pure source code and rejects broad multi-match code extraction unless
    the provider can prove a unique match.
 3. Search and read-plan outputs may attach =syn= anchors, but they must not
@@ -1465,9 +1465,9 @@ Evidence rules:
 
 1. Search/read-plan recovery remain discovery surfaces, and =search prime= remains a discovery surface; all of them
    must not inline source code.
-2. =query --treesitter-query= without =--code= must render locator/frontier
+2. =query --treesitter-query= without =--projection source= must render locator/frontier
    evidence, not artifact ids, DB paths, receipt JSON, or raw source windows.
-3. =query --selector <exact> --treesitter-query <pattern> --code= must print only source text for the selected exact or unique match.
+3. =query --selector <exact> --treesitter-query <pattern> --projection source= must print only source text for the selected exact or unique match.
 4. Cache speedup may be claimed only when the receipt reports =cacheClaim=hit= or
    a validated normalized-row replay path.  =warm-provider= is not a cache hit.
 5. =directReadCount= must be explained by exact-locator follow-up or

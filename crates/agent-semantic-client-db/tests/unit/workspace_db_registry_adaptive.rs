@@ -38,11 +38,9 @@ async fn reader_pool_grows_to_runtime_demand_and_reuses_connections() {
             workspace_identity: "adaptive-readers".to_owned(),
             client_db_path: PathBuf::from(&client_db_path),
             _database: database,
-            read_connections: Mutex::new(vec![read_connection]),
+            read_connections: vec![read_connection],
             active_reader_count: AtomicU64::new(0),
-            max_reader_connection_count: reader_limit,
             next_read_connection: AtomicU64::new(0),
-            connection_create_count: Arc::clone(&connection_create_count),
             source_index_read_cache: (0..reader_limit)
                 .map(|_| tokio::sync::Mutex::new(None))
                 .collect(),

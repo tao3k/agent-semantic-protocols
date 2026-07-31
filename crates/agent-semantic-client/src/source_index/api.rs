@@ -6,20 +6,15 @@ use std::time::Instant;
 
 use agent_semantic_client_core::{
     ClientCacheFileHash, LanguageId, ProjectContext, ProviderId, ProviderRegistryEvidence,
-    ProviderRegistrySnapshot, SemanticSchemaId, SemanticSchemaVersion,
+    ProviderRegistrySnapshot,
 };
-use agent_semantic_client_db::{
-    ClientDbEngine, ClientDbSourceIndexImportAssemblyRequest, ClientDbSourceIndexRefreshRequest,
-    client_db_source_index_file_count, source_index_file_hashes,
-    source_index_import_with_file_hashes,
-};
+use agent_semantic_client_db::{ClientDbEngine, source_index_file_hashes};
 use agent_semantic_runtime::{collect_runtime_source_index_files, runtime_source_index_context};
 
 use super::collect::collect_source_index_files;
-use super::config::{
-    SOURCE_INDEX_FILE_BYTES_LIMIT, SOURCE_INDEX_FILE_LIMIT, SOURCE_INDEX_PROVIDER_ID,
-    SOURCE_INDEX_SCHEMA_ID, SOURCE_INDEX_SCHEMA_VERSION,
-};
+use super::config::SOURCE_INDEX_FILE_LIMIT;
+use super::generation_build::{SourceIndexGenerationRefresh, SourceIndexRefreshContext};
+use super::generation_commit::PreparedSourceIndexGeneration;
 use super::model::{SourceIndexRefreshReport, SourceIndexScopeFile};
 use super::provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1,
@@ -84,7 +79,7 @@ fn refresh_complete_source_index_generation(
     Ok(report)
 }
 
-fn source_index_snapshot_from_files(
+pub(super) fn source_index_snapshot_from_files(
     index_root: &Path,
     files: &[SourceIndexScopeFile],
     registry: &ProviderRegistryEvidence,
@@ -601,8 +596,14 @@ pub(crate) fn current_runtime_source_index_snapshot(
 
 /// Rebuild the DB Engine source index for a project without storing raw source.
 pub fn rebuild_source_index(project_root: &Path) -> Result<SourceIndexRefreshReport, String> {
+    prepare_rebuild_source_index(project_root)?.commit()
+}
+
+fn prepare_rebuild_source_index(
+    project_root: &Path,
+) -> Result<PreparedSourceIndexGeneration, String> {
     let trace_started = Instant::now();
-    let mut context = SourceIndexRefreshContext::resolve(project_root)?;
+    let context = SourceIndexRefreshContext::resolve(project_root)?;
     source_index_trace("context-resolved", trace_started);
     let snapshot = ProviderRegistrySnapshot::load(project_root)?;
     source_index_trace("provider-registry-loaded", trace_started);
@@ -614,7 +615,7 @@ pub fn rebuild_source_index(project_root: &Path) -> Result<SourceIndexRefreshRep
         &super::collect::SourceIndexCollectionScope::CompleteGeneration,
     )?;
     source_index_trace("scope-files-collected", trace_started);
-    context.refresh_generation(SourceIndexGenerationRefresh {
+    context.prepare_generation(SourceIndexGenerationRefresh {
         index_root: project_root,
         files: &files,
         registry: &registry,
@@ -675,95 +676,7 @@ pub fn refresh_runtime_source_index(
     })
 }
 
-struct SourceIndexRefreshContext {
-    db_path: std::path::PathBuf,
-    client_cache_dir: std::path::PathBuf,
-    schema_id: SemanticSchemaId,
-    schema_version: SemanticSchemaVersion,
-}
-
-impl SourceIndexRefreshContext {
-    fn resolve(project_root: &Path) -> Result<Self, String> {
-        let project_context = ProjectContext::resolve(project_root)?;
-        project_context.require_inside_workspace(project_root)?;
-        let db_engine = ClientDbEngine::resolve(project_root)?;
-        let db_path = db_engine.db_path().to_path_buf();
-        let client_cache_dir = db_engine.client_dir().to_path_buf();
-        Ok(Self {
-            db_path,
-            client_cache_dir,
-            schema_id: SemanticSchemaId::from(SOURCE_INDEX_SCHEMA_ID),
-            schema_version: SemanticSchemaVersion::from(SOURCE_INDEX_SCHEMA_VERSION),
-        })
-    }
-
-    fn client_cache_dir(&self) -> &Path {
-        &self.client_cache_dir
-    }
-
-    fn refresh_generation(
-        &mut self,
-        request: SourceIndexGenerationRefresh<'_>,
-    ) -> Result<SourceIndexRefreshReport, String> {
-        let trace_started = Instant::now();
-        let (file_hashes, _workspace_snapshot, source_snapshot, source_blobs) =
-            source_index_snapshot_from_files(request.index_root, request.files, request.registry)?;
-        source_index_trace("generation-file-hashes-built", trace_started);
-        source_index_trace("generation-evidence-built", trace_started);
-        let generation_id =
-            agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
-                &source_snapshot,
-            );
-        let import = source_index_import_with_file_hashes(
-            ClientDbSourceIndexImportAssemblyRequest {
-                generation_id,
-                project_root: request.index_root.to_path_buf(),
-                schema_id: self.schema_id.clone(),
-                schema_version: self.schema_version.clone(),
-                selector_source: SOURCE_INDEX_PROVIDER_ID.into(),
-                file_text_bytes_limit: SOURCE_INDEX_FILE_BYTES_LIMIT,
-                registry_fingerprint: request.registry.fingerprint.clone(),
-                extra_scope_dirs: request.registry.scope_dirs.iter().cloned().collect(),
-                files: request.files.to_vec(),
-                source_blobs: source_blobs.clone(),
-            },
-            file_hashes,
-        )?;
-        source_index_trace("generation-import-assembled", trace_started);
-        let refresh_request = ClientDbSourceIndexRefreshRequest {
-            import,
-            file_count: client_db_source_index_file_count(request.files.len()),
-            source_snapshot: source_snapshot.clone(),
-        };
-        let workspace_identity =
-            agent_semantic_client_core::state_core::ResolvedState::resolve(request.index_root)?
-                .workspace
-                .workspace_id
-                .to_string();
-        let materialization =
-            agent_semantic_client_db::runtime_server_workspace::
-                WorkspaceCanonicalMaterialization::from_source_index(
-                    workspace_identity,
-                    &source_snapshot,
-                    &refresh_request.import,
-                    &source_blobs,
-                )?;
-        let report =
-            agent_semantic_client_db::workspace_db_ipc::
-                commit_source_index_generation_via_runtime_server(
-                    refresh_request,
-                    materialization,
-                )?;
-        source_index_trace("generation-turso-imported", trace_started);
-        Ok(SourceIndexRefreshReport::from_report(
-            self.db_path.clone(),
-            report.clone(),
-            report.source_snapshot,
-        ))
-    }
-}
-
-fn source_index_trace(stage: &str, started: Instant) {
+pub(super) fn source_index_trace(stage: &str, started: Instant) {
     if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
         eprintln!(
             "[source-index-trace] stage={} elapsedMs={}",
@@ -771,12 +684,6 @@ fn source_index_trace(stage: &str, started: Instant) {
             started.elapsed().as_millis()
         );
     }
-}
-
-struct SourceIndexGenerationRefresh<'a> {
-    index_root: &'a Path,
-    files: &'a [SourceIndexScopeFile],
-    registry: &'a ProviderRegistryEvidence,
 }
 
 #[path = "activation_snapshot.rs"]

@@ -112,7 +112,6 @@ def test_language_release_workflows_are_project_owned_and_publish_assets() -> No
             assert "- name: Build native binary" in workflow
             assert "gxpkg env ./build.ss compile --release --optimized" in workflow
             assert ".bin/gslph search prime --view seeds --workspace ." in workflow
-            assert ".bin/gslph search workspace-scope --workspace ." in workflow
             assert "package/bin/gslph" in workflow
 
 
@@ -230,7 +229,6 @@ def test_gerbil_ci_uses_canonical_gslph_binary() -> None:
     assert "test -x .bin/gslph" in workflow
     assert "- name: Smoke canonical search subcommands" in workflow
     assert ".bin/gslph search prime --view seeds --workspace ." in workflow
-    assert ".bin/gslph search workspace-scope --workspace ." in workflow
     assert ".bin/gslph check --full ." in workflow
     assert ".bin/gslph bench --json" in workflow
     assert ".bin/gslph search prime --json ." in workflow

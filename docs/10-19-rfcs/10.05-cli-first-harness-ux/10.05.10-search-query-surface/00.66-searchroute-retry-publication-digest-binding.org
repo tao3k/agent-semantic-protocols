@@ -1,0 +1,277 @@
+#+title: RFC 10.05.66 — SearchRoute Retry Publication Digest Binding
+#+author: ASP Search Protocol Working Notes
+#+startup: overview
+
+* Status
+
+This RFC is a proof-oriented refinement of RFC 10.05.65.  It separates
+mathematical canonical-encoding injectivity from cryptographic digest
+assumptions and defines digest domain binding.  It does not select or implement
+a production digest algorithm.
+
+* Abstract
+
+RFC 10.05.65 proves that canonical key encoding is injective.  A stored
+publication cell commonly uses a digest rather than the complete encoding.
+That substitution adds assumptions that Lean cannot manufacture:
+
+- the chosen digest must be collision resistant for the accepted preimage
+  domain;
+- the preimage must contain a protocol domain tag;
+- the reference must bind digest-algorithm identity;
+- the digest value must not be silently truncated.
+
+This RFC makes collision freedom an explicit premise.  Conditional on that
+premise, equal digest values imply equal domain-tagged preimages and therefore
+equal canonical publication keys.  Countermodels demonstrate that domain
+separation alone does not make an arbitrary digest injective.
+
+* Logic boundary exposed by the proof
+
+** What Lean proves
+
+For an abstract digest function =H=:
+
+#+begin_example
+CollisionFree(H)
+and H(left) = H(right)
+imply left = right
+#+end_example
+
+Because the preimage contains its protocol domain, equality then preserves
+both domain and payload identity.
+
+** What Lean does not prove here
+
+The model does not prove that BLAKE3, SHA-256, or another concrete algorithm is
+collision resistant.  That is a cryptographic assumption supported by
+algorithm specification, analysis, implementation conformance, and operational
+policy.
+
+Naming an algorithm in an RFC is not a Lean proof of its collision resistance.
+
+* Normative vocabulary
+
+** Digest domain
+
+The protocol role of a digest preimage.  At minimum, this RFC distinguishes:
+
+- retry-publication key;
+- evidence payload;
+- model-cache identity.
+
+Equal payload bytes in different domains MUST have distinct domain-tagged
+preimages.
+
+** Digest algorithm identity
+
+A versioned identifier for the algorithm, output size, parameterization, and
+encoding used to compute the digest.
+
+=blake3-v1= and =sha256-v1= are distinct reference identities even when their
+displayed digest bytes happen to match.
+
+** Digest reference
+
+A digest reference binds:
+
+1. digest algorithm identity;
+2. digest domain;
+3. complete digest value.
+
+For publication keys, the referenced preimage is the canonical RFC 10.05.65
+encoding, including its encoding-schema identity.
+
+** Collision-free premise
+
+The logical property that equal digest outputs imply equal domain-tagged
+preimages.  It is an explicit proof premise, not an unconditional theorem about
+a concrete cryptographic primitive.
+
+* Normative requirements
+
+** ASP-RFC-10.05-RPDB-DOMAIN
+
+Every digest preimage MUST begin with or otherwise injectively bind a versioned
+protocol domain identity.
+
+Retry-publication keys, evidence payloads, and model-cache identities MUST NOT
+reuse one untagged digest namespace.
+
+** ASP-RFC-10.05-RPDB-ALGORITHM
+
+Every stored or transmitted digest reference MUST bind the algorithm identity.
+Digest bytes without algorithm identity are not an authoritative reference.
+
+Algorithm migration MUST create a new reference identity; it MUST NOT silently
+reinterpret existing bytes under a different algorithm.
+
+** ASP-RFC-10.05-RPDB-PREIMAGE
+
+The retry-publication digest preimage MUST contain the complete canonical
+RFC 10.05.65 encoding.  Implementations MUST NOT hash a display string,
+schema-free projection, normalized label, or subset of key fields.
+
+The audit receipt SHOULD expose the preimage schema identity and a reproducible
+preimage-content identity without dumping sensitive field values.
+
+** ASP-RFC-10.05-RPDB-COLLISION-ASSUMPTION
+
+Any theorem or runtime receipt that derives semantic identity from digest
+equality MUST state the collision-resistance assumption and algorithm identity
+on which that derivation depends.
+
+The protocol MUST NOT describe cryptographic collision resistance as an
+unconditional Lean theorem.
+
+** ASP-RFC-10.05-RPDB-NO-TRUNCATION
+
+The complete algorithm output specified by the digest reference MUST be used
+for authoritative publication lookup.  Truncation, prefix matching, human
+abbreviation, or display-form comparison is forbidden.
+
+Short display digests MAY be diagnostic labels but MUST NOT become winner-cell
+keys.
+
+** ASP-RFC-10.05-RPDB-EQUALITY
+
+Conditional on the declared collision-free premise, equal authoritative digest
+values for one algorithm imply equal domain-tagged preimages.  For
+retry-publication keys this entails equal canonical encodings and equal
+versioned semantic keys.
+
+** ASP-RFC-10.05-RPDB-NONIMPLICATION
+
+The protocol MUST preserve these explicit non-implications:
+
+- canonical encoder injectivity does not imply digest collision resistance;
+- domain-tagged preimages do not make an arbitrary digest injective;
+- equal untagged payload digests do not imply equal protocol domains;
+- equal digest bytes do not imply equal references when algorithms differ;
+- truncated digest equality does not imply full digest equality;
+- digest identity does not prove authorization to retrieve a winner;
+- collision resistance does not prove graph-route optimality.
+
+* Mathematical model
+
+The Typst source remains embedded in Org and is evaluated through stdin.
+
+#+name: searchroute-retry-publication-digest-binding-model
+#+begin_src typst
+#let digest(preimage) = $upright("H")(#preimage)$
+#let domain(preimage) = $upright("domain")(#preimage)$
+#let payload(preimage) = $upright("payload")(#preimage)$
+#let collisionFree = $upright("CollisionFree")(upright("H"))$
+#let untagged(preimage) = $upright("UntaggedDigest")(#preimage)$
+#let omitAlgorithm(reference) = $upright("omit-algorithm")(#reference)$
+#let truncate(value) = $upright("Truncate")(#value)$
+
+#[
+  A digest preimage is the pair
+  $
+    P = (D, C),
+  $
+  where $D$ is protocol domain and $C$ is canonical payload.
+
+  Collision freedom is an explicit premise:
+  $
+    #collisionFree
+    equiv
+    (
+      forall P_1, P_2,
+      #digest($P_1$) = #digest($P_2$)
+      arrow.r.double
+      P_1 = P_2
+    ).
+  $
+
+  Consequently
+  $
+    #collisionFree
+    and #digest($P_1$) = #digest($P_2$)
+    arrow.r.double
+    (
+      #domain($P_1$) = #domain($P_2$)
+      and #payload($P_1$) = #payload($P_2$)
+    ).
+  $
+
+  The countermodels establish four invalid shortcuts.
+
+  A constant digest collides even on domain-tagged preimages:
+  $
+    P_1 != P_2
+    and #digest($P_1$) = #digest($P_2$)
+    and not #collisionFree.
+  $
+
+  Omitting the domain aliases equal payloads used by different protocols:
+  $
+    P_D != P_D'
+    and #untagged($P_D$) = #untagged($P_D'$).
+  $
+
+  Omitting algorithm identity aliases distinct digest references:
+  $
+    R_A != R_A'
+    and #omitAlgorithm($R_A$) = #omitAlgorithm($R_A'$).
+  $
+
+  Truncation is not injective:
+  $
+    X_1 != X_2
+    and #truncate($X_1$) = #truncate($X_2$).
+  $
+]
+#+end_src
+
+* Lean correspondence
+
+The executable model is
+=packages/proofs/ASPProof/SearchRouteAdmissionRetryPublicationDigest.lean=.
+
+- =DigestDomain= separates publication keys, evidence payloads, and model-cache
+  identities.
+- =DigestAlgorithm= and =DigestReference= bind algorithm identity, domain, and
+  value.
+- =DigestPreimage= binds domain to canonical payload.
+- =CollisionFree= is the explicit injectivity premise.
+- =collision_free_digest_equality_preserves_domain_and_payload= proves the
+  conditional equality theorem.
+- =domain_tagged_preimages_do_not_make_arbitrary_digest_collision_free= proves
+  that domain tagging alone is insufficient.
+- =omitting_domain_tag_aliases_equal_payloads_across_protocols= proves the
+  untagged namespace counterexample.
+- =omitting_algorithm_identity_aliases_distinct_digest_references= proves the
+  algorithm omission counterexample.
+- =digest_truncation_is_not_collision_free= proves the truncation
+  counterexample.
+
+The JSON audit is modular and scoped only to this RFC.
+
+* SearchLoop cost relevance
+
+Digest aliasing can redirect one retry to another winner or let evidence and
+model-cache identities occupy the publication-key namespace.  The agent may
+then retrieve semantically unrelated graph evidence, repeat searches, expand
+packets, or follow a short invalid path.
+
+Domain-bound digest references protect stable evidence reuse and model-cache
+identity.  They do not themselves guarantee a cache hit, minimum tokens,
+minimum interaction rounds, or shortest graph path.
+
+* Non-goals and next proof boundary
+
+This RFC does not yet prove:
+
+- collision resistance of a concrete algorithm;
+- constant-time comparison or side-channel safety;
+- algorithm migration and dual-read cutover;
+- authorization-safe winner lookup;
+- leader fencing and replicated linearizability;
+- graph-route optimality.
+
+The next proof layer should formalize authorization-bound winner recovery.  It
+must prove that knowing a valid scoped key or digest does not authorize reading
+the winner, and that authorization decisions are bound to the same tenant,
+workspace, generation, and contract dimensions as the publication key.

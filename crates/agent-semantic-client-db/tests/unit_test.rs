@@ -30,6 +30,8 @@ mod provider_incremental_probe_batch;
 mod provider_treesitter_read;
 #[path = "unit/runtime_server_control.rs"]
 mod runtime_server_control;
+#[path = "unit/runtime_server_generation_admission.rs"]
+mod runtime_server_generation_admission;
 #[path = "unit/runtime_server_overlay_admission.rs"]
 mod runtime_server_overlay_admission;
 #[path = "unit/runtime_server_runtime.rs"]

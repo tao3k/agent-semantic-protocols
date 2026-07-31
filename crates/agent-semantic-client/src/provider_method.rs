@@ -20,7 +20,6 @@ use sha2::{Digest, Sha256};
 use crate::cache_cli::{
     apply_provider_cache_probe, cache_hit_receipt, provider_cache_probe,
     write_prompt_output_cache_after_provider_success,
-    write_query_packet_cache_after_provider_success,
     write_search_packet_cache_after_provider_success,
 };
 use crate::cli_args::ParsedArgs;
@@ -142,13 +141,6 @@ pub(crate) fn run_provider_method(
                 &request,
                 execution_cache_status,
                 parsed.frontier_receipt_out.as_deref(),
-            )?
-        } else if cache_manifest_allows_packet_first && should_try_query_packet_first(&request) {
-            run_query_packet_first_miss(
-                &parsed.project_root,
-                &snapshot,
-                &request,
-                execution_cache_status,
             )?
         } else {
             None
@@ -300,7 +292,9 @@ fn managed_stdin_bytes() -> Result<Bytes, String> {
 }
 
 fn wants_agent_compact_output(args: &[String]) -> bool {
-    !args.iter().any(|arg| arg == "--json" || arg == "--code")
+    !args
+        .iter()
+        .any(|arg| arg == "--json" || arg == "--projection" || arg.starts_with("--projection="))
 }
 
 fn empty_ingest_diagnostic() -> &'static str {
@@ -390,38 +384,16 @@ pub(crate) fn should_try_search_packet_first(request: &ClientRequest) -> bool {
     request.method == ClientMethod::Search
         && !is_workspace_seed_search(&request.forwarded_args)
         && !is_compare_search(&request.forwarded_args)
-        && !request
-            .forwarded_args
-            .iter()
-            .any(|arg| arg == "items" || arg == "ingest" || arg == "--code" || arg == "--json")
+        && !request.forwarded_args.iter().any(|arg| {
+            arg == "items"
+                || arg == "ingest"
+                || arg == "--json"
+                || arg == "--projection"
+                || arg.starts_with("--projection=")
+        })
         && (is_prime_seed_search(&request.forwarded_args)
             || is_search_packet_seed_search(&request.forwarded_args)
             || is_dependency_search(&request.forwarded_args))
-}
-
-pub(crate) fn should_try_query_packet_first(request: &ClientRequest) -> bool {
-    request.method == ClientMethod::Query
-        && request
-            .forwarded_args
-            .iter()
-            .any(|arg| arg == "--names-only")
-        && !request.forwarded_args.iter().any(|arg| {
-            arg == "--json"
-                || arg == "--code"
-                || arg == "--treesitter-query"
-                || arg == "--catalog"
-                || arg == "--from-hook"
-        })
-        && request.forwarded_args.iter().any(|arg| {
-            arg == "--term"
-                || arg == "--query"
-                || arg.starts_with("--term=")
-                || arg.starts_with("--query=")
-        })
-        && request
-            .forwarded_args
-            .iter()
-            .any(|arg| !arg.starts_with('-') && arg != ".")
 }
 
 fn cache_manifest_allows_packet_first(project_root: &Path) -> bool {
@@ -499,46 +471,6 @@ fn run_search_packet_first_miss(
         request,
         &output.stdout,
         &rendered_stdout,
-    ) else {
-        return Ok(None);
-    };
-    apply_provider_cache_probe(&mut output.receipt, &writeback_probe);
-    output.receipt.cache_status = execution_cache_status;
-    output.receipt.packet_bytes = Some(ByteCount::from_len(output.stdout.len()));
-    output.receipt.stdout_bytes = ByteCount::from_len(rendered_stdout.len());
-    output.stdout = rendered_stdout;
-    Ok(Some(output))
-}
-
-fn run_query_packet_first_miss(
-    project_root: &Path,
-    snapshot: &ProviderRegistrySnapshot,
-    request: &ClientRequest,
-    execution_cache_status: CacheStatus,
-) -> Result<Option<LocalNativeOutput>, String> {
-    let Some(language_id) = request.language_id.clone() else {
-        return Ok(None);
-    };
-    let mut packet_args = request.forwarded_args.clone();
-    insert_json_flag_before_project_root(&mut packet_args);
-    let packet_request = ClientRequest::new(ClientMethod::Query, project_root.to_path_buf())
-        .with_forwarded_args(packet_args)
-        .with_language(language_id);
-    let backend = LocalNativeCliBackend::new(snapshot.clone());
-    let mut output = backend.execute(&packet_request)?;
-    if output.status_code != 0 {
-        return Ok(None);
-    }
-    let Some(rendered_stdout) =
-        crate::cache_replay::render_query_packet_bytes(output.stdout.clone())
-    else {
-        return Ok(None);
-    };
-    let Some(writeback_probe) = write_query_packet_cache_after_provider_success(
-        project_root,
-        snapshot,
-        request,
-        &output.stdout,
     ) else {
         return Ok(None);
     };

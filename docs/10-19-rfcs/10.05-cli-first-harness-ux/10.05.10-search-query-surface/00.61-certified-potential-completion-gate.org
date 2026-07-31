@@ -1,0 +1,220 @@
+#+title: 00.61 Certified Potential Completion Gate
+#+startup: overview
+
+* Status
+
+Draft.
+
+This module connects the well-founded SearchLoop potential from RFC 00.60 to
+the exact, bounded, and incomplete completion modes.  It separates operational
+termination from semantic optimality.
+
+* Discovered Design Gap
+
+=potential = 0= proves only that all obligations represented in the current
+potential vector have been discharged.  It does not prove:
+
+- that every feasible candidate is represented;
+- that the evidence universe is committed and exhaustive;
+- that the coverage certificate belongs to the current generation;
+- that the chosen route is no more expensive than every covered alternative.
+
+A provider can report zero missing obligations simply because an obligation
+was never registered.  Therefore zero potential alone MUST NOT authorize exact
+completion.
+
+* Two Independent Proofs
+
+Completion requires two independent proof families.
+
+** Termination proof
+
+The SearchLoop state supplies:
+
+- =generation=;
+- =potential=.
+
+RFC 00.60 proves that productive transitions terminate and bounds their count.
+For exact completion, potential must be zero.
+
+** Optimality proof
+
+An optimality certificate supplies:
+
+- the generation it certifies;
+- a committed coverage predicate;
+- proof that every feasible candidate is covered;
+- proof that the chosen candidate is feasible;
+- proof that the chosen cost is within =gap= of every covered candidate.
+
+Coverage and cost bounds, not potential, establish global optimality.
+
+* Mathematical Model
+
+#+name: certified-potential-completion-gate-math
+#+begin_src typst
+#let loop-state(generation, potential) = (
+  generation: generation,
+  potential: potential,
+)
+
+#let certificate(generation, gap, exhaustive) = (
+  generation: generation,
+  gap: gap,
+  exhaustive: exhaustive,
+)
+
+#let exact-admissible(state, cert) = (
+  state.potential == 0
+  and cert.generation == state.generation
+  and cert.gap == 0
+  and cert.exhaustive
+)
+
+#let bounded-admissible(state, cert) = (
+  cert.generation == state.generation
+  and cert.gap > 0
+  and cert.exhaustive
+)
+
+#let current = loop-state(8, 0)
+#let current-exact = certificate(8, 0, true)
+#let stale-exact = certificate(7, 0, true)
+#let local-zero-only = certificate(8, 0, false)
+
+(
+  current-exact-admitted: exact-admissible(current, current-exact),
+  stale-exact-rejected: not exact-admissible(current, stale-exact),
+  local-zero-is-insufficient: not exact-admissible(current, local-zero-only),
+  bounded-is-distinct:
+    bounded-admissible(current, certificate(8, 2, true)),
+)
+#+end_src
+
+* Completion Modes
+
+** Exact
+
+Exact completion requires:
+
+- zero potential;
+- generation equality;
+- exhaustive feasible-candidate coverage;
+- gap zero.
+
+The resulting theorem is global optimality.
+
+** Bounded
+
+Bounded completion requires:
+
+- generation equality;
+- exhaustive feasible-candidate coverage;
+- a positive declared gap.
+
+The resulting theorem is gap optimality:
+
+=cost(chosen) <= cost(candidate) + gap=
+
+for every feasible candidate.  Bounded completion may stop before local
+potential reaches zero when the certificate already establishes the requested
+gap.
+
+** Incomplete
+
+Incomplete completion requires only a current-generation receipt that states
+coverage is not committed.  It may return the best known candidate, but it
+MUST NOT emit an exact or bounded optimality claim.
+
+An incomplete result can have local potential zero.  This means the current
+registered work is exhausted, not that the feasible universe is exhausted.
+
+* Generation Safety
+
+Every exact or bounded certificate is bound to the SearchLoop generation.
+
+Corrections, compensation, graph invalidation, capability changes, and source
+index changes can advance generation.  A certificate from an older generation
+is rejected even when:
+
+- its chosen route still exists;
+- its gap is zero;
+- local potential is zero;
+- its serialized coverage set appears unchanged.
+
+Reusing it requires an explicit generation-transport proof.
+
+* Graph Router Rule
+
+The router must distinguish:
+
+#+begin_src json
+{
+  "mode": "exact",
+  "generation": 8,
+  "potential": 0,
+  "coverage": "exhaustive",
+  "gap": 0,
+  "optimalityCertificate": "sha256:...",
+  "admitted": true
+}
+#+end_src
+
+Compact SearchLoop output may omit the coverage body, but it must retain the
+certificate digest, generation, mode, and gap.  Inspect can project detailed
+coverage and cost-bound evidence on demand.
+
+* Cache Semantics
+
+- A cached exact certificate is reusable only under generation identity or a
+  certified transport.
+- A model-prefix cache hit has no bearing on coverage exhaustiveness.
+- A cached incomplete result cannot be promoted to exact because its prompt
+  prefix was reused.
+- Zero-potential state and optimality certificate use separate cache keys and
+  separate invalidation dependencies.
+
+This prevents model caching and search-result caching from being confused with
+semantic completeness.
+
+* Python Turbo Graph Consequences
+
+A future Python implementation should represent:
+
+- termination state;
+- coverage certificate;
+- cost-bound certificate;
+- completion mode;
+- generation binding;
+- optional transport proof
+
+as distinct typed records.  The Graph Router should never infer exact mode from
+an empty frontier or zero local counter.
+
+* Lean Obligations
+
+The accompanying Lean model establishes:
+
+1. =ASP-RFC-10.05-CPC-BOUNDED=: an admitted bounded certificate proves global
+   gap optimality;
+2. =ASP-RFC-10.05-CPC-EXACT=: an admitted zero-gap certificate proves global
+   optimality;
+3. =ASP-RFC-10.05-CPC-ZERO=: exact admission implies zero potential;
+4. =ASP-RFC-10.05-CPC-GENERATION=: exact admission implies generation identity;
+5. =ASP-RFC-10.05-CPC-STALE=: a stale exact certificate is rejected;
+6. =ASP-RFC-10.05-CPC-LOCAL-ZERO=: zero local potential with incomplete
+   coverage can coexist with a non-optimal chosen candidate;
+7. =ASP-RFC-10.05-CPC-CURRENT=: a current exhaustive zero-gap certificate
+   admits and proves the example optimum.
+
+The Lean kernel audit reports four axiom-free declarations and five
+declarations that depend only on =propext=.  Bounded soundness, the
+zero-potential gate, the generation gate, and current-certificate admission are
+axiom-free.  No declaration depends on =Quot.sound= or =sorryAx=.
+
+The model does not yet prove:
+
+- construction of exhaustive coverage from a concrete finite graph;
+- correctness of a generation-transport certificate;
+- probabilistic confidence semantics;
+- distributed agreement on completion generation.

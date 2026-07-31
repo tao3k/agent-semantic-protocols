@@ -48,8 +48,6 @@ mod pipe_source_index_projection;
 mod pipe_source_lexical_frame;
 mod prompt_output_replay;
 mod provider_candidate_annotations;
-mod query_packet_replay;
-mod scope_topology_candidates;
 mod search_candidate;
 mod search_language_files;
 mod search_lexical_replay;
@@ -70,7 +68,6 @@ pub use source_index_rank::{
 mod structural_index_search;
 pub mod syntax_query_replay;
 mod turso_overlay_search;
-mod workspace_scope;
 
 pub use document_candidates::{
     DocumentSearchCandidate, DocumentSearchCandidateCollection, DocumentSearchCandidateRequest,
@@ -153,14 +150,6 @@ pub use provider_candidate_annotations::{
     provider_candidate_annotation_nodes, provider_facts_envelope_from_stdout,
     provider_facts_envelope_from_value,
 };
-pub use query_packet_replay::{
-    QueryPacketReplayRequest, query_packet_matches_request, render_query_packet_stdout,
-};
-pub use scope_topology_candidates::{
-    SEARCH_PIPE_SCOPE_TOPOLOGY_CANDIDATE_LIMIT, SEARCH_PIPE_SCOPE_TOPOLOGY_ENTRY_VISIT_LIMIT,
-    SEARCH_PIPE_SCOPE_TOPOLOGY_SOURCE, SearchPipeScopeTopologyAcquisitionRequest,
-    collect_search_pipe_scope_topology_acquisition, merge_search_pipe_source_acquisitions,
-};
 pub use search_candidate::structural_index_hit_to_search_candidate;
 pub use search_candidate::{
     FieldHit, RankFeature, RankedSearchCandidate, SearchCandidate, SearchCandidateMergeReceipt,
@@ -239,10 +228,6 @@ pub use turso_overlay_search::{
     bootstrap_turso_overlay_search_store, replace_turso_overlay_search_document_generation,
     search_turso_overlay_documents,
 };
-pub use workspace_scope::{
-    SemanticWorkspaceAnchor, SemanticWorkspacePackage, SemanticWorkspaceScope,
-    SemanticWorkspaceScopeSet, WorkspaceCandidateAdmission, WorkspaceCandidateRejection,
-};
 
 #[cfg(test)]
 #[path = "../tests/unit/document_auto_lexical_overlay_scenario.rs"]
@@ -288,12 +273,6 @@ mod prompt_output_replay_tests;
 #[path = "../tests/unit/provider_candidate_annotations.rs"]
 mod provider_candidate_annotations_tests;
 #[cfg(test)]
-#[path = "../tests/unit/query_packet_replay.rs"]
-mod query_packet_replay_tests;
-#[cfg(test)]
-#[path = "../tests/unit/scope_topology_candidates.rs"]
-mod scope_topology_candidates_tests;
-#[cfg(test)]
 #[path = "../tests/unit/search_candidate.rs"]
 mod search_candidate_tests;
 pub mod search_command_preflight;
@@ -322,9 +301,6 @@ pub mod search_planner;
 #[cfg(test)]
 #[path = "../tests/unit/source_index_rank.rs"]
 mod source_index_rank_tests;
-#[cfg(test)]
-#[path = "../tests/unit/workspace_scope.rs"]
-mod workspace_scope_tests;
 pub use search_pipe_query_pack::search_pipe_semantic_facts_intent;
 #[cfg(test)]
 #[path = "../tests/unit/source_snapshot_fixture.rs"]
@@ -337,7 +313,6 @@ extern crate self as agent_semantic_search;
 #[path = "../tests/unit/query_pack_fixture.rs"]
 mod query_pack_fixture;
 pub use search_pipe_evidence::SearchPipeEvidenceLanguageId;
-pub use workspace_scope::WorkspaceScopeLanguageId;
 pub mod load_once_generation;
 pub use load_once_generation::LoadOnceGenerationV1;
 pub mod active_exact_selector_fixture;

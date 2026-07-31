@@ -74,7 +74,8 @@ CLI output merely because resolution failed.
 * Exact projection surface
 
 The only public exact projection option is
-=--projection source|callable-skeleton=.  Omitting it selects =source=.
+=--projection source|callable-skeleton=.  The option is required; omitting it
+fails at CLI admission before provider dispatch.
 
 The former =--code= and =--names-only= tokens SHALL be physically absent from
 production parsers, help, guides, recommended-next commands, hook guidance,

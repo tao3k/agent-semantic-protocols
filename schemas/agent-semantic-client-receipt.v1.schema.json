@@ -139,7 +139,7 @@
       "minLength": 1
     },
     "syntaxQuerySelector": {
-      "description": "Exact selector component from the semantic-tree-sitter-query packet when present; query --code remains pure stdout and selector metadata belongs in the receipt.",
+      "description": "Exact selector component from the semantic-tree-sitter-query packet when present; projection=source remains pure stdout and selector metadata belongs in the receipt.",
       "type": "string",
       "minLength": 1
     },

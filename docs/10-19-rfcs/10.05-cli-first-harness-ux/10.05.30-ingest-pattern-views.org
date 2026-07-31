@@ -87,7 +87,7 @@ search pipe <question-or-feature-term> [--source auto|provider|finder|ingest] [-
   portion is a decision projection: keep =rankedEvidence=, =evidenceFrontier=,
   compact =evidenceNodes=, and compact =evidenceEdges= rather than full graph
   debug rows.  Omitted =--view= defaults to this same compact frontier.
-- Exact selector precision is not enough to emit =query --selector --code=.  The
+- Exact selector precision is not enough to emit =query --selector --projection source=.  The
   seed view may recommend a code selector only when =queryQuality= and
   =packageCohesion= are at least medium, or when provider-owned structural facts
   answer an explicit field/type/collection query.  If coverage is global but
@@ -166,7 +166,7 @@ asp typescript search pipe "Effect concurrency Fiber Queue Stream Scope" --works
 asp typescript search lexical "Fiber Queue Stream Scope" owner tests --workspace . --view seeds
 asp fd -query "Fiber|Queue|Stream|Scope|Runtime|internal" .
 asp rg -query "Fiber|Queue|Stream|Scope|fork|interrupt|runFork|Runtime" .
-asp typescript query --selector <path:start-end> --workspace . --code
+asp typescript query --selector <path:start-end> --workspace . --projection source
 #+end_src
 
 =search lexical= remains the explicit lexical/fuzzy candidate command; it is not
@@ -228,13 +228,13 @@ language provider's full project report, policy/check result, verification
 reasoning tree, package graph, or native parser fact index as a prerequisite.
 All emitted locators are relative to the agent invocation workspace, not to a
 scoped search root.  A locator printed from =asp rust search lexical ... crates/foo=
-must therefore replay as =asp rust query --selector crates/foo/... --workspace . --code=
+must therefore replay as =asp rust query --selector crates/foo/... --workspace . --projection source=
 without requiring the agent to remember the original scoped root.
 
 Provider binaries remain the authority for native facts.  They are invoked for:
 
 - =check= and policy/report commands.
-- =query --code=, exact native reads, and tree-sitter/native syntax projection.
+- =query --projection source=, exact native reads, and tree-sitter/native syntax projection.
 - JSON/schema integrations that explicitly require provider packets.
 - Provider-advertised semantic enrichment after ASP has already produced a
   bounded candidate frontier.

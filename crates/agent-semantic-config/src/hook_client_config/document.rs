@@ -206,7 +206,19 @@ pub struct HookClientAgentSessionMessagesConfig {
 #[serde(rename_all = "camelCase")]
 pub struct AspProjectConfigFile {
     #[serde(default)]
+    pub discovery: AspProjectDiscoveryConfig,
+    #[serde(default)]
     pub hook: AspProjectHookConfig,
+}
+
+/// ASP-owned repository candidate policy from `[discovery]`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AspProjectDiscoveryConfig {
+    #[serde(default)]
+    pub ignored_dir_names: Option<Vec<String>>,
+    #[serde(default)]
+    pub include_hidden_dir_names: Option<Vec<String>>,
 }
 
 /// Hook-owned ASP project config.

@@ -1,6 +1,7 @@
 mod canonical_materialization;
 mod client;
 mod model;
+mod overlay;
 pub use canonical_materialization::{
     WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID, WorkspaceCanonicalMaterialization,
 };

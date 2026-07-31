@@ -1,0 +1,256 @@
+#+title: 00.62 Completion-Equivalent Pareto Router
+#+startup: overview
+
+* Status
+
+Draft.
+
+This module connects SearchLoop potential, certified completion, and the
+multi-dimensional graph cost model.  It specifies when the Graph Router may
+safely prune one route as dominated by another.
+
+* Discovered Design Gap
+
+Three attractive local rules are insufficient:
+
+1. choose the route with fewer graph hops;
+2. choose the first action with the largest potential decrease per token;
+3. choose the route with the largest cache hit.
+
+A locally efficient first action can leave an expensive completion tail.  A
+one-hop route can return a much larger projection than a three-hop route.  A
+cached route can reuse a stale or incomplete completion certificate.
+
+Cost dominance is sound only when both routes realize the same completion
+obligation.
+
+* Canonical Route Plan
+
+A route plan contains:
+
+- initial potential;
+- final potential;
+- completion key;
+- graph hops;
+- tool interaction rounds;
+- search payload tokens;
+- uncached model-work tokens.
+
+The completion key commits to:
+
+- generation;
+- coverage digest;
+- completion mode and gap.
+
+Two routes are completion-equivalent only when their initial potential, final
+potential, and completion key are equal.
+
+* Mathematical Model
+
+#+name: completion-equivalent-pareto-router-math
+#+begin_src typst
+#let no-worse(left, right) = (
+  left.graph-hops <= right.graph-hops
+  and left.tool-rounds <= right.tool-rounds
+  and left.search-tokens <= right.search-tokens
+  and left.model-work <= right.model-work
+)
+
+#let same-completion(left, right) = (
+  left.initial-potential == right.initial-potential
+  and left.final-potential == right.final-potential
+  and left.completion-key == right.completion-key
+)
+
+#let local-efficiency(action) = (
+  decrease: action.decrease,
+  tokens: action.tokens,
+)
+
+#let greedy-route = (
+  initial-potential: 3,
+  final-potential: 0,
+  completion-key: "exact@g8",
+  graph-hops: 2,
+  tool-rounds: 2,
+  search-tokens: 101,
+  model-work: 1000,
+)
+
+#let global-route = (
+  initial-potential: 3,
+  final-potential: 0,
+  completion-key: "exact@g8",
+  graph-hops: 3,
+  tool-rounds: 2,
+  search-tokens: 4,
+  model-work: 10,
+)
+
+#let incomplete-route = (
+  initial-potential: 3,
+  final-potential: 1,
+  completion-key: "incomplete@g8",
+  graph-hops: 1,
+  tool-rounds: 1,
+  search-tokens: 1,
+  model-work: 1,
+)
+
+#let greedy-first = local-efficiency((decrease: 2, tokens: 1))
+#let global-first = local-efficiency((decrease: 1, tokens: 2))
+
+(
+  greedy-first-looks-better:
+    greedy-first.decrease * global-first.tokens
+      > global-first.decrease * greedy-first.tokens,
+  full-routes-have-same-completion:
+    same-completion(greedy-route, global-route),
+  shorter-hops-do-not-imply-no-worse:
+    not no-worse(greedy-route, global-route),
+  incomplete-route-is-not-equivalent:
+    not same-completion(incomplete-route, global-route),
+)
+#+end_src
+
+* Cost Dominance
+
+=CostNoWorse(a, b)= holds when every cost dimension of =a= is at most the
+corresponding dimension of =b=.
+
+=Dominates(a, b)= holds only when:
+
+- =a= and =b= are completion-equivalent;
+- =CostNoWorse(a, b)=;
+- at least one cost dimension of =a= is strictly smaller.
+
+Dominance is irreflexive and transitive.  A dominated route can be removed from
+the admissible frontier without changing the completion result.
+
+Routes with different completion keys or final potential are incomparable,
+even if one is cheaper in every cost dimension.
+
+* Why Local Efficiency Is Not a Proof
+
+In the mathematical example:
+
+- the greedy first action reduces potential by 2 for 1 token;
+- the alternative first action reduces potential by 1 for 2 tokens;
+- the greedy full route costs 101 search tokens;
+- the alternative full route costs 4 search tokens.
+
+The first action has the better local ratio, but the complete route is much
+more expensive.  Therefore local potential decrease per token is a search
+ordering heuristic, not a dominance certificate.
+
+* Pareto Frontier
+
+The Router maintains the non-dominated frontier of admissible,
+completion-equivalent plans.
+
+If several plans remain incomparable, policy may choose among them using an
+explicit preference such as:
+
+- token-first;
+- round-first;
+- latency-first;
+- monetary-budget-first.
+
+The preference MUST be declared in the route request or policy digest.  Hidden
+scalar weights cannot justify cross-provider pruning because another provider
+may assign different units or cache semantics.
+
+* Budget Feasibility
+
+Budget admission precedes preference:
+
+- graph-hop cap;
+- tool-round cap;
+- search-token cap;
+- uncached model-work cap.
+
+A two-hop plan can fail token and model-work budgets while a three-hop plan
+passes.  Hop count alone is not feasibility.
+
+* Cache Semantics
+
+Search-result caching and model-prefix caching affect different dimensions.
+
+- A search-result cache may reduce graph work, tool rounds, or search payload.
+- A model-prefix cache reduces uncached model work.
+- Neither cache changes the completion key or final potential.
+- Cache credits MUST be bounded by the corresponding planned dimension.
+- A cache hit cannot make an incomplete route completion-equivalent to an exact
+  route.
+
+Cache-parametric costs can be compared only after both routes use the same
+accounting contract and completion identity.
+
+* Agent-Facing SearchLoop Projection
+
+#+begin_src json
+{
+  "completionKey": "sha256:...",
+  "initialPotential": 3,
+  "finalPotential": 0,
+  "paretoFrontier": [
+    {
+      "route": "exact-selector",
+      "graphHops": 3,
+      "toolRounds": 2,
+      "searchTokens": 4,
+      "uncachedModelTokens": 10
+    }
+  ],
+  "prunedDominatedCount": 2,
+  "policy": "token-first"
+}
+#+end_src
+
+Detailed dominated-route evidence belongs in inspect.  SearchLoop should expose
+the compact frontier and declared policy to reduce agent reading and repeated
+comparison rounds.
+
+* Python Turbo Graph Consequences
+
+A future Python router should:
+
+- group candidates by completion key and potential endpoints;
+- apply feasibility gates;
+- compute a Pareto frontier within each group;
+- retain incomparable plans;
+- apply a declared selection policy;
+- emit a pruning receipt with exact dominance witnesses.
+
+The implementation should not rank all routes with one hidden floating-point
+score.
+
+* Lean Obligations
+
+The accompanying Lean model establishes:
+
+1. =ASP-RFC-10.05-CEP-COST=: cost-no-worse is reflexive and transitive;
+2. =ASP-RFC-10.05-CEP-EQUIVALENCE=: completion equivalence is transitive;
+3. =ASP-RFC-10.05-CEP-DOMINANCE=: dominance is irreflexive and transitive;
+4. =ASP-RFC-10.05-CEP-COMPLETION=: dominance preserves completion identity;
+5. =ASP-RFC-10.05-CEP-HOPS=: fewer graph hops do not imply full cost dominance;
+6. =ASP-RFC-10.05-CEP-GREEDY=: better local efficiency does not imply a better
+   complete route;
+7. =ASP-RFC-10.05-CEP-INCOMPLETE=: a cheaper incomplete route cannot dominate
+   an exact route;
+8. =ASP-RFC-10.05-CEP-BUDGET=: a longer graph path can satisfy the complete
+   budget while the shorter path fails;
+9. =ASP-RFC-10.05-CEP-PRUNE=: a dominated route is not Pareto minimal.
+
+The Lean kernel audit reports five axiom-free declarations and six
+axiom-dependent declarations.  Cost transitivity, completion-equivalence
+transitivity, dominance transitivity, completion preservation, and Pareto
+pruning are axiom-free.  The complete inventory is =propext= and =Quot.sound=;
+no declaration depends on =sorryAx=.
+
+The model does not yet prove:
+
+- completeness of a concrete route enumerator;
+- optimality under a declared lexicographic policy;
+- cache-credit derivation from runtime receipts;
+- expected latency under stochastic provider behavior.

@@ -67,16 +67,19 @@ fn query_export_method(request: &ClientRequest) -> String {
     let args = &request.forwarded_args;
     if has_tree_sitter_query(args) {
         "query/tree-sitter".to_string()
-    } else if is_selector_code_query(args) {
-        "query/code".to_string()
+    } else if is_selector_source_query(request) {
+        "query/source".to_string()
     } else {
-        "query/owner-items".to_string()
+        "query/exact".to_string()
     }
 }
 
-fn is_selector_code_query(args: &[String]) -> bool {
-    args.windows(2).any(|window| window[0] == "--selector")
-        && args.iter().any(|arg| arg == "--code")
+fn is_selector_source_query(request: &ClientRequest) -> bool {
+    request
+        .forwarded_args
+        .iter()
+        .any(|arg| arg == "--selector" || arg.starts_with("--selector="))
+        && request.exact_projection() == Some("source")
 }
 
 pub(super) fn has_tree_sitter_query(args: &[String]) -> bool {
@@ -145,8 +148,8 @@ const PRIME_DECISION_PRIMER_RENDER_ABI: &str = concat!(
     "purpose=decision-primer;",
     "answer=false;",
     "code=false;",
-    "capabilities=pipe,lexical,owner-items,selector-code,treesitter-query;",
-    "ladder=pipe>lexical>owner-items>selector-code;",
+    "capabilities=pipe,lexical,owner-items,exact-source,treesitter-query;",
+    "ladder=pipe>lexical>owner-items>exact-source;",
     "history=asp-artifacts:directReadRisk,repeatedPrime,repeatedPipe,bestPath;",
     "risk=broad-direct-read,manual-window-scan,repeat-prime;",
     "next=search pipe <question-or-feature-term> --view seeds"

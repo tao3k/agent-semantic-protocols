@@ -1,0 +1,200 @@
+#+title: 00.60 Well-Founded Inspect Potential
+#+startup: overview
+
+* Status
+
+Draft.
+
+This module refines the monotone inspect model.  It introduces a
+multi-dimensional potential that makes productive SearchLoop transitions
+well-founded and gives a machine-checkable upper bound on interaction rounds.
+
+* Discovered Design Gap
+
+A rule that requires =ambiguity= itself to decrease on every inspect step is
+too strong.  Consider:
+
+- current ambiguity: 3;
+- next ambiguity: 3;
+- current missing evidence obligations: 2;
+- next missing evidence obligations: 1.
+
+The step is productive because it discharges an evidence obligation, even
+though the final decision remains equally ambiguous.  Rejecting that step can
+force the agent to request a larger projection or repeat an earlier query.
+
+The opposite rule—requiring only component-wise non-increase—is too weak.  It
+admits no-op transitions and cycles.
+
+The protocol needs both:
+
+1. every tracked component is non-increasing; and
+2. at least one tracked component strictly decreases.
+
+* Inspect Potential
+
+For one SearchLoop state, track:
+
+- =ambiguity=: unresolved decision alternatives;
+- =missingEvidence=: required evidence obligations not yet discharged;
+- =staleCertificates=: invalidated certificates that still require
+  recomputation.
+
+The canonical potential is their sum:
+
+#+name: well-founded-inspect-potential-math
+#+begin_src typst
+#let potential(state) = (
+  state.ambiguity
+  + state.missing-evidence
+  + state.stale-certificates
+)
+
+#let current = (
+  ambiguity: 3,
+  missing-evidence: 2,
+  stale-certificates: 1,
+)
+
+#let evidence-progress = (
+  ambiguity: 3,
+  missing-evidence: 1,
+  stale-certificates: 1,
+)
+
+#let certificate-progress = (
+  ambiguity: 3,
+  missing-evidence: 1,
+  stale-certificates: 0,
+)
+
+(
+  evidence-step-is-strict:
+    potential(evidence-progress) < potential(current),
+  ambiguity-can-remain-equal:
+    evidence-progress.ambiguity == current.ambiguity,
+  certificate-step-is-strict:
+    potential(certificate-progress) < potential(evidence-progress),
+  initial-round-upper-bound: potential(current),
+)
+#+end_src
+
+For states =s= and =s'=, =ComponentwiseProgress(s, s')= holds when every
+component of =s'= is at most the corresponding component of =s= and at least
+one component is strictly smaller.
+
+This implies =potential(s') < potential(s)=.
+
+* Well-Founded SearchLoop Rule
+
+An agent-visible SearchLoop transition is productive only if it carries a
+receipt proving =ComponentwiseProgress=.  Therefore:
+
+- a state cannot transition productively to itself;
+- a resolved state with zero potential has no productive successor;
+- a positive-length productive trace cannot return to its initial state;
+- a trace starting at =s0= contains at most =potential(s0)= productive rounds.
+
+Diagnostic retries, transport failures, and cache probes that do not reduce the
+potential are observations, not productive state transitions.  They remain
+visible in execution telemetry but do not receive a new logical SearchLoop
+state revision.
+
+* Why the Potential Is Multi-Dimensional
+
+=ambiguity= measures decision uncertainty, not all useful search progress.
+
+- An exact-source inspect can discharge missing evidence while ambiguity stays
+  constant.
+- Recomputing a certificate after RFC 00.59 can reduce stale certificates
+  without immediately changing ambiguity.
+- A router may eliminate an alternative, reducing ambiguity while evidence and
+  certificate counts stay constant.
+
+The component vector preserves the reason for progress.  The summed potential
+is the termination measure.  Providers MUST retain the vector in proof
+receipts, even when SearchLoop exposes only the total and the changed component
+in compact output.
+
+* Router Optimization
+
+The Graph Router should prefer actions that discharge the most decision
+potential per expected token and interaction cost.  A compact candidate can
+expose:
+
+#+begin_src json
+{
+  "action": "inspect exact-selector",
+  "potentialBefore": 6,
+  "expectedPotentialAfter": 4,
+  "expectedDecrease": 2,
+  "expectedTokens": 180,
+  "expectedRounds": 1
+}
+#+end_src
+
+The ratio is a planning heuristic, not a proof.  Admission still requires a
+feasible action and a realized transition still requires an exact progress
+receipt.
+
+* Cache Semantics
+
+Cache behavior does not weaken the potential rule.
+
+- A search-result cache hit is productive only if the reused certificate
+  discharges a missing or stale obligation.
+- A model-prefix cache hit can reduce compute cost while leaving logical
+  potential unchanged.
+- A cache probe with no decision progress is telemetry and MUST NOT create a
+  new logical state revision.
+- Repeated identical cache probes are bounded by execution policy, not hidden
+  inside the proof trace.
+
+This separation prevents cache-hit counts from masquerading as search
+progress.
+
+* Python Turbo Graph Consequences
+
+A future Python implementation should keep:
+
+- the full component vector in the proof-carrying SearchLoop state;
+- a scalar total for fast priority-queue ordering;
+- an exact changed-component receipt;
+- telemetry rounds separate from productive logical rounds;
+- router estimates separate from realized progress.
+
+The implementation may add further non-negative components only through a
+versioned contract.  Removing a component can invalidate the termination
+argument and requires a new proof.
+
+* Lean Obligations
+
+The accompanying Lean model establishes:
+
+1. =ASP-RFC-10.05-WIP-STRICT=: component-wise progress strictly decreases the
+   total potential;
+2. =ASP-RFC-10.05-WIP-NO-SELF=: no productive self transition exists;
+3. =ASP-RFC-10.05-WIP-NO-STALL=: a productive transition cannot preserve total
+   potential;
+4. =ASP-RFC-10.05-WIP-RESOLVED=: a zero-potential state has no productive
+   successor;
+5. =ASP-RFC-10.05-WIP-TRACE=: after =n= productive steps, remaining potential
+   plus =n= is bounded by the initial potential;
+6. =ASP-RFC-10.05-WIP-BOUND=: productive round count is bounded by initial
+   potential;
+7. =ASP-RFC-10.05-WIP-NO-CYCLE=: a positive productive trace cannot return to
+   its initial state;
+8. =ASP-RFC-10.05-WIP-AMBIGUITY-GAP=: a valid evidence-progress step need not
+   strictly reduce ambiguity.
+
+The Lean kernel audit reports that all eight declarations depend on =propext=
+and =Quot.sound= through the current arithmetic proof path.  No declaration
+depends on =sorryAx=.  AXLE MUST receive explicit policy decisions for both
+axioms.
+
+The model does not yet prove:
+
+- optimal selection by potential decrease per token;
+- a bound on non-productive transport retries;
+- fairness between independent evidence obligations;
+- equivalence between provider-reported component counts and graph reality.

@@ -72,7 +72,7 @@ AND authority != parser-owned-exact-evidence
 => deny or route to exact parser-owned evidence
 #+end_src
 
-An exact provider selector such as =query --selector ... --code= is not a raw
+An exact provider selector such as =query --selector ... --projection source= is not a raw
 read merely because it returns source text.  Its action packet carries
 =authority=parser-owned-exact-evidence= and a =structural-selector= subject.
 Conversely, wrapping a raw read with =rtk= changes neither effect nor authority.

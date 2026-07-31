@@ -130,30 +130,7 @@ fn search_pipe_graph_turbo_request_accepts_python_provider_ontology_facts() {
     let payload: Value = serde_json::from_slice(&output.stdout).expect("graph request json");
     assert_graph_turbo_request_contract(&payload);
     let nodes = payload["graph"]["nodes"].as_array().expect("nodes");
-    assert!(
-        payload["candidateSources"]
-            .as_array()
-            .expect("candidate sources")
-            .iter()
-            .any(|source| source.as_str() == Some("workspace-scope-topology")),
-        "{payload}"
-    );
     let source_trace = payload["sourceTrace"].as_array().expect("source trace");
-    let topology_trace = source_trace
-        .iter()
-        .find(|trace| trace["source"].as_str() == Some("workspace-scope-topology"))
-        .expect("workspace scope topology trace");
-    assert!(
-        matches!(
-            topology_trace["status"].as_str(),
-            Some("used" | "truncated")
-        ),
-        "{payload}"
-    );
-    assert!(
-        topology_trace["matched"].as_u64().unwrap_or(0) > 0,
-        "{payload}"
-    );
     let provider_trace = source_trace
         .iter()
         .find(|trace| trace["source"].as_str() == Some("providerFacts"))

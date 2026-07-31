@@ -451,6 +451,88 @@ async fn concurrent_tokio_shutdown_drains_the_runtime_server_once() {
     assert_eq!(draining.state, RuntimeServerState::Draining);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn hook_generation_admission_is_non_blocking_and_single_flight() {
+    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
+    let project_root = runtime_dir.path().join("project");
+    tokio::fs::create_dir_all(&project_root)
+        .await
+        .expect("create admission project");
+    let workspace_identity =
+        agent_semantic_client_core::state_core::ResolvedState::resolve(&project_root)
+            .expect("resolve admission workspace")
+            .workspace
+            .workspace_id
+            .to_string();
+    let endpoint = fixture_endpoint(&runtime_dir, 28).await;
+    let source_build_count = Arc::new(tokio::sync::Mutex::new(0_u32));
+    let source_build_release = Arc::new(tokio::sync::Notify::new());
+    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
+        .await
+        .expect("bind Runtime Server")
+        .with_workspace_generation_builder(Arc::new({
+            let source_build_count = Arc::clone(&source_build_count);
+            let source_build_release = Arc::clone(&source_build_release);
+            move |_workspace_identity, _project_root| {
+                let source_build_count = Arc::clone(&source_build_count);
+                let source_build_release = Arc::clone(&source_build_release);
+                Box::pin(async move {
+                    *source_build_count.lock().await += 1;
+                    source_build_release.notified().await;
+                    Err("fixture stops before source publication".to_owned())
+                })
+            }
+        }));
+    let shutdown = server.shutdown_handle();
+    let server = tokio::spawn(server.serve());
+    let session = Arc::new(
+        agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
+            &endpoint,
+            workspace_identity,
+        ),
+    );
+
+    let parallelism = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1);
+    let request_count = parallelism.saturating_mul(32).max(64);
+    let mut requests = tokio::task::JoinSet::new();
+    for _ in 0..request_count {
+        let session = Arc::clone(&session);
+        let project_root = project_root.clone();
+        requests.spawn(async move {
+            let started = tokio::time::Instant::now();
+            (
+                session.admit_runtime_generation(&project_root).await,
+                started.elapsed(),
+            )
+        });
+    }
+    let mut accepted_count = 0_u32;
+    let mut latencies = Vec::with_capacity(request_count);
+    while let Some(result) = requests.join_next().await {
+        let (receipt, latency) = result.expect("join hook admission");
+        let receipt = receipt.expect("hook admission receipt");
+        accepted_count += u32::from(receipt.accepted);
+        latencies.push(latency);
+    }
+    latencies.sort_unstable();
+    let p99 = latencies[(latencies.len() * 99 / 100).min(latencies.len() - 1)];
+    assert_eq!(accepted_count, 1);
+    assert!(
+        p99 < Duration::from_millis(25),
+        "hook admission control p99 exceeded 25ms: {p99:?}"
+    );
+
+    source_build_release.notify_waiters();
+    shutdown.shutdown();
+    assert_eq!(
+        server.await.expect("join Runtime Server").expect("serve"),
+        RuntimeServerExit::ShutdownRequested
+    );
+    assert!(*source_build_count.lock().await <= 1);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn shared_runtime_admission_plane_is_workspace_keyed_and_drains() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");

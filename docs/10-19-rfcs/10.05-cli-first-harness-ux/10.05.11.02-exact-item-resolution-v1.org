@@ -51,8 +51,10 @@ successful transport exit. The ASP consumer MUST interpret non-resolved
 =resolutionState= values as query failure. Transport success is not semantic
 query success.
 
-Exact query MUST NOT accept legacy projection switches such as =--code= or
-=--names-only=. Projection is selected by the typed request contract.
+Exact query MUST require the caller to select one typed projection explicitly:
+=--projection source= or =--projection callable-skeleton=.  No implicit
+projection is inferred at CLI admission.  Removed projection aliases are not
+part of the parser model, help, guidance, diagnostics, or recommended actions.
 
 * Registered-language gates
 
@@ -157,12 +159,48 @@ Exact query MUST NOT fall back to a single live owner, invoke a provider subproc
 materialize a query-time generation after a resident generation miss.  A missing resident
 generation fails closed as =active-workspace-generation-required=.
 
+Only the hook/supervisor admission operation may start or retry the canonical
+generation builder.  Exact-query =ensure= may observe =building=, =ready=, or
+=failed= admission state, but it MUST NOT turn a miss or failed receipt into a
+new build attempt.  Failed admission remains observable until a later explicit
+hook/supervisor reconciliation starts the next numbered attempt.  This keeps
+query latency bounded and prevents concurrent sessions from creating a
+provider-process retry storm.
+
+Admission completion is event-driven.  The coordinator publishes one terminal
+=ready|failed= receipt and wakes registered waiters after the state commit;
+waiters register notification before re-reading state so completion cannot be
+lost between polling intervals.  Fixed yield counts and enlarged timeouts are
+not completion semantics.
+
+The daemon loads and validates one immutable Global provider catalog generation
+at startup and combines it with the embedded registered-language descriptors.
+Workspace builders receive that admitted snapshot directly.  They MUST NOT
+load, discover, or synchronize project activation while serving an admission;
+=asp sync= remains configuration/schema synchronization and is not a search
+prerequisite.  A new catalog generation is selected only by supervisor
+reconciliation and daemon lifecycle replacement.
+
+One workspace admission derives one typed Git repository-candidate snapshot.
+The same immutable snapshot fans out to provider-owned project resolution;
+providers MUST NOT rediscover Git scope independently.  Independent provider
+resolutions execute concurrently under adaptive transport admission, then fan
+in through deterministic =path + languageId + providerId= ordering and
+deduplication before the canonical generation is assembled.
+
 Concurrent readers in one workspace share the resident read pool.  Generation publication
 uses that workspace's single-writer lane, so a reader observes either the complete previous
 generation or the complete next generation, never mixed owner/selector membership.
 Different workspace identities use independent resident entries, DB handles, read pools,
 writer lanes, and generation receipts; no global lock or cross-workspace candidate set is
 permitted.
+
+Live move handling is one typed relocation mutation in the workspace writer
+lane.  New owner bytes/selectors, the previous-owner tombstone, and both Merkle
+leaf changes publish in one immutable MemoryBackend/mmap epoch with
+=rootDepth=[1,0]= preserved.  Readers may retain the complete previous epoch,
+but no intermediate epoch may expose both owner paths or combine a removed
+owner with the next root digest.
 
 Required gates include same-workspace multi-session reads, concurrent read/write generation
 switches, multi-workspace isolation, disconnected-session survival, exact state coverage,

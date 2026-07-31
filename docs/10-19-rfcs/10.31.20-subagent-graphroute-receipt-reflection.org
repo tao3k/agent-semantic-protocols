@@ -67,8 +67,8 @@ route=<route id: search axis -> owner -> item/test/dependency>
 state=<selector-ready|needs-refine|no-output>
 evidence=E1 kind=<item|owner|test|dependency|doc> role=<primary|guard|context> owner=<owner-path> selector=<parser-owned-selector> relation=<route role>
 evidence=E2 kind=<...> role=<...> owner=<...> selector=<...> relation=<...>
-next=E1 asp <language> query --selector <parser-owned-selector> --workspace . --code
-alt=E2 asp <language> query --selector <parser-owned-selector> --workspace . --code
+next=E1 asp <language> query --selector <parser-owned-selector> --workspace . --projection source
+alt=E2 asp <language> query --selector <parser-owned-selector> --workspace . --projection source
 avoid=raw-read,flat-selector-list,repeat-same-search
 omit=source,line-range,confidence,long-explanation,not-found-inventory
 #+end_src

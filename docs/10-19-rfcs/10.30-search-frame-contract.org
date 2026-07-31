@@ -65,7 +65,7 @@ Search is not a mandatory pipeline. The router must start from the narrowest
 state whose preconditions are already satisfied:
 
 | Evidence state | Canonical route | Allowed fallback | Forbidden fallback | Completion receipt |
-| exact parser selector known | =asp <lang> query --selector <selector> --workspace <root> --code= | owner-local search for neighboring context | raw file read, line selector as semantic identity | selector code receipt with provider/source trace |
+| exact parser selector known | =asp <lang> query --selector <selector> --workspace <root> --projection source= | owner-local search for neighboring context | raw file read, line selector as semantic identity | selector code receipt with provider/source trace |
 | owner path known | =asp <lang> search owner <owner> items --query <terms> --workspace <root> --view seeds= | bounded owner item enumeration with empty query | workspace-wide raw grep | owner-items packet or parser-visible module receipt |
 | dependency/API known | =asp <lang> search deps <dependency[@version][::api]> --workspace <root> --view seeds= | local provider docs/use/crate-source actions | web/docs search while local actions exist | dependency frontier receipt |
 | document selector known | =asp org\vert md query --selector <selector> --workspace <root> --content= | document metadata query for adjacent element | whole-file document read | document element-content receipt |

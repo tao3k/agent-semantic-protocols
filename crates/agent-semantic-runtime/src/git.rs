@@ -4,6 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use agent_semantic_config::load_asp_project_config_file;
+
 /// Git remote URL captured as identity evidence.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -77,6 +79,8 @@ pub struct RepositoryCandidateSnapshot {
     pub worktree_identity: WorktreeIdentity,
     pub candidate_generation: RepositoryCandidateGeneration,
     pub candidates: Vec<RepositoryCandidate>,
+    pub policy_overlay_digest: String,
+    pub policy_exclusions: Vec<RepositoryCandidatePolicyExclusion>,
     pub metrics: RepositoryCandidateMetrics,
 }
 
@@ -138,10 +142,20 @@ pub enum RepositoryCandidateAuthority {
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositoryCandidatePolicyExclusion {
+    pub path: PathBuf,
+    pub authority: &'static str,
+    pub reason_kind: &'static str,
+    pub matched_value: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryCandidateMetrics {
     pub index_entry_count: usize,
     pub worktree_addition_count: usize,
     pub candidate_count: usize,
+    pub policy_exclusion_count: usize,
     pub full_workspace_reads: usize,
     pub full_merkle_rebuilds: usize,
     pub direct_db_opens: usize,
@@ -154,6 +168,7 @@ pub enum GitWorkspaceFileScopeError {
     LoadIndex { message: String },
     ConfigureDirwalk { message: String },
     WalkWorktree { message: String },
+    LoadProjectConfig { path: PathBuf, message: String },
 }
 
 impl std::fmt::Display for GitWorkspaceFileScopeError {
@@ -182,6 +197,11 @@ impl std::fmt::Display for GitWorkspaceFileScopeError {
                     "failed to walk Git worktree additions: {message}"
                 )
             }
+            Self::LoadProjectConfig { path, message } => write!(
+                formatter,
+                "failed to load ASP project discovery config {}: {message}",
+                path.display()
+            ),
         }
     }
 }
@@ -316,6 +336,8 @@ pub fn discover_repository_candidate_snapshot(
         })
         .collect::<Vec<_>>();
     candidates.sort_by(|left, right| left.path.cmp(&right.path));
+    let (policy_overlay_digest, policy_exclusions) =
+        resolve_asp_discovery_policy(&scope.worktree_root, workspace, &candidates)?;
     let index_entry_count = candidates
         .iter()
         .filter(|candidate| candidate.state == RepositoryCandidateState::Tracked)
@@ -335,6 +357,8 @@ pub fn discover_repository_candidate_snapshot(
             RepositoryCandidateState::Untracked => b"untracked",
         });
     }
+    generation.update(b"\0policy-overlay\0");
+    generation.update(policy_overlay_digest.as_bytes());
     let candidate_generation = RepositoryCandidateGeneration {
         algorithm: "blake3-path-set-v1",
         digest: format!("blake3:{}", generation.finalize().to_hex()),
@@ -361,16 +385,87 @@ pub fn discover_repository_candidate_snapshot(
             head_id,
         },
         candidate_generation,
+        policy_overlay_digest,
+        policy_exclusions: policy_exclusions.clone(),
         metrics: RepositoryCandidateMetrics {
             index_entry_count,
             worktree_addition_count,
             candidate_count: candidates.len(),
+            policy_exclusion_count: policy_exclusions.len(),
             full_workspace_reads: 0,
             full_merkle_rebuilds: 0,
             direct_db_opens: 0,
         },
         candidates,
     }))
+}
+
+fn resolve_asp_discovery_policy(
+    activation_root: &Path,
+    invocation_root: &Path,
+    candidates: &[RepositoryCandidate],
+) -> Result<(String, Vec<RepositoryCandidatePolicyExclusion>), GitWorkspaceFileScopeError> {
+    let mut ignored_dir_names = Vec::new();
+    let mut include_hidden_dir_names = Vec::new();
+    let mut roots = vec![activation_root];
+    if invocation_root != activation_root {
+        roots.push(invocation_root);
+    }
+    for root in roots {
+        for path in [root.join("asp.toml"), root.join(".agents").join("asp.toml")] {
+            if !path.is_file() {
+                continue;
+            }
+            let config = load_asp_project_config_file(&path).map_err(|message| {
+                GitWorkspaceFileScopeError::LoadProjectConfig {
+                    path: path.clone(),
+                    message,
+                }
+            })?;
+            if let Some(value) = config.discovery.ignored_dir_names {
+                ignored_dir_names = value;
+            }
+            if let Some(value) = config.discovery.include_hidden_dir_names {
+                include_hidden_dir_names = value;
+            }
+        }
+    }
+    ignored_dir_names.sort();
+    ignored_dir_names.dedup();
+    include_hidden_dir_names.sort();
+    include_hidden_dir_names.dedup();
+    let mut exclusions = candidates
+        .iter()
+        .filter_map(|candidate| {
+            let matched_value = candidate.path.components().find_map(|component| {
+                let name = component.as_os_str().to_string_lossy();
+                (ignored_dir_names.iter().any(|ignored| ignored == &name)
+                    && !(name.starts_with('.')
+                        && include_hidden_dir_names
+                            .iter()
+                            .any(|included| included == &name)))
+                .then(|| name.into_owned())
+            })?;
+            Some(RepositoryCandidatePolicyExclusion {
+                path: candidate.path.clone(),
+                authority: "user-policy",
+                reason_kind: "ignored-dir-name",
+                matched_value,
+            })
+        })
+        .collect::<Vec<_>>();
+    exclusions.sort_by(|left, right| left.path.cmp(&right.path));
+    let mut digest = blake3::Hasher::new();
+    digest.update(b"agent.semantic-protocols.discovery-policy-overlay\0");
+    for value in &ignored_dir_names {
+        digest.update(b"\0ignore\0");
+        digest.update(value.as_bytes());
+    }
+    for value in &include_hidden_dir_names {
+        digest.update(b"\0include-hidden\0");
+        digest.update(value.as_bytes());
+    }
+    Ok((format!("blake3:{}", digest.finalize().to_hex()), exclusions))
 }
 
 fn stable_identity(namespace: &str, basis: &[u8]) -> String {
@@ -487,7 +582,7 @@ mod repository_candidate_snapshot_tests {
         assert_eq!(first.metrics.worktree_addition_count, 1);
         assert_eq!(first.metrics.candidate_count, 3);
         assert_eq!(first.metrics.full_workspace_reads, 0);
-        assert_eq!(first.metrics.database_opens, 0);
+        assert_eq!(first.metrics.direct_db_opens, 0);
         assert!(
             !first
                 .candidates
@@ -504,6 +599,70 @@ mod repository_candidate_snapshot_tests {
             .expect("discover non-Git directory");
 
         assert!(snapshot.is_none());
+    }
+
+    #[test]
+    fn asp_discovery_policy_is_typed_without_hiding_git_candidates() {
+        let fixture = Fixture::new("asp-policy");
+        fixture.git(&["init", "--quiet"]);
+        fixture.write(
+            "asp.toml",
+            "[discovery]\nignoredDirNames = [\"generated\"]\n",
+        );
+        fixture.write(
+            ".agents/asp.toml",
+            "[discovery]\nignoredDirNames = [\"vendor\", \".hidden\"]\nincludeHiddenDirNames = [\".hidden\"]\n",
+        );
+        fixture.write("generated/explicit.rs", "pub fn explicit() {}\n");
+        fixture.write("vendor/excluded.rs", "pub fn excluded() {}\n");
+        fixture.write(".hidden/included.rs", "pub fn included() {}\n");
+        fixture.git(&["add", "."]);
+
+        let snapshot = discover_repository_candidate_snapshot(&fixture.root)
+            .expect("discover repository candidates")
+            .expect("Git snapshot exists");
+
+        assert!(
+            snapshot
+                .candidates
+                .iter()
+                .any(|candidate| candidate.path == Path::new("vendor/excluded.rs")),
+            "policy facts must not hide candidates before package-target authority comparison"
+        );
+        assert_eq!(
+            snapshot
+                .policy_exclusions
+                .iter()
+                .map(|exclusion| (
+                    exclusion.path.as_path(),
+                    exclusion.authority,
+                    exclusion.reason_kind,
+                    exclusion.matched_value.as_str(),
+                ))
+                .collect::<Vec<_>>(),
+            vec![(
+                Path::new("vendor/excluded.rs"),
+                "user-policy",
+                "ignored-dir-name",
+                "vendor",
+            )]
+        );
+        assert_eq!(snapshot.metrics.policy_exclusion_count, 1);
+        assert!(snapshot.policy_overlay_digest.starts_with("blake3:"));
+    }
+
+    #[test]
+    fn invalid_asp_discovery_policy_fails_closed() {
+        let fixture = Fixture::new("invalid-asp-policy");
+        fixture.git(&["init", "--quiet"]);
+        fixture.write("asp.toml", "[discovery]\nignoreDirs = [\"target\"]\n");
+        fixture.git(&["add", "asp.toml"]);
+
+        let error = discover_repository_candidate_snapshot(&fixture.root)
+            .expect_err("legacy discovery keys must fail closed");
+
+        let message = error.to_string();
+        assert!(message.contains("ignoreDirs"), "{message}");
     }
 }
 

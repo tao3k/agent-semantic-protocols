@@ -56,7 +56,7 @@ where optional engines such as CodeQL are allowed to participate.
   metavariable, relational, and composite constraint ideas, but execution stays
   provider-owned.
 - Do not put CodeQL database creation in the hot path for =search prime=,
-  =search owner=, =query --code=, hook recovery, or =check --changed=.
+  =search owner=, =query --projection source=, hook recovery, or =check --changed=.
 - Do not use CodeQL as the implementation for ordinary fuzzy search, owner
   discovery, seed frontier construction, or hook recovery.  Those workflows
   remain native-parser hot paths.
@@ -290,7 +290,7 @@ The prompt-facing surface stays CLI-first:
 asp <language> search prime --workspace . --view seeds
 asp <language> search owner <owner> items --query <term> .
 asp <language> query <owner-or-selector> --term <term> .
-asp <language> query --selector <exact> --workspace . --code
+asp <language> query --selector <exact> --workspace . --projection source
 #+end_src
 
 Future relation/flow commands may be added only after the schema and provider

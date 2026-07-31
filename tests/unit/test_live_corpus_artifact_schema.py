@@ -55,7 +55,7 @@ def test_live_corpus_qualification_owns_materialized_source_path() -> None:
         "gitTree": _TREE,
         "sourceMerkleRoot": "f" * 64,
         "languageExtensionEvidence": {
-            "authority": "provider-workspace-scope",
+            "authority": "provider-project-resolution",
             "candidateSetAuthority": "provider-registry-extension-index",
             "sourceExtensions": [".rs"],
             "matchingFileCount": 1200,
@@ -79,7 +79,7 @@ def test_live_corpus_qualification_rejects_unqualified_or_dirty_source() -> None
         "gitTree": _TREE,
         "sourceMerkleRoot": "f" * 64,
         "languageExtensionEvidence": {
-            "authority": "provider-workspace-scope",
+            "authority": "provider-project-resolution",
             "candidateSetAuthority": "provider-registry-extension-index",
             "sourceExtensions": [".rs"],
             "matchingFileCount": 1200,

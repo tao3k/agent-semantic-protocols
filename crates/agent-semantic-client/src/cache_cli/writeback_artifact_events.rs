@@ -12,7 +12,6 @@ use agent_semantic_client_db::ClientDbArtifactEvent;
 pub(super) enum ArtifactKind {
     PromptOutput,
     SearchPacket,
-    QueryPacket,
     SemanticTreeSitterQuery,
     SemanticStructuralIndex,
 }
@@ -153,7 +152,6 @@ fn artifact_event_kind(kind: ArtifactKind) -> &'static str {
     match kind {
         ArtifactKind::PromptOutput => "prompt-output",
         ArtifactKind::SearchPacket => "search",
-        ArtifactKind::QueryPacket => "query",
         ArtifactKind::SemanticTreeSitterQuery => "tree-sitter-query",
         ArtifactKind::SemanticStructuralIndex => "structural-index",
     }
@@ -182,8 +180,8 @@ fn command_method(argv: &[String]) -> String {
         if command_is_tree_sitter_query(argv) {
             return "query/tree-sitter".to_string();
         }
-        if command_is_selector_code_query(argv) {
-            return "query/code".to_string();
+        if command_is_selector_source_query(argv) {
+            return "query/source".to_string();
         }
         return "query".to_string();
     }
@@ -233,8 +231,9 @@ fn command_is_tree_sitter_query(argv: &[String]) -> bool {
         .is_some()
 }
 
-fn command_is_selector_code_query(argv: &[String]) -> bool {
-    option_value(argv, "--selector").is_some() && argv.iter().any(|arg| arg == "--code")
+fn command_is_selector_source_query(argv: &[String]) -> bool {
+    option_value(argv, "--selector").is_some()
+        && option_value(argv, "--projection") == Some("source")
 }
 
 fn command_surface(argv: &[String], start: usize) -> (Option<&str>, usize) {

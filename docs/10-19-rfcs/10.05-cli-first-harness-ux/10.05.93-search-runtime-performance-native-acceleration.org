@@ -109,6 +109,32 @@ deterministic ranking inputs.  Candidate implementations include Rust =fst=,
 Roaring bitmaps, or an immutable memory-mapped layout.  The selected format is
 an implementation detail behind the shared search contract.
 
+** Daemon-owned canonical generation admission
+
+The single Runtime Server owns one asynchronous admission lane keyed by
+canonical workspace identity.  A workspace whose Turso scope has no canonical
+generation is admitted exactly once across all concurrent sessions.  Admission
+starts a background Tokio build that publishes complete owner bytes, selector
+proofs, source-snapshot evidence, and scope metadata through the existing
+workspace writer transaction.  Only after that durable commit succeeds may the
+writer lane validate and atomically publish the MemoryBackend and mmap epoch.
+
+An interactive query never performs the build inline.  It receives a typed
+=building= or =failed= admission receipt and terminates within the cold-path
+budget.  Repeated requests for the same workspace observe the same receipt and
+must not start another provider collection.  Independent workspace identities
+have independent tasks and may build concurrently.  The successful build is
+not a second authority: Turso remains canonical and the next read restores the
+resident generation from the committed materialization before acquiring a
+lease.
+
+The admission lane is part of the daemon server implementation, not an ASP
+command implementation.  The executable supplies the language-aware generation
+builder when it starts the server; the DB/runtime layer owns single-flight,
+state, cancellation, and receipt publication.  Hook lifecycle may request
+admission proactively, but =asp sync= remains configuration/schema
+synchronization and exact query remains a read-only data-plane operation.
+
 ** Owner-language admission
 Before ASP resolves a provider or starts an out-of-process language binary, the
 parent proves that an owner path belongs to the requested language and declared
@@ -178,7 +204,7 @@ Turso stores the canonical normalized copy of harness artifacts.  A warm
 read model.  It performs token postings, bounded intersections, ranking,
 EvidenceGraph construction, GraphRoute selection, and rendering with
 =providerProcessCount=0= and no native finder or language-parser process.  The
-only parser-facing read is an exact structural =query --code= request: the
+only parser-facing read is an exact structural =query --projection source= request: the
 facade forwards an already-materialized selector to the harness and consumes
 the parser-owned exact-selector receipt.  That request is not a search fallback
 and receives no query-set or graph-routing arguments.
@@ -198,7 +224,7 @@ provides one high-concurrency, read-only search and graph runtime.
 ** EvidenceGraph owner-item route
 An owner-item search is an EvidenceGraph route, not a source-text or selector-string route. Given a language, normalized owner path, and bounded query terms, ASP reads only matching =selector= nodes and typed edges from the current Turso generation. The node carries the parser-owned symbol, kind, exact selector, path, and normalized query keys. Ranking consumes those structured fields; it MUST NOT recover a symbol or kind by splitting a selector string, inspecting source text, or invoking a language provider.
 
-The result is compact graph evidence: exact selector identities plus their owner and typed relation context. Source-index postings remain useful for broad owner discovery, but they are not an owner-item answer. A source-index candidate without a bounded parser selector is not eligible for this route. The GraphRoute chooses the next exact =query --code= or a typed graph-neighbor route such as dependency or test evidence.
+The result is compact graph evidence: exact selector identities plus their owner and typed relation context. Source-index postings remain useful for broad owner discovery, but they are not an owner-item answer. A source-index candidate without a bounded parser selector is not eligible for this route. The GraphRoute chooses the next exact =query --projection source= or a typed graph-neighbor route such as dependency or test evidence.
 
 Projection publication is an explicit ASP lifecycle action. It may invoke the registered harness's bounded, query-free projection adapter for one admitted owner, then validates, digests, imports, and persists the result. A normal search never invokes that adapter. If its generation is missing, stale, or busy, it returns the corresponding typed state with =providerProcessCount=0= and an ASP projection-import action; it never falls through to a provider =search= or =semantic-facts= command.
 

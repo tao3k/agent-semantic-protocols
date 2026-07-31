@@ -1,0 +1,254 @@
+#+title: RFC 10.05.10.00.38 — Identity-Scoped Proof-DAG Sharing
+#+startup: overview
+
+* Status
+
+Draft research specification.
+
+This RFC defines when two branches of an AND/OR evidence proof may share one
+evidence witness and charge its semantic acquisition cost once. It does not add
+CLI commands or authorize implementation.
+
+* Problem
+
+RFC 00.37 changes the certified search target from a path to a realizing proof
+subgraph. A proof tree can repeat the same evidence witness in several required
+branches. Charging every tree occurrence overstates semantic acquisition cost
+and can make a feasible proof appear infeasible.
+
+Blind deduplication is also unsafe. Two nodes may have the same atom label while
+belonging to different:
+
+- evidence roots;
+- provider builds;
+- source-index generations;
+- content digests; or
+- projection versions.
+
+Merging those nodes changes the proof premises. Label equality is not evidence
+identity.
+
+A third error is to reuse semantic evidence and then remove request-local model
+prompt cost. The two cache domains remain separate:
+
+- semantic identity can share one evidence witness inside a proof DAG;
+- each model request retains its own prompt cost unless a request-bound prefix
+  authority from RFC 00.34 proves otherwise.
+
+* Decision
+
+Two proof-plan occurrences MAY share a witness only when their complete
+=EvidenceIdentity= values are equal.
+
+The identity binds:
+
+- atom digest;
+- content digest;
+- evidence-root digest;
+- provider digest;
+- source-index generation; and
+- projection version.
+
+The proof DAG charges semantic evidence acquisition once per distinct identity.
+It charges model prompt cost per request under the cache-parametric rules of
+RFC 00.33 and RFC 00.34.
+
+* Executable mathematical surface
+
+#+name: identity-scoped-proof-dag-sharing-math
+#+begin_src typst
+#let unique-cost(identities, cost, seen: ()) = {
+  if identities.len() == 0 {
+    0
+  } else {
+    let identity = identities.first()
+    let rest = identities.slice(1)
+    if identity in seen {
+      unique-cost(rest, cost, seen: seen)
+    } else {
+      cost(identity)
+        + unique-cost(rest, cost, seen: seen + (identity,))
+    }
+  }
+}
+
+#let tree-cost(identities, cost) = {
+  identities.fold(0, (sum, identity) => sum + cost(identity))
+}
+
+#let evidence-cost(_identity) = 10
+
+#let shared = (
+  atom: 1,
+  content: 11,
+  evidence-root: 21,
+  provider: 31,
+  source-generation: 7,
+  projection-version: 1,
+)
+
+#let next-generation = (
+  atom: 1,
+  content: 11,
+  evidence-root: 21,
+  provider: 31,
+  source-generation: 8,
+  projection-version: 1,
+)
+
+#let prompt-cost(requests) = {
+  requests.fold(0, (sum, request) => sum + request.prompt-tokens)
+}
+
+(
+  repeated-tree-cost: tree-cost((shared, shared), evidence-cost),
+  repeated-dag-cost: unique-cost((shared, shared), evidence-cost),
+  generation-drift-cost:
+    unique-cost((shared, next-generation), evidence-cost),
+  two-request-prompt-cost: prompt-cost((
+    (request: 1001, evidence: shared, prompt-tokens: 5),
+    (request: 1002, evidence: shared, prompt-tokens: 5),
+  )),
+)
+#+end_src
+
+The block is extracted by
+=orgize eval plan --json identity-scoped-proof-dag-sharing-math ...= and passed
+to =typst eval --in -=. No generated Typst file is written.
+
+* Tree cost versus DAG cost
+
+Let two required proof branches reference the same evidence identity with
+semantic acquisition cost 10.
+
+- tree occurrence charging reports 20;
+- identity-scoped DAG charging reports 10.
+
+This reduction is valid because both branches consume the same immutable
+witness. It is not a heuristic cache hit.
+
+If the second occurrence has the same atom and content labels but a different
+source-index generation, complete identity differs and the DAG cost remains 20.
+The old witness cannot discharge the new generation's premise.
+
+* Canonical cost ownership
+
+The cost assigned to a semantic witness is a function of its identity and the
+active semantic acquisition context. It is not an arbitrary number stored on
+each occurrence.
+
+If two occurrences claim the same identity with different acquisition costs,
+the router MUST resolve them through the authoritative cost context rather than
+letting traversal order choose a number. Otherwise, order-dependent
+deduplication would make the cost certificate non-canonical.
+
+Model prompt cost is not part of semantic witness acquisition cost. Two model
+requests that cite one shared evidence identity still contribute two prompt
+costs. Any reduction requires a separate, request-bound model prefix authority.
+
+* Shareability
+
+=Shareable(left, right)= is complete identity equality. It implies:
+
+- both occurrences refer to the same content;
+- both are valid for the same evidence root and source generation;
+- both use the same provider identity; and
+- both use the same projection interpretation.
+
+Similarity, equal labels, equal source paths, or equal content digests alone do
+not imply shareability.
+
+Content equality without generation equality can support a separately proven
+cross-generation transport theorem. Such a theorem is an explicit graph edge
+with its own premises and cost, not implicit deduplication.
+
+* Proof-DAG construction
+
+The proof-plan constructor:
+
+1. builds a structurally valid AND/OR derivation;
+2. canonicalizes every atom to a complete evidence identity;
+3. hash-conses exactly equal identities;
+4. retains dependency edges from every consumer;
+5. computes semantic acquisition cost over distinct identities; and
+6. computes request-local prompt cost independently.
+
+The resulting object is a proof DAG, not merely a compact rendering of a proof
+tree. The sharing relation is part of the certificate.
+
+* Cache interaction
+
+Identity-scoped sharing and caches answer different questions:
+
+- proof-DAG sharing: are two logical premises discharged by the same witness?
+- semantic-search cache: can that witness be loaded without reacquisition?
+- model prefix cache: can one request reuse prompt computation?
+
+A shared witness can be a semantic-cache miss on its first use and a hit on
+later uses. It is still one logical witness. Conversely, a semantic cache may
+contain two generation-distinct witnesses with identical content; they are not
+implicitly one proof node.
+
+Receipts expose the three outcomes separately.
+
+* Frontier and optimality consequence
+
+A tree-cost lower bound is safe but can be too pessimistic because it ignores
+sharing. It MUST NOT be used to reject a plan as infeasible unless it is known
+to be a lower bound after possible sharing.
+
+For exact optimality, an omitted-frontier certificate accounts for the maximum
+sharing that any omitted proof plan could lawfully obtain. For approximate
+search, the receipt states whether the bound is:
+
+- tree-based;
+- identity-aware; or
+- relaxed through an explicitly named sharing lower bound.
+
+* SearchLoop consequence
+
+SearchLoop exposes compact sharing evidence:
+
+- distinct witness count;
+- repeated occurrence count;
+- semantic acquisition tokens;
+- request-local prompt tokens;
+- identities that could not be shared and the differing identity field.
+
+The agent does not need the expanded proof tree unless it requests an inspect
+projection. Default output favors the canonical proof DAG and unresolved
+frontier.
+
+* Python Turbo Graph consequence
+
+The future Python graph layer SHOULD:
+
+- intern evidence identities;
+- store proof occurrences separately from canonical witness nodes;
+- use sparse incidence matrices between consumers and witnesses;
+- keep semantic acquisition and request prompt costs in different columns; and
+- reject generation-blind or label-only deduplication.
+
+SciPy sparse structure can make DAG incidence and unique-witness folds fast.
+The identity contract determines correctness.
+
+* Required Lean obligations
+
+The companion Lean model MUST prove:
+
+- repeated equal identities cost 20 in a tree and 10 in the proof DAG;
+- generation-distinct identities with equal atom labels are not shareable;
+- generation-distinct identities retain cost 20;
+- the same evidence identity can be referenced by two distinct requests; and
+- shared semantic evidence does not remove either request's prompt cost.
+
+The audit module emits these declarations as Lean-generated JSON.
+
+* Design finding
+
+The first proof-subgraph cost description said that shared nodes are charged
+once, but did not define equality. Lean requires a decidable key for the seen
+set. Using the atom label makes the generation-drift counterexample collapse
+incorrectly. Complete evidence identity is therefore part of the mathematical
+cost model, not an implementation optimization.
+

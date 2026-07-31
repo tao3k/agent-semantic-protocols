@@ -9,7 +9,7 @@ entered the search result or GraphRoute as a usable candidate.
 * Observed failure
 A search lane returned a Rust function selector for a repo-owned implementation
 path. The parent then ran the recommended exact
-=asp rust query --selector ... --workspace . --code= command. The command
+=asp rust query --selector ... --workspace . --projection source= command. The command
 completed successfully but returned no code payload.
 
 The empty read is only the symptom. The upstream bug is that Search Frame or
@@ -321,7 +321,7 @@ This checkpoint does not complete the P0/P1 selector-readiness work in this RFC.
 
 Search output may include display ranges, =sourceLocatorHint= fields, and compact
 symbol handles, but those values are evidence hints only. They MUST NOT be
-materialized into =asp <language> query --selector ... --code= actions.
+materialized into =asp <language> query --selector ... --projection source= actions.
 
 An executable query selector requires parser-owned exact item identity:
 =<language>://<owner>#item/<exact-kind>/<name>=. The =#item/symbol/...= form is

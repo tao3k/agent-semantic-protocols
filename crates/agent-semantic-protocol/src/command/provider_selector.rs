@@ -127,16 +127,6 @@ pub(super) fn is_provider_owned_structural_selector_query(
         .is_ok_and(|selector| selector.language_id.as_str() == language_id)
 }
 
-pub(super) fn provider_owned_structural_selector<'a>(
-    language_id: &str,
-    args: &'a [String],
-) -> Option<&'a str> {
-    if !is_provider_owned_structural_selector_query(language_id, args) {
-        return None;
-    }
-    option_value(args, "--selector")
-}
-
 use std::path::{Path, PathBuf};
 pub(super) fn option_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     let prefix = format!("{flag}=");

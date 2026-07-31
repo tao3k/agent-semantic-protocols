@@ -56,9 +56,9 @@ exploration across evidence state, graph topology, open frontier, router trace,
 metrics, synthesis, and reflection. It rejects duplicate commands and unresolved
 next-command placeholders.
 
-`semantic-workspace-scope.v1.schema.json` owns provider-resolved package-manager
-workspace membership. Search and graph consumers use its admitted package roots
-to reject cross-workspace and cross-language candidates before ranking.
+`project-resolution.v1.schema.json` owns provider-resolved package-manager
+workspace membership and source scope. Search and graph consumers use the
+ASP-projected source index from that receipt.
 Document language providers such as `org` and `md` use document-specific packet
 shapes. `semantic-document-search-packet.v1.schema.json` owns metadata search
 facts for headings, TOC outlines, properties, tables, blocks, links, and

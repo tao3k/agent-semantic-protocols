@@ -1,0 +1,69 @@
+{"sourcePath": "packages/proofs/ASPProof/SearchRouteAdmissionRetention.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetention",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ {Identity : Type} {policy : SearchRouteAdmissionRetention.RetentionPolicy Identity} {now : Nat}\n  {runIdentity : Identity},\n  SearchRouteAdmissionRetention.RetainedAt policy now runIdentity →\n    ¬SearchRouteAdmissionRetention.AuthorizedRetirement policy now runIdentity",
+   "theoremFamily": "retention-horizon",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARR-HORIZON"],
+   "name":
+   "SearchRouteAdmissionRetention.run_cannot_retire_before_retention_deadline",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Identity Payload : Type} {retainedRun : Identity → Prop} {commitPayload : Payload → Identity}\n  {ledger : SearchRouteAdmissionHistory.CommitmentLedger Identity}\n  {store : SearchRouteAdmissionRetention.ReceiptStore Identity Payload} {runIdentity : Identity}\n  {record : SearchRouteAdmissionHistory.AdmissionRecord Identity},\n  SearchRouteAdmissionRetention.RetentionInvariant retainedRun commitPayload ledger store →\n    retainedRun runIdentity →\n      SearchRouteAdmissionHistory.CommittedRecord ledger runIdentity record →\n        SearchRouteAdmissionRetention.AcknowledgementRecoverable commitPayload ledger store runIdentity",
+   "theoremFamily": "retained-ack-recovery",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-ARR-RESOLUTION", "ASP-RFC-10.05-ARR-RETENTION"],
+   "name":
+   "SearchRouteAdmissionRetention.retained_committed_run_has_recoverable_acknowledgement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Identity Payload : Type} {retainedRun : Identity → Prop} {commitPayload : Payload → Identity}\n  {ledger : SearchRouteAdmissionHistory.CommitmentLedger Identity}\n  {before after : SearchRouteAdmissionRetention.ReceiptStore Identity Payload} {runIdentity : Identity}\n  {record : SearchRouteAdmissionHistory.AdmissionRecord Identity},\n  SearchRouteAdmissionRetention.SafeGarbageCollection retainedRun ledger before after →\n    retainedRun runIdentity →\n      SearchRouteAdmissionHistory.CommittedRecord ledger runIdentity record →\n        SearchRouteAdmissionRetention.RecordResolvable commitPayload before record →\n          SearchRouteAdmissionRetention.RecordResolvable commitPayload after record",
+   "theoremFamily": "safe-gc-record-preservation",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARR-SAFE-GC"],
+   "name":
+   "SearchRouteAdmissionRetention.safe_gc_preserves_record_resolvability",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ {Identity Payload : Type} {retainedRun : Identity → Prop} {commitPayload : Payload → Identity}\n  {ledger : SearchRouteAdmissionHistory.CommitmentLedger Identity}\n  {before after : SearchRouteAdmissionRetention.ReceiptStore Identity Payload},\n  SearchRouteAdmissionRetention.RetentionInvariant retainedRun commitPayload ledger before →\n    SearchRouteAdmissionRetention.SafeGarbageCollection retainedRun ledger before after →\n      SearchRouteAdmissionRetention.RetentionInvariant retainedRun commitPayload ledger after",
+   "theoremFamily": "safe-gc-invariant-preservation",
+   "rfcClauseIds": ["ASP-RFC-10.05-ARR-RETENTION", "ASP-RFC-10.05-ARR-SAFE-GC"],
+   "name":
+   "SearchRouteAdmissionRetention.safe_gc_preserves_retention_invariant",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "SearchRouteAdmissionHistory.CommittedRecord SearchRouteAdmissionHistory.recordLedgerA\n    SearchRouteAdmissionLedger.LedgerIdentity.run SearchRouteAdmissionHistory.exampleRecordA ∧\n  ¬SearchRouteAdmissionRetention.AcknowledgementRecoverable SearchRouteAdmissionRetention.unitPayloadCommit\n      SearchRouteAdmissionHistory.recordLedgerA SearchRouteAdmissionRetention.emptyReceiptStore\n      SearchRouteAdmissionLedger.LedgerIdentity.run",
+   "theoremFamily": "missing-payload-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-ARR-NONIMPLICATION", "ASP-RFC-10.05-ARR-RESOLUTION"],
+   "name":
+   "SearchRouteAdmissionRetention.committed_record_does_not_imply_payload_reachability",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "SearchRouteAdmissionRetention.RecordResolvable SearchRouteAdmissionRetention.examplePayloadCommit\n    SearchRouteAdmissionRetention.completeReceiptStore SearchRouteAdmissionHistory.exampleRecordA ∧\n  ¬SearchRouteAdmissionRetention.RecordResolvable SearchRouteAdmissionRetention.examplePayloadCommit (fun x => none)\n      SearchRouteAdmissionHistory.exampleRecordA",
+   "theoremFamily": "unsafe-gc-counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-ARR-NONIMPLICATION", "ASP-RFC-10.05-ARR-SAFE-GC"],
+   "name":
+   "SearchRouteAdmissionRetention.deleting_referenced_payload_breaks_acknowledgement_recovery",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["propext"]}],
+ "declarationCount": 6,
+ "axiomInventory": ["Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 4,
+ "axiomDependentDeclarationCount": 2}

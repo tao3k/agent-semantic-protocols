@@ -1,0 +1,274 @@
+#+title: RFC 10.05.65 — SearchRoute Retry Publication Key Encoding
+#+author: ASP Search Protocol Working Notes
+#+startup: overview
+
+* Status
+
+This RFC is a proof-oriented refinement of RFC 10.05.64.  It defines the
+canonical, schema-bound encoding obligation for retry-publication keys.  It
+does not choose a production byte codec or implement Rust or Python behavior.
+
+* Abstract
+
+RFC 10.05.64 proves that the semantic publication key requires five identity
+dimensions.  A complete tuple can still become ambiguous when serialized:
+
+- delimiter-free concatenation loses field boundaries;
+- order-insensitive encoding loses field roles;
+- omitting encoding-schema identity aliases incompatible decoders;
+- lossy normalization aliases distinct authoritative identities.
+
+This RFC distinguishes =encodingSchemaIdentity= from =contractVersion= and
+requires a canonical encoder with a left inverse:
+
+#+begin_example
+decode(encode(key)) = key
+#+end_example
+
+The round-trip law entails encoder injectivity.  Equal canonical encodings
+therefore imply equal schema identity and equal values for all five semantic
+key dimensions.
+
+* Logic defects exposed by the proof
+
+** Contract version is not encoding-schema identity
+
+=contractVersion= says how a certificate or route contract is interpreted.
+=encodingSchemaIdentity= says how key fields are framed, ordered, decoded, and
+normalized.  Two encoders can carry the same contract version while assigning
+different tuple boundaries.
+
+The publication key MUST bind both identities.
+
+** Hashing does not create injectivity
+
+A digest can preserve the identity of an unambiguous canonical preimage.  It
+cannot restore ambiguity already introduced by concatenation, field
+reordering, missing schema identity, or lossy normalization.
+
+For example, the bit-field pairs:
+
+#+begin_example
+([true],        [false, true])
+([true, false], [true])
+#+end_example
+
+have the same delimiter-free concatenation despite being distinct tuples.
+
+* Normative vocabulary
+
+** Canonical encoding
+
+A canonical key encoding assigns each field one unambiguous position and
+representation.  Its abstract fields are:
+
+1. encoding-schema identity;
+2. workspace identity;
+3. ledger generation;
+4. contract version;
+5. tenant scope;
+6. retry identity.
+
+A byte-level implementation MUST additionally define tags or field order,
+length framing, integer encoding, and normalization.
+
+** Canonical decoder
+
+The canonical decoder maps an accepted encoding back to exactly one versioned
+semantic key.  It MUST fail closed on malformed, non-canonical, unknown-schema,
+duplicate-field, or trailing-field encodings.
+
+** Left inverse
+
+The decoder is a left inverse of the encoder when:
+
+#+begin_example
+for every semantic key k:
+  decode(encode(k)) = k
+#+end_example
+
+This property entails encoder injectivity.
+
+* Normative requirements
+
+** ASP-RFC-10.05-RPKE-SCHEMA
+
+The encoded publication key MUST include an =encodingSchemaIdentity= distinct
+from =contractVersion=.  Decoder selection MUST be determined by the encoding
+schema identity.
+
+Unknown schema identities MUST fail closed.  A decoder MUST NOT guess a schema
+from payload shape.
+
+** ASP-RFC-10.05-RPKE-FRAMING
+
+Every field MUST have an unambiguous boundary.  Implementations MUST use a
+fixed-width, length-delimited, or equivalently injective framing rule.
+
+Delimiter-free concatenation of variable-width fields is forbidden.
+Delimiter-based encodings MUST escape or length-frame delimiter occurrences.
+
+** ASP-RFC-10.05-RPKE-ORDER
+
+Field roles MUST be preserved by fixed positions or explicit tags.  An
+order-insensitive multiset, sum, sorted-value list, or commutative aggregation
+is forbidden because it aliases role-swapped values.
+
+Duplicate tags and unexpected field order MUST fail closed unless the schema
+explicitly defines one canonical normalization that remains injective.
+
+** ASP-RFC-10.05-RPKE-NORMALIZATION
+
+Normalization MUST preserve authoritative identity.  Case folding, numeric
+truncation, Unicode normalization, path normalization, or tenant-name rewriting
+MUST NOT be applied unless the corresponding identity authority defines the
+normalized values as equal.
+
+A display-oriented normalization MUST NOT become the publication-key
+normalization by accident.
+
+** ASP-RFC-10.05-RPKE-ROUNDTRIP
+
+The canonical encoder and decoder MUST satisfy:
+
+#+begin_example
+decode(encode(key)) = key
+#+end_example
+
+for every valid versioned publication key.
+
+** ASP-RFC-10.05-RPKE-INJECTIVE
+
+Equal canonical encodings MUST imply equal versioned semantic keys.  The
+equality MUST include encoding-schema identity and all RFC 10.05.64 dimensions.
+
+If the stored cell key is a digest of the canonical encoding, the receipt MUST
+bind the digest algorithm, schema identity, and canonical preimage identity.
+
+** ASP-RFC-10.05-RPKE-NONIMPLICATION
+
+The protocol MUST preserve these explicit non-implications:
+
+- complete semantic fields do not imply unambiguous serialization;
+- delimiter-free concatenation does not imply tuple injectivity;
+- order-independent aggregation does not preserve field roles;
+- equal schema-free payloads do not imply equal decoding domains;
+- convenient normalization does not imply identity preservation;
+- canonical encoding does not itself prove digest collision resistance;
+- key injectivity does not prove graph-route optimality.
+
+* Mathematical model
+
+The Typst mathematical source is embedded in this Org document and evaluated
+through stdin.
+
+#+name: searchroute-retry-publication-key-encoding-model
+#+begin_src typst
+#let encode(key) = $upright("Encode")(#key)$
+#let decode(value) = $upright("Decode")(#value)$
+#let concat(pair) = $upright("Concat")(#pair)$
+#let unordered(pair) = $upright("Unordered")(#pair)$
+#let omitSchema(key) = $upright("omit-schema")(#key)$
+#let normalize(identity) = $upright("Normalize")(#identity)$
+
+#[
+  A versioned publication key contains
+  $
+    K = (S, W, G, V, T, R),
+  $
+  where $S$ is encoding-schema identity and the remaining fields are the
+  RFC 10.05.64 semantic dimensions.
+
+  Canonical encoding satisfies the left-inverse law
+  $
+    #decode(encode($K$)) = K.
+  $
+
+  The left-inverse law entails injectivity:
+  $
+    #encode($K_1$) = #encode($K_2$)
+    arrow.r.double
+    K_1 = K_2.
+  $
+
+  The countermodels establish four invalid shortcuts.
+
+  Distinct field pairs can share a delimiter-free concatenation:
+  $
+    P_1 != P_2
+    and #concat($P_1$) = #concat($P_2$).
+  $
+
+  Role-swapped fields can share an order-insensitive encoding:
+  $
+    (1, 2) != (2, 1)
+    and #unordered($(1, 2)$) = #unordered($(2, 1)$).
+  $
+
+  Distinct schema domains can share a schema-free projection:
+  $
+    K_S != K_S'
+    and #omitSchema($K_S$) = #omitSchema($K_S'$).
+  $
+
+  Distinct identities can share a lossy normalization:
+  $
+    I_1 != I_2
+    and #normalize($I_1$) = #normalize($I_2$).
+  $
+]
+#+end_src
+
+* Lean correspondence
+
+The executable model is
+=packages/proofs/ASPProof/SearchRouteAdmissionRetryPublicationKeyEncoding.lean=.
+
+- =VersionedRetryPublicationKey= separates encoding-schema identity from the
+  RFC 10.05.64 semantic key.
+- =CanonicalKeyEncoding= is the mathematical form of tagged,
+  length-delimited field slots.
+- =canonicalEncode= and =canonicalDecode= define the canonical pair.
+- =canonical_decode_encode_round_trip= proves
+  =ASP-RFC-10.05-RPKE-ROUNDTRIP=.
+- =canonical_encoding_is_injective= derives
+  =ASP-RFC-10.05-RPKE-INJECTIVE= from that round trip.
+- =delimiter_free_concatenation_is_not_injective= proves the framing
+  counterexample.
+- =unordered_field_encoding_is_not_injective= proves the field-role
+  counterexample.
+- =omitting_encoding_schema_aliases_distinct_decoding_domains= proves the
+  schema omission counterexample.
+- =lossy_normalization_is_not_identity_preserving= proves the normalization
+  counterexample.
+
+The audit remains a standalone module with a JSON receipt scoped only to this
+RFC.
+
+* SearchLoop cost relevance
+
+An encoding alias makes two distinct retry domains address the same atomic
+winner cell.  The graph router may then recover evidence from the wrong
+workspace, generation, contract, tenant, retry, or decoder domain.  Detecting
+the mismatch requires additional searches and packets; failing to detect it
+selects a short but invalid graph path.
+
+Canonical injective encoding is therefore a prerequisite for safe reuse, lower
+token cost, fewer interaction rounds, and model-prefix cache stability.  It
+does not itself prove digest security, route optimality, or a cache hit.
+
+* Non-goals and next proof boundary
+
+This RFC does not yet prove:
+
+- collision resistance of a chosen digest;
+- canonical byte decoding or malformed-input rejection;
+- migration between encoding schemas;
+- authorization-safe winner retrieval;
+- leader fencing and replicated linearizability;
+- graph-route optimality.
+
+The next proof layer should model digest binding and domain separation.  It
+should distinguish mathematical encoder injectivity from cryptographic digest
+assumptions and prevent one digest namespace from being reused for evidence
+payloads, publication keys, and model-cache identities.

@@ -81,7 +81,11 @@ pub fn commit_source_index_generation_via_runtime_server(
 }
 /// Typed workspace operation accepted by the Runtime Server data-plane protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum WorkspaceDbIpcOperation {
     Health,
     Shutdown,
@@ -93,6 +97,9 @@ pub enum WorkspaceDbIpcOperation {
         materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
     },
     EnsureRuntimeGeneration {
+        project_root: String,
+    },
+    AdmitRuntimeGeneration {
         project_root: String,
     },
     WriteProviderIncrementalOwner {
@@ -126,6 +133,13 @@ pub enum WorkspaceDbIpcOperation {
         mode: WorkspaceDbWriteFinishMode,
     },
     PublishRuntimeOwner {
+        owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot,
+    },
+    TombstoneRuntimeOwner {
+        owner_path: String,
+    },
+    RelocateRuntimeOwner {
+        previous_owner_path: String,
         owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot,
     },
 }
@@ -183,10 +197,19 @@ pub enum WorkspaceDbIpcResult {
     RuntimeGeneration {
         receipt: crate::runtime_server_workspace::WorkspaceRecoveryReceipt,
     },
+    RuntimeGenerationAdmission {
+        receipt: crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt,
+    },
     Failed {
         code: String,
         message: String,
     },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RuntimeGenerationEnsure {
+    Ready(crate::runtime_server_workspace::WorkspaceRecoveryReceipt),
+    Admission(crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -302,7 +325,7 @@ impl WorkspaceDbIpcSession {
         }
     }
 
-    async fn call_operation(
+    pub(super) async fn call_operation(
         &self,
         operation: WorkspaceDbIpcOperation,
     ) -> Result<WorkspaceDbIpcResult, String> {
@@ -467,42 +490,6 @@ impl WorkspaceDbIpcSession {
         }
     }
 
-    pub async fn commit_source_index_generation(
-        &self,
-        request: &crate::ClientDbSourceIndexRefreshRequest,
-        materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
-    ) -> Result<crate::ClientDbSourceIndexRefreshReport, String> {
-        materialization.validate_refresh_request(self.workspace_identity(), request)?;
-        match self
-            .call_operation(WorkspaceDbIpcOperation::CommitSourceIndexGeneration {
-                request: request.clone(),
-                materialization,
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::SourceIndexGeneration { receipt } => Ok(receipt),
-            _ => Err(
-                "workspace owner IPC returned an unexpected source-index generation result"
-                    .to_owned(),
-            ),
-        }
-    }
-
-    pub async fn ensure_runtime_generation(
-        &self,
-        project_root: &std::path::Path,
-    ) -> Result<crate::runtime_server_workspace::WorkspaceRecoveryReceipt, String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::EnsureRuntimeGeneration {
-                project_root: project_root.display().to_string(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::RuntimeGeneration { receipt } => Ok(receipt),
-            _ => Err("Runtime Server returned an unexpected generation restore result".to_owned()),
-        }
-    }
-
     pub async fn probe_provider_owners(
         &self,
         scope: &ProviderIncrementalScoped,
@@ -644,21 +631,6 @@ impl WorkspaceDbIpcSession {
         {
             WorkspaceDbIpcResult::WriteFinish { receipt } => Ok(receipt),
             _ => Err("workspace owner IPC returned an unexpected write finish result".to_owned()),
-        }
-    }
-
-    pub async fn publish_runtime_owner(
-        &self,
-        owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot,
-    ) -> Result<crate::runtime_server_workspace::WorkspaceRecoveryReceipt, String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::PublishRuntimeOwner { owner })
-            .await?
-        {
-            WorkspaceDbIpcResult::RuntimeGeneration { receipt } => Ok(receipt),
-            _ => {
-                Err("Runtime Server returned an unexpected workspace generation result".to_owned())
-            }
         }
     }
 }

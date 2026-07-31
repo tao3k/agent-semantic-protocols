@@ -1,0 +1,157 @@
+#+title: RFC 10.05.71 — SearchRoute Distributed Cache Invalidation Barrier
+#+author: ASP Search Protocol Working Notes
+#+startup: overview
+
+* Status
+
+This RFC is a proof-oriented refinement of RFC 10.05.70.  It defines the
+distributed barrier required before cache replicas may continue serving after
+authorization-generation invalidation.  It does not implement a distributed
+cache in Rust or Python.
+
+* Abstract
+
+Emitting an invalidation event does not prove that every cache replica has
+installed it.  A quorum acknowledgment is also insufficient when an
+unacknowledged replica remains eligible to serve reads.
+
+The safety condition quantifies over the serving set:
+
+#+begin_example
+for every replica r:
+  if r may serve,
+  then r acknowledged
+  and targetGeneration <= r.installedGeneration
+#+end_example
+
+An unacknowledged replica may coexist with a completed quorum only when it is
+fenced from serving.  This permits availability-oriented quorum protocols
+without treating a late replica as current.
+
+* Normative requirements
+
+** ASP-RFC-10.05-DCIB-TARGET
+
+Every invalidation barrier MUST bind the target authorization generation.
+Wall-clock event time MUST NOT substitute for generation identity.
+
+** ASP-RFC-10.05-DCIB-SERVING-SET
+
+Barrier safety MUST quantify every replica currently eligible to serve winner
+cache reads.  Registry membership, health status, routing eligibility, and
+fencing state MUST determine one authoritative serving set.
+
+** ASP-RFC-10.05-DCIB-ACKNOWLEDGMENT
+
+Every serving replica MUST acknowledge the invalidation and report an installed
+generation greater than or equal to the target.
+
+Event emission, queue acceptance, delivery attempt, or local receipt parsing
+is not an installed-generation acknowledgment.
+
+** ASP-RFC-10.05-DCIB-QUORUM
+
+A quorum acknowledgment is sufficient only when every unacknowledged replica
+is fenced from serving before the barrier is declared safe.
+
+Quorum size alone is not the safety predicate.
+
+** ASP-RFC-10.05-DCIB-STALE-ENTRY
+
+At a serving replica that crossed the barrier, an entry older than the target
+generation MUST NOT be considered current.
+
+** ASP-RFC-10.05-DCIB-NONIMPLICATION
+
+The protocol MUST preserve these explicit non-implications:
+
+- invalidation-event emission does not imply barrier completion;
+- one delivery acknowledgment does not imply replica installation;
+- quorum acknowledgment does not protect an unfenced late replica;
+- replica health does not imply installed-generation freshness;
+- local cache equality does not imply global authorization currency;
+- distributed invalidation safety does not prove graph-route optimality.
+
+* Mathematical model
+
+The Typst source remains embedded in Org and is evaluated through stdin.
+
+#+name: searchroute-distributed-cache-invalidation-barrier-model
+#+begin_src typst
+#let serving(replica) = $upright("Serving")(#replica)$
+#let acknowledged(replica) = $upright("Acknowledged")(#replica)$
+#let installed(replica) = $upright("InstalledGeneration")(#replica)$
+#let target = $upright("TargetGeneration")$
+#let safe = $upright("BarrierSafe")$
+#let fenced(replica) = $upright("Fenced")(#replica)$
+
+#[
+  Distributed barrier safety is
+  $
+    #safe
+    equiv
+    (
+      forall r,
+      #serving($r$)
+      arrow.r.double
+      (
+        #acknowledged($r$)
+        and #target <= #installed($r$)
+      )
+    ).
+  $
+
+  Therefore a serving replica that crossed the barrier cannot treat an entry
+  generation $e < #target$ as current.
+
+  Event emission alone does not entail $#safe$.  A quorum acknowledgment also
+  does not entail $#safe$ while an unacknowledged replica remains serving.
+
+  Quorum completion becomes safe when every late replica satisfies
+  $
+    not #acknowledged($r$)
+    arrow.r.double
+    #fenced($r$)
+    and not #serving($r$).
+  $
+]
+#+end_src
+
+* Lean correspondence
+
+The executable model is
+=packages/proofs/ASPProof/SearchRouteAdmissionRetryCacheInvalidationBarrier.lean=.
+
+- =DistributedInvalidationBarrier= stores target generation, serving set,
+  acknowledgments, and installed generations.
+- =BarrierSafe= quantifies every serving replica.
+- =safe_barrier_serving_replica_has_crossed_target_generation= proves the
+  acknowledgment and installation consequence.
+- =safe_barrier_rejects_older_entry_at_serving_replica= proves stale-entry
+  rejection.
+- =emitted_invalidation_event_does_not_establish_safe_barrier= proves the event
+  counterexample.
+- =one_replica_quorum_does_not_protect_unfenced_late_replica= proves the
+  quorum-only counterexample.
+- =quorum_with_unacknowledged_replica_fenced_is_safe= proves the safe fencing
+  case.
+- =unfenced_late_replica_can_treat_stale_entry_as_locally_current= proves the
+  stale-read witness.
+
+The JSON proof audit remains modular and scoped only to this RFC.
+
+* SearchLoop cost relevance
+
+A late cache replica can reintroduce revoked winner evidence, causing unsafe
+route reuse.  Overly conservative global cache shutdown instead increases
+searches, tool rounds, tokens, and model-prefix disruption.  Serving-set
+fencing permits safe quorum-based progress without accepting stale reads.
+
+* Non-goals and next proof boundary
+
+This RFC does not prove failure-detector accuracy, fencing-token authenticity,
+replicated serving-set linearizability, or graph-route optimality.
+
+The next proof layer should bind serving eligibility to a monotonic fencing
+token and prove that a partitioned replica cannot resume serving with a stale
+token after rejoining.

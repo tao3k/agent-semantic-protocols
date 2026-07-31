@@ -101,8 +101,8 @@ The required project-resolution relations are:
 - =member-of= from package to language workspace;
 - =owns-source= from package target to a resolved source scope;
 - =depends-on= for internal package edges and external dependency identities;
-- =derived-from= from every resolved scope to its package-manager or provider
-  default authority; and
+- =derived-from= from every resolved scope to its manifest-explicit or
+  package-manager authority; and
 - =bounded-by= from a resolved scope to the repository candidate generation.
 
 Every owner, item, test, finding, and dependency node projected by ordinary
@@ -345,7 +345,7 @@ resident search loop
        QueryHandoff
 
 main agent
-  -> asp <language> query --selector <exact structural selector> --workspace . --code
+  -> asp <language> query --selector <exact structural selector> --workspace .
 #+end_src
 
 =SearchClosureReceipt= is not a polished summary. It is a replayable closure
@@ -1843,7 +1843,20 @@ grammar.  Compact graph output therefore follows six invariants:
 
 Line selector compatibility is intentionally narrow. Compact graph aliases, =syntax= rows, action frontier entries, and default owner/item rows must put parser-owned identities in executable selector fields: =structuralSelector=, semantic handle ids, native fact ids, owner path plus item name, or a compiled tree-sitter query recipe. They may carry =displayLineRange= and =sourceLocatorHint= beside that identity so humans can inspect the range and the trusted materializer can perform an exact source transport later.
 
-The trusted materializer is the only layer allowed to turn a source locator hint into a shell command. It may emit =asp <language> query --selector <path:line-range> --code= only when the typed action has an exact-code policy. For search defaults and syntax exploration the materialized command must stay parser-native, such as =owner-items=, =query --names-only=, =query --selector <structuralSelector>= with a non-code projection, or =treesitter-query=. Production code must not recover actions by parsing =@path:start:end= aliases from ARI text.
+The trusted materializer never converts a display/source-locator hint into an
+executable query.  Search discovery returns parser-owned structural selectors.
+Exact materialization emits only
+=asp <language> query --selector <structuralSelector> --projection source= or
+=--projection callable-skeleton=.  Production code must not recover actions by
+parsing =@path:start:end= aliases from ARI text.
+
+The public exact-query CLI is a closed typed surface.  It MUST parse
+=--selector=, the required =--projection=, and optional diagnostic =--json=
+before activation loading, Runtime Server lookup, generation recovery, or
+provider dispatch.  Unknown arguments fail at that boundary.  Historical
+=--code= and =--names-only= flags are removed contracts, not deprecated aliases:
+no provider, hook guide, fixture, or installed runtime may parse or recommend
+them.
 
 Schema fields used by this boundary:
 
@@ -1851,8 +1864,7 @@ Schema fields used by this boundary:
 structuralSelector  parser-owned element identity
 displayLineRange    human display hint only
 sourceLocatorHint   exact source transport hint
-projection          outline | names | content | code
-codePolicy          no-code | code-after-exact-selector | requires-exact-code
+projection          source | callable-skeleton
 #+end_src
 * Agent-driven search flow boundary
 
@@ -2372,8 +2384,8 @@ actions are the recommended follow-up.  Edges keep the meanings separate:
 says the item matched it, =Q>{H:revise}= says a query term should be revised to
 a parser-owned candidate, and =O>{I:contains,H:contains}= records ownership.
 Owner-item search output must not inline source code.  It gives exact
-locators/frontier only; a follow-up =query --code= or direct-read route is the
-pure code extraction boundary.
+structural selectors/frontier only; a follow-up exact =query --projection
+source= is the source extraction boundary.
 
 * Prime search example
 
@@ -2775,9 +2787,10 @@ The explicit =--view graph-turbo-request= surface MUST serialize the same enrich
 =semantic-graph-turbo-request.v1= packet that would be sent to the graph-turbo
 ranking boundary.  Selecting this view MUST NOT, by itself, suppress bounded
 provider =search semantic-facts= enrichment when semantic intent, provider
-capability/context, and bounded candidates are present.  The view MAY avoid a
-query-free workspace/topology provider call when equivalent validated
-projection or cache facts are already available.  Unsupported providers,
+capability/context, and bounded candidates are present.  The search facade MUST
+consume the active source-index generation derived from =ProjectResolution=;
+the removed =search workspace-scope= provider command, semantic-workspace-scope
+packet, and package-root topology walk are not fallback routes.  Unsupported providers,
 provider errors, missing context/capability, non-semantic queries, and empty
 bounded candidate sets remain valid empty enrichment outcomes and SHOULD be
 distinguished by an explicit =sourceTrace= reason rather than collapsed into an
@@ -2785,15 +2798,13 @@ undifferentiated =skipped= state.
 
 Ontology-oriented queries MUST NOT depend on a lexical source hit as the only
 way to establish the bounded candidate frontier for provider semantic facts.
-When lexical and manifest acquisition yield no usable source owner, ASP SHOULD
-project a bounded candidate set from the validated semantic workspace scope:
-package roots and provider-owned source extensions define the admissible scan
-boundary, a fixed document budget bounds discovery, and the ordinary workspace
-admission plus distinct-path provider-fact budget applies before candidates are
-written to provider stdin.  This workspace-topology projection participates in
-the shared candidate-source fan-in and source trace.  It MUST NOT be implemented
-by invoking =search semantic-facts= with empty stdin, because providers may
-interpret empty input as an unbounded project scan.
+When lexical acquisition yields no usable source owner, ASP may project only
+owners already present in the active source index and reachable from the
+admitted =ResolvedSourceScope= facts.  It MUST NOT walk package roots, rebuild
+scope from extensions, invoke a query-free workspace/topology provider command,
+or invoke =search semantic-facts= with empty stdin.  If the active generation
+cannot supply a bounded owner frontier, semantic-facts enrichment remains empty
+with an explicit typed source-trace reason.
 
 Provider semantic-facts intent requires compound typed evidence: either at
 least two ontology terms, or one ontology term paired with a typed =Symbol=

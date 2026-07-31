@@ -24,7 +24,7 @@ When an agent already has an exact provider selector and still needs owner-local
 #+begin_src shell
 asp <language> search pipe --selector '<provider-selector>' --query '<owner-local terms>' --workspace . --view seeds
 #+end_src
-This packet must bind the exact selector, owner path, and context query into one =actionFrontier=. The primary =recommendedNext= should be the exact parser-owned =query --selector ... --code= action; secondary actions may include =search owner <owner> items --query ...= and a scoped =asp rg= fallback. The rendered packet must not ask agents to use =&&= or manually join separate =asp <language> query= and =asp <language> search owner= commands as one evidence step.
+This packet must bind the exact selector, owner path, and context query into one =actionFrontier=. The primary =recommendedNext= should be the exact parser-owned =query --selector ... --projection source= action; secondary actions may include =search owner <owner> items --query ...= and a scoped =asp rg= fallback. The rendered packet must not ask agents to use =&&= or manually join separate =asp <language> query= and =asp <language> search owner= commands as one evidence step.
 Search flow selection is evidence-state driven. =search prime= and
 =search pipe= are available protocol surfaces, but they are not a mandatory
 prelude before every read or edit. If the user prompt, hook recovery route,
@@ -94,7 +94,7 @@ because that is the only active facade.
 #+begin_src shell
 asp search --language rust prime --workspace . --view seeds
 asp query --language typescript --treesitter-query '<pattern>' --workspace .
-asp query crates/agent-semantic-protocol/src/lib.rs --query run --workspace . --code
+asp query crates/agent-semantic-protocol/src/lib.rs --query run --workspace . --projection source
 #+end_src
 
 The root facade is intentionally additive.  Existing provider-owned guide text,
@@ -196,7 +196,7 @@ candidate owners is workspace search. Language providers must reject that form
 before source collection and route discovery to the Rust-owned indexed search
 surface, for example =asp <language> search symbol <symbol> --workspace
 <workspace-root> --view seeds=. After search returns an owner-bearing selector,
-=query --selector <provider-selector> --code= remains the canonical exact read.
+=query --selector <provider-selector> --projection source= remains the canonical exact read.
 Provider implementations must not hide a whole-workspace symbol scan behind
 manual garbage collection, incremental file reads, or a compatibility fallback.
 

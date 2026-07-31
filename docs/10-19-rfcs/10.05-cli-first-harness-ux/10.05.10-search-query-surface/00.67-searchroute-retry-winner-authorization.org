@@ -1,0 +1,272 @@
+#+title: RFC 10.05.67 — SearchRoute Retry Winner Authorization
+#+author: ASP Search Protocol Working Notes
+#+startup: overview
+
+* Status
+
+This RFC is a proof-oriented refinement of RFC 10.05.66.  It defines
+authorization-bound recovery of an existing retry-publication winner.  It does
+not select an identity provider or implement Rust or Python behavior.
+
+* Abstract
+
+RFCs 10.05.64 through 10.05.66 establish correctly scoped, canonically encoded,
+domain-bound publication-key identities.  Correct identity is not
+authorization.
+
+Knowing a complete key or digest MUST NOT act as a bearer capability.  Winner
+recovery requires an independently verified active grant bound to the same:
+
+- workspace identity;
+- ledger generation;
+- contract version;
+- tenant scope;
+- retry identity.
+
+Authorization is evaluated before observing the winner ledger.  Unauthorized
+requests receive =denied= independently of whether a winner exists.  This
+prevents both winner disclosure and existence-oracle leakage from a
+lookup-first implementation.
+
+* Logic defects exposed by the proof
+
+** Identity equality is not authorization
+
+The following implication is invalid:
+
+#+begin_example
+presentedKey = targetKey
+implies
+mayRecoverWinner
+#+end_example
+
+An attacker, log reader, previous tenant, or unrelated agent may learn a valid
+key or digest without receiving authority to read its winner.
+
+** Scope equality is not grant activity
+
+A grant can match every key dimension and still be expired, revoked, not yet
+active, or issued by an unauthoritative source.  Scope matching and grant
+activity are independent proof obligations.
+
+** Lookup must not precede authorization
+
+A lookup-first implementation may retrieve a winner before detecting a tenant
+or scope mismatch.  Even if it later reports =denied=, the winner may already
+have entered logs, caches, traces, timing behavior, or an agent response.
+
+* Normative vocabulary
+
+** Recovery grant
+
+An authoritative grant binding the five RFC 10.05.64 publication-key
+dimensions.  The grant is not a copy of untrusted request fields.
+
+** Grant activity
+
+The independent decision that a grant is currently acceptable under its
+issuer, validity interval, revocation state, and policy version.
+
+This RFC models activity as a predicate.  Temporal and revocation-race
+semantics are left to the next proof layer.
+
+** Presented key
+
+The full key or digest reference supplied by the recovery request.  It selects
+a requested object but does not authorize access.
+
+** Authorized recovery
+
+A request is authorized exactly when:
+
+1. its grant is active;
+2. its presented key equals the target key;
+3. every grant scope dimension equals the target-key dimension.
+
+** Recovery outcome
+
+Authorization-bound recovery returns:
+
+- =released(winner)= for an authorized request with an existing winner;
+- =missing= for an authorized request with no winner;
+- =denied= for every unauthorized request.
+
+* Normative requirements
+
+** ASP-RFC-10.05-RWA-ACTIVE-GRANT
+
+Winner recovery MUST require an independently verified active grant.  Key,
+digest, receipt, or publication-ID possession MUST NOT be treated as bearer
+authorization.
+
+Grant activity MUST fail closed when issuer, expiry, revocation, or policy
+version cannot be verified.
+
+** ASP-RFC-10.05-RWA-SCOPE
+
+The active grant MUST bind the same workspace identity, ledger generation,
+contract version, tenant scope, and retry identity as the target publication
+key.
+
+Mismatch in any dimension MUST produce =denied=.
+
+** ASP-RFC-10.05-RWA-AUTH-BEFORE-LOOKUP
+
+Authorization MUST be resolved before the runtime observes, fetches, decrypts,
+caches, logs, or renders the winner.
+
+Unauthorized handling MUST NOT depend on winner existence.  It MUST produce
+the same protocol-level =denied= outcome whether the key is occupied or empty.
+
+** ASP-RFC-10.05-RWA-RELEASE
+
+Only an authorized request may receive =released(winner)=.  The returned winner
+MUST be the sticky authoritative winner established by RFC 10.05.63.
+
+Authorization MUST NOT create a new winner or validate a losing candidate.
+
+** ASP-RFC-10.05-RWA-MISSING
+
+=missing= is an authorized result.  An unauthorized request MUST NOT learn that
+the target cell is empty.
+
+The runtime SHOULD ensure observable error shape, status, and timing do not
+turn =denied= into a winner-existence oracle.
+
+** ASP-RFC-10.05-RWA-NONIMPLICATION
+
+The protocol MUST preserve these explicit non-implications:
+
+- knowing a full publication key does not imply recovery authorization;
+- knowing a domain-bound digest does not imply recovery authorization;
+- exact scope equality does not imply grant activity;
+- active grant status does not imply scope equality;
+- ledger lookup success does not imply permission to release the winner;
+- correct authorization at one instant does not prove freedom from a later
+  revocation race;
+- authorization safety does not prove graph-route optimality.
+
+* Mathematical model
+
+The Typst source is embedded in Org and evaluated through stdin.
+
+#+name: searchroute-retry-winner-authorization-model
+#+begin_src typst
+#let active(grant) = $upright("Active")(#grant)$
+#let presented(request) = $upright("PresentedKey")(#request)$
+#let grant(request) = $upright("Grant")(#request)$
+#let scope(value) = $upright("Scope")(#value)$
+#let authorized(request, key) = $upright("Authorized")(#request, #key)$
+#let recover(request, key) = $upright("Recover")(#request, #key)$
+#let winner(key) = $upright("Winner")(#key)$
+#let denied = $upright("Denied")$
+
+#[
+  Authorization requires three independent facts:
+  $
+    #authorized($R$, $K$)
+    equiv
+    #active(grant($R$))
+    and #presented($R$) = K
+    and #scope(grant($R$)) = #scope($K$).
+  $
+
+  Authorization preserves every scope dimension:
+  $
+    #authorized($R$, $K$)
+    arrow.r.double
+    (
+      W_R = W_K
+      and G_R = G_K
+      and V_R = V_K
+      and T_R = T_K
+      and I_R = I_K
+    ).
+  $
+
+  Unauthorized recovery is denied before winner lookup:
+  $
+    not #authorized($R$, $K$)
+    arrow.r.double
+    #recover($R$, $K$) = #denied.
+  $
+
+  An authorized request may recover an existing winner:
+  $
+    #authorized($R$, $K$)
+    and #winner($K$) = C
+    arrow.r.double
+    #recover($R$, $K$) = C.
+  $
+
+  The countermodels establish:
+  $
+    #presented($R$) = K
+    and #scope(grant($R$)) = #scope($K$)
+    arrow.r.double.not
+    #authorized($R$, $K$)
+  $
+  when the grant is inactive, and
+  $
+    #active(grant($R$))
+    and #presented($R$) = K
+    arrow.r.double.not
+    #authorized($R$, $K$)
+  $
+  when tenant scope differs.
+
+  A lookup-first function can return $#winner($K$)$ to that wrong-tenant
+  request before authorization rejects it.
+]
+#+end_src
+
+* Lean correspondence
+
+The executable model is
+=packages/proofs/ASPProof/SearchRouteAdmissionRetryWinnerAuthorization.lean=.
+
+- =RecoveryGrant= binds all five semantic key dimensions.
+- =GrantMatchesKey= keeps scope equality independent of grant activity.
+- =Authorized= combines active grant, presented-key equality, and scope match.
+- =authorizedRecover= performs authorization before observing the ledger.
+- =authorization_preserves_key_and_all_scope_dimensions= proves the scope
+  consequence.
+- =unauthorized_request_is_denied_before_winner_lookup= proves
+  =ASP-RFC-10.05-RWA-AUTH-BEFORE-LOOKUP=.
+- =authorized_request_recovers_existing_winner= proves the release rule.
+- =known_key_and_matching_scope_without_active_grant_is_not_authorized= proves
+  that key possession and scope equality are insufficient.
+- =active_grant_with_wrong_tenant_scope_is_not_authorized= proves activity is
+  insufficient when scope differs.
+- =lookup_before_authorization_leaks_winner_to_wrong_tenant= is the executable
+  lookup-first disclosure counterexample.
+
+The JSON audit remains modular and scoped only to this RFC.
+
+* SearchLoop cost relevance
+
+Unauthorized winner leakage can expose another tenant's evidence graph,
+publication result, or route history.  Even non-content existence leakage can
+change agent branching and cache behavior.  Conversely, rejecting an
+authorized existing winner forces the agent to repeat searches and spend more
+tokens and interaction rounds.
+
+Authorization-bound recovery enables safe reuse without turning publication
+keys or model-cache identities into bearer capabilities.  It does not prove
+minimum graph distance, token optimality, or a cache hit.
+
+* Non-goals and next proof boundary
+
+This RFC does not yet prove:
+
+- atomicity between authorization decision and winner release;
+- revocation or expiry races after authorization;
+- authorization issuer authenticity;
+- timing or cache side-channel noninterference;
+- leader fencing and replicated linearizability;
+- graph-route optimality.
+
+The next proof layer should introduce an authorization decision stamp and prove
+that winner release is bound to the same authorization generation or snapshot.
+It must construct the time-of-check/time-of-use counterexample in which a grant
+is revoked after authorization but before release.

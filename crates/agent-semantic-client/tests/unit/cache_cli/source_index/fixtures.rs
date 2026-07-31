@@ -78,7 +78,7 @@ pub(super) fn write_rust_activation_with_ignored_prefixes(
     activation_path
 }
 
-pub(super) fn write_gerbil_activation_with_provider_scope(
+pub(super) fn write_gerbil_activation_with_project_resolution(
     root: &Path,
     provider_bin: &Path,
     source_roots: &[&str],

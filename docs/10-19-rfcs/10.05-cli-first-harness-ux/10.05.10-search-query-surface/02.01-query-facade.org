@@ -1,6 +1,6 @@
 ** =query= — first-class parser-native extraction and reroutes
 The =query= facade must classify projection intent before provider fallback.
-Default =query --selector <selector> --code= is parser-owned item-code
+Default =query --selector <selector> --projection source= is parser-owned item-code
 projection, not a file-read API. Source-language =query= accepts only an exact
 structural selector, an exact Tree-sitter query contract, or an exact relation
 catalog contract. Owner paths, =--term=, and =--query= are discovery inputs and
@@ -13,7 +13,7 @@ item selector with =--code= must write only the matched item code. The removed
 implementations must reject it and point to the =search owner= discovery
 surface.
 
-=query --selector <selector> --code= is exact parser-owned code extraction, not
+=query --selector <selector> --projection source= is exact parser-owned code extraction, not
 directory search and not whole-file source transport. The default selector must
 name a parser-owned structural identity such as
 =rust://...#item/function/name=. A file path, line range, or directory path such
@@ -26,13 +26,13 @@ Rust-only or hard-coded language list, so registered languages such as Gerbil
 Scheme =.ss= files receive the same preflight behavior. Agents that need
 directory-scoped discovery must first use =search lexical=, =search owner=, or
 =search pipe= with explicit =--workspace=, then follow the returned exact
-parser-owned =query --selector ... --code= action.
+parser-owned =query --selector ... --projection source= action.
 Owner discovery followed by exact item query is the default extraction path for
 agents:
 
 #+begin_src shell
 asp <language> search owner <project-path> items --query <symbol-or-term> --workspace <workspace-root> --view seeds
-asp <language> query --selector <parser-owned-uri-or-handle> --workspace <workspace-root> --code
+asp <language> query --selector <parser-owned-uri-or-handle> --workspace <workspace-root> --projection source
 #+end_src
 
 The language provider owns parser/AST lookup, exact item projection, owner-local
@@ -122,10 +122,10 @@ facade backed by the compiled =asp-julia-harness= and cacheable provider
 artifacts.
 
 =--workspace <workspace-root>= is the only public way to override the
-workspace root for source-language query/code commands.  =--code= is a boolean
+workspace root for source-language query/code commands.  =--projection source= is a boolean
 output selector and must never consume or be followed by a project root.  The
-stale shape =query ... --code .= or =query ... --code <root>= is invalid for
-owner item queries, tree-sitter syntax-code queries, selector-code exact reads, and =search owner ... items --query ... --code=.  A selector query
+stale shape =query ... --projection source .= or =query ... --projection source <root>= is invalid for
+owner item queries, tree-sitter syntax-code queries, selector-code exact reads, and =search owner ... items --query ... --projection source=.  A selector query
 without =--workspace= resolves against the invocation workspace, selector
 absolute path, or provider-owned workspace inference.
 In public CLI grammar, =workspace= is the root semantic.  Agent-facing paths,
@@ -150,7 +150,7 @@ mechanical range splits are only the fallback.  Every prompt-facing frontier
 =code= action must map back to a parser-owned exact item selector:
 
 #+begin_src shell
-asp <language> query --selector <language://path#item/kind/name> --workspace <workspace-root> --code
+asp <language> query --selector <language://path#item/kind/name> --workspace <workspace-root> --projection source
 #+end_src
 
 ASP owns the compact output-mode boundary across every language facade:

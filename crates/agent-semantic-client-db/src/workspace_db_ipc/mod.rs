@@ -1,14 +1,15 @@
 //! Runtime Server workspace data-plane protocol and transport.
 
 mod protocol;
+mod runtime_generation;
 pub(crate) mod transport;
 
 pub use protocol::{
-    WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID, WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID,
-    WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID, WORKSPACE_DB_OWNER_SCHEMA_VERSION,
-    WorkspaceDbIpcOperation, WorkspaceDbIpcRequest, WorkspaceDbIpcResponse, WorkspaceDbIpcResult,
-    WorkspaceDbIpcSession, WorkspaceDbOwnerEndpoint, WorkspaceDbOwnerRetirement,
-    WorkspaceDbSourceIndexLookupRequest, bind_workspace_db_owner,
+    RuntimeGenerationEnsure, WORKSPACE_DB_OWNER_ENDPOINT_SCHEMA_ID,
+    WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID, WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID,
+    WORKSPACE_DB_OWNER_SCHEMA_VERSION, WorkspaceDbIpcOperation, WorkspaceDbIpcRequest,
+    WorkspaceDbIpcResponse, WorkspaceDbIpcResult, WorkspaceDbIpcSession, WorkspaceDbOwnerEndpoint,
+    WorkspaceDbOwnerRetirement, WorkspaceDbSourceIndexLookupRequest, bind_workspace_db_owner,
     commit_source_index_generation_via_runtime_server, connect_runtime_server_workspace_session,
     prepare_workspace_db_owner_endpoint, remove_stale_workspace_db_owner_socket,
     serve_one_workspace_db_ipc_request, serve_one_workspace_db_session_request,

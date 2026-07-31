@@ -44,6 +44,7 @@ mod protocol_binary;
 mod protocol_version;
 mod provider_activation;
 mod provider_dispatch;
+mod provider_exact_args;
 mod provider_execution;
 mod provider_fast_path;
 mod provider_fast_search;

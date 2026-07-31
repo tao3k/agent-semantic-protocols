@@ -1,0 +1,60 @@
+{"sourcePath": "ASPProof/SearchRouteAdmissionRetryCacheRejoinRecovery.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RejoinRecoveryState),\n  state.phase.rank ≤ (ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.resumeRejoin state).phase.rank",
+   "theoremFamily": "monotonic recovery",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCR-MONOTONE"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.resume_rejoin_never_decreases_phase",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Quot.sound", "propext"]},
+  {"type":
+   "∀ (state : ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RejoinRecoveryState),\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RecoveryStateWellFormed state →\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RecoveryStateWellFormed\n      (ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.resumeRejoin state)",
+   "theoremFamily": "recovery invariant",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRCR-IDEMPOTENT", "ASP-RFC-10.05-CRCR-TOKEN"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.resume_preserves_well_formed_rejoin_state",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": ["Classical.choice", "Quot.sound", "propext"]},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RecoveryStateWellFormed\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.initialRecoveryState ∧\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RecoveryStateWellFormed\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterStateInstall ∧\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RecoveryStateWellFormed\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterTokenIssue ∧\n      ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RecoveryStateWellFormed\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterMembershipPublication ∧\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RecoveryStateWellFormed\n            ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterReadsEnabled ∧\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterTokenIssue.tokenIssueCount = 1 ∧\n            ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterMembershipPublication.tokenIssueCount = 1 ∧\n              ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterReadsEnabled.tokenIssueCount = 1 ∧\n                ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterStateInstall.readsEnabled = false ∧\n                  ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterTokenIssue.readsEnabled = false ∧\n                    ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterMembershipPublication.readsEnabled =\n                        false ∧\n                      ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterReadsEnabled.readsEnabled = true",
+   "theoremFamily": "complete recovery",
+   "rfcClauseIds": ["ASP-RFC-10.05-CRCR-READ", "ASP-RFC-10.05-CRCR-TOKEN"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.complete_recovery_issues_one_token_and_enables_reads_last",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.prematureReadsState.tokenIssueCount = 1 ∧\n  ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.prematureReadsState.readsEnabled = true ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RecoveryStateWellFormed\n        ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.prematureReadsState",
+   "theoremFamily": "premature-read counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRCR-NONIMPLICATION", "ASP-RFC-10.05-CRCR-READ"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.enabling_reads_from_partial_rejoin_is_not_well_formed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RecoveryStateWellFormed\n    ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterTokenIssue ∧\n  (ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.unsafeReissueTokenAfterCrash\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterTokenIssue).tokenIssueCount =\n      2 ∧\n    ¬ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.RecoveryStateWellFormed\n        (ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.unsafeReissueTokenAfterCrash\n          ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.afterTokenIssue)",
+   "theoremFamily": "duplicate-token counterexample",
+   "rfcClauseIds":
+   ["ASP-RFC-10.05-CRCR-NONIMPLICATION", "ASP-RFC-10.05-CRCR-TOKEN"],
+   "name":
+   "ASPProof.SearchRouteAdmissionRetryCacheRejoinRecovery.reissuing_token_after_token_phase_breaks_exactly_once_recovery",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 5,
+ "axiomInventory": ["Classical.choice", "Quot.sound", "propext"],
+ "axiomFreeDeclarationCount": 3,
+ "axiomDependentDeclarationCount": 2}

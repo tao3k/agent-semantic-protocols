@@ -1,0 +1,260 @@
+#+title: RFC 10.05.62 — SearchRoute Retry Publication Crash State
+#+author: ASP Search Protocol Working Notes
+#+startup: overview
+
+* Status
+
+This RFC is a proof-oriented state-machine refinement of RFC 10.05.61.  It
+defines the durable facts that control retry recovery, publication visibility,
+and acknowledgment.  It does not define storage APIs or implement Rust or
+Python behavior.
+
+* Abstract
+
+The RFC 10.05.61 concurrent retry certificate proves that both receipt
+identities survive GC and issue-log rotation.  A runtime must still publish
+that certificate across crashes.
+
+Certificate durability, publication durability, and acknowledgment durability
+are not interchangeable:
+
+- a durable certificate without a durable publication is recoverable but not
+  visible;
+- a durable publication with a lost acknowledgment remains visible;
+- a publication without a durable valid certificate is an invalid state;
+- an acknowledgment without a durable publication is an invalid state.
+
+This RFC makes publication durability the sole visibility authority.
+Acknowledgment reports an already durable fact; it does not create or revoke
+visibility.
+
+* Logic defects exposed by the state machine
+
+Using a single =completed= Boolean erases two crash boundaries:
+
+#+begin_example
+certificate durable -> publication durable -> acknowledgment durable
+#+end_example
+
+If =completed= means “acknowledgment observed,” an acknowledgment loss makes an
+already published retry appear absent and invites duplicate publication.  If
+=completed= means “certificate stored,” a certificate-only crash makes an
+unpublished retry appear visible.
+
+The state machine therefore preserves three distinct facts and two strict
+implications:
+
+#+begin_example
+publicationDurable implies durableValidCertificate
+acknowledgmentDurable implies publicationDurable
+#+end_example
+
+Neither implication is reversible.
+
+* Normative vocabulary
+
+** Durable valid certificate
+
+A retry has a durable valid certificate when durable storage contains a
+certificate and the RFC 10.05.61 certificate validator accepts it.
+
+Validation MUST bind at least:
+
+- retry identity or idempotency key;
+- GC cycle identity;
+- issue-log rotation cut;
+- baseline and extended receipt identities;
+- barrier coverage and pre-rotation issuance evidence.
+
+** Durable publication
+
+A durable publication is the authoritative visibility record for a retry.
+Publication durability MUST imply the presence of a durable valid certificate.
+
+** Durable acknowledgment
+
+A durable acknowledgment records that a caller or delivery channel observed
+the durable publication.  It MUST imply durable publication.
+
+An absent acknowledgment does not imply absent publication.
+
+** Well-formed retry state
+
+A retry publication state is well formed when:
+
+1. every visible/durable publication has a durable valid certificate; and
+2. every durable acknowledgment refers to a durable publication.
+
+* Normative requirements
+
+** ASP-RFC-10.05-RPCS-CERTIFICATE
+
+The RFC 10.05.61 concurrent retry certificate MUST become durable before the
+publication record becomes durable.
+
+A certificate-only crash state MUST be recoverable.  It MUST remain invisible
+until recovery durably publishes it or explicitly aborts it under a separately
+specified protocol.
+
+** ASP-RFC-10.05-RPCS-PUBLICATION
+
+Publication durability is the sole visibility authority.  A retry is visible
+if and only if its authoritative publication record is durable.
+
+The publisher MUST reject any transition that would make publication durable
+without a durable valid certificate for the same retry identity.
+
+** ASP-RFC-10.05-RPCS-ACKNOWLEDGMENT
+
+Acknowledgment durability MUST follow publication durability.  A runtime MUST
+NOT use acknowledgment presence as the visibility predicate.
+
+When publication is durable but acknowledgment is lost, retry recovery MUST
+return or redeliver the existing publication.  It MUST NOT create a second
+publication.
+
+** ASP-RFC-10.05-RPCS-RECOVERY
+
+Recovery MUST classify at least these states:
+
+| Durable certificate | Durable publication | Durable acknowledgment | Recovery meaning |
+|---------------------+---------------------+------------------------+------------------|
+| no                  | no                  | no                     | unpublished and unrecoverable |
+| yes                 | no                  | no                     | recoverable but invisible |
+| yes                 | yes                 | no                     | visible; acknowledgment lost |
+| yes                 | yes                 | yes                    | visible and acknowledged |
+
+The states =no/yes/*= and =*/no/yes= are invalid and MUST fail closed.
+
+** ASP-RFC-10.05-RPCS-NONIMPLICATION
+
+The protocol MUST preserve these explicit non-implications:
+
+- durable certificate does not imply visible publication;
+- missing acknowledgment does not imply missing publication;
+- acknowledgment transport success does not create publication durability;
+- publication-shaped data without a valid certificate does not imply
+  visibility;
+- a well-formed single retry state does not prove global idempotency-key
+  uniqueness.
+
+* Mathematical model
+
+The mathematical source remains inside this Org RFC and is checked through
+=typst eval= on stdin.
+
+#+name: searchroute-retry-publication-crash-state-model
+#+begin_src typst
+#let durable-valid(state) = $upright("DurableValidCertificate")(#state)$
+#let visible(state) = $upright("Visible")(#state)$
+#let acknowledged(state) = $upright("Acknowledged")(#state)$
+#let well-formed(state) = $upright("WellFormed")(#state)$
+
+#[
+  A retry state $s$ is well formed exactly when
+  $
+    #well-formed($s$)
+    equiv
+    (
+      #visible($s$)
+      arrow.r.double
+      #durable-valid($s$)
+    )
+    and
+    (
+      #acknowledged($s$)
+      arrow.r.double
+      #visible($s$)
+    ).
+  $
+
+  Therefore visible publication entails a durable valid certificate:
+  $
+    #well-formed($s$)
+    and #visible($s$)
+    arrow.r.double #durable-valid($s$).
+  $
+
+  Durable acknowledgment entails visibility:
+  $
+    #well-formed($s$)
+    and #acknowledged($s$)
+    arrow.r.double #visible($s$).
+  $
+
+  The certificate-only crash state $s_c$ satisfies
+  $
+    #well-formed($s_c$)
+    and #durable-valid($s_c$)
+    and not #visible($s_c$)
+    and not #acknowledged($s_c$).
+  $
+
+  The lost-acknowledgment state $s_p$ satisfies
+  $
+    #well-formed($s_p$)
+    and #visible($s_p$)
+    and not #acknowledged($s_p$).
+  $
+
+  Consequently
+  $
+    not #acknowledged($s_p$)
+    arrow.r.double.not
+    not #visible($s_p$).
+  $
+
+  Publication without a durable certificate and acknowledgment without
+  publication are both outside the well-formed state space.
+]
+#+end_src
+
+* Lean correspondence
+
+The executable model is
+=packages/proofs/ASPProof/SearchRouteAdmissionRetryPublication.lean=.
+
+- =RetryPublicationState= stores certificate, publication, and acknowledgment
+  durability separately.
+- =DurableValidCertificate=, =Visible=, and =Acknowledged= define the three
+  protocol facts.
+- =WellFormed= encodes the two required implications.
+- =visible_retry_has_durable_valid_certificate= proves
+  =ASP-RFC-10.05-RPCS-CERTIFICATE= and =ASP-RFC-10.05-RPCS-PUBLICATION=.
+- =durable_acknowledgment_requires_visible_publication= proves
+  =ASP-RFC-10.05-RPCS-ACKNOWLEDGMENT=.
+- =crash_before_certificate_is_unpublished_and_unrecoverable=,
+  =durable_certificate_before_publication_is_recoverable_but_invisible=, and
+  =lost_acknowledgment_does_not_revoke_durable_publication= formalize the
+  recovery table.
+- =publication_without_certificate_is_not_well_formed= and
+  =acknowledgment_without_publication_is_not_well_formed= are executable
+  invalid-order witnesses.
+
+The audit is a standalone module and emits a receipt scoped only to this RFC.
+
+* SearchLoop cost relevance
+
+Lost acknowledgments are normal distributed-system failures.  If the agent
+interprets them as lost publication, it repeats the retry, expands the graph
+frontier, consumes more tool rounds and tokens, and disrupts model-prefix cache
+reuse.  Stable publication identity allows recovery to return the existing
+result instead.
+
+This state machine establishes visibility safety for one retry.  It does not
+yet prove uniqueness across competing attempts, shortest graph path, minimum
+token cost, or model-cache hit rate.
+
+* Non-goals and next proof boundary
+
+This RFC does not yet prove:
+
+- global uniqueness of a retry identity;
+- compare-and-swap behavior for competing publishers;
+- conflict handling when two valid certificates use one idempotency key;
+- replication or fsync durability;
+- end-to-end graph-route optimality.
+
+The next proof layer should introduce an idempotency-key publication ledger and
+prove that concurrent publishers have at most one durable winning certificate,
+while losing attempts recover the winner without republishing.

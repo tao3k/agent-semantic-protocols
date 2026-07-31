@@ -81,7 +81,7 @@
           ],
           "properties": {
             "extensionAuthority": {
-              "const": "provider-workspace-scope"
+              "const": "provider-project-resolution"
             },
             "minimumMatchingFiles": {
               "type": "integer",

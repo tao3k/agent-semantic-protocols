@@ -1,0 +1,208 @@
+#+title: 10.05.10.00.65 Trace- and Cache-Preserving Route Substitution
+#+startup: overview
+
+* Status
+
+Draft proof refinement for the agent-facing SearchLoop and graph router.  This
+document changes no Rust or Python implementation.
+
+* Problem
+
+The certified Pareto frontier and its global coverage certificate are necessary
+but not sufficient for safe route replacement.  Two routes can share the same
+graph generation, completion digest, initial potential, and final potential
+while exposing different evidence and provenance traces.  A cheaper route can
+therefore reach the same completion boundary while deleting the observations
+that make the answer auditable.
+
+The same defect appears independently at the cache boundary.  A replacement can
+preserve the completion boundary and the complete evidence trace while changing
+the search-cache transition or the model-prefix-cache transition.  Its local
+token and round-trip measurements then do not describe the cost of the same
+execution state.
+
+This is a logical hole in endpoint-only Pareto substitution:
+
+#+begin_quote
+Completion equivalence is not observational equivalence, and observational
+equivalence is not cache-transition equivalence.
+#+end_quote
+
+* Design
+
+** Route contract
+
+A route substitution certificate MUST bind:
+
+1. the graph generation and completion digest;
+2. the initial and final inspect potential;
+3. the ordered evidence/provenance trace;
+4. the search-cache state before and after execution;
+5. the model-prefix-cache state before and after execution;
+6. token cost and agent/LLM round trips measured from the bound initial state.
+
+Search cache and model-prefix cache remain separate dimensions.  Equality of
+one transition MUST NOT be used as evidence for equality of the other.
+
+** Trace refinement
+
+Let =candidate= replace =original=.  The minimum sound relation is trace
+refinement: every evidence atom required from the original trace also occurs in
+the candidate trace.  Exact replay may strengthen this to ordered trace
+equivalence, but the router MUST NOT weaken it to endpoint equality.
+
+This RFC uses refinement instead of literal trace equality because a candidate
+may expose additional evidence without invalidating the original obligations.
+If order, multiplicity, or temporal provenance is semantically relevant, the
+provider MUST represent those facts as structured evidence atoms rather than
+silently treating the trace as a set.
+
+** Cache-transition alignment
+
+Cost dominance is comparable only when both routes begin from the same search
+cache and model-prefix cache contexts and produce the certified successor
+contexts.  A route that changes either transition belongs to a different cost
+comparison class.  It may still be explored, but it cannot prune the original
+route using the current Pareto certificate.
+
+** Safe substitution
+
+A candidate safely substitutes an original route only when all of the following
+hold:
+
+- completion boundary equality;
+- search-cache transition equality;
+- model-prefix-cache transition equality;
+- evidence trace refinement;
+- no greater token cost;
+- no greater agent/LLM round-trip count.
+
+The router MAY retain multiple safe candidates when neither dominates the other.
+It MUST retain the original route whenever the candidate lacks any one of these
+certificates.
+
+* Normative clauses
+
+- =ASP-RFC-10.05-TRS-COMPLETION=: safe substitution preserves the certified
+  completion boundary.
+- =ASP-RFC-10.05-TRS-CACHE=: safe substitution preserves both independent cache
+  transitions.
+- =ASP-RFC-10.05-TRS-PARETO=: safe substitution is no worse in token cost and
+  agent/LLM round trips under the bound initial state.
+- =ASP-RFC-10.05-TRS-REFINEMENT=: trace refinement preserves every evidence
+  requirement realized by the original route.
+- =ASP-RFC-10.05-TRS-REALIZATION=: safe substitution preserves realization of
+  the required evidence set.
+- =ASP-RFC-10.05-TRS-TRACE-COUNTEREXAMPLE=: equal completion endpoints and lower
+  local cost do not imply trace preservation.
+- =ASP-RFC-10.05-TRS-CACHE-COUNTEREXAMPLE=: endpoint equality, trace refinement,
+  and lower local cost do not imply cache-transition alignment.
+- =ASP-RFC-10.05-TRS-PROVENANCE=: removing provenance breaks a provenance
+  obligation even when the route still returns the answer.
+- =ASP-RFC-10.05-TRS-REJECT=: the router rejects a cheaper endpoint-equivalent
+  route when its trace does not refine the original trace.
+
+* Consequences for SearchLoop and Turbo Graph
+
+The graph router cannot treat a path as only a sequence of nodes ending at a
+completion key.  The Python Turbo Graph design will need a proof-carrying route
+projection with separate fields for:
+
+- completion identity;
+- evidence and provenance trace identity;
+- search-cache transition;
+- model-prefix-cache transition;
+- token and interaction cost.
+
+This keeps the CLI thin.  The agent does not select a complex search command or
+manually compare caches.  SearchLoop asks the router for the next certified
+transition, inspects the compact receipt, and progressively continues only when
+the proof obligations remain open.
+
+* Executable mathematical witness
+
+The Typst block is evaluated directly from Org-Babel through stdin.  It is not a
+source-file or PDF-generation boundary.
+
+#+name: trace-and-cache-preserving-route-substitution-math
+#+begin_src typst
+#let audited = (
+  graphGeneration: 12,
+  completionDigest: 41,
+  initialPotential: 3,
+  finalPotential: 0,
+  trace: ("answer", "provenance", "source-digest"),
+  searchCache: (7, 8),
+  modelPrefixCache: (9, 10),
+  tokenCost: 8,
+  rounds: 2,
+)
+
+#let short = (
+  graphGeneration: 12,
+  completionDigest: 41,
+  initialPotential: 3,
+  finalPotential: 0,
+  trace: ("answer",),
+  searchCache: (7, 8),
+  modelPrefixCache: (9, 10),
+  tokenCost: 4,
+  rounds: 1,
+)
+
+#let cache-divergent = (
+  graphGeneration: 12,
+  completionDigest: 41,
+  initialPotential: 3,
+  finalPotential: 0,
+  trace: audited.trace,
+  searchCache: (7, 99),
+  modelPrefixCache: (9, 98),
+  tokenCost: 4,
+  rounds: 1,
+)
+
+#let same-boundary(a, b) = (
+  a.graphGeneration == b.graphGeneration
+  and a.completionDigest == b.completionDigest
+  and a.initialPotential == b.initialPotential
+  and a.finalPotential == b.finalPotential
+)
+
+#let trace-refines(candidate, original) = original.trace.all(
+  atom => candidate.trace.contains(atom)
+)
+
+(
+  short-has-same-boundary: same-boundary(short, audited),
+  short-is-locally-cheaper:
+    short.tokenCost < audited.tokenCost and short.rounds < audited.rounds,
+  short-preserves-trace: trace-refines(short, audited),
+  cache-divergent-preserves-trace: trace-refines(cache-divergent, audited),
+  cache-divergent-preserves-search-cache:
+    cache-divergent.searchCache == audited.searchCache,
+  cache-divergent-preserves-model-prefix-cache:
+    cache-divergent.modelPrefixCache == audited.modelPrefixCache,
+)
+#+end_src
+
+* Machine-checked proof status
+
+The theorem owner is
+=ASPProof.SearchRouteTracePreservingSubstitution=.  Audit responsibility remains
+in the independent module
+=ASPProof.Audit.SearchRouteTracePreservingSubstitution=, with the executable
+driver
+=packages/proofs/audit/SearchRouteTracePreservingSubstitutionAudit.lean=.
+
+The Lean receipt is
+=packages/proofs/receipts/searchroute-trace-preserving-substitution-audit-v1.json=.
+It contains nine declarations: five axiom-free preservation theorems and four
+finite counterexample/rejection theorems whose exact axiom inventory is
+=propext=.  No declaration contains =sorryAx=.
+
+AXLE requires all nine theorem families and all nine normative clause
+identifiers while allowing only =propext=.  Its receipt is
+=packages/proofs/receipts/searchroute-trace-preserving-substitution-axle-audit-v1.json=
+and binds the Lean audit with SHA-256
+=caf98ff5e8a8a3151ffd794dadcce36c5fbb06865b3514aeed47158d0b76d1c2=.

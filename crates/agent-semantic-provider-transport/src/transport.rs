@@ -123,14 +123,40 @@ pub async fn run_provider_process_async(
     run_provider_process_async_with_framing(spec, ProviderProcessFraming::default()).await
 }
 
-const PROVIDER_PROCESS_ADMISSION_SLOTS: usize = 2;
 const PROVIDER_PROCESS_ADMISSION_POLL_INTERVAL: Duration = Duration::from_millis(2);
 
 struct ProviderProcessAdmissionPermit {
     _slot: std::fs::File,
 }
 
-async fn acquire_provider_process_admission() -> Option<ProviderProcessAdmissionPermit> {
+struct ProviderChild {
+    child: Child,
+}
+
+impl std::ops::Deref for ProviderChild {
+    type Target = Child;
+
+    fn deref(&self) -> &Self::Target {
+        &self.child
+    }
+}
+
+impl std::ops::DerefMut for ProviderChild {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.child
+    }
+}
+
+impl Drop for ProviderChild {
+    fn drop(&mut self) {
+        kill_provider_process_group(&self.child);
+        let _ = self.child.start_kill();
+    }
+}
+
+async fn acquire_provider_process_admission(
+    limits: ProviderProcessLimits,
+) -> Option<ProviderProcessAdmissionPermit> {
     let admission_root = provider_process_admission_root();
     if let Err(error) = std::fs::create_dir_all(&admission_root) {
         warn!(
@@ -142,7 +168,7 @@ async fn acquire_provider_process_admission() -> Option<ProviderProcessAdmission
     }
 
     loop {
-        for slot in 0..PROVIDER_PROCESS_ADMISSION_SLOTS {
+        for slot in 0..provider_process_admission_slots(limits) {
             let slot_path = admission_root.join(format!("slot-{slot}.lock"));
             let file = match std::fs::OpenOptions::new()
                 .create(true)
@@ -178,6 +204,54 @@ async fn acquire_provider_process_admission() -> Option<ProviderProcessAdmission
     }
 }
 
+fn provider_process_admission_slots(limits: ProviderProcessLimits) -> usize {
+    let cpu_slots = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1)
+        .saturating_sub(1)
+        .max(1);
+    provider_process_admission_slots_for(
+        cpu_slots,
+        provider_memory_budget_bytes(),
+        limits.memory_limit_bytes(),
+    )
+}
+
+fn provider_process_admission_slots_for(
+    cpu_slots: usize,
+    memory_budget_bytes: Option<u64>,
+    memory_limit_bytes: Option<u64>,
+) -> usize {
+    let memory_slots = memory_limit_bytes
+        .filter(|limit| *limit > 0)
+        .and_then(|limit| {
+            memory_budget_bytes
+                .and_then(|bytes| usize::try_from(bytes / limit).ok())
+                .map(|slots| slots.max(1))
+        })
+        .unwrap_or(cpu_slots.max(1));
+    cpu_slots.max(1).min(memory_slots).max(1)
+}
+
+#[cfg(unix)]
+fn provider_memory_budget_bytes() -> Option<u64> {
+    let pages = unsafe { libc::sysconf(libc::_SC_PHYS_PAGES) };
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+    (pages > 0 && page_size > 0)
+        .then(|| {
+            u64::try_from(pages)
+                .ok()?
+                .checked_mul(u64::try_from(page_size).ok()?)?
+                .checked_div(2)
+        })
+        .flatten()
+}
+
+#[cfg(not(unix))]
+fn provider_memory_budget_bytes() -> Option<u64> {
+    None
+}
+
 fn provider_process_admission_root() -> std::path::PathBuf {
     let mut root = std::env::temp_dir();
     #[cfg(unix)]
@@ -207,7 +281,7 @@ pub async fn run_provider_process_async_with_framing(
 
     async move {
         let admission_started = Instant::now();
-        let _admission_permit = acquire_provider_process_admission().await;
+        let _admission_permit = acquire_provider_process_admission(spec.limits).await;
         let admission_wait = admission_started.elapsed();
         let admission_wait_ms = admission_wait.as_millis();
         debug!(admission_wait_ms, "admitted provider process");
@@ -235,11 +309,11 @@ pub async fn run_provider_process_async_with_framing(
 async fn spawn_provider_process(
     spec: &ProviderProcessSpec,
     stdin_mode: &StdinMode,
-) -> Result<Child, ProviderProcessError> {
+) -> Result<ProviderChild, ProviderProcessError> {
     for attempt in 0..=EXECUTABLE_BUSY_SPAWN_RETRIES {
         let mut command = provider_command(spec, stdin_mode);
         match command.spawn() {
-            Ok(child) => return Ok(child),
+            Ok(child) => return Ok(ProviderChild { child }),
             Err(source) => {
                 if source.kind() == ErrorKind::ExecutableFileBusy
                     && attempt < EXECUTABLE_BUSY_SPAWN_RETRIES
@@ -268,7 +342,8 @@ fn provider_command(spec: &ProviderProcessSpec, stdin_mode: &StdinMode) -> Comma
         .args(&spec.args)
         .current_dir(&spec.cwd)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     configure_provider_process(&mut command, spec.limits.memory_limit_bytes());
     for (key, value) in &spec.env {
         command.env(key, value);
@@ -368,7 +443,7 @@ fn spawn_provider_io_tasks(
 }
 
 async fn collect_provider_output(
-    mut child: Child,
+    mut child: ProviderChild,
     tasks: ProviderIoTasks,
     limits: ProviderProcessLimits,
     start: Instant,

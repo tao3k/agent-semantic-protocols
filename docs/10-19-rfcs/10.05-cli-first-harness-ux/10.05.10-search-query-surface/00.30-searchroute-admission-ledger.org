@@ -1,0 +1,200 @@
+#+title: RFC 10.05.30 — SearchRoute Admission Ledger and Crash Recovery
+#+author: ASP contributors
+#+language: en
+
+* Status
+
+Draft.
+
+This RFC extracts transactional admission semantics from RFC 10.05.29.  The
+frontier RFC proves that an evaluation is semantically and temporally
+admissible.  This RFC defines how that evaluation is consumed exactly once
+without admitting a partial or replayed state.
+
+* Problem
+
+A read-only check followed by independent writes is not an atomic admission:
+
+#+begin_example
+check baseline receipt is unconsumed
+check extension receipt is unconsumed
+write baseline consumed
+process crashes
+write extension consumed
+write run committed
+#+end_example
+
+After the crash, the ledger contains a state that is neither the original
+pre-state nor the complete committed post-state.  Concurrent admissions can
+also pass the same read checks before either process writes its result.
+
+The protocol therefore needs a linearization point that consumes both receipt
+identities and commits the evaluation-run identity in one durable transition.
+
+* Normative clauses
+
+** ASP-RFC-10.05-EAL-PRECONDITION
+
+Before commit:
+
+- baseline and extension receipt identities MUST be distinct;
+- the evaluation-run identity MUST be uncommitted; and
+- both receipt identities MUST be unconsumed.
+
+The precondition is necessary but is not itself an admission.
+
+** ASP-RFC-10.05-EAL-ATOMIC-COMMIT
+
+One atomic transition MUST:
+
+- preserve all previously consumed receipt identities;
+- mark both current receipt identities consumed;
+- preserve all previously committed evaluation-run identities; and
+- mark the current evaluation-run identity committed.
+
+There MUST be no externally visible state in which exactly one of the two
+receipts is consumed for the committed run.
+
+** ASP-RFC-10.05-EAL-EXACTLY-ONCE
+
+After a successful commit, an exact retry using the same run and receipt
+identities MUST fail its admission precondition.
+
+Exactly-once refers to durable admission effects.  It does not require network
+delivery to occur exactly once; callers MAY retry an acknowledgement lookup
+using the committed run identity.
+
+** ASP-RFC-10.05-EAL-CRASH-RECOVERY
+
+After recovery, the durable ledger MUST equal either:
+
+- the complete pre-commit state; or
+- the complete post-commit state.
+
+Recovery MUST NOT expose a partial state.  An acknowledgement MUST be emitted
+only after the post-state is durable, or be reconstructible from that durable
+state after restart.
+
+The abstract atomic-commit relation defines the intended pre-state and
+post-state but does not itself prove storage durability.  Every ledger backend
+MUST provide an independent recovery witness showing that its recovered state
+is one of those two states.
+
+** ASP-RFC-10.05-EAL-NONIMPLICATION
+
+None of the following independently implies atomic admission:
+
+- both receipts were unconsumed during a read-only check;
+- both receipt writes were eventually attempted;
+- the run and receipts have valid semantic commitments;
+- the receipts were fresh when checked;
+- one receipt and the run marker were persisted; or
+- an abstract atomic post-state was defined without a backend recovery
+  witness.
+
+* Mathematical model
+
+The following Org-Babel Typst block is evaluated directly through stdin.
+
+#+name: searchroute-admission-ledger-model
+#+begin_src typst
+#let CanCommit = $ "CanCommit"(L, u, b, e) "iff" cases(
+  b != e,
+  "not" L_"run"(u),
+  "not" L_"receipt"(b),
+  "not" L_"receipt"(e),
+) $
+
+#let AtomicCommit = $ "AtomicCommit"(L_0, L_1, u, b, e) "iff" cases(
+  "CanCommit"(L_0, u, b, e),
+  forall i, L_1_"receipt"(i) "iff" cases(
+    L_0_"receipt"(i),
+    i = b,
+    i = e,
+  ),
+  forall i, L_1_"run"(i) "iff" cases(
+    L_0_"run"(i),
+    i = u,
+  ),
+) $
+
+#let CommitEffect = $ "AtomicCommit"(L_0, L_1, u, b, e)
+  "implies" cases(
+    L_1_"run"(u),
+    L_1_"receipt"(b),
+    L_1_"receipt"(e),
+  ) $
+
+#let RetryRejected = $ "AtomicCommit"(L_0, L_1, u, b, e)
+  "implies" "not" "CanCommit"(L_1, u, b, e) $
+
+#let CrashConsistent = $ "CrashConsistent"(L_r, L_0, L_1) "iff"
+  cases(
+    L_r = L_0,
+    L_r = L_1,
+  ) $
+
+#let NoPartialRecovery = $ cases(
+  "AtomicCommit"(L_0, L_1, u, b, e),
+  "CrashConsistent"(L_r, L_0, L_1),
+) "implies" cases(
+  cases(
+    "not" L_r_"run"(u),
+    "not" L_r_"receipt"(b),
+    "not" L_r_"receipt"(e),
+  ),
+  cases(
+    L_r_"run"(u),
+    L_r_"receipt"(b),
+    L_r_"receipt"(e),
+  ),
+) $
+
+#let PartialWriteCounterexample = $ cases(
+  "CanCommit"(L_0, u, b, e),
+  L_p_"receipt"(b),
+  "not" L_p_"receipt"(e),
+  "not" L_p_"run"(u),
+) "implies" "not" "CrashConsistent"(L_p, L_0, L_1) $
+
+#let AtomicWithoutRecoveryCounterexample = $ cases(
+  "AtomicCommit"(L_0, L_1, u, b, e),
+  "not" "CrashConsistent"(L_p, L_0, L_1),
+) "implies" "RecoveryWitnessRequired" $
+
+#let Main = (
+  CanCommit,
+  AtomicCommit,
+  CommitEffect,
+  RetryRejected,
+  CrashConsistent,
+  NoPartialRecovery,
+  PartialWriteCounterexample,
+  AtomicWithoutRecoveryCounterexample,
+)
+#+end_src
+
+* Lean correspondence
+
+The executable model is:
+
+#+begin_example
+packages/proofs/ASPProof/SearchRouteAdmissionLedger.lean
+#+end_example
+
+The Lean module proves:
+
+- atomic commit marks the run and both receipt identities;
+- a committed run rejects an exact retry;
+- crash recovery observes a complete pre-state or complete post-state;
+- a partial ledger is not crash-consistent;
+- an atomic pre/post relation alone does not prove durable recovery; and
+- read-check followed by a partial write is not atomic admission.
+
+* SearchLoop consequence
+
+SearchLoop should treat successful admission as a durable receipt, not as an
+ephemeral tool response.  Retrying after a timeout should query the committed
+run identity instead of rerunning semantic evaluation or consuming the same
+receipts again.  This reduces unnecessary graph traversal, model/tool rounds,
+and token cost while preserving exactly-once admission effects.

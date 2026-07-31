@@ -45,7 +45,7 @@ package-cohesion, ranking, and action-frontier convergence; they are not rejecte
 early merely because the user did not manufacture a path-shaped token.
 
 Search is not a mandatory pipeline. Before =search prime=, =search pipe=,
-=search lexical=, or =query --code=, the agent or runner derives an
+=search lexical=, or =query --projection source=, the agent or runner derives an
 =evidenceState=:
 
 | Evidence anchor | Expected route consequence |

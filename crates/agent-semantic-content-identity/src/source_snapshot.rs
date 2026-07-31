@@ -254,13 +254,13 @@ impl WorkspaceSnapshot {
             return Ok(());
         }
         if self.base_root_digest.is_none() || self.dirty_paths_digest.is_none() {
-            return Err(
-                "workspace snapshot dirty paths require base and dirty digests".to_owned(),
-            );
+            return Err("workspace snapshot dirty paths require base and dirty digests".to_owned());
         }
-        if self.overlay_base_leaves.iter().any(|(path, base)| {
-            self.leaves.get(path).map(String::as_str) == base.as_deref()
-        }) {
+        if self
+            .overlay_base_leaves
+            .iter()
+            .any(|(path, base)| self.leaves.get(path).map(String::as_str) == base.as_deref())
+        {
             return Err("workspace snapshot overlay contains a reverted path".to_owned());
         }
         let changed_leaves = self

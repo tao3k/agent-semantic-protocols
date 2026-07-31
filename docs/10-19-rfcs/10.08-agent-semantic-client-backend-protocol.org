@@ -731,7 +731,7 @@ P4 checkpoint sample from the local workspace:
 | Probe | Command shape | Result |
 |-------+---------------+--------|
 | byte transport bench | =cargo bench -p agent-semantic-provider-transport --bench transport_hot_path= | =transport_hot_path time: [135.25 ns 138.95 ns 143.60 ns]= |
-| exact direct read | =direnv exec . sh -c '/usr/bin/time -p .bin/asp rust query --from-hook direct-source-read --selector crates/agent-semantic-protocol/src/command/document_provider.rs:1-80 --code . >/tmp/asp-direct-read-smoke.out'= | =real 0.00=, stdout =1857= bytes |
+| exact direct read | =direnv exec . sh -c '/usr/bin/time -p .bin/asp rust query --from-hook direct-source-read --selector crates/agent-semantic-protocol/src/command/document_provider.rs:1-80 --projection source . >/tmp/asp-direct-read-smoke.out'= | =real 0.00=, stdout =1857= bytes |
 | Rust search wrapper | =direnv exec . sh -c '/usr/bin/time -p .bin/asp rust search lexical DocumentWalkConfig --view seeds crates/agent-semantic-protocol >/tmp/asp-rust-lexical-smoke.out'= | =real 0.01=, stdout =776= bytes |
 | configured document walk | =asp md query --term cached-secret-token --view metadata .= in a temp project with =[discovery] includeHiddenDirNames=[".cache"]= | =real 0.03=, stdout =135= bytes |
 
@@ -1091,7 +1091,7 @@ The index stores only structural rows:
 
 The index must not store raw source, source windows, snippets, or provider
 stdout.  =rawSourceStored= is always =false=.  Exact code remains a last-mile
-=query --code= operation after an index row has selected a parser-owned locator.
+=query --projection source= operation after an index row has selected a parser-owned locator.
 
 The Turso implementation hangs structural rows off =cache_generations= via
 =generation_id= so existing invalidation deletes stale index rows without a
@@ -1535,7 +1535,7 @@ local-cache path:
 - Local cache hits can replay =prompt-output/*.txt= artifacts directly, render
   =search/*.json= semantic-search-packet artifacts through the shared graph
   renderer, and replay =query/*.json= semantic-query-packet artifacts for
-  =query/owner-items=.  Exact non-=--code= tree-sitter ABI queries can replay
+  =query/owner-items=.  Exact non-=--projection source= tree-sitter ABI queries can replay
   =semantic-tree-sitter-query/*.json= artifacts by matching the query AST/ABI
   fingerprint and selector, then rendering the current compact query frontier
   from the packet.  If that artifact is unavailable, the same exact request can

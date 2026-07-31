@@ -49,27 +49,6 @@ pub(super) fn validate_search_packet_for_provider(
     Some(())
 }
 
-pub(super) fn validate_query_packet_for_provider(
-    packet_bytes: &[u8],
-    provider: &ResolvedProvider,
-) -> Option<()> {
-    let packet: serde_json::Value = serde_json::from_slice(packet_bytes).ok()?;
-    if packet.get("schemaId")?.as_str()? != "agent.semantic-protocols.semantic-query-packet" {
-        return None;
-    }
-    if packet.get("method")?.as_str()? != "query/owner-items" {
-        return None;
-    }
-    if packet.get("languageId")?.as_str()? != provider.language_id.as_str() {
-        return None;
-    }
-    if packet.get("providerId")?.as_str()? != provider.provider_id.as_str() {
-        return None;
-    }
-    packet.get("matches")?.as_array()?;
-    Some(())
-}
-
 pub(super) fn validate_syntax_query_packet_for_provider(
     packet_bytes: &[u8],
     provider: &ResolvedProvider,

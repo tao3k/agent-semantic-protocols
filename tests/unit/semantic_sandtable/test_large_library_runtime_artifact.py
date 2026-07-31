@@ -56,7 +56,7 @@ def publish_receipts(
         "headRevision": revision,
         "sourceMerkleRoot": "3" * 64,
         "languageExtensionEvidence": {
-            "authority": "provider-workspace-scope",
+            "authority": "provider-project-resolution",
             "candidateSetAuthority": "provider-registry-extension-index",
             "sourceExtensions": [".rs"],
             "matchingFileCount": 400,
@@ -147,7 +147,7 @@ def test_rejects_document_corpus_below_locked_extension_ratio(tmp_path: Path) ->
         environment=locked.environment,
         inputs=locked.inputs,
         admission=LanguageExtensionAdmission(
-            authority="provider-workspace-scope",
+            authority="provider-project-resolution",
             minimum_matching_files=100,
             minimum_matching_file_ratio=0.8,
         ),

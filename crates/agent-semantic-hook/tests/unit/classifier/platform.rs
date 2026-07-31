@@ -138,9 +138,10 @@ fn user_prompt_submit_allow_adds_search_first_context_for_claude() {
         "{context}"
     );
     assert!(
-        context.contains("query --selector <exact-selector> --workspace . --code"),
+        context.contains("query --selector <exact-selector> --workspace . --projection source"),
         "{context}"
     );
+    assert!(context.contains("no implicit projection"), "{context}");
     assert!(
         context.contains("return one compact `[asp-search-subagent]` graph-route receipt"),
         "{context}"
@@ -189,7 +190,12 @@ fn user_prompt_submit_locator_questions_do_not_push_code_reads() {
         context.contains("ASP facades are language IDs"),
         "{context}"
     );
-    assert!(context.contains("Do not run `query --code`"), "{context}");
+    assert!(
+        context.contains("query --selector <exact-selector> --workspace . --projection source"),
+        "{context}"
+    );
+    assert!(!context.contains("--code"), "{context}");
+    assert!(!context.contains("--names-only"), "{context}");
     assert!(
         context.contains("compact `[asp-search-subagent]` graph-route receipt"),
         "{context}"
@@ -293,8 +299,8 @@ fn read_only_subagent_receipt_accepts_graph_route_receipts() {
     );
 
     for message in [
-        "[asp-search-subagent]\nschema=asp-search-subagent.graph.v1\nintent=receipt-validation\nroute=hook/read-only-subagent -> tests\nstate=selector-ready\nevidence=E1 kind=item role=primary owner=crates/agent-semantic-hook/src/read_only_subagent.rs selector=rust://crates/agent-semantic-hook/src/read_only_subagent.rs#item/function/classify_read_only_subagent_receipt relation=validates-receipt\nnext=E1 asp rust query --selector rust://crates/agent-semantic-hook/src/read_only_subagent.rs#item/function/classify_read_only_subagent_receipt --workspace . --code\navoid=raw-read,flat-selector-list\nomit=source,line-range,confidence,long-explanation",
-        "[asp-search-subagent]\nschema=asp-search-subagent.graph.v1\nintent=receipt-validation\nroute=owner -> item -> test\nstate=selector-ready\nrankedEvidence=E1 kind=item role=primary owner=src/lib.rs selector=rust://src/lib.rs#item/function/run relation=selected; E2 kind=test role=guard owner=tests/run.rs selector=rust://tests/run.rs#item/function/run_is_guarded relation=covers\nedges=E1-covered-by->E2\nnext=E1 asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --code\nalt=E2 asp rust query --selector rust://tests/run.rs#item/function/run_is_guarded --workspace . --code\navoid=raw-read,flat-selector-list\nomit=source,line-range,confidence,long-explanation,not-found-inventory",
+        "[asp-search-subagent]\nschema=asp-search-subagent.graph.v1\nintent=receipt-validation\nroute=hook/read-only-subagent -> tests\nstate=selector-ready\nevidence=E1 kind=item role=primary owner=crates/agent-semantic-hook/src/read_only_subagent.rs selector=rust://crates/agent-semantic-hook/src/read_only_subagent.rs#item/function/classify_read_only_subagent_receipt relation=validates-receipt\nnext=E1 asp rust query --selector rust://crates/agent-semantic-hook/src/read_only_subagent.rs#item/function/classify_read_only_subagent_receipt --workspace . --projection source\navoid=raw-read,flat-selector-list\nomit=source,line-range,confidence,long-explanation",
+        "[asp-search-subagent]\nschema=asp-search-subagent.graph.v1\nintent=receipt-validation\nroute=owner -> item -> test\nstate=selector-ready\nrankedEvidence=E1 kind=item role=primary owner=src/lib.rs selector=rust://src/lib.rs#item/function/run relation=selected; E2 kind=test role=guard owner=tests/run.rs selector=rust://tests/run.rs#item/function/run_is_guarded relation=covers\nedges=E1-covered-by->E2\nnext=E1 asp rust query --selector rust://src/lib.rs#item/function/run --workspace . --projection source\nalt=E2 asp rust query --selector rust://tests/run.rs#item/function/run_is_guarded --workspace . --projection source\navoid=raw-read,flat-selector-list\nomit=source,line-range,confidence,long-explanation,not-found-inventory",
     ] {
         let payload = serde_json::json!({
             "session_id": "child-session",

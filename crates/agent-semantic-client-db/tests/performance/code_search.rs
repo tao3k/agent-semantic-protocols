@@ -103,15 +103,139 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         }],
     })
     .expect("build resident Turso source-index import");
+    let mut import = import;
+    let fixture_source = b"pub fn indexed_fixture() -> bool { true }\n".to_vec();
+    let fixture_owner_path = import.file_hashes[0].path.clone();
+    let fixture_source_path = project_root.join(&fixture_owner_path);
+    tokio::fs::create_dir_all(
+        fixture_source_path
+            .parent()
+            .expect("fixture source path has a parent"),
+    )
+    .await
+    .expect("create fixture source directory");
+    tokio::fs::write(&fixture_source_path, &fixture_source)
+        .await
+        .expect("write fixture source bytes");
+    let fixture_sha256 = format!(
+        "{:x}",
+        <sha2::Sha256 as sha2::Digest>::digest(&fixture_source)
+    );
+    import.file_hashes[0].sha256 = fixture_sha256.clone();
+    import.file_hashes[0].byte_len = fixture_source.len() as u64;
+    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
+        [(fixture_owner_path.clone(), fixture_sha256.clone())],
+    );
+    let source_snapshot = workspace_snapshot.evidence(
+        source_snapshot.source_kind.clone(),
+        source_snapshot.provider_digest.clone(),
+    );
+    import.generation_id = source_snapshot.root_digest.clone().into();
+    let owner_snapshot =
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
+            owner_path: fixture_owner_path.clone(),
+            bytes: fixture_source.clone(),
+            content_digest: format!("blake3-256:{}", blake3::hash(&fixture_source).to_hex()),
+            selectors: Vec::new(),
+        };
+    let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
+        import.file_hashes.iter().map(|file_hash| {
+            let owner_path = agent_semantic_client_db::ClientDbSourceIndexPath::try_from(
+                file_hash.path.as_str(),
+            )
+            .expect("normalize fixture owner path");
+            let source_path = project_root.join(&file_hash.path);
+            let source_bytes = std::fs::read(&source_path).unwrap_or_else(|error| {
+                panic!(
+                    "read fixture source bytes from {} for {file_hash:?}: {error}",
+                    source_path.display(),
+                )
+            });
+            (owner_path, source_bytes)
+        }),
+    );
     agent_semantic_client_db::fixture::commit_source_index_generation_from_fixture_dir(
         &client_dir,
         ClientDbSourceIndexRefreshRequest {
-            import,
+            import: import.clone(),
             file_count: 1,
             source_snapshot: source_snapshot.clone(),
         },
+        &source_blobs,
     )
     .expect("materialize resident Turso source index");
+    let workspace_identity = "workspace-code-search-performance";
+    let runtime_registry =
+        agent_semantic_client_db::runtime_server_workspace::RuntimeServerWorkspaceRegistry::new(
+            client_dir.join("runtime"),
+        )
+        .expect("create resident workspace registry");
+    let second_workspace_owner_snapshot = owner_snapshot.clone();
+    let canonical_materialization =
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::new(
+            workspace_identity,
+            source_snapshot.clone(),
+            &import,
+            [1, 0],
+            vec![owner_snapshot],
+        )
+        .expect("assemble canonical workspace materialization");
+    let second_workspace_identity = "workspace-code-search-performance-second";
+    let second_workspace_materialization =
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::new(
+            second_workspace_identity,
+            source_snapshot.clone(),
+            &import,
+            [1, 0],
+            vec![second_workspace_owner_snapshot],
+        )
+        .expect("assemble second canonical workspace materialization");
+    let canonical_materialization_replay = canonical_materialization.clone();
+    let restore_started = tokio::time::Instant::now();
+    let recovery_receipt = runtime_registry
+        .ensure_canonical_generation(
+            "code-search-performance-restore",
+            workspace_identity,
+            canonical_materialization,
+        )
+        .await
+        .expect("restore canonical generation into resident memory and mmap");
+    let restore_elapsed = restore_started.elapsed();
+    let replay_started = tokio::time::Instant::now();
+    let replay_receipt = runtime_registry
+        .ensure_canonical_generation(
+            "code-search-performance-replay",
+            workspace_identity,
+            canonical_materialization_replay,
+        )
+        .await
+        .expect("reuse canonical resident generation");
+    let replay_elapsed = replay_started.elapsed();
+    let second_workspace_started = tokio::time::Instant::now();
+    let second_workspace_receipt = runtime_registry
+        .ensure_canonical_generation(
+            "code-search-performance-second-workspace",
+            second_workspace_identity,
+            second_workspace_materialization,
+        )
+        .await
+        .expect("restore second workspace canonical generation");
+    let second_workspace_elapsed = second_workspace_started.elapsed();
+    eprintln!(
+        "code-search-tier=canonical-restore elapsed={restore_elapsed:?} replayElapsed={replay_elapsed:?} secondWorkspaceElapsed={second_workspace_elapsed:?} rootDepth=1,0 receipt={recovery_receipt:?} replayReceipt={replay_receipt:?} secondWorkspaceReceipt={second_workspace_receipt:?}"
+    );
+    assert!(
+        restore_elapsed < std::time::Duration::from_millis(10),
+        "canonical Turso to MemoryBackend/mmap restore exceeded 10ms: {restore_elapsed:?}"
+    );
+    assert!(
+        replay_elapsed < std::time::Duration::from_millis(1),
+        "resident canonical generation replay exceeded 1ms: {replay_elapsed:?}"
+    );
+    assert!(
+        second_workspace_elapsed < std::time::Duration::from_millis(10),
+        "second workspace canonical restore exceeded 10ms: {second_workspace_elapsed:?}"
+    );
     let session = ClientDbEngine::open_read_session_client_dir(&client_dir)
         .expect("open resident Turso read session")
         .expect("resident Turso database");

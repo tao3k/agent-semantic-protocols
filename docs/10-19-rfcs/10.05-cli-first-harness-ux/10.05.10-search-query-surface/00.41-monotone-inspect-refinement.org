@@ -1,0 +1,277 @@
+#+title: RFC 10.05.10.00.41 — Monotone Inspect Refinement
+#+startup: overview
+
+* Status
+
+Draft research specification.
+
+This RFC adds a progress and termination contract to decision-sufficient
+progressive inspect. It does not add CLI commands or authorize implementation.
+
+* Problem
+
+RFC 00.40 defines when an inspect projection contains enough information to
+select the correct next action. It does not yet constrain repeated refinement.
+
+A SearchLoop can repeatedly:
+
+- return a differently rendered but logically equivalent projection;
+- spend one model/tool round;
+- preserve the same action ambiguity; and
+- recommend another inspect.
+
+Such a loop is locally valid but globally unproductive. Token and latency costs
+grow without moving toward a decision.
+
+Counting returned fields is not a progress measure. A larger packet can still
+leave exactly the same action ambiguity.
+
+* Decision
+
+Each inspect state carries three natural-number ranks:
+
+- =ambiguity=: the number of still-indistinguishable world pairs that require
+  different next actions;
+- =rounds-remaining=; and
+- =transitions-remaining=.
+
+A refinement transition is valid only when all three ranks strictly decrease.
+
+The ambiguity rank is relative to the decision-scope identity from RFC 00.40.
+Changing the decision scope creates a new refinement problem; it does not count
+as progress inside the old one.
+
+* Executable mathematical surface
+
+#+name: monotone-inspect-refinement-math
+#+begin_src typst
+#let valid-step(current, next) = (
+  next.ambiguity < current.ambiguity
+  and next.rounds-remaining < current.rounds-remaining
+  and next.transitions-remaining < current.transitions-remaining
+)
+
+#let resolved(state) = state.ambiguity == 0
+
+#let initial = (
+  ambiguity: 3,
+  rounds-remaining: 4,
+  transitions-remaining: 4,
+)
+
+#let refined = (
+  ambiguity: 2,
+  rounds-remaining: 3,
+  transitions-remaining: 3,
+)
+
+#let stalled = (
+  ambiguity: 3,
+  rounds-remaining: 3,
+  transitions-remaining: 3,
+)
+
+(
+  valid-refinement: valid-step(initial, refined),
+  stalled-refinement: valid-step(initial, stalled),
+  self-loop: valid-step(initial, initial),
+  resolved: resolved((
+    ambiguity: 0,
+    rounds-remaining: 1,
+    transitions-remaining: 1,
+  )),
+  maximum-steps:
+    calc.min(
+      initial.ambiguity,
+      calc.min(
+        initial.rounds-remaining,
+        initial.transitions-remaining,
+      ),
+    ),
+)
+#+end_src
+
+The block is extracted through
+=orgize eval plan --json monotone-inspect-refinement-math ...= and evaluated
+using =typst eval --in -=. It is not written to a separate Typst source.
+
+* Ambiguity rank
+
+For a decision scope, a projection partitions the possible worlds into
+equivalence classes. Two worlds are action-conflicting when:
+
+- the projection cannot distinguish them; and
+- their required next actions differ.
+
+=ambiguity= counts the remaining action-conflicting pairs. A
+decision-sufficient projection has ambiguity zero.
+
+A refinement is informative only when it removes at least one conflicting pair.
+Adding fields that distinguish worlds with the same required action can help
+diagnostics, but it does not advance this decision scope.
+
+The ambiguity count is certificate data. It is not accepted merely because a
+provider reports a smaller integer; RFC 00.42 will bind the rank to an
+observation/partition witness.
+
+* Charged progress
+
+Every inspect refinement consumes:
+
+- at least one SearchLoop round; and
+- at least one router transition.
+
+Therefore, a valid transition decreases ambiguity, rounds remaining, and
+transitions remaining. A retry caused by provider drift or ledger contention is
+also a charged transition. It cannot reset the rank without starting a new
+explicitly identified scope.
+
+This separates:
+
+- progress evidence: ambiguity decreased;
+- resource accounting: budgets decreased.
+
+Both are required.
+
+* Bounded-run theorem
+
+The Lean model defines an inductive refinement run. For a run beginning at
+state =s= with =n= transitions:
+
+#+begin_quote
+=n <= s.ambiguity=
+#+end_quote
+
+and independently:
+
+#+begin_quote
+=n <= s.roundsRemaining=
+
+=n <= s.transitionsRemaining=.
+#+end_quote
+
+Consequently:
+
+#+begin_quote
+=n <= min(ambiguity, roundsRemaining, transitionsRemaining)=.
+#+end_quote
+
+No valid run can be infinite because every transition descends in natural
+numbers.
+
+* Rejected transitions
+
+The protocol rejects:
+
+- exact self-loops;
+- a new rendering with unchanged ambiguity;
+- a retry that consumes budget but preserves ambiguity;
+- an alleged refinement that increases a budget counter;
+- a transition under a different decision scope without an explicit scope
+  reset receipt; and
+- a transition using stale evidence, cache, or ledger generations.
+
+A rejected refinement can still be returned as diagnostic information. It
+cannot be appended to a proof-carrying progress run.
+
+* Scope reset
+
+The agent may intentionally change:
+
+- root obligation;
+- action vocabulary;
+- objective;
+- budget;
+- evidence generation; or
+- provider set.
+
+That creates a new decision-scope digest and a new initial ambiguity rank. A
+scope reset receipt links the old and new scopes and charges the transition.
+
+Without this boundary, a loop could evade termination by repeatedly widening
+the scope and resetting ambiguity.
+
+* Completion interaction
+
+When ambiguity reaches zero, the inspect projection is decision-sufficient for
+the current scope. The decoded action may be:
+
+- execute an exact result;
+- execute a bounded or incomplete incumbent;
+- perform a specific evidence action;
+- return a bounded failure; or
+- explicitly start a new decision scope.
+
+Zero ambiguity means the next action is determined. It does not mean the search
+result is globally exact.
+
+* SearchLoop surface
+
+A compact refinement receipt SHOULD contain:
+
+#+begin_src json
+{
+  "decisionScopeDigest": "...",
+  "ambiguity": {
+    "before": 3,
+    "after": 2,
+    "witnessDigest": "..."
+  },
+  "budget": {
+    "roundsRemaining": 3,
+    "transitionsRemaining": 3
+  },
+  "nextAction": "inspect selector compatibility"
+}
+#+end_src
+
+The agent follows =nextAction= rather than assembling a complex search command.
+
+* Cache interaction
+
+A semantic projection cache hit can return an earlier partition witness only
+when decision scope, evidence identity, and relevant runtime generation match.
+A model prefix-cache hit changes prompt cost but does not prove ambiguity
+decrease.
+
+Stable packet prefixes may improve model cache hits across refinements. The
+strict rank remains based on decision information, not cache performance.
+
+* Python Turbo Graph consequence
+
+The future Python layer SHOULD maintain:
+
+- a decision-scope identity;
+- compact possible-world or frontier classes;
+- action labels for each class;
+- an ambiguity witness;
+- a refinement operator that proves partition splitting; and
+- immutable before/after budget receipts.
+
+Sparse incidence structures can compute which fact best splits
+action-conflicting classes. The selected split should maximize useful ambiguity
+reduction per charged token or round, but optimization never replaces the
+strict-decrease requirement.
+
+* Required Lean obligations
+
+The companion Lean model MUST prove:
+
+- no state can refine to itself;
+- a budget-consuming step with unchanged ambiguity is invalid;
+- a valid example refinement is accepted;
+- a resolved state has no valid outgoing refinement;
+- run length is bounded by initial ambiguity;
+- run length is bounded by initial round budget; and
+- run length is bounded by initial transition budget.
+
+The modular audit emits these theorem families as Lean-generated JSON.
+
+* Design finding
+
+Decision sufficiency alone permits an implementation to spend unbounded rounds
+searching for a sufficient projection. Lean requires every recursive
+constructor to carry a strictly smaller rank. The ambiguity measure supplies
+the missing well-founded relation and exposes budget-only retries as
+non-progress.
+

@@ -133,27 +133,6 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "Validate that language providers do not depend on tree-sitter runtime packages.",
     ),
     CommandSpec(
-        ("tree-sitter", "validate", "frontier-code-contract"),
-        "tools.tree_sitter.contract_gates",
-        "frontier_code_main",
-        "argv",
-        "Validate tree-sitter locator/frontier and exact-code output.",
-    ),
-    CommandSpec(
-        ("tree-sitter", "validate", "search-read-plan-frontier-contract"),
-        "tools.tree_sitter.contract_gates",
-        "search_read_plan_main",
-        "argv",
-        "Validate search/read-plan frontier output without inline code.",
-    ),
-    CommandSpec(
-        ("tree-sitter", "validate", "exact-direct-read-contract"),
-        "tools.tree_sitter.contract_gates",
-        "exact_direct_read_main",
-        "argv",
-        "Validate exact direct-source-read frontier and pure-code output.",
-    ),
-    CommandSpec(
         ("tree-sitter", "validate", "python-query-corpus"),
         "tools.tree_sitter.validate_python_query_corpus",
         "main",

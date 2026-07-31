@@ -168,8 +168,8 @@ Suggested commands should prefer existing high-signal surfaces:
   acquisition;
 - =search owner <owner> items --query a|b|c --view seeds= for owner-local
   parser-visible item discovery;
-- =query <owner> --term <symbol> --names-only= before code extraction;
-- =query --selector <exact-range> --workspace <workspace-root> --code= only
+- =query <owner> --term <symbol> --projection source= before code extraction;
+- =query --selector <exact-range> --workspace <workspace-root> --projection source= only
   after an exact selector exists.
 
 Suggest is intentionally separate from =search pipe=.  =search suggest= can use

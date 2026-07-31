@@ -176,12 +176,17 @@ Scope admission applies ordered authorities:
    admitted only when produced by that package manager's parser.
 4. User policy overlays are explicit final policy facts applied by ASP.
 
-ASP applies repository ignore semantics and its normalized policy overlay once
-to the repository candidate snapshot before provider resolution.  Providers
-MUST NOT reapply private default ignore lists to that snapshot.  A policy
-exclusion MUST NOT silently exclude a path explicitly owned by a package
-target; conflicts fail closed with a typed =project-scope-conflict= result
-naming both authorities.
+ASP applies repository ignore semantics while Git constructs the repository
+candidate universe.  ASP then normalizes its user policy overlay into exact
+=policyExclusions= facts carried by the =RepositoryCandidateSnapshot=.  The
+candidate universe remains intact for provider parsing so an explicitly
+declared package target cannot disappear before authority comparison.  After
+provider resolution, ASP applies those exact exclusions once while projecting
+the final file scope.  Providers MUST NOT reapply private default ignore lists
+or interpret ASP directory-name policy themselves.  A policy exclusion MUST
+NOT silently exclude a path explicitly owned by a package target; conflicts
+fail closed with a typed =project-scope-conflict= result naming the exact path,
+=manifest-explicit= include authority, and =user-policy= exclude authority.
 
 For a non-Git workspace, repository candidate resolution uses an explicitly labeled
 =provider-only= repository candidate mode.  The caller supplies a project entry

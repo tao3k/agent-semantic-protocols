@@ -12,13 +12,8 @@ from pathlib import Path
 
 from tools.console import emit
 from tools.provider_registry_contracts import validate_provider_registries
-from tools.tree_sitter.contract_exact_read import check_exact_direct_read_contract
-from tools.tree_sitter.contract_frontier_code import check_frontier_code_contract
 from tools.tree_sitter.contract_query_corpus import check_query_corpus_contracts
 from tools.tree_sitter.contract_runtime_boundary import check_runtime_boundary
-from tools.tree_sitter.contract_search_read_plan import (
-    check_search_read_plan_frontier_contract,
-)
 from tools.tree_sitter.contract_support import ContractFailure, ROOT, run
 
 
@@ -49,25 +44,6 @@ def main(argv: list[str] | None = None) -> int:
 
 def runtime_boundary_main(argv: list[str] | None = None) -> int:
     _run_single_gate(argv, check_runtime_boundary, "tree-sitter runtime boundary contract is valid")
-    return 0
-
-
-def frontier_code_main(argv: list[str] | None = None) -> int:
-    _run_single_gate(argv, check_frontier_code_contract, "tree-sitter frontier/code contract is valid")
-    return 0
-
-
-def search_read_plan_main(argv: list[str] | None = None) -> int:
-    _run_single_gate(
-        argv,
-        check_search_read_plan_frontier_contract,
-        "search/read-plan frontier contract is valid",
-    )
-    return 0
-
-
-def exact_direct_read_main(argv: list[str] | None = None) -> int:
-    _run_single_gate(argv, check_exact_direct_read_contract, "exact direct-read contract is valid")
     return 0
 
 
@@ -234,9 +210,6 @@ def _contract_env(source: Mapping[str, str]) -> dict[str, str]:
 _GATES: dict[str, Gate] = {
     "provider-registry": check_provider_registry_contracts,
     "runtime-boundary": check_runtime_boundary,
-    "frontier-code": check_frontier_code_contract,
-    "search-read-plan": check_search_read_plan_frontier_contract,
-    "exact-direct-read": check_exact_direct_read_contract,
     "query-corpus": check_query_corpus_contracts,
 }
 

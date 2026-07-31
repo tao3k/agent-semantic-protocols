@@ -15,7 +15,7 @@ Direct source reads and exact wrapper reads should be denied and rerouted to a
 compact code window:
 
 #+begin_src shell
-asp <language> query --from-hook direct-source-read --selector <project-path[:line-range]> --code .
+asp <language> query --from-hook direct-source-read --selector <project-path[:line-range]> --projection source .
 #+end_src
 
 The hook decision packet must label that recovery route as =kind=query=.

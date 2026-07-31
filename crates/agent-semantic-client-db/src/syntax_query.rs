@@ -120,7 +120,7 @@ fn validate_syntax_query_packet_for_rows(packet: &Value) -> Result<(), String> {
         .and_then(Value::as_bool)
         .unwrap_or(false)
     {
-        return Err("syntax query rows do not store --code packet output".to_string());
+        return Err("syntax query rows do not store exact source projection output".to_string());
     }
     Ok(())
 }

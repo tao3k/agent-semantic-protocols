@@ -25,27 +25,7 @@ struct LanguageConfig {
 impl Default for SearchConfig {
     fn default() -> Self {
         Self {
-            ignore_dirs: vec![
-                ".cache".to_string(),
-                ".codex".to_string(),
-                ".data".to_string(),
-                ".devenv".to_string(),
-                ".direnv".to_string(),
-                ".git".to_string(),
-                ".idea".to_string(),
-                ".jj".to_string(),
-                ".run".to_string(),
-                ".vscode".to_string(),
-                "target".to_string(),
-                "node_modules".to_string(),
-                "dist".to_string(),
-                "build".to_string(),
-                ".build".to_string(),
-                "__pycache__".to_string(),
-                ".venv".to_string(),
-                "venv".to_string(),
-                "vendor".to_string(),
-            ],
+            ignore_dirs: Vec::new(),
             include_hidden_dirs: Vec::new(),
         }
     }
@@ -98,14 +78,11 @@ impl AspConfig {
 
     fn assign(&mut self, section: &ConfigSection, key: &str, value: &str) {
         match section {
-            ConfigSection::Discovery | ConfigSection::Search => match key {
-                "ignoredDirNames" | "ignored_dir_names" | "ignoreDirs" | "ignore_dirs" => {
+            ConfigSection::Discovery => match key {
+                "ignoredDirNames" => {
                     self.search.ignore_dirs = parse_string_array(value);
                 }
-                "includeHiddenDirNames"
-                | "include_hidden_dir_names"
-                | "includeHiddenDirs"
-                | "include_hidden_dirs" => {
+                "includeHiddenDirNames" => {
                     self.search.include_hidden_dirs = parse_string_array(value);
                 }
                 _ => {}
@@ -127,7 +104,6 @@ impl AspConfig {
 enum ConfigSection {
     Root,
     Discovery,
-    Search,
     Language(String),
 }
 
@@ -135,9 +111,6 @@ impl ConfigSection {
     fn parse(section: &str) -> Self {
         if section == "discovery" {
             return Self::Discovery;
-        }
-        if section == "search" {
-            return Self::Search;
         }
         if let Some(language_id) = section.strip_prefix("languages.") {
             return Self::Language(language_id.trim().to_string());

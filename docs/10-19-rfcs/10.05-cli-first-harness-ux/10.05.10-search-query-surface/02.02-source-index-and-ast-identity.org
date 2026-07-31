@@ -70,7 +70,7 @@ After an agent has already selected a concrete owner and item query, it may ask
 for pure compact code:
 
 #+begin_src shell
-<lang-harness> search owner <path> items --query 'fun1|fun2|fun3' --code
+<lang-harness> search owner <path> items --query 'fun1|fun2|fun3' --projection source
 #+end_src
 
 The =--code= projection emits only compact parser-owned code projection text.
@@ -84,7 +84,7 @@ evidence.
 For explicit item query code results, the compact parser-owned projection must
 be produced by the same renderer regardless of transport.  Prompt-facing search
 line protocol must not add =|code text="..."= during default discovery; code
-text belongs to explicit =--code=, =query --code=, or JSON/artifact projection
+text belongs to explicit =--projection source=, =query --projection source=, or JSON/artifact projection
 surfaces after the agent has selected a concrete item/frontier node.  Providers
 must not apply a second whitespace-only compaction layer at line-render time;
 that hides AST structure and pushes agents back into repeated local reads.

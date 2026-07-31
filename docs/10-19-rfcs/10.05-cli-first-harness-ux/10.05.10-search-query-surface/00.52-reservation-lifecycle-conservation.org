@@ -1,0 +1,270 @@
+#+title: RFC 10.05.10.00.52 — Reservation Lifecycle Conservation
+#+startup: overview
+
+* Status
+
+Draft research specification.
+
+This RFC composes ordinary reservation, execution, quarantine, and authorized
+resolution into one resource-conserving lifecycle. It does not add CLI commands
+or authorize implementation.
+
+* Problem
+
+RFC 00.36 proves local reservation accounting. RFC 00.50 and RFC 00.51 prove
+bounded quarantine and authorized resolution. The separate models do not yet
+prove that every legal lifecycle path preserves one global resource total.
+
+A runtime may implement each phase correctly in isolation while losing or
+duplicating capacity at a phase boundary:
+
+- available to held;
+- held to consumed;
+- held to quarantined;
+- held back to available after proof of no effect;
+- quarantined to consumed; or
+- quarantined back to available.
+
+The reservation record also needs a closed disposition relation. A consumed
+reservation must not later become quarantined or released.
+
+* Decision
+
+The aggregate ledger has four partitions:
+
+- available;
+- held;
+- consumed; and
+- quarantined.
+
+The conserved total is:
+
+#+begin_quote
+=available + held + consumed + quarantined=.
+#+end_quote
+
+Every legal transition moves an amount between exactly two partitions and
+preserves the total.
+
+Each reservation has one disposition:
+
+- =held=;
+- =consumed=;
+- =quarantined=; or
+- =released=.
+
+=consumed= and =released= are terminal.
+
+* Executable mathematical surface
+
+#+name: reservation-lifecycle-conservation-math
+#+begin_src typst
+#let total(ledger) = (
+  ledger.available
+  + ledger.held
+  + ledger.consumed
+  + ledger.quarantined
+)
+
+#let reserve(ledger, amount) = (
+  available: ledger.available - amount,
+  held: ledger.held + amount,
+  consumed: ledger.consumed,
+  quarantined: ledger.quarantined,
+)
+
+#let consume-held(ledger, amount) = (
+  available: ledger.available,
+  held: ledger.held - amount,
+  consumed: ledger.consumed + amount,
+  quarantined: ledger.quarantined,
+)
+
+#let quarantine-held(ledger, amount) = (
+  available: ledger.available,
+  held: ledger.held - amount,
+  consumed: ledger.consumed,
+  quarantined: ledger.quarantined + amount,
+)
+
+#let release-held(ledger, amount) = (
+  available: ledger.available + amount,
+  held: ledger.held - amount,
+  consumed: ledger.consumed,
+  quarantined: ledger.quarantined,
+)
+
+#let consume-quarantined(ledger, amount) = (
+  available: ledger.available,
+  held: ledger.held,
+  consumed: ledger.consumed + amount,
+  quarantined: ledger.quarantined - amount,
+)
+
+#let release-quarantined(ledger, amount) = (
+  available: ledger.available + amount,
+  held: ledger.held,
+  consumed: ledger.consumed,
+  quarantined: ledger.quarantined - amount,
+)
+
+#let initial = (
+  available: 100,
+  held: 0,
+  consumed: 0,
+  quarantined: 0,
+)
+#let reserved = reserve(initial, 20)
+#let quarantined = quarantine-held(reserved, 20)
+#let released = release-quarantined(quarantined, 20)
+
+(
+  initial-total: total(initial),
+  reserved-total: total(reserved),
+  quarantined-total: total(quarantined),
+  released-total: total(released),
+  final: released,
+)
+#+end_src
+
+The block is extracted through
+=orgize eval plan --json reservation-lifecycle-conservation-math ...= and
+evaluated using =typst eval --in -=. It is not written to a separate Typst
+source.
+
+* Ledger transitions
+
+The six legal aggregate movements are:
+
+| Transition | Source | Destination |
+|------------+--------+-------------|
+| reserve | available | held |
+| consume held | held | consumed |
+| quarantine held | held | quarantined |
+| release held | held | available |
+| consume quarantined | quarantined | consumed |
+| release quarantined | quarantined | available |
+
+Each transition carries a proof that the source partition contains at least the
+moved amount. Natural-number subtraction is never used as silent saturation.
+
+* Global conservation theorem
+
+For any legal =LedgerTransition before after=:
+
+#+begin_quote
+=total(after) = total(before)=.
+#+end_quote
+
+The theorem is proven once by case analysis over the closed transition type.
+Future transition variants must extend the proof before entering the shared
+schema.
+
+* Reservation disposition
+
+The legal per-reservation edges are:
+
+#+begin_quote
+=held -> consumed=
+
+=held -> quarantined=
+
+=held -> released=
+
+=quarantined -> consumed=
+
+=quarantined -> released=.
+#+end_quote
+
+There are no outgoing edges from =consumed= or =released=.
+
+This prevents one linear lifecycle trace from both consuming and releasing the
+same reservation.
+
+* Revision discipline
+
+Every committed reservation transition:
+
+- preserves reservation identity and amount;
+- changes disposition along a legal edge; and
+- increments revision by one.
+
+The transition proof does not by itself provide concurrent compare-and-swap.
+RFC 00.53 will add the linearizability/CAS contract that ensures only one
+transition from a shared revision commits.
+
+* Example
+
+Starting with 100 available units:
+
+1. reserve 20: =80 available, 20 held=;
+2. quarantine 20: =80 available, 20 quarantined=;
+3. prove no effect and release: =100 available=.
+
+Every intermediate total is 100.
+
+The alternative completed path ends with =80 available, 20 consumed= and also
+preserves total 100.
+
+* Relationship to graph cost
+
+Ledger units may represent tokens, money, provider quota, or another additive
+resource. Each resource dimension uses its own conserved ledger.
+
+Schedule span such as parallel rounds is not a conserved additive resource and
+does not use this ledger algebra.
+
+The route admission bundle binds the exact ledger dimension, amount, and
+revision.
+
+* SearchLoop consequence
+
+The compact lifecycle receipt exposes:
+
+#+begin_src json
+{
+  "reservationDigest": "...",
+  "revision": 3,
+  "disposition": "released",
+  "amount": 20,
+  "ledger": {
+    "available": 100,
+    "held": 0,
+    "consumed": 0,
+    "quarantined": 0,
+    "total": 100
+  }
+}
+#+end_src
+
+* Python Turbo Graph consequence
+
+The future Python runtime SHOULD:
+
+- use a closed ledger transition variant;
+- validate source capacity before subtraction;
+- atomically update the aggregate ledger and reservation record;
+- verify total conservation at commit;
+- make consumed/released records terminal; and
+- include ledger revision in route admission receipts.
+
+* Required Lean obligations
+
+The companion Lean model MUST prove:
+
+- each of the six movements preserves total capacity;
+- every legal aggregate transition preserves total capacity;
+- consumed and released dispositions are terminal;
+- every record transition increments revision;
+- the quarantine-release example preserves total 100; and
+- the quarantine-consume example preserves total 100.
+
+The modular audit emits these theorem families as Lean-generated JSON.
+
+* Design finding
+
+Local reservation and quarantine theorems did not establish conservation across
+their boundary. The combined closed transition type makes every partition move
+explicit and exposes concurrency as the remaining missing premise rather than
+hiding it inside arithmetic.
+

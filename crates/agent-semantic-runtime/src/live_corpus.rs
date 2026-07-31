@@ -406,7 +406,7 @@ fn language_extension_evidence_from_paths(
         );
     }
     Ok(LiveCorpusLanguageExtensionEvidenceV1 {
-        authority: "provider-workspace-scope".to_string(),
+        authority: "provider-project-resolution".to_string(),
         candidate_set_authority: "provider-registry-extension-index".to_string(),
         source_extensions: target.into_iter().collect(),
         matching_file_count,

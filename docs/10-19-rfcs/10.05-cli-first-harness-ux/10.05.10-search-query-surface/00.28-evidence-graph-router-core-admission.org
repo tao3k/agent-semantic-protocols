@@ -8,7 +8,7 @@ Draft proof-first search RFC.
 
 This RFC extends:
 
-- [[file:00.24-searchroute-inspect-trace-catalog.org][RFC 10.05.24 — SearchRoute Inspect Trace Catalog]]
+- RFC 10.05.24 — Decision-Sufficient SearchRoute Inspect
 - [[file:00.25-searchroute-certified-search-ledger.org][RFC 10.05.25 — SearchRoute Certified Search Ledger]]
 - [[file:00.26-searchroute-committed-candidate-universe.org][RFC 10.05.26 — SearchRoute Committed Candidate Universe]]
 - [[file:00.27-searchroute-finite-canonical-manifest-commitment.org][RFC 10.05.27 — Finite Canonical Manifest Commitment]]
@@ -76,6 +76,7 @@ The initial cost model is:
   i_"semantic-search-cache",
   i_"model-prefix-cache",
   i_"measurement-protocol",
+  i_"uncertainty-protocol",
 ) $
 
 #let NoWorse = $ "NoWorse"(r_1, r_0) "iff" cases(
@@ -89,9 +90,18 @@ The initial cost model is:
   K(r_1) != K(r_0),
 ) $
 
+#let CostInterval = $ I(r) = [K_"lower"(r), K_"upper"(r)] $
+
+#let RobustlyBetter = $ "RobustlyBetter"(r_1, r_0) "iff" cases(
+  K_"lower"(r_1) <=_"componentwise" K_"upper"(r_1),
+  K_"lower"(r_0) <=_"componentwise" K_"upper"(r_0),
+  "StrictlyBetter"(K_"upper"(r_1), K_"lower"(r_0)),
+) $
+
 #let CertifiedImprovement = $ "CertifiedImprovement"(r_1, r_0) "iff" cases(
   M(r_1) = M(r_0),
   "ReachesGoal"(r_0),
+  "EvidenceValid"(r_0),
   "ReachesGoal"(r_1),
   "EvidenceValid"(r_1),
   "StrictlyBetter"(r_1, r_0),
@@ -109,19 +119,40 @@ The initial cost model is:
   "ReachesGoal"("Baseline"(w))
   "implies" "ReachesGoal"("Extended"(w)) $
 
-#let EvidenceSoundness = $ forall w,
-  "ReachesGoal"("Extended"(w))
-  "implies" "EvidenceValid"("Extended"(w)) $
+#let EvidenceSoundness = $ cases(
+  forall w,
+    "ReachesGoal"("Baseline"(w))
+    "implies" "EvidenceValid"("Baseline"(w)),
+  forall w,
+    "ReachesGoal"("Extended"(w))
+    "implies" "EvidenceValid"("Extended"(w)),
+) $
 
-#let EvidenceVerifierBinding = $ forall w,
-  "EvidenceValid"("Extended"(w)) "iff"
-  "VerifyEvidence"(
-    M("Extended"(w)),
-    "Evidence"("Extended"(w)),
-  ) $
+#let EvidenceVerifierBinding = $ cases(
+  forall w,
+    "EvidenceValid"("Baseline"(w)) "iff"
+    "VerifyEvidence"(
+      w,
+      M("Baseline"(w)),
+      "Evidence"("Baseline"(w)),
+    ),
+  forall w,
+    "EvidenceValid"("Extended"(w)) "iff"
+    "VerifyEvidence"(
+      w,
+      M("Extended"(w)),
+      "Evidence"("Extended"(w)),
+    ),
+) $
 
-#let EvidenceVerifierAuthorized =
-  $ "AuthorizedVerifier"("VerifyEvidence") $
+#let EvidenceVerifierAuthorized = $ "AuthorizedVerifier"("VerifyEvidence") $
+
+#let EvidenceItemsValid = $ forall e in "Evidence"(r),
+  "ValidItem"(e) $
+
+#let EvidenceComplete = $ forall e,
+  "RequiredEvidence"(w, e)
+  "implies" e in "Evidence"(r) $
 
 #let RuntimeExternality = $ forall w, cases(
   h("Extended"(w)) <= h("Baseline"(w)) + B_h,
@@ -184,12 +215,20 @@ The initial cost model is:
   ),
 ) $
 
+#let MustErase = $ "MustErase"(t, L_f, u) "iff"
+  "not" "LifecycleValid"(t, L_f, u) $
+
 #let PolicyAuthorized = $ "AuthorizedPolicy"(
   "IndependentOwner",
   "Affected",
+  "MeasuredWorkload",
   (B_h, B_t, B_q),
   B_C,
 ) $
+
+#let MeasurementCoverage = $ forall w,
+  "AdmittedWorkload"(w)
+  "implies" "MeasuredWorkload"(w) $
 
 #let IndependenceLaws = $ cases(
   forall o, "not" "IndependentOwner"(o, o),
@@ -200,12 +239,15 @@ The initial cost model is:
 
 #let CoreAdmission = $ cases(
   PolicyAuthorized,
+  MeasurementCoverage,
   IndependenceLaws,
   IndependentValue,
   Reachability,
   EvidenceSoundness,
   EvidenceVerifierBinding,
   EvidenceVerifierAuthorized,
+  EvidenceItemsValid,
+  EvidenceComplete,
   RuntimeExternality,
   ComplexityBound,
   Isolation,
@@ -225,12 +267,16 @@ The initial cost model is:
   MeasurementContext,
   NoWorse,
   StrictlyBetter,
+  CostInterval,
+  RobustlyBetter,
   CertifiedImprovement,
   IndependentValue,
   Reachability,
   EvidenceSoundness,
   EvidenceVerifierBinding,
   EvidenceVerifierAuthorized,
+  EvidenceItemsValid,
+  EvidenceComplete,
   RuntimeExternality,
   SharedComplexity,
   ComplexityBound,
@@ -242,7 +288,9 @@ The initial cost model is:
   WellFormedLifecycle,
   ValidRenewal,
   LifecycleValid,
+  MustErase,
   PolicyAuthorized,
+  MeasurementCoverage,
   IndependenceLaws,
   CoreAdmission,
   HopCounterexample,
@@ -266,7 +314,8 @@ same:
 - model profile;
 - semantic-search cache state;
 - model prefix-cache state;
-- measurement protocol.
+- measurement protocol;
+- uncertainty protocol.
 
 Semantic-search caching and model prefix caching are distinct dimensions.
 Receipts MUST NOT collapse them into an undifferentiated =cacheHit= field.
@@ -274,6 +323,26 @@ Receipts MUST NOT collapse them into an undifferentiated =cacheHit= field.
 Cold and warm cohorts MAY both be measured, but each claimed improvement MUST
 compare routes inside one cohort.  A warm extension compared with a cold
 baseline is not certified evidence of router improvement.
+
+Point estimates are insufficient when measurements vary.  A robust improvement
+requires the candidate upper cost bound to be strictly better than the baseline
+lower cost bound.  Overlapping intervals remain inconclusive rather than being
+rounded into a positive result.
+
+* Authorized workload coverage
+
+:PROPERTIES:
+:RFC_CLAUSE_ID: ASP-RFC-10.05-EGA-COVERAGE
+:END:
+
+The measurement scope MUST cover every workload in the committed admitted
+workload universe.  The same external policy that authorizes budgets and
+affected scope also authorizes the measured-workload predicate.
+
+A proposer cannot establish shared value by measuring only workloads on which
+the extension wins.  Additional sampling MAY be used for large universes, but
+the sampling policy, uncertainty protocol, and coverage claim must be
+contract-visible.
 
 * Independent shared value
 
@@ -305,6 +374,7 @@ The certificate MUST bind an independently authorized policy covering:
 
 - the owner-independence relation;
 - the affected-workload domain;
+- the measured-workload domain;
 - graph-hop, token, and interaction-round budgets;
 - the shared-complexity budget.
 
@@ -325,6 +395,7 @@ instead of trusting identifier inequality as the definition of independence.
 The extension MUST bind its =evidenceValid= proposition to an independently
 authorized verifier over:
 
+- the exact workload and its semantic requirement;
 - the complete measurement context, including graph snapshot identity;
 - the exact evidence objects exposed by the route.
 
@@ -335,6 +406,15 @@ successful verifier result.
 Verifier authorization is distinct from feature-policy authorization.  A
 feature proposer MUST NOT define both the new evidence semantics and the only
 verifier allowed to approve those semantics.
+
+The verifier MUST distinguish:
+
+- item soundness: every returned evidence object is valid;
+- requirement completeness: every evidence obligation required by the workload
+  is satisfied.
+
+Returning one valid item while omitting another required item may reduce token
+cost, but it is not a correct Evidence Graph route.
 
 * Search correctness preservation
 
@@ -443,6 +523,11 @@ Silence does not extend expiry.  After expiry the feature MUST enter deletion
 or full re-admission unless a renewal receipt was issued within the previous
 lifecycle.
 
+=MustErase= is the logical negation of lifecycle validity.  For an expired
+feature with no renewal receipt, the protocol MUST connect =MustErase= to
+feature causal-closure erasure; setting a lifecycle label to =expired= without
+removing route-influencing state is non-compliant.
+
 A valid renewal receipt binds:
 
 - current independent-value evidence;
@@ -467,6 +552,11 @@ The Lean model MUST preserve counterexamples showing:
 - an unchanged router is removable but has no admission value;
 - lower measured cost under a different semantic-search or model-prefix cache
   context is not a certified improvement;
+- a lower point estimate with overlapping uncertainty intervals is not a robust
+  improvement;
+- a favorable benchmark subset does not establish committed workload coverage;
+- validity of every returned evidence item does not imply completeness of the
+  workload's required evidence;
 - deleting router code while retaining semantic cache, learned preference, or
   derived graph-index state does not restore baseline routing;
 - silence and an unauthorized renewal receipt do not extend an expired feature.
@@ -490,7 +580,12 @@ Lean model review also exposed two specification holes before compilation:
   and graph indices active, so deletion now covers the feature's transitive
   causal state closure;
 - a one-time admission could otherwise survive indefinitely through silence,
-  so every certificate now carries a bounded lifecycle and renewal authority.
+  so every certificate now carries a bounded lifecycle and renewal authority;
+- point estimates and proposer-selected benchmark subsets could overstate
+  improvement, so the policy now authorizes measurement coverage and the model
+  requires non-overlapping robust cost bounds;
+- valid returned items could hide omitted required evidence, so the verifier is
+  now workload-aware and owns both evidence soundness and completeness.
 
 * Graph Router consequence
 
@@ -519,8 +614,11 @@ Python MUST eventually emit sufficient inputs for independent verification:
 - semantic-search cache identity;
 - model prefix-cache identity;
 - measurement-protocol identity;
+- uncertainty-protocol identity and cost intervals;
+- admitted and measured workload-universe identities;
 - baseline and extended route costs;
 - evidence validity receipt;
+- workload evidence-requirement identity and completeness result;
 - evidence-verifier identity and authorization evidence;
 - affected-domain decision;
 - runtime and complexity budgets;
@@ -551,16 +649,20 @@ Required theorem families:
 - =bounded-externality=
 - =isolation-deletion=
 - =policy-authority=
+- =measurement-coverage=
 - =evidence-verifier-binding=
 - =bounded-lifecycle=
 - =silence-sunset=
 - =renewal-authority=
 - =authorized-renewal=
+- =sunset-deletion=
 - =hop-counterexample=
 - =single-owner-counterexample=
 - =isolation-counterexample=
 - =no-value-counterexample=
 - =measurement-context-counterexample=
+- =uncertainty-counterexample=
+- =evidence-completeness-counterexample=
 - =deletion-footprint-counterexample=
 - =deletion-causal-closure=
 
@@ -586,7 +688,8 @@ The next layers should formalize:
 - a formal causal-closure witness proving that every persistent state capable
   of influencing routing is included in erasure;
 - graph-frontier completeness under the declared route objective;
-- statistical confidence for empirical token and latency estimates;
+- distributional shift, sequential testing, and multiple-comparison correction
+  beyond conservative cost intervals;
 - cold/warm cohort aggregation without mixing incomparable cache contexts;
 - authenticated binding between Python measurements and the committed evidence
   graph snapshot.

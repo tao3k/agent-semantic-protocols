@@ -1,0 +1,140 @@
+#+title: RFC 10.05.74 — SearchRoute Cache Rejoin Crash Recovery
+#+author: ASP Search Protocol Working Notes
+#+startup: overview
+
+* Status
+
+This RFC is a proof-oriented refinement of RFC 10.05.73.  It defines monotonic
+crash recovery for cache-replica rejoin and exactly-once serving-token
+issuance.  It does not implement a distributed runtime.
+
+* Abstract
+
+Replica rejoin has five durable phases:
+
+#+begin_example
+not started
+state installed
+token issued
+membership published
+reads enabled
+#+end_example
+
+Recovery advances at most one phase and never moves backward.  Serving-token
+issuance occurs only on the =state installed -> token issued= transition.
+Crashing after token issuance therefore resumes by reusing the durable token
+receipt rather than issuing again.  Reads remain disabled until the final
+phase.
+
+* Normative requirements
+
+** ASP-RFC-10.05-CRCR-PHASE
+
+The durable recovery record MUST identify exactly one rejoin phase.  Recovery
+MUST resume from that phase rather than reconstructing progress from local
+Boolean flags.
+
+** ASP-RFC-10.05-CRCR-MONOTONE
+
+Every recovery transition MUST preserve or increase phase rank.  Rollback to an
+earlier phase is forbidden.
+
+** ASP-RFC-10.05-CRCR-TOKEN
+
+The token issue count MUST be zero before =token issued= and exactly one at and
+after that phase.  Recovery from a durable token receipt MUST NOT issue a
+second token.
+
+** ASP-RFC-10.05-CRCR-READ
+
+Reads MUST be disabled in every phase except =reads enabled=.  A crash after
+token issue or membership publication MUST not make reads visible.
+
+** ASP-RFC-10.05-CRCR-IDEMPOTENT
+
+Resuming =reads enabled= MUST be idempotent.  Repeated recovery MUST preserve
+the existing token and serving state.
+
+** ASP-RFC-10.05-CRCR-NONIMPLICATION
+
+The protocol MUST preserve these explicit non-implications:
+
+- durable token does not imply reads enabled;
+- durable membership does not imply reads enabled;
+- crash recovery invocation does not authorize token reissuance;
+- local read flag does not establish a complete rejoin phase;
+- phase monotonicity does not prove durable storage;
+- recovery safety does not prove graph-route optimality.
+
+* Mathematical model
+
+#+name: searchroute-cache-rejoin-crash-recovery-model
+#+begin_src typst
+#let phase(state) = $upright("Phase")(#state)$
+#let rank(value) = $upright("Rank")(#value)$
+#let resume(state) = $upright("Resume")(#state)$
+#let issueCount(state) = $upright("TokenIssueCount")(#state)$
+#let reads(state) = $upright("ReadsEnabled")(#state)$
+#let wellFormed(state) = $upright("WellFormed")(#state)$
+
+#[
+  Resume is monotonic:
+  $
+    #rank(phase($S$)) <= #rank(phase(resume($S$))).
+  $
+
+  Well-formed recovery requires token issue count zero before token phase and
+  one afterward.  It also requires
+  $
+    #reads($S$)
+    equiv
+    #phase($S$) = upright("reads-enabled").
+  $
+
+  Resume preserves the invariant:
+  $
+    #wellFormed($S$)
+    arrow.r.double
+    #wellFormed(resume($S$)).
+  $
+
+  Reissuing a token after the token phase produces issue count two and violates
+  well-formed recovery.  Enabling reads in a partial phase also violates the
+  invariant.
+]
+#+end_src
+
+* Lean correspondence
+
+The executable model is
+=packages/proofs/ASPProof/SearchRouteAdmissionRetryCacheRejoinRecovery.lean=.
+
+- =RejoinPhase= and =RejoinPhase.rank= define durable progress.
+- =RecoveryStateWellFormed= encodes exactly-once token issuance and read state.
+- =resumeRejoin= advances one phase and issues only on one edge.
+- =resume_rejoin_never_decreases_phase= proves monotonicity.
+- =resume_preserves_well_formed_rejoin_state= proves invariant preservation.
+- =complete_recovery_issues_one_token_and_enables_reads_last= proves the full
+  crash-recovery path.
+- =enabling_reads_from_partial_rejoin_is_not_well_formed= proves the premature
+  read counterexample.
+- =reissuing_token_after_token_phase_breaks_exactly_once_recovery= proves the
+  duplicate-token counterexample.
+
+The JSON audit remains modular and scoped only to this RFC.
+
+* SearchLoop cost relevance
+
+Idempotent recovery avoids unnecessary token issuance and cache cold starts
+while preventing stale reads during partial rejoin.  This reduces repeated
+searches, packets, tool rounds, and model-prefix disruption without weakening
+authorization boundaries.
+
+* Non-goals and next proof boundary
+
+This RFC does not prove storage fsync, token-receipt durability, multi-replica
+recovery coordination, or graph-route optimality.
+
+The next proof layer should bind every phase transition to a durable receipt
+generation and prove that torn or reordered receipt writes cannot fabricate a
+later phase.

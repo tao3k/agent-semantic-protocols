@@ -9,9 +9,8 @@ use agent_semantic_client_core::{
 };
 use agent_semantic_client_db::ClientDbGenerationHit;
 use agent_semantic_search::{
-    PromptOutputFingerprintRequest, QueryPacketReplayRequest, prompt_output_artifact_replay_safe,
+    PromptOutputFingerprintRequest, prompt_output_artifact_replay_safe,
     prompt_output_request_fingerprint as search_prompt_output_request_fingerprint,
-    query_packet_matches_request as search_query_packet_matches, render_query_packet_stdout,
     search_output_artifact_replay_safe,
 };
 use bytes::Bytes;
@@ -122,7 +121,6 @@ pub(crate) fn load_replay_artifact(
         .any(|artifact_id| structured_evidence_artifact_path(cache_root, artifact_id).is_some());
 
     load_search_packet_artifact(cache_root, generation_hit, request)
-        .or_else(|| load_query_packet_artifact(cache_root, generation_hit, request))
         .or_else(|| load_syntax_query_packet_artifact(cache_root, generation_hit, request))
         .or_else(|| {
             if is_tree_sitter_query_request(request) || has_structured_evidence_artifact {
@@ -177,20 +175,6 @@ fn render_search_packet_artifact(
     render_search_packet_artifact_stdout(&artifact_path).map(ProviderCacheReplay::stdout)
 }
 
-fn load_query_packet_artifact(
-    cache_root: &Path,
-    generation_hit: &ClientDbGenerationHit,
-    request: &ClientRequest,
-) -> Option<ProviderCacheReplay> {
-    if request.method != ClientMethod::Query {
-        return None;
-    }
-    generation_hit
-        .artifact_ids
-        .iter()
-        .find_map(|artifact_id| render_query_packet_artifact(cache_root, artifact_id, request))
-}
-
 fn load_syntax_query_packet_artifact(
     cache_root: &Path,
     generation_hit: &ClientDbGenerationHit,
@@ -231,46 +215,11 @@ fn render_syntax_query_packet_artifact(
     })
 }
 
-fn render_query_packet_artifact(
-    cache_root: &Path,
-    artifact_id: &CacheArtifactId,
-    request: &ClientRequest,
-) -> Option<ProviderCacheReplay> {
-    let artifact_path = replay_artifact_path(cache_root, artifact_id, "query/", ".json")?;
-    let metadata = fs::metadata(&artifact_path).ok()?;
-    if !metadata.is_file() || metadata.len() > MAX_CACHE_REPLAY_ARTIFACT_BYTES {
-        return None;
-    }
-    let packet: Value = serde_json::from_slice(&fs::read(artifact_path).ok()?).ok()?;
-    query_packet_matches_request(&packet, request)?;
-    render_query_packet_stdout(&packet)
-        .map(|stdout| ProviderCacheReplay::stdout(stdout.into_bytes()))
-}
-
-pub(crate) fn render_query_packet_bytes(packet_bytes: Bytes) -> Option<Bytes> {
-    if packet_bytes.is_empty() || packet_bytes.len() as u64 > MAX_CACHE_REPLAY_ARTIFACT_BYTES {
-        return None;
-    }
-    let packet: Value = serde_json::from_slice(&packet_bytes).ok()?;
-    render_query_packet_stdout(&packet).map(Bytes::from)
-}
-
-pub(crate) fn query_packet_matches_request(packet: &Value, request: &ClientRequest) -> Option<()> {
-    search_query_packet_matches(
-        packet,
-        QueryPacketReplayRequest {
-            is_query_method: request.method == ClientMethod::Query,
-            forwarded_args: &request.forwarded_args,
-        },
-    )
-    .then_some(())
-}
-
 pub(crate) fn semantic_tree_sitter_query_packet_matches_request(
     packet: &Value,
     request: &ClientRequest,
 ) -> Option<()> {
-    if request.forwarded_args.iter().any(|arg| arg == "--code") {
+    if request.exact_projection().is_some() {
         return None;
     }
     if string_field(packet, "schemaId")? != SEMANTIC_TREE_SITTER_QUERY_SCHEMA_ID {

@@ -452,9 +452,52 @@ pub fn registered_provider_binary_v1(
         })
 }
 
+pub fn registered_provider_matches_candidate_paths<'a>(
+    language_id: &str,
+    provider_id: &str,
+    candidates: impl IntoIterator<Item = &'a std::path::Path>,
+) -> Result<bool, String> {
+    let manifests = schema_registry_provider_manifests();
+    let manifest = manifests
+        .iter()
+        .find(|manifest| {
+            manifest.language_id().as_str() == language_id
+                && manifest.provider_id().as_str() == provider_id
+        })
+        .ok_or_else(|| {
+            format!(
+                "provider registry has no registered language manifest: languageId={language_id} providerId={provider_id}"
+            )
+        })?;
+    if let Some(document) = manifest.document_resolution() {
+        return Ok(candidates.into_iter().any(|candidate| {
+            candidate
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    document
+                        .extensions
+                        .iter()
+                        .any(|registered| registered.trim_start_matches('.') == extension)
+                })
+        }));
+    }
+    if let Some(project) = manifest.project_resolution() {
+        return Ok(candidates.into_iter().any(|candidate| {
+            project.entry_markers.iter().any(|marker| {
+                candidate == std::path::Path::new(marker) || candidate.ends_with(marker)
+            })
+        }));
+    }
+    Ok(true)
+}
+
 #[cfg(test)]
 #[path = "../tests/unit/provider_registry_binary_identity.rs"]
 mod provider_registry_binary_identity_tests;
+#[cfg(test)]
+#[path = "../tests/unit/provider_registry_candidate_admission.rs"]
+mod provider_registry_candidate_admission_tests;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -384,6 +384,113 @@
               ]
             }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "request",
+            "materialization"
+          ],
+          "properties": {
+            "kind": {
+              "const": "commit-source-index-generation"
+            },
+            "request": {
+              "type": "object"
+            },
+            "materialization": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "projectRoot"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "ensure-runtime-generation",
+                "admit-runtime-generation"
+              ]
+            },
+            "projectRoot": {
+              "$ref": "#/$defs/identity"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "request"
+          ],
+          "properties": {
+            "kind": {
+              "const": "read-resident-selector"
+            },
+            "request": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "owner"
+          ],
+          "properties": {
+            "kind": {
+              "const": "publish-runtime-owner"
+            },
+            "owner": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "ownerPath"
+          ],
+          "properties": {
+            "kind": {
+              "const": "tombstone-runtime-owner"
+            },
+            "ownerPath": {
+              "$ref": "#/$defs/identity"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "previousOwnerPath",
+            "owner"
+          ],
+          "properties": {
+            "kind": {
+              "const": "relocate-runtime-owner"
+            },
+            "previousOwnerPath": {
+              "$ref": "#/$defs/identity"
+            },
+            "owner": {
+              "type": "object"
+            }
+          }
         }
       ]
     },
@@ -520,6 +627,45 @@
             },
             "receipt": {
               "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "receipt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "enum": [
+                "source-index-generation",
+                "runtime-generation",
+                "runtime-generation-admission"
+              ]
+            },
+            "receipt": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "read"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "resident-selector"
+            },
+            "read": {
+              "type": [
+                "object",
+                "null"
+              ]
             }
           }
         },

@@ -1,0 +1,253 @@
+#+title: RFC 10.05.10.00.55 — Per-Dimension Effect Resolution
+#+startup: overview
+
+* Status
+
+Draft research specification.
+
+This RFC defines how one atomically admitted resource vector resolves when the
+external action affects resource dimensions differently. It does not add CLI
+commands or authorize implementation.
+
+* Problem
+
+RFC 00.54 makes token, money, and provider-quota reservation atomic. That does
+not make the external providers' accounting atomic.
+
+One attempted model request can produce:
+
+- provider quota definitely consumed;
+- money definitely charged;
+- token usage still unknown.
+
+A scalar =effect-completed= or =no-effect= result cannot describe this state.
+
+If the resolver uses =no-effect= because token outcome is unknown, it can
+incorrectly release money and quota that were already consumed. If it uses
+=effect-completed= for the whole vector, it can consume token capacity whose
+effect is still unknown.
+
+* Decision
+
+External resolution is a typed vector with one outcome per resource dimension:
+
+- =consumed=;
+- =no-effect=; or
+- =unknown=.
+
+For each held dimension:
+
+- =consumed= moves held to consumed;
+- =no-effect= moves held to available;
+- =unknown= moves held to quarantined.
+
+Each dimension preserves its own conserved total. The three outcomes commit
+atomically as one resolution vector.
+
+* Executable mathematical surface
+
+#+name: per-dimension-effect-resolution-math
+#+begin_src typst
+#let resolve-held(resource, amount, outcome) = {
+  if outcome == "consumed" {
+    (
+      available: resource.available,
+      held: resource.held - amount,
+      consumed: resource.consumed + amount,
+      quarantined: resource.quarantined,
+    )
+  } else if outcome == "no-effect" {
+    (
+      available: resource.available + amount,
+      held: resource.held - amount,
+      consumed: resource.consumed,
+      quarantined: resource.quarantined,
+    )
+  } else {
+    (
+      available: resource.available,
+      held: resource.held - amount,
+      consumed: resource.consumed,
+      quarantined: resource.quarantined + amount,
+    )
+  }
+}
+
+#let resolve-vector(ledger, demand, outcome) = (
+  tokens:
+    resolve-held(ledger.tokens, demand.tokens, outcome.tokens),
+  money:
+    resolve-held(ledger.money, demand.money, outcome.money),
+  provider-quota:
+    resolve-held(
+      ledger.provider-quota,
+      demand.provider-quota,
+      outcome.provider-quota,
+    ),
+)
+
+#let held-ledger = (
+  tokens: (available: 80, held: 20, consumed: 0, quarantined: 0),
+  money: (available: 10, held: 10, consumed: 0, quarantined: 0),
+  provider-quota:
+    (available: 1, held: 1, consumed: 0, quarantined: 0),
+)
+#let demand = (tokens: 20, money: 10, provider-quota: 1)
+#let outcome = (
+  tokens: "unknown",
+  money: "consumed",
+  provider-quota: "consumed",
+)
+#let resolved = resolve-vector(held-ledger, demand, outcome)
+
+(
+  outcome: outcome,
+  resolved: resolved,
+  tokens-quarantined: resolved.tokens.quarantined,
+  money-consumed: resolved.money.consumed,
+  provider-quota-consumed: resolved.provider-quota.consumed,
+)
+#+end_src
+
+The block is extracted through
+=orgize eval plan --json per-dimension-effect-resolution-math ...= and evaluated
+using =typst eval --in -=. It is not written to a separate Typst source.
+
+* Admission atomicity versus effect atomicity
+
+Atomic admission means no route begins with only some required resources held.
+It does not promise that external systems report or charge every resource at the
+same instant.
+
+The protocol therefore separates:
+
+- =ResourceDemand=: atomic pre-execution reservation;
+- =EffectResolutionVector=: post-execution per-dimension evidence.
+
+Both bind the same admission, request, effect nonce, and resource schema
+version.
+
+* Dimension outcomes
+
+=consumed= requires authoritative evidence that the resource was charged or
+used.
+
+=no-effect= requires authoritative evidence that the resource was not used.
+
+=unknown= is neither. The held amount becomes quarantined and remains
+unavailable until authorized resolution.
+
+One dimension's evidence does not imply another dimension's outcome.
+
+* Counterexample
+
+After atomic reservation:
+
+- tokens: 20 held;
+- money: 10 held;
+- provider quota: 1 held.
+
+Observed resolution:
+
+- token outcome unknown;
+- money consumed;
+- provider quota consumed.
+
+Correct result:
+
+- token 20 quarantined;
+- money 10 consumed;
+- provider quota 1 consumed.
+
+An all-=no-effect= scalar resolution would wrongly release money and quota. An
+all-=consumed= scalar resolution would overstate token certainty.
+
+* Conservation
+
+For every dimension:
+
+#+begin_quote
+=available + held + consumed + quarantined=
+#+end_quote
+
+is unchanged by resolution.
+
+The aggregate system does not add the numerical totals of unlike units. It
+proves one conservation theorem per typed resource dimension.
+
+* Partial quarantine
+
+SearchLoop can continue using unquarantined capacity in other dimensions:
+
+- consumed capacity remains consumed;
+- released capacity becomes available;
+- quarantined capacity remains excluded.
+
+A future route requiring the quarantined dimension may be blocked even when
+other dimensions have capacity.
+
+* Feedback consequence
+
+Only final per-dimension observations enter accounting:
+
+- consumed money and quota can be recorded immediately;
+- unknown token cost stays excluded from final token aggregates;
+- later token resolution appends to the same outcome vector revision.
+
+The overall execution receipt can be =partially-resolved= without being called
+success or failure for every accounting dimension.
+
+* SearchLoop surface
+
+The compact packet exposes:
+
+#+begin_src json
+{
+  "effectResolution": {
+    "tokens": "unknown",
+    "money": "consumed",
+    "providerQuota": "consumed"
+  },
+  "ledger": {
+    "tokens": {"quarantined": 20},
+    "money": {"consumed": 10},
+    "providerQuota": {"consumed": 1}
+  },
+  "nextAction": "reconcile token accounting"
+}
+#+end_src
+
+Only the unknown dimension appears in the next reconciliation frontier.
+
+* Python Turbo Graph consequence
+
+The future Python runtime SHOULD:
+
+- use a typed outcome vector;
+- update every dimension in one atomic transaction;
+- quarantine only unknown dimensions;
+- retain dimension-specific evidence digests;
+- compute next actions from unresolved dimensions; and
+- preserve each dimension's ledger total.
+
+* Required Lean obligations
+
+The companion Lean model MUST prove:
+
+- each of the three outcomes preserves one resource total;
+- vector resolution preserves all three resource totals;
+- the example atomically reserves all dimensions;
+- the example resolves tokens to quarantined;
+- the example resolves money and quota to consumed;
+- the mixed vector differs from all-consumed and all-no-effect vectors; and
+- one unknown dimension does not erase final evidence for resolved dimensions.
+
+The modular audit emits these theorem families as Lean-generated JSON.
+
+* Design finding
+
+Atomic reservation initially suggested one reservation outcome for the whole
+vector. Lean exposes that external accounting is dimension-specific. A closed
+outcome vector preserves admission atomicity while avoiding false all-or-nothing
+claims about post-execution effects.
+

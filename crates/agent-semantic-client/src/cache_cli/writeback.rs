@@ -14,16 +14,15 @@ use super::locator_artifact::maybe_write_search_output_artifact;
 #[cfg(test)]
 use super::locator_artifact::search_output_file_hashes;
 use super::probe::{ProviderCacheProbe, provider_cache_probe};
-use super::request::{request_export_method, selected_provider_for_request};
+use super::request::selected_provider_for_request;
 use super::writeback_artifact_events::{
     ArtifactEventWriteback, ArtifactKind, artifact_events_for_writeback,
 };
 #[cfg(test)]
 use super::writeback_generation::syntax_query_generation_identity;
 use super::writeback_generation::{
-    prompt_output_generation, query_packet_generation, query_packet_generation_from_packet,
-    search_packet_generation_from_packet, structural_index_generation_from_packet,
-    syntax_query_generation,
+    prompt_output_generation, search_packet_generation_from_packet,
+    structural_index_generation_from_packet, syntax_query_generation,
 };
 use super::writeback_manifest::{
     load_existing_or_empty_manifest, upsert_generation, write_cache_manifest,
@@ -31,14 +30,13 @@ use super::writeback_manifest::{
 #[cfg(test)]
 use super::writeback_packet::syntax_query_packet_source;
 use super::writeback_packet::{
-    validate_query_packet_for_provider, validate_search_packet_for_provider,
-    validate_structural_index_packet_for_provider, validate_syntax_query_packet_for_provider,
+    validate_search_packet_for_provider, validate_structural_index_packet_for_provider,
+    validate_syntax_query_packet_for_provider,
 };
 use super::writeback_provider_export::export_provider_packet;
 use super::writeback_request::{
-    request_prompt_output_writeback_method, request_query_packet_writeback_method,
-    request_search_packet_provider_export_method, request_search_packet_writeback_method,
-    request_syntax_query_writeback_method,
+    request_prompt_output_writeback_method, request_search_packet_provider_export_method,
+    request_search_packet_writeback_method, request_syntax_query_writeback_method,
 };
 #[cfg(test)]
 use crate::cache_replay::ProviderCacheReplay;
@@ -142,21 +140,7 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
             export.elapsed_ms,
         )
     } else {
-        let export_method = request_query_packet_writeback_method(request)?;
-        if !provider_export_allowed {
-            return None;
-        }
-        let export = export_provider_packet(provider, request)?;
-        validate_query_packet_for_provider(&export.packet_bytes, provider)?;
-        (
-            export_method,
-            export.packet_bytes,
-            "query/",
-            ".json",
-            ArtifactKind::QueryPacket,
-            vec![export.command],
-            export.elapsed_ms,
-        )
+        return None;
     };
 
     let cache_probe = (|| {
@@ -179,13 +163,6 @@ pub(crate) fn write_prompt_output_cache_after_provider_success(
                 &export_method,
                 &artifact_bytes,
                 stdout,
-            ),
-            ArtifactKind::QueryPacket => query_packet_generation(
-                project_root,
-                provider,
-                request,
-                &export_method,
-                &artifact_bytes,
             ),
             ArtifactKind::SemanticTreeSitterQuery => syntax_query_generation(
                 project_root,
@@ -360,64 +337,6 @@ pub(crate) fn write_search_packet_cache_after_provider_success(
     let mut probe = provider_cache_probe(project_root, snapshot, request)?;
     let artifact_events = artifact_events_for_writeback(ArtifactEventWriteback {
         artifact_kind: ArtifactKind::SearchPacket,
-        artifact_id: artifact_id.as_str(),
-        artifact_ids: &artifact_ids_for_events,
-        artifact_bytes: packet_bytes.len().min(u64::MAX as usize) as u64,
-        command_artifact_id: None,
-        command_artifact_bytes: None,
-        provider,
-        project_root,
-        export_method: &export_method,
-        artifact_bytes_slice: packet_bytes,
-        provider_commands: &[],
-    })
-    .ok()?;
-    let mut db_write_count = 1;
-    if !artifact_events.is_empty() {
-        ClientDbEngine::upsert_artifact_events_from_client_dir(cache_root, &artifact_events)
-            .ok()?;
-        db_write_count += 1;
-    }
-    probe.db_write_count = db_write_count;
-    Some(probe)
-}
-
-pub(crate) fn write_query_packet_cache_after_provider_success(
-    project_root: &Path,
-    snapshot: &ProviderRegistrySnapshot,
-    request: &ClientRequest,
-    packet_bytes: &[u8],
-) -> Option<ProviderCacheProbe> {
-    let provider = selected_provider_for_request(snapshot, request)?;
-    let export_method = request_export_method(request)?;
-    if export_method.as_str() != "query/owner-items" {
-        return None;
-    }
-    validate_query_packet_for_provider(packet_bytes, provider)?;
-
-    let cache_report = ClientCacheManifest::inspect_project(project_root);
-    let cache_root = cache_report.cache_root.as_ref()?;
-    let manifest_path = cache_report.manifest_path.as_ref()?;
-    let mut manifest =
-        load_existing_or_empty_manifest(cache_root, manifest_path, &cache_report.status);
-    let generation = query_packet_generation_from_packet(
-        project_root,
-        provider,
-        request,
-        &export_method,
-        packet_bytes,
-    );
-    let artifact_id = generation.artifact_ids.as_ref()?.first()?.clone();
-    let artifact_path = replay_artifact_path(cache_root, &artifact_id, "query/", ".json")?;
-    fs::create_dir_all(artifact_path.parent()?).ok()?;
-    fs::write(&artifact_path, packet_bytes).ok()?;
-    let artifact_ids_for_events = generation.artifact_ids.clone().unwrap_or_default();
-    upsert_generation(&mut manifest, generation);
-    write_cache_manifest(manifest_path, &manifest).ok()?;
-    ClientDbEngine::import_manifest_from_client_dir(cache_root, &manifest).ok()?;
-    let mut probe = provider_cache_probe(project_root, snapshot, request)?;
-    let artifact_events = artifact_events_for_writeback(ArtifactEventWriteback {
-        artifact_kind: ArtifactKind::QueryPacket,
         artifact_id: artifact_id.as_str(),
         artifact_ids: &artifact_ids_for_events,
         artifact_bytes: packet_bytes.len().min(u64::MAX as usize) as u64,

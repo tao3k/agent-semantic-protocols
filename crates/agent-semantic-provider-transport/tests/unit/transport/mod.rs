@@ -1,3 +1,4 @@
+mod admission;
 mod byte_text;
 mod capture;
 mod framing;

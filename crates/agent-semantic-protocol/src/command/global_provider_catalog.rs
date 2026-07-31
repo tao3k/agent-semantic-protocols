@@ -219,6 +219,24 @@ fn load_catalog_from_disk() -> Result<Arc<GlobalProviderCatalog>, String> {
     Ok(Arc::new(catalog))
 }
 
+async fn load_catalog_from_disk_async() -> Result<Arc<GlobalProviderCatalog>, String> {
+    let path = catalog_path()?;
+    let bytes = tokio::fs::read(&path).await.map_err(|error| {
+        format!(
+            "failed to read Global provider catalog {}: {error}",
+            path.display()
+        )
+    })?;
+    let catalog: GlobalProviderCatalog = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "failed to parse Global provider catalog {}: {error}",
+            path.display()
+        )
+    })?;
+    validate_catalog(&catalog)?;
+    Ok(Arc::new(catalog))
+}
+
 fn load_once_catalog() -> Result<Arc<GlobalProviderCatalog>, String> {
     if let Some(catalog) = active_catalog()
         .read()
@@ -285,6 +303,92 @@ pub(super) fn global_provider_for_language(
     );
     validate_provider_leaf_once(verification_key, || validate_provider_leaf(&provider))?;
     Ok(provider)
+}
+
+pub(super) async fn global_provider_registry_snapshot_async()
+-> Result<agent_semantic_client_core::ProviderRegistrySnapshot, String> {
+    let catalog = load_catalog_from_disk_async().await?;
+    tokio::task::spawn_blocking(move || provider_registry_snapshot_from_catalog(catalog))
+        .await
+        .map_err(|error| format!("Global provider registry admission task failed: {error}"))?
+}
+
+fn provider_registry_snapshot_from_catalog(
+    catalog: Arc<GlobalProviderCatalog>,
+) -> Result<agent_semantic_client_core::ProviderRegistrySnapshot, String> {
+    let manifests = agent_semantic_hook::schema_registry_provider_manifests();
+    let providers = catalog
+        .providers
+        .iter()
+        .map(|provider| {
+            let verification_key = format!(
+                "{}:{}:{}",
+                catalog.catalog_generation, provider.language_id, provider.artifact_digest
+            );
+            validate_provider_leaf_once(verification_key, || validate_provider_leaf(provider))?;
+            let manifest = manifests
+                .iter()
+                .find(|manifest| {
+                    manifest.language_id().as_str() == provider.language_id
+                        && manifest.provider_id().as_str() == provider.provider_id
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "Global provider catalog has no registered manifest: language={} provider={}",
+                        provider.language_id, provider.provider_id
+                    )
+                })?;
+            let registered = agent_semantic_hook::registered_provider_catalog_identities()
+                .iter()
+                .find(|identity| identity.language_id == provider.language_id)
+                .ok_or_else(|| {
+                    format!(
+                        "Global provider catalog has no registered identity: language={}",
+                        provider.language_id
+                    )
+                })?;
+            if provider.manifest_digest != registered.manifest_digest {
+                return Err(format!(
+                    "Global provider catalog manifest digest drift: language={} expected={} actual={}",
+                    provider.language_id, registered.manifest_digest, provider.manifest_digest
+                ));
+            }
+            Ok(agent_semantic_client_core::ResolvedProvider {
+                manifest_id: manifest.manifest_id().to_owned(),
+                manifest_digest: provider.manifest_digest.clone(),
+                namespace: manifest.namespace().to_owned(),
+                language_id: agent_semantic_client_core::LanguageId::from(
+                    provider.language_id.as_str(),
+                ),
+                provider_id: agent_semantic_client_core::ProviderId::from(
+                    provider.provider_id.as_str(),
+                ),
+                binary: manifest.binary().to_owned(),
+                execution: manifest.execution(),
+                provider_command_prefix: Vec::new(),
+                execution_command_digest: provider.execution_command_digest.clone(),
+                runtime_command_argv: None,
+                runtime_profile_status: None,
+                package_roots: Vec::new(),
+                config_files: Vec::new(),
+                source_extensions: manifest
+                    .document_resolution()
+                    .map(|descriptor| descriptor.extensions.clone())
+                    .unwrap_or_default(),
+                search_capabilities: manifest.search_capabilities().clone(),
+                query_pack_descriptor: manifest.query_pack_descriptor().clone(),
+                semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    *active_catalog()
+        .write()
+        .map_err(|_| "Global provider catalog write guard is poisoned".to_owned())? =
+        Some(Arc::clone(&catalog));
+    Ok(agent_semantic_client_core::ProviderRegistrySnapshot {
+        activation_path: catalog_path()?,
+        providers,
+    })
 }
 
 pub(super) fn publish_global_provider_catalog(

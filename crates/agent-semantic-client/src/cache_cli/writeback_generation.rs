@@ -106,60 +106,6 @@ pub(super) fn search_packet_generation_from_packet(
     }
 }
 
-pub(super) fn query_packet_generation_from_packet(
-    project_root: &Path,
-    provider: &ResolvedProvider,
-    request: &ClientRequest,
-    export_method: &CacheExportMethod,
-    packet_bytes: &[u8],
-) -> ClientCacheGeneration {
-    let seed = generation_seed(project_root, provider, request, export_method, packet_bytes);
-    let hash = stable_hash_hex(&seed);
-    let slug = slugify_cache_component(export_method.as_str());
-    let generation_id = format!("{}-{slug}-{}", provider.language_id, &hash[..12]);
-    let artifact_id = format!("query/{generation_id}.json");
-    ClientCacheGeneration {
-        generation_id: CacheGenerationId::from(generation_id),
-        language_id: provider.language_id.clone(),
-        provider_id: provider.provider_id.clone(),
-        provider_version: None,
-        export_method: Some(export_method.as_str().to_string()),
-        project_root: normalized_path(project_root),
-        package_root: Some(".".to_string()),
-        schema_ids: vec![SemanticSchemaId::from(
-            "agent.semantic-protocols.semantic-query-packet",
-        )],
-        cache_status: CacheStatus::Hit,
-        raw_source_stored: false,
-        request_fingerprint: Some(exact_request_fingerprint(
-            provider,
-            project_root,
-            export_method,
-            &request.forwarded_args,
-        )),
-        file_hashes: packet_file_hashes(packet_bytes).or_else(|| {
-            locator_file_hashes_from_packet(project_root, &provider.package_roots, packet_bytes)
-        }),
-        artifact_ids: Some(vec![CacheArtifactId::from(artifact_id)]),
-    }
-}
-
-pub(super) fn query_packet_generation(
-    project_root: &Path,
-    provider: &ResolvedProvider,
-    request: &ClientRequest,
-    export_method: &CacheExportMethod,
-    packet_bytes: &[u8],
-) -> ClientCacheGeneration {
-    query_packet_generation_from_packet(
-        project_root,
-        provider,
-        request,
-        export_method,
-        packet_bytes,
-    )
-}
-
 pub(super) fn syntax_query_generation(
     project_root: &Path,
     provider: &ResolvedProvider,

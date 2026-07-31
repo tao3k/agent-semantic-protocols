@@ -302,7 +302,7 @@ packet top level:
 
 The non-JSON compact render should project these fields as
 =|selectorResolver=, =|sourceExample=, and =|sourceComment= lines before an
-agent follows =query --selector ... --code=.  The JSON packet remains the
+agent follows =query --selector ... --projection source=.  The JSON packet remains the
 machine contract, while the compact lines are the default agent workflow.  Both
 surfaces must avoid developer-local checkout paths.
 
@@ -911,7 +911,7 @@ Python, and TypeScript providers to be active, then checks:
 - =evidence analyze --json= emits a schema-valid graph-turbo request with a
   valid evidence-quality profile, seeds, graph payload, and non-empty summary
   counts.
-- =guide= exposes =search prime=, =search pipe=, =query --selector --code=, and
+- =guide= exposes =search prime=, =search pipe=, =query --selector --projection source=, and
   evidence graph/analyze commands through the language facade.
 - =search pipe= returns agent-facing quality evidence: =queryQuality=,
   =actionFrontier=, =recommendedNext=, and =avoid= guidance that keeps the agent
