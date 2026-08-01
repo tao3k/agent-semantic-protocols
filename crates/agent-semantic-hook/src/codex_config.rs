@@ -241,7 +241,7 @@ fn codex_hook_events() -> [CodexHookEvent; 8] {
         },
         CodexHookEvent {
             state_label: "post_tool_use",
-            matcher: Some(TOOL_SURFACE_MATCHER),
+            matcher: None,
             status: "Updating semantic search flow state",
             hook_event: "post-tool",
         },

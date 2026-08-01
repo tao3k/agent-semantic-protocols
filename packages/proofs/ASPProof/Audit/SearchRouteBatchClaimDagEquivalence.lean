@@ -3,6 +3,9 @@ import ASPProof.SearchRouteBatchClaimDagEquivalence
 
 namespace ASPProof.Audit.SearchRouteBatchClaimDagEquivalence
 
+private def canonicalStrings (values : List String) : List String :=
+  (values.mergeSort (fun left right => decide (left < right))).eraseDups
+
 def theoremDeclaration
     (name theoremFamily type : String)
     (rfcClauseIds : List String)
@@ -12,8 +15,8 @@ def theoremDeclaration
     ("kind", Lean.toJson "theorem"),
     ("theoremFamily", Lean.toJson theoremFamily),
     ("type", Lean.toJson type),
-    ("rfcClauseIds", Lean.toJson rfcClauseIds),
-    ("axioms", Lean.toJson axioms),
+    ("rfcClauseIds", Lean.toJson (canonicalStrings rfcClauseIds)),
+    ("axioms", Lean.toJson (canonicalStrings axioms)),
     ("hasSorryAx", Lean.toJson false)
   ]
 

@@ -91,7 +91,7 @@ The default policy was exercised first:
 
 #+begin_src sh
 uv run --project packages/proofs --frozen \
-  asp-axle-lean-audit \
+  python -m asp_proofs lean-audit \
   packages/proofs/receipts/searchroute-dag-enumeration-audit-v1.json
 #+end_src
 

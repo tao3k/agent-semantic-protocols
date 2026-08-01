@@ -445,7 +445,7 @@ fn turso_database_pool() -> &'static tokio::sync::Mutex<TursoDatabasePool> {
     POOL.get_or_init(|| tokio::sync::Mutex::new(TursoDatabasePool::new()))
 }
 
-async fn shared_turso_database(
+pub(crate) async fn shared_turso_database(
     turso_path: &Path,
 ) -> Result<std::sync::Arc<turso::Database>, String> {
     let mut pool = turso_database_pool().lock().await;

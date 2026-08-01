@@ -4,16 +4,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
-use agent_semantic_client_core::{ClientCacheFileHash, SemanticSchemaId, SemanticSchemaVersion};
+use agent_semantic_client_core::ClientCacheFileHash;
 use sha2::{Digest, Sha256};
 
-use super::language_projection::{
-    ClientDbLanguageProjectionImportRequest, language_projection_source_index_rows,
-};
 use super::text::{source_line_count, source_query_keys};
 use super::types::client_db_source_index_registry_evidence_hash;
 use super::types::{
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION,
     ClientDbSourceIndexImport, ClientDbSourceIndexImportAssemblyRequest,
     ClientDbSourceIndexImportFile, ClientDbSourceIndexImportRequest, ClientDbSourceIndexOwner,
     ClientDbSourceIndexPath, ClientDbSourceIndexQueryKey, ClientDbSourceIndexScopeFile,
@@ -33,48 +29,6 @@ pub fn assemble_source_index_import(
         request.extra_scope_dirs.iter().map(String::as_str),
     )?;
     source_index_import_with_file_hashes(request, file_hashes)
-}
-
-/// Import parser-owned language projection rows without projecting raw source text.
-pub fn source_index_import_from_language_projection(
-    request: ClientDbLanguageProjectionImportRequest,
-) -> Result<super::language_projection::ClientDbLanguageProjectionImport, String> {
-    let rows = language_projection_source_index_rows(&request.projection, &request.project_root)?;
-    let file_hashes = source_index_file_hashes(
-        &request.project_root,
-        &rows.scope_files,
-        &request.source_blobs,
-        &request.registry_fingerprint,
-        std::iter::empty(),
-    )?;
-    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-        file_hashes
-            .iter()
-            .take(rows.scope_files.len())
-            .map(|file_hash| (file_hash.path.as_str(), file_hash.sha256.as_str())),
-    );
-    let source_snapshot = workspace_snapshot.evidence(
-        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        agent_semantic_content_identity::provider_digest(request.registry_fingerprint.as_bytes()),
-    );
-    let generation_id =
-        crate::source_index::client_db_source_index_generation_id_for_snapshot(&source_snapshot);
-    Ok(
-        super::language_projection::ClientDbLanguageProjectionImport {
-            source_index: ClientDbSourceIndexImport {
-                generation_id,
-                project_root: request.project_root,
-                schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),
-                schema_version: SemanticSchemaVersion::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION),
-                file_hashes,
-                owners: rows.owners,
-                selectors: rows.selectors,
-            },
-            source_snapshot,
-            membership_change_set:
-                super::types::ClientDbSourceIndexMembershipChangeSet::FullSnapshot,
-        },
-    )
 }
 
 /// Return source-index file and scope evidence hashes without assembling rows.
@@ -317,17 +271,6 @@ fn source_index_selector_evidence_hash(file: &ClientDbSourceIndexScopeFile) -> C
         let _ = writeln!(canonical, "{label}:{}:{value}", value.len());
     }
 
-    fn digest_hex(digest: &[u8; 32]) -> String {
-        use std::fmt::Write as _;
-        digest.iter().fold(
-            String::with_capacity(digest.len() * 2),
-            |mut encoded, byte| {
-                let _ = write!(encoded, "{byte:02x}");
-                encoded
-            },
-        )
-    }
-
     let mut selectors = file.selector_receipts.iter().collect::<Vec<_>>();
     selectors.sort_by(|left, right| {
         left.owner_path
@@ -356,47 +299,22 @@ fn source_index_selector_evidence_hash(file: &ClientDbSourceIndexScopeFile) -> C
         for query_key in &selector.query_keys {
             push_component(&mut canonical, "queryKey", query_key.as_str());
         }
-        let proof = &selector.materialization_proof;
         push_component(
             &mut canonical,
-            "materializationSelector",
-            &proof.structural_selector,
-        );
-        push_component(&mut canonical, "materializationOwner", &proof.owner_path);
-        push_component(
-            &mut canonical,
-            "workspaceRootDigest",
-            &digest_hex(&proof.workspace_root_digest),
+            "selectorProvider",
+            selector.provider_id.as_str(),
         );
         push_component(
             &mut canonical,
-            "ownerSubtreeDigest",
-            &digest_hex(&proof.owner_subtree_digest),
+            "canonicalItemSelector",
+            &serde_json::to_string(selector.projection_record.proof.canonical_item_selector())
+                .expect("canonical item selector serialization is infallible"),
         );
         push_component(
             &mut canonical,
-            "sourceBlobDigest",
-            &digest_hex(&proof.source_blob_digest),
-        );
-        push_component(
-            &mut canonical,
-            "parserFactDigest",
-            &digest_hex(&proof.normalized_parser_facts_digest),
-        );
-        push_component(
-            &mut canonical,
-            "projectionDigest",
-            &digest_hex(&proof.projection_digest),
-        );
-        push_component(
-            &mut canonical,
-            "sourceByteStart",
-            &proof.source_byte_start.to_string(),
-        );
-        push_component(
-            &mut canonical,
-            "sourceByteEnd",
-            &proof.source_byte_end.to_string(),
+            "projectionRecord",
+            &serde_json::to_string(&selector.projection_record)
+                .expect("projection record serialization is infallible"),
         );
     }
     ClientCacheFileHash {

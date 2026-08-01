@@ -5,7 +5,9 @@
 pub mod backend;
 mod provider_project_resolution;
 
-pub use backend::{LocalNativeCliBackend, LocalNativeCommand, LocalNativeOutput};
+pub use backend::{
+    LocalNativeCliBackend, LocalNativeCommand, LocalNativeOutput, activated_provider_command_prefix,
+};
 pub use provider_project_resolution::provider_scope_authority_permits_project_resolution;
 pub use provider_project_resolution::{
     ProviderProjectResolution, ProviderProjectResolutionCandidates, ProviderProjectResolutionFile,

@@ -18,7 +18,18 @@ pub(super) fn emit_decision(emit: &str, decision: &HookDecision) -> Result<(), S
     };
     let output = serde_json::to_string(&output_value)
         .map_err(|error| format!("failed to serialize hook response: {error}"))?;
-    println!("{output}");
+    let captured = HOOK_OUTPUT_CAPTURE.with(|capture| {
+        let mut capture = capture.borrow_mut();
+        if let Some(buffer) = capture.as_mut() {
+            *buffer = output.clone();
+            true
+        } else {
+            false
+        }
+    });
+    if !captured {
+        println!("{output}");
+    }
     Ok(())
 }
 
@@ -44,4 +55,23 @@ pub(super) fn emit_hook_runtime_failure(
         fields: BTreeMap::new(),
     };
     emit_decision(emit, &decision)
+}
+use std::cell::RefCell;
+
+thread_local! {
+    static HOOK_OUTPUT_CAPTURE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+pub(super) fn with_hook_output_capture<T>(
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<(T, String), String> {
+    HOOK_OUTPUT_CAPTURE.with(|capture| {
+        if capture.borrow().is_some() {
+            return Err("nested hook output capture is not supported".to_owned());
+        }
+        *capture.borrow_mut() = Some(String::new());
+        let result = operation();
+        let output = capture.borrow_mut().take().unwrap_or_default();
+        result.map(|value| (value, output))
+    })
 }

@@ -1,0 +1,110 @@
+#+title: RFC 10.15.02.06.02 — Rust LifeSession aggregate boundary
+#+options: toc:2
+
+* Status
+
+Specification for a later Rust refactor.  Current Rust conformance is
+=Unverified=.  Source-level similarity is not an implementation receipt.
+
+* Aggregate
+
+Rust MUST implement one revisioned =LifeSession= aggregate, not independent
+command-specific status tables:
+
+#+begin_src text
+LifeSession {
+  root_session_epoch,
+  logical_agent_name,
+  physical_generation,
+  revision,
+  profile_digest,
+  binding_phase,
+  turn_phase,
+  close_phase,
+  close_dispatch_key,
+  presentation,
+  durable_intents,
+  outbox,
+  receipts,
+  delivered_binding,
+  retirement_tombstone
+}
+#+end_src
+
+The four orthogonal projections are =binding=, =turn=, =close=, and
+=presentation=.  Only binding may confer ASP durable dispatch authority.  Only
+close may confer replacement authority.  Presentation confers neither.  Once
+close leaves =live=, durable dispatch is revoked.
+
+Every mutation carries =expected_revision= and =physical_generation=.
+Profile-sensitive commands also carry the current profile digest or registry
+version.  Stale fences fail before any intent, outbox row, receipt, or
+projection changes.  Runtime Server generation is execution evidence, not a
+substitute for aggregate revision.
+
+* Commands
+
+| Command | Required predecessor | Durable result |
+|-
+| =ObserveHostAck= | rebind intent and current fences | intent-indexed Host receipt |
+| =CommitDeliveredBinding= | indexed receipt | delivered binding CAS |
+| =CommitCloseIntent= | live generation and current fences | retirement intent plus stable close key |
+| =DispatchShutdown= | durable close intent | idempotent outbox dispatch |
+| =ObserveTermination= | shutdown dispatched or blocked timeout | intent-indexed termination receipt |
+| =CommitPathRelease= | termination receipt | release receipt and tombstone |
+| =ReserveReplacement= | path-release receipt | newer physical generation reservation |
+| =AcceptArchiveProjection= | current generation | presentation-only archive receipt |
+
+* Effect transaction
+
+#+begin_src text
+revision CAS
+  -> durable intent + outbox
+  -> stable dispatch key
+  -> Host idempotent accept
+  -> intent-indexed receipt
+  -> delivered aggregate CAS
+#+end_src
+
+Intent and outbox are committed atomically.  The Host adapter consumes outbox
+work and emits facts; it does not edit aggregate authority.  The Runtime Server
+executes, retries, compacts, and indexes, while the aggregate log remains the
+authority.
+
+* Recovery matrix
+
+| Crash or ambiguity | Recovery decision |
+|-
+| after intent, before Host call | redispatch the same outbox key |
+| after Host accept, before receipt | retry or query with the same key |
+| after receipt, before delivered CAS | replay the indexed receipt through current fences |
+| shutdown hangs | enter =BlockedHostCapability=; retain the path |
+| archive only | restore presentation; preserve close phase |
+| termination before path release | commit release; do not respawn yet |
+| concurrent replacement | one newer generation wins the aggregate CAS |
+| stale worker completion | reject by revision and generation |
+
+* Ownership
+
+- Client database: aggregate CAS, event log, intents, outbox, receipts, and
+  tombstones.
+- Protocol crate: typed commands, pure reducer, stable-key derivation, and
+  projection schemas.
+- Codex Host adapter: native create, message, interrupt, close, archive, and
+  termination observations.
+- Runtime Server: background effect execution and indexes, never lifecycle
+  authority.
+- Portal: one agent-facing command and compact =@registeredSubagentName=
+  continuation.
+
+* Acceptance matrix
+
+Executable tests MUST cover stale fences, every archive/close ordering,
+persisted close without termination, timeout and late recovery, every crash
+boundary, duplicate idempotency, premature release rejection, fresh-generation
+CAS, dispatch revocation during close, event-log reconstruction equality, and a
+single agent-visible portal round for internally recoverable states.
+
+The installed Rust binary must retain machine-readable receipts for event-log
+reconstruction, Host-effect replay, and final aggregate equality before the
+migration becomes conforming.

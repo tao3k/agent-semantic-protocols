@@ -44,7 +44,7 @@ pub(super) fn run_codex_session_wrapper(
     if command_name == "delete" && args.force {
         sync_codex_lifecycle_to_registry(registry, command_name, target_session_id.as_deref())?;
         eprintln!(
-            "[agent-session-delete] codex delete exited with {status}; registry row was removed because --force was set"
+            "[agent-session-delete] codex delete exited with {status}; registry retirement was requested because --force was set"
         );
         return Ok(());
     }
@@ -59,6 +59,13 @@ fn resolved_codex_target_session(
     let project_id = current_project_session_scope_id(registry)?;
     if let Some(child_session_id) = args.child_session_id.as_deref() {
         return Ok(Some(child_session_id.to_string()));
+    }
+    if let Some(positional_session_id) = args
+        .codex_args
+        .iter()
+        .find(|argument| !argument.starts_with('-'))
+    {
+        return Ok(Some(positional_session_id.clone()));
     }
     let Some(name) = args.name.as_deref() else {
         return Ok(None);
@@ -94,7 +101,11 @@ fn sync_codex_lifecycle_to_registry(
             registry.unarchive_session(&project_id, session_id, now)?;
         }
         "delete" => {
-            registry.delete_session(&project_id, session_id)?;
+            if !registry.delete_session(&project_id, session_id)? {
+                return Err(format!(
+                    "agent session was not present in the registry: projectId={project_id} sessionId={session_id}"
+                ));
+            }
         }
         _ => {}
     }

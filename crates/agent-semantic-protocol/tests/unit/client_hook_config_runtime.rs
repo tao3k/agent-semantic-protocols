@@ -313,7 +313,7 @@ fn write_complete_config(config_path: &std::path::Path, content: &str) {
         config_path,
         format!(
             "{}\n{content}",
-            agent_semantic_config::default_hook_client_config_template()
+            agent_semantic_hook::default_client_config_template()
         ),
     )
     .expect("write config");

@@ -22,8 +22,8 @@ pub use api::{
 };
 pub use async_rebuild::{
     prepare_runtime_server_workspace_generation_async,
+    prepare_runtime_server_workspace_generation_with_registry_async,
 };
-pub use projection::LanguageProjectionImportReport;
 pub use provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1, ProviderSourceSnapshotEnvelopePublicationV1,
     ProviderWorkspaceIdentityV1,

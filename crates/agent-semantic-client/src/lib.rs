@@ -22,9 +22,9 @@ mod tools_cli;
 
 pub use agent_semantic_client_core::LanguageId;
 pub use agent_semantic_client_local_cli::{
-    ProviderProjectResolution, ProviderProjectResolutionCandidates, ProviderProjectResolutionPolicyExclusion,
-    encode_provider_project_resolution_request, project_resolution_from_stdout,
-    provider_project_resolution_candidates,
+    ProviderProjectResolution, ProviderProjectResolutionCandidates,
+    ProviderProjectResolutionPolicyExclusion, encode_provider_project_resolution_request,
+    project_resolution_from_stdout, provider_project_resolution_candidates,
 };
 pub use agent_semantic_runtime::{
     LanguageOwnerItemsAttempt, LanguageOwnerItemsDispatchPlan, language_owner_items_workspace_root,

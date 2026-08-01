@@ -180,18 +180,20 @@ pub(super) fn insert_non_present_canonical_target_receipt(
     );
 }
 
+fn verified_canonical_host_target_present(host_target_present: bool) -> bool {
+    host_target_present
+}
+
 pub(in crate::command) fn maybe_bind_verified_canonical_target(
     registry: &AgentSessionRegistry,
     existing: Option<&AgentSessionRecord>,
     host_target_present: bool,
     canonical_target: Option<&str>,
     expected_agent_type: &str,
-    expected_model: Option<&str>,
-    host_observed_model: Option<&str>,
+    _expected_model: Option<&str>,
+    _host_observed_model: Option<&str>,
 ) -> Result<Option<AgentSessionRecord>, String> {
-    let (Some(existing), Some(canonical_target), Some(expected_model)) =
-        (existing, canonical_target, expected_model)
-    else {
+    let (Some(existing), Some(canonical_target)) = (existing, canonical_target) else {
         return Ok(None);
     };
     let root_session_id = existing.root_session_id.as_str();
@@ -199,10 +201,11 @@ pub(in crate::command) fn maybe_bind_verified_canonical_target(
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| error.to_string())?
         .as_secs() as i64;
-    let model_matches = host_observed_model == Some(expected_model)
-        || existing.model.as_deref() == Some(expected_model);
-    if !host_target_present
-        || !model_matches
+    // Canonical host identity and runtime-profile admission are independent
+    // lifecycle facts. A verified same-generation host target may repair its
+    // durable binding even when model evidence is absent or stale; bootstrap
+    // keeps that record out of Ready/dispatch until profile admission passes.
+    if !verified_canonical_host_target_present(host_target_present)
         || agent_semantic_client_db::agent_session_registry::agent_session_message_target_is_live_bound(
             existing,
             root_session_id,

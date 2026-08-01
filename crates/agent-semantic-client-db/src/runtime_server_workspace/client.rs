@@ -1,5 +1,5 @@
 use super::{
-    lease::WorkspaceGenerationLease, model::WorkspaceMemoryBackend,
+    WorkspaceMemoryBackend, lease::WorkspaceGenerationLease,
     pointer::WorkspaceGenerationPointerReader, segment::MappedWorkspaceGeneration,
 };
 use parking_lot::RwLock;

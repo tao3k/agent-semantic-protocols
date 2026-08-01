@@ -6,10 +6,9 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 use super::{
-    WorkspaceDerivedProjectionSnapshot, WorkspaceGenerationState, WorkspaceMemoryGeneration,
-    WorkspaceOwnerSnapshot, WorkspaceRuntimeSelectorOverlay,
-    WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
-    WorkspaceSelectorSnapshot,
+    WorkspaceDerivedProjectionSnapshot, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
+    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
+    WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
 };
 
 #[derive(Debug)]
@@ -242,37 +241,16 @@ impl ResidentOverlaySnapshot {
         );
         source_snapshot.base_root_digest = Some(base.source_snapshot.root_digest.clone());
         source_snapshot.dirty_paths_digest = Some(overlay_delta_digest(&self.state));
-        let workspace_generation =
-            agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
-                root_digest: source_snapshot.root_digest.clone(),
-                root_depth: 1,
-                leaf_count: u64::try_from(source_snapshot.leaf_count)
-                    .map_err(|_| "runtime overlay leaf count overflow".to_owned())?,
-                owner_count: u64::try_from(owners.len())
-                    .map_err(|_| "runtime overlay owner count overflow".to_owned())?,
-            };
-        let memory_backend_digest = typed_digest(&(
-            &owners,
-            &base.workspace_source_scope_generation,
-            &base.project_resolutions,
-        ))?;
-        let generation = WorkspaceMemoryGeneration {
+        WorkspaceMemoryGeneration::try_from_build(super::model::WorkspaceGenerationBuild {
             workspace_identity: base.workspace_identity.clone(),
             project_root: base.project_root.clone(),
-            state: WorkspaceGenerationState::Ready,
             active_epoch: self.epoch(),
-            generation_digest: self.state.generation_digest.clone(),
-            root_depth: [1, 0],
             workspace_snapshot: self.state.workspace_snapshot.clone(),
             source_snapshot,
-            workspace_generation,
-            memory_backend_digest,
-            workspace_source_scope_generation: base.workspace_source_scope_generation.clone(),
+            module_graph_digest: base.module_graph_digest.clone(),
             project_resolutions: base.project_resolutions.clone(),
             owners,
-        };
-        generation.validate()?;
-        Ok(generation)
+        })
     }
 }
 
@@ -336,12 +314,6 @@ fn overlay_delta_digest(state: &ResidentOverlayState) -> String {
         hasher.update(b"\0");
     }
     format!("blake3-256:{}", hasher.finalize().to_hex())
-}
-
-fn typed_digest<T: serde::Serialize>(value: &T) -> Result<String, String> {
-    let bytes = serde_json::to_vec(value)
-        .map_err(|error| format!("encode runtime overlay generation digest: {error}"))?;
-    Ok(format!("blake3-256:{}", blake3::hash(&bytes).to_hex()))
 }
 
 impl ResidentOverlaySnapshot {

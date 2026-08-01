@@ -208,6 +208,42 @@ pub(super) fn read_global_provider_catalog_readiness()
     })
 }
 
+pub(super) fn runtime_provider_registry_snapshot(
+    project_root: &Path,
+) -> Result<(agent_semantic_client_core::ProviderRegistrySnapshot, String), String> {
+    let catalog = load_catalog_from_disk()?;
+    let mut snapshot = agent_semantic_client_core::ProviderRegistrySnapshot::load(project_root)?;
+    for provider in &mut snapshot.providers {
+        let catalog_provider = catalog
+            .providers
+            .iter()
+            .find(|candidate| {
+                candidate.language_id == provider.language_id.as_str()
+                    && candidate.provider_id == provider.provider_id.as_str()
+            })
+            .ok_or_else(|| {
+                format!(
+                    "runtime provider catalog omitted activated provider: languageId={} providerId={}",
+                    provider.language_id, provider.provider_id
+                )
+            })?;
+        provider.manifest_digest = catalog_provider.manifest_digest.clone();
+        provider.execution_command_digest = catalog_provider.execution_command_digest.clone();
+        provider.provider_command_prefix = catalog_provider.argv_prefix.clone();
+        provider.runtime_command_argv = Some(catalog_provider.argv_prefix.clone());
+        provider.runtime_profile_status =
+            Some(agent_semantic_client_core::RuntimeProfileStatus::Available);
+    }
+    if snapshot.providers.len() != catalog.providers.len() {
+        return Err(format!(
+            "runtime provider catalog/activation cardinality drift: catalog={} activation={}",
+            catalog.providers.len(),
+            snapshot.providers.len()
+        ));
+    }
+    Ok((snapshot, catalog.catalog_generation.clone()))
+}
+
 pub(super) fn publish_global_provider_catalog(
     receipts: &[super::install_provider_reconcile::ProviderInstallReceipt],
 ) -> Result<GlobalProviderCatalogPublication, String> {

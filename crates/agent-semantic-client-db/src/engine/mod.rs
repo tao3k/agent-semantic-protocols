@@ -52,6 +52,7 @@ pub use facade::{
 };
 pub use turso::TURSO_BOOTSTRAP_TABLE;
 pub use turso::TursoClientDbEngineReport;
+pub(crate) use turso::shared_turso_database;
 pub use turso_migration::{
     ClientDbTurso07ActiveMigration, ClientDbTurso07MigrationReport, ClientDbTurso07ReplayCoverage,
     ClientDbTurso07ReplayFamilyReceipt, ClientDbTurso07RetiredDerivedReceipt,

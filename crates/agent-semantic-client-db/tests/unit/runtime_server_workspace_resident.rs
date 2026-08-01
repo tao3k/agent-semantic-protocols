@@ -1,9 +1,9 @@
 //! Resident Runtime Server generation reuse regressions.
 
 use agent_semantic_client_db::runtime_server_workspace::{
-    RuntimeServerWorkspaceRegistry, WorkspaceGenerationState, WorkspaceMemoryGeneration,
-    WorkspaceOwnerSnapshot, WorkspaceRecoverySource, WorkspaceRuntimeSelectorOverlay,
-    WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
+    RuntimeServerWorkspaceRegistry, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
+    WorkspaceRecoverySource, WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorRead,
+    WorkspaceSelectorSnapshot,
 };
 use std::sync::Arc;
 use tempfile::tempdir;
@@ -33,36 +33,27 @@ fn generation(
     );
     let source_snapshot = workspace_snapshot.evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        "resident-ready-fixture".to_owned(),
+        format!(
+            "blake3-256:{}",
+            blake3::hash(b"resident-ready-fixture-provider").to_hex()
+        ),
     );
-    let workspace_generation =
-        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
-            root_digest: source_snapshot.root_digest.clone(),
-            root_depth: 1,
-            leaf_count: 1,
-            owner_count: 1,
-        };
-    let generation_digest = format!(
-        "blake3-256:{}",
-        blake3::hash(format!("{workspace_identity}:{epoch}").as_bytes()).to_hex()
-    );
-    WorkspaceMemoryGeneration {
-        workspace_identity: workspace_identity.to_owned(),
-        project_root: project_root.display().to_string(),
-        state: WorkspaceGenerationState::Ready,
-        active_epoch: epoch,
-        generation_digest: generation_digest.clone(),
-        root_depth: [1, 0],
-        workspace_snapshot,
-        source_snapshot,
-        workspace_generation,
-        memory_backend_digest: generation_digest,
-        workspace_source_scope_generation:
-            agent_semantic_runtime::workspace_source_scope_generation_digest(&[])
-                .expect("empty ProjectResolution generation"),
-        project_resolutions: Vec::new(),
-        owners: vec![owner],
-    }
+    WorkspaceMemoryGeneration::try_from_build(
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            workspace_identity: workspace_identity.to_owned(),
+            project_root: project_root.display().to_string(),
+            active_epoch: epoch,
+            workspace_snapshot,
+            source_snapshot,
+            module_graph_digest: format!(
+                "blake3-256:{}",
+                blake3::hash(b"resident-ready-fixture-module-graph").to_hex()
+            ),
+            project_resolutions: Vec::new(),
+            owners: vec![owner],
+        },
+    )
+    .expect("typed resident ready generation")
 }
 
 #[tokio::test(flavor = "multi_thread")]

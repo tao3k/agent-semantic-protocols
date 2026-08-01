@@ -4,13 +4,24 @@
   "title": "Canonical Language Item Identity",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaId", "schemaVersion", "kind", "symbol"],
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "languageId",
+    "kind",
+    "symbol",
+    "scopes"
+  ],
   "properties": {
     "schemaId": {
       "const": "asp.canonical-language-item-identity.v1"
     },
     "schemaVersion": {
       "const": "1"
+    },
+    "languageId": {
+      "type": "string",
+      "minLength": 1
     },
     "kind": {
       "type": "string",
@@ -20,17 +31,27 @@
       "type": "string",
       "minLength": 1
     },
-    "lexicalOwner": {
-      "type": "string",
-      "minLength": 1
-    },
-    "implementationOwner": {
-      "type": "string",
-      "minLength": 1
-    },
-    "traitOwner": {
-      "type": "string",
-      "minLength": 1
+    "scopes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relation", "kind", "symbol"],
+        "properties": {
+          "relation": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "symbol": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     }
   }
 }

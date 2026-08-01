@@ -10,9 +10,11 @@ theorem and_unknown_sharing_max_is_sound
     (containsLeft : leftCost ≤ combinedCost)
     (containsRight : rightCost ≤ combinedCost) :
     LowerBound (max leftLower rightLower) combinedCost := by
-  exact Nat.max_le
-    (Nat.le_trans leftBound containsLeft)
-    (Nat.le_trans rightBound containsRight)
+  exact (Nat.max_le).2
+    ⟨
+      Nat.le_trans leftBound containsLeft,
+      Nat.le_trans rightBound containsRight
+    ⟩
 
 theorem and_disjoint_addition_is_sound
     (leftLower rightLower leftCost rightCost combinedCost : Nat)
@@ -83,6 +85,7 @@ def sharedWitnessCost : IdentityAwareAndCost :=
 
 theorem naive_addition_is_not_a_lower_bound_for_shared_witness :
     ¬ LowerBound (10 + 10) sharedWitnessCost.combined := by
+  unfold LowerBound IdentityAwareAndCost.combined sharedWitnessCost
   decide
 
 theorem shared_witness_unknown_sharing_bound_is_exact :
@@ -100,9 +103,12 @@ theorem shared_witness_counterexample :
   exact
     ⟨
       naive_addition_is_not_a_lower_bound_for_shared_witness,
-      by decide,
-      by decide
+      by
+        unfold LowerBound IdentityAwareAndCost.combined sharedWitnessCost
+        decide,
+      by
+        unfold LowerBound IdentityAwareAndCost.combined sharedWitnessCost
+        decide
     ⟩
 
 end ASPProof.SearchRouteCompositionalFrontierBound
-

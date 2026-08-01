@@ -54,28 +54,17 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "structuralSelector",
+          "canonicalItemSelector",
           "signature",
-          "itemKind",
-          "itemName",
           "captureName",
           "sourceByteStart",
           "sourceByteEnd"
         ],
         "properties": {
-          "structuralSelector": {
-            "type": "string",
-            "minLength": 1
+          "canonicalItemSelector": {
+            "$ref": "https://agent-semantic-protocols.dev/schemas/canonical-item-selector.v1.schema.json"
           },
           "signature": {
-            "type": "string",
-            "minLength": 1
-          },
-          "itemKind": {
-            "type": "string",
-            "minLength": 1
-          },
-          "itemName": {
             "type": "string",
             "minLength": 1
           },

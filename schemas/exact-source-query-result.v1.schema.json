@@ -70,7 +70,7 @@
       "type": "string",
       "enum": [
         "resolved",
-        "owner-missing",
+        "selector-stale",
         "item-missing",
         "kind-mismatch",
         "identity-incomplete",
@@ -81,6 +81,10 @@
     "reasonKind": {
       "type": "string",
       "minLength": 1
+    },
+    "activeGenerationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
     },
     "rootDigest": {
       "type": "string",

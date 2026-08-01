@@ -16,8 +16,9 @@ own assumptions and validation receipts.
 It does not own:
 
 - normative RFC prose, which remains under =docs/10-19-rfcs/=;
-- AXLE extraction and declaration-bundle tooling, which belongs under
-  =packages/python/tools=;
+- AXLE formal inputs and proof-driving artifacts, which belong under
+  =packages/proofs/axle=; reusable Python audit support remains package-local
+  under =packages/proofs/src/asp_proofs=;
 - human-facing Typst mathematical explanation, which remains under the owning
   RFC's =docs/= tree;
 - runtime provider implementation or conformance tests.
@@ -51,6 +52,10 @@ Neither command establishes RFC closure by itself.  Proof receipts must also
 report assumptions, unsafe declarations, and any =sorry= or =admit= inventory.
 
 * Receipts
+
+- =receipts/search-route-provider-closure-audit-v1.json=: Lean-produced modular
+  audit for provider-closure noninterference, native-owner schema drift,
+  explicit capability admission, and synthetic fingerprint authority.
 
 - =receipts/searchloop-clause-first-proof-v1.org=: first executable
   Clause-first model, theorem inventory, axiom audit, Org-owned Typst stdin

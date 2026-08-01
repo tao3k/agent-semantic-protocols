@@ -1,0 +1,423 @@
+#+title: RFC 10.05.64 - SciPy Bounded Lexicographic SearchLoop Routing
+#+filetags: :asp:searchloop:graph-turbo:scipy:lean:
+
+:PROPERTIES:
+:CONTRACT_ORG: [[../../../org/contracts/relationship.searchloop.scipy-bounded-lexicographic-routing.v1.org][relationship.searchloop.scipy-bounded-lexicographic-routing.v1]]
+:END:
+
+* Status
+
+Experimental implementation and proof slice.
+
+This module belongs to the interactive graph-first SearchLoop architecture. It
+does not extend the historical CLI-first command surface. Its executable owner
+is =packages/python/asp_graph_turbo= and its proof owner is =packages/proofs=.
+
+* Problem
+
+A single opaque edge weight is not an adequate SearchLoop objective. It can
+silently trade a shorter evidence-graph route for a longer route, conflate the
+search-result cache with the model prefix cache, or hide an unsafe numeric
+scalarization behind an algorithm fallback.
+
+The route cost must preserve five separately auditable components:
+
+1. graph hops;
+2. agent-to-search interaction rounds;
+3. projected token cost;
+4. search-cache misses;
+5. model-prefix-cache misses.
+
+The first three components describe route and interaction efficiency. The two
+cache components are different evidence domains and MUST NOT share a field.
+
+* Normative contract
+
+** Cost vector
+
+=ASP-RFC-10.05.64-COST-VECTOR=
+
+Every admitted edge cost MUST be a non-negative integer vector
+=(hops, interactionRounds, tokens, searchCacheMisses, modelCacheMisses)=. One
+traversed edge contributes exactly one hop. Missing cache evidence contributes
+no fabricated hit or miss; explicit hit and miss fields remain domain-specific.
+
+** Objective order
+
+=ASP-RFC-10.05.64-LEXICOGRAPHIC-ORDER=
+
+The bounded SciPy router MUST minimize the vector lexicographically in this
+order: hops, interaction rounds, tokens, search-cache misses, then model-prefix-
+cache misses. Therefore a cheaper but longer graph path cannot displace a
+shorter path. Among equal-hop paths, a route requiring fewer agent/search turns
+cannot be displaced by a lower-token route.
+
+** Bounded scalarization
+
+=ASP-RFC-10.05.64-BOUNDED-RADIX=
+
+SciPy receives one scalar edge weight, but that scalar MUST be derived from a
+finite =maxHops= bound and the observed non-negative per-edge maxima. Each
+lower-order total MUST be strictly smaller than its corresponding radix. This
+is a proof premise, not an implementation hint.
+
+#+begin_src typst
+#let enc(h, r, t, s, m, br, bt, bs, bm) = ((((h * br + r) * bt + t) * bs + s) * bm + m)
+
+$ "Enc"(h, r, t, s, m)
+  = ((((h b_r + r) b_t + t) b_s + s) b_m + m) $
+
+$ 0 <= r < b_r, quad 0 <= t < b_t,
+  quad 0 <= s < b_s, quad 0 <= m < b_m $
+
+$ h_1 < h_2
+  => "Enc"(h_1, r_1, t_1, s_1, m_1)
+  < "Enc"(h_2, r_2, t_2, s_2, m_2) $
+#+end_src
+
+** Exact float transport
+
+=ASP-RFC-10.05.64-FLOAT64-EXACTNESS=
+
+The complete bounded encoded path cost MUST be at most =2^53 - 1= before it is
+transported through SciPy =float64=. A route whose bound exceeds this exact-
+integer domain MUST be rejected. Rounding, saturation, and fallback routing are
+not admissible repairs.
+
+#+begin_src typst
+$ C_p <= 2^53 - 1 => C_p in "exact integers" $
+
+$ C_p > 2^53 - 1 => "reject" $
+#+end_src
+
+** No hidden fallback
+
+=ASP-RFC-10.05.64-NO-FALLBACK=
+
+Negative or non-integral costs, unknown edge endpoints, and unsafe float64
+bounds MUST fail closed. The SciPy route MUST NOT silently fall back to BFS or
+to an opaque scalar weight. A structurally unreachable sink returns no route;
+that result is different from invalid cost evidence.
+
+** Audited reconstruction
+
+=ASP-RFC-10.05.64-AUDITED-RECONSTRUCTION=
+
+After SciPy returns a predecessor path, the implementation MUST reconstruct the
+original typed edges, recompute all five cost components, re-encode the vector,
+and require equality with the SciPy distance. Duplicate directed edges MUST be
+reduced to the lexicographically best typed edge before CSR construction; CSR
+duplicate summation is not route selection.
+
+#+begin_src typst
+$ "reencode"("reconstruct"(p)) = "scipy-distance"(p)
+  => "admit"(p) $
+#+end_src
+
+** Python-Lean-subagent conformance
+
+=ASP-RFC-10.05.64-PYTHON-LEAN-CONFORMANCE=
+
+The executable and proof models MUST share observable golden encodings. A
+subagent validation receipt is conformant only when it executes the Python
+route cases, compiles the Lean theorems for the same natural-number inputs, and
+reports equality of both encoded values. Independent green Python and Lean
+commands are necessary but insufficient.
+
+The initial conformance set fixes three comparisons:
+
+- the direct one-hop route has encoding =904= and beats the two-hop route at
+  =1608=;
+- the two-hop one-round route has encoding =1211= and beats the equal-hop
+  three-round route at =1313=;
+- the search-cache-hit route has encoding =19= and beats the search-cache-miss
+  route at =21= while the model-cache digit remains independent.
+
+#+begin_src typst
+$ E_d = 904 < 1608 = E_l $
+
+$ E_r = 1211 < 1313 = E_t $
+
+$ E_h = 19 < 21 = E_m $
+#+end_src
+
+** Delegated subagent triad admission
+
+=ASP-RFC-10.05.64-SUBAGENT-TRIAD-ADMISSION=
+
+A registered explorer MAY delegate executable validation to a registered
+testing child, but the combined triad is admitted only when one receipt chain
+contains all four facts:
+
+1. an exact parser-owned selector is bound to the Python owner;
+2. the testing child executes the Python golden cases in the declared package
+   environment;
+3. the same child or an explicitly bound handoff executes the Lean audit and
+   records an axiom-free declaration count;
+4. the Python encodings equal the Lean golden encodings.
+
+Parent-owned confirmation does not retroactively close a nested receipt that
+lacks Lean execution or golden agreement. The parent result may diagnose the
+child capability gap, but it is a different execution authority.
+
+The explorer-to-testing handoff MUST use a typed packet rather than a free-form
+shell transcript. The packet binds one receipt-chain identity to:
+
+- the exact Python structural selector and owner;
+- the workspace-relative Python project and test path;
+- the Lean project, build modules, and audit sources;
+- the expected golden encoding pairs;
+- the normalized Lean audit paths, declaration counts, theorem families, RFC
+  clauses, and audit digests;
+- the registered explorer and testing roles.
+
+Execution clients derive tool invocations from these typed fields. The packet
+MUST NOT carry an uninterpreted shell command. Workspace-relative paths MUST be
+normalized and MUST NOT escape the declared workspace.
+
+** Authenticated handoff identity
+
+=ASP-RFC-10.05.64-TRIAD-HANDOFF-IDENTITY=
+
+All selector, Python, Lean, golden, and normalized-audit receipts MUST retain
+the same =receiptChainId=. Passing every individual gate is insufficient when
+one result belongs to a different handoff chain.
+
+The =receiptChainId= MUST be =sha256:= followed by the SHA-256 digest of the
+canonical packet with the =receiptChainId= member omitted. Consumers MUST
+recompute this digest before running preflight. A caller-provided label is not
+an authenticated chain identity.
+
+The packet MUST declare
+=receiptChainCanonicalization=json-sort-keys-compact-utf8-omit-receipt-chain-id-v1=.
+That algorithm removes the top-level =receiptChainId= member, sorts every JSON
+object by key, preserves array order, emits compact comma/colon separators,
+serializes Unicode directly as UTF-8 rather than ASCII escapes, and hashes the
+resulting bytes with SHA-256. Hashing the formatted packet file bytes is a
+different operation and MUST be rejected as a chain identity.
+
+#+begin_src typst
+$ H = "hash"(S, P, L, G, R) $
+
+$ "admit"(T) => S_h = P_h = L_h = G_h = R_h $
+#+end_src
+
+** Preflight validity
+
+=ASP-RFC-10.05.64-TRIAD-PREFLIGHT-VALIDITY=
+
+Receipt-chain identity is insufficient when the delegated execution
+environment cannot parse its own registered configuration. Before executing a
+handoff, the testing child MUST establish that the hook configuration, Python
+project, Lean project, Lean JSON generators, and normalized-audit tool are all
+resolvable. A failed preflight is a blocked handoff, not a failed algorithm and
+not an admissible partial receipt.
+
+#+begin_src typst
+$ C = 0 => T = 0 $
+
+$ "admit"(T) => C = S = P = L = G = R = 1 $
+#+end_src
+
+** Relationship contract binding
+
+=ASP-RFC-10.05.64-RELATIONSHIP-CONTRACT=
+
+Clause identifiers provide navigation but do not bind semantics. The V1 packet
+MUST carry a parser-owned commitment for every RFC clause used by its Python or
+Lean gates. Each commitment contains the source path, exact Org outline path,
+normalized source digest, direct dependency clause identifiers, and dependency-
+set digest.
+
+Before extracting any committed section, the verifier MUST execute the
+document's query/assertion contract through =orgize contract trace=. The packet
+binds each target RFC path to its =contractId=, contract source path,
+=org-contract-source-raw-lf-utf8-v1= digest, and exact assertion count. Contract
+targets MUST exactly equal the distinct source paths used by the clause
+commitments. Each target MUST produce one document-scope evaluation for the
+declared contract, every assertion identifier MUST be unique, and every
+assertion status MUST be =passed=.
+
+The governing application contract is
+=org/contracts/relationship.searchloop.scipy-bounded-lexicographic-routing.v1.org=.
+It implements the general Relationship Contract model from RFC 10.25.02 and
+uses Org element query/assertion semantics to validate the normative headings,
+stable clause markers, document contract binding, and parser-visible Typst
+sources. Python MUST NOT duplicate those structural assertions. Its remaining
+responsibility is to consume the contract receipt, project exact section
+=source.raw= values, and verify the semantic and dependency digests.
+
+The source projection MUST come from =orgize elements-query= with an exact
+outline path. Its =source.raw= value is normalized from CRLF or CR to LF and
+hashed as UTF-8 with SHA-256. The dependency-set digest is SHA-256 over canonical
+JSON for the direct dependencies sorted by =clauseId=; each entry contains the
+dependency clause identifier, its declared source digest, and its dependency-
+set digest. This recursive binding propagates invalidation through the complete
+reverse dependency frontier. Missing clauses, duplicate clauses, unresolved
+dependencies, dependency cycles, source-digest mismatch, or dependency-digest
+mismatch MUST fail closed.
+
+Every audit gate MUST declare the complete =theoremFamilies= and =rfcClauseIds=
+sets from its normalized Lean receipt. Subset membership is insufficient: it
+can hide an undeclared proof dependency. Changing a committed clause invalidates
+that clause and its reverse dependency frontier, while unrelated clauses remain
+reusable. After any commitment change, the packet =receiptChainId= MUST be
+recomputed.
+
+#+begin_src typst
+$ A_k = "all-passed"("contract-trace"(k)) $
+
+$ C_i = H(N(S_i)) $
+
+$ D_i = H(J("sort"({(j, C_j) | j in "deps"(i)}))) $
+
+$ "admit"(i) => A_{c(i)} = 1 and C_i^o = C_i^d and D_i^o = D_i^d $
+#+end_src
+
+** Validation evidence
+
+Earlier delegated experiments exposed two independent non-admission states.
+One child stopped at an invalid hook configuration before executing a gate.
+Another child evaluated an older packet snapshot and returned stale Python and
+Lean expectations. Neither result may be repaired by a parent-owned rerun. A
+consumer MUST bind preflight, packet identity, and every gate result before it
+can compare the receipt with the current V1 packet.
+
+#+begin_src typst
+$ T = S dot P dot L dot G $
+
+$ L = 0 => T = 0, quad G = 0 => T = 0 $
+#+end_src
+
+The canonical V1 packet expects =9= tests at its exact Python test path and
+four normalized Lean audit gates with =15=, =6=, =10=, and =10=
+declarations. All declarations MUST be axiom-free. A stale child receipt
+reporting another test or declaration count is rejected even when a parent
+later obtains the canonical values. This prevents a successful current run
+from laundering an older or differently scoped delegated execution.
+
+A fresh registered explorer-to-testing execution against that exact packet
+observed Python =9 passed=, Lean declaration counts =15/6/8=, axiom-dependent
+counts =0/0/0=, and the golden winners =904=, =1211=, and =19=. Its normalized
+audit command nevertheless failed before reproducing the three packet digests.
+Therefore this receipt also remains unadmitted: compiling a JSON generator is
+not equivalent to replaying and binding its normalized audit receipt.
+
+The final registered testing-child run used an isolated temporary output for
+each generator and executed the normalized-audit tool itself. It reproduced
+the =15/6/10= declaration counts, =0/0/0= axiom-dependent counts, all three V1
+audit digests, and the authenticated packet identity. That fresh receipt is the
+first delegated V1 run admitted by this clause.
+
+The current RFC-bound V1 run extends that earlier handoff with an independent
+RFC-semantic-commitment audit. The testing child rejected both a digest of the
+formatted JSON file bytes and a stale parent synthesis, then recomputed the
+canonical packet without =receiptChainId=. The pre-contract resulting chain was
+=sha256:ffc4d07b8711f5398cbc081739b309d219f7d7577b7175ad0798632f94287696=.
+It binds =11= RFC clauses, Python conformance =3/3=, Python tests =9 passed=,
+Lean declaration counts =15/6/10/10= with =0/0/0/0= axiom-dependent
+declarations, and Typst stdin evaluation =8/8=. The registered explorer
+re-read the current packet, discarded its stale summary, and admitted only
+this corrected child receipt.
+
+After moving RFC structure ownership to =CONTRACT_ORG=, the current V1 chain is
+=sha256:d003465decf1753129a29ff3f1ed2c1ad7ddae6ca085f69db81df6c927310f51=.
+Its Orgize contract trace reports =26/26= passed assertions. The additional
+Lean contract-admission family increases the fourth audit gate from =10= to
+=13= declarations; all =13= remain axiom-free.
+
+* Executable mapping
+
+- =org/contracts/relationship.searchloop.scipy-bounded-lexicographic-routing.v1.org=
+  owns parser-visible RFC structure and clause-marker assertions.
+- =packages/proofs/src/asp_proofs/_rfc_commitment_contract.py= consumes the
+  Orgize contract trace and binds its source digest and passed assertion set.
+- =path_scipy_searchloop.py= owns the public no-fallback route operation.
+- =path_scipy_searchloop_model.py= owns the five-dimensional cost and route
+  values.
+- =path_scipy_searchloop_cost.py= owns validation and bounded mixed-radix
+  encoding.
+- =path_scipy_searchloop_matrix.py= owns deterministic edge reduction, CSR
+  construction, Dijkstra execution, and predecessor reconstruction.
+- =tests/unit/test_path_scipy_searchloop.py= checks hop priority, round priority,
+  cache-domain separation, duplicate-edge selection, numeric rejection,
+  invalid-metric rejection, and unreachable behavior.
+
+The first implementation slice is a direct Graph Turbo API. Wiring it into the
+existing =typed_paths_with_backend= selection is a separate admission step: it
+must preserve the current typed-path contract and cannot be claimed while the
+canonical exact-source generation reports =item-not-in-live-owner= for that
+selector.
+
+* Lean correspondence
+
+=packages/proofs/ASPProof/SearchRouteScipyMixedRadix.lean= models the natural-
+number encoding independently of SciPy. It proves:
+
+- a bounded lower digit cannot carry into a higher digit;
+- fewer hops dominate all bounded lower costs;
+- with equal hops, fewer interaction rounds dominate bounded token and cache
+  costs;
+- =2^53= is outside the exact integer transport cap;
+- search-cache misses and model-cache misses occupy different digits.
+- the Python golden encodings =904/1608=, =1211/1313=, and =19/21= are the
+  same natural-number comparisons proved by Lean and executed through SciPy.
+
+The proof does not prove SciPy correct. It establishes the arithmetic premises
+that the Python adapter MUST check before invoking SciPy and the reconstruction
+equality that the executable adapter MUST audit afterward.
+
+=packages/proofs/ASPProof/SearchRouteTriadRelationshipContract.lean= independently
+models Org contract admission, clause identifiers, source digests,
+dependency-set digests, and exact audit coverage. It proves that digest equality
+without a passed structural contract, identifier-only checks, and subset-only
+checks admit concrete incomplete or stale evidence, while changed clause or
+dependency digests block exact admission. Its local-binding theorem also
+establishes that an unrelated clause change does not invalidate an unaffected
+proof edge.
+
+* Proof-discovered design failures
+
+1. Unbounded mixed-radix encoding is not transport-safe merely because the
+   mathematical natural-number encoding is injective. =float64= introduces a
+   distinct exactness obligation.
+2. A single =cacheHit= field cannot support the declared objective: a search
+   cache hit and a model prefix-cache hit change different costs.
+3. Passing duplicate COO entries directly to CSR is incorrect because SciPy
+   sums duplicates; the router must choose a typed edge first.
+4. A generic fallback converts invalid evidence into an apparently successful
+   route and destroys auditability.
+5. A provider projection and an active generation remain separate admission
+   states. The new algorithm can be tested directly even while canonical exact-
+   source publication is blocked, but it cannot be reported as integrated into
+   the resident generation until that binding is repaired.
+6. A successful parent test receipt cannot substitute for a missing nested Lean
+   receipt. Execution authority and receipt-chain identity are proof premises,
+   not presentation metadata.
+7. Boolean readiness alone does not establish handoff closure. Without one
+   shared receipt-chain identity, independently successful selector, Python,
+   Lean, golden, and audit results can be spliced into a false admission.
+8. A structurally valid packet cannot compensate for an invalid execution
+   configuration. Preflight validity is an independent admission premise.
+9. A parent rerun cannot repair a stale testing-child receipt. Packet identity,
+   execution authority, and observed gate values must be joined in the same
+   authenticated chain.
+10. A Lean JSON generator that compiles does not authenticate a normalized
+    audit digest. The delegated authority must replay normalization and compare
+    the resulting digest with the packet.
+11. A stable RFC clause identifier does not identify stable clause semantics.
+    Source and dependency-set digests are separate proof premises.
+12. Requiring only one expected theorem family or clause to occur in a receipt
+    permits hidden dependencies. Audit coverage must be exact set equality.
+13. A whole-document RFC digest invalidates unrelated proof work. Parser-owned
+    clause subtrees and their reverse dependency frontier preserve safe local
+    reuse and reduce revalidation work.
+14. The SHA-256 of formatted packet file bytes is not the receipt-chain
+    identity. Canonicalization must be a typed V1 field or independent clients
+    can derive different identities from semantically equal JSON.
+15. A semantically matching section digest does not prove that the RFC document
+    has the intended normative structure. Org contract admission and semantic
+    digest admission are independent premises.
+16. Reimplementing clause-marker and heading assertions in Python creates a
+    second Org validator whose behavior can drift from ASP and Orgize. Those
+    assertions belong to the parser-owned =CONTRACT_ORG= query surface.

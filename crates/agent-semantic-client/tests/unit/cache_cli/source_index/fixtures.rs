@@ -218,6 +218,12 @@ pub(crate) fn write_project_resolution_provider(
         "gerbil-scheme" => "gerbil.pkg",
         _ => "Project.toml",
     };
+    let parser_id = match language_id {
+        "rust" => "rust.cargo-toml",
+        "python" => "python.pyproject-toml",
+        "gerbil-scheme" => "gerbil.package-spec",
+        _ => "julia.pkg-project-toml",
+    };
     let project_resolution_inputs = serde_json::json!({
         "languageId": language_id,
         "providerId": provider_id,
@@ -225,16 +231,80 @@ pub(crate) fn write_project_resolution_provider(
         "sourceRoots": source_roots,
         "excludedRoots": excluded_roots,
         "projectEntry": project_entry,
+        "parserId": parser_id,
     });
     let configuration = project_resolution_inputs.to_string();
     let script = format!(
-        r#"#!/usr/bin/env python3
+        r#"#!/usr/bin/env -S python3 -S
 import json
+import re
 import sys
 
 CONFIG = json.loads({configuration:?})
 
-if len(sys.argv) != 2 or sys.argv[1] != "project-resolution-stdin":
+if len(sys.argv) != 2:
+    raise SystemExit(2)
+
+if sys.argv[1] == "projection-batch-stdin":
+    frame = sys.stdin.buffer.read()
+    if len(frame) < 4:
+        raise SystemExit(2)
+    header_length = int.from_bytes(frame[:4], "big")
+    header_end = 4 + header_length
+    header = json.loads(frame[4:header_end])
+    source_offset = header_end
+    owners = []
+    for owner in header["owners"]:
+        source_end = source_offset + owner["byteLength"]
+        source = frame[source_offset:source_end]
+        source_offset = source_end
+        items = []
+        if CONFIG["languageId"] == "rust":
+            pattern = re.compile(rb"(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)")
+            for match in pattern.finditer(source):
+                name = match.group(1).decode("utf-8")
+                line_end = source.find(b"\n", match.start())
+                if line_end < 0:
+                    line_end = len(source)
+                elif line_end == match.start():
+                    line_end += 1
+                selector = f"rust://{{owner['ownerPath']}}#item/function/{{name}}"
+                items.append({{
+                    "itemId": f"item:function:{{name}}",
+                    "ownerId": f"owner:{{owner['ownerPath']}}",
+                    "kind": "function",
+                    "name": name,
+                    "selector": selector,
+                    "sourceByteStart": match.start(),
+                    "sourceByteEnd": line_end,
+                    "identity": {{
+                        "schemaId": "asp.canonical-language-item-identity.v1",
+                        "schemaVersion": "1",
+                        "languageId": "rust",
+                        "kind": "function",
+                        "symbol": name,
+                        "scopes": [],
+                    }},
+                }})
+        owners.append({{
+            "ownerPath": owner["ownerPath"],
+            "sourceLeafDigest": owner["sourceLeafDigest"],
+            "items": items,
+            "relations": [],
+        }})
+    if source_offset != len(frame):
+        raise SystemExit(2)
+    json.dump({{
+        "schemaId": "asp.provider-language-projection-batch-response.v1",
+        "schemaVersion": "1",
+        "languageId": header["languageId"],
+        "providerId": header["providerId"],
+        "generationRootDigest": header["generationRootDigest"],
+        "owners": owners,
+    }}, sys.stdout, separators=(",", ":"))
+    raise SystemExit(0)
+
+if sys.argv[1] != "project-resolution-stdin":
     raise SystemExit(2)
 
 request = json.load(sys.stdin)
@@ -256,7 +326,7 @@ response = {{
         "completeness": "exact",
         "languageId": CONFIG["languageId"],
         "providerId": CONFIG["providerId"],
-        "parserId": "fixture.package-manager",
+        "parserId": CONFIG["parserId"],
         "candidateGenerationDigest": generation,
         "projectEntry": CONFIG["projectEntry"],
         "packageGraph": {{
@@ -265,7 +335,7 @@ response = {{
             "languageId": CONFIG["languageId"],
             "providerId": CONFIG["providerId"],
             "projectEntry": CONFIG["projectEntry"],
-            "parserId": "fixture.package-manager",
+            "parserId": CONFIG["parserId"],
             "manifests": [{{"path": CONFIG["projectEntry"], "kind": "fixture-manifest", "digest": "fixture-manifest"}}],
             "lockfiles": [],
             "packages": [{{
@@ -391,27 +461,46 @@ impl RuntimeServerFixture {
                 .expect("runtime fixture time")
                 .as_nanos()
         ));
+        let state_home = std::env::var_os("ASP_STATE_HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| root.join("home/.agent-semantic-protocols"));
+        let artifact_catalog =
+            agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
+                &state_home,
+            )
+            .await
+            .expect("load fixture runtime artifact catalog");
         let endpoint =
             agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint_in(
                 &runtime_base,
                 &std::env::current_exe().expect("current test executable"),
                 "test-runtime-artifact-digest",
+                artifact_catalog.mode_label(),
+                &artifact_catalog.digest(),
                 1,
                 "test-source-index-binding",
             )
             .await
             .expect("prepare fixture Runtime Server endpoint");
-        let state_home = std::env::var_os("ASP_STATE_HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| root.join("home/.agent-semantic-protocols"));
         let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(&state_home);
-        let server = agent_semantic_client_db::runtime_server::RuntimeServer::bind_and_publish(
+        let server = agent_semantic_client_db::runtime_server::RuntimeServer::bind_and_publish_with_artifact_catalog(
             endpoint,
             std::sync::Arc::new(agent_semantic_client_db::WorkspaceDbRegistry::default()),
             &endpoint_path,
+            std::sync::Arc::new(artifact_catalog),
         )
         .await
-        .expect("bind fixture Runtime Server");
+        .expect("bind fixture Runtime Server")
+        .with_workspace_generation_builder(std::sync::Arc::new(
+            |_workspace_identity, project_root| {
+                Box::pin(async move {
+                    crate::source_index::prepare_runtime_server_workspace_generation_async(
+                        project_root,
+                    )
+                    .await
+                })
+            },
+        ));
         let shutdown = server.shutdown_handle();
         let task = tokio::spawn(server.serve());
         Self {
@@ -428,6 +517,28 @@ impl RuntimeServerFixture {
         tokio::task::spawn_blocking(operation)
             .await
             .expect("join Runtime Server fixture client")
+    }
+
+    pub(crate) async fn rebuild(&self, root: &Path) {
+        let session =
+            agent_semantic_client_db::workspace_db_ipc::connect_runtime_server_workspace_session(
+                root,
+            )
+            .await
+            .expect("connect Runtime Server generation session");
+        session
+            .admit_runtime_generation()
+            .await
+            .expect("admit Runtime Server generation");
+        let receipt = session
+            .ensure_runtime_generation()
+            .await
+            .expect("ensure Runtime Server generation");
+        assert_eq!(
+            receipt.state,
+            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
+            "fixture Runtime Server generation was not ready: {receipt:?}"
+        );
     }
 
     pub(crate) async fn shutdown(self) {

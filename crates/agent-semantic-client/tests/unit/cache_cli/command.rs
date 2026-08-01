@@ -6,7 +6,7 @@ use agent_semantic_client_core::{
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_ID,
     AGENT_SEMANTIC_CLIENT_CACHE_MANIFEST_SCHEMA_VERSION, CacheArtifactId, CacheStatus,
     ClientCacheFileHash, ClientCacheGeneration, ClientCacheManifest, ClientCachePath, LanguageId,
-    ProviderId, state_core::ResolvedState,
+    ProviderId,
 };
 use agent_semantic_client_db::{ClientDbEngine, TursoClientDbSearchHit};
 use agent_semantic_runtime::runtime_block_on_current_thread;
@@ -39,11 +39,9 @@ fn cache_usage_lists_flush() {
     let root = temp_root("usage");
     let error = run_cache(&root, None, &["unknown".to_string()], false).expect_err("usage");
 
-    assert!(error.contains("status|gc [--grace-days <n>] [--apply]|import|source-index refresh"));
-    assert!(error.contains("source-index rebuild [--workspace <path>]"));
+    assert!(error.contains("status|gc [--grace-days <n>] [--apply]|import|source-index lookup"));
     assert!(error.contains("source-index lookup --query <term>"));
     assert!(error.contains("invalidate|flush [syntax-rows]"));
-    assert!(error.contains("runtime-source acquire --language-id <id>"));
 }
 
 #[test]
@@ -93,86 +91,6 @@ fn cache_status_survives_concurrent_process_readers() {
         assert!(status.success(), "cache status reader failed: {status}");
     }
 
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn cache_runtime_source_acquire_clones_versioned_source() {
-    let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
-    let root = temp_root("runtime-source-acquire");
-    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
-    let upstream = root.join("upstream-gerbil");
-    create_tagged_repo(&upstream, "v0.18.2");
-
-    let server =
-        crate::cache_cli_source_index_tests::fixtures::RuntimeServerFixture::start(&root).await;
-    let operation_root = root.clone();
-    server
-        .blocking(move || {
-            let root = operation_root;
-            run_cache(
-                &root,
-                None,
-                &[
-                    "runtime-source".to_string(),
-                    "acquire".to_string(),
-                    "--language-id".to_string(),
-                    "gerbil-scheme".to_string(),
-                    "--repository".to_string(),
-                    upstream.display().to_string(),
-                    "--checkout".to_string(),
-                    "v0.18.2".to_string(),
-                    "--state-namespace".to_string(),
-                    "runtime-source/gerbil-scheme".to_string(),
-                    "--index-owner".to_string(),
-                    "asp-structural-index".to_string(),
-                ],
-                false,
-            )
-            .expect("runtime source acquire");
-
-            let checkout_dir = ResolvedState::resolve(&root)
-                .expect("state core")
-                .paths
-                .client_dir
-                .join("runtime-source")
-                .join("gerbil-scheme")
-                .join("v0.18.2");
-            assert_eq!(
-                std::fs::read_to_string(checkout_dir.join("runtime.ss"))
-                    .expect("runtime source file"),
-                ";; runtime source fixture\n"
-            );
-            assert!(!root.join(".cache/agent-semantic-protocol").exists());
-        })
-        .await;
-    server.shutdown().await;
-    let _ = std::fs::remove_dir_all(root);
-}
-
-#[test]
-fn cache_runtime_source_acquire_requires_checkout() {
-    let root = temp_root("runtime-source-missing-checkout");
-    let error = run_cache(
-        &root,
-        None,
-        &[
-            "runtime-source".to_string(),
-            "acquire".to_string(),
-            "--language-id".to_string(),
-            "gerbil-scheme".to_string(),
-            "--repository".to_string(),
-            "https://git.cons.io/mighty-gerbils/gerbil".to_string(),
-            "--state-namespace".to_string(),
-            "runtime-source/gerbil-scheme".to_string(),
-            "--index-owner".to_string(),
-            "asp-structural-index".to_string(),
-        ],
-        false,
-    )
-    .expect_err("missing checkout");
-
-    assert_eq!(error, "--checkout is required");
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -349,26 +267,6 @@ fn temp_root(label: &str) -> std::path::PathBuf {
     std::fs::create_dir_all(&root).expect("create temp project root");
     git(&root, ["init", "-q"]);
     root
-}
-
-fn create_tagged_repo(repo: &Path, tag: &str) {
-    std::fs::create_dir_all(repo).expect("create upstream repo");
-    git(repo, ["init"]);
-    std::fs::write(repo.join("runtime.ss"), ";; runtime source fixture\n").expect("write fixture");
-    git(repo, ["add", "."]);
-    git(
-        repo,
-        [
-            "-c",
-            "user.name=ASP Test",
-            "-c",
-            "user.email=asp-test@example.invalid",
-            "commit",
-            "-m",
-            "runtime source fixture",
-        ],
-    );
-    git(repo, ["tag", tag]);
 }
 
 fn git<const N: usize>(cwd: &Path, args: [&str; N]) {

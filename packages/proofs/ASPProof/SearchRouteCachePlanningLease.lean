@@ -143,10 +143,12 @@ def examplePostHocHit : PrefixCostAuthority :=
 
 theorem example_hit_lease_is_planning_admissible :
     PlanningAdmissible examplePlanningContext exampleHitLease := by
+  unfold PlanningAdmissible examplePlanningContext exampleHitLease
   decide
 
 theorem example_post_hoc_hit_is_accounting_admissible :
     AccountingAdmissible examplePlanningContext 99 examplePostHocHit := by
+  unfold AccountingAdmissible examplePlanningContext examplePostHocHit
   decide
 
 theorem post_hoc_route_a_planning_cost_is_conservative :

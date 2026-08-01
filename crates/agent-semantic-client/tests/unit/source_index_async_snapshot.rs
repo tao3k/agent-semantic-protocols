@@ -22,6 +22,8 @@ async fn async_snapshot_reads_each_owner_once_and_preserves_canonical_order() {
                 path: path.into(),
                 language_id: agent_semantic_client_core::LanguageId::from("rust"),
                 provider_id: agent_semantic_client_core::ProviderId::from("rs-harness"),
+                projection_coverage:
+                    agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
                 selector_receipts: Vec::new(),
             },
         )

@@ -203,26 +203,8 @@ async fn dispatch_workspace_db_session_operation(
     let dispatched = match operation {
         WorkspaceDbIpcOperation::Health => return WorkspaceDbIpcResult::Healthy,
         WorkspaceDbIpcOperation::Shutdown => return WorkspaceDbIpcResult::ShutdownAccepted,
-        WorkspaceDbIpcOperation::ReadSourceIndex { request } => {
-            let session = admitted_or_bootstrap_workspace(
-                registry,
-                workspace_identity,
-                Path::new(&request.project_root),
-            )
-            .await;
-            match session {
-                Ok(session) => session
-                    .read_source_index(
-                        &request.indexed_project_root,
-                        &request.source_snapshot,
-                        &request.query,
-                        request.language_id.as_ref(),
-                        request.limit,
-                    )
-                    .await
-                    .map(|lookup| WorkspaceDbIpcResult::SourceIndex { lookup }),
-                Err(error) => Err(error),
-            }
+        WorkspaceDbIpcOperation::ReadSourceIndex { .. } => {
+            Err("source-index reads are only accepted by the Runtime Server data plane".to_owned())
         }
         WorkspaceDbIpcOperation::ReadRuntimeSelector { .. } => Err(
             "resident runtime selector reads are only accepted by the Runtime Server data plane"
@@ -237,7 +219,9 @@ async fn dispatch_workspace_db_session_operation(
                 .to_owned(),
         ),
         WorkspaceDbIpcOperation::AdmitRuntimeGeneration { .. }
-        | WorkspaceDbIpcOperation::EnsureRuntimeGeneration { .. } => Err(
+        | WorkspaceDbIpcOperation::EnsureRuntimeGeneration { .. }
+        | WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator { .. }
+        | WorkspaceDbIpcOperation::EvaluateHook { .. } => Err(
             "canonical generation admission is only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
@@ -403,6 +387,7 @@ pub async fn serve_runtime_server_workspace_stream(
     owner_projection_builder: Option<
         &crate::runtime_server_workspace::WorkspaceOwnerProjectionBuilder,
     >,
+    hook_evaluation_builder: Option<&crate::runtime_server::HookEvaluationBuilder>,
     mut drain: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), String> {
     loop {
@@ -538,27 +523,9 @@ pub async fn serve_runtime_server_workspace_stream(
                     match generation_admission {
                         Some(admission) => {
                             let project_root = std::path::PathBuf::from(project_root);
-                            let ensured = async {
-                                let receipt = admission
-                                    .admit(
-                                        request.workspace_identity.clone(),
-                                        project_root.clone(),
-                                    )
-                                    .await?;
-                                if receipt.state
-                                    == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
-                                {
-                                    admission
-                                        .wait_terminal(
-                                            &request.workspace_identity,
-                                            &project_root,
-                                        )
-                                        .await
-                                } else {
-                                    Ok(receipt)
-                                }
-                            }
-                            .await;
+                            let ensured = admission
+                                .ensure(&request.workspace_identity, &project_root)
+                                .await;
                             match ensured {
                                 Ok(receipt) => {
                                     WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }
@@ -576,6 +543,78 @@ pub async fn serve_runtime_server_workspace_stream(
                         },
                     }
                 }
+                WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator { project_root } => {
+                    match generation_admission {
+                        Some(admission) => {
+                            let project_root = std::path::PathBuf::from(project_root);
+                            let repair = async {
+                                if !memory_registry
+                                    .published_generation_is_ready(
+                                        &request.workspace_identity,
+                                        &project_root,
+                                    )
+                                    .await?
+                                {
+                                    return Err(format!(
+                                        "resident workspace generation is unavailable: workspaceIdentity={} projectRoot={}",
+                                        request.workspace_identity,
+                                        project_root.display()
+                                    ));
+                                }
+                                admission
+                                    .publish_resident_generation_locator(
+                                        &request.workspace_identity,
+                                        &project_root,
+                                    )
+                                    .await
+                            }
+                            .await;
+                            match repair {
+                                Ok(receipt) => {
+                                    WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }
+                                }
+                                Err(message) => WorkspaceDbIpcResult::Failed {
+                                    code: "runtime-server-generation-locator-repair-failed"
+                                        .to_owned(),
+                                    message,
+                                },
+                            }
+                        }
+                        None => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-generation-admission-unavailable".to_owned(),
+                            message: "Runtime Server has no canonical generation admission owner"
+                                .to_owned(),
+                        },
+                    }
+                }
+                WorkspaceDbIpcOperation::EvaluateHook {
+                    project_root,
+                    arguments,
+                    input,
+                } => match hook_evaluation_builder {
+                    Some(builder) => match builder(
+                        request.workspace_identity.clone(),
+                        std::path::PathBuf::from(&project_root),
+                        arguments,
+                        input,
+                    )
+                    .await
+                    {
+                        Ok(output) => WorkspaceDbIpcResult::HookEvaluation {
+                            workspace_identity: request.workspace_identity.clone(),
+                            project_root,
+                            output,
+                        },
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-hook-evaluation-failed".to_owned(),
+                            message,
+                        },
+                    },
+                    None => WorkspaceDbIpcResult::Failed {
+                        code: "runtime-server-hook-evaluation-unavailable".to_owned(),
+                        message: "Runtime Server has no resident hook evaluator".to_owned(),
+                    },
+                },
                 WorkspaceDbIpcOperation::ReadSourceIndex {
                     request: lookup_request,
                 } => {
@@ -590,7 +629,6 @@ pub async fn serve_runtime_server_workspace_stream(
                                 )
                             })?;
                         lease.read_source_index(
-                            &lookup_request.source_snapshot,
                             &lookup_request.query,
                             lookup_request.language_id.as_ref(),
                             lookup_request.limit,

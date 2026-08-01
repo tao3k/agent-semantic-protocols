@@ -1,0 +1,23 @@
+import ASPProof.ASPAgentSessionPortal
+
+open ASPProof.ASPAgentSessionPortal
+
+#print axioms targetProjectionDependsOnlyOnSymbolExport
+#print axioms validExportProjectsRegisteredName
+#print axioms readyResidentResolvesToDirectCall
+#print axioms runningResidentQueuesAtBoundary
+#print axioms staleBindingDoesNotHideRegisteredName
+#print axioms absentBindingDoesNotHideRegisteredName
+#print axioms orphanedBindingDoesNotHideRegisteredName
+#print axioms wrongSymlinkTargetSuppressesName
+#print axioms drainingBlocksNewCallButDoesNotEraseName
+#print axioms portalResolutionIdempotent
+#print axioms directCallDoesNotProveDurableBinding
+#print axioms projectionIgnoresHistoryLength
+#print axioms outcomeDoesNotCreateARecoverCommand
+#print axioms deliveredPortalBindingRefinesLifecycleBinding
+#print axioms bindingPhaseCannotAlterNameProjection
+#print axioms turnPhaseCannotAlterNameProjection
+#print axioms fenceCannotAlterNameProjection
+#print axioms wrongExportDominatesEveryBinding
+#print axioms agentSurfaceContainsOneInteractiveCommand

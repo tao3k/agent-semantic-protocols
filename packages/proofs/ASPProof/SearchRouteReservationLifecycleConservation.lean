@@ -1,4 +1,4 @@
-import Mathlib
+import Lean
 
 namespace ASPProof.SearchRouteReservationLifecycleConservation
 
@@ -158,17 +158,17 @@ theorem every_ledger_transition_preserves_total
     (transition : LedgerTransition before after) :
     ledgerTotal after = ledgerTotal before := by
   cases transition with
-  | reserveStep before amount enough =>
+  | reserveStep amount enough =>
       exact reserve_preserves_total before amount enough
-  | consumeHeldStep before amount enough =>
+  | consumeHeldStep amount enough =>
       exact consume_held_preserves_total before amount enough
-  | quarantineHeldStep before amount enough =>
+  | quarantineHeldStep amount enough =>
       exact quarantine_held_preserves_total before amount enough
-  | releaseHeldStep before amount enough =>
+  | releaseHeldStep amount enough =>
       exact release_held_preserves_total before amount enough
-  | consumeQuarantinedStep before amount enough =>
+  | consumeQuarantinedStep amount enough =>
       exact consume_quarantined_preserves_total before amount enough
-  | releaseQuarantinedStep before amount enough =>
+  | releaseQuarantinedStep amount enough =>
       exact release_quarantined_preserves_total before amount enough
 
 inductive ReservationDisposition where
@@ -259,4 +259,3 @@ theorem quarantine_consume_path_preserves_one_hundred :
   decide
 
 end ASPProof.SearchRouteReservationLifecycleConservation
-

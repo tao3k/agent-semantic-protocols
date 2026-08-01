@@ -5,7 +5,7 @@ mod frame;
 mod model;
 pub(crate) mod status_memory;
 
-pub use client::call_runtime_server;
+pub use client::{call_runtime_server, reconcile_runtime_server};
 pub use endpoint::{
     RuntimeServerElection, acquire_runtime_server_election, bind_runtime_server_listener,
     prepare_runtime_server_endpoint, prepare_runtime_server_endpoint_in,

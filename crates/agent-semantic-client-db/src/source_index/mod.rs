@@ -1,7 +1,6 @@
 //! DB Engine-owned source index rows for workspace source discovery.
 
 mod import;
-pub(crate) mod language_projection;
 mod text;
 mod types;
 pub(crate) use text::source_query_keys;
@@ -17,18 +16,7 @@ pub use agent_semantic_content_identity::exact_selector_cache::{
 };
 pub use import::{
     assemble_source_index_import, build_source_index_import, source_index_file_hashes,
-    source_index_import_from_language_projection, source_index_import_with_file_hashes,
-    source_index_relative_path, source_index_scope_dirs,
-};
-pub use language_projection::{
-    CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_ID, CLIENT_DB_LANGUAGE_PROJECTION_PROTOCOL_VERSION,
-    CLIENT_DB_LANGUAGE_PROJECTION_SCHEMA_ID, CLIENT_DB_LANGUAGE_PROJECTION_SCHEMA_VERSION,
-    ClientDbLanguageProjection, ClientDbLanguageProjectionHarness,
-    ClientDbLanguageProjectionImport, ClientDbLanguageProjectionImportRequest,
-    ClientDbLanguageProjectionItem, ClientDbLanguageProjectionNodeKind,
-    ClientDbLanguageProjectionNodeRef, ClientDbLanguageProjectionOwner,
-    ClientDbLanguageProjectionRelation, ClientDbLanguageProjectionSource,
-    ClientDbLanguageProjectionSourceKind,
+    source_index_import_with_file_hashes, source_index_relative_path, source_index_scope_dirs,
 };
 pub use types::{
     CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
@@ -42,12 +30,13 @@ pub use types::{
     ClientDbSourceIndexImportRequest, ClientDbSourceIndexLookup, ClientDbSourceIndexLookupResult,
     ClientDbSourceIndexLookupState, ClientDbSourceIndexMembershipChangeSet,
     ClientDbSourceIndexOwner, ClientDbSourceIndexPath, ClientDbSourceIndexProjectLookupRequest,
-    ClientDbSourceIndexQueryKey, ClientDbSourceIndexRefreshReport,
-    ClientDbSourceIndexRefreshRequest, ClientDbSourceIndexRefreshResult,
-    ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector, ClientDbSourceIndexSelectorId,
-    ClientDbSourceIndexSelectorKind, ClientDbSourceIndexSelectorLookup,
-    ClientDbSourceIndexSelectorSymbol, ClientDbSourceIndexSource, ClientDbSourceIndexSourceBlobs,
-    ClientDbSourceIndexSourceKind, ClientDbSourceIndexStats, ClientDbSourceIndexStructuralSelector,
+    ClientDbSourceIndexProjectionCoverage, ClientDbSourceIndexQueryKey,
+    ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
+    ClientDbSourceIndexRefreshResult, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSelector,
+    ClientDbSourceIndexSelectorId, ClientDbSourceIndexSelectorKind,
+    ClientDbSourceIndexSelectorLookup, ClientDbSourceIndexSelectorSymbol,
+    ClientDbSourceIndexSource, ClientDbSourceIndexSourceBlobs, ClientDbSourceIndexSourceKind,
+    ClientDbSourceIndexStats, ClientDbSourceIndexStructuralSelector,
     client_db_source_index_artifact_digest, client_db_source_index_file_count,
     client_db_source_index_generation_id_for_snapshot,
     client_db_source_index_registry_evidence_hash, client_db_source_index_scope_dir_evidence_hash,

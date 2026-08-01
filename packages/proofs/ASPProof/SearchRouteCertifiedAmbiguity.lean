@@ -62,7 +62,8 @@ theorem empty_complete_certificate_implies_decision_sufficient
       certificate.complete
         (left, right)
         ⟨sameProjection, sameAction⟩
-    simpa [empty] using listed
+    rw [empty] at listed
+    simp at listed
 
 def tinyConflictPairs : List (ExampleWorld × ExampleWorld) :=
   [
@@ -195,6 +196,7 @@ theorem status_is_strict_refinement_of_tiny :
     CertifiedRefinement
       tinyConflictCertificate
       statusConflictCertificate := by
+  unfold CertifiedRefinement
   decide
 
 def driftedStatusConflictCertificate :
@@ -210,6 +212,7 @@ theorem scope_drift_rejects_alleged_refinement :
     ¬ CertifiedRefinement
       tinyConflictCertificate
       driftedStatusConflictCertificate := by
+  unfold CertifiedRefinement
   decide
 
 def generationDriftedStatusConflictCertificate :
@@ -225,6 +228,7 @@ theorem generation_drift_rejects_alleged_refinement :
     ¬ CertifiedRefinement
       tinyConflictCertificate
       generationDriftedStatusConflictCertificate := by
+  unfold CertifiedRefinement
   decide
 
 end ASPProof.SearchRouteCertifiedAmbiguity

@@ -3,7 +3,6 @@ use super::fixtures::{
     write_gerbil_activation_with_project_resolution, write_project_resolution_provider,
     write_rust_activation,
 };
-use crate::cache_cli::run_cache;
 use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
 use agent_semantic_client_db::ClientDbEngine;
 
@@ -43,16 +42,10 @@ async fn cache_source_index_refresh_respects_cargo_workspace_exclude() {
         activation_path.as_os_str(),
     );
     let server = RuntimeServerFixture::start(&root).await;
+    server.rebuild(&root).await;
     let blocking_root = root.clone();
     let result = server
         .blocking(move || {
-            run_cache(
-                &blocking_root,
-                None,
-                &["source-index".to_string(), "rebuild".to_string()],
-                false,
-            )
-            .expect("rebuild source index");
             let engine = ClientDbEngine::resolve(&blocking_root).expect("resolve DB Engine");
             assert!(engine.db_path().exists());
             crate::test_support::lookup_current_source_index_for_language(
@@ -124,16 +117,10 @@ async fn source_index_lookup_ranks_query_dense_owner_before_low_coverage_path() 
         activation_path.as_os_str(),
     );
     let server = RuntimeServerFixture::start(&root).await;
+    server.rebuild(&root).await;
     let blocking_root = root.clone();
     let (result, versioned_alias) = server
         .blocking(move || {
-            run_cache(
-                &blocking_root,
-                None,
-                &["source-index".to_string(), "rebuild".to_string()],
-                false,
-            )
-            .expect("rebuild source index");
             let result = crate::test_support::lookup_current_source_index_for_language(
                 &blocking_root,
                 Some(&LanguageId::from("rust")),
@@ -219,86 +206,51 @@ async fn cache_source_index_refresh_uses_provider_project_resolution() {
         ASP_PROVIDER_ACTIVATION_PATH_ENV,
         activation_path.as_os_str(),
     );
-    let state_home = root.join("home/.agent-semantic-protocols");
-    let runtime_base =
-        std::path::PathBuf::from("/tmp").join(format!("asp-test-rs-{}", std::process::id()));
-    let endpoint =
-        agent_semantic_client_db::runtime_server_control::prepare_runtime_server_endpoint_in(
-            &runtime_base,
-            &std::env::current_exe().expect("current test executable"),
-            "test-runtime-artifact-digest",
-            1,
-            "test-project-resolution-binding",
-        )
-        .await
-        .expect("prepare fixture Runtime Server endpoint");
-    let endpoint_path = agent_semantic_client_db::runtime_server_endpoint_path(&state_home);
-    let server = agent_semantic_client_db::runtime_server::RuntimeServer::bind_and_publish(
-        endpoint,
-        std::sync::Arc::new(agent_semantic_client_db::WorkspaceDbRegistry::default()),
-        &endpoint_path,
-    )
-    .await
-    .expect("bind fixture Runtime Server");
-    let shutdown = server.shutdown_handle();
-    let server_task = tokio::spawn(server.serve());
+    let server = RuntimeServerFixture::start(&root).await;
+    server.rebuild(&root).await;
     let blocking_root = root.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        run_cache(
-            &blocking_root,
-            None,
-            &["source-index".to_string(), "rebuild".to_string()],
-            false,
-        )
-        .expect("rebuild source index");
-        let engine = ClientDbEngine::resolve(&blocking_root).expect("resolve DB Engine");
-        assert!(engine.db_path().exists());
-        let current_snapshot = crate::source_index::current_source_index_snapshot(&blocking_root)
-            .expect("capture current source-index snapshot");
-        assert_eq!(
-            current_snapshot.source_snapshot.leaf_count,
-            1,
-            "current source-index snapshot owners={:?}",
-            current_snapshot
-                .source_blobs
-                .iter()
-                .map(|(path, _)| path)
-                .collect::<Vec<_>>()
-        );
-        assert!(
-            current_snapshot.source_blobs.contains_key(
-                &agent_semantic_client_db::ClientDbSourceIndexPath::new(
-                    "src/included.ss".to_owned(),
+    let result = server
+        .blocking(move || {
+            let engine = ClientDbEngine::resolve(&blocking_root).expect("resolve DB Engine");
+            assert!(engine.db_path().exists());
+            let current_snapshot =
+                crate::source_index::current_source_index_snapshot(&blocking_root)
+                    .expect("capture current source-index snapshot");
+            assert_eq!(
+                current_snapshot.source_snapshot.leaf_count,
+                1,
+                "current source-index snapshot owners={:?}",
+                current_snapshot
+                    .source_blobs
+                    .iter()
+                    .map(|(path, _)| path)
+                    .collect::<Vec<_>>()
+            );
+            assert!(
+                current_snapshot.source_blobs.contains_key(
+                    &agent_semantic_client_db::ClientDbSourceIndexPath::new(
+                        "src/included.ss".to_owned(),
+                    ),
                 ),
-            ),
-            "current source-index snapshot owners={:?}",
-            current_snapshot
-                .source_blobs
-                .iter()
-                .map(|(path, _)| path)
-                .collect::<Vec<_>>()
-        );
-        crate::test_support::lookup_current_source_index_for_language(
-            &blocking_root,
-            Some(&LanguageId::from("gerbil-scheme")),
-            "provider-scope-symbol",
-            8,
-        )
-        .expect("lookup source index")
-    })
-    .await
-    .expect("join blocking source-index client");
+                "current source-index snapshot owners={:?}",
+                current_snapshot
+                    .source_blobs
+                    .iter()
+                    .map(|(path, _)| path)
+                    .collect::<Vec<_>>()
+            );
+            crate::test_support::lookup_current_source_index_for_language(
+                &blocking_root,
+                Some(&LanguageId::from("gerbil-scheme")),
+                "provider-scope-symbol",
+                8,
+            )
+            .expect("lookup source index")
+        })
+        .await;
     assert_eq!(result.state.as_str(), "hit");
     assert_eq!(result.candidates.len(), 1);
     assert_eq!(result.candidates[0].path, "src/included.ss");
-    shutdown.shutdown();
-    assert_eq!(
-        server_task
-            .await
-            .expect("join fixture Runtime Server")
-            .expect("serve fixture Runtime Server"),
-        agent_semantic_client_db::runtime_server::RuntimeServerExit::ShutdownRequested
-    );
-    let _ = std::fs::remove_dir_all(runtime_base);
+    server.shutdown().await;
     let _ = std::fs::remove_dir_all(root);
 }

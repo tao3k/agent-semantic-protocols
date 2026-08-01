@@ -5,7 +5,7 @@ use tempfile::TempDir;
 #[path = "test_support_common.rs"]
 mod common;
 
-pub(super) use common::{StateHomeGuard, environment_lock, workspace};
+pub(super) use common::{StateHomeGuard, environment_lock, performance_lock, workspace};
 
 pub(super) struct TestDir(TempDir);
 

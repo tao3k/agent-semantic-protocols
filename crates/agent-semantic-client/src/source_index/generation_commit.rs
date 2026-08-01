@@ -2,10 +2,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use agent_semantic_client_db::{
-    ClientDbSourceIndexRefreshRequest,
-    runtime_server_workspace::WorkspaceCanonicalMaterialization,
+    ClientDbSourceIndexRefreshRequest, runtime_server_workspace::WorkspaceCanonicalMaterialization,
 };
-
 
 pub(super) struct PreparedSourceIndexGeneration {
     refresh_request: ClientDbSourceIndexRefreshRequest,
@@ -33,5 +31,4 @@ impl PreparedSourceIndexGeneration {
             self.materialization,
         )
     }
-
 }

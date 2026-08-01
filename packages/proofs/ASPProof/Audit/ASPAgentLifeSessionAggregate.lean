@@ -1,0 +1,10 @@
+import ASPProof.ASPAgentLifeSessionAggregate
+
+open ASPProof.ASPAgentLifeSessionAggregate
+
+#print axioms archiveVisibilityCannotAlterBindingAuthority
+#print axioms closeIntentRevokesDurableDispatch
+#print axioms runtimeOnlyBindingCannotBecomeDurableDuringClose
+#print axioms replacementAndDurableDispatchAreDisjoint
+#print axioms liveDeliveredBindingAdmitsDurableDispatch
+#print axioms aggregateStillExposesOnePublicPortal

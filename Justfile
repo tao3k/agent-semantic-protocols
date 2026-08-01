@@ -143,8 +143,7 @@ agent-tools-install-protocol bin_dir="":
       rm -f "$(dirname "${destination}")/semantic-agent-protocol"; \
       test -x "${destination}"; \
       "${destination}" --version --require-release >/dev/null; \
-      "${destination}" guide >/dev/null; \
-      if [ "${destination}" = "{{ asp_runtime_bin }}/asp" ]; then just agent-tools-ensure-local-bin-path; fi
+      "${destination}" guide >/dev/null
 
 # Install the debug protocol binary into the canonical Global runtime and prewarm it.
 agent-tools-install-protocol-debug bin_dir="":

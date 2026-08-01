@@ -15,6 +15,20 @@ structure RootDepth where
 def layeredRootDepth : RootDepth :=
   { liveOverlay := 1, committedBase := 0 }
 
+/-- Source coverage may be empty after an incremental deletion. Completeness
+requires only that parser-owned owners never exceed the admitted source leaves. -/
+structure SourceCoverage where
+  leafCount : Nat
+  ownerCount : Nat
+  deriving DecidableEq, Repr
+
+def CompleteSourceCoverage (coverage : SourceCoverage) : Prop :=
+  coverage.ownerCount ≤ coverage.leafCount
+
+theorem empty_source_coverage_is_complete :
+    CompleteSourceCoverage { leafCount := 0, ownerCount := 0 } := by
+  simp [CompleteSourceCoverage]
+
 /-- Static activation authority.  It admits a provider and one schema digest;
 it does not contain workspace paths, source roots, or an active generation. -/
 structure ActivationCapability where
@@ -257,17 +271,24 @@ theorem active_publication_is_atomic (active : ActiveGeneration) :
     active.moduleGraphMatches, active.selectorSetMatches, active.memoryBackendMatches⟩
 
 /-- Resident read evidence is admitted only when it is generation-pinned and
-performs no database open on the read path. -/
+performs no filesystem, database, provider, or control-plane operation. -/
 structure ResidentReadReceipt where
   workspaceId : WorkspaceId
   generationId : GenerationId
   leaseId : LeaseId
   residentHit : Bool
+  filesystemReads : Nat
   databaseOpens : Nat
+  providerSpawns : Nat
+  controlSocketRoundtrips : Nat
   deriving DecidableEq, Repr
 
 def ResidentOnlyRead (receipt : ResidentReadReceipt) : Prop :=
-  receipt.residentHit = true ∧ receipt.databaseOpens = 0
+  receipt.residentHit = true ∧
+  receipt.filesystemReads = 0 ∧
+  receipt.databaseOpens = 0 ∧
+  receipt.providerSpawns = 0 ∧
+  receipt.controlSocketRoundtrips = 0
 
 abbrev ServerState := WorkspaceId → WorkspaceState
 

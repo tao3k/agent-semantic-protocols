@@ -97,7 +97,7 @@
             "items": {
               "properties": {
                 "command": {
-                  "const": "asp hook session-start --client codex"
+            "const": "asp hook session-start --client codex"
                 }
               }
             }
@@ -114,7 +114,7 @@
             "items": {
               "properties": {
                 "command": {
-                  "const": "asp hook user-prompt --client codex"
+            "const": "asp hook user-prompt --client codex"
                 }
               }
             }
@@ -131,7 +131,7 @@
             "items": {
               "properties": {
                 "command": {
-                  "const": "asp hook pre-tool --client codex"
+            "const": "asp hook pre-tool --client codex"
                 }
               }
             }
@@ -148,7 +148,7 @@
             "items": {
               "properties": {
                 "command": {
-                  "const": "asp hook permission-request --client codex"
+            "const": "asp hook permission-request --client codex"
                 }
               }
             }
@@ -165,7 +165,7 @@
             "items": {
               "properties": {
                 "command": {
-                  "const": "asp hook post-tool --client codex"
+            "const": "asp hook post-tool --client codex"
                 }
               }
             }
@@ -182,7 +182,7 @@
             "items": {
               "properties": {
                 "command": {
-                  "const": "asp hook subagent-start --client codex"
+            "const": "asp hook subagent-start --client codex"
                 }
               }
             }
@@ -199,7 +199,7 @@
             "items": {
               "properties": {
                 "command": {
-                  "const": "asp hook subagent-stop --client codex"
+            "const": "asp hook subagent-stop --client codex"
                 }
               }
             }
@@ -216,7 +216,7 @@
             "items": {
               "properties": {
                 "command": {
-                  "const": "asp hook stop --client codex"
+            "const": "asp hook stop --client codex"
                 }
               }
             }

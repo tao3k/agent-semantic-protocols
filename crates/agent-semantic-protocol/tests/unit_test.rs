@@ -82,6 +82,8 @@ mod rfc_search_frame;
 mod rs_harness_attribute;
 #[path = "unit/runtime_server_artifact.rs"]
 mod runtime_server_artifact;
+#[path = "unit/runtime_server_query_purity.rs"]
+mod runtime_server_query_purity;
 #[path = "unit/runtime_server_service_catalog.rs"]
 mod runtime_server_service_catalog;
 #[path = "../../agent-semantic-hook/tests/unit/rust_harness_activation/mod.rs"]

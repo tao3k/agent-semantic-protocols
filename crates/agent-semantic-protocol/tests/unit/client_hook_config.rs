@@ -47,7 +47,7 @@ stdinMode = "pipe-candidates"
         json!({"tool_name": "Bash", "tool_input": {"command": "printf custom-config-deny"}}),
     );
 
-    assert_eq!(decision["decision"], "deny");
+    assert_eq!(decision["decision"], "deny", "{decision}");
     assert_eq!(decision["reasonKind"], "raw-broad-search");
     assert!(
         decision["message"].as_str().is_some_and(
@@ -385,11 +385,11 @@ fn stale_contract_fingerprint_is_atomically_refreshed_before_the_gate() {
     std::fs::write(&activation_path, root_owned_rust_activation_json(&root))
         .expect("write activation");
     let expected_fingerprint = agent_semantic_config::hook_client_contract_fingerprint();
-    let stale = agent_semantic_config::default_hook_client_config_template()
+    let stale = agent_semantic_hook::default_client_config_template()
         .replace(&expected_fingerprint, "hook-client-v1-9a7c3cad98a8c0dc");
     assert_ne!(
         stale,
-        agent_semantic_config::default_hook_client_config_template(),
+        agent_semantic_hook::default_client_config_template(),
         "fixture must replace the active binary fingerprint"
     );
     write_config(&root, &stale);
@@ -406,7 +406,7 @@ fn stale_contract_fingerprint_is_atomically_refreshed_before_the_gate() {
             .expect("read refreshed config");
     assert_eq!(
         refreshed,
-        agent_semantic_config::default_hook_client_config_template()
+        agent_semantic_hook::default_client_config_template()
     );
     assert!(refreshed.contains(&expected_fingerprint));
     assert!(!refreshed.contains("hook-client-v1-9a7c3cad98a8c0dc"));
@@ -420,18 +420,16 @@ fn write_config(root: &std::path::Path, content: &str) {
         .expect("create config dir");
     let fixture = toml::from_str::<toml::Value>(content)
         .ok()
-        .and_then(|mut requested| {
-            let defaults = toml::from_str::<toml::Value>(
-                &agent_semantic_config::default_hook_client_config_template(),
+        .and_then(|requested| {
+            let mut document = toml::from_str::<toml::Value>(
+                &agent_semantic_hook::default_client_config_template(),
             )
             .ok()?;
-            let requested_table = requested.as_table_mut()?;
-            for (key, value) in defaults.as_table()? {
-                requested_table
-                    .entry(key.clone())
-                    .or_insert_with(|| value.clone());
+            let document_table = document.as_table_mut()?;
+            for (key, value) in requested.as_table()? {
+                document_table.insert(key.clone(), value.clone());
             }
-            toml::to_string(&requested).ok()
+            toml::to_string(&document).ok()
         })
         .unwrap_or_else(|| content.to_string());
     std::fs::write(&config_path, &fixture).expect("write config");

@@ -10,13 +10,67 @@ use super::{
 
 impl Default for ClientHookConfig {
     fn default() -> Self {
-        let config = agent_semantic_config::default_hook_client_config_file()
+        let config = crate::hook_config::core_load::default_client_config_file()
             .expect("embedded hook client config must remain valid");
         compile_config(config).expect("embedded hook client rules must compile")
     }
 }
 
 impl ClientHookConfig {
+    /// Validate the managed language-provider projection against the active
+    /// manifest-bound runtime before it can participate in source matching.
+    pub fn validate_language_provider_projection(
+        &self,
+        runtime: &HookRuntime,
+    ) -> Result<(), String> {
+        for provider in &runtime.providers {
+            let projected = self
+                .language_providers
+                .iter()
+                .find(|candidate| {
+                    candidate.language_id == provider.language_id.as_str()
+                        && candidate.provider_id == provider.provider_id.as_str()
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "managed hook config omitted language provider projection `{}/{}`",
+                        provider.language_id, provider.provider_id
+                    )
+                })?;
+            if projected.manifest_digest != provider.manifest_digest {
+                return Err(format!(
+                    "managed hook config provider manifest drift for `{}/{}`: configured {}, active {}",
+                    provider.language_id,
+                    provider.provider_id,
+                    projected.manifest_digest,
+                    provider.manifest_digest
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Apply the validated TOML projection to the matcher runtime. Source
+    /// classification below this boundary consumes config, not provider JSON.
+    pub fn apply_language_provider_projection(
+        &self,
+        runtime: &mut HookRuntime,
+    ) -> Result<(), String> {
+        self.validate_language_provider_projection(runtime)?;
+        for provider in &mut runtime.providers {
+            let projected = self
+                .language_providers
+                .iter()
+                .find(|candidate| {
+                    candidate.language_id == provider.language_id.as_str()
+                        && candidate.provider_id == provider.provider_id.as_str()
+                })
+                .expect("validated language provider projection");
+            provider.source_extensions = projected.source_extensions.clone();
+        }
+        Ok(())
+    }
+
     /// Return the agent-facing session message templates.
     pub fn agent_session_messages(
         &self,
@@ -252,6 +306,7 @@ pub(in crate::hook_config) fn compile_config(
     config: HookClientConfigFile,
 ) -> Result<ClientHookConfig, String> {
     let contract_fingerprint = config.contract_fingerprint.clone();
+    let language_providers = config.language_providers.clone();
     let wrapper_match = config.wrapper_match;
     let default_config = agent_semantic_config::default_hook_client_config_file()?;
     let default_agent_session_messages = default_config.agent_session_messages;
@@ -299,6 +354,7 @@ pub(in crate::hook_config) fn compile_config(
     rules.sort_by_key(|rule| std::cmp::Reverse(rule.priority));
     Ok(ClientHookConfig {
         rules,
+        language_providers,
         contract_fingerprint,
         semantic_ast_patch_disabled: !semantic_ast_patch_enabled,
         agent_org_artifacts: compile_agent_org_artifacts_config(config.agent_org_artifacts)?,

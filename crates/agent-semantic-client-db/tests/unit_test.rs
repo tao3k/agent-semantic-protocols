@@ -20,24 +20,32 @@ mod db_gerbil_dependency_index;
 mod env;
 #[path = "unit/db/live_source_index_memory.rs"]
 mod live_source_index_memory;
-#[path = "unit/materialization_fixture.rs"]
-mod materialization_fixture;
 #[path = "unit/db/project_scoped_turso_performance.rs"]
 mod project_scoped_turso_performance;
+#[path = "unit/projection_fixture.rs"]
+mod projection_fixture;
 #[path = "unit/provider_incremental_probe_batch.rs"]
 mod provider_incremental_probe_batch;
 #[path = "unit/provider_treesitter_read.rs"]
 mod provider_treesitter_read;
+#[path = "unit/runtime_server_admission_catalog.rs"]
+mod runtime_server_admission_catalog;
 #[path = "unit/runtime_server_control.rs"]
 mod runtime_server_control;
 #[path = "unit/runtime_server_diagnostics.rs"]
 mod runtime_server_diagnostics;
 #[path = "unit/runtime_server_generation_admission.rs"]
 mod runtime_server_generation_admission;
+#[path = "unit/runtime_server_generation_restore.rs"]
+mod runtime_server_generation_restore;
+#[path = "unit/runtime_server_hook_evaluation.rs"]
+mod runtime_server_hook_evaluation;
 #[path = "unit/runtime_server_overlay_admission.rs"]
 mod runtime_server_overlay_admission;
 #[path = "unit/runtime_server_runtime.rs"]
 mod runtime_server_runtime;
+#[path = "unit/runtime_server_supervisor_reconciliation.rs"]
+mod runtime_server_supervisor_reconciliation;
 #[path = "unit/runtime_server_workspace.rs"]
 mod runtime_server_workspace;
 #[path = "unit/runtime_server_workspace_recovery.rs"]

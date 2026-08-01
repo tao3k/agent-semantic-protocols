@@ -27,12 +27,12 @@ fn namespaced_python_explicit_read_routes_to_owner_frontier() {
             "python",
             "search",
             "owner",
-            "src/tools/semantic_sandtable/receipt_reports.py",
+            "tools/semantic_sandtable/receipt_reports.py",
             "items",
             "--query",
             "src/tools/semantic_sandtable/receipt_reports.py",
             "--workspace",
-            ".",
+            "src",
             "--view",
             "seeds"
         ]
@@ -145,12 +145,12 @@ fn python_embedded_read_text_routes_to_owner_frontier() {
             "python",
             "search",
             "owner",
-            "src/tools/semantic_sandtable/receipt_reports.py",
+            "tools/semantic_sandtable/receipt_reports.py",
             "items",
             "--query",
             "src/tools/semantic_sandtable/receipt_reports.py",
             "--workspace",
-            ".",
+            "src",
             "--view",
             "seeds"
         ]

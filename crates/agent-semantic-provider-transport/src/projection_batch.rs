@@ -29,12 +29,13 @@ pub struct ProviderProjectionOwner {
 pub struct ProviderProjectionBatchRequest {
     pub language_id: String,
     pub provider_id: String,
+    pub workspace_identity: String,
     pub generation_root_digest: String,
     pub base_generation_root_digest: Option<String>,
     pub owners: Vec<ProviderProjectionOwner>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderProjectionBatchResponse {
     pub schema_id: String,
@@ -45,7 +46,7 @@ pub struct ProviderProjectionBatchResponse {
     pub owners: Vec<ProviderProjectedOwner>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderProjectedOwner {
     pub owner_path: String,
@@ -54,7 +55,7 @@ pub struct ProviderProjectedOwner {
     pub relations: Vec<Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderProjectedItem {
     pub item_id: String,
@@ -65,11 +66,9 @@ pub struct ProviderProjectedItem {
     pub source_byte_start: usize,
     pub source_byte_end: usize,
     pub identity: ProviderProjectedItemIdentity,
-    pub impl_owner: Option<String>,
-    pub trait_owner: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderProjectedItemIdentity {
     pub schema_id: String,
@@ -77,9 +76,15 @@ pub struct ProviderProjectedItemIdentity {
     pub language_id: String,
     pub kind: String,
     pub symbol: String,
-    pub lexical_owner: Option<String>,
-    pub implementation_owner: Option<String>,
-    pub trait_owner: Option<String>,
+    pub scopes: Vec<ProviderProjectedItemScope>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderProjectedItemScope {
+    pub relation: String,
+    pub kind: String,
+    pub symbol: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +94,7 @@ struct ProjectionBatchHeader {
     schema_version: String,
     language_id: String,
     provider_id: String,
+    workspace_identity: String,
     transport: String,
     generation_root_digest: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -123,6 +129,7 @@ impl ProviderProjectionBatchRequest {
             schema_version: "1".to_string(),
             language_id: self.language_id.clone(),
             provider_id: self.provider_id.clone(),
+            workspace_identity: self.workspace_identity.clone(),
             transport: PROJECTION_BATCH_TRANSPORT.to_string(),
             generation_root_digest: self.generation_root_digest.clone(),
             base_generation_root_digest: self.base_generation_root_digest.clone(),
@@ -159,6 +166,7 @@ impl ProviderProjectionBatchRequest {
     fn validate(&self) -> Result<(), ProviderProjectionBatchError> {
         require_text("languageId", &self.language_id)?;
         require_text("providerId", &self.provider_id)?;
+        require_text("workspaceIdentity", &self.workspace_identity)?;
         require_text("generationRootDigest", &self.generation_root_digest)?;
         if let Some(base_digest) = self.base_generation_root_digest.as_deref() {
             require_text("baseGenerationRootDigest", base_digest)?;
@@ -179,15 +187,22 @@ impl ProviderProjectionBatchRequest {
 }
 
 pub async fn run_provider_projection_batch(
-    program: impl Into<String>,
+    command_argv: &[String],
     command_binding: impl Into<String>,
     cwd: impl AsRef<Path>,
     request: &ProviderProjectionBatchRequest,
 ) -> Result<ProviderProjectionBatchResponse, ProviderProjectionBatchError> {
+    let (program, prefix_args) = command_argv.split_first().ok_or_else(|| {
+        ProviderProjectionBatchError("projection provider command must be non-empty".to_owned())
+    })?;
     let stdin = request.encode()?;
     let spec = ProviderProcessSpec {
-        program: program.into(),
-        args: vec![command_binding.into()],
+        program: program.clone(),
+        args: prefix_args
+            .iter()
+            .cloned()
+            .chain(std::iter::once(command_binding.into()))
+            .collect(),
         cwd: PathBuf::from(cwd.as_ref()),
         env: BTreeMap::new(),
         stdin: StdinMode::bytes(stdin),
@@ -264,14 +279,33 @@ fn validate_response(
             format!("{}://{}#", request.language_id, projected_owner.owner_path);
         let mut selectors = BTreeSet::new();
         for item in &projected_owner.items {
+            let canonical = agent_semantic_content_identity::CanonicalItemSelector::parse(
+                item.selector.as_str(),
+            )
+            .map_err(|error| {
+                ProviderProjectionBatchError(format!(
+                    "projection batch selector is not canonical: ownerPath={} itemId={} error={error}",
+                    projected_owner.owner_path, item.item_id
+                ))
+            })?;
+            let identity_scopes_match = canonical.scopes.len() == item.identity.scopes.len()
+                && canonical.scopes.iter().zip(&item.identity.scopes).all(
+                    |(canonical, projected)| {
+                        canonical.relation.as_str() == projected.relation
+                            && canonical.kind.as_str() == projected.kind
+                            && canonical.symbol.as_str() == projected.symbol
+                    },
+                );
             if item.owner_id != expected_owner_id
                 || item.identity.schema_id != "asp.canonical-language-item-identity.v1"
                 || item.identity.schema_version != "1"
                 || item.identity.language_id != request.language_id
                 || item.identity.kind != item.kind
                 || item.identity.symbol != item.name
-                || item.impl_owner != item.identity.implementation_owner
-                || item.trait_owner != item.identity.trait_owner
+                || canonical.language_id.as_str() != item.identity.language_id
+                || canonical.kind.as_str() != item.identity.kind
+                || canonical.symbol.as_str() != item.identity.symbol
+                || !identity_scopes_match
                 || !item.selector.starts_with(&expected_selector_prefix)
                 || item.source_byte_start >= item.source_byte_end
                 || item.source_byte_end > requested_owner.source_bytes.len()
@@ -297,77 +331,5 @@ fn require_text(field: &str, value: &str) -> Result<(), ProviderProjectionBatchE
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn request() -> ProviderProjectionBatchRequest {
-        ProviderProjectionBatchRequest {
-            language_id: "rust".to_string(),
-            provider_id: "rs-harness".to_string(),
-            generation_root_digest: "generation-a".to_string(),
-            base_generation_root_digest: Some("generation-base".to_string()),
-            owners: vec![ProviderProjectionOwner {
-                owner_path: "src/lib.rs".to_string(),
-                source_leaf_digest: "leaf-a".to_string(),
-                source_bytes: b"pub fn exact() {}\n".to_vec(),
-            }],
-        }
-    }
-
-    #[test]
-    fn framed_request_carries_exact_owner_bytes() {
-        let request = request();
-        let frame = request.encode().expect("encode request");
-        let header_length = u32::from_be_bytes(frame[..4].try_into().expect("header length"));
-        let header_end = 4 + header_length as usize;
-        let header: ProjectionBatchHeader =
-            serde_json::from_slice(&frame[4..header_end]).expect("decode header");
-        assert_eq!(header.transport, PROJECTION_BATCH_TRANSPORT);
-        assert_eq!(
-            header.owners[0].byte_length,
-            request.owners[0].source_bytes.len()
-        );
-        assert_eq!(&frame[header_end..], request.owners[0].source_bytes);
-    }
-
-    #[test]
-    fn response_validation_rejects_generation_or_owner_drift() {
-        let request = request();
-        let mut response = ProviderProjectionBatchResponse {
-            schema_id: PROJECTION_BATCH_RESPONSE_SCHEMA_ID.to_string(),
-            schema_version: "1".to_string(),
-            language_id: "rust".to_string(),
-            provider_id: "rs-harness".to_string(),
-            generation_root_digest: "generation-a".to_string(),
-            owners: vec![ProviderProjectedOwner {
-                owner_path: "src/lib.rs".to_string(),
-                source_leaf_digest: "leaf-a".to_string(),
-                items: vec![ProviderProjectedItem {
-                    item_id: "item:function:exact".to_string(),
-                    owner_id: "owner:src/lib.rs".to_string(),
-                    kind: "function".to_string(),
-                    name: "exact".to_string(),
-                    selector: "rust://src/lib.rs#item/function/exact".to_string(),
-                    source_byte_start: 0,
-                    source_byte_end: request.owners[0].source_bytes.len(),
-                    identity: ProviderProjectedItemIdentity {
-                        schema_id: "asp.canonical-language-item-identity.v1".to_string(),
-                        schema_version: "1".to_string(),
-                        language_id: "rust".to_string(),
-                        kind: "function".to_string(),
-                        symbol: "exact".to_string(),
-                        lexical_owner: None,
-                        implementation_owner: None,
-                        trait_owner: None,
-                    },
-                    impl_owner: None,
-                    trait_owner: None,
-                }],
-                relations: Vec::new(),
-            }],
-        };
-        validate_response(&request, &response).expect("matching response");
-        response.owners[0].source_leaf_digest = "leaf-drift".to_string();
-        assert!(validate_response(&request, &response).is_err());
-    }
-}
+#[path = "../tests/unit/projection_batch.rs"]
+mod tests;

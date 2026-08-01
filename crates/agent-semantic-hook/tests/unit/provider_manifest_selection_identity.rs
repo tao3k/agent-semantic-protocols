@@ -1,7 +1,7 @@
 use super::{
     DefaultActivationSelections, ProviderCommandSelection, RuntimeBinarySelectionV1,
-    build_default_activation_from_selections, provider_manifests,
-    reuse_asp_binary_selection_from_active_receipt,
+    asp_binary_selection_from_active_receipt, build_default_activation_from_selections,
+    capture_asp_binary_selection, provider_manifests,
 };
 
 fn test_graph_turbo_selection() -> RuntimeBinarySelectionV1 {
@@ -51,19 +51,23 @@ fn runtime_binary_identity_reuses_active_receipt_and_fails_closed_on_drift() {
         .expect("verify active artifact receipt fixture");
 
     let started = std::time::Instant::now();
-    let selection = reuse_asp_binary_selection_from_active_receipt(&binary, &activation)
+    let selection = asp_binary_selection_from_active_receipt(&binary, &activation)
         .expect("reuse verified active artifact receipt");
     let elapsed = started.elapsed();
     assert_eq!(selection.content_digest(), digest);
     assert!(
-        elapsed < std::time::Duration::from_millis(25),
-        "receipt-backed runtime identity exceeded the 25ms gate: {elapsed:?}"
+        elapsed < std::time::Duration::from_millis(10),
+        "receipt-backed runtime identity exceeded the 10ms cold gate: {elapsed:?}"
     );
 
     std::fs::write(&binary, b"asp-runtime-v2").expect("drift runtime binary");
+    asp_binary_selection_from_active_receipt(&binary, &activation)
+        .expect_err("drifted runtime binary must not reuse the published content identity");
+    let error = capture_asp_binary_selection(&binary, Some(&activation))
+        .expect_err("query-time receipt drift must fail closed without byte-hash fallback");
     assert!(
-        reuse_asp_binary_selection_from_active_receipt(&binary, &activation).is_none(),
-        "drifted runtime binary must not reuse the published content identity"
+        error.contains("mismatch") || error.contains("drift"),
+        "unexpected fail-closed diagnostic: {error}"
     );
     std::fs::remove_dir_all(root).expect("remove receipt fixture");
 }

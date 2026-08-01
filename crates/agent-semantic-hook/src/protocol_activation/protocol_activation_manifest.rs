@@ -68,7 +68,11 @@ pub struct ActivatedProviderConfig {
     pub coverage: ActivationCoverage,
 }
 
-/// The single workspace source scope derived from typed provider project resolutions.
+/// Static provider capability hints used before Runtime Server project resolution.
+///
+/// These values never assert workspace membership or a resolved source scope.
+/// Package roots remain empty during activation; package-manager resolution owns
+/// the generation-bound scope published under workspace artifacts.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActivationCoverage {
@@ -118,6 +122,7 @@ pub struct ProviderManifest {
     pub(crate) binary: String,
     #[serde(default)]
     pub(crate) execution: ProviderExecution,
+    pub(crate) development: ProviderDevelopmentDescriptor,
     pub(crate) search_capabilities: ProviderSearchCapabilities,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) project_resolution: Option<ProviderProjectResolutionDescriptor>,
@@ -177,6 +182,10 @@ impl ProviderManifest {
         self.execution
     }
 
+    pub fn development(&self) -> &ProviderDevelopmentDescriptor {
+        &self.development
+    }
+
     pub fn search_capabilities(&self) -> &ProviderSearchCapabilities {
         &self.search_capabilities
     }
@@ -208,6 +217,23 @@ impl ProviderManifest {
     pub fn route_bindings(&self) -> &crate::protocol::HookRouteBindings {
         &self.route_bindings
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderDevelopmentDescriptor {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub source_root: String,
+    pub build_binding: String,
+    pub artifact_domain: ProviderDevelopmentArtifactDomain,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProviderDevelopmentArtifactDomain {
+    Checkout,
+    StateHomeProviderStaging,
 }
 
 /// Provider-owned search surfaces that ASP may delegate instead of approximating.
@@ -380,6 +406,8 @@ pub struct ProviderProjectResolutionDescriptor {
     pub schema_version: String,
     pub capability_id: String,
     pub entry_markers: Vec<String>,
+    #[serde(default)]
+    pub source_extensions: Vec<String>,
     pub manifest_kinds: Vec<String>,
     pub lockfile_kinds: Vec<String>,
     pub parser_id: String,
@@ -558,7 +586,7 @@ pub struct ProviderQueryPackClause {
     pub intent_axes: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 /// In-memory runtime resolved from activation plus static provider manifests.
 pub struct HookRuntime {
     pub project_root: String,
@@ -567,7 +595,7 @@ pub struct HookRuntime {
 }
 
 /// In-memory activated provider selected from a validated manifest.
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct ActivatedProvider {
     pub manifest_id: String,
     pub manifest_digest: String,

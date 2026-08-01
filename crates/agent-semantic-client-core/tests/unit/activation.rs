@@ -70,7 +70,6 @@ fn provider_registry_evidence_tracks_provider_identity_and_existing_scope_dirs()
     .expect("write config file");
     let mut provider = resolved_provider();
     provider.package_roots = vec!["crates/core".to_string()];
-    provider.source_paths = vec!["crates/core/src/lib.rs".to_string()];
     provider.config_files = vec!["crates/core/Cargo.toml".to_string()];
     provider.source_extensions = vec!["rs".to_string()];
     let snapshot = ProviderRegistrySnapshot {
@@ -84,7 +83,6 @@ fn provider_registry_evidence_tracks_provider_identity_and_existing_scope_dirs()
     assert!(evidence.fingerprint.contains("provider=rs-harness"));
     assert!(evidence.fingerprint.contains("sourceExtensions=rs"));
     assert!(evidence.scope_dirs.contains("crates/core"));
-    assert!(evidence.scope_dirs.contains("crates/core/src"));
     std::fs::remove_dir_all(root).expect("remove temp root");
 }
 
@@ -243,10 +241,6 @@ fn activation_snapshot_rejects_legacy_provider_command_prefix() {
                 package_roots: vec![".".to_string()],
                 config_files: vec!["pyproject.toml".to_string()],
                 source_extensions: vec!["py".to_string()],
-                source_paths: vec!["src/package.py".to_string()],
-                repository_candidate_generation: "test-candidate-generation".to_string(),
-                workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
-                project_resolutions: Vec::new(),
             },
         }],
     };
@@ -317,10 +311,6 @@ fn explicit_activation_path_keeps_requested_project_root() {
                 package_roots: vec![".".to_string()],
                 config_files: vec!["pyproject.toml".to_string()],
                 source_extensions: vec!["py".to_string()],
-                source_paths: vec!["src/package.py".to_string()],
-                repository_candidate_generation: "test-candidate-generation".to_string(),
-                workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
-                project_resolutions: Vec::new(),
             },
         }],
     };

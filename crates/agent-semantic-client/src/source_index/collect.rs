@@ -202,11 +202,16 @@ pub(crate) async fn collect_source_index_scope_async(
             && left.provider_id == right.provider_id
     });
     project_resolutions.sort_by(|left, right| {
-        (&left.candidate_base, &left.resolution.provider_id, &left.resolution.project_entry).cmp(&(
-            &right.candidate_base,
-            &right.resolution.provider_id,
-            &right.resolution.project_entry,
-        ))
+        (
+            &left.candidate_base,
+            &left.resolution.provider_id,
+            &left.resolution.project_entry,
+        )
+            .cmp(&(
+                &right.candidate_base,
+                &right.resolution.provider_id,
+                &right.resolution.project_entry,
+            ))
     });
     Ok(SourceIndexCollectionReceipt {
         files,
@@ -233,13 +238,13 @@ fn document_scope_files(
         .filter_map(|candidate| {
             let candidate_path = candidate.path.to_str()?;
             let path = agent_semantic_client_core::scoped_child_path(project_root, candidate_path)?;
-            path.is_file().then(
-                || agent_semantic_client_local_cli::ProviderProjectResolutionPathFile {
+            path.is_file().then(|| {
+                agent_semantic_client_local_cli::ProviderProjectResolutionPathFile {
                     path,
                     language_id: provider.language_id.clone(),
                     provider_id: provider.provider_id.clone(),
-                },
-            )
+                }
+            })
         })
         .collect();
     agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Supported(files)
@@ -251,7 +256,9 @@ fn append_provider_scope_files(
     receipt: agent_semantic_client_local_cli::ProviderProjectResolutionFiles,
 ) -> Result<(), String> {
     match receipt {
-        agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Supported(provider_files) => {
+        agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Supported(
+            provider_files,
+        ) => {
             for provider_file in provider_files {
                 let agent_semantic_client_local_cli::ProviderProjectResolutionPathFile {
                     path,
@@ -262,15 +269,19 @@ fn append_provider_scope_files(
                     path,
                     language_id,
                     provider_id,
+                    projection_coverage:
+                        agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
                     selector_receipts: Vec::new(),
                 });
             }
             Ok(())
         }
-        agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Unsupported => Err(format!(
-            "provider workspace scope is unsupported: languageId={} providerId={}",
-            provider.language_id, provider.provider_id
-        )),
+        agent_semantic_client_local_cli::ProviderProjectResolutionFiles::Unsupported => {
+            Err(format!(
+                "provider workspace scope is unsupported: languageId={} providerId={}",
+                provider.language_id, provider.provider_id
+            ))
+        }
     }
 }
 

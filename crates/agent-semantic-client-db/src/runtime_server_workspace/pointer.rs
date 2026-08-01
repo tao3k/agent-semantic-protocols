@@ -180,13 +180,14 @@ fn decode_consistent_snapshot(
                 "workspace generation pointer payload length is invalid: {payload_len}"
             )));
         }
-        let payload = mapping[PAYLOAD_OFFSET..PAYLOAD_OFFSET + payload_len].to_vec();
+        let decoded =
+            serde_json::from_slice(&mapping[PAYLOAD_OFFSET..PAYLOAD_OFFSET + payload_len]);
         let after = pointer_generation(mapping).load(Ordering::Acquire);
         if before != after || after & 1 == 1 {
             std::hint::spin_loop();
             continue;
         }
-        return serde_json::from_slice(&payload).map_err(|error| {
+        return decoded.map_err(|error| {
             ReadSnapshotError::Invalid(format!(
                 "failed to decode workspace generation pointer: {error}"
             ))

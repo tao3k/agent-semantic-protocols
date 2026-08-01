@@ -14,9 +14,6 @@ mod projection;
 mod provider_incremental;
 mod provider_incremental_probe_batch;
 mod provider_incremental_schema;
-#[cfg(test)]
-#[path = "../../../tests/unit/provider_incremental_search.rs"]
-mod provider_incremental_tests;
 mod provider_treesitter;
 mod provider_treesitter_read;
 mod provider_treesitter_write;

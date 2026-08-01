@@ -431,6 +431,8 @@ fn source_index_hash_reuse_ignores_scope_dir_mtime() {
         path: source_path.clone(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
+        projection_coverage:
+            agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
         selector_receipts: Vec::new(),
     }];
     let source_blobs =
@@ -502,6 +504,8 @@ fn source_index_dirty_git_path_forces_content_hash_despite_metadata_collision() 
         path: source_path.clone(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
+        projection_coverage:
+            agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
         selector_receipts: Vec::new(),
     }];
     let first_source_blobs =
@@ -563,8 +567,38 @@ fn source_index_refresh_publishes_distinct_immutable_generation_identities() {
     assert!(!first.reused_generation);
 
     let mut changed_request = refresh_request(&project_root);
-    changed_request.import.file_hashes[0].sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
-    let changed_snapshot = crate::snapshot_fixture::source_snapshot_evidence_for(2);
+    let changed_source = b"pub fn source_index_perf_fixture() { changed(); }";
+    changed_request.import.file_hashes[0].sha256 = format!(
+        "{:x}",
+        <sha2::Sha256 as sha2::Digest>::digest(changed_source)
+    );
+    changed_request.import.file_hashes[0].byte_len = changed_source.len() as u64;
+    changed_request.import.selectors[0].source = String::from_utf8(changed_source.to_vec())
+        .expect("changed fixture UTF-8")
+        .into();
+    changed_request.import.selectors[0].projection_record =
+        crate::projection_fixture::projection_record(
+            crate::projection_fixture::ProjectionFixtureInput {
+                language_id: "rust",
+                provider_id: "rs-harness",
+                owner_path: "src/source_index_perf.rs",
+                structural_selector: "rust://src/source_index_perf.rs#item/function/source_index_perf_fixture",
+                item_kind: "function",
+                item_name: "source_index_perf_fixture",
+                source: changed_source,
+                source_byte_start: 0,
+                source_byte_end: changed_source.len() as u64,
+            },
+        );
+    let changed_snapshot =
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
+            "src/source_index_perf.rs",
+            blake3::hash(changed_source).to_hex().to_string(),
+        )])
+        .evidence(
+            agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+            first_snapshot.provider_digest.clone(),
+        );
     changed_request.import.generation_id =
         agent_semantic_client_db::client_db_source_index_generation_id_for_snapshot(
             &changed_snapshot,
@@ -604,7 +638,7 @@ fn source_index_refresh_publishes_distinct_immutable_generation_identities() {
 }
 
 #[test]
-fn source_index_refresh_rejects_selector_bytes_without_matching_file_identity() {
+fn source_index_refresh_uses_projection_proof_instead_of_legacy_selector_text() {
     let _test_guard = source_index_refresh_test_guard();
     let root = temp_project_root("source-index-selector-only-refresh");
     let client_dir = root.join("client");
@@ -614,18 +648,16 @@ fn source_index_refresh_rejects_selector_bytes_without_matching_file_identity() 
     std::fs::create_dir_all(&client_dir).expect("create client dir");
     std::fs::create_dir_all(project_root.join("src")).expect("create project src dir");
 
-    commit_fixture_generation(&fixture, refresh_request(&project_root))
+    let first = commit_fixture_generation(&fixture, refresh_request(&project_root))
         .expect("write initial source-index facts");
 
     let mut changed_request = refresh_request(&project_root);
     changed_request.import.selectors[0].source =
         "pub fn source_index_perf_fixture() { changed(); }".into();
-    let error = commit_fixture_generation(&fixture, changed_request)
-        .expect_err("selector bytes without matching file identity must fail closed");
-    assert!(
-        error.contains("immutable workspace generation materialization drift"),
-        "unexpected selector materialization error: {error}"
-    );
+    let replay = commit_fixture_generation(&fixture, changed_request)
+        .expect("legacy selector text is outside proof authority");
+    assert!(replay.reused_generation);
+    assert_eq!(replay.generation_id, first.generation_id);
 
     let _ = std::fs::remove_dir_all(root);
 }
@@ -657,13 +689,14 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
             }],
             selectors: vec![ClientDbSourceIndexSelector {
                 owner_path: "src/source_index_perf.rs".into(),
+                provider_id: ProviderId::from("rs-harness"),
                 selector_id: structural_selector.into(),
                 symbol: Some("source_index_perf_fixture".into()),
                 kind: Some("function".into()),
                 source: "pub fn source_index_perf_fixture() {}".to_string().into(),
                 query_keys: vec!["source_index_perf_fixture".to_string().into()],
-                materialization_proof: crate::materialization_fixture::materialization_proof(
-                    crate::materialization_fixture::MaterializationFixtureInput {
+                projection_record: crate::projection_fixture::projection_record(
+                    crate::projection_fixture::ProjectionFixtureInput {
                         language_id: "rust",
                         provider_id: "rs-harness",
                         owner_path: "src/source_index_perf.rs",
@@ -687,8 +720,13 @@ fn commit_fixture_generation(
     let source_blobs = agent_semantic_client_db::ClientDbSourceIndexSourceBlobs::from_normalized(
         request.import.selectors.iter().map(|selector| {
             (
-                selector.materialization_proof.owner_path.clone().into(),
-                selector.materialization_proof.projection.clone(),
+                selector
+                    .projection_record
+                    .proof
+                    .owner_path()
+                    .to_owned()
+                    .into(),
+                selector.projection_record.projection_payload.clone(),
             )
         }),
     );
@@ -723,13 +761,14 @@ fn large_refresh_request(
         });
         selectors.push(ClientDbSourceIndexSelector {
             owner_path: owner_path.into(),
+            provider_id: ProviderId::from("rs-harness"),
             selector_id: selector_id.clone().into(),
             symbol: Some(symbol.clone().into()),
             kind: Some("function".into()),
             source: source.clone().into(),
             query_keys: vec![symbol.into()],
-            materialization_proof: crate::materialization_fixture::materialization_proof(
-                crate::materialization_fixture::MaterializationFixtureInput {
+            projection_record: crate::projection_fixture::projection_record(
+                crate::projection_fixture::ProjectionFixtureInput {
                     language_id: "rust",
                     provider_id: "rs-harness",
                     owner_path: &format!("src/generated/owner_{index}.rs"),

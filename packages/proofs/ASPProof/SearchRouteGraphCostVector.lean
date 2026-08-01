@@ -1,6 +1,6 @@
 import ASPProof.SearchRouteDAG
 
-namespace SearchRouteGraphCostVector
+namespace ASPProof.SearchRouteGraphCostVector
 
 open SearchRouteDAG
 
@@ -210,6 +210,8 @@ def cheapOneHop : GraphCostVector := {
 theorem hop_bound_alone_does_not_close_frontier :
     expensiveOneHop.graphHops ≤ cheapOneHop.graphHops ∧
     ¬ CostVectorNoWorse expensiveOneHop cheapOneHop := by
+  unfold CostVectorNoWorse TokenTailNoWorse RoundTransitionNoWorse
+    expensiveOneHop cheapOneHop
   decide
 
 end SearchRouteGraphCostVector

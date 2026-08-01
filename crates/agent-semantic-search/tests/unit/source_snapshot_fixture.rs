@@ -8,15 +8,15 @@ const RUST_PROVIDER_MANIFEST: &[u8] = include_bytes!(
 const FIXTURE_PATH: &str = "src/lib.rs";
 const FIXTURE_SOURCE: &[u8] = b"pub fn fixture() -> &'static str { \"source-index\" }\n";
 
-pub(crate) struct CanonicalTestSnapshot {
-    pub(crate) workspace: WorkspaceSnapshot,
-    pub(crate) evidence: SourceSnapshotEvidence,
-    pub(crate) provider_digest: String,
-    pub(crate) generation:
+pub struct CanonicalTestSnapshot {
+    pub workspace: WorkspaceSnapshot,
+    pub evidence: SourceSnapshotEvidence,
+    pub provider_digest: String,
+    pub generation:
         agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1,
 }
 
-pub(crate) fn canonical_test_snapshot() -> CanonicalTestSnapshot {
+pub fn canonical_test_snapshot() -> CanonicalTestSnapshot {
     let source_digest = hash_blob(FIXTURE_SOURCE).value;
     let provider_digest = hash_blob(RUST_PROVIDER_MANIFEST).value;
     let workspace = WorkspaceSnapshot::from_file_hashes([(FIXTURE_PATH, source_digest)]);

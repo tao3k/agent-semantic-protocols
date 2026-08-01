@@ -254,13 +254,9 @@ fn write_activation(root: &Path, provider: &Path) {
             "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
             "routes": routes,
             "coverage": {
-                "packageRoots": ["."],
+                "packageRoots": [],
                 "configFiles": crate::provider_manifest_scope::project_entries(&manifest),
-                "sourceExtensions": crate::provider_manifest_scope::document_extensions(&manifest),
-                "sourcePaths": [],
-                "repositoryCandidateGeneration": "test-repository-candidate-generation",
-                "workspaceSourceScopeGeneration": "test-project-resolution-generation",
-                "projectResolutions": []
+                "sourceExtensions": crate::provider_manifest_scope::document_extensions(&manifest)
             }
         }]
     });

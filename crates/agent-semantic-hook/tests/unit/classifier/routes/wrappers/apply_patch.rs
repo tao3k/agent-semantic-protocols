@@ -37,7 +37,7 @@ PATCH"#;
     assert!(
         decision
             .message
-            .contains("query --selector <path:start:end> --workspace")
+            .contains("query --selector <exact-structural-selector> --workspace")
     );
     assert!(!decision.message.contains("--from-hook direct-source-read"));
     assert!(decision.message.contains("semantic-ast-patch.json"));
@@ -144,7 +144,7 @@ fn direct_apply_patch_tool_to_source_requires_semantic_ast_patch() {
     assert!(
         decision
             .message
-            .contains("query --selector <path:start:end> --workspace")
+            .contains("query --selector <exact-structural-selector> --workspace")
     );
     assert!(!decision.message.contains("--from-hook direct-source-read"));
     assert!(decision.message.contains("semantic-ast-patch.json"));

@@ -6,8 +6,7 @@ pub(super) struct TursoSourceIndexCanonicalSelectorFact {
     pub(super) symbol: Option<String>,
     pub(super) kind: Option<String>,
     pub(super) source: String,
-    pub(super) materialization_proof:
-        agent_semantic_content_identity::ExactSelectorMaterializationProofV1,
+    pub(super) projection_record: agent_semantic_content_identity::ExactSelectorProjectionRecordV1,
     pub(super) query_keys: Vec<String>,
 }
 
@@ -75,7 +74,7 @@ pub(super) fn turso_source_index_canonical_selectors_by_owner(
                     .map(|symbol| symbol.as_str().to_string()),
                 kind: selector.kind.as_ref().map(|kind| kind.as_str().to_string()),
                 source: selector.source.as_str().to_string(),
-                materialization_proof: selector.materialization_proof.clone(),
+                projection_record: selector.projection_record.clone(),
                 query_keys: selector
                     .query_keys
                     .iter()

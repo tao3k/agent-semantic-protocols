@@ -28,6 +28,15 @@ fn parsed_leading_inline_assignment_opts_out_for_one_command() {
 }
 
 #[test]
+fn codex_exec_command_cmd_field_uses_the_same_typed_opt_out() {
+    let payload = json!({"tool_input": {"cmd": "ASP_NO_AGENT=1 cargo test"}});
+    assert_eq!(
+        asp_no_agent_source(&payload, false),
+        Some(AspNoAgentSource::InlineCommandEnvironment)
+    );
+}
+
+#[test]
 fn inline_assignment_detection_stays_sub_millisecond_on_hot_path() {
     let payload = payload("ASP_NO_AGENT=1 cargo test");
     let started = Instant::now();

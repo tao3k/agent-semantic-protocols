@@ -1,0 +1,730 @@
+//! Runtime Server generation overlays and process-cold exact projection gates.
+
+use agent_semantic_client_db::runtime_server_workspace::{
+    RuntimeServerWorkspaceRegistry, WorkspaceExactProjectionDataPlaneClient,
+    WorkspaceExactProjectionDataPlaneOpen, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
+    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
+    workspace_generation_pointer_path,
+};
+use std::time::Instant;
+use tempfile::tempdir;
+
+fn project_root(workspace_identity: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from("/runtime-server-workspace-fixture").join(workspace_identity)
+}
+
+fn resident_pointer(
+    runtime_root: &std::path::Path,
+    workspace_identity: &str,
+) -> std::path::PathBuf {
+    workspace_generation_pointer_path(
+        runtime_root,
+        workspace_identity,
+        &project_root(workspace_identity),
+    )
+    .unwrap()
+}
+
+fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
+    WorkspaceOwnerSnapshot {
+        owner_path: path.to_owned(),
+        content_digest: format!("blake3-256:{}", blake3::hash(bytes).to_hex()),
+        bytes: bytes.to_vec(),
+        selectors: vec![WorkspaceSelectorSnapshot {
+            selector: selector.to_owned(),
+            byte_start: 0,
+            byte_end: bytes.len(),
+            derived_projections: Vec::new(),
+        }],
+    }
+}
+
+fn generation(
+    workspace_identity: &str,
+    epoch: u64,
+    owner: WorkspaceOwnerSnapshot,
+) -> WorkspaceMemoryGeneration {
+    generation_with_owners(workspace_identity, epoch, vec![owner])
+}
+
+fn generation_with_owners(
+    workspace_identity: &str,
+    epoch: u64,
+    owners: Vec<WorkspaceOwnerSnapshot>,
+) -> WorkspaceMemoryGeneration {
+    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
+        owners
+            .iter()
+            .map(|owner| (owner.owner_path.clone(), owner.content_digest.clone())),
+    );
+    let source_snapshot = workspace_snapshot.evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        format!(
+            "blake3-256:{}",
+            blake3::hash(b"runtime-workspace-fixture-provider").to_hex()
+        ),
+    );
+    WorkspaceMemoryGeneration::try_from_build(
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            workspace_identity: workspace_identity.to_owned(),
+            project_root: project_root(workspace_identity).display().to_string(),
+            active_epoch: epoch,
+            workspace_snapshot,
+            source_snapshot,
+            module_graph_digest: format!(
+                "blake3-256:{}",
+                blake3::hash(b"runtime-workspace-fixture-module-graph").to_hex()
+            ),
+            project_resolutions: Vec::new(),
+            owners,
+        },
+    )
+    .expect("typed runtime workspace generation")
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn process_cold_exact_projection_relocates_by_canonical_item_identity() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let live = owner(
+        "src/new_owner.rs",
+        "rust://src/new_owner.rs#item/function/run",
+        b"fn run() { relocated(); }",
+    );
+    registry
+        .publish(
+            "exact-relocation",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation("workspace-exact-relocation", 1, live),
+        )
+        .await
+        .expect("publish relocated generation");
+    let pointer = resident_pointer(temporary.path(), "workspace-exact-relocation");
+    let client = WorkspaceExactProjectionDataPlaneClient::open(&pointer)
+        .await
+        .expect("open relocated exact index");
+
+    match client
+        .read_runtime_selector("source", "rust://src/old_owner.rs#item/function/run")
+        .expect("resolve moved canonical identity")
+    {
+        WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {
+            assert_eq!(bytes, b"fn run() { relocated(); }");
+        }
+        read => panic!("moved selector must resolve from the active generation: {read:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn process_cold_exact_projection_relocates_scoped_impl_and_method_identity() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let source = b"impl Parse for CliOptions { fn parse(&self) {} }";
+    let mut live = owner(
+        "src/current.rs",
+        "rust://src/current.rs#item/impl/CliOptions/scope/implementation-owner/type/CliOptions/scope/trait-owner/trait/Parse",
+        source,
+    );
+    live.selectors.push(WorkspaceSelectorSnapshot {
+        selector: "rust://src/current.rs#item/method/parse/scope/implementation-owner/type/CliOptions/scope/trait-owner/trait/Parse".to_owned(),
+        byte_start: 0,
+        byte_end: source.len(),
+        derived_projections: Vec::new(),
+    });
+    registry
+        .publish(
+            "exact-scoped-relocation",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation("workspace-exact-scoped-relocation", 1, live),
+        )
+        .await
+        .expect("publish scoped relocation generation");
+    let pointer = resident_pointer(temporary.path(), "workspace-exact-scoped-relocation");
+    let client = WorkspaceExactProjectionDataPlaneClient::open(&pointer)
+        .await
+        .expect("open scoped relocation index");
+
+    for stale in [
+        "rust://src/previous.rs#item/impl/CliOptions/scope/implementation-owner/type/CliOptions/scope/trait-owner/trait/Parse",
+        "rust://src/previous.rs#item/method/parse/scope/implementation-owner/type/CliOptions/scope/trait-owner/trait/Parse",
+    ] {
+        match client
+            .read_runtime_selector("source", stale)
+            .expect("resolve scoped canonical identity")
+        {
+            WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {
+                assert_eq!(bytes, source);
+            }
+            read => panic!("scoped moved selector must resolve from active generation: {read:?}"),
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn process_cold_exact_projection_rejects_ambiguous_relocation() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let owners = vec![
+        owner(
+            "src/first.rs",
+            "rust://src/first.rs#item/function/run",
+            b"fn run() { first(); }",
+        ),
+        owner(
+            "src/second.rs",
+            "rust://src/second.rs#item/function/run",
+            b"fn run() { second(); }",
+        ),
+    ];
+    registry
+        .publish(
+            "exact-relocation-ambiguous",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation_with_owners("workspace-exact-relocation-ambiguous", 1, owners),
+        )
+        .await
+        .expect("publish ambiguous generation");
+    let pointer = resident_pointer(temporary.path(), "workspace-exact-relocation-ambiguous");
+    let client = WorkspaceExactProjectionDataPlaneClient::open(&pointer)
+        .await
+        .expect("open ambiguous exact index");
+
+    match client
+        .read_runtime_selector("source", "rust://src/old.rs#item/function/run")
+        .expect("classify ambiguous canonical identity")
+    {
+        WorkspaceRuntimeSelectorRead::RelocationAmbiguous { candidates, .. } => assert_eq!(
+            candidates,
+            vec![
+                "rust://src/first.rs#item/function/run",
+                "rust://src/second.rs#item/function/run",
+            ]
+        ),
+        read => panic!("duplicate canonical identity must be ambiguous: {read:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn warm_canonical_relocation_is_sub_250_microseconds_at_p99() {
+    let _performance = crate::test_support::performance_lock();
+    const UNRELATED_SELECTOR_COUNT: usize = 32_768;
+    const SAMPLE_COUNT: usize = 2_048;
+    const P99_BUDGET_NANOS: u128 = 250_000;
+
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let unrelated_source = b"fn unrelated() {}";
+    let mut unrelated = owner(
+        "src/unrelated.rs",
+        "rust://src/unrelated.rs#item/function/unrelated-00000",
+        unrelated_source,
+    );
+    unrelated.selectors = (0..UNRELATED_SELECTOR_COUNT)
+        .map(|index| WorkspaceSelectorSnapshot {
+            selector: format!("rust://src/unrelated.rs#item/function/unrelated-{index:05}"),
+            byte_start: 0,
+            byte_end: unrelated_source.len(),
+            derived_projections: Vec::new(),
+        })
+        .collect();
+    let target_source = b"fn target() { relocated(); }";
+    let target = owner(
+        "src/current.rs",
+        "rust://src/current.rs#item/function/target",
+        target_source,
+    );
+    registry
+        .publish(
+            "exact-relocation-performance",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation_with_owners(
+                "workspace-exact-relocation-performance",
+                1,
+                vec![unrelated, target],
+            ),
+        )
+        .await
+        .expect("publish relocation performance generation");
+    let pointer = resident_pointer(temporary.path(), "workspace-exact-relocation-performance");
+    let client = WorkspaceExactProjectionDataPlaneClient::open(&pointer)
+        .await
+        .expect("open relocation index");
+    let stale = "rust://src/previous.rs#item/function/target";
+    let mut samples = Vec::with_capacity(SAMPLE_COUNT);
+    for _ in 0..SAMPLE_COUNT {
+        let started = Instant::now();
+        let read = client
+            .read_runtime_selector("source", stale)
+            .expect("relocate selector");
+        assert!(matches!(
+            read,
+            WorkspaceRuntimeSelectorRead::Projection { .. }
+        ));
+        samples.push(started.elapsed().as_nanos());
+    }
+    samples.sort_unstable();
+    let p99 = samples[(SAMPLE_COUNT * 99).div_ceil(100) - 1];
+    eprintln!(
+        "[workspace-exact-relocation-performance] unrelatedSelectors={UNRELATED_SELECTOR_COUNT} samples={SAMPLE_COUNT} p99Nanos={p99} budgetNanos={P99_BUDGET_NANOS} subprocesses=0 dbOpens=0 sourceFilesRead=0"
+    );
+    assert!(
+        p99 < P99_BUDGET_NANOS,
+        "canonical relocation p99 exceeded 250 microseconds: p99Nanos={p99}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn owner_overlay_cannot_manufacture_an_absent_canonical_generation() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let error = registry
+        .publish_owner_overlay(
+            "recover-1",
+            "workspace-a",
+            &project_root("workspace-a"),
+            owner(
+                "src/lib.rs",
+                "rust://src/lib.rs#item/function/run",
+                b"fn run() {}",
+            ),
+        )
+        .await
+        .expect_err("owner overlay must require a canonical generation");
+
+    assert!(error.contains("requires an admitted canonical generation"));
+    assert!(
+        registry
+            .lease("workspace-a", &project_root("workspace-a"))
+            .is_err()
+    );
+    assert_eq!(registry.data_plane_counters().database_opens, 0);
+    assert_eq!(registry.data_plane_counters().provider_spawns, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn same_owner_selector_overlays_accumulate_without_advancing_source_epoch() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let source = b"fn first() {}\nfn second() {}";
+    let first_selector = "rust://src/lib.rs#item/function/first";
+    let second_selector = "rust://src/lib.rs#item/function/second";
+
+    registry
+        .publish(
+            "first-selector",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                "workspace-a",
+                1,
+                owner("src/lib.rs", first_selector, source),
+            ),
+        )
+        .await
+        .expect("publish first selector");
+    registry
+        .publish_selector_overlay(
+            "workspace-a",
+            &project_root("workspace-a"),
+            WorkspaceRuntimeSelectorOverlay {
+                projection_kind: "source".to_owned(),
+                structural_selector: second_selector.to_owned(),
+                owner_path: "src/lib.rs".to_owned(),
+                owner_content_digest: format!("blake3-256:{}", blake3::hash(source).to_hex()),
+                byte_start: 14,
+                byte_end: source.len(),
+                projection_bytes: b"fn second() {}".to_vec(),
+            },
+        )
+        .await
+        .expect("publish second selector");
+
+    let lease = registry
+        .lease("workspace-a", &project_root("workspace-a"))
+        .expect("generation lease");
+    assert!(matches!(
+        lease
+            .read_runtime_selector("source", first_selector)
+            .expect("read first selector"),
+        WorkspaceRuntimeSelectorRead::Projection { .. }
+    ));
+    assert!(matches!(
+        lease
+            .read_runtime_selector("source", second_selector)
+            .expect("read second selector"),
+        WorkspaceRuntimeSelectorRead::Projection { .. }
+    ));
+    assert_eq!(lease.epoch(), 1);
+    assert_eq!(lease.generation().root_depth, [1, 0]);
+    assert_eq!(lease.generation().owners.len(), 1);
+    assert_eq!(
+        lease.generation().owners[0].selectors.len(),
+        1,
+        "resident owner overlays must not rewrite the canonical mmap generation"
+    );
+    assert_eq!(registry.data_plane_counters().provider_spawns, 0);
+    assert_eq!(registry.data_plane_counters().database_opens, 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn selector_overlay_is_memory_resident_and_preserves_the_source_epoch() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let source = b"fn first() {}\nfn second() {}";
+    let baseline_selector = "rust://src/lib.rs#item/function/first";
+    let repaired_selector = "rust://src/lib.rs#item/function/second";
+    let owner = owner("src/lib.rs", baseline_selector, source);
+    let owner_content_digest = owner.content_digest.clone();
+    registry
+        .publish(
+            "canonical-generation",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation("workspace-selector-overlay", 1, owner),
+        )
+        .await
+        .expect("publish canonical generation");
+
+    let receipt = registry
+        .publish_selector_overlay(
+            "workspace-selector-overlay",
+            &project_root("workspace-selector-overlay"),
+            WorkspaceRuntimeSelectorOverlay {
+                projection_kind: "source".to_owned(),
+                structural_selector: repaired_selector.to_owned(),
+                owner_path: "src/lib.rs".to_owned(),
+                owner_content_digest,
+                byte_start: 14,
+                byte_end: source.len(),
+                projection_bytes: b"fn second() {}".to_vec(),
+            },
+        )
+        .await
+        .expect("publish selector overlay");
+    assert!(receipt.inserted);
+    assert_eq!(
+        registry
+            .lease(
+                "workspace-selector-overlay",
+                &project_root("workspace-selector-overlay")
+            )
+            .expect("generation lease")
+            .epoch(),
+        1,
+        "selector-only publication must preserve the source generation epoch"
+    );
+    match registry
+        .read_runtime_selector(
+            "workspace-selector-overlay",
+            &project_root("workspace-selector-overlay"),
+            "source",
+            repaired_selector,
+        )
+        .expect("read repaired selector")
+    {
+        WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {
+            assert_eq!(bytes, b"fn second() {}");
+        }
+        read => panic!("expected resident projection, got {read:?}"),
+    }
+    let pointer = resident_pointer(temporary.path(), "workspace-selector-overlay");
+    let WorkspaceExactProjectionDataPlaneOpen::Ready(process_cold) =
+        WorkspaceExactProjectionDataPlaneClient::open_state(&pointer)
+            .await
+            .expect("open process-cold selector generation")
+    else {
+        panic!("selector overlay must be published to the mmap data plane");
+    };
+    assert!(matches!(
+        process_cold
+            .read_runtime_selector("source", repaired_selector)
+            .expect("read canonical process-cold generation"),
+        WorkspaceRuntimeSelectorRead::OwnerForRepair { .. }
+    ));
+    let repeated = registry
+        .publish_selector_overlay(
+            "workspace-selector-overlay",
+            &project_root("workspace-selector-overlay"),
+            WorkspaceRuntimeSelectorOverlay {
+                projection_kind: "source".to_owned(),
+                structural_selector: repaired_selector.to_owned(),
+                owner_path: "src/lib.rs".to_owned(),
+                owner_content_digest: format!("blake3-256:{}", blake3::hash(source).to_hex()),
+                byte_start: 14,
+                byte_end: source.len(),
+                projection_bytes: b"fn second() {}".to_vec(),
+            },
+        )
+        .await
+        .expect("repeat identical selector overlay");
+    assert!(!repeated.inserted);
+    assert_eq!(
+        registry
+            .lease(
+                "workspace-selector-overlay",
+                &project_root("workspace-selector-overlay")
+            )
+            .expect("generation lease")
+            .epoch(),
+        1,
+        "idempotent selector publication must preserve the source epoch"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn selector_overlay_binds_projection_kind_and_projection_bytes() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let source = b"fn first() {}";
+    let selector = "rust://src/lib.rs#item/function/first";
+    let source_owner = owner("src/lib.rs", selector, source);
+    registry
+        .publish(
+            "canonical-generation",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                "workspace-projection-kind",
+                1,
+                source_owner.clone(),
+            ),
+        )
+        .await
+        .expect("publish canonical generation");
+    let callable_skeleton = br#"{"kind":"function","name":"first"}"#.to_vec();
+    registry
+        .publish_selector_overlay(
+            "workspace-projection-kind",
+            &project_root("workspace-projection-kind"),
+            WorkspaceRuntimeSelectorOverlay {
+                projection_kind: "callable-skeleton".to_owned(),
+                structural_selector: selector.to_owned(),
+                owner_path: source_owner.owner_path,
+                owner_content_digest: source_owner.content_digest,
+                byte_start: 0,
+                byte_end: source.len(),
+                projection_bytes: callable_skeleton.clone(),
+            },
+        )
+        .await
+        .expect("publish callable-skeleton overlay");
+
+    match registry
+        .read_runtime_selector(
+            "workspace-projection-kind",
+            &project_root("workspace-projection-kind"),
+            "source",
+            selector,
+        )
+        .expect("read source projection")
+    {
+        WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => assert_eq!(bytes, source),
+        read => panic!("expected source projection, got {read:?}"),
+    }
+    match registry
+        .read_runtime_selector(
+            "workspace-projection-kind",
+            &project_root("workspace-projection-kind"),
+            "callable-skeleton",
+            selector,
+        )
+        .expect("read callable-skeleton projection")
+    {
+        WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {
+            assert_eq!(bytes, callable_skeleton);
+        }
+        read => panic!("expected callable-skeleton projection, got {read:?}"),
+    }
+    assert_eq!(
+        registry
+            .lease(
+                "workspace-projection-kind",
+                &project_root("workspace-projection-kind")
+            )
+            .expect("generation lease")
+            .epoch(),
+        1
+    );
+    let pointer = resident_pointer(temporary.path(), "workspace-projection-kind");
+    let WorkspaceExactProjectionDataPlaneOpen::Ready(process_cold) =
+        WorkspaceExactProjectionDataPlaneClient::open_state(&pointer)
+            .await
+            .expect("open callable-skeleton generation")
+    else {
+        panic!("callable-skeleton projection must be mmap-readable");
+    };
+    assert!(matches!(
+        process_cold
+            .read_runtime_selector("callable-skeleton", selector)
+            .expect("read canonical process-cold generation"),
+        WorkspaceRuntimeSelectorRead::OwnerForRepair { .. }
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn process_cold_exact_projection_open_and_lookup_is_sub_millisecond_at_p99() {
+    let _performance = crate::test_support::performance_lock();
+    const SELECTOR_COUNT: usize = 2_048;
+    const SAMPLE_COUNT: usize = 128;
+    const P99_BUDGET_NANOS: u128 = 1_000_000;
+
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let source = b"fn target() {}";
+    let mut source_owner = owner(
+        "src/lib.rs",
+        "rust://src/lib.rs#item/function/target-0000",
+        source,
+    );
+    source_owner.selectors = (0..SELECTOR_COUNT)
+        .map(|index| WorkspaceSelectorSnapshot {
+            selector: format!("rust://src/lib.rs#item/function/target-{index:04}"),
+            byte_start: 0,
+            byte_end: source.len(),
+            derived_projections: Vec::new(),
+        })
+        .collect();
+    registry
+        .publish(
+            "exact-index-performance",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            generation("workspace-exact-index-performance", 1, source_owner),
+        )
+        .await
+        .expect("publish large exact projection generation");
+    let pointer = resident_pointer(temporary.path(), "workspace-exact-index-performance");
+    let target = "rust://src/lib.rs#item/function/target-2047";
+    WorkspaceExactProjectionDataPlaneClient::open(&pointer)
+        .await
+        .expect("prewarm exact mmap pages");
+
+    let mut samples = Vec::with_capacity(SAMPLE_COUNT);
+    for _ in 0..SAMPLE_COUNT {
+        let started = Instant::now();
+        let client = WorkspaceExactProjectionDataPlaneClient::open(&pointer)
+            .await
+            .expect("open process-cold exact index");
+        match client
+            .read_runtime_selector("source", target)
+            .expect("binary-search exact selector")
+        {
+            WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {
+                assert_eq!(bytes, source);
+            }
+            read => panic!("expected exact projection, got {read:?}"),
+        }
+        samples.push(started.elapsed().as_nanos());
+    }
+    samples.sort_unstable();
+    let p99 = samples[(SAMPLE_COUNT * 99).div_ceil(100) - 1];
+    let max = *samples.last().expect("at least one exact sample");
+    eprintln!(
+        "[workspace-exact-index-performance] selectors={SELECTOR_COUNT} samples={SAMPLE_COUNT} p99Nanos={p99} maxNanos={max} budgetNanos={P99_BUDGET_NANOS}"
+    );
+    assert!(
+        p99 < P99_BUDGET_NANOS,
+        "process-cold exact projection p99 exceeded one millisecond: p99Nanos={p99}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn process_cold_owner_identity_is_independent_of_unrelated_selector_volume() {
+    let _performance = crate::test_support::performance_lock();
+    const UNRELATED_SELECTOR_COUNT: usize = 32_768;
+    const SAMPLE_COUNT: usize = 128;
+    const P99_BUDGET_NANOS: u128 = 1_000_000;
+
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let target = owner(
+        "src/target.rs",
+        "rust://src/target.rs#item/function/target",
+        b"fn target() {}",
+    );
+    let unrelated_source = b"fn unrelated() {}";
+    let mut unrelated = owner(
+        "src/unrelated.rs",
+        "rust://src/unrelated.rs#item/function/unrelated-00000",
+        unrelated_source,
+    );
+    unrelated.selectors = (0..UNRELATED_SELECTOR_COUNT)
+        .map(|index| WorkspaceSelectorSnapshot {
+            selector: format!("rust://src/unrelated.rs#item/function/unrelated-{index:05}"),
+            byte_start: 0,
+            byte_end: unrelated_source.len(),
+            derived_projections: Vec::new(),
+        })
+        .collect();
+    let owners = vec![unrelated, target.clone()];
+    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
+        owners
+            .iter()
+            .map(|owner| (owner.owner_path.clone(), owner.content_digest.clone())),
+    );
+    let source_snapshot = workspace_snapshot.evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        format!(
+            "blake3-256:{}",
+            blake3::hash(b"owner-identity-performance-provider").to_hex()
+        ),
+    );
+    let published = WorkspaceMemoryGeneration::try_from_build(
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            workspace_identity: "workspace-owner-identity-performance".to_owned(),
+            project_root: project_root("workspace-owner-identity-performance")
+                .display()
+                .to_string(),
+            active_epoch: 1,
+            workspace_snapshot,
+            source_snapshot,
+            module_graph_digest: format!(
+                "blake3-256:{}",
+                blake3::hash(b"owner-identity-performance-module-graph").to_hex()
+            ),
+            project_resolutions: Vec::new(),
+            owners,
+        },
+    )
+    .expect("typed owner identity performance generation");
+    registry
+        .publish(
+            "owner-identity-performance",
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+            published,
+        )
+        .await
+        .expect("publish owner identity performance generation");
+    let pointer = resident_pointer(temporary.path(), "workspace-owner-identity-performance");
+
+    let mut samples = Vec::with_capacity(SAMPLE_COUNT);
+    for _ in 0..SAMPLE_COUNT {
+        let started = Instant::now();
+        let client = WorkspaceExactProjectionDataPlaneClient::open(&pointer)
+            .await
+            .expect("open process-cold exact owner index");
+        assert!(
+            client
+                .contains_owner(&target)
+                .expect("compare target owner"),
+            "target owner identity must match"
+        );
+        samples.push(started.elapsed().as_nanos());
+    }
+    samples.sort_unstable();
+    let p99 = samples[(SAMPLE_COUNT * 99).div_ceil(100) - 1];
+    let max = *samples.last().expect("at least one owner identity sample");
+    eprintln!(
+        "[workspace-owner-identity-performance] unrelatedSelectors={UNRELATED_SELECTOR_COUNT} samples={SAMPLE_COUNT} p99Nanos={p99} maxNanos={max} budgetNanos={P99_BUDGET_NANOS}"
+    );
+    assert!(
+        p99 < P99_BUDGET_NANOS,
+        "process-cold owner identity p99 depends on unrelated selector volume: p99Nanos={p99}"
+    );
+}

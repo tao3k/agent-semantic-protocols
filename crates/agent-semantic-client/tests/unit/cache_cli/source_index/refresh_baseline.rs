@@ -2,7 +2,6 @@ use super::fixtures::{
     EnvVarGuard, RuntimeServerFixture, isolate_home, temp_root,
     write_gerbil_activation_with_command_prefix, write_rust_activation,
 };
-use crate::cache_cli::run_cache;
 use agent_semantic_client_core::{ASP_PROVIDER_ACTIVATION_PATH_ENV, LanguageId};
 use agent_semantic_client_db::ClientDbEngine;
 
@@ -45,25 +44,13 @@ async fn cache_source_index_refresh_builds_db_engine_rows() {
     .expect("write ignored plugin cache source");
 
     let server = RuntimeServerFixture::start(&root).await;
+    let rebuild_started = std::time::Instant::now();
+    server.rebuild(&root).await;
+    let rebuild_elapsed = rebuild_started.elapsed();
+    server.rebuild(&root).await;
     let blocking_root = root.clone();
-    let (rebuild_elapsed, result) = server
+    let result = server
         .blocking(move || {
-            let rebuild_started = std::time::Instant::now();
-            run_cache(
-                &blocking_root,
-                None,
-                &["source-index".to_string(), "rebuild".to_string()],
-                false,
-            )
-            .expect("rebuild source index");
-            let rebuild_elapsed = rebuild_started.elapsed();
-            run_cache(
-                &blocking_root,
-                None,
-                &["source-index".to_string(), "refresh".to_string()],
-                false,
-            )
-            .expect("reuse refreshed source index");
             let engine = ClientDbEngine::resolve(&blocking_root).expect("resolve DB Engine");
             assert!(
                 engine.db_path().exists(),
@@ -76,7 +63,7 @@ async fn cache_source_index_refresh_builds_db_engine_rows() {
                 8,
             )
             .expect("lookup source index");
-            (rebuild_elapsed, result)
+            result
         })
         .await;
     assert!(
@@ -92,8 +79,8 @@ async fn cache_source_index_refresh_builds_db_engine_rows() {
     let _ = std::fs::remove_dir_all(root);
 }
 
-#[test]
-fn cache_source_index_refresh_without_generation_is_bounded_warm_check() {
+#[tokio::test(flavor = "multi_thread")]
+async fn cache_source_index_admission_without_generation_is_bounded_warm_check() {
     let _guard = crate::test_support::CACHE_TEST_LOCK
         .lock()
         .expect("cache test lock");
@@ -101,30 +88,30 @@ fn cache_source_index_refresh_without_generation_is_bounded_warm_check() {
     let _home_env = isolate_home(&root);
     std::fs::write(
         root.join("Cargo.toml"),
-        "[workspace]\nmembers = []\nresolver = \"2\"\n",
+        "[package]\nname = \"warm-admission\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
     )
     .expect("write workspace manifest");
+    std::fs::create_dir_all(root.join("src")).expect("create warm admission source root");
+    std::fs::write(root.join("src/lib.rs"), "pub fn warm_admission() {}\n")
+        .expect("write warm admission source");
     let activation_path = write_rust_activation(&root);
     let _activation_env = EnvVarGuard::set(
         ASP_PROVIDER_ACTIVATION_PATH_ENV,
         activation_path.as_os_str(),
     );
 
+    let server = RuntimeServerFixture::start(&root).await;
+    server.rebuild(&root).await;
     let started = std::time::Instant::now();
-    run_cache(
-        &root,
-        None,
-        &["source-index".to_string(), "refresh".to_string()],
-        false,
-    )
-    .expect("refresh without generation should be a warm check");
+    server.rebuild(&root).await;
     let elapsed = started.elapsed();
 
     assert!(
         elapsed < std::time::Duration::from_millis(100),
-        "source-index refresh warm check exceeded gate: elapsedMs={}",
+        "source-index admission warm check exceeded gate: elapsedMs={}",
         elapsed.as_millis()
     );
+    server.shutdown().await;
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -156,41 +143,34 @@ async fn cache_source_index_refresh_invalidates_when_empty_source_root_gains_fil
         activation_path.as_os_str(),
     );
 
-    let server = RuntimeServerFixture::start(&root).await;
-    let initial_root = root.clone();
-    server
-        .blocking(move || {
-            run_cache(
-                &initial_root,
-                None,
-                &["source-index".to_string(), "rebuild".to_string()],
-                false,
-            )
-            .expect("rebuild source index");
-            run_cache(
-                &initial_root,
-                None,
-                &["source-index".to_string(), "refresh".to_string()],
-                false,
-            )
-            .expect("reuse source index");
-        })
-        .await;
+    let initial_server = RuntimeServerFixture::start(&root).await;
+    initial_server.rebuild(&root).await;
+    initial_server.rebuild(&root).await;
+    initial_server.shutdown().await;
     std::fs::write(
         extra_dir.join("new_usage.ss"),
         "(def (new-scope-symbol input)\n  input)\n",
     )
     .expect("write new extra source");
+    let prepared =
+        crate::source_index::prepare_runtime_server_workspace_generation_async(root.clone())
+            .await
+            .expect("prepare changed Runtime Server generation");
+    assert!(
+        prepared
+            .refresh
+            .import
+            .file_hashes
+            .iter()
+            .any(|file| file.path.as_str() == "extra/new_usage.ss"),
+        "changed generation must include the newly admitted provider source: {:?}",
+        prepared.refresh.import.file_hashes
+    );
+    let server = RuntimeServerFixture::start(&root).await;
+    server.rebuild(&root).await;
     let changed_root = root.clone();
     let result = server
         .blocking(move || {
-            run_cache(
-                &changed_root,
-                None,
-                &["source-index".to_string(), "rebuild".to_string()],
-                false,
-            )
-            .expect("rebuild changed source index");
             let engine = ClientDbEngine::resolve(&changed_root).expect("resolve DB Engine");
             assert!(engine.db_path().exists());
             crate::test_support::lookup_current_source_index_for_language(

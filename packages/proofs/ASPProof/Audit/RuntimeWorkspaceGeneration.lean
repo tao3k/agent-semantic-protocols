@@ -13,7 +13,19 @@ theorem resident_read_gate_requires_zero_db_open
     (receipt : ResidentReadReceipt)
     (admitted : ResidentOnlyRead receipt) :
     receipt.databaseOpens = 0 := by
-  exact admitted.2
+  exact admitted.2.2.1
+
+theorem resident_read_gate_requires_zero_control_roundtrip
+    (receipt : ResidentReadReceipt)
+    (admitted : ResidentOnlyRead receipt) :
+    receipt.controlSocketRoundtrips = 0 := by
+  exact admitted.2.2.2.2
+
+theorem resident_read_gate_requires_zero_filesystem_read
+    (receipt : ResidentReadReceipt)
+    (admitted : ResidentOnlyRead receipt) :
+    receipt.filesystemReads = 0 := by
+  exact admitted.2.1
 
 theorem resident_read_gate_requires_memory_hit
     (receipt : ResidentReadReceipt)

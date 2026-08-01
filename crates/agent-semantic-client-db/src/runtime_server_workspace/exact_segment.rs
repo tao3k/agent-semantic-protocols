@@ -4,14 +4,23 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 
 use super::{
-    WorkspaceGenerationPointerReader, WorkspaceGenerationSnapshot, WorkspaceMemoryGeneration,
-    WorkspaceOwnerSnapshot, WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
+    WorkspaceGenerationPointerReader, WorkspaceGenerationSnapshot, WorkspaceOwnerSnapshot,
+    WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
+};
+#[path = "exact_segment_encoding.rs"]
+mod encoding;
+#[path = "exact_segment_format.rs"]
+mod format;
+use format::{
+    checked_entry_offset, decode_header, read_slice, read_text, read_usize, write_range_entry,
+    write_range_header, write_u64, write_usize,
 };
 
-const MAGIC: &[u8; 16] = b"ASPEXACTMMAP0001";
-const HEADER_LEN: usize = 128;
+const MAGIC: &[u8; 16] = b"ASPEXACTMMAP0002";
+const HEADER_LEN: usize = 144;
 const OWNER_ENTRY_LEN: usize = 112;
 const SELECTOR_ENTRY_LEN: usize = 104;
+const RELOCATION_ENTRY_LEN: usize = 40;
 
 const EPOCH_OFFSET: usize = 16;
 const OWNER_COUNT_OFFSET: usize = 24;
@@ -27,6 +36,8 @@ const ROOT_DIGEST_OFFSET: usize = 96;
 const ROOT_DIGEST_LEN_OFFSET: usize = 104;
 const WORKSPACE_ID_OFFSET: usize = 112;
 const WORKSPACE_ID_LEN_OFFSET: usize = 120;
+const RELOCATION_TABLE_OFFSET: usize = 128;
+const RELOCATION_COUNT_OFFSET: usize = 136;
 
 #[derive(Debug)]
 pub struct WorkspaceExactProjectionDataPlaneClient {
@@ -73,6 +84,12 @@ impl WorkspaceExactProjectionDataPlaneClient {
             .read_runtime_selector(projection_kind, structural_selector)
     }
 
+    /// Return the resident content identity for one exact owner without
+    /// opening the workspace database or contacting the control plane.
+    pub fn owner_content_digest(&self, owner_path: &str) -> Result<Option<String>, String> {
+        self.mapped.owner_content_digest(owner_path)
+    }
+
     pub fn contains_owner(&self, owner: &WorkspaceOwnerSnapshot) -> Result<bool, String> {
         self.mapped.contains_owner(owner)
     }
@@ -95,6 +112,8 @@ struct MappedWorkspaceExactProjection {
     selector_count: usize,
     owner_table_offset: usize,
     selector_table_offset: usize,
+    relocation_table_offset: usize,
+    relocation_count: usize,
     generation_digest: String,
     root_digest: String,
 }
@@ -148,6 +167,8 @@ impl MappedWorkspaceExactProjection {
             selector_count: header.selector_count,
             owner_table_offset: header.owner_table_offset,
             selector_table_offset: header.selector_table_offset,
+            relocation_table_offset: header.relocation_table_offset,
+            relocation_count: header.relocation_count,
             generation_digest,
             root_digest,
         })
@@ -160,27 +181,20 @@ impl MappedWorkspaceExactProjection {
     ) -> Result<WorkspaceRuntimeSelectorRead, String> {
         super::selector_overlay::validate_projection_kind(projection_kind)?;
         if let Some(selector) = self.find_selector(projection_kind, structural_selector)? {
-            let owner = self.owner_entry(selector.owner_index)?;
-            let projection = if projection_kind == "source" {
-                self.owner_bytes(&owner)?
-                    .get(selector.byte_start..selector.byte_end)
-                    .ok_or_else(|| {
-                        "workspace exact projection selector range is invalid".to_owned()
-                    })?
-                    .to_vec()
-            } else {
-                read_slice(
-                    &self.mapping,
-                    selector.projection_blob_offset,
-                    selector.projection_blob_len,
-                    "derived projection bytes",
-                )?
-                .to_vec()
-            };
-            return Ok(WorkspaceRuntimeSelectorRead::Projection {
+            return self.project_selector(projection_kind, selector);
+        }
+        let relocated = self.find_relocated_selectors(projection_kind, structural_selector)?;
+        if relocated.len() == 1 {
+            return self.project_selector(projection_kind, relocated[0].1);
+        }
+        if relocated.len() > 1 {
+            return Ok(WorkspaceRuntimeSelectorRead::RelocationAmbiguous {
                 generation_digest: self.generation_digest.clone(),
                 root_digest: self.root_digest.clone(),
-                bytes: projection,
+                candidates: relocated
+                    .into_iter()
+                    .map(|(selector, _)| selector)
+                    .collect(),
             });
         }
         let owner_path = structural_selector
@@ -199,6 +213,40 @@ impl MappedWorkspaceExactProjection {
             root_digest: self.root_digest.clone(),
             owner: self.owner_snapshot(owner_index, &owner)?,
         })
+    }
+
+    fn project_selector(
+        &self,
+        projection_kind: &str,
+        selector: SelectorEntry,
+    ) -> Result<WorkspaceRuntimeSelectorRead, String> {
+        let owner = self.owner_entry(selector.owner_index)?;
+        let projection = if projection_kind == "source" {
+            self.owner_bytes(&owner)?
+                .get(selector.byte_start..selector.byte_end)
+                .ok_or_else(|| "workspace exact projection selector range is invalid".to_owned())?
+                .to_vec()
+        } else {
+            read_slice(
+                &self.mapping,
+                selector.projection_blob_offset,
+                selector.projection_blob_len,
+                "derived projection bytes",
+            )?
+            .to_vec()
+        };
+        Ok(WorkspaceRuntimeSelectorRead::Projection {
+            generation_digest: self.generation_digest.clone(),
+            root_digest: self.root_digest.clone(),
+            bytes: projection,
+        })
+    }
+
+    fn owner_content_digest(&self, owner_path: &str) -> Result<Option<String>, String> {
+        let Some((_, owner)) = self.find_owner(owner_path)? else {
+            return Ok(None);
+        };
+        Ok(Some(self.owner_digest(&owner)?.to_owned()))
     }
 
     fn contains_owner(&self, expected: &WorkspaceOwnerSnapshot) -> Result<bool, String> {
@@ -343,6 +391,69 @@ impl MappedWorkspaceExactProjection {
         Ok(None)
     }
 
+    fn find_relocated_selectors(
+        &self,
+        projection_kind: &str,
+        selector: &str,
+    ) -> Result<Vec<(String, SelectorEntry)>, String> {
+        let requested_identity = relocation_identity(selector)?;
+        let hash = relocation_key_hash(projection_kind, requested_identity.as_str());
+        let mut low = 0;
+        let mut high = self.relocation_count;
+        while low < high {
+            let middle = low + (high - low) / 2;
+            match self.relocation_entry(middle)?.hash.cmp(&hash) {
+                Ordering::Less => low = middle + 1,
+                Ordering::Greater => high = middle,
+                Ordering::Equal => {
+                    let mut first = middle;
+                    while first > 0 && self.relocation_entry(first - 1)?.hash == hash {
+                        first -= 1;
+                    }
+                    let mut matches = Vec::new();
+                    let mut index = first;
+                    while index < self.relocation_count {
+                        let relocation = self.relocation_entry(index)?;
+                        if relocation.hash != hash {
+                            break;
+                        }
+                        let candidate = self.selector_entry(relocation.selector_index)?;
+                        let candidate_text = self.selector_text(&candidate)?;
+                        if self.selector_kind(&candidate)? == projection_kind
+                            && relocation_identity(candidate_text)? == requested_identity
+                        {
+                            matches.push((candidate_text.to_owned(), candidate));
+                        }
+                        index += 1;
+                    }
+                    matches.sort_by(|left, right| left.0.cmp(&right.0));
+                    matches.dedup_by(|left, right| left.0 == right.0);
+                    return Ok(matches);
+                }
+            }
+        }
+        Ok(Vec::new())
+    }
+
+    fn relocation_entry(&self, index: usize) -> Result<RelocationEntry, String> {
+        if index >= self.relocation_count {
+            return Err("workspace exact relocation index is out of range".to_owned());
+        }
+        let start = checked_entry_offset(
+            self.relocation_table_offset,
+            index,
+            RELOCATION_ENTRY_LEN,
+            self.mapping.len(),
+        )?;
+        let bytes = &self.mapping[start..start + RELOCATION_ENTRY_LEN];
+        Ok(RelocationEntry {
+            hash: bytes[0..32]
+                .try_into()
+                .map_err(|_| "workspace exact relocation hash is invalid".to_owned())?,
+            selector_index: read_usize(bytes, 32, "relocation selector index")?,
+        })
+    }
+
     fn owner_entry(&self, index: usize) -> Result<OwnerEntry, String> {
         if index >= self.owner_count {
             return Err("workspace exact projection owner index is out of range".to_owned());
@@ -469,12 +580,20 @@ struct SelectorEntry {
     projection_blob_len: usize,
 }
 
+#[derive(Clone, Copy)]
+struct RelocationEntry {
+    hash: [u8; 32],
+    selector_index: usize,
+}
+
 struct Header {
     epoch: u64,
     owner_count: usize,
     selector_count: usize,
     owner_table_offset: usize,
     selector_table_offset: usize,
+    relocation_table_offset: usize,
+    relocation_count: usize,
     string_table_offset: usize,
     blob_offset: usize,
     generation_digest_offset: usize,
@@ -485,231 +604,10 @@ struct Header {
     workspace_id_len: usize,
 }
 
-pub(super) fn encode_exact_projection_segment(
-    generation: &WorkspaceMemoryGeneration,
-) -> Result<Vec<u8>, String> {
-    generation.validate()?;
-    let mut owners = generation.owners.iter().collect::<Vec<_>>();
-    owners.sort_by(|left, right| {
-        blake3::hash(left.owner_path.as_bytes())
-            .as_bytes()
-            .cmp(blake3::hash(right.owner_path.as_bytes()).as_bytes())
-            .then_with(|| left.owner_path.cmp(&right.owner_path))
-    });
-    let owner_table_offset = HEADER_LEN;
-    let selector_count = owners
-        .iter()
-        .flat_map(|owner| owner.selectors.iter())
-        .map(|selector| 1 + selector.derived_projections.len())
-        .sum::<usize>();
-    let selector_table_offset = owner_table_offset
-        .checked_add(owners.len().saturating_mul(OWNER_ENTRY_LEN))
-        .ok_or_else(|| "workspace exact owner table length overflow".to_owned())?;
-    let string_table_offset = selector_table_offset
-        .checked_add(selector_count.saturating_mul(SELECTOR_ENTRY_LEN))
-        .ok_or_else(|| "workspace exact selector table length overflow".to_owned())?;
-
-    let mut strings = Vec::new();
-    let generation_digest = push_bytes(&mut strings, generation.generation_digest.as_bytes());
-    let root_digest = push_bytes(
-        &mut strings,
-        generation.source_snapshot.root_digest.as_bytes(),
-    );
-    let workspace_identity = push_bytes(&mut strings, generation.workspace_identity.as_bytes());
-    let mut owner_rows = Vec::with_capacity(owners.len());
-    let mut selector_rows = Vec::with_capacity(selector_count);
-    let mut blobs = Vec::new();
-    for (owner_index, owner) in owners.iter().enumerate() {
-        let path = push_bytes(&mut strings, owner.owner_path.as_bytes());
-        let digest = push_bytes(&mut strings, owner.content_digest.as_bytes());
-        let blob_offset = blobs.len();
-        blobs.extend_from_slice(&owner.bytes);
-        owner_rows.push((
-            *blake3::hash(owner.owner_path.as_bytes()).as_bytes(),
-            path,
-            digest,
-            blob_offset,
-            owner.bytes.len(),
-            owner_projection_digest(owner),
-        ));
-        for selector in &owner.selectors {
-            let text = push_bytes(&mut strings, selector.selector.as_bytes());
-            let source_kind = push_bytes(&mut strings, b"source");
-            selector_rows.push((
-                projection_key_hash("source", &selector.selector),
-                text,
-                source_kind,
-                owner_index,
-                selector.byte_start,
-                selector.byte_end,
-                0,
-                0,
-            ));
-            for projection in &selector.derived_projections {
-                let projection_kind =
-                    push_bytes(&mut strings, projection.projection_kind.as_bytes());
-                let projection_blob_offset = blobs.len();
-                blobs.extend_from_slice(&projection.bytes);
-                selector_rows.push((
-                    projection_key_hash(&projection.projection_kind, &selector.selector),
-                    text,
-                    projection_kind,
-                    owner_index,
-                    selector.byte_start,
-                    selector.byte_end,
-                    projection_blob_offset,
-                    projection.bytes.len(),
-                ));
-            }
-        }
-    }
-    selector_rows.sort_by(|left, right| {
-        left.0.cmp(&right.0).then_with(|| {
-            slice_from_range(&strings, left.2)
-                .cmp(slice_from_range(&strings, right.2))
-                .then_with(|| {
-                    slice_from_range(&strings, left.1).cmp(slice_from_range(&strings, right.1))
-                })
-        })
-    });
-    let blob_offset = string_table_offset
-        .checked_add(strings.len())
-        .ok_or_else(|| "workspace exact string table length overflow".to_owned())?;
-    let total_len = blob_offset
-        .checked_add(blobs.len())
-        .ok_or_else(|| "workspace exact segment length overflow".to_owned())?;
-    let mut segment = vec![0_u8; total_len];
-    segment[0..16].copy_from_slice(MAGIC);
-    write_u64(&mut segment, EPOCH_OFFSET, generation.active_epoch)?;
-    write_usize(&mut segment, OWNER_COUNT_OFFSET, owners.len())?;
-    write_usize(&mut segment, SELECTOR_COUNT_OFFSET, selector_rows.len())?;
-    write_usize(&mut segment, OWNER_TABLE_OFFSET, owner_table_offset)?;
-    write_usize(&mut segment, SELECTOR_TABLE_OFFSET, selector_table_offset)?;
-    write_usize(&mut segment, STRING_TABLE_OFFSET, string_table_offset)?;
-    write_usize(&mut segment, BLOB_OFFSET, blob_offset)?;
-    write_usize(&mut segment, TOTAL_LEN_OFFSET, total_len)?;
-    write_range_header(
-        &mut segment,
-        GENERATION_DIGEST_OFFSET,
-        GENERATION_DIGEST_LEN_OFFSET,
-        string_table_offset,
-        generation_digest,
-    )?;
-    write_range_header(
-        &mut segment,
-        ROOT_DIGEST_OFFSET,
-        ROOT_DIGEST_LEN_OFFSET,
-        string_table_offset,
-        root_digest,
-    )?;
-    write_range_header(
-        &mut segment,
-        WORKSPACE_ID_OFFSET,
-        WORKSPACE_ID_LEN_OFFSET,
-        string_table_offset,
-        workspace_identity,
-    )?;
-    for (index, (hash, path, digest, owner_blob_offset, owner_blob_len, owner_projection_digest)) in
-        owner_rows.into_iter().enumerate()
-    {
-        let start = owner_table_offset + index * OWNER_ENTRY_LEN;
-        segment[start..start + 32].copy_from_slice(&hash);
-        write_range_entry(&mut segment, start + 32, string_table_offset, path)?;
-        write_range_entry(&mut segment, start + 48, string_table_offset, digest)?;
-        write_usize(&mut segment, start + 64, blob_offset + owner_blob_offset)?;
-        write_usize(&mut segment, start + 72, owner_blob_len)?;
-        segment[start + 80..start + 112].copy_from_slice(&owner_projection_digest);
-    }
-    for (
-        index,
-        (
-            hash,
-            selector,
-            projection_kind,
-            owner_index,
-            byte_start,
-            byte_end,
-            projection_blob_offset,
-            projection_blob_len,
-        ),
-    ) in selector_rows.into_iter().enumerate()
-    {
-        let start = selector_table_offset + index * SELECTOR_ENTRY_LEN;
-        segment[start..start + 32].copy_from_slice(&hash);
-        write_range_entry(&mut segment, start + 32, string_table_offset, selector)?;
-        write_range_entry(
-            &mut segment,
-            start + 48,
-            string_table_offset,
-            projection_kind,
-        )?;
-        write_usize(&mut segment, start + 64, owner_index)?;
-        write_usize(&mut segment, start + 72, byte_start)?;
-        write_usize(&mut segment, start + 80, byte_end)?;
-        write_usize(
-            &mut segment,
-            start + 88,
-            blob_offset + projection_blob_offset,
-        )?;
-        write_usize(&mut segment, start + 96, projection_blob_len)?;
-    }
-    segment[string_table_offset..blob_offset].copy_from_slice(&strings);
-    segment[blob_offset..].copy_from_slice(&blobs);
-    Ok(segment)
-}
+pub(super) use encoding::encode_exact_projection_segment;
 
 pub(super) fn exact_projection_segment_path(generation_path: &Path) -> PathBuf {
     generation_path.with_extension("exact.mmap")
-}
-
-fn decode_header(mapping: &[u8]) -> Result<Header, String> {
-    if mapping.len() < HEADER_LEN || &mapping[0..16] != MAGIC {
-        return Err("workspace exact projection segment header is invalid".to_owned());
-    }
-    let total_len = read_usize(mapping, TOTAL_LEN_OFFSET, "segment total length")?;
-    if total_len != mapping.len() {
-        return Err("workspace exact projection segment length mismatch".to_owned());
-    }
-    let header = Header {
-        epoch: read_u64(mapping, EPOCH_OFFSET, "generation epoch")?,
-        owner_count: read_usize(mapping, OWNER_COUNT_OFFSET, "owner count")?,
-        selector_count: read_usize(mapping, SELECTOR_COUNT_OFFSET, "selector count")?,
-        owner_table_offset: read_usize(mapping, OWNER_TABLE_OFFSET, "owner table offset")?,
-        selector_table_offset: read_usize(mapping, SELECTOR_TABLE_OFFSET, "selector table offset")?,
-        string_table_offset: read_usize(mapping, STRING_TABLE_OFFSET, "string table offset")?,
-        blob_offset: read_usize(mapping, BLOB_OFFSET, "blob offset")?,
-        generation_digest_offset: read_usize(
-            mapping,
-            GENERATION_DIGEST_OFFSET,
-            "generation digest offset",
-        )?,
-        generation_digest_len: read_usize(
-            mapping,
-            GENERATION_DIGEST_LEN_OFFSET,
-            "generation digest length",
-        )?,
-        root_digest_offset: read_usize(mapping, ROOT_DIGEST_OFFSET, "root digest offset")?,
-        root_digest_len: read_usize(mapping, ROOT_DIGEST_LEN_OFFSET, "root digest length")?,
-        workspace_id_offset: read_usize(mapping, WORKSPACE_ID_OFFSET, "workspace id offset")?,
-        workspace_id_len: read_usize(mapping, WORKSPACE_ID_LEN_OFFSET, "workspace id length")?,
-    };
-    let owner_table_end = header
-        .owner_table_offset
-        .checked_add(header.owner_count.saturating_mul(OWNER_ENTRY_LEN))
-        .ok_or_else(|| "workspace exact owner table overflow".to_owned())?;
-    let selector_table_end = header
-        .selector_table_offset
-        .checked_add(header.selector_count.saturating_mul(SELECTOR_ENTRY_LEN))
-        .ok_or_else(|| "workspace exact selector table overflow".to_owned())?;
-    if header.owner_table_offset != HEADER_LEN
-        || header.selector_table_offset != owner_table_end
-        || header.string_table_offset != selector_table_end
-        || header.string_table_offset > header.blob_offset
-        || header.blob_offset > mapping.len()
-    {
-        return Err("workspace exact projection table topology is invalid".to_owned());
-    }
-    Ok(header)
 }
 
 fn push_bytes(target: &mut Vec<u8>, bytes: &[u8]) -> (usize, usize) {
@@ -723,6 +621,27 @@ fn projection_key_hash(projection_kind: &str, selector: &str) -> [u8; 32] {
     hasher.update(projection_kind.as_bytes());
     hasher.update(&[0]);
     hasher.update(selector.as_bytes());
+    *hasher.finalize().as_bytes()
+}
+
+fn relocation_identity(selector: &str) -> Result<String, String> {
+    agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
+        selector,
+    )?;
+    let (language_id, body) = selector
+        .split_once("://")
+        .ok_or_else(|| "canonical selector is missing its language".to_owned())?;
+    let (_, fragment) = body
+        .split_once('#')
+        .ok_or_else(|| "canonical selector is missing its identity fragment".to_owned())?;
+    Ok(format!("{language_id}#{fragment}"))
+}
+
+fn relocation_key_hash(projection_kind: &str, identity: &str) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(projection_kind.as_bytes());
+    hasher.update(&[0]);
+    hasher.update(identity.as_bytes());
     *hasher.finalize().as_bytes()
 }
 
@@ -775,101 +694,4 @@ fn hash_len_prefixed(hasher: &mut blake3::Hasher, bytes: &[u8]) {
 
 fn slice_from_range(bytes: &[u8], range: (usize, usize)) -> &[u8] {
     &bytes[range.0..range.0 + range.1]
-}
-
-fn write_range_header(
-    target: &mut [u8],
-    offset_field: usize,
-    len_field: usize,
-    base: usize,
-    range: (usize, usize),
-) -> Result<(), String> {
-    write_usize(target, offset_field, base + range.0)?;
-    write_usize(target, len_field, range.1)
-}
-
-fn write_range_entry(
-    target: &mut [u8],
-    field: usize,
-    base: usize,
-    range: (usize, usize),
-) -> Result<(), String> {
-    write_usize(target, field, base + range.0)?;
-    write_usize(target, field + 8, range.1)
-}
-
-fn write_usize(target: &mut [u8], offset: usize, value: usize) -> Result<(), String> {
-    let value = u64::try_from(value)
-        .map_err(|_| "workspace exact projection value overflows u64".to_owned())?;
-    write_u64(target, offset, value)
-}
-
-fn write_u64(target: &mut [u8], offset: usize, value: u64) -> Result<(), String> {
-    let end = offset
-        .checked_add(8)
-        .ok_or_else(|| "workspace exact projection write offset overflow".to_owned())?;
-    let destination = target
-        .get_mut(offset..end)
-        .ok_or_else(|| "workspace exact projection write is out of range".to_owned())?;
-    destination.copy_from_slice(&value.to_le_bytes());
-    Ok(())
-}
-
-fn read_usize(bytes: &[u8], offset: usize, field: &str) -> Result<usize, String> {
-    usize::try_from(read_u64(bytes, offset, field)?)
-        .map_err(|_| format!("workspace exact projection {field} overflows usize"))
-}
-
-fn read_u64(bytes: &[u8], offset: usize, field: &str) -> Result<u64, String> {
-    let end = offset
-        .checked_add(8)
-        .ok_or_else(|| format!("workspace exact projection {field} offset overflow"))?;
-    let raw = bytes
-        .get(offset..end)
-        .ok_or_else(|| format!("workspace exact projection {field} is out of range"))?;
-    Ok(u64::from_le_bytes(raw.try_into().map_err(|_| {
-        format!("workspace exact projection {field} is invalid")
-    })?))
-}
-
-fn checked_entry_offset(
-    table_offset: usize,
-    index: usize,
-    entry_len: usize,
-    mapping_len: usize,
-) -> Result<usize, String> {
-    let start = table_offset
-        .checked_add(index.saturating_mul(entry_len))
-        .ok_or_else(|| "workspace exact projection entry offset overflow".to_owned())?;
-    let end = start
-        .checked_add(entry_len)
-        .ok_or_else(|| "workspace exact projection entry length overflow".to_owned())?;
-    if end > mapping_len {
-        return Err("workspace exact projection entry is out of range".to_owned());
-    }
-    Ok(start)
-}
-
-fn read_slice<'a>(
-    bytes: &'a [u8],
-    offset: usize,
-    len: usize,
-    field: &str,
-) -> Result<&'a [u8], String> {
-    let end = offset
-        .checked_add(len)
-        .ok_or_else(|| format!("workspace exact projection {field} range overflow"))?;
-    bytes
-        .get(offset..end)
-        .ok_or_else(|| format!("workspace exact projection {field} is out of range"))
-}
-
-fn read_text<'a>(
-    bytes: &'a [u8],
-    offset: usize,
-    len: usize,
-    field: &str,
-) -> Result<&'a str, String> {
-    std::str::from_utf8(read_slice(bytes, offset, len, field)?)
-        .map_err(|error| format!("workspace exact projection {field} is not UTF-8: {error}"))
 }

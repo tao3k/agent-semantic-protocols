@@ -30,11 +30,11 @@ pub(super) fn load_activation(path: &Path, invocation_root: &Path) -> Result<Hoo
 }
 
 pub(super) fn load_activation_for_language(
-    _path: &Path,
+    path: &Path,
     invocation_root: &Path,
     language_id: &str,
 ) -> Result<HookRuntime, String> {
-    agent_semantic_hook::registered_language_runtime(invocation_root, language_id).map_err(
+    agent_semantic_hook::registered_language_runtime(invocation_root, language_id, path).map_err(
         |error| {
         format!(
                 "state=cold-required reasonKind=registered-language-runtime-unavailable languageId={language_id} projectRoot={} error={error}",

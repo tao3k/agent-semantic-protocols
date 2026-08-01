@@ -77,38 +77,38 @@ fn newest_asp_hook_surface_source_mtime() -> Option<SystemTime> {
         .parent()?
         .parent()?
         .to_path_buf();
-    [
-        "crates/agent-semantic-protocol/src/main.rs",
-        "crates/agent-semantic-protocol/src/command/dispatch.rs",
-        "crates/agent-semantic-protocol/src/command/hook.rs",
-        "crates/agent-semantic-protocol/src/command/hook_runtime.rs",
-        "crates/agent-semantic-protocol/src/command/hook_runtime_codex_plugin.rs",
-        "crates/agent-semantic-protocol/src/command/hook_runtime_install.rs",
-        "crates/agent-semantic-protocol/src/command/hook_runtime_subagent.rs",
-        "crates/agent-semantic-protocol/src/command/install_provider.rs",
-        "crates/agent-semantic-protocol/src/command/org_archive.rs",
-        "crates/agent-semantic-protocol/src/command/org_capture.rs",
-        "crates/agent-semantic-protocol/src/command/org_capture_contract_materialize.rs",
-        "crates/agent-semantic-protocol/src/command/hook_enforcement.rs",
-        "crates/agent-semantic-config/src/hook_client_config.rs",
-        "crates/agent-semantic-hook/src/activation_store.rs",
-        "crates/agent-semantic-hook/src/event_state.rs",
-        "crates/agent-semantic-hook/src/executable.rs",
-        "crates/agent-semantic-hook/src/hook_config/agent_org_config.rs",
-        "crates/agent-semantic-hook/src/provider_manifest.rs",
-        "crates/agent-semantic-hook/src/provider_registry.rs",
-        "crates/agent-semantic-hook/src/runtime_profile.rs",
-        "crates/agent-semantic-hook/src/protocol_activation/digest.rs",
-        "crates/agent-semantic-hook/src/protocol_activation/protocol_activation_manifest.rs",
-        "crates/agent-semantic-hook/src/protocol_activation/protocol_activation_runtime.rs",
+    let source_roots = [
+        "crates/agent-semantic-protocol/src",
+        "crates/agent-semantic-hook/src",
+        "crates/agent-semantic-config/src",
+    ];
+    let source_files = [
+        "crates/agent-semantic-config/templates/hooks/config.toml",
         "languages/rust-lang-project-harness/provider/asp-provider-manifest.json",
         "schemas/semantic-language-registry.providers.v1.json",
         "SKILL.org",
         "SKILL.contract.org",
-    ]
-    .into_iter()
-    .filter_map(|relative| root.join(relative).metadata().ok()?.modified().ok())
-    .max()
+    ];
+    source_roots
+        .into_iter()
+        .filter_map(|relative| newest_file_mtime(&root.join(relative)))
+        .chain(
+            source_files
+                .into_iter()
+                .filter_map(|relative| root.join(relative).metadata().ok()?.modified().ok()),
+        )
+        .max()
+}
+
+fn newest_file_mtime(path: &Path) -> Option<SystemTime> {
+    if path.is_file() {
+        return path.metadata().ok()?.modified().ok();
+    }
+    std::fs::read_dir(path)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|entry| newest_file_mtime(&entry.path()))
+        .max()
 }
 
 pub(super) fn temp_project_root(name: &str) -> PathBuf {
@@ -210,10 +210,6 @@ pub(super) fn root_owned_rust_activation_json() -> String {
                     .entry_markers
                     .clone(),
                 source_extensions: vec![".rs".to_string()],
-                source_paths: vec!["src/lib.rs".to_string()],
-                repository_candidate_generation: "test-candidate-generation".to_string(),
-                workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
-                project_resolutions: Vec::new(),
             },
         }],
     };

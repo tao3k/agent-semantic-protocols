@@ -57,7 +57,7 @@ theorem bound_certificate_is_sound
   constructor
   · exact certificate.chosenFeasible
   · intro candidate feasible
-    exact le_trans
+    exact Nat.le_trans
       certificate.incumbentWithinBound
       (Nat.mul_le_mul_left
         factor
@@ -72,9 +72,9 @@ theorem factor_one_certificate_is_exact
   constructor
   · exact certificate.chosenFeasible
   · intro candidate feasible
-    have bounded :=
-      (bound_certificate_is_sound problem 1 chosen certificate)
-        .2 candidate feasible
+    have factorOptimal :=
+      bound_certificate_is_sound problem 1 chosen certificate
+    have bounded := factorOptimal.2 candidate feasible
     simpa using bounded
 
 inductive ExampleCandidate where
@@ -124,7 +124,8 @@ theorem heuristic_is_not_exact :
     ¬ ExactOptimal exampleProblem .heuristic := by
   intro exact
   have noWorseThanBest := exact.2 .best True.intro
-  exact (by decide) noWorseThanBest
+  change 12 ≤ 10 at noWorseThanBest
+  exact (by decide : ¬ 12 ≤ 10) noWorseThanBest
 
 theorem bounded_does_not_imply_exact :
     FactorOptimal exampleProblem 2 .heuristic ∧
@@ -132,4 +133,3 @@ theorem bounded_does_not_imply_exact :
   ⟨heuristic_is_factor_two_optimal, heuristic_is_not_exact⟩
 
 end ASPProof.SearchRouteCertifiedCompletion
-

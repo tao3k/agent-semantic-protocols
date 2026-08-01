@@ -65,6 +65,23 @@ the provider packet as opaque typed identity and MUST NOT contain an
 independent Rust, TypeScript, Python, Julia, Gerbil, Org, or Markdown selector
 constructor.
 
+Within one provider, generation projection and direct exact resolution MUST
+consume the same parser-owned item artifact stream. A second traversal that
+reconstructs only a subset of item kinds is forbidden: it can admit methods
+while omitting their enclosing implementation, producing a selector set that
+the exact parser itself contradicts. For Rust, the shared artifact stream MUST
+materialize the trait, each enclosing =impl=, each trait function, and each impl
+method with identical ordered implementation-owner, trait-owner, and cfg
+scopes.
+
+Each projection in the provider-native complete-owner response MUST carry
+exactly one =canonicalItemSelector= conforming to
+=asp.canonical-item-selector.v1=. The parallel =structuralSelector=,
+=itemKind=, and =itemName= projection fields are removed: they create
+independently mutable identities and therefore cannot be admitted into a
+generation. Root ASP validates that the typed identity, encoded selector,
+language, and owner agree, but it never reconstructs one from the others.
+
 The selector's =structuralSelector= is canonical. Bounded alias rules belong to
 the provider query pack and never become cache, proof, graph, or receipt
 authority. An alias resolves only inside the exact owner and only when it

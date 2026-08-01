@@ -26,10 +26,13 @@ mod hook_enforcement;
 mod hook_runtime;
 mod hook_runtime_context;
 mod hook_runtime_source_access;
+mod install_binary_config_admission;
 mod install_provider;
 mod install_provider_archive;
+mod install_provider_development;
 mod install_provider_reconcile;
 mod install_provider_release;
+mod install_provider_runtime_reconcile;
 mod install_provider_target;
 mod live_corpus;
 mod managed_hook_config;
@@ -55,6 +58,7 @@ mod provider_selector;
 mod provider_usage;
 mod root_language_facade;
 mod runtime_server;
+pub(crate) use runtime_server::runtime_server_hook_evaluation_client;
 mod runtime_server_artifact;
 mod runtime_server_definition;
 mod runtime_server_service_catalog;
@@ -104,6 +108,7 @@ mod workspace_tree_sitter_query_trace;
 
 pub(crate) use dispatch::run_protocol_command;
 pub(in crate::command) use hook_enforcement::codex_enforcement_report;
+pub(crate) use hook_runtime::run_protocol_hook_with_input;
 pub(in crate::command) use hook_runtime_context::payload_indicates_subagent_context;
 pub(in crate::command) use protocol_binary::{
     ProtocolBinaryInstallPlan, ensure_protocol_binary_installed,

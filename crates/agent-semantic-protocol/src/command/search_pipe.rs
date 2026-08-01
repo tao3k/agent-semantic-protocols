@@ -53,6 +53,9 @@ pub(super) struct FastSearchContext<'a> {
     pub(super) frontier_receipt: Option<&'a GraphTurboReceiptRequest>,
     pub(super) source_index_snapshot:
         Option<&'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot>,
+    pub(super) source_index_client: Option<
+        &'a agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
+    >,
 }
 
 impl FastSearchContext<'_> {
@@ -319,6 +322,9 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         language_id: context.language_id,
         project_root: &project_root,
         current_snapshot,
+        source_index_client: context.source_index_client.ok_or_else(|| {
+            "search pipe requires the resident workspace generation client".to_owned()
+        })?,
         locator_root: context.locator_root,
         intent: &pipe_args.seed_query,
         scopes: &pipe_args.scopes,
@@ -752,6 +758,9 @@ fn run_search_lexical_command(
         language_id: context.language_id,
         project_root: &project_root,
         current_snapshot,
+        source_index_client: context.source_index_client.ok_or_else(|| {
+            "search lexical requires the resident workspace generation client".to_owned()
+        })?,
         locator_root: context.locator_root,
         intent: &pipe_args.query,
         scopes: &pipe_args.owners,

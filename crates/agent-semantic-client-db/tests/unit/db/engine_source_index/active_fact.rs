@@ -37,7 +37,7 @@ async fn db_engine_source_index_lookup_reads_canonical_snapshot() {
         }],
     })
     .expect("build canonical source-index import");
-    let source_blobs = crate::materialization_fixture::source_blobs_fixture([(
+    let source_blobs = crate::projection_fixture::source_blobs_fixture([(
         "src/canonical_snapshot.rs",
         b"pub fn canonical_snapshot_fixture() {}\n".as_slice(),
     )]);
@@ -121,11 +121,11 @@ async fn db_engine_source_index_lookup_request_stays_within_project_resolution()
         }],
     })
     .expect("build project B source-index import");
-    let source_blobs_a = crate::materialization_fixture::source_blobs_fixture([(
+    let source_blobs_a = crate::projection_fixture::source_blobs_fixture([(
         "src/scope_a.rs",
         b"pub fn scope_a_symbol() {}\n".as_slice(),
     )]);
-    let source_blobs_b = crate::materialization_fixture::source_blobs_fixture([(
+    let source_blobs_b = crate::projection_fixture::source_blobs_fixture([(
         "src/scope_b.rs",
         b"pub fn scope_b_symbol() {}\n".as_slice(),
     )]);

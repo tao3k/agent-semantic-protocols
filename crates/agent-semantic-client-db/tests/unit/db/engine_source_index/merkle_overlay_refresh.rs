@@ -106,9 +106,12 @@ fn merkle_overlay_publishes_an_immutable_generation_for_changed_membership() {
             &overlay_source_blobs,
         )
         .expect("apply Merkle owner delta");
-    assert_eq!(
-        overlay_report.generation_id.as_str(),
-        "merkle-generation-next"
+    assert_ne!(overlay_report.generation_id, base_report.generation_id);
+    assert!(
+        overlay_report
+            .generation_id
+            .as_str()
+            .starts_with("source-index-")
     );
     assert_eq!(overlay_report.changed_owner_count, 1);
     assert_eq!(overlay_report.removed_owner_count, 1);
@@ -155,7 +158,7 @@ fn merkle_overlay_models_rename_as_one_added_and_one_removed_leaf() {
         "merkle-rename-base",
         &[("src/old.rs", &"a".repeat(64), "old_symbol")],
     );
-    fixture
+    let base_report = fixture
         .commit_source_index_generation(
             ClientDbSourceIndexRefreshRequest {
                 import: base_import,
@@ -189,7 +192,8 @@ fn merkle_overlay_models_rename_as_one_added_and_one_removed_leaf() {
             &renamed_source_blobs,
         )
         .expect("apply Merkle rename delta");
-    assert_eq!(report.generation_id.as_str(), "merkle-rename-next");
+    assert_ne!(report.generation_id, base_report.generation_id);
+    assert!(report.generation_id.as_str().starts_with("source-index-"));
     assert_eq!(report.changed_owner_count, 1);
     assert_eq!(report.removed_owner_count, 1);
     assert_eq!(report.owner_count, 1);

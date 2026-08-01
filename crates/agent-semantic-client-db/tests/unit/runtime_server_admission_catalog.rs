@@ -1,4 +1,6 @@
-use super::{RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry};
+use agent_semantic_client_db::runtime_server_admission_catalog::{
+    RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
+};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -125,6 +127,30 @@ async fn catalog_rejects_two_workspace_identities_for_one_canonical_root() {
 }
 
 #[tokio::test]
+async fn catalog_rejects_one_workspace_identity_for_multiple_roots() {
+    let root = fixture_root();
+    let catalog = RuntimeWorkspaceAdmissionCatalog::load(root.join("catalog.json"))
+        .await
+        .unwrap();
+    catalog
+        .record(RuntimeWorkspaceAdmissionCatalogEntry {
+            workspace_identity: "workspace-one".to_owned(),
+            project_root: root.join("checkout"),
+        })
+        .await
+        .unwrap();
+    let error = catalog
+        .record(RuntimeWorkspaceAdmissionCatalogEntry {
+            workspace_identity: "workspace-one".to_owned(),
+            project_root: root.join("checkout/src"),
+        })
+        .await
+        .expect_err("one workspace identity must own exactly one canonical root");
+    assert!(error.contains("already owns a canonical root"), "{error}");
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
 async fn process_cold_mapped_locator_p99_is_sub_millisecond() {
     const WORKSPACE_COUNT: usize = 32;
     const SAMPLE_COUNT: usize = 2_048;
@@ -185,17 +211,20 @@ async fn daemon_restore_replays_each_catalog_scope_once() {
     };
     catalog.record(entry).await.unwrap();
     let builds = Arc::new(AtomicU64::new(0));
-    let admission = crate::runtime_server_admission::WorkspaceGenerationAdmission::new(Arc::new({
-        let builds = Arc::clone(&builds);
-        move |_, _| {
-            let builds = Arc::clone(&builds);
-            Box::pin(async move {
-                builds.fetch_add(1, Ordering::Relaxed);
-                Ok(())
-            })
-        }
-    }))
-    .with_catalog(catalog);
+    let admission =
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
+            Arc::new({
+                let builds = Arc::clone(&builds);
+                move |_, _| {
+                    let builds = Arc::clone(&builds);
+                    Box::pin(async move {
+                        builds.fetch_add(1, Ordering::Relaxed);
+                        Ok(())
+                    })
+                }
+            }),
+        )
+        .with_catalog(catalog);
 
     let first = admission.restore_registered().await.unwrap();
     assert_eq!(first.ready.len(), 1);
@@ -204,6 +233,76 @@ async fn daemon_restore_replays_each_catalog_scope_once() {
     assert_eq!(second.ready.len(), 1);
     assert!(second.failed.is_empty());
     assert_eq!(builds.load(Ordering::Relaxed), 1);
+    admission.shutdown().await.unwrap();
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
+async fn typed_ipc_admission_publishes_an_initial_missing_locator() {
+    use agent_semantic_client_db::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogResolveError;
+
+    let root = fixture_root();
+    let project_root = root.join("checkout");
+    tokio::fs::create_dir_all(&project_root).await.unwrap();
+    let catalog_path = root.join("catalog.json");
+    assert!(matches!(
+        RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root),
+        Err(RuntimeWorkspaceAdmissionCatalogResolveError::Unavailable { .. })
+    ));
+
+    let catalog = RuntimeWorkspaceAdmissionCatalog::load(catalog_path.clone())
+        .await
+        .unwrap();
+    let builds = Arc::new(AtomicU64::new(0));
+    let admission =
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
+            Arc::new({
+                let builds = Arc::clone(&builds);
+                move |_, _| {
+                    let builds = Arc::clone(&builds);
+                    Box::pin(async move {
+                        builds.fetch_add(1, Ordering::Relaxed);
+                        Ok(())
+                    })
+                }
+            }),
+        )
+        .with_catalog(catalog);
+    admission
+        .admit("workspace-initial", project_root.clone())
+        .await
+        .unwrap();
+    let ready = admission
+        .ensure("workspace-initial", &project_root)
+        .await
+        .unwrap();
+    assert_eq!(
+        ready.state,
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready
+    );
+    assert_eq!(builds.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root)
+            .unwrap()
+            .workspace_identity,
+        "workspace-initial"
+    );
+    tokio::fs::remove_file(&catalog_path).await.unwrap();
+    assert!(matches!(
+        RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root),
+        Err(RuntimeWorkspaceAdmissionCatalogResolveError::Unavailable { .. })
+    ));
+    admission
+        .ensure("workspace-initial", &project_root)
+        .await
+        .unwrap();
+    assert_eq!(builds.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root)
+            .unwrap()
+            .workspace_identity,
+        "workspace-initial"
+    );
     admission.shutdown().await.unwrap();
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
@@ -223,18 +322,19 @@ async fn daemon_restore_isolates_failed_workspace_scopes() {
             .await
             .unwrap();
     }
-    let admission = crate::runtime_server_admission::WorkspaceGenerationAdmission::new(Arc::new(
-        |workspace_identity, _| {
-            Box::pin(async move {
-                if workspace_identity == "workspace-failed" {
-                    Err("fixture canonical generation missing".to_owned())
-                } else {
-                    Ok(())
-                }
-            })
-        },
-    ))
-    .with_catalog(catalog);
+    let admission =
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
+            Arc::new(|workspace_identity, _| {
+                Box::pin(async move {
+                    if workspace_identity == "workspace-failed" {
+                        Err("fixture canonical generation missing".to_owned())
+                    } else {
+                        Ok(())
+                    }
+                })
+            }),
+        )
+        .with_catalog(catalog);
 
     let report = admission.restore_registered().await.unwrap();
     assert_eq!(

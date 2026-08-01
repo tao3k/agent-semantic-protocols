@@ -111,12 +111,6 @@ pub(crate) fn write_activation(root: &Path, state_home: &Path, language_ids: &[&
                     source_extensions: crate::provider_manifest_scope::document_extensions(
                         &manifest,
                     ),
-                    source_paths: Vec::new(),
-                    repository_candidate_generation: "test-repository-candidate-generation"
-                        .to_string(),
-                    workspace_source_scope_generation: "test-project-resolution-generation"
-                        .to_string(),
-                    project_resolutions: Vec::new(),
                 },
             }
         })

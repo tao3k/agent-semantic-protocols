@@ -275,10 +275,6 @@ fn activation_rejects_search_capabilities_drift() {
                     .entry_markers
                     .clone(),
                 source_extensions: vec![".test".to_string()],
-                source_paths: vec!["src/provider.test".to_string()],
-                repository_candidate_generation: "test-candidate-generation".to_string(),
-                workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
-                project_resolutions: Vec::new(),
             },
         }],
     };
@@ -344,10 +340,6 @@ fn activation_rejects_semantic_facts_descriptor_drift() {
                     .entry_markers
                     .clone(),
                 source_extensions: vec![".test".to_string()],
-                source_paths: vec!["src/provider.test".to_string()],
-                repository_candidate_generation: "test-candidate-generation".to_string(),
-                workspace_source_scope_generation: "test-project-resolution-generation".to_string(),
-                project_resolutions: Vec::new(),
             },
         }],
     };

@@ -83,20 +83,29 @@ pub(super) async fn turso_source_index_projection_ready(
         .map_err(|error| format!("failed to read Turso source-index token projection: {error}"))
 }
 
-pub(super) fn validate_turso_source_index_selector_materialization_proofs(
+pub(super) fn validate_turso_source_index_selector_projection_records(
     import: &ClientDbSourceIndexImport,
 ) -> Result<(), String> {
     for selector in &import.selectors {
-        let proof = &selector.materialization_proof;
-        agent_semantic_content_identity::ExactSelectorGenerationRecordV1::try_from(proof)
-            .map_err(|error| error.to_string())?;
-        if proof.structural_selector != selector.selector_id.as_str()
-            || proof.owner_path != selector.owner_path.as_str()
+        let record = &selector.projection_record;
+        let proof = &record.proof;
+        proof.validate_shape().map_err(|error| error.to_string())?;
+        let canonical = proof.canonical_item_selector();
+        if proof.structural_selector() != selector.selector_id.as_str()
+            || proof.owner_path() != selector.owner_path.as_str()
+            || proof.structural_selector() != canonical.structural_selector()
         {
             return Err(format!(
-                "source-index selector materialization proof identity mismatch: selector_id={} proof={}",
+                "source-index selector projection identity mismatch: selector_id={} proof={}",
                 selector.selector_id.as_str(),
-                proof.structural_selector
+                proof.structural_selector()
+            ));
+        }
+        let range = &record.source_byte_range;
+        if range.start >= range.end || record.projection_payload.is_empty() {
+            return Err(format!(
+                "source-index selector projection is empty or unbounded: selector_id={}",
+                selector.selector_id.as_str()
             ));
         }
     }

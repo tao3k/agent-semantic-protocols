@@ -16,7 +16,7 @@ structure MultiResourceLedger where
   providerQuota : LifecycleLedger
   deriving DecidableEq, Repr
 
-def CanReserveAll
+abbrev CanReserveAll
     (ledger : MultiResourceLedger)
     (demand : ResourceDemand) : Prop :=
   demand.tokens ≤ ledger.tokens.available ∧
@@ -52,7 +52,20 @@ theorem admitted_iff_all_dimensions_fit
     (demand : ResourceDemand) :
     (reserveAtomically ledger demand).2 = .admitted ↔
       CanReserveAll ledger demand := by
-  simp [reserveAtomically]
+  unfold reserveAtomically
+  split
+  case isTrue fits =>
+    constructor
+    · intro _
+      exact fits
+    · intro _
+      rfl
+  case isFalse doesNotFit =>
+    constructor
+    · intro impossible
+      cases impossible
+    · intro fits
+      exact False.elim (doesNotFit fits)
 
 theorem rejected_result_preserves_input_ledger
     (ledger : MultiResourceLedger)
@@ -61,7 +74,14 @@ theorem rejected_result_preserves_input_ledger
       (reserveAtomically ledger demand).2 = .rejected) :
     (reserveAtomically ledger demand).1 = ledger := by
   unfold reserveAtomically at rejected ⊢
-  split <;> simp_all
+  split
+  case isTrue fits =>
+    have impossible :
+        AtomicReservationOutcome.admitted = .rejected := by
+      simpa only [if_pos fits] using rejected
+    cases impossible
+  case isFalse =>
+    rfl
 
 theorem successful_reservation_preserves_all_totals
     (ledger : MultiResourceLedger)
@@ -135,4 +155,3 @@ theorem partial_component_feasibility_does_not_imply_admission :
   decide
 
 end ASPProof.SearchRouteAtomicMultiResourceReservation
-

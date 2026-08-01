@@ -18,7 +18,7 @@ fn install_language_help_separates_locked_release_from_develop_mode() {
     assert!(receipt.contains("--target <TARGET>"), "{receipt}");
     assert!(
         !receipt.contains("--from-workspace"),
-        "develop installs belong to the root Justfile: {receipt}"
+        "develop installs are selected by state-home [dev].root: {receipt}"
     );
     assert!(
         !receipt.contains("--record-installed-receipt"),
@@ -49,11 +49,11 @@ fn install_language_usage_separates_locked_release_from_develop_mode() {
         "{receipt}"
     );
     assert!(
-        receipt.contains("develop mode: use the repository Justfile recipes"),
+        receipt.contains("develop mode: plain `asp install language` delegates to the development installer under [dev].root"),
         "{receipt}"
     );
     assert!(
-        receipt.contains("root Justfile owns provider builds and installation"),
+        receipt.contains("[dev].root owns provider builds and installation"),
         "{receipt}"
     );
     assert!(

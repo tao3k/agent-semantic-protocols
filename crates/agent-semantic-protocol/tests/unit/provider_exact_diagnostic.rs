@@ -19,6 +19,10 @@ fn resident_exact_adapter_does_not_own_diagnostic_policy() {
         "--code",
         "--names-only",
         "legacy",
+        "tokio::fs::",
+        "owner_content_digest",
+        "ensure_runtime_owner_projection_async",
+        "refresh_if_changed",
     ] {
         assert!(
             !adapter_source.contains(forbidden),
@@ -26,9 +30,35 @@ fn resident_exact_adapter_does_not_own_diagnostic_policy() {
         );
     }
     assert!(adapter_source.contains("crate::exact_projection_diagnostic_io::"));
+    assert!(adapter_source.contains("runtime_server_workspace_exact_projection_client_async"));
+    assert!(
+        !adapter_source.contains("runtime_server_workspace_session_async"),
+        "exact read hot path must use the mmap generation and never a workspace IPC session"
+    );
     assert!(!command_modules.contains("provider_exact_diagnostic_io"));
     assert!(!adapter.contains("command::"));
     assert!(!adapter.contains("provider_direct_exact"));
+}
+
+#[test]
+fn resident_owner_search_is_a_zero_socket_zero_source_read() {
+    let adapter_source = include_str!("../../src/command/search_pipe_owner_items.rs");
+    assert!(adapter_source.contains("runtime_server_workspace_generation_client_async"));
+    for forbidden in [
+        "runtime_server_workspace_session_async",
+        "ensure_runtime_owner_projection_async",
+        "std::fs::read",
+        "tokio::fs::read",
+        "UnixStream",
+        "run_provider_owner_native",
+    ] {
+        assert!(
+            !adapter_source.contains(forbidden),
+            "owner search hot path contains forbidden I/O token: {forbidden}"
+        );
+    }
+    assert!(adapter_source.contains("let provider_invocations = 0;"));
+    assert!(adapter_source.contains("controlRoundtrips={}"));
 }
 
 #[test]
@@ -87,6 +117,7 @@ fn missing_resolution() -> ProviderNativeExactResolution {
             "rust://src/runtime_server.rs#item/function/missing".to_owned(),
         resolution_state: "item-missing".to_owned(),
         reason_kind: "item-not-in-live-owner".to_owned(),
+        active_generation_digest: None,
         root_digest: Some("root-current".to_owned()),
         item_kind: "function".to_owned(),
         item_name: "missing".to_owned(),
@@ -135,14 +166,16 @@ fn explicit_json_resolution_preserves_the_typed_packet() {
 }
 
 #[test]
-fn diagnostic_owner_constructs_owner_missing_receipt() {
+fn diagnostic_owner_constructs_stale_selector_receipt() {
     let resolution = resolution_from_facts(ProviderExactResolutionFacts {
         language_id: "rust".to_owned(),
         provider_id: "rs-harness".to_owned(),
         owner_path: "src/runtime_server.rs".to_owned(),
         structural_selector: "rust://src/runtime_server.rs#item/function/missing".to_owned(),
-        resolution_state: "owner-missing".to_owned(),
-        reason_kind: "owner-not-in-workspace".to_owned(),
+        resolution_state: "selector-stale".to_owned(),
+        reason_kind: "selector-not-in-active-generation".to_owned(),
+        active_generation_digest:
+            "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
         root_digest: "root-current".to_owned(),
         item_kind: "function".to_owned(),
         item_name: "missing".to_owned(),
@@ -151,13 +184,17 @@ fn diagnostic_owner_constructs_owner_missing_receipt() {
         workspace: ".".to_owned(),
     });
 
-    assert_eq!(resolution.resolution_state, "owner-missing");
-    assert_eq!(resolution.reason_kind, "owner-not-in-workspace");
+    assert_eq!(resolution.resolution_state, "selector-stale");
+    assert_eq!(resolution.reason_kind, "selector-not-in-active-generation");
+    assert_eq!(
+        resolution.active_generation_digest.as_deref(),
+        Some("blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    );
     assert_eq!(resolution.item_kind, "function");
     assert_eq!(resolution.item_name, "missing");
     assert_eq!(
         resolution.recommended_next.command,
-        "asp rust search owner src/runtime_server.rs items --query 'missing' --workspace . --view seeds"
+        "asp rust search lexical --query 'missing' --query 'function missing' --workspace . --view seeds"
     );
 }
 

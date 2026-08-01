@@ -49,7 +49,7 @@ wrote receipts/searchroute-evidence-graph-router-audit-v1.json
 
 #+begin_src sh
 uv run --project packages/proofs --frozen \
-  asp-axle-lean-audit \
+  python -m asp_proofs lean-audit \
   packages/proofs/receipts/searchroute-evidence-graph-router-audit-v1.json \
   --allow-axiom Classical.choice \
   --allow-axiom Quot.sound \

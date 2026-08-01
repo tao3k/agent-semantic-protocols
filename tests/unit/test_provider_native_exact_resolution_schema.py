@@ -9,7 +9,7 @@ RESPONSE_SCHEMA = ROOT / "schemas" / "provider-native-exact-response.v1.schema.j
 
 
 def _resolution(state: str) -> dict[str, object]:
-    return {
+    packet: dict[str, object] = {
         "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
         "schemaVersion": "1",
         "languageId": "rust",
@@ -23,23 +23,36 @@ def _resolution(state: str) -> dict[str, object]:
         "candidates": [],
         "actualKinds": [],
         "recommendedNext": {
-            "command": "asp rust search pipe 'missing' --workspace . --view seeds"
+            "command": "asp rust search lexical --query 'missing' --query 'function missing' --workspace . --view seeds"
         },
     }
+    if state == "selector-stale":
+        packet["activeGenerationDigest"] = f"blake3-256:{'a' * 64}"
+        packet["rootDigest"] = "b" * 64
+    return packet
 
 
 def test_exact_resolution_states_are_schema_valid_semantic_results() -> None:
     schema = json.loads(RESPONSE_SCHEMA.read_text())
     validator = Draft202012Validator(schema)
 
-    for state in ("item-missing", "owner-missing", "kind-mismatch", "ambiguous"):
+    for state in ("item-missing", "selector-stale", "kind-mismatch", "ambiguous"):
         validator.validate(_resolution(state))
 
 
 def test_exact_resolution_requires_reason_and_recovery_action() -> None:
     schema = json.loads(RESPONSE_SCHEMA.read_text())
     validator = Draft202012Validator(schema)
-    packet = _resolution("owner-missing")
+    packet = _resolution("selector-stale")
     packet.pop("recommendedNext")
+
+    assert list(validator.iter_errors(packet))
+
+
+def test_selector_stale_requires_active_generation_evidence() -> None:
+    schema = json.loads(RESPONSE_SCHEMA.read_text())
+    validator = Draft202012Validator(schema)
+    packet = _resolution("selector-stale")
+    packet.pop("activeGenerationDigest")
 
     assert list(validator.iter_errors(packet))

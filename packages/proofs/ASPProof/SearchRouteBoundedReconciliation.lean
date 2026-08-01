@@ -149,11 +149,12 @@ def unsafeReleasedExample : RecoveryState :=
 
 theorem exhausted_example_is_quarantined :
     QuarantineResolution exhaustedExample quarantinedExample := by
+  unfold QuarantineResolution Exhausted exhaustedExample quarantinedExample
   decide
 
 theorem exhausted_example_cannot_release :
     ¬ QuarantineResolution exhaustedExample unsafeReleasedExample := by
+  unfold QuarantineResolution Exhausted exhaustedExample unsafeReleasedExample
   decide
 
 end ASPProof.SearchRouteBoundedReconciliation
-

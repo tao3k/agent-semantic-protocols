@@ -1,0 +1,57 @@
+#+TITLE: 10.15.02.07 Provider Language Match Projection
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Implemented as a v1-compatible managed hook-config projection.
+
+* Problem
+
+The hook rule language already names abstract subjects such as
+=registered-language-source=, but source-extension matching previously read the
+workspace activation directly.  That made the effective matcher inputs absent
+from the serialized =hooks/config.toml= contract and obscured drift between the
+provider schema, managed policy, and hot matcher.
+
+* Authority and projection
+
+Provider manifests remain the sole authority for language source extensions.
+Project-resolution providers declare =projectResolution.sourceExtensions=;
+document providers declare =documentResolution.extensions=.  ASP MUST derive a
+managed =[[languageProviders]]= projection from the registered provider
+manifests.  Each entry carries =languageId=, =providerId=, =manifestDigest=, and
+=sourceExtensions=.
+
+The projection is not a second provider schema and MUST NOT be manually
+maintained in the hook template.  It is a serialized, replayable matcher input.
+Project-local hook overlays cannot redefine it.
+
+* Runtime contract
+
+Before classifying an agent action, the hook MUST load the managed TOML
+projection, bind every activated provider by =(languageId, providerId)=, and
+verify =manifestDigest= against the active provider manifest identity.  The
+matcher MUST then use the projected =sourceExtensions=.
+
+Missing entries or digest drift trigger managed-config rematerialization.  The
+refresh path MUST be bounded and MUST NOT require a resident DB owner or an
+exploration child.  An activation's stale extension copy does not override the
+manifest-derived TOML projection.
+
+* Compatibility
+
+Schema and protocol versions remain ="1"=.  Older managed configs are detected
+as projection-incomplete and atomically refreshed.  Abstract rule subjects and
+provider-specific extension ownership remain unchanged, so future languages
+join by registering a provider manifest rather than editing Rust match lists.
+
+* Acceptance
+
+- Managed =hooks/config.toml= contains one digest-bound projection entry per
+  registered provider.
+- Rust, TypeScript, Python, Julia, and Gerbil entries are generated from their
+  provider manifests, not copied into the hook matcher.
+- A raw Read action over a projected extension matches
+  =registered-language-source= after the config is loaded.
+- A missing or stale projection is rematerialized before classification.
+- Focused schema, config, matcher, and installed-runtime tests pass.

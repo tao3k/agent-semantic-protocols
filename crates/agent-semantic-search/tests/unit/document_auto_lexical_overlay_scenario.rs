@@ -33,6 +33,7 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
     fs::create_dir_all(root.path().join("docs")).expect("create docs");
     let org_source = "* Plan\n\nThe document_auto_overlay_fixture token lives in Org body text.\n";
     fs::write(root.path().join("docs").join("plan.org"), org_source).expect("write org fixture");
+    let provider_scopes = vec![root.path().join("docs").join("plan.org")];
 
     let ignore_dirs = vec!["target".to_string(), "node_modules".to_string()];
     let include_hidden_dirs = Vec::new();
@@ -44,7 +45,7 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
             project_root: root.path(),
             locator_root: root.path(),
             intent: "document_auto_overlay_fixture",
-            scopes: &[],
+            scopes: &provider_scopes,
             mode: SearchPipeSourceMode::Auto,
             ignore_dirs: &ignore_dirs,
             include_hidden_dirs: &include_hidden_dirs,
@@ -93,7 +94,7 @@ fn document_auto_lexical_overlay_warm_path_stays_inside_scenario_gate() {
             project_root: root.path(),
             locator_root: root.path(),
             intent: "document_auto_overlay_fixture",
-            scopes: &[],
+            scopes: &provider_scopes,
             mode: SearchPipeSourceMode::Provider,
             ignore_dirs: &ignore_dirs,
             include_hidden_dirs: &include_hidden_dirs,

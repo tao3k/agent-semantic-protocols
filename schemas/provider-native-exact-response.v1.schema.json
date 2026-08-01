@@ -39,7 +39,7 @@
       "enum": [
         "resolved",
         "item-missing",
-        "owner-missing",
+        "selector-stale",
         "kind-mismatch",
         "ambiguous"
       ]
@@ -47,6 +47,10 @@
     "reasonKind": {
       "type": "string",
       "minLength": 1
+    },
+    "activeGenerationDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
     },
     "rootDigest": {
       "type": "string",
@@ -151,7 +155,7 @@
         "resolutionState": {
           "enum": [
             "item-missing",
-            "owner-missing",
+            "selector-stale",
             "kind-mismatch",
             "ambiguous"
           ]
@@ -216,6 +220,24 @@
             "projectionText"
           ]
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resolutionState": {
+            "const": "selector-stale"
+          }
+        },
+        "required": [
+          "resolutionState"
+        ]
+      },
+      "then": {
+        "required": [
+          "activeGenerationDigest",
+          "rootDigest"
+        ]
       }
     }
   ]

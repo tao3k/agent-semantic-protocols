@@ -7,15 +7,12 @@ use std::{
     time::Duration,
 };
 
-use crate::engine::{
-    turso_lock_policy::{
-        TURSO_CLIENT_DB_BUSY_TIMEOUT_MS, TURSO_CLIENT_DB_LOCK_RETRY_ATTEMPTS, is_turso_lock_error,
-        turso_lock_retry_delay,
-    },
-    turso_statement::{execute_turso_operation, execute_turso_statement, run_turso_operation},
-};
+use crate::engine::turso_statement::{execute_turso_operation, run_turso_operation};
 
-use super::bootstrap::dedupe_turso_agent_sessions_by_session_id;
+use super::storage_bootstrap::bootstrap_turso_agent_session_schema;
+pub(in crate::agent_session_registry) use super::storage_bootstrap::{
+    block_on_agent_session_registry_async, connect_turso_agent_session_registry,
+};
 use super::types::{
     AGENT_SESSION_REGISTRY_DB_NAME, AgentSessionRecord, AgentSessionRegisterRequest,
     AgentSessionToolEventRequest,
@@ -182,222 +179,6 @@ impl AgentSessionRegistry {
     fn ensure_schema(&self) -> Result<(), String> {
         block_on_agent_session_registry_async(bootstrap_turso_agent_session_schema(&self.db_path))
     }
-}
-
-static AGENT_SESSION_REGISTRY_RUNTIME: std::sync::LazyLock<
-    Result<tokio::runtime::Runtime, String>,
-> = std::sync::LazyLock::new(|| {
-    tokio::runtime::Runtime::new()
-        .map_err(|error| format!("failed to build shared agent session Turso runtime: {error}"))
-});
-
-pub(in crate::agent_session_registry) fn block_on_agent_session_registry_async<T>(
-    future: impl std::future::Future<Output = Result<T, String>>,
-) -> Result<T, String> {
-    match &*AGENT_SESSION_REGISTRY_RUNTIME {
-        Ok(runtime) => runtime.block_on(future),
-        Err(error) => Err(error.clone()),
-    }
-}
-
-pub(in crate::agent_session_registry) async fn connect_turso_agent_session_registry(
-    db_path: &Path,
-) -> Result<turso::Connection, String> {
-    let mut last_lock_error = None;
-    for attempt in 0..TURSO_CLIENT_DB_LOCK_RETRY_ATTEMPTS {
-        match connect_turso_agent_session_registry_once(db_path).await {
-            Ok(connection) => return Ok(connection),
-            Err(error)
-                if is_turso_lock_error(&error)
-                    && attempt + 1 < TURSO_CLIENT_DB_LOCK_RETRY_ATTEMPTS =>
-            {
-                last_lock_error = Some(error);
-                tokio::time::sleep(turso_lock_retry_delay(attempt)).await;
-            }
-            Err(error) => return Err(error),
-        }
-    }
-    Err(format!(
-        "failed to open Turso agent session registry after lock retries: {}",
-        last_lock_error.unwrap_or_else(|| "unknown lock error".to_string())
-    ))
-}
-
-async fn connect_turso_agent_session_registry_once(
-    db_path: &Path,
-) -> Result<turso::Connection, String> {
-    let db_path = prepare_turso_agent_session_registry_path(db_path)?;
-    let database = turso::Builder::new_local(db_path.to_string_lossy().as_ref())
-        .experimental_index_method(true)
-        .experimental_multiprocess_wal(true)
-        .build()
-        .await
-        .map_err(|error| format!("failed to open Turso agent session registry: {error}"))?;
-    let connection = database
-        .connect()
-        .map_err(|error| format!("failed to connect Turso agent session registry: {error}"))?;
-    connection
-        .busy_timeout(Duration::from_millis(TURSO_CLIENT_DB_BUSY_TIMEOUT_MS))
-        .map_err(|error| {
-            format!("failed to configure Turso agent session registry busy timeout: {error}")
-        })?;
-    Ok(connection)
-}
-
-fn prepare_turso_agent_session_registry_path(db_path: &Path) -> Result<PathBuf, String> {
-    if db_path.is_file() {
-        return Ok(db_path.to_path_buf());
-    }
-    super::permissions::prepare_private_registry_path(db_path)
-}
-
-async fn bootstrap_turso_agent_session_schema(db_path: &Path) -> Result<(), String> {
-    let connection = connect_turso_agent_session_registry(db_path).await?;
-    execute_turso_statement(
-        &connection,
-        "CREATE TABLE IF NOT EXISTS asp_agent_sessions (
-            project_id TEXT NOT NULL DEFAULT 'default',
-            root_session_id TEXT NOT NULL,
-            session_id TEXT NOT NULL UNIQUE,
-            physical_generation INTEGER NOT NULL DEFAULT 1,
-            configured_agent_type TEXT,
-            profile_evidence_json TEXT,
-            message_target_id TEXT,
-            parent_session_id TEXT,
-            name TEXT NOT NULL,
-            role TEXT NOT NULL,
-            model TEXT,
-            model_observation_source TEXT,
-            model_observed_at INTEGER,
-            model_evidence_ref TEXT,
-            status TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            last_seen_at INTEGER,
-            last_heartbeat_at INTEGER,
-            expires_at INTEGER,
-            archived_at INTEGER,
-            last_tool_event TEXT,
-            last_command TEXT,
-            last_evidence_ref TEXT,
-            metadata_json TEXT NOT NULL DEFAULT '{}',
-            PRIMARY KEY(project_id, root_session_id, name)
-        )",
-        "failed to initialize Turso session registry schema",
-    )
-    .await?;
-    super::dispatch::bootstrap_turso_agent_dispatch_schema(&connection).await?;
-    ensure_turso_agent_sessions_project_id_column(&connection).await?;
-    ensure_turso_agent_sessions_message_target_id_column(&connection).await?;
-    ensure_turso_agent_sessions_model_observation_columns(&connection).await?;
-    dedupe_turso_agent_sessions_by_session_id(&connection).await?;
-    for statement in [
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_asp_agent_sessions_project_root_name
-            ON asp_agent_sessions(project_id, root_session_id, name)",
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_asp_agent_sessions_session_id_unique
-            ON asp_agent_sessions(session_id)",
-        "CREATE INDEX IF NOT EXISTS idx_asp_agent_sessions_root
-            ON asp_agent_sessions(project_id, root_session_id)",
-        "CREATE INDEX IF NOT EXISTS idx_asp_agent_sessions_parent
-            ON asp_agent_sessions(parent_session_id)",
-        "CREATE INDEX IF NOT EXISTS idx_asp_agent_sessions_message_target
-            ON asp_agent_sessions(message_target_id)",
-        "CREATE INDEX IF NOT EXISTS idx_asp_agent_sessions_session
-            ON asp_agent_sessions(project_id, session_id)",
-    ] {
-        execute_turso_statement(
-            &connection,
-            statement,
-            "failed to initialize Turso session registry schema",
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-async fn ensure_turso_agent_sessions_project_id_column(
-    connection: &turso::Connection,
-) -> Result<(), String> {
-    if turso_agent_sessions_column_exists(connection, "project_id").await? {
-        return Ok(());
-    }
-    execute_turso_statement(
-        connection,
-        "ALTER TABLE asp_agent_sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'",
-        "failed to migrate Turso session registry project_id",
-    )
-    .await?;
-    Ok(())
-}
-
-async fn ensure_turso_agent_sessions_message_target_id_column(
-    connection: &turso::Connection,
-) -> Result<(), String> {
-    if turso_agent_sessions_column_exists(connection, "message_target_id").await? {
-        return Ok(());
-    }
-    execute_turso_statement(
-        connection,
-        "ALTER TABLE asp_agent_sessions ADD COLUMN message_target_id TEXT",
-        "failed to migrate Turso session registry message_target_id",
-    )
-    .await?;
-    Ok(())
-}
-
-async fn ensure_turso_agent_sessions_model_observation_columns(
-    connection: &turso::Connection,
-) -> Result<(), String> {
-    const COLUMNS: [(&str, &str); 6] = [
-        ("physical_generation", "INTEGER NOT NULL DEFAULT 1"),
-        ("configured_agent_type", "TEXT"),
-        ("profile_evidence_json", "TEXT"),
-        ("model_observation_source", "TEXT"),
-        ("model_observed_at", "INTEGER"),
-        ("model_evidence_ref", "TEXT"),
-    ];
-    for (column, definition) in COLUMNS {
-        if turso_agent_sessions_column_exists(connection, column).await? {
-            continue;
-        }
-        let statement = format!("ALTER TABLE asp_agent_sessions ADD COLUMN {column} {definition}");
-        execute_turso_statement(
-            connection,
-            &statement,
-            "failed to migrate Turso session registry columns",
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-async fn turso_agent_sessions_column_exists(
-    connection: &turso::Connection,
-    expected_column: &str,
-) -> Result<bool, String> {
-    let mut rows = run_turso_operation(
-        || async {
-            connection
-                .query("PRAGMA table_info(asp_agent_sessions)", ())
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to inspect Turso session registry schema",
-    )
-    .await?;
-    while let Some(row) = rows
-        .next()
-        .await
-        .map_err(|error| format!("failed to inspect Turso session registry column: {error}"))?
-    {
-        let column_name = row
-            .get::<String>(1)
-            .map_err(|error| format!("failed to read Turso session registry column: {error}"))?;
-        if column_name == expected_column {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
 
 pub(super) async fn turso_register_session(
@@ -924,21 +705,15 @@ pub(super) async fn turso_delete_session(
     project_id: &str,
     session_id: &str,
 ) -> Result<bool, String> {
-    let connection = connect_turso_agent_session_registry(db_path).await?;
-    let changes = execute_turso_operation(
-        || async {
-            connection
-                .execute(
-                    "DELETE FROM asp_agent_sessions WHERE project_id = ?1 AND session_id = ?2",
-                    (project_id, session_id),
-                )
-                .await
-                .map_err(|error| error.to_string())
-        },
-        "failed to delete Turso session row",
-    )
-    .await?;
-    Ok(changes > 0)
+    super::retirement::turso_retire_and_delete_session(db_path, project_id, session_id).await
+}
+
+pub(super) async fn turso_session_is_retired(
+    db_path: &Path,
+    project_id: &str,
+    session_id: &str,
+) -> Result<bool, String> {
+    super::retirement::turso_session_is_retired(db_path, project_id, session_id).await
 }
 
 pub(super) async fn turso_refresh_expired_sessions(db_path: &Path, now: i64) -> Result<(), String> {

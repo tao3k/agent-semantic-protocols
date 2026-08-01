@@ -80,6 +80,70 @@ Installed-artifact cold and warm receipts MUST report router admission,
 provider invocation count, parse count, database operations, generation
 identity, and elapsed time.  Increasing a timeout is not a performance repair.
 
+* Schema and transport congruence
+
+Clause identities:
+
+- =ASP-RFC-10.05.63-SCHEMA-TRANSPORT-CONGRUENCE=
+- =ASP-RFC-10.05.63-EXPLICIT-CAPABILITY=
+- =ASP-RFC-10.05.63-REGISTRY-SURFACE-CONGRUENCE=
+
+=nativeIncrementalOwner=true= is admissible only when the provider manifest,
+registered method descriptor, request JSON schema, response JSON schema,
+runtime encoder, provider decoder, provider encoder, and runtime decoder agree
+on one field-level contract.  Process success or JSON decode success alone does
+not establish congruence.
+
+For a field universe =F=, let =S_req= and =R_req= be the request fields owned by
+the schema and runtime, and =S_res= and =R_res= the corresponding response
+fields.  Admission requires extensional equality:
+
+#+begin_src typst
+$ (forall f in F, (f in S_"req") <=> (f in R_"req")) and
+  (forall f in F, (f in S_"res") <=> (f in R_"res")) $
+#+end_src
+
+The current v1 artifacts expose a concrete counterexample.  The published
+request schema requires =projectionMode=, while the runtime/provider transport
+uses =query.text= and =query.itemMode=.  The published response schema requires
+=requestedProjectionMode=, while the transport emits =requestedQuery=.  The
+Lean theorem =schema_runtime_drift_witness= proves that the two field predicates
+are not extensionally equal.  Until the shared schema and transport select one
+shape, native-owner admission is not closed.
+
+The explicit capability field is also not implemented merely because a method
+descriptor named =search/owner-native= exists.  Provider-manifest schema
+validation MUST accept and require =nativeIncrementalOwner= before any provider
+can claim the explicit manifest invariant.  Descriptor presence is evidence of
+a callable transport, not a fallback capability declaration.
+
+The registry method set and descriptor method set MUST also be extensionally
+equal.  A descriptor that is callable but absent from =methods[]= is a hidden
+surface and fails registry admission.  The Python repair exposed this exact
+=35 descriptors / 34 methods= counterexample before the lists were aligned.
+
+* Synthetic owner fingerprint authority
+
+Clause identity: =ASP-RFC-10.05.63-SYNTHETIC-FINGERPRINT=
+
+Resident exact materialization may construct a synthetic owner request from an
+already authenticated content snapshot.  In that lane, filesystem modification
+and change times may be zero because they are not the freshness authority.  A
+provider MUST accept nonnegative synthetic times when the source byte length and
+content digest match the request; it MUST NOT impose a hidden positive-time
+precondition absent from the shared schema.
+
+#+begin_src typst
+$ d(x) = f_"content" and n(x) = f_"size"
+  => "synthetic-owner-admissible"(f, x) $
+#+end_src
+
+The corresponding Lean counterexample proves that a positive-time predicate
+rejects every zero-time synthetic fingerprint even when its content identity is
+correct.  This identifies the missing premise: freshness authority is either an
+authenticated content snapshot or filesystem time evidence; the RFC MUST NOT
+conflate the two.
+
 * Removal Rule
 
 Any code that speculatively invokes =owner-search-stdin= and then interprets an

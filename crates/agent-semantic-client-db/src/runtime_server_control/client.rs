@@ -11,7 +11,11 @@ pub async fn call_runtime_server(
     expected_runtime_artifact_digest: String,
     request_id: String,
 ) -> Result<RuntimeServerControlReceipt, String> {
-    endpoint.validate()?;
+    if operation == RuntimeServerOperation::Status {
+        endpoint.validate()?;
+    } else {
+        endpoint.validate_supervisor_control()?;
+    }
     if operation == RuntimeServerOperation::Status
         && expected_runtime_artifact_digest == endpoint.runtime_artifact_digest
     {
@@ -29,7 +33,9 @@ pub async fn call_runtime_server(
     };
     let pool = connection_pool(endpoint).await;
     let receipt = pool.exchange(request).await?;
-    if operation == RuntimeServerOperation::Reconcile {
+    if operation == RuntimeServerOperation::Reconcile
+        && receipt.state == super::RuntimeServerState::Healthy
+    {
         pool.prewarm().await?;
     }
     if receipt.schema_id != RECEIPT_SCHEMA_ID
@@ -38,6 +44,42 @@ pub async fn call_runtime_server(
         || receipt.transport_contract_digest != endpoint.transport_contract_digest
     {
         return Err("Runtime Server control receipt identity mismatch".to_owned());
+    }
+    Ok(receipt)
+}
+
+pub async fn reconcile_runtime_server(
+    endpoint: &RuntimeServerEndpoint,
+    expected_runtime_artifact_digest: String,
+    expected_transport_contract_digest: String,
+    request_id: String,
+) -> Result<RuntimeServerControlReceipt, String> {
+    endpoint.validate_supervisor_control()?;
+    if expected_transport_contract_digest.is_empty() {
+        return Err("Runtime Server expected transport contract digest is empty".to_owned());
+    }
+    let request = RuntimeServerControlRequest {
+        schema_id: REQUEST_SCHEMA_ID.to_owned(),
+        schema_version: SCHEMA_VERSION.to_owned(),
+        operation: RuntimeServerOperation::Reconcile,
+        expected_runtime_artifact_digest,
+        request_id: request_id.clone(),
+        transport_contract_digest: expected_transport_contract_digest,
+        owner_epoch: endpoint.owner_epoch,
+        binding_token: endpoint.binding_token.clone(),
+    };
+    let pool = connection_pool(endpoint).await;
+    let receipt = pool.exchange(request).await?;
+    if receipt.schema_id != RECEIPT_SCHEMA_ID
+        || receipt.schema_version != SCHEMA_VERSION
+        || receipt.request_id != request_id
+        || receipt.runtime_artifact_digest != endpoint.runtime_artifact_digest
+        || receipt.transport_contract_digest != endpoint.transport_contract_digest
+    {
+        return Err("Runtime Server reconcile receipt identity mismatch".to_owned());
+    }
+    if receipt.state == super::RuntimeServerState::Healthy {
+        pool.prewarm().await?;
     }
     Ok(receipt)
 }

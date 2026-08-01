@@ -8,6 +8,10 @@ protocolId = "@HOOK_PROTOCOL_ID@"
 protocolVersion = "@HOOK_PROTOCOL_VERSION@"
 contractFingerprint = "@HOOK_CLIENT_CONTRACT_FINGERPRINT@"
 
+# ASP replaces this marker with a provider-manifest-derived [[languageProviders]]
+# projection when materializing the managed config. Do not maintain extensions here.
+# @REGISTERED_LANGUAGE_PROVIDERS@
+
 [agents.placeholders]
 explore = "asp-explore"
 testing = "asp-testing"
@@ -34,10 +38,15 @@ languageIds = ["typescript"]
 testing = [
   ["npm", "test"],
   ["npm", "run", "test"],
+  ["npm", "run", "build"],
   ["pnpm", "test"],
   ["pnpm", "run", "test"],
+  ["pnpm", "run", "build"],
   ["yarn", "test"],
+  ["yarn", "build"],
   ["bun", "test"],
+  ["bun", "run", "build"],
+  ["node", "--test"],
 ]
 review = [
   ["npm", "run", "lint"],
@@ -241,6 +250,20 @@ actionAny = ["read"]
 effectAny = ["read"]
 subjectKindAny = ["registered-language-source", "registered-language-source-pattern"]
 authorityAny = ["raw-host-action"]
+
+[[rules]]
+id = "materialize-structured-document-read-action"
+priority = 39990
+decision = "deny"
+reasonKind = "structured-source-read"
+message = "Structured documents require the configured bounded projector: use jq for JSON and yq for TOML."
+fields = { capabilityActivation = "lazy-executable", filterGrammar = "bounded-path-v1", jsonBinary = "jq", tomlBinary = "yq", sourceAccessCompactRepeatedMessage = "ASP denied structured source access again. Continue with the configured bounded structured reader (`jq` for JSON, `yq` for TOML); do not retry raw Read." }
+
+[rules.match]
+actionAny = ["read"]
+effectAny = ["read"]
+authorityAny = ["raw-host-action"]
+pathGlobAny = ["*.json", "**/*.json", "*.toml", "**/*.toml"]
 
 [[rules]]
 id = "materialize-source-access-policy"

@@ -160,8 +160,9 @@ fn codex_listfiles_source_dir_routes_to_ingest() {
         }),
     );
 
-    assert_eq!(decision.decision, DecisionKind::Allow);
-    assert_eq!(decision.reason_kind, ReasonKind::None);
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::SourceDirectoryEnumeration);
+    assert!(!decision.routes.is_empty());
     assert_eq!(
         decision.subject.command.as_deref(),
         Some("ls crates/agent-semantic-hook/src")
@@ -194,8 +195,9 @@ fn codex_listfiles_core_shape_preserves_cmd() {
         }),
     );
 
-    assert_eq!(decision.decision, DecisionKind::Allow);
-    assert_eq!(decision.reason_kind, ReasonKind::None);
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::SourceDirectoryEnumeration);
+    assert!(!decision.routes.is_empty());
     assert_eq!(
         decision.subject.command.as_deref(),
         Some("ls crates/agent-semantic-hook/src")

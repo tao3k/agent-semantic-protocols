@@ -6,3 +6,6 @@ mod hook_client_config;
 
 #[path = "source_extension.rs"]
 mod source_extension;
+
+#[path = "runtime_dev_config.rs"]
+mod runtime_dev_config;

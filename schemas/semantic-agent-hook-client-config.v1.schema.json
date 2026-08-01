@@ -30,6 +30,13 @@
         "$ref": "#/$defs/commandProfile"
       }
     },
+    "languageProviders": {
+      "description": "Managed runtime projection of provider-manifest-owned language source extensions. The provider manifest remains authoritative; this projection is serialized for audited hook matching.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/languageProvider"
+      }
+    },
     "agentOrgArtifacts": {
       "$ref": "#/$defs/agentOrgArtifacts"
     },
@@ -151,6 +158,37 @@
                 "minLength": 1
               }
             }
+          }
+        }
+      }
+    },
+    "languageProvider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "languageId",
+        "providerId",
+        "manifestDigest",
+        "sourceExtensions"
+      ],
+      "properties": {
+        "languageId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "providerId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "manifestDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "sourceExtensions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^\\.[^/\\\\\\s]+$"
           }
         }
       }
@@ -415,7 +453,8 @@
         "reasonKind": {
           "enum": [
             "none",
-            "direct-source-read",
+          "direct-source-read",
+          "structured-source-read",
             "bulk-source-dump",
             "raw-broad-search",
             "asp-reasoning-routed",

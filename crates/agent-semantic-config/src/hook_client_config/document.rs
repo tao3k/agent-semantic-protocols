@@ -4,7 +4,7 @@ use figment::{
     Figment,
     providers::{Format, Toml},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
     path::Path,
@@ -55,7 +55,22 @@ pub struct HookClientConfigFile {
     #[serde(default)]
     pub command_profiles: Vec<super::profiles::HookClientCommandProfileConfig>,
     #[serde(default)]
+    pub language_providers: Vec<HookClientLanguageProviderConfig>,
+    #[serde(default)]
     pub rules: Vec<HookClientRuleConfig>,
+}
+
+/// Managed hook projection of provider-owned language source extensions.
+///
+/// Provider manifests remain the authority. ASP serializes this projection into
+/// the managed hook config so the hot matcher can load one audited TOML artifact.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HookClientLanguageProviderConfig {
+    pub language_id: String,
+    pub provider_id: String,
+    pub manifest_digest: String,
+    pub source_extensions: Vec<String>,
 }
 
 /// Optional hook recovery prompt template and per-client agent-flow fragments.

@@ -77,6 +77,7 @@ theorem strict_refinement_decreases_unknown
     resolved_plus_unknown_equals_three before
   have afterPartition :=
     resolved_plus_unknown_equals_three after
+  have resolvedIncreases := strict.2
   omega
 
 structure ResolutionSnapshot where
@@ -158,11 +159,14 @@ def conflictingSnapshot : ResolutionSnapshot :=
 
 theorem example_token_finalization_is_valid :
     ResolutionStep partialSnapshot finalizedSnapshot := by
-  decide
+  simp [ResolutionStep, StrictVectorRefines, VectorRefines, OutcomeRefines,
+    resolvedCount, outcomeResolved, partialSnapshot, finalizedSnapshot,
+    mixedOutcome]
 
 theorem example_terminal_money_rewrite_is_invalid :
     ¬ ResolutionStep partialSnapshot conflictingSnapshot := by
-  decide
+  simp [ResolutionStep, StrictVectorRefines, VectorRefines, OutcomeRefines,
+    partialSnapshot, conflictingSnapshot, mixedOutcome]
 
 theorem example_unknown_count_decreases :
     unknownCount finalizedSnapshot.vector <
@@ -170,4 +174,3 @@ theorem example_unknown_count_decreases :
   decide
 
 end ASPProof.SearchRouteMonotonePartialResolution
-

@@ -80,6 +80,39 @@ impl WorkspaceDbIpcSession {
         }
     }
 
+    pub async fn repair_runtime_generation_locator(
+        &self,
+    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
+        match self
+            .call_operation(WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator {
+                project_root: self.runtime_project_root()?.display().to_string(),
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt } => Ok(receipt),
+            _ => Err(
+                "Runtime Server returned an unexpected generation locator repair result".to_owned(),
+            ),
+        }
+    }
+
+    pub async fn evaluate_hook(
+        &self,
+        arguments: Vec<String>,
+        input: String,
+    ) -> Result<String, String> {
+        let expected_workspace_identity = self.workspace_identity().to_owned();
+        let expected_project_root = self.runtime_project_root()?.display().to_string();
+        let result = self
+            .call_operation(WorkspaceDbIpcOperation::EvaluateHook {
+                project_root: expected_project_root.clone(),
+                arguments,
+                input,
+            })
+            .await?;
+        admit_hook_evaluation_result(&expected_workspace_identity, &expected_project_root, result)
+    }
+
     pub async fn publish_runtime_owner(
         &self,
         owner: crate::runtime_server_workspace::WorkspaceOwnerSnapshot,
@@ -136,3 +169,33 @@ impl WorkspaceDbIpcSession {
         }
     }
 }
+
+fn admit_hook_evaluation_result(
+    expected_workspace_identity: &str,
+    expected_project_root: &str,
+    result: WorkspaceDbIpcResult,
+) -> Result<String, String> {
+    match result {
+        WorkspaceDbIpcResult::HookEvaluation {
+            workspace_identity,
+            project_root,
+            output,
+        } if workspace_identity == expected_workspace_identity
+            && project_root == expected_project_root =>
+        {
+            Ok(output)
+        }
+        WorkspaceDbIpcResult::HookEvaluation {
+            workspace_identity,
+            project_root,
+            ..
+        } => Err(format!(
+            "Runtime Server hook evaluation identity mismatch: expectedWorkspaceIdentity={expected_workspace_identity} actualWorkspaceIdentity={workspace_identity} expectedProjectRoot={expected_project_root} actualProjectRoot={project_root}"
+        )),
+        _ => Err("Runtime Server returned an unexpected hook evaluation result".to_owned()),
+    }
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/workspace_db_ipc_hook_evaluation.rs"]
+mod hook_evaluation_tests;

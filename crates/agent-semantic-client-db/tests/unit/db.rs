@@ -803,15 +803,18 @@ fn source_index_import_assembly_uses_turso_ready_contract_rows() {
         path: lib.clone(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
+        projection_coverage:
+            agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::Complete,
         selector_receipts: vec![agent_semantic_client_db::ClientDbSourceIndexSelector {
             owner_path: "src/lib.rs".into(),
+            provider_id: ProviderId::from("rs-harness"),
             selector_id: selector.into(),
             symbol: Some("turso_source_index_fixture".into()),
             kind: Some("function".into()),
             source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
             query_keys: vec!["turso_source_index_fixture".into()],
-            materialization_proof: crate::materialization_fixture::materialization_proof(
-                crate::materialization_fixture::MaterializationFixtureInput {
+            projection_record: crate::projection_fixture::projection_record(
+                crate::projection_fixture::ProjectionFixtureInput {
                     language_id: "rust",
                     provider_id: "rs-harness",
                     owner_path: "src/lib.rs",

@@ -43,7 +43,7 @@ pub(crate) fn search_pipe_source_index_lookup_from_client_result(
                     .into_iter()
                     .map(|key| key.as_str().to_string().into())
                     .collect(),
-                selector_proof: candidate.selector_proof,
+                selector_projection: candidate.selector_projection,
             })
             .collect(),
         source_snapshot,

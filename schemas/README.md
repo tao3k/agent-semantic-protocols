@@ -301,6 +301,12 @@ they still honor `providers.org.enabled=false` and
 Provider-specific policy config may stay in language-owned files, but source
 discovery and provider selection must not silently diverge from the nearest
 `asp.toml`.
+
+`runtime-dev-config.v1.schema.json` owns only the State Home
+`$ASP_STATE_HOME/asp.toml` `[dev]` table. Its canonical shape is
+`enabled = true` plus one absolute `root`. It is not part of project-local
+`.agents/asp.toml`, does not define a scope enum, and cannot authorize release
+locks or `PATH` artifacts while enabled.
 The same config owns extension activation under `extensions.*`. The CodeQL
 extension is default off and default experimental:
 `extensions.codeql.enabled=false`, `extensions.codeql.experimental=true`, and

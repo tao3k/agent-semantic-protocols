@@ -31,8 +31,8 @@ fn codex_listfiles_absolute_paths_respect_configured_project_root() {
             }
         }),
     );
-    assert_eq!(decision.decision, DecisionKind::Allow);
-    assert_eq!(decision.reason_kind, ReasonKind::None);
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::SourceDirectoryEnumeration);
 
     let decision = classify_hook(
         &registry,
@@ -95,8 +95,8 @@ fn codex_listfiles_absolute_paths_respect_current_dir_project_root() {
             }
         }),
     );
-    assert_eq!(decision.decision, DecisionKind::Allow);
-    assert_eq!(decision.reason_kind, ReasonKind::None);
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::SourceDirectoryEnumeration);
 
     let current_shadow_path = format!(
         "{}-shadow/crates/agent-semantic-hook/src",
@@ -158,8 +158,8 @@ fn codex_listfiles_traversal_paths_are_normalized_before_source_matching() {
             }
         }),
     );
-    assert_eq!(decision.decision, DecisionKind::Allow);
-    assert_eq!(decision.reason_kind, ReasonKind::None);
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(decision.reason_kind, ReasonKind::SourceDirectoryEnumeration);
 
     let decision = classify_hook(
         &registry,

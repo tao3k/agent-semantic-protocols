@@ -1,0 +1,274 @@
+#+title: RFC 10.05.20/01.26 - SearchRoute Risk-Feasible Graph Selection
+#+startup: overview
+#+options: toc:3 num:nil
+
+* Status and authority
+
+This document composes three existing authorities rather than replacing them:
+
+- [[file:00.35-feasibility-first-route-admission.org][RFC 00.35]] establishes that route budgets are hard feasibility boundaries and cost comparison occurs only after admission;
+- [[file:01.25-searchroute-risk-bounded-batch-admission.org][RFC 01.25]] establishes expected batch cost, a separately certified tail envelope, a two-dimensional hard fallback cap, and risk-cache identity; and
+- the canonical graph-router Pareto model keeps graph hops, interaction rounds, projected tokens, verification work, search executions, and model-prefix recomputations as distinct dimensions.
+
+RFC 00.35 predates the risk envelope. Its route-local budget predicate cannot prove that a batch plan has a valid calibration, a tail certificate targeting the enforced hard cap, or worst-case round and provider-token safety. RFC 01.25 proves those facts for one batch plan, but does not yet state how the graph router must compose them with shortest-path and Pareto selection.
+
+This RFC closes that seam. A candidate enters the optimization domain only after both route feasibility and risk-envelope feasibility are proved. Graph hops, expected savings, search-cache reuse, and model prefix-cache reuse are costs or observations; none is admission authority.
+
+The formal owners are:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteRiskFeasibleGraphSelection.lean][SearchRouteRiskFeasibleGraphSelection.lean]];
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteRiskFeasibleGraphSelection.lean][modular Lean audit]];
+- [[file:../../../../packages/proofs/receipts/searchroute-risk-feasible-graph-selection-audit-v1.json][Lean JSON receipt]];
+- [[file:../../../../packages/proofs/axle/SearchRouteRiskFeasibleGraphSelectionCost.lean][AXLE independent selection model]];
+- [[file:../../../../packages/proofs/axle/SearchRouteHopFirstNotRiskAdmission.formal.lean][AXLE hop-first counterexample statement]];
+- [[file:../../../../packages/proofs/receipts/searchroute-risk-feasible-graph-selection-axle-v1.json][AXLE normalized receipt]]; and
+- the inline Org-Babel Typst model in this document.
+
+This session changes no Rust provider or product Python implementation. =packages/proofs= remains the sole owner of Lean and AXLE verification.
+
+* Problem statement
+
+The evidence-graph router is intended to minimize graph path length, agent/LLM interaction rounds, provider/search tokens, and repeated model work. That objective becomes unsafe when a candidate's batch plan is allowed to participate in ranking before its risk envelope is admitted.
+
+Consider two routes:
+
+| Route | Graph hops | Expected token cost | Hard fallback cap | Hard token-safe |
+|-
+| short | 1 | lower | 6 | no |
+| longer | 2 | higher | 5 | yes |
+
+For eight claims with two batch attempts, shared search input =S= ten, and per-claim input =P= two, cap six satisfies =g+h <= n= but violates the hard token condition: =(2+6)*10 + 6*2 = 92 > 80=. Cap five satisfies both the round and token hard bounds.
+
+The one-hop route is lexicographically shorter. It may also have a model prefix-cache hit. Neither fact makes its fallback plan executable within the protocol budget. If hop-first or cache-adjusted ranking runs before risk admission, the router selects a route that must later overflow, fail closed, or degrade into unbounded fine-grained fallback commands.
+
+The failure is not repaired by adding risk as another weighted score. Any finite weight permits a sufficiently large improvement in another dimension to compensate for a hard violation. Risk feasibility must restrict the domain before optimization.
+
+* Lean-discovered logical gaps
+
+** Route feasibility and risk feasibility are independent
+
+RFC 00.35 route feasibility checks graph hops, uncached tokens, rounds, and transitions against route caps. A candidate can satisfy every one of those bounds while carrying a risk envelope whose hard fallback cap violates RFC 01.25 provider-token safety.
+
+Conversely, a risk-safe batch plan can be attached to a graph route that exceeds its graph-hop or transition budget. Therefore neither predicate implies the other. Composite admission is their conjunction.
+
+** Shortest graph path is conditional on admission
+
+The phrase “shortest graph path” is underspecified unless it names the candidate universe and admission predicate. The router may claim shortest-path optimality only over the risk-feasible, route-feasible candidates covered by its catalog or frontier certificate.
+
+An infeasible one-hop candidate is not a counterexample to an admitted two-hop optimum because it is outside the optimization domain. An omitted one-hop family is still a completeness obligation: the router must either enumerate it and reject it with a valid infeasibility certificate, or prove that every member of the omitted family violates a hard premise.
+
+** Expected admission cannot reopen a hard boundary
+
+RFC 01.25 =ExpectedCostAdmissible= supports plan generation and ranking. It is not a substitute for =ValidRiskEnvelope= or =HardFallbackSafe=. A route with attractive expected mass but an unsafe hard cap remains outside the graph optimization domain.
+
+This separation also prevents an agent from repeatedly constructing smaller individual commands after a batch failure. Once the hard cap is reached, the route terminates with an overflow/fail-closed receipt. The graph router does not create a new implicit route generation merely because more fine-grained commands are available.
+
+** Evaluation identity is a product, not a prefix
+
+The existing route-evaluation identity binds workspace snapshot, query, search policy, model, prompt/tool surface, and route budget. RFC 01.25 risk-cache identity additionally binds plan, checkpoint, eligibility policy, calibration snapshot, search-cost profile, risk cells and their digest, hard cap, allowed tail policy, and tail certificate.
+
+A comparable risk-aware evaluation requires both identities. Equality of the legacy route identity does not imply equality of the risk identity. In particular, the same graph route evaluated under a changed calibration or changed =S/P= search-cost profile is not reusable.
+
+** Cache improvements are monotone costs, not admission evidence
+
+A model prefix-cache hit can lower =modelPrefixRecomputations= or effective model input. A semantic search-cache hit can lower =searchExecutions= and may eliminate provider work. These changes can improve a cost vector after their own identities are validated.
+
+They do not prove that the risk envelope is current. A search-cache substitution that changes provider execution, batch composition, checkpoint, or risk cells requires a matching risk identity or a newly admitted envelope. A model prefix-cache hit never changes provider fallback probability or hard provider-token cost.
+
+** Frontier closure must quantify over the admitted residual
+
+A frontier lower-bound certificate ranks costs; it does not prove risk feasibility. Safe closure has two cases:
+
+1. a risk or route infeasibility certificate excludes every candidate in the frontier; or
+2. a lower-bound certificate proves the selected admitted route no worse than every admitted member of the frontier.
+
+Applying a cost lower bound to a mixture of admitted and unclassified candidates is insufficient. The unclassified candidates still require risk-envelope resolution or a fail-closed exclusion proof.
+
+* Mathematical model
+
+Let =C= be a finite graph-route candidate catalog. Each candidate =c= carries graph cost =K(c)=, route-budget evidence, and a risk envelope =E(c)=. Define:
+
+- =F_route(c)=: the canonical route budget and capability predicate;
+- =F_risk(c)=: valid RFC 01.25 envelope, tail-to-cap binding, expected gates, and two-dimensional hard cap;
+- =A(c)=: composite admission; and
+- =C_A=: the admitted subcatalog.
+
+The following inline Typst block is the normative mathematical presentation. It is extracted as Org-Babel content and checked through =typst eval --in -=. No generated =.typ= file is an authority.
+
+#+begin_src typst
+#set page(width: 18cm, height: auto, margin: 1.2cm)
+#set text(size: 10pt)
+
+= Risk-feasible graph selection
+
+Composite admission is a conjunction:
+
+$ A(c) = F_("route")(c) and F_("risk")(c). $
+
+The optimization domain is filtered before comparison:
+
+$ C_A = { c in C | A(c) }. $
+
+For cost vector
+
+$ K(c) = (H(c), R(c), T(c), V(c), S(c), M(c)), $
+
+the selected route satisfies
+
+$ c^* in C_A, $
+
+$ forall c in C_A, quad K(c^*) <=_("Pareto") K(c). $
+
+A shorter path does not compensate for failed admission:
+
+$ H(c_s) < H(c_f), quad not A(c_s), quad A(c_f) $
+
+$ ==> quad "selectable"(c_f) and not "selectable"(c_s). $
+
+Risk-aware comparison binds both identity components:
+
+$ I_("composite")(c) = (I_("route")(c), I_("risk")(c)). $
+
+$ I_("route")(a) = I_("route")(b) $
+
+$ not ==> I_("composite")(a) = I_("composite")(b). $
+
+Cache credits change cost only after admission:
+
+$ "cache-credit"(c) ==> K'(c) <=_("componentwise") K(c), $
+
+$ "cache-credit"(c) not ==> A(c). $
+#+end_src
+
+The Pareto statement intentionally applies only to =C_A=. If =C_A= is empty, selection returns no executable route and an explicit admission failure. It does not fall back to the least-infeasible candidate.
+
+* Normative protocol
+
+** ASP-RFC-10.05-RFSG-FEASIBILITY-CONJUNCTION
+
+=RiskRouteAdmitted(candidate)= MUST require both canonical route feasibility and a valid RFC 01.25 risk envelope. Neither predicate may be inferred from the other.
+
+** ASP-RFC-10.05-RFSG-RISK-BEFORE-COST
+
+The graph router MUST resolve risk admission before hop-first, lexicographic, Pareto, or weighted comparison. Infeasible or unresolved candidates are outside the optimization domain.
+
+** ASP-RFC-10.05-RFSG-NO-HOP-COMPENSATION
+
+Fewer graph hops MUST NOT compensate for a failed calibration identity, tail certificate, hard round cap, hard provider-token cap, route budget, or capability premise.
+
+** ASP-RFC-10.05-RFSG-EXPECTED-RANKING-ONLY
+
+Expected fallback mass and expected cost MAY rank alternative plans whose complete hard admission already holds. Expected evidence MUST NOT authorize a candidate whose hard or tail evidence is missing or invalid.
+
+** ASP-RFC-10.05-RFSG-IDENTITY-PRODUCT
+
+Risk-aware route comparison and cache reuse MUST bind both the route-evaluation identity and RFC 01.25 risk-cache identity. Equality of one component alone is insufficient.
+
+** ASP-RFC-10.05-RFSG-CACHE-NONAUTHORITY
+
+Search-cache and model prefix-cache credits MAY improve their distinct cost coordinates only after their identities are verified. A cache hit MUST NOT synthesize risk admission, repair a stale calibration, or change the hard fallback cap without a new envelope.
+
+** ASP-RFC-10.05-RFSG-CONDITIONAL-SHORTEST
+
+Any shortest-path or Pareto-optimality claim MUST name the admitted candidate universe and its coverage certificate. The claim is conditional on route realization, risk admission, and catalog/frontier completeness.
+
+** ASP-RFC-10.05-RFSG-FRONTIER-CLOSURE
+
+An omitted frontier may close only through a universal infeasibility certificate or a cost lower bound quantified over its admitted members. Minimum graph-hop count alone cannot close an unresolved risk frontier.
+
+** ASP-RFC-10.05-RFSG-NO-LEAST-INFEASIBLE
+
+When no candidate is admitted, the router MUST emit an explicit no-route/admission receipt. It MUST NOT select the least-infeasible route, silently widen the hard cap, assume independence, relabel a failure as agent preference, or start hidden individual fallback loops.
+
+** ASP-RFC-10.05-RFSG-GENERATION-FENCE
+
+Changing graph generation, route budget, plan digest, calibration snapshot, search-cost profile, risk cells, hard cap, or tail certificate MUST invalidate the composite evaluation. A new generation requires a new admission decision before ranking.
+
+* Candidate and selection contract
+
+A =RiskRouteCandidate= carries:
+
+| Field family | Required meaning |
+|-
+| route identity | workspace, query, policy, model, prompt/tool, route budget |
+| graph cost | hops, interactions, projected tokens, verification, search, model recomputation |
+| route evidence | budget and capability feasibility |
+| risk identity | plan, checkpoint, policy, calibration, cost profile, cells digest, cap, tail policy, tail certificate |
+| risk evidence | valid envelope plus exact hard round/token bounds |
+| catalog identity | candidate generation and coverage domain |
+
+=RiskRouteAdmitted= is a proposition, not a numeric score. =RiskAdmittedNoWorse(left,right)= requires =left= admitted and either =right= not admitted or =left.cost= Pareto-no-worse than =right.cost=.
+
+A selection receipt contains:
+
+- selected candidate membership in the named catalog;
+- route-feasibility evidence;
+- risk-envelope evidence;
+- composite evaluation identity;
+- comparison evidence against every admitted visible candidate;
+- frontier coverage and closure evidence; and
+- an explicit empty-admitted-set outcome when no candidate is selectable.
+
+* Cache boundaries
+
+Three cache-related facts remain separate:
+
+- semantic search-result reuse can change the executable graph route and provider work;
+- search-risk reuse validates an RFC 01.25 envelope under an exact risk identity; and
+- model prefix reuse changes model-side recomputation or uncached prompt cost.
+
+A semantic result hit does not automatically preserve risk identity because it may have been produced under a different checkpoint, provider execution plan, or calibration snapshot. A risk-cache hit does not prove a model prefix hit. A model prefix hit does not reduce provider fallback mass, provider hard-token requirements, or tail probability.
+
+* Agent-facing SearchLoop behavior
+
+The graph router exposes a compact progressive decision rather than a complex public command tree:
+
+1. enumerate or refine a bounded candidate/frontier set;
+2. resolve route feasibility;
+3. resolve or reject the risk envelope;
+4. remove candidates that fail either hard predicate;
+5. compare the admitted residual using the canonical cost vector;
+6. return the selected route, its composite identity, and the next bounded action;
+7. enforce the RFC 01.25 fallback cap during execution; and
+8. reconcile realized outcomes through RFC 01.24 without reopening selection inside hidden loops.
+
+This ordering reduces wasted LLM rounds: the model does not inspect or execute a nominally short candidate that the router already knows cannot remain within hard cost bounds.
+
+* Lean proof obligations
+
+The project Lean module proves:
+
+- composite admission projects both route and risk feasibility;
+- a one-hop route can be route-feasible and hop-first preferred while risk-infeasible;
+- a two-hop risk-feasible route is admitted over that shorter route;
+- expected or cache-improved cost does not synthesize risk feasibility;
+- fallback cap six fails the provider-token boundary while cap five passes;
+- equality of legacy route identity does not prove composite identity;
+- calibration and search-cost changes invalidate composite comparison;
+- every selected candidate is risk feasible; and
+- an empty admitted catalog produces no selected candidate.
+
+The audit remains modular and emits theorem families, clause bindings, and axiom inventory as JSON.
+
+* AXLE independent challenge
+
+AXLE checks a standalone Mathlib model under =lean-4.32.0=. Its separately verified theorem states that hop-first preference does not imply risk admission. The model also checks the cap-six token counterexample, cap-five closure, feasibility-first selection, cache nonauthority, and identity separation.
+
+* Consequences for later shared schema and Python graph work
+
+The later shared schema must represent route feasibility, risk feasibility, composite identity, and selection evidence as separate typed fields. A single =score=, =safe=true= Boolean, combined cache counter, or provider-private fallback heuristic cannot represent this RFC.
+
+Future Turbo Graph Python work must consume the shared candidate and envelope contract. It must not rank NetworkX/SciPy/GraphBLAS paths first and attach safety afterward. Language providers may choose different graph engines, but they must reproduce the same admission-before-cost semantics and receipts.
+
+* Non-goals
+
+- This RFC does not implement Rust or product Python code.
+- It does not add a public CLI command family.
+- It does not place calibration estimation inside Lean.
+- It does not turn risk into a weighted cost dimension.
+- It does not claim global shortest-path completeness without a catalog/frontier coverage proof.
+- It does not merge semantic search caching with model prefix caching.
+
+* Open implementation evidence
+
+A real-project evaluation must record total candidates, route-infeasible count, risk-infeasible count, unresolved-risk count, admitted count, frontier closure reasons, selected graph hops, provider/search tokens, agent/LLM rounds, search-cache observations, model prefix-cache observations, hard-cap overflow events, and whether every omitted family has a typed closure certificate.

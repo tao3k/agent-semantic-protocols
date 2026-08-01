@@ -70,6 +70,7 @@ theorem repeated_identity_dag_costs_ten :
 theorem equal_atom_label_does_not_imply_shareable :
     sharedIdentity.atomDigest = nextGenerationIdentity.atomDigest ∧
       ¬ Shareable sharedIdentity nextGenerationIdentity := by
+  unfold Shareable sharedIdentity nextGenerationIdentity
   decide
 
 theorem generation_drift_prevents_deduplication :
@@ -125,4 +126,3 @@ theorem semantic_and_prompt_charges_remain_separate :
     ⟩
 
 end ASPProof.SearchRouteIdentityScopedSharing
-

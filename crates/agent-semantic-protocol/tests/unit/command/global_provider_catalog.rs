@@ -132,6 +132,7 @@ fn write_catalog(path: &Path, providers: &[catalog::GlobalProviderCatalogProvide
 
 #[test]
 fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
+    let _runtime_snapshot_entrypoint = catalog::runtime_provider_registry_snapshot;
     let _publication_entrypoint: fn(
         &[install_provider_reconcile::ProviderInstallReceipt],
     )

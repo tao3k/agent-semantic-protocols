@@ -134,6 +134,8 @@ pub async fn acquire_runtime_server_election() -> Result<RuntimeServerElection, 
 pub async fn prepare_runtime_server_endpoint(
     runtime_artifact_path: &Path,
     runtime_artifact_digest: &str,
+    artifact_mode: &str,
+    artifact_catalog_digest: &str,
     owner_epoch: u64,
     binding_token: &str,
 ) -> Result<RuntimeServerEndpoint, String> {
@@ -142,6 +144,8 @@ pub async fn prepare_runtime_server_endpoint(
         &runtime_base,
         runtime_artifact_path,
         runtime_artifact_digest,
+        artifact_mode,
+        artifact_catalog_digest,
         owner_epoch,
         binding_token,
     )
@@ -152,6 +156,8 @@ pub async fn prepare_runtime_server_endpoint_in(
     runtime_base: &Path,
     runtime_artifact_path: &Path,
     runtime_artifact_digest: &str,
+    artifact_mode: &str,
+    artifact_catalog_digest: &str,
     owner_epoch: u64,
     binding_token: &str,
 ) -> Result<RuntimeServerEndpoint, String> {
@@ -203,6 +209,8 @@ pub async fn prepare_runtime_server_endpoint_in(
         owner_epoch,
         runtime_artifact_path: runtime_artifact_path.to_string_lossy().into_owned(),
         runtime_artifact_digest: runtime_artifact_digest.to_owned(),
+        artifact_mode: artifact_mode.to_owned(),
+        artifact_catalog_digest: artifact_catalog_digest.to_owned(),
         binding_token: binding_token.to_owned(),
         socket_path: socket_path.to_string_lossy().into_owned(),
         data_plane_socket_path: data_plane_socket_path.to_string_lossy().into_owned(),

@@ -369,6 +369,103 @@ After parser-owned reference discovery is restored:
 
 * Proof obligation
 
+** Exact-selector active-generation admission
+
+The active-generation proof is parameterized by an operation-scoped provider
+closure.  For an ordinary language =search=, language-scoped source-index
+lookup, or exact =query=, that closure contains only the selected provider and
+its explicitly declared provider dependencies.  Installed receipts, registry
+membership, or workspace file extensions MUST NOT widen the closure.
+
+The detailed provider-publication and native-owner transport obligations remain
+at the historical compatibility locators below until phase-two physical tree
+migration.  Their normative owner is this graph-first RFC:
+
+- [[file:10.05-cli-first-harness-ux/10.05.62-provider-scoped-lazy-activation-and-runtime-publication.org][10.05.62 Provider-scoped lazy activation and runtime publication]]
+- [[file:10.05-cli-first-harness-ux/10.05.63-native-incremental-owner-capability-admission-v1.org][10.05.63 Native incremental owner capability admission]]
+
+Admission MUST prove both provider-closure isolation and schema/transport
+congruence.  A successful provider process invocation is not sufficient when
+the runtime request or response field set differs from the published JSON
+schema, and a project-scoped receipt is not sufficient when a read route still
+materializes unrelated providers.
+
+An exact structural selector is a stable semantic name, not proof that its
+owner still belongs to the active workspace generation.  Before returning a
+projection or an owner diagnostic, the Runtime Server MUST bind the read to
+one admitted generation and return both its generation digest and source root
+digest.
+
+Resolution against that generation has four disjoint outcomes:
+
+- =resolved=: the selector and owner are members of the same active generation;
+- =selector-stale= / =selector-not-in-active-generation=: the owner is absent
+  from the active generation, including a removed or moved owner;
+- =item-missing= / =item-not-in-live-owner=: the owner is active but the named
+  item is absent; and
+- =kind-mismatch= / =snapshot-item-kind-mismatch=: the symbol exists in the
+  active owner under another item kind.
+
+=owner-missing= / =owner-not-in-workspace= is not a valid exact-selector
+result because it loses the generation-admission fact and encourages replay of
+an owner command for a path already proven absent.  A =selector-stale= receipt
+MUST recommend symbol-oriented SearchLoop discovery in the active generation;
+it MUST NOT recommend owner-items for the absent path.
+
+Static hook activation declares provider capabilities only.  Git candidate
+identity, package-manager project resolution, source scope, selector inventory,
+and exact projection are one Runtime Server generation transaction.  No CLI,
+Hook, or Search adapter may independently infer workspace membership or open a
+workspace database to repair this result.
+
+The installed Global provider catalog and active artifact receipt are the
+immutable executable-identity authority for the query data plane.  A language
+runtime projection MUST consume that published identity and MUST NOT hash or
+read provider/runtime executable bytes during =search= or =query=.  APIs that
+construct a registered-language runtime therefore require an explicit receipt
+locator; an absent locator is a lifecycle admission error, not permission to
+fall back to byte hashing.
+
+=search owner <path> items= and exact-selector projection are resident data
+plane reads.  Both MUST route before activation construction and MUST consume
+the already admitted immutable generation without provider context, provider
+spawn, database open, or control-socket roundtrip.  A missing generation is a
+lifecycle admission failure; the read command MUST NOT repair it.
+
+Workspace admission is a two-phase typed lifecycle.  An
+=admit-runtime-generation= receipt in =building= state records accepted work;
+it does not authorize the following exact query.  =session-start=,
+=user-prompt=, and =pre-tool= MUST follow admission with
+=ensure-runtime-generation= and may release the client tool call only after a
+validated =ready= receipt.  =building= and =failed= remain fail-closed.  This
+ordering is owned by the Hook/Runtime Server contract, not by a retry loop in
+the exact-query CLI.
+
+Explicit admission and observation are different operations.  A later
+=admit-runtime-generation= for a =ready= workspace MUST be accepted so the
+incremental builder can detect a Git/package-manager generation change and
+atomically publish its successor.  =ensure-runtime-generation= and daemon
+catalog restore MUST only observe the current attempt to its terminal state;
+they MUST NOT schedule a second build when the admitted attempt completed
+between the two IPC requests.  =building= remains the only single-flight
+exclusion state, and repeated daemon restore remains idempotent.
+
+Provider source envelopes bind two deliberately distinct digests.  The
+=addressProviderDigest= is derived from the admitted provider registry and is
+used only to locate the canonical envelope.  The nested
+=sourceSnapshot.providerDigest= commits the provider-owned project resolution
+and source semantics.  Publication and lookup MUST validate both fields; using
+either digest in place of the other is an identity error, not a cache miss.
+
+The Lean model under =packages/proofs= must establish at least:
+
+- every =resolved= projection is generation-equal to the active generation;
+- an absent owner cannot be classified as a resolved or live-owner item miss;
+- an active owner with an absent selector cannot be classified as stale-owner;
+- publication changes the visible selector set atomically with its generation;
+- a =building= or =failed= admission cannot release an exact query; and
+- recovery from a stale selector never reuses the absent owner as authority.
+
 Future proof work must evaluate not only safety but search efficiency:
 
 - whether a new receipt shortens a justified graph path;

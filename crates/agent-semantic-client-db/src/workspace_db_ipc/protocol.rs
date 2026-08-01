@@ -114,6 +114,14 @@ pub enum WorkspaceDbIpcOperation {
     EnsureRuntimeGeneration {
         project_root: String,
     },
+    RepairRuntimeGenerationLocator {
+        project_root: String,
+    },
+    EvaluateHook {
+        project_root: String,
+        arguments: Vec<String>,
+        input: String,
+    },
     WriteProviderIncrementalOwner {
         request: ProviderIncrementalOwnerWrite,
     },
@@ -223,6 +231,11 @@ pub enum WorkspaceDbIpcResult {
     RuntimeGenerationAdmission {
         receipt: crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt,
     },
+    HookEvaluation {
+        workspace_identity: String,
+        project_root: String,
+        output: String,
+    },
     RuntimeSelector {
         read: crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
     },
@@ -243,7 +256,6 @@ pub enum WorkspaceDbIpcResult {
 pub struct WorkspaceDbSourceIndexLookupRequest {
     pub project_root: PathBuf,
     pub indexed_project_root: PathBuf,
-    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub query: String,
     pub language_id: Option<LanguageId>,
     pub limit: u32,
@@ -293,10 +305,7 @@ struct WorkspaceDbIpcSessionState {
     client_id: u64,
     next_request_id: std::sync::atomic::AtomicU64,
     lanes: Vec<tokio::sync::Mutex<Option<UnixStream>>>,
-    generation_admission:
-        tokio::sync::OnceCell<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt>,
-    generation_admission_ticket: std::sync::atomic::AtomicU64,
-    generation_admission_winner: std::sync::atomic::AtomicU64,
+    generation_admission_started: std::sync::atomic::AtomicBool,
 }
 
 impl Clone for WorkspaceDbIpcSession {
@@ -328,9 +337,7 @@ impl WorkspaceDbIpcSession {
                 lanes: (0..workspace_db_ipc_read_lane_capacity())
                     .map(|_| tokio::sync::Mutex::new(None))
                     .collect(),
-                generation_admission: tokio::sync::OnceCell::new(),
-                generation_admission_ticket: std::sync::atomic::AtomicU64::new(1),
-                generation_admission_winner: std::sync::atomic::AtomicU64::new(0),
+                generation_admission_started: std::sync::atomic::AtomicBool::new(false),
             }),
         }
     }
@@ -358,9 +365,7 @@ impl WorkspaceDbIpcSession {
                 lanes: (0..workspace_db_ipc_read_lane_capacity())
                     .map(|_| tokio::sync::Mutex::new(None))
                     .collect(),
-                generation_admission: tokio::sync::OnceCell::new(),
-                generation_admission_ticket: std::sync::atomic::AtomicU64::new(1),
-                generation_admission_winner: std::sync::atomic::AtomicU64::new(0),
+                generation_admission_started: std::sync::atomic::AtomicBool::new(false),
             }),
         }
     }
@@ -375,41 +380,46 @@ impl WorkspaceDbIpcSession {
         &self,
         project_root: String,
     ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
-        let ticket = self
-            .shared
-            .generation_admission_ticket
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let receipt = self
-            .shared
-            .generation_admission
-            .get_or_try_init(|| async {
-                self.shared
-                    .generation_admission_winner
-                    .store(ticket, std::sync::atomic::Ordering::Release);
-                match self
-                    .call_operation(WorkspaceDbIpcOperation::AdmitRuntimeGeneration {
-                        project_root,
-                    })
-                    .await?
-                {
-                    WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt } => Ok(receipt),
-                    _ => Err(
-                        "Runtime Server returned an unexpected generation admission result"
-                            .to_owned(),
-                    ),
-                }
-            })
-            .await?;
-        let mut observed = receipt.clone();
         if self
             .shared
-            .generation_admission_winner
-            .load(std::sync::atomic::Ordering::Acquire)
-            != ticket
+            .generation_admission_started
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            )
+            .is_err()
         {
-            observed.accepted = false;
+            return Ok(
+                crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt {
+                    schema_id: crate::runtime_server_admission::WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID
+                        .to_owned(),
+                    schema_version: "1".to_owned(),
+                    workspace_identity: self.endpoint.workspace_identity.clone(),
+                    state: crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Building,
+                    accepted: false,
+                    attempt: 1,
+                    error: None,
+                },
+            );
         }
-        Ok(observed)
+        let result = match self
+            .call_operation(WorkspaceDbIpcOperation::AdmitRuntimeGeneration { project_root })
+            .await
+        {
+            Ok(WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }) => Ok(receipt),
+            Ok(_) => {
+                Err("Runtime Server returned an unexpected generation admission result".to_owned())
+            }
+            Err(error) => Err(error),
+        };
+        if result.is_err() {
+            self.shared
+                .generation_admission_started
+                .store(false, std::sync::atomic::Ordering::Release);
+        }
+        result
     }
 
     pub(super) async fn call_operation(

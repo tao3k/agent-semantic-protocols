@@ -16,11 +16,12 @@ pub use document::{
     CLIENT_HOOK_CONFIG_SCHEMA_ID, CLIENT_HOOK_CONFIG_SCHEMA_VERSION,
     HookClientAgentOrgArtifactsArchiveWarningConfig, HookClientAgentOrgArtifactsConfig,
     HookClientAgentSessionGuideConfig, HookClientAgentSessionMessagesConfig, HookClientConfigFile,
-    HookClientRecoveryPromptConfig, WrapperMatchMode, default_hook_client_config_file,
-    default_hook_client_config_template, hook_client_contract_fingerprint,
-    load_asp_project_config_file, load_hook_client_config_declared_contract_fingerprint,
-    load_hook_client_config_file, load_hook_client_config_overlay_file,
-    merge_asp_project_hook_config, render_hook_client_message_template,
+    HookClientLanguageProviderConfig, HookClientRecoveryPromptConfig, WrapperMatchMode,
+    default_hook_client_config_file, default_hook_client_config_template,
+    hook_client_contract_fingerprint, load_asp_project_config_file,
+    load_hook_client_config_declared_contract_fingerprint, load_hook_client_config_file,
+    load_hook_client_config_overlay_file, merge_asp_project_hook_config,
+    render_hook_client_message_template,
 };
 pub use invocation::{AgentActionAuthorityRule, AgentActionEffectRule};
 pub use profiles::{

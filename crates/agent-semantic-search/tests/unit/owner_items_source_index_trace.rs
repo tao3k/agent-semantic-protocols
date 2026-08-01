@@ -125,7 +125,7 @@ fn owner_items_source_index_lookup_trace_projects_hit_path() {
             source_kind: ClientDbSourceIndexSourceKind::File,
             line_count: Some(12),
             query_keys: vec!["lib".to_string().into()],
-            selector_proof: None,
+            selector_projection: None,
             selector_kind: None,
             selector_symbol: None,
         }],

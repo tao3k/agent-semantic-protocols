@@ -9,24 +9,23 @@ use crate::rust_harness_activation::support::{
 };
 
 #[test]
-fn cli_hook_records_dev_context_and_denies_direct_read_in_develop_mode() {
-    let root = temp_project_root("hook-dev-context-asp-config");
+fn cli_hook_records_dev_context_only_with_explicit_diagnostics_environment() {
+    let root = temp_project_root("hook-dev-context-explicit-env");
     fs::write(
         root.join("Cargo.toml"),
         "[package]\nname = \"hook-dev-context-test\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
     )
     .expect("write project anchor");
-    let agents_dir = root.join(".agents");
-    fs::create_dir_all(&agents_dir).expect("create agents config dir");
-    fs::write(agents_dir.join("asp.toml"), "develop_mode = true\n").expect("write asp config");
     let activation_path = root.join("activation.json");
     fs::write(&activation_path, root_owned_rust_activation_json()).expect("write activation");
     let trace_dir = root.join("trace");
 
     let mut child = asp_command()
         .current_dir(&root)
+        .env_remove("ASP_NO_AGENT")
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .env("SEMANTIC_PROTOCOL_TRACE_DIR", &trace_dir)
+        .env("SEMANTIC_PROTOCOL_DEV_MODE", "1")
         .args([
             "hook",
             "--client",
@@ -49,7 +48,7 @@ fn cli_hook_records_dev_context_and_denies_direct_read_in_develop_mode() {
         .write_all(
             json!({
                 "tool_name": "functions.exec_command",
-                "tool_input": {"cmd": "sed -n '1,40p' src/lib.rs"}
+                "tool_input": {"cmd": "true"}
             })
             .to_string()
             .as_bytes(),
@@ -62,8 +61,7 @@ fn cli_hook_records_dev_context_and_denies_direct_read_in_develop_mode() {
         String::from_utf8_lossy(&output.stderr)
     );
     let decision: Value = serde_json::from_slice(&output.stdout).expect("hook decision JSON");
-    assert_eq!(decision["decision"], "deny");
-    assert_eq!(decision["reasonKind"], "bulk-source-dump");
+    let emitted_decision = decision["decision"].as_str().expect("hook decision kind");
 
     let marker_paths = fs::read_dir(trace_dir.join("dev-context"))
         .expect("read dev-context dir")
@@ -79,6 +77,7 @@ fn cli_hook_records_dev_context_and_denies_direct_read_in_develop_mode() {
         "agent.semantic-protocols.dev-active-context"
     );
     assert_eq!(marker["event"], "pre-tool");
+    assert_eq!(marker["decision"], emitted_decision);
     assert_eq!(
         marker["projectRoot"],
         fs::canonicalize(&root)

@@ -32,9 +32,10 @@ theorem resolved_state_has_no_refinement
     (resolved : DecisionResolved state) :
     ¬ InspectStep state next := by
   intro step
-  have belowZero : next.ambiguity < 0 := by
-    simpa [resolved] using step.1
-  exact (Nat.not_lt_zero next.ambiguity) belowZero
+  unfold InspectStep at step
+  unfold DecisionResolved at resolved
+  rw [resolved] at step
+  exact (Nat.not_lt_zero next.ambiguity) step.1
 
 inductive RefinementRun :
     InspectState → InspectState → Nat → Prop where
@@ -109,10 +110,12 @@ def stalledExample : InspectState :=
 
 theorem example_refinement_is_valid :
     InspectStep initialExample refinedExample := by
+  unfold InspectStep initialExample refinedExample
   decide
 
 theorem budget_consumption_without_information_is_invalid :
     ¬ InspectStep initialExample stalledExample := by
+  unfold InspectStep initialExample stalledExample
   decide
 
 def resolvedExample : InspectState :=
@@ -124,9 +127,11 @@ def resolvedExample : InspectState :=
 
 theorem resolved_example_has_no_next_step (next : InspectState) :
     ¬ InspectStep resolvedExample next :=
-  resolved_state_has_no_refinement
+    resolved_state_has_no_refinement
     resolvedExample
     next
-    (by decide)
+    (by
+      unfold DecisionResolved resolvedExample
+      decide)
 
 end ASPProof.SearchRouteMonotoneInspectRefinement

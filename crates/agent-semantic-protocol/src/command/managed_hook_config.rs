@@ -37,7 +37,9 @@ pub(super) fn materialize(path: &Path) -> Result<ManagedHookConfigStatus, String
             Ok(ManagedHookConfigStatus::Current)
         }
         Ok(current) => {
-            if !sidecar_matches(path, &current)? {
+            if !sidecar_matches(path, &current)?
+                && !has_legacy_managed_identity(&current, expected_bytes)
+            {
                 return Err(format!(
                     "user-config-contract-unproven: managed hook config {} differs from template and has no matching ownership sidecar",
                     path.display()
@@ -59,6 +61,29 @@ pub(super) fn materialize(path: &Path) -> Result<ManagedHookConfigStatus, String
             path.display()
         )),
     }
+}
+
+fn has_legacy_managed_identity(current: &[u8], expected: &[u8]) -> bool {
+    let Ok(current) = std::str::from_utf8(current) else {
+        return false;
+    };
+    let Ok(current) = toml::from_str::<toml::Value>(current) else {
+        return false;
+    };
+    let Ok(expected) = std::str::from_utf8(expected) else {
+        return false;
+    };
+    let Ok(expected) = toml::from_str::<toml::Value>(expected) else {
+        return false;
+    };
+    let identity_fields = ["schemaId", "schemaVersion", "protocolId", "protocolVersion"];
+    identity_fields
+        .iter()
+        .all(|field| current.get(*field) == expected.get(*field))
+        && current
+            .get("contractFingerprint")
+            .and_then(toml::Value::as_str)
+            .is_some_and(|fingerprint| fingerprint.starts_with("hook-client-v1-"))
 }
 
 fn verify(path: &Path, expected: &[u8]) -> Result<(), String> {

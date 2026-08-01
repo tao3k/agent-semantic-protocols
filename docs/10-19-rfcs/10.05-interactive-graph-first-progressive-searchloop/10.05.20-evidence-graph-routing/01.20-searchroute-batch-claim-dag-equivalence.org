@@ -370,6 +370,8 @@ The Lean module proves:
 - =batch_semantic_equivalence_does_not_fabricate_individual_invocation=.
 
 * Audit contract
+The Lean JSON producer MUST canonicalize the root =axiomInventory= and every declaration's =axioms= and =rfcClauseIds= as lexicographically sorted, duplicate-free arrays. AXLE MUST reject any noncanonical array before checking theorem-family or RFC-clause coverage. This fail-closed rule prevents narration order from changing receipt identity and was added after AXLE rejected the initial noncanonical proof receipt.
+
 
 The Lean audit MUST report =propext= and =Quot.sound= separately.  List
 manifest and ordered-vector membership proofs use the standard quotient

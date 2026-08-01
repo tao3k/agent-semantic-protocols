@@ -1,0 +1,16 @@
+import ASPProof.RuntimeResidentLifecycle
+
+namespace ASPProof.Audit.RuntimeResidentLifecycle
+
+open ASPProof.RuntimeResidentLifecycle
+
+#check matching_profile_is_ready
+#check missing_typed_spawn_blocks
+#check missing_retirement_blocks
+#check missing_path_release_blocks
+#check complete_host_capability_replaces
+#check admitted_transition_decreases_rank
+#check repair_never_blocks_unrelated_tools
+#check same_generation_lease_owner_unique
+
+end ASPProof.Audit.RuntimeResidentLifecycle

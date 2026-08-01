@@ -47,6 +47,13 @@ type ProviderCommandOutputs = (
     ElapsedMillis,
 );
 
+/// Resolve the activated provider's canonical runtime command prefix.
+pub fn activated_provider_command_prefix(
+    provider: &ResolvedProvider,
+) -> Result<Vec<String>, String> {
+    LocalNativeCliBackend::provider_command_prefix(provider)
+}
+
 /// Execution backend that shells out to activated provider binaries.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LocalNativeCliBackend {

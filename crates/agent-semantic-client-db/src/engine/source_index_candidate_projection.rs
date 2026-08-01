@@ -33,7 +33,7 @@ pub(super) fn rank_live_source_index_candidates(
         let mut selector_haystack = String::new();
         let mut selector_symbol = None;
         let mut selector_kind = None;
-        let mut selector_proof = None;
+        let mut selector_projection = None;
         for selector in import
             .selectors
             .iter()
@@ -51,10 +51,10 @@ pub(super) fn rank_live_source_index_candidates(
                 selector_haystack.push(' ');
                 selector_haystack.push_str(query_key.as_str());
             }
-            if selector_proof.is_none() {
+            if selector_projection.is_none() {
                 selector_symbol = selector.symbol.clone();
                 selector_kind = selector.kind.clone();
-                selector_proof = Some(selector.materialization_proof.clone());
+                selector_projection = Some(selector.projection_record.clone());
             }
         }
 
@@ -73,7 +73,7 @@ pub(super) fn rank_live_source_index_candidates(
         }
         candidate.selector_symbol = selector_symbol;
         candidate.selector_kind = selector_kind;
-        candidate.selector_proof = selector_proof;
+        candidate.selector_projection = selector_projection;
         ranked.push((score, candidate));
     }
 

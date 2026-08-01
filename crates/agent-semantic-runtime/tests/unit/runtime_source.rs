@@ -10,25 +10,19 @@ use super::{
 };
 
 #[test]
-fn runtime_source_dir_uses_client_cache_namespace() {
+fn runtime_source_dir_uses_state_home_runtime_namespace() {
     let root = temp_root("runtime-source-dir");
-    let package_root = root.join("crates/example");
-    fs::create_dir_all(&package_root).expect("create package root");
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
-
     let checkout_dir =
-        runtime_source_checkout_dir(&package_root, "runtime-source/gerbil-scheme", "v0.18.2")
+        runtime_source_checkout_dir(&root, "runtime-source/gerbil-scheme", "v0.18.2")
             .expect("runtime source checkout dir");
 
-    assert!(checkout_dir.ends_with("live/client/runtime-source/gerbil-scheme/v0.18.2"));
+    assert!(checkout_dir.ends_with("runtime/runtime-source/gerbil-scheme/v0.18.2"));
     let _ = fs::remove_dir_all(root);
 }
 
 #[test]
 fn runtime_source_dir_rejects_path_escape_segments() {
     let root = temp_root("runtime-source-invalid-segment");
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
-
     let error = runtime_source_checkout_dir(&root, "runtime-source/../gerbil-scheme", "v0.18.2")
         .expect_err("reject parent path segment");
     assert!(error.contains("invalid runtime source path segment"));
@@ -80,7 +74,7 @@ fn runtime_source_index_context_is_owned_by_runtime() {
 }
 
 #[test]
-fn runtime_source_index_context_rejects_checkouts_outside_client_cache() {
+fn runtime_source_index_context_rejects_checkouts_outside_runtime_root() {
     let root = temp_root("runtime-source-index-context-outside-cache");
     let cache_dir = root.join("client");
     let checkout_root = root.join("outside/runtime-source/python/v1");
@@ -98,7 +92,7 @@ fn runtime_source_index_context_rejects_checkouts_outside_client_cache() {
     )
     .expect_err("checkout outside cache must fail");
 
-    assert!(error.contains("outside ASP client cache"));
+    assert!(error.contains("outside ASP runtime root"));
     let _ = fs::remove_dir_all(root);
 }
 
@@ -138,7 +132,6 @@ fn runtime_source_index_files_are_collected_by_runtime() {
 #[test]
 fn runtime_source_acquisition_clones_and_checks_out_version() {
     let root = temp_root("runtime-source-acquire");
-    fs::create_dir_all(root.join(".git")).expect("create git marker");
     let upstream = root.join("upstream-gerbil");
     create_tagged_repo(&upstream, "v0.18.2");
 
@@ -158,7 +151,7 @@ fn runtime_source_acquisition_clones_and_checks_out_version() {
     assert!(
         checkout
             .checkout_dir
-            .ends_with("live/client/runtime-source/gerbil-scheme/v0.18.2")
+            .ends_with("runtime/runtime-source/gerbil-scheme/v0.18.2")
     );
     assert_eq!(
         fs::read_to_string(checkout.checkout_dir.join("runtime.ss")).expect("runtime source file"),

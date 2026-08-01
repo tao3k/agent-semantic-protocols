@@ -47,9 +47,6 @@ pub(super) fn provider_scope_digest(
     )
 }
 
-
-
-
 pub(super) fn source_index_snapshot_from_files(
     index_root: &Path,
     files: &[SourceIndexScopeFile],
@@ -226,6 +223,7 @@ struct PublishedProviderSourceEnvelope {
     schema_id: String,
     schema_version: String,
     provider_id: String,
+    address_provider_digest: String,
     provider_workspace_root: String,
     provider_workspace_identity_digest: String,
     source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
@@ -248,7 +246,7 @@ struct PublishedProviderSourceOwner {
 pub(super) fn load_provider_source_index_snapshot_envelope(
     artifact_root: &Path,
     requested_provider_id: &str,
-    expected_provider_digest: &str,
+    expected_address_provider_digest: &str,
     expected_provider_workspace_identity: &super::provider_envelope::ProviderWorkspaceIdentityV1,
     envelope_path: &Path,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
@@ -265,20 +263,37 @@ pub(super) fn load_provider_source_index_snapshot_envelope(
                 envelope_path.display()
             )
         })?;
+    let expected_file_name = super::provider_envelope::source_snapshot_envelope_file_name(
+        requested_provider_id,
+        expected_address_provider_digest,
+        &expected_provider_workspace_identity.digest,
+    );
     let invalid_reason = if envelope.schema_id != "asp.exact-source-snapshot-envelope.v1" {
         Some("schema-id")
     } else if envelope.schema_version != "1" {
         Some("schema-version")
     } else if envelope.provider_id != requested_provider_id {
         Some("provider-id")
+    } else if envelope.address_provider_digest != expected_address_provider_digest {
+        Some("address-provider-digest")
     } else if envelope.provider_workspace_root != expected_provider_workspace_identity.root {
         Some("provider-workspace-root")
     } else if envelope.provider_workspace_identity_digest
         != expected_provider_workspace_identity.digest
     {
         Some("provider-workspace-identity-digest")
-    } else if envelope.source_snapshot.provider_digest != expected_provider_digest {
-        Some("provider-digest")
+    } else if envelope_path.file_name().and_then(|name| name.to_str())
+        != Some(expected_file_name.as_str())
+    {
+        Some("address-provider-digest-filename")
+    } else if envelope.source_snapshot.provider_digest.len() != 64
+        || !envelope
+            .source_snapshot
+            .provider_digest
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        Some("source-provider-digest")
     } else if envelope.materialization_state != "artifact-complete" {
         Some("materialization-state")
     } else if envelope.owner_coverage != "complete" {
@@ -334,7 +349,7 @@ pub(super) fn load_provider_source_index_snapshot_envelope(
         agent_semantic_artifacts::WorkspaceSnapshot::from_file_hashes(workspace_hashes);
     let source_snapshot = workspace_snapshot.evidence(
         agent_semantic_artifacts::SourceSnapshotKind::Filesystem,
-        expected_provider_digest.to_owned(),
+        envelope.source_snapshot.provider_digest.clone(),
     );
     if source_snapshot.root_digest != envelope.source_snapshot.root_digest
         || source_snapshot.leaf_count != envelope.source_snapshot.leaf_count
@@ -444,6 +459,8 @@ fn current_source_index_snapshot_for_owner_with_registry(
         path: owner_path,
         language_id: LanguageId::from(language_id),
         provider_id: ProviderId::from(provider_id),
+        projection_coverage:
+            agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
         selector_receipts: Vec::new(),
     }];
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
@@ -546,6 +563,8 @@ pub(crate) fn current_runtime_source_index_snapshot(
         path: file.path,
         language_id: LanguageId::from(file.language_id),
         provider_id: ProviderId::from(file.provider_id),
+        projection_coverage:
+            agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
         selector_receipts: Vec::new(),
     })
     .collect::<Vec<_>>();
@@ -564,8 +583,6 @@ pub(crate) fn current_runtime_source_index_snapshot(
         source_index_snapshot_from_files(&runtime_context.checkout_root, &files, &registry)?;
     materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
 }
-
-
 
 pub(super) fn source_index_trace(stage: &str, started: Instant) {
     if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {

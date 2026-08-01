@@ -65,6 +65,7 @@ fn provider_source_envelope_excludes_non_source_generation_anchors() {
         crate::source_index::ProviderSourceSnapshotEnvelopePublicationV1 {
             snapshot: &snapshot,
             provider_id: "rs-harness",
+            address_provider_digest: &snapshot.source_snapshot.provider_digest,
             source_extensions: &["rs".to_owned()],
             artifact_root: &cache_home,
             provider_workspace_root: &cache_home,
@@ -80,6 +81,10 @@ fn provider_source_envelope_excludes_non_source_generation_anchors() {
     assert_eq!(envelope["rootDepth"], 0);
     assert_eq!(envelope["materializationState"], "artifact-complete");
     assert_eq!(envelope["ownerCoverage"], "complete");
+    assert_eq!(
+        envelope["addressProviderDigest"],
+        snapshot.source_snapshot.provider_digest
+    );
     assert_eq!(envelope["providerWorkspaceRoot"], ".");
     assert_eq!(
         envelope["providerWorkspaceIdentityDigest"]

@@ -36,7 +36,7 @@ theorem resolution_preserves_total
     (evidence : ResolutionEvidence) :
     ledgerTotal (resolve ledger evidence) = ledgerTotal ledger := by
   cases evidence <;>
-    simp [resolve, ledgerTotal, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm]
+    simp [resolve, ledgerTotal, Nat.add_comm, Nat.add_left_comm]
 
 theorem resolution_clears_quarantine
     (ledger : QuarantineLedger)
@@ -99,6 +99,7 @@ def mismatchedAuthority : ResolutionAuthority :=
 
 theorem authority_mismatch_rejects_resolution :
     ¬ AuthorityBound exampleAuthority mismatchedAuthority := by
+  unfold AuthorityBound exampleAuthority mismatchedAuthority
   decide
 
 def exampleLedger : QuarantineLedger :=

@@ -224,11 +224,19 @@ fn provider_project_resolution_from_output(
     candidates: &ProviderProjectResolutionCandidates,
 ) -> Result<ProviderProjectResolution, String> {
     if output.status_code != 0 {
+        let argv = output
+            .receipt
+            .provider_commands
+            .iter()
+            .map(|command| command.argv.join(" "))
+            .collect::<Vec<_>>()
+            .join(" | ");
         return Err(format!(
-            "provider project-resolution failed: languageId={} providerId={} status={} stderr={}",
+            "provider project-resolution failed: languageId={} providerId={} status={} argv={} stderr={}",
             provider.language_id,
             provider.provider_id,
             output.status_code,
+            argv,
             String::from_utf8_lossy(output.stderr.as_ref())
         ));
     }

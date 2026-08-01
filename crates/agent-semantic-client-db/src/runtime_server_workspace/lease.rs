@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::{
-    WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot, WorkspaceProjectionLease,
-    model::WorkspaceMemoryBackend,
+    WorkspaceMemoryBackend, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
+    WorkspaceProjectionLease,
 };
 
 #[derive(Debug, Clone)]
@@ -67,21 +67,11 @@ impl WorkspaceGenerationLease {
 
     pub fn read_source_index(
         &self,
-        source_snapshot: &agent_semantic_content_identity::SourceSnapshotEvidence,
         query: &str,
         language_id: Option<&agent_semantic_client_core::LanguageId>,
         limit: u32,
     ) -> Result<crate::ClientDbSourceIndexLookupResult, String> {
         let generation = self.backend.generation();
-        if !generation
-            .source_snapshot
-            .has_same_content_identity(source_snapshot)
-        {
-            return Err(format!(
-                "runtime workspace source snapshot mismatch: expected={:?} actual={:?}",
-                source_snapshot, generation.source_snapshot
-            ));
-        }
         let positions = self
             .backend
             .source_index_owner_positions(query, limit as usize);
@@ -102,7 +92,7 @@ impl WorkspaceGenerationLease {
                         .collect(),
                     selector_symbol: None,
                     selector_kind: None,
-                    selector_proof: None,
+                    selector_projection: None,
                 }
             })
             .collect::<Vec<_>>();

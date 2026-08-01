@@ -17,6 +17,15 @@ pub(crate) async fn reconcile_runtime_server_supervisor(
     install(protocol_home).await
 }
 
+/// Reconcile the platform supervisor and return only after the latest Runtime
+/// Server generation publishes a healthy control-plane receipt.
+pub(crate) async fn reconcile_healthy_runtime_server(
+    protocol_home: &Path,
+) -> Result<agent_semantic_client_db::runtime_server_control::RuntimeServerControlReceipt, String> {
+    install(protocol_home).await?;
+    super::runtime_server::await_healthy_runtime_server(protocol_home).await
+}
+
 async fn install(protocol_home: &Path) -> Result<(), String> {
     let runtime_artifact = canonical_supervisor_runtime_artifact(protocol_home).await?;
     let runtime_is_healthy = matches!(

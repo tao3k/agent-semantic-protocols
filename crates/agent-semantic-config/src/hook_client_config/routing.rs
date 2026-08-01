@@ -244,6 +244,7 @@ pub enum HookClientConfigDecision {
 pub enum HookClientConfigReasonKind {
     None,
     DirectSourceRead,
+    StructuredSourceRead,
     BulkSourceDump,
     RawBroadSearch,
     AgentSearchJson,

@@ -1,0 +1,243 @@
+#+title: RFC 10.25.02 - Org-Native Relationship Contracts
+#+filetags: :asp:org:contract:relationship:evidence-graph:
+
+* Status
+
+Draft protocol and first SearchLoop application profile.
+
+* Problem
+
+Artifact identity alone cannot express why two artifacts belong together. A
+document digest can prove that prose did not change, but it cannot prove that a
+code owner realizes the document, that a Lean module proves one of its laws, or
+that a receipt audits the current proof rather than an older build.
+
+Calling this boundary an RFC commitment is too narrow. RFC sections are only
+one artifact family. ASP also needs contracts between:
+
+- one document and another document;
+- a document section and a code owner;
+- a mathematical presentation and a proof module;
+- a proof module and its normalized audit receipt;
+- a schema and a packet or executable projection;
+- a generated artifact and the source authority that governs it.
+
+* Two contract layers
+
+=ASP-RFC-10.25.02-CONTRACT-LAYERS=
+
+An Org Contract is the parser-owned query/assertion program evaluated by
+Orgize. It validates Org structure and produces assertion-level receipts.
+
+A Relationship Contract is a typed evidence graph whose nodes are artifacts
+and whose edges state relationships between them. Org Contract receipts are
+one verifier family available to a Relationship Contract; they are not the
+whole relationship model.
+
+Relationship Contract implementations MUST reuse Orgize queries and Org
+Contract traces for Org facts. They MUST NOT recreate heading, property,
+source-block, table, or marker parsing in a second language.
+
+#+begin_src typst
+$ "OrgContract" : "Org AST" -> "AssertionReceipt" $
+
+$ "RelationshipContract" : (V, E, Q) -> "RelationshipReceipt" $
+#+end_src
+
+* Artifact nodes
+
+=ASP-RFC-10.25.02-ARTIFACT-NODES=
+
+Each artifact node has:
+
+- a stable =artifactId=;
+- a typed =artifactKind=;
+- a parser- or owner-resolvable locator;
+- a typed canonicalization algorithm;
+- an expected digest;
+- an observed digest in the verification receipt.
+
+Initial V1 artifact kinds are =org-document=, =org-section=, =source-file=,
+=proof-module=, =schema=, =receipt=, and =org-contract=. Later providers MAY add
+typed projections, but MUST NOT smuggle provider-private selectors into an
+untyped string.
+
+An =org-section= locator contains a source path and exact outline path. Its
+source is projected by =orgize elements-query=. An =org-document= or
+=org-contract= is normalized as LF UTF-8. Code, proof, schema, and receipt nodes
+use their declared owner projection and canonicalization.
+
+* Relationship edges
+
+=ASP-RFC-10.25.02-RELATIONSHIP-EDGES=
+
+Every edge has a stable =relationshipId=, subject artifact, typed predicate,
+object artifact, impact policy, and one or more evidence-gate identifiers.
+
+V1 predicates are:
+
+| Predicate | Meaning |
+|-----------+---------|
+| =governed-by= | the object's contract constrains the subject |
+| =depends-on= | subject validity depends on object identity or semantics |
+| =references= | subject links to object without claiming realization |
+| =realizes= | subject code implements an object requirement |
+| =proves= | subject proof establishes an object proposition |
+| =audits= | subject receipt audits the current object artifact |
+| =conforms-to= | subject is validated against the object contract or schema |
+| =renders= | subject is a human-facing presentation of the object model |
+
+=references= is informational by default. Impact is directional and MUST be one
+of =invalidates-subject=, =invalidates-object=, or =informational=. For
+=invalidates-subject=, an object or edge-evidence change invalidates the subject;
+=invalidates-object= reverses that direction. A contract MAY strengthen an
+informational edge, but MUST NOT silently weaken an invalidating edge.
+
+* Evidence gates
+
+=ASP-RFC-10.25.02-EVIDENCE-GATES=
+
+A declared edge is not an admitted relationship. Each non-informational edge
+MUST bind a verifier receipt appropriate to its predicate:
+
+- =governed-by= requires an Org Contract trace with all required assertions
+  passed;
+- =realizes= requires executable conformance or implementation evidence;
+- =proves= requires an axiom-audited proof receipt;
+- =audits= requires normalized receipt replay and digest equality;
+- =conforms-to= requires the named schema or contract validator;
+- =renders= requires parser-bound source identity and executable rendering or
+  lint evidence when the rendering language supports it.
+
+File existence, equal filenames, equal scalar counts, or a caller-provided
+boolean MUST NOT substitute for predicate-specific evidence.
+
+#+begin_src typst
+$ "AdmittedEdge"(e) =>
+  "Observed"("subject"(e)) and
+  "Observed"("object"(e)) and
+  "ExactPredicate"(e) and
+  "EvidencePassed"("gates"(e)) $
+#+end_src
+
+* Relationship admission
+
+=ASP-RFC-10.25.02-ADMISSION=
+
+Let =V= be the committed artifact set, =E= the exact relationship set, and =Q=
+the exact evidence-gate set. A Relationship Contract is admitted only when:
+
+1. every declared artifact has one exact observation;
+2. no observation or edge is undeclared;
+3. every non-informational edge has admitted evidence;
+4. the Org relationship document passes its governing Org Contracts;
+5. canonical graph identity matches the enclosing receipt chain;
+6. invalidation edges have no dependency cycle.
+
+Descriptive =references= edges MAY form cycles. Invalidation edges MUST form a
+DAG so changed-object impact has a finite reverse frontier.
+
+#+begin_src typst
+$ "Admitted"(R) <=>
+  "ExactArtifacts"(V_R, V_o) and
+  "ExactEdges"(E_R, E_o) and
+  "AllEvidencePassed"(Q_R) and
+  "OrgContractsPassed"(R) and
+  "Acyclic"(E_R^i) $
+#+end_src
+
+* Local invalidation and reuse
+
+=ASP-RFC-10.25.02-LOCAL-INVALIDATION=
+
+For a changed artifact or relationship, verification invalidates that item and
+the affected frontier in the explicit =changed -> affected= direction. Thus an
+=invalidates-subject= declaration is traversed from object to subject, while an
+=invalidates-object= declaration is traversed from subject to object. An artifact
+outside that frontier remains reusable when its own identity and evidence gates
+are unchanged.
+
+#+begin_src typst
+#let invalidation-step(subject, object, impact) = {
+  if impact == "invalidates-subject" {
+    (object, subject)
+  } else if impact == "invalidates-object" {
+    (subject, object)
+  } else {
+    none
+  }
+}
+
+#assert(invalidation-step("code", "requirement", "invalidates-subject") ==
+  ("requirement", "code"))
+#assert(invalidation-step("code", "requirement", "informational") == none)
+
+$
+  op("step")(e) = cases(
+    (o, s) &"if" op("impact")(e) = "invalidates-subject",
+    (s, o) &"if" op("impact")(e) = "invalidates-object",
+    emptyset &"if" op("impact")(e) = "informational",
+  )
+$
+
+$
+  op("reusable")(v, Delta) <==>
+  v in.not op("closure")_(op("step"))(Delta)
+  and op("exact-identity")(v)
+  and op("gates-passed")(v)
+$
+#+end_src
+
+This is the generalized form of RFC clause dependency invalidation. It applies
+equally to a changed design document invalidating code conformance, a changed
+proof invalidating its audit receipt, or a changed schema invalidating packets.
+
+#+begin_src typst
+$ "Invalidated"(x) = "ReverseReach"(E^i, "Changed", x) $
+
+$ not "Invalidated"(x) and d_x^o = d_x^d => "Reusable"(x) $
+#+end_src
+
+* Org-native declaration
+
+=ASP-RFC-10.25.02-ORG-DECLARATION=
+
+The human authority for a Relationship Contract is an Org document governed by
+=org/contracts/relationship.v1.org=. Artifact and relationship subtrees carry
+their own =CONTRACT_ORG= bindings. Orgize validates those subtrees and exposes
+their properties through semantic AST queries.
+
+The executable packet is a derived, digest-bound projection of this Org
+authority. A packet MUST NOT add a relationship absent from the Org document,
+omit a declared relationship, or reinterpret a predicate string.
+
+* SearchLoop application
+
+RFC 10.05.64 is the first application profile. Its Relationship Contract links:
+
+- the SearchLoop design document to its governing Org Contract;
+- the bounded routing requirements to the Python Graph Turbo owner;
+- the relationship-admission requirement to its Lean proof;
+- that Lean proof to its normalized audit receipt.
+
+The former RFC-only clause commitment becomes a set of =org-section=
+=depends-on= edges inside this larger contract graph.
+
+* Proof obligations
+
+The proof model MUST establish at least:
+
+1. admitted relationships require passed predicate-specific evidence;
+2. equal artifact digests without edge evidence do not establish =realizes=;
+3. an Org Contract pass without semantic digest equality does not admit an
+   artifact;
+4. exact edge equality rejects underdeclared relationships;
+5. invalidation reaches every dependent subject;
+6. unrelated artifacts remain locally reusable.
+
+* Non-goals
+
+- Relationship Contracts do not replace provider-owned code analysis.
+- Org Contract traces do not prove arbitrary program semantics.
+- A =references= edge does not imply =realizes= or =proves=.
+- The model does not authorize hidden fallback when a verifier is unavailable.

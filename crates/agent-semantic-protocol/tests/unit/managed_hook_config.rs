@@ -51,6 +51,31 @@ fn hook_owned_refresh_covers_create_stale_and_warm_cycles() {
 }
 
 #[test]
+fn legacy_fingerprint_recovers_missing_sidecar() {
+    let root = test_root("legacy-sidecar-recovery");
+    let path = root.join("hooks").join("config.toml");
+    std::fs::create_dir_all(path.parent().expect("config parent")).expect("create config parent");
+    let mut legacy =
+        toml::from_str::<toml::Value>(&agent_semantic_hook::default_client_config_template())
+            .expect("parse managed template");
+    legacy["contractFingerprint"] = toml::Value::String("hook-client-v1-legacy-managed".to_owned());
+    std::fs::write(
+        &path,
+        toml::to_string(&legacy).expect("render legacy managed config"),
+    )
+    .expect("write legacy managed config");
+
+    assert_eq!(materialize(&path), Ok(ManagedHookConfigStatus::Migrated));
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("read recovered config"),
+        agent_semantic_hook::default_client_config_template()
+    );
+    assert!(path.with_file_name("config.toml.managed.sha256").is_file());
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn concurrent_stale_refresh_is_lock_free_and_converges() {
     const WORKERS: usize = 16;
     let root = test_root("concurrent");

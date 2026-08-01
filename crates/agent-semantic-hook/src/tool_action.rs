@@ -41,6 +41,9 @@ pub(crate) enum AgentActionKind {
     Search,
     Enumerate,
     Execute,
+    Test,
+    Build,
+    Delete,
     Unknown,
 }
 
@@ -102,6 +105,9 @@ const fn agent_action_kind_label(kind: AgentActionKind) -> &'static str {
         AgentActionKind::Search => "search",
         AgentActionKind::Enumerate => "enumerate",
         AgentActionKind::Execute => "execute",
+        AgentActionKind::Test => "test",
+        AgentActionKind::Build => "build",
+        AgentActionKind::Delete => "delete",
         AgentActionKind::Unknown => "unknown",
     }
 }
@@ -142,6 +148,9 @@ pub(crate) fn action_kind_matches(
             | (AgentActionKind::Search, Configured::Search)
             | (AgentActionKind::Enumerate, Configured::Enumerate)
             | (AgentActionKind::Execute, Configured::Execute)
+            | (AgentActionKind::Test, Configured::Test)
+            | (AgentActionKind::Build, Configured::Build)
+            | (AgentActionKind::Delete, Configured::Delete)
             | (AgentActionKind::Unknown, Configured::Unknown)
     )
 }
@@ -157,8 +166,10 @@ pub(crate) fn action_kind_from_config(
         Configured::Search => Some(AgentActionKind::Search),
         Configured::Enumerate => Some(AgentActionKind::Enumerate),
         Configured::Execute => Some(AgentActionKind::Execute),
+        Configured::Test => Some(AgentActionKind::Test),
+        Configured::Build => Some(AgentActionKind::Build),
+        Configured::Delete => Some(AgentActionKind::Delete),
         Configured::Unknown => Some(AgentActionKind::Unknown),
-        Configured::Test | Configured::Build | Configured::Delete => None,
     }
 }
 

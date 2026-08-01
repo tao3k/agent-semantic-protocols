@@ -1,7 +1,9 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use super::{activation_repair_project_root, hook_workspace_candidate};
+use super::{
+    activation_repair_project_root, hook_workspace_candidate, requests_explicit_asp_workspace,
+};
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(1);
 
@@ -34,6 +36,7 @@ fn explicit_asp_workspace_overrides_the_tool_workdir() {
         hook_workspace_candidate(&payload, Path::new("/fallback")),
         Path::new("/workspace/root/crates/client-db")
     );
+    assert!(requests_explicit_asp_workspace(&payload));
 }
 
 #[test]
@@ -49,6 +52,7 @@ fn explicit_absolute_asp_workspace_is_preserved() {
         hook_workspace_candidate(&payload, Path::new("/fallback")),
         Path::new("/other/project")
     );
+    assert!(requests_explicit_asp_workspace(&payload));
 }
 
 #[test]
@@ -64,6 +68,7 @@ fn another_commands_workspace_flag_does_not_change_runtime_admission_scope() {
         hook_workspace_candidate(&payload, Path::new("/fallback")),
         Path::new("/workspace/root")
     );
+    assert!(!requests_explicit_asp_workspace(&payload));
 }
 
 #[test]

@@ -56,14 +56,18 @@ def longerExecutable : GraphCostVector :=
 
 theorem hop_first_prefers_short_expensive :
     CostVectorNoWorse shortExpensive longerExecutable := by
+  unfold CostVectorNoWorse TokenTailNoWorse RoundTransitionNoWorse
+    shortExpensive longerExecutable
   decide
 
 theorem short_expensive_is_infeasible :
     ¬ Feasible exampleBudget shortExpensive := by
+  unfold Feasible exampleBudget shortExpensive
   decide
 
 theorem longer_route_is_feasible :
     Feasible exampleBudget longerExecutable := by
+  unfold Feasible exampleBudget longerExecutable
   decide
 
 theorem hop_first_preference_does_not_imply_feasibility :
@@ -86,4 +90,3 @@ theorem longer_route_is_admitted_over_short_route :
     ⟩
 
 end ASPProof.SearchRouteFeasibilityFirst
-

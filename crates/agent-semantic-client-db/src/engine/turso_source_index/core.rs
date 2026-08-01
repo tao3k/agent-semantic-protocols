@@ -150,32 +150,16 @@ pub async fn refresh_turso_source_index_import_on_connection(
     let trace_started = std::time::Instant::now();
     let requested_source_snapshot = request.source_snapshot;
     let import = request.import;
-    let file_hashes_by_path = import
-        .file_hashes
-        .iter()
-        .map(|file| (file.path.as_str(), file.sha256.as_str()))
-        .collect::<std::collections::BTreeMap<_, _>>();
-    let source_file_hashes = import
-        .owners
-        .iter()
-        .map(|owner| {
-            let hash = file_hashes_by_path
-                .get(owner.owner_path.as_str())
-                .ok_or_else(|| {
-                    format!(
-                        "source index import is missing owner content hash: ownerPath={}",
-                        owner.owner_path
-                    )
-                })?;
-            Ok((owner.owner_path.as_str(), *hash))
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-    let workspace_snapshot =
-        agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(source_file_hashes);
-    let mut source_snapshot = workspace_snapshot.evidence(
-        requested_source_snapshot.source_kind.clone(),
-        requested_source_snapshot.provider_digest.clone(),
-    );
+    let workspace_snapshot = materialization.workspace_snapshot.clone();
+    workspace_snapshot.validate()?;
+    if workspace_snapshot.root_digest() != requested_source_snapshot.root_digest {
+        return Err(format!(
+            "source-index requested snapshot is not the materialized source-byte Merkle root: requested={} materialized={}",
+            requested_source_snapshot.root_digest,
+            workspace_snapshot.root_digest(),
+        ));
+    }
+    let mut source_snapshot = requested_source_snapshot.clone();
     if import.file_hashes.is_empty() {
         return Err("source index import requires file hash evidence".to_string());
     }
@@ -287,11 +271,7 @@ pub async fn refresh_turso_source_index_import_on_connection(
                 return Ok(refresh);
             }
             Some(_) => {
-                return Err(format!(
-                    "immutable workspace generation materialization drift: workspaceIdentity={} generationId={}",
-                    materialization.workspace_identity,
-                    refresh.generation_id.as_str()
-                ));
+                source_index_db_trace("generation-materialization-superseded", trace_started);
             }
             None => {
                 source_index_db_trace("generation-materialization-missing", trace_started);
@@ -429,6 +409,7 @@ pub async fn latest_turso_source_index_scope_files(
                     path,
                     language_id: LanguageId::from(language_id),
                     provider_id: ProviderId::from(provider_id),
+                    projection_coverage: crate::ClientDbSourceIndexProjectionCoverage::NotDeclared,
                     selector_receipts: Vec::new(),
                 })
             })
@@ -553,26 +534,22 @@ pub(super) fn turso_source_index_selector_fingerprint(
             &mut hasher,
             selector.kind.as_ref().map_or("", |value| value.as_str()),
         );
-        update_text(&mut hasher, selector.source.as_str());
         hasher.update((selector.query_keys.len() as u64).to_be_bytes());
         for query_key in &selector.query_keys {
             update_text(&mut hasher, query_key.as_str());
         }
-        let proof = &selector.materialization_proof;
-        update_text(&mut hasher, &proof.language_id);
-        update_text(&mut hasher, &proof.provider_id);
-        update_text(&mut hasher, &proof.structural_selector);
-        update_text(&mut hasher, &proof.owner_path);
-        hasher.update(proof.parser_identity_digest);
-        hasher.update(proof.query_pack_digest);
-        hasher.update(proof.workspace_root_digest);
-        hasher.update(proof.owner_subtree_digest);
-        hasher.update(proof.source_blob_digest);
-        hasher.update(proof.normalized_parser_facts_digest);
-        hasher.update(proof.source_byte_start.to_be_bytes());
-        hasher.update(proof.source_byte_end.to_be_bytes());
-        hasher.update([proof.projection_mode as u8]);
-        hasher.update(proof.projection_digest);
+        update_text(&mut hasher, selector.provider_id.as_str());
+        let identity =
+            serde_json::to_vec(selector.projection_record.proof.canonical_item_selector())
+                .map_err(|error| {
+                    format!("encode source-index selector canonical identity: {error}")
+                })?;
+        hasher.update((identity.len() as u64).to_be_bytes());
+        hasher.update(identity);
+        let projection = serde_json::to_vec(&selector.projection_record)
+            .map_err(|error| format!("encode source-index selector projection record: {error}"))?;
+        hasher.update((projection.len() as u64).to_be_bytes());
+        hasher.update(projection);
     }
     Ok(format!("{:x}", hasher.finalize()))
 }

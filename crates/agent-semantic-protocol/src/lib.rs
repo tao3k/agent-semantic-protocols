@@ -16,6 +16,8 @@ mod state_cli;
 
 pub use cli::{run_cli_args, run_cli_from_env};
 #[doc(hidden)]
+pub mod hook_bootstrap;
+#[doc(hidden)]
 pub use state_cli::run_binary_from_env;
 pub(crate) mod codex;
 pub use command::search_pipe_selector_seed::{

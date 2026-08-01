@@ -9,7 +9,14 @@ pub(crate) fn environment_lock() -> MutexGuard<'static, ()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
         .lock()
-        .expect("lock workspace database test environment")
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+pub(crate) fn performance_lock() -> MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 pub(crate) struct StateHomeGuard {

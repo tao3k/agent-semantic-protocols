@@ -69,167 +69,14 @@ struct GitWorkspaceFileScope {
     files: Vec<GitWorkspaceFile>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepositoryCandidateSnapshot {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub mode: RepositoryCandidateMode,
-    pub repository_identity: RepositoryIdentity,
-    pub worktree_identity: WorktreeIdentity,
-    pub candidate_scope: RepositoryCandidateScope,
-    pub candidate_generation: RepositoryCandidateGeneration,
-    pub candidates: Vec<RepositoryCandidate>,
-    pub policy_overlay_digest: String,
-    pub policy_exclusions: Vec<RepositoryCandidatePolicyExclusion>,
-    pub metrics: RepositoryCandidateMetrics,
-}
-
-impl RepositoryCandidateSnapshot {
-    pub fn scoped_to_project_root(
-        &self,
-        project_root: &Path,
-    ) -> Result<Self, GitWorkspaceFileScopeError> {
-        let project_root = canonicalize_if_possible(project_root);
-        let relative_scope = project_root
-            .strip_prefix(&self.candidate_scope.project_root)
-            .map_err(
-                |_| GitWorkspaceFileScopeError::ProjectOutsideCandidateScope {
-                    project_root: project_root.clone(),
-                    candidate_root: self.candidate_scope.project_root.clone(),
-                },
-            )?
-            .to_path_buf();
-        if relative_scope.as_os_str().is_empty() {
-            return Ok(self.clone());
-        }
-        let mut scoped = self.clone();
-        scoped.candidates = self
-            .candidates
-            .iter()
-            .filter_map(|candidate| {
-                candidate
-                    .path
-                    .strip_prefix(&relative_scope)
-                    .ok()
-                    .and_then(|relative_path| {
-                        (!relative_path.as_os_str().is_empty()).then(|| {
-                            let mut candidate = candidate.clone();
-                            candidate.path = relative_path.to_path_buf();
-                            candidate
-                        })
-                    })
-            })
-            .collect();
-        scoped.policy_exclusions = self
-            .policy_exclusions
-            .iter()
-            .filter_map(|exclusion| {
-                exclusion
-                    .path
-                    .strip_prefix(&relative_scope)
-                    .ok()
-                    .and_then(|relative_path| {
-                        (!relative_path.as_os_str().is_empty()).then(|| {
-                            let mut exclusion = exclusion.clone();
-                            exclusion.path = relative_path.to_path_buf();
-                            exclusion
-                        })
-                    })
-            })
-            .collect();
-        scoped.candidate_scope = RepositoryCandidateScope { project_root };
-        refresh_candidate_snapshot_metrics_and_generation(&mut scoped);
-        Ok(scoped)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RepositoryCandidateMode {
-    Git,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepositoryIdentity {
-    pub repository_id: String,
-    pub identity_basis: String,
-    pub git_common_dir: PathBuf,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote_url: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorktreeIdentity {
-    pub worktree_id: String,
-    pub worktree_root: PathBuf,
-    pub git_dir: PathBuf,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub head_id: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepositoryCandidateScope {
-    pub project_root: PathBuf,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepositoryCandidateGeneration {
-    pub algorithm: String,
-    pub digest: String,
-    pub authorities: Vec<RepositoryCandidateAuthority>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepositoryCandidate {
-    pub path: PathBuf,
-    pub state: RepositoryCandidateState,
-    pub authority: RepositoryCandidateAuthority,
-}
-
-#[derive(
-    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
-)]
-#[serde(rename_all = "kebab-case")]
-pub enum RepositoryCandidateState {
-    Tracked,
-    Untracked,
-}
-
-#[derive(
-    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
-)]
-#[serde(rename_all = "kebab-case")]
-pub enum RepositoryCandidateAuthority {
-    GitIndex,
-    GitWorktree,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepositoryCandidatePolicyExclusion {
-    pub path: PathBuf,
-    pub authority: String,
-    pub reason_kind: String,
-    pub matched_value: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepositoryCandidateMetrics {
-    pub index_entry_count: usize,
-    pub worktree_addition_count: usize,
-    pub candidate_count: usize,
-    pub policy_exclusion_count: usize,
-    pub full_workspace_reads: usize,
-    pub full_merkle_rebuilds: usize,
-    pub direct_db_opens: usize,
-}
+#[path = "git_candidate_model.rs"]
+mod candidate_model;
+pub use candidate_model::{
+    RepositoryCandidate, RepositoryCandidateAuthority, RepositoryCandidateGeneration,
+    RepositoryCandidateMetrics, RepositoryCandidateMode, RepositoryCandidatePolicyExclusion,
+    RepositoryCandidateScope, RepositoryCandidateSnapshot, RepositoryCandidateState,
+    RepositoryIdentity, WorktreeIdentity,
+};
 
 #[derive(Debug)]
 pub enum GitWorkspaceFileScopeError {
@@ -248,6 +95,13 @@ pub enum GitWorkspaceFileScopeError {
     WalkWorktree {
         message: String,
     },
+    InspectWorktreeOverlay {
+        message: String,
+    },
+    ReadWorktreeOverlay {
+        path: PathBuf,
+        message: String,
+    },
     LoadProjectConfig {
         path: PathBuf,
         message: String,
@@ -259,6 +113,9 @@ pub enum GitWorkspaceFileScopeError {
     ProjectOutsideCandidateScope {
         project_root: PathBuf,
         candidate_root: PathBuf,
+    },
+    ProjectRepositoryUnavailable {
+        project_root: PathBuf,
     },
 }
 
@@ -288,6 +145,17 @@ impl std::fmt::Display for GitWorkspaceFileScopeError {
                     "failed to walk Git worktree additions: {message}"
                 )
             }
+            Self::InspectWorktreeOverlay { message } => {
+                write!(
+                    formatter,
+                    "failed to inspect Git worktree overlay: {message}"
+                )
+            }
+            Self::ReadWorktreeOverlay { path, message } => write!(
+                formatter,
+                "failed to read Git worktree overlay {}: {message}",
+                path.display()
+            ),
             Self::LoadProjectConfig { path, message } => write!(
                 formatter,
                 "failed to load ASP project discovery config {}: {message}",
@@ -310,6 +178,11 @@ impl std::fmt::Display for GitWorkspaceFileScopeError {
                 "repository candidate project root {} is outside candidate scope {}",
                 project_root.display(),
                 candidate_root.display()
+            ),
+            Self::ProjectRepositoryUnavailable { project_root } => write!(
+                formatter,
+                "repository candidate project root {} is no longer in a Git worktree",
+                project_root.display()
             ),
         }
     }
@@ -401,6 +274,7 @@ fn repository_candidate_generation(
     candidate_scope: &RepositoryCandidateScope,
     candidates: &[RepositoryCandidate],
     policy_overlay_digest: &str,
+    worktree_overlay_digest: &str,
 ) -> RepositoryCandidateGeneration {
     let mut generation = blake3::Hasher::new();
     generation.update(b"agent.semantic-protocols.repository-candidate-snapshot\0");
@@ -422,6 +296,8 @@ fn repository_candidate_generation(
     }
     generation.update(b"\0policy-overlay\0");
     generation.update(policy_overlay_digest.as_bytes());
+    generation.update(b"\0worktree-overlay\0");
+    generation.update(worktree_overlay_digest.as_bytes());
     RepositoryCandidateGeneration {
         algorithm: "blake3-worktree-state-v1".to_owned(),
         digest: format!("blake3:{}", generation.finalize().to_hex()),
@@ -430,26 +306,6 @@ fn repository_candidate_generation(
             RepositoryCandidateAuthority::GitWorktree,
         ],
     }
-}
-
-fn refresh_candidate_snapshot_metrics_and_generation(snapshot: &mut RepositoryCandidateSnapshot) {
-    snapshot.metrics.index_entry_count = snapshot
-        .candidates
-        .iter()
-        .filter(|candidate| candidate.state == RepositoryCandidateState::Tracked)
-        .count();
-    snapshot.metrics.worktree_addition_count =
-        snapshot.candidates.len() - snapshot.metrics.index_entry_count;
-    snapshot.metrics.candidate_count = snapshot.candidates.len();
-    snapshot.metrics.policy_exclusion_count = snapshot.policy_exclusions.len();
-    snapshot.candidate_generation = repository_candidate_generation(
-        &snapshot.repository_identity.repository_id,
-        &snapshot.worktree_identity.worktree_id,
-        snapshot.worktree_identity.head_id.as_deref(),
-        &snapshot.candidate_scope,
-        &snapshot.candidates,
-        &snapshot.policy_overlay_digest,
-    );
 }
 
 pub fn discover_repository_candidate_snapshot(
@@ -525,6 +381,12 @@ pub fn discover_repository_candidate_snapshot(
     candidates.sort_by(|left, right| left.path.cmp(&right.path));
     let (policy_overlay_digest, policy_exclusions) =
         resolve_asp_discovery_policy(&scope.worktree_root, workspace, &candidates)?;
+    let worktree_overlay_digest = repository_worktree_overlay_digest(
+        &repository,
+        &scope.worktree_root,
+        &worktree_prefix,
+        &scope.files,
+    )?;
     let index_entry_count = candidates
         .iter()
         .filter(|candidate| candidate.state == RepositoryCandidateState::Tracked)
@@ -538,6 +400,7 @@ pub fn discover_repository_candidate_snapshot(
         &candidate_scope,
         &candidates,
         &policy_overlay_digest,
+        &worktree_overlay_digest,
     );
 
     Ok(Some(RepositoryCandidateSnapshot {
@@ -571,6 +434,84 @@ pub fn discover_repository_candidate_snapshot(
         },
         candidates,
     }))
+}
+
+fn repository_worktree_overlay_digest(
+    repository: &gix::Repository,
+    worktree_root: &Path,
+    worktree_prefix: &Path,
+    workspace_files: &[GitWorkspaceFile],
+) -> Result<String, GitWorkspaceFileScopeError> {
+    let status = repository
+        .status(gix::progress::Discard)
+        .map_err(|error| GitWorkspaceFileScopeError::InspectWorktreeOverlay {
+            message: error.to_string(),
+        })?
+        .index_worktree_submodules(None)
+        .untracked_files(gix::status::UntrackedFiles::Files);
+    let changes = status
+        .into_iter(std::iter::empty::<gix::bstr::BString>())
+        .map_err(|error| GitWorkspaceFileScopeError::InspectWorktreeOverlay {
+            message: error.to_string(),
+        })?;
+    let mut paths = changes
+        .map(|change| {
+            change
+                .map(|item| gix::path::from_bstr(item.location()).into_owned())
+                .map_err(|error| GitWorkspaceFileScopeError::InspectWorktreeOverlay {
+                    message: error.to_string(),
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let directory_prefixes = paths
+        .iter()
+        .filter(|path| worktree_root.join(path).is_dir())
+        .cloned()
+        .collect::<Vec<_>>();
+    paths.retain(|path| !worktree_root.join(path).is_dir());
+    paths.extend(
+        workspace_files
+            .iter()
+            .filter(|file| {
+                directory_prefixes
+                    .iter()
+                    .any(|prefix| file.relative_path.starts_with(prefix))
+            })
+            .map(|file| file.relative_path.clone()),
+    );
+    paths.sort();
+    paths.dedup();
+
+    let mut digest = blake3::Hasher::new();
+    digest.update(b"agent.semantic-protocols.repository-worktree-overlay\0");
+    for repository_path in paths {
+        let scoped_path = if worktree_prefix == Path::new(".") {
+            repository_path.as_path()
+        } else if let Ok(path) = repository_path.strip_prefix(worktree_prefix) {
+            path
+        } else {
+            continue;
+        };
+        digest.update(scoped_path.as_os_str().as_encoded_bytes());
+        digest.update(b"\0");
+        let absolute = worktree_root.join(&repository_path);
+        match std::fs::read(&absolute) {
+            Ok(bytes) => {
+                digest.update(b"present\0");
+                digest.update(blake3::hash(&bytes).as_bytes());
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                digest.update(b"removed\0");
+            }
+            Err(error) => {
+                return Err(GitWorkspaceFileScopeError::ReadWorktreeOverlay {
+                    path: absolute,
+                    message: error.to_string(),
+                });
+            }
+        }
+    }
+    Ok(format!("blake3:{}", digest.finalize().to_hex()))
 }
 
 fn resolve_asp_discovery_policy(
@@ -650,311 +591,8 @@ fn stable_identity(namespace: &str, basis: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod repository_candidate_snapshot_tests {
-    use super::{
-        RepositoryCandidateAuthority, RepositoryCandidateState,
-        discover_repository_candidate_snapshot,
-    };
-    use std::path::{Path, PathBuf};
-    use std::process::Command;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(1);
-
-    struct Fixture {
-        root: PathBuf,
-    }
-
-    impl Fixture {
-        fn new(name: &str) -> Self {
-            let root = std::env::temp_dir().join(format!(
-                "asp-repository-candidates-{name}-{}-{}",
-                std::process::id(),
-                NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
-            ));
-            std::fs::create_dir_all(&root).expect("create fixture root");
-            Self { root }
-        }
-
-        fn write(&self, relative: &str, contents: &str) {
-            let path = self.root.join(relative);
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).expect("create fixture parent");
-            }
-            std::fs::write(path, contents).expect("write fixture file");
-        }
-
-        fn git(&self, args: &[&str]) {
-            let output = Command::new("git")
-                .args(args)
-                .current_dir(&self.root)
-                .output()
-                .expect("run git fixture command");
-            assert!(
-                output.status.success(),
-                "git {:?} failed: {}",
-                args,
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-    }
-
-    impl Drop for Fixture {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.root);
-        }
-    }
-
-    #[test]
-    fn git_snapshot_is_deterministic_and_excludes_ignored_files() {
-        let fixture = Fixture::new("tracked-untracked");
-        fixture.git(&["init", "--quiet"]);
-        fixture.write(".gitignore", "ignored/\n");
-        fixture.write("src/tracked.rs", "pub fn tracked() {}\n");
-        fixture.write("src/untracked.rs", "pub fn untracked() {}\n");
-        fixture.write("ignored/generated.rs", "pub fn generated() {}\n");
-        fixture.git(&["add", ".gitignore", "src/tracked.rs"]);
-
-        let first = discover_repository_candidate_snapshot(&fixture.root)
-            .expect("discover repository candidates")
-            .expect("Git snapshot exists");
-        let second = discover_repository_candidate_snapshot(&fixture.root)
-            .expect("rediscover repository candidates")
-            .expect("Git snapshot exists");
-
-        let candidates = first
-            .candidates
-            .iter()
-            .map(|candidate| (candidate.path.clone(), candidate.state, candidate.authority))
-            .collect::<Vec<_>>();
-        assert_eq!(
-            candidates,
-            vec![
-                (
-                    PathBuf::from(".gitignore"),
-                    RepositoryCandidateState::Tracked,
-                    RepositoryCandidateAuthority::GitIndex,
-                ),
-                (
-                    PathBuf::from("src/tracked.rs"),
-                    RepositoryCandidateState::Tracked,
-                    RepositoryCandidateAuthority::GitIndex,
-                ),
-                (
-                    PathBuf::from("src/untracked.rs"),
-                    RepositoryCandidateState::Untracked,
-                    RepositoryCandidateAuthority::GitWorktree,
-                ),
-            ]
-        );
-        assert_eq!(
-            first.candidate_generation.digest,
-            second.candidate_generation.digest
-        );
-        assert_eq!(
-            first.candidate_scope.project_root,
-            std::fs::canonicalize(&fixture.root).expect("canonical fixture root")
-        );
-        assert_eq!(first.metrics.index_entry_count, 2);
-        assert_eq!(first.metrics.worktree_addition_count, 1);
-        assert_eq!(first.metrics.candidate_count, 3);
-        assert_eq!(first.metrics.full_workspace_reads, 0);
-        assert_eq!(first.metrics.direct_db_opens, 0);
-        assert!(
-            !first
-                .candidates
-                .iter()
-                .any(|candidate| candidate.path == Path::new("ignored/generated.rs"))
-        );
-    }
-
-    #[test]
-    fn checkout_identity_is_stable_while_head_advances_its_generation() {
-        let fixture = Fixture::new("worktree-generation");
-        fixture.git(&["init", "--quiet"]);
-        fixture.write("src/lib.rs", "pub fn value() -> u8 { 1 }\n");
-        fixture.git(&["add", "src/lib.rs"]);
-        fixture.git(&[
-            "-c",
-            "user.name=ASP Test",
-            "-c",
-            "user.email=asp@example.invalid",
-            "commit",
-            "--quiet",
-            "-m",
-            "first",
-        ]);
-
-        let first = discover_repository_candidate_snapshot(&fixture.root)
-            .expect("discover primary checkout")
-            .expect("Git snapshot exists");
-
-        fixture.write("src/lib.rs", "pub fn value() -> u8 { 2 }\n");
-        fixture.git(&["add", "src/lib.rs"]);
-        fixture.git(&[
-            "-c",
-            "user.name=ASP Test",
-            "-c",
-            "user.email=asp@example.invalid",
-            "commit",
-            "--quiet",
-            "-m",
-            "second",
-        ]);
-
-        let second = discover_repository_candidate_snapshot(&fixture.root)
-            .expect("rediscover primary checkout")
-            .expect("Git snapshot exists");
-        assert_eq!(
-            first.worktree_identity.worktree_id,
-            second.worktree_identity.worktree_id,
-            "switching Git state inside one checkout must not allocate a new workspace"
-        );
-        assert_ne!(first.worktree_identity.head_id, second.worktree_identity.head_id);
-        assert_ne!(
-            first.candidate_generation.digest,
-            second.candidate_generation.digest,
-            "HEAD changes must advance the existing workspace generation"
-        );
-
-        let linked_root = fixture.root.with_extension("linked-worktree");
-        let linked_root_arg = linked_root.to_string_lossy().into_owned();
-        fixture.git(&["worktree", "add", "--quiet", "--detach", &linked_root_arg, "HEAD~1"]);
-        let linked = discover_repository_candidate_snapshot(&linked_root)
-            .expect("discover linked worktree")
-            .expect("linked Git snapshot exists");
-        assert_eq!(
-            second.repository_identity.repository_id,
-            linked.repository_identity.repository_id,
-            "primary and linked worktrees share repository identity"
-        );
-        assert_ne!(
-            second.worktree_identity.worktree_id,
-            linked.worktree_identity.worktree_id,
-            "each concrete checkout owns a distinct workspace identity"
-        );
-        fixture.git(&["worktree", "remove", "--force", &linked_root_arg]);
-    }
-
-    #[test]
-    fn nested_project_snapshot_rebases_candidates_to_project_root() {
-        let fixture = Fixture::new("nested-project");
-        fixture.git(&["init", "--quiet"]);
-        fixture.write("Cargo.toml", "[workspace]\nmembers = [\"crates/leaf\"]\n");
-        fixture.write(
-            "crates/leaf/Cargo.toml",
-            "[package]\nname = \"leaf\"\nversion = \"0.1.0\"\n",
-        );
-        fixture.write("crates/leaf/src/lib.rs", "pub fn leaf() {}\n");
-        fixture.write("crates/sibling/src/lib.rs", "pub fn sibling() {}\n");
-        fixture.git(&["add", "."]);
-
-        let project_root = fixture.root.join("crates/leaf");
-        let repository_snapshot = discover_repository_candidate_snapshot(&fixture.root)
-            .expect("discover repository candidates")
-            .expect("Git snapshot exists");
-        let projected = repository_snapshot
-            .scoped_to_project_root(&project_root)
-            .expect("project repository candidates");
-        let snapshot = discover_repository_candidate_snapshot(&project_root)
-            .expect("discover nested repository candidates")
-            .expect("Git snapshot exists");
-
-        assert_eq!(projected, snapshot);
-        assert_eq!(
-            snapshot.candidate_scope.project_root,
-            std::fs::canonicalize(&project_root).expect("canonical nested project root")
-        );
-        assert_eq!(
-            snapshot
-                .candidates
-                .iter()
-                .map(|candidate| candidate.path.as_path())
-                .collect::<Vec<_>>(),
-            vec![Path::new("Cargo.toml"), Path::new("src/lib.rs")]
-        );
-        assert!(
-            snapshot
-                .candidates
-                .iter()
-                .all(|candidate| !candidate.path.starts_with("crates/leaf"))
-        );
-    }
-
-    #[test]
-    fn non_git_directory_has_no_repository_candidate_snapshot() {
-        let fixture = Fixture::new("non-git");
-
-        let snapshot = discover_repository_candidate_snapshot(&fixture.root)
-            .expect("discover non-Git directory");
-
-        assert!(snapshot.is_none());
-    }
-
-    #[test]
-    fn asp_discovery_policy_is_typed_without_hiding_git_candidates() {
-        let fixture = Fixture::new("asp-policy");
-        fixture.git(&["init", "--quiet"]);
-        fixture.write(
-            "asp.toml",
-            "[discovery]\nignoredDirNames = [\"generated\"]\n",
-        );
-        fixture.write(
-            ".agents/asp.toml",
-            "[discovery]\nignoredDirNames = [\"vendor\", \".hidden\"]\nincludeHiddenDirNames = [\".hidden\"]\n",
-        );
-        fixture.write("generated/explicit.rs", "pub fn explicit() {}\n");
-        fixture.write("vendor/excluded.rs", "pub fn excluded() {}\n");
-        fixture.write(".hidden/included.rs", "pub fn included() {}\n");
-        fixture.git(&["add", "."]);
-
-        let snapshot = discover_repository_candidate_snapshot(&fixture.root)
-            .expect("discover repository candidates")
-            .expect("Git snapshot exists");
-
-        assert!(
-            snapshot
-                .candidates
-                .iter()
-                .any(|candidate| candidate.path == Path::new("vendor/excluded.rs")),
-            "policy facts must not hide candidates before package-target authority comparison"
-        );
-        assert_eq!(
-            snapshot
-                .policy_exclusions
-                .iter()
-                .map(|exclusion| (
-                    exclusion.path.as_path(),
-                    exclusion.authority.as_str(),
-                    exclusion.reason_kind.as_str(),
-                    exclusion.matched_value.as_str(),
-                ))
-                .collect::<Vec<_>>(),
-            vec![(
-                Path::new("vendor/excluded.rs"),
-                "user-policy",
-                "ignored-dir-name",
-                "vendor",
-            )]
-        );
-        assert_eq!(snapshot.metrics.policy_exclusion_count, 1);
-        assert!(snapshot.policy_overlay_digest.starts_with("blake3:"));
-    }
-
-    #[test]
-    fn invalid_asp_discovery_policy_fails_closed() {
-        let fixture = Fixture::new("invalid-asp-policy");
-        fixture.git(&["init", "--quiet"]);
-        fixture.write("asp.toml", "[discovery]\nignoreDirs = [\"target\"]\n");
-        fixture.git(&["add", "asp.toml"]);
-
-        let error = discover_repository_candidate_snapshot(&fixture.root)
-            .expect_err("legacy discovery keys must fail closed");
-
-        let message = error.to_string();
-        assert!(message.contains("ignoreDirs"), "{message}");
-    }
-}
+#[path = "../tests/unit/git/repository_candidate_snapshot.rs"]
+mod repository_candidate_snapshot_tests;
 
 fn is_regular_workspace_file(worktree_root: &Path, relative_path: &Path) -> bool {
     std::fs::symlink_metadata(worktree_root.join(relative_path))

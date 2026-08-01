@@ -90,8 +90,8 @@ pub struct ClientDbSourceIndexSelectorFact {
     pub symbol: Option<String>,
     /// Optional parser-owned item kind.
     pub kind: Option<String>,
-    /// Complete parser-owned exact-selector materialization proof.
-    pub materialization_proof: agent_semantic_content_identity::ExactSelectorMaterializationProofV1,
+    /// Complete parser-owned exact-selector projection record.
+    pub projection_record: agent_semantic_content_identity::ExactSelectorProjectionRecordV1,
     /// Canonical query keys associated with the selector.
     pub query_keys: Vec<String>,
 }
@@ -328,7 +328,7 @@ pub(super) fn materialize_turso_source_index_generation_snapshot(
                         selector_id: selector.selector_id,
                         symbol: selector.symbol,
                         kind: selector.kind,
-                        materialization_proof: selector.materialization_proof,
+                        projection_record: selector.projection_record,
                         query_keys: selector.query_keys,
                     })
                     .collect(),

@@ -45,10 +45,8 @@ pub(super) struct ProviderNativeOwnerSearchResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ProviderNativeOwnerProjection {
-    pub(super) structural_selector: String,
+    pub(super) canonical_item_selector: agent_semantic_content_identity::CanonicalItemSelector,
     pub(super) signature: String,
-    pub(super) item_kind: String,
-    pub(super) item_name: String,
     pub(super) capture_name: String,
     pub(super) source_byte_start: u64,
     pub(super) source_byte_end: u64,
@@ -240,7 +238,6 @@ pub(super) fn validate_provider_owner_response(
     {
         return Err("provider owner-search response identity or completeness drift".into());
     }
-    let selector_prefix = format!("{}://{}#item/", expected.language_id, expected.owner_path);
     let mut selectors = BTreeSet::new();
     response
         .projections
@@ -248,16 +245,18 @@ pub(super) fn validate_provider_owner_response(
         .map(|projection| {
             validate_projection(
                 &projection,
-                selector_prefix.as_str(),
+                expected.language_id,
+                expected.owner_path,
                 expected.source_size,
                 &mut selectors,
             )?;
+            let canonical_item_selector = projection.canonical_item_selector;
             Ok(ProviderSelectorProjection {
-                structural_selector: projection.structural_selector,
+                structural_selector: canonical_item_selector.structural_selector,
                 capture_name: projection.capture_name,
                 signature: projection.signature,
-                item_kind: projection.item_kind,
-                item_name: projection.item_name,
+                item_kind: canonical_item_selector.kind.as_str().to_owned(),
+                item_name: canonical_item_selector.symbol.as_str().to_owned(),
                 source_byte_start: projection.source_byte_start,
                 source_byte_end: projection.source_byte_end,
             })
@@ -267,23 +266,32 @@ pub(super) fn validate_provider_owner_response(
 
 fn validate_projection(
     projection: &ProviderNativeOwnerProjection,
-    selector_prefix: &str,
+    expected_language_id: &str,
+    expected_owner_path: &str,
     source_size: u64,
     selectors: &mut BTreeSet<String>,
 ) -> Result<(), String> {
-    if projection.structural_selector.is_empty()
-        || !projection.structural_selector.starts_with(selector_prefix)
-        || !selectors.insert(projection.structural_selector.clone())
+    projection.canonical_item_selector.validate()?;
+    let expected_selector_prefix = format!("{expected_language_id}://{expected_owner_path}#");
+    if projection.canonical_item_selector.language_id.as_str() != expected_language_id
+        || !projection
+            .canonical_item_selector
+            .structural_selector
+            .starts_with(&expected_selector_prefix)
+        || !selectors.insert(
+            projection
+                .canonical_item_selector
+                .structural_selector
+                .clone(),
+        )
         || projection.signature.is_empty()
-        || projection.item_kind.is_empty()
-        || projection.item_name.is_empty()
         || projection.capture_name.is_empty()
         || projection.source_byte_start >= projection.source_byte_end
         || projection.source_byte_end > source_size
     {
         return Err(format!(
             "provider owner-search projection is invalid: selector={} span={}..{} sourceSize={source_size}",
-            projection.structural_selector,
+            projection.canonical_item_selector.structural_selector,
             projection.source_byte_start,
             projection.source_byte_end
         ));
@@ -313,6 +321,10 @@ fn encode_base64(bytes: &[u8]) -> String {
     });
     encoded
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/provider_owner_native.rs"]
+mod provider_owner_native_tests;
 
 #[cfg(unix)]
 pub(super) fn provider_owner_metadata(path: &Path) -> Result<ProviderOwnerMetadata, String> {

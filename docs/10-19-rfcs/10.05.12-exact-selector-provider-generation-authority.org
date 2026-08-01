@@ -103,6 +103,18 @@ open Turso, reload the canonical materialization, republish the generation, or
 reset selector overlays.  Durable restoration is the process-cold transition,
 not the per-query path.
 
+The immutable exact-projection segment MUST contain two independently sorted
+indexes over the same selector rows: the exact selector key and the
+owner-independent canonical item identity key.  The latter is
+=projection kind + language id + canonical identity fragment=, including every
+enclosing scope and exact descendant segment, but excluding only the owner
+path.  A selector whose owner moved inside the admitted generation is resolved
+through this second index in logarithmic time.  Exactly one match is served
+from its admitted owner bytes; multiple matches are an =ambiguous= typed
+failure.  An absent identity alone is =selector-stale=.  Query MUST NOT turn a
+moved owner into =selector-not-in-active-generation=, scan all owners, contact
+the workspace owner endpoint, or invoke a provider.
+
 One Git worktree is one workspace authority and has one canonical semantic
 source scope per generation.  Package-manager entry files are provider
 resolution inputs inside that workspace; they MUST NOT create child project
@@ -130,6 +142,7 @@ These requirements are named:
 - =ASP-RFC-10.05-ESGA-LEASE-SNAPSHOT-ISOLATION=
 - =ASP-RFC-10.05-ESGA-OWNER-EPOCH-ADVANCE=
 - =ASP-RFC-10.05-ESGA-RESIDENT-READY-MEMORY-FIRST=
+- =ASP-RFC-10.05-ESGA-CANONICAL-IDENTITY-RELOCATION-INDEX=
 - =ASP-RFC-10.05-ESGA-ONE-WORKTREE-ONE-WORKSPACE-SCOPE=
 - =ASP-RFC-10.05-ESGA-SERVER-OWNED-GENERATION-COMMIT=
 

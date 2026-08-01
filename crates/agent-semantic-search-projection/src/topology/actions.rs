@@ -431,8 +431,13 @@ fn append_owner_paths(actions: &mut Vec<GraphAction>, value: Option<&Value>) {
     };
     for value in values {
         if let Some(target) = value.get("path").and_then(Value::as_str) {
+            let kind = if value.get("role").and_then(Value::as_str) == Some("test") {
+                "tests"
+            } else {
+                "owner"
+            };
             actions.push(GraphAction {
-                kind: "owner".to_string(),
+                kind: kind.to_string(),
                 target: target.to_string(),
                 locator: None,
                 action: None,

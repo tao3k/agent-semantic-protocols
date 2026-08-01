@@ -111,10 +111,7 @@ impl WorkspaceGenerationEvidenceV1 {
                 root_depth: self.root_depth,
             });
         }
-        if self.leaf_count == 0 {
-            return Err(WorkspaceGenerationEvidenceError::EmptyGeneration);
-        }
-        if self.owner_count == 0 || self.owner_count > self.leaf_count {
+        if self.owner_count > self.leaf_count {
             return Err(WorkspaceGenerationEvidenceError::InvalidOwnerCoverage {
                 owner_count: self.owner_count,
                 leaf_count: self.leaf_count,

@@ -29,6 +29,8 @@ pub struct RuntimeServerEndpoint {
     pub owner_epoch: u64,
     pub runtime_artifact_path: String,
     pub runtime_artifact_digest: String,
+    pub artifact_mode: String,
+    pub artifact_catalog_digest: String,
     pub binding_token: String,
     pub socket_path: String,
     pub data_plane_socket_path: String,
@@ -37,9 +39,7 @@ pub struct RuntimeServerEndpoint {
 
 impl RuntimeServerEndpoint {
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema_id != ENDPOINT_SCHEMA_ID || self.schema_version != SCHEMA_VERSION {
-            return Err("Runtime Server endpoint schema identity mismatch".to_owned());
-        }
+        self.validate_supervisor_control()?;
         let expected = runtime_server_transport_contract_digest_ref();
         if self.transport_contract_digest != expected {
             return Err(format!(
@@ -47,9 +47,19 @@ impl RuntimeServerEndpoint {
                 self.transport_contract_digest
             ));
         }
+        Ok(())
+    }
+
+    pub fn validate_supervisor_control(&self) -> Result<(), String> {
+        if self.schema_id != ENDPOINT_SCHEMA_ID || self.schema_version != SCHEMA_VERSION {
+            return Err("Runtime Server endpoint schema identity mismatch".to_owned());
+        }
         if self.owner_epoch == 0
+            || self.transport_contract_digest.is_empty()
             || self.runtime_artifact_path.is_empty()
             || self.runtime_artifact_digest.is_empty()
+            || !matches!(self.artifact_mode.as_str(), "dev" | "release")
+            || !is_blake3_digest(&self.artifact_catalog_digest)
             || self.binding_token.is_empty()
             || self.socket_path.is_empty()
             || self.data_plane_socket_path.is_empty()
@@ -93,12 +103,25 @@ pub struct RuntimeServerControlRequest {
 
 impl RuntimeServerControlRequest {
     pub fn validate_for_endpoint(&self, endpoint: &RuntimeServerEndpoint) -> Result<(), String> {
+        self.validate_supervisor_binding(endpoint)?;
+        if self.operation == RuntimeServerOperation::Status
+            && self.transport_contract_digest != endpoint.transport_contract_digest
+        {
+            return Err(format!(
+                "Runtime Server transport contract mismatch: expected={} actual={}",
+                self.transport_contract_digest, endpoint.transport_contract_digest
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_supervisor_binding(&self, endpoint: &RuntimeServerEndpoint) -> Result<(), String> {
         if self.schema_id != REQUEST_SCHEMA_ID || self.schema_version != SCHEMA_VERSION {
             return Err("Runtime Server control request schema identity mismatch".to_owned());
         }
         if self.request_id.is_empty()
             || self.expected_runtime_artifact_digest.is_empty()
-            || self.transport_contract_digest != endpoint.transport_contract_digest
+            || self.transport_contract_digest.is_empty()
             || self.owner_epoch != endpoint.owner_epoch
             || self.binding_token != endpoint.binding_token
         {
@@ -108,8 +131,17 @@ impl RuntimeServerControlRequest {
     }
 
     pub fn requires_restart(&self, endpoint: &RuntimeServerEndpoint) -> Result<bool, String> {
-        self.validate_for_endpoint(endpoint)?;
-        Ok(self.operation == RuntimeServerOperation::Restart)
+        self.validate_supervisor_binding(endpoint)?;
+        match self.operation {
+            RuntimeServerOperation::Status => {
+                self.validate_for_endpoint(endpoint)?;
+                Ok(false)
+            }
+            RuntimeServerOperation::Reconcile => Ok(self.expected_runtime_artifact_digest
+                != endpoint.runtime_artifact_digest
+                || self.transport_contract_digest != endpoint.transport_contract_digest),
+            RuntimeServerOperation::Restart => Ok(true),
+        }
     }
 }
 
@@ -130,6 +162,8 @@ pub struct RuntimeServerStatusSnapshot {
     pub generation: u64,
     pub state: RuntimeServerState,
     pub runtime_artifact_digest: String,
+    pub artifact_mode: String,
+    pub artifact_catalog_digest: String,
     pub transport_contract_digest: String,
     pub workspace_entry_count: usize,
     pub owner_epoch: u64,
@@ -148,6 +182,8 @@ impl RuntimeServerStatusSnapshot {
             generation,
             state,
             runtime_artifact_digest: endpoint.runtime_artifact_digest.clone(),
+            artifact_mode: endpoint.artifact_mode.clone(),
+            artifact_catalog_digest: endpoint.artifact_catalog_digest.clone(),
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             workspace_entry_count,
             owner_epoch: endpoint.owner_epoch,
@@ -173,6 +209,8 @@ impl RuntimeServerStatusSnapshot {
     ) -> Result<RuntimeServerControlReceipt, String> {
         if self.owner_epoch != endpoint.owner_epoch
             || self.runtime_artifact_digest != endpoint.runtime_artifact_digest
+            || self.artifact_mode != endpoint.artifact_mode
+            || self.artifact_catalog_digest != endpoint.artifact_catalog_digest
             || self.transport_contract_digest != endpoint.transport_contract_digest
         {
             return Err("Runtime Server status memory binding mismatch".to_owned());
@@ -183,6 +221,8 @@ impl RuntimeServerStatusSnapshot {
             request_id,
             state: self.state,
             runtime_artifact_digest: self.runtime_artifact_digest.clone(),
+            artifact_mode: self.artifact_mode.clone(),
+            artifact_catalog_digest: self.artifact_catalog_digest.clone(),
             transport_contract_digest: self.transport_contract_digest.clone(),
             workspace_entry_count: self.workspace_entry_count,
             reason: None,
@@ -198,6 +238,8 @@ pub struct RuntimeServerControlReceipt {
     pub request_id: String,
     pub state: RuntimeServerState,
     pub runtime_artifact_digest: String,
+    pub artifact_mode: String,
+    pub artifact_catalog_digest: String,
     pub transport_contract_digest: String,
     pub workspace_entry_count: usize,
     pub reason: Option<String>,
@@ -215,6 +257,8 @@ impl RuntimeServerControlReceipt {
             request_id,
             state: RuntimeServerState::Healthy,
             runtime_artifact_digest: endpoint.runtime_artifact_digest.clone(),
+            artifact_mode: endpoint.artifact_mode.clone(),
+            artifact_catalog_digest: endpoint.artifact_catalog_digest.clone(),
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             workspace_entry_count,
             reason: None,
@@ -232,18 +276,35 @@ impl RuntimeServerControlReceipt {
         }
     }
 
-    pub fn starting(request_id: String, runtime_artifact_digest: String, reason: String) -> Self {
+    pub fn starting(
+        request_id: String,
+        runtime_artifact_digest: String,
+        artifact_mode: String,
+        artifact_catalog_digest: String,
+        reason: String,
+    ) -> Self {
         Self {
             schema_id: RECEIPT_SCHEMA_ID.to_owned(),
             schema_version: SCHEMA_VERSION.to_owned(),
             request_id,
             state: RuntimeServerState::Starting,
             runtime_artifact_digest,
+            artifact_mode,
+            artifact_catalog_digest,
             transport_contract_digest: runtime_server_transport_contract_digest(),
             workspace_entry_count: 0,
             reason: Some(reason),
         }
     }
+}
+
+fn is_blake3_digest(value: &str) -> bool {
+    value.strip_prefix("blake3-256:").is_some_and(|digest| {
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
 }
 
 #[derive(Debug)]
@@ -287,6 +348,10 @@ fn runtime_server_transport_contract_digest_ref() -> &'static str {
         })
         .as_str()
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_control_model.rs"]
+mod supervisor_reconciliation_tests;
 
 pub fn runtime_server_transport_contract_digest() -> String {
     runtime_server_transport_contract_digest_ref().to_owned()

@@ -124,18 +124,22 @@ def branchB : DagCost :=
 
 theorem branch_a_is_individually_feasible :
     PlanFeasible exampleBudget branchA := by
+  unfold PlanFeasible exampleBudget branchA
   decide
 
 theorem branch_b_is_individually_feasible :
     PlanFeasible exampleBudget branchB := by
+  unfold PlanFeasible exampleBudget branchB branchA
   decide
 
 theorem sequential_plan_is_infeasible :
     ¬ PlanFeasible exampleBudget (sequential branchA branchB) := by
+  unfold PlanFeasible exampleBudget sequential branchA branchB
   decide
 
 theorem parallel_plan_is_infeasible :
     ¬ PlanFeasible exampleBudget (parallel branchA branchB) := by
+  unfold PlanFeasible exampleBudget parallel branchA branchB
   decide
 
 theorem individual_feasibility_does_not_compose :
@@ -162,18 +166,19 @@ def exampleLedger : ResourceLedger :=
 
 theorem first_branch_can_reserve :
     CanReserve exampleLedger branchA.consumable := by
+  unfold CanReserve exampleLedger branchA
   decide
 
 theorem first_reservation_leaves_five_tokens :
-    (afterReservation exampleLedger branchA.consumable)
-        .uncachedTokensRemaining = 5 := by
+    (afterReservation exampleLedger branchA.consumable).uncachedTokensRemaining = 5 := by
+  unfold afterReservation exampleLedger branchA
   decide
 
 theorem second_branch_cannot_double_spend :
     ¬ CanReserve
       (afterReservation exampleLedger branchA.consumable)
       branchB.consumable := by
+  unfold CanReserve afterReservation exampleLedger branchA branchB
   decide
 
 end ASPProof.SearchRouteDagResourceAlgebra
-

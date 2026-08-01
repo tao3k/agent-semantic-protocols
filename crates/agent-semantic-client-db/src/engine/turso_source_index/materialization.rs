@@ -191,6 +191,9 @@ pub(super) async fn load_active_workspace_generation_materialization(
             materialization.source_snapshot
         ));
     }
+    if let Err(reason) = materialization.validate_persisted(workspace_identity) {
+        return Ok(WorkspaceCanonicalMaterializationLoad::Incompatible { reason });
+    }
     Ok(WorkspaceCanonicalMaterializationLoad::Ready(
         materialization,
     ))

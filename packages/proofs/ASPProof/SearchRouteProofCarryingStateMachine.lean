@@ -231,10 +231,12 @@ def staleAdmitted : AdmittedState :=
 
 theorem fresh_admission_is_execution_ready :
     ExecutionReady freshAdmitted := by
+  unfold ExecutionReady BundleCurrent
   decide
 
 theorem stale_ledger_admission_is_not_execution_ready :
     ¬ ExecutionReady staleAdmitted := by
+  unfold ExecutionReady BundleCurrent
   decide
 
 end ASPProof.SearchRouteProofCarryingStateMachine

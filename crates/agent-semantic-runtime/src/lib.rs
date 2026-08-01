@@ -16,9 +16,11 @@ mod codex_rollout_sessions;
 pub use codex_app_server_sessions::codex_app_server_child_session_metadata;
 pub mod git;
 mod graph_render;
+pub mod hook_process_runtime;
 pub mod language_owner_items;
 mod live_corpus;
 mod project_resolution;
+pub mod runtime_artifact_catalog;
 mod runtime_source;
 pub mod state;
 pub mod state_core;
@@ -72,16 +74,17 @@ pub use live_corpus::{
 };
 pub use project_resolution::{
     AdmittedProjectResolution, ExternalDependency, InternalDependencyEdge, LanguagePackage,
-    LanguagePackageGraph, LanguageTarget, ProjectFile, ProjectResolutionConflict, ProjectResolutionMetrics,
-    ProjectResolutionReceipt, ResolvedSourceExclusion, ResolvedSourceScope, UnresolvedProjectReference,
+    LanguagePackageGraph, LanguageTarget, ProjectFile, ProjectResolutionConflict,
+    ProjectResolutionMetrics, ProjectResolutionReceipt, ResolvedSourceExclusion,
+    ResolvedSourceScope, UnresolvedProjectReference, project_resolution_schema_digest,
     workspace_source_scope_generation_digest,
 };
 pub use runtime_source::{
     RuntimeSourceCheckout, RuntimeSourceIndexContext, RuntimeSourceIndexContextRequest,
     RuntimeSourceIndexFile, RuntimeSourceIndexFilesRequest,
     RuntimeSourceRegistryFingerprintRequest, RuntimeSourceSpec, collect_runtime_source_index_files,
-    ensure_runtime_source_checkout, ensure_runtime_source_checkout_in_client_cache,
-    runtime_source_checkout_dir, runtime_source_checkout_dir_in_client_cache,
+    ensure_runtime_source_checkout, ensure_runtime_source_checkout_in_runtime_root,
+    runtime_source_checkout_dir, runtime_source_checkout_dir_in_runtime_root,
     runtime_source_index_context, runtime_source_registry_fingerprint,
 };
 pub use state::{

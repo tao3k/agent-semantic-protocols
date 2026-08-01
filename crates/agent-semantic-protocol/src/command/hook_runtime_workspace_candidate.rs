@@ -26,10 +26,32 @@ pub(in crate::command::hook_runtime) fn hook_workspace_candidate(
     explicit_asp_workspace(payload, &command_root).unwrap_or(command_root)
 }
 
+
 fn explicit_asp_workspace(payload: &serde_json::Value, command_root: &Path) -> Option<PathBuf> {
     super::hook_runtime_agent_session::payload_command_strings(payload)
         .into_iter()
         .find_map(|command| asp_workspace_from_command(&command, command_root))
+}
+
+pub(in crate::command::hook_runtime) fn requests_explicit_asp_workspace(
+    payload: &serde_json::Value,
+) -> bool {
+    super::hook_runtime_agent_session::payload_command_strings(payload)
+        .into_iter()
+        .any(|command| {
+            let tokens = agent_semantic_hook::semantic_shell_tokens(&command);
+            let Some(asp_position) = tokens.iter().position(|token| {
+                Path::new(token).file_name().and_then(|name| name.to_str()) == Some("asp")
+            }) else {
+                return false;
+            };
+            tokens[asp_position + 1..].iter().any(|token| {
+                token == "--workspace"
+                    || token
+                        .strip_prefix("--workspace=")
+                        .is_some_and(|value| !value.is_empty())
+            })
+        })
 }
 
 fn asp_workspace_from_command(command: &str, command_root: &Path) -> Option<PathBuf> {

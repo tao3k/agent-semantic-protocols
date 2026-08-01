@@ -1,0 +1,291 @@
+#+title: RFC 10.05.20/01.25 - SearchRoute Risk-Bounded Batch Admission
+#+startup: overview
+#+options: toc:3 num:nil
+
+* Status and authority
+
+This document extends [[file:01.24-searchroute-adaptive-batch-failure-isolation.org][RFC 10.05.20/01.24]]. RFC 01.24 defines the post-attempt hard boundary: only eligible technical failures may enter individual fallback, and an admitted execution must satisfy realized round and token non-regression.
+
+This RFC defines the missing pre-execution boundary. Before a batch plan runs, the realized fallback count is unknown. A router therefore needs a calibrated expectation, a separately certified tail envelope, and a hard fallback cap that preserves both round and token budgets when the statistical model is wrong.
+
+The formal owners are:
+
+- [[file:../../../../packages/proofs/ASPProof/SearchRouteRiskBoundedBatchAdmission.lean][SearchRouteRiskBoundedBatchAdmission.lean]];
+- [[file:../../../../packages/proofs/ASPProof/Audit/SearchRouteRiskBoundedBatchAdmission.lean][modular Lean audit]];
+- [[file:../../../../packages/proofs/receipts/searchroute-risk-bounded-batch-admission-audit-v1.json][Lean JSON receipt]];
+- [[file:../../../../packages/proofs/axle/SearchRouteRiskBoundedBatchAdmissionCost.lean][AXLE independent risk-cost model]];
+- [[file:../../../../packages/proofs/axle/SearchRouteExpectedAdmissionNotHardSafety.formal.lean][AXLE expected-admission counterexample statement]];
+- [[file:../../../../packages/proofs/receipts/searchroute-risk-bounded-batch-admission-axle-v1.json][AXLE normalized receipt]]; and
+- the inline Org-Babel Typst model in this document.
+
+This session changes no Rust provider or product Python implementation. =packages/proofs= owns the Lean and AXLE verification surface.
+
+* Problem statement
+
+RFC 01.24 can decide whether a realized adaptive execution remained cheaper than individual execution. It cannot by itself decide whether a proposed batch partition is safe to start. At planning time the router knows the claim count, the partition, the fixed batch cost, and a calibration snapshot, but not the eventual count of eligible fallback claims.
+
+Four shortcuts are unsound.
+
+First, counting a failed batch as one event ignores its blast radius. If a batch of =k= claims fails with calibrated numerator =q= over denominator =D=, its contribution to expected fallback work is =k*q=, not =q=.
+
+Second, an expected-cost inequality does not imply a realized hard bound. A low expected fallback mass can coexist with a nonzero full-fallback outcome.
+
+Third, equal marginal failure probabilities do not describe correlated tail behavior. Linearity of expectation still preserves the expected fallback mass when the marginals are correct, but the probability that many batches fail together requires a separate tail certificate.
+
+Fourth, a model prefix-cache hit is not a search-risk cache hit. Prompt prefix reuse can reduce model-side token work without proving that the provider, checkpoint, failure calibration, eligibility policy, or batch plan is unchanged.
+
+* Lean-discovered logical gaps
+
+** Failure-event count is not fallback-claim mass
+
+Let batch =i= contain =k_i= claims and have an eligible technical-failure numerator =q_i= over a common positive denominator =D=. Two different quantities exist:
+
+- event-risk numerator: the sum of =q_i=;
+- expected fallback-mass numerator: the sum of =k_i*q_i=.
+
+When every batch is nonempty, event risk is at most fallback mass. For any multi-claim batch with positive failure numerator, the inequality is strict. A router that prices one failed batch as one fallback unit systematically favors large batches without paying for their larger retry blast radius.
+
+This is a model-shape error, not a calibration error. Better estimates of =q_i= do not repair an objective that multiplies by the wrong unit.
+
+** Expected admission is not realized safety
+
+For =n= source claims, =g= batch attempts, and realized eligible fallback count =u=, RFC 01.24 proves that round non-regression requires =g + u <= n=. Before execution, replace =u= with the claim-weighted expected mass divided by =D=. The scaled expected-round condition is therefore =D*g + M <= D*n=, where =M= is the expected fallback-mass numerator.
+
+That inequality is useful for plan ranking, but it cannot authorize unlimited fallback. The formal counterexample uses eight claims, two batches, denominator one hundred, and expected fallback mass one hundred. The expected half-round cost is three hundred, below the individual baseline of eight hundred. If all eight claims actually require fallback, the realized half-round count is ten and violates the baseline eight.
+
+The protocol therefore distinguishes:
+
+- =ExpectedCostAdmissible=: a planning and ranking property;
+- =HardFallbackSafe=: a two-dimensional round-and-token execution authority property; and
+- =RealizedCostAdmissible=: the RFC 01.24 post-execution evidence.
+
+No implication from the first property to the other two is permitted without an explicit hard cap or a realized receipt.
+
+** Correlation changes the tail, not linear expectation
+
+If each =q_i / D= is a correct marginal probability, correlation among batch failures does not change the expected fallback mass. This follows from linearity of expectation and does not require independence.
+
+Correlation does change the probability that fallback mass exceeds an operational threshold. Consequently the risk envelope carries a separately produced =tailOverflowNumerator= for the event that eligible fallback demand exceeds the hard cap. The expected-mass cells MUST NOT be presented as a tail proof, and a tail proof MUST NOT be reconstructed by assuming independent failures unless the calibration authority explicitly certifies that assumption.
+
+The Lean kernel treats the tail numerator as bound evidence attached to an identity. It does not invent a probability distribution from samples. Statistical estimation and calibration remain outside the deterministic proof kernel.
+
+** Fragmentation trades blast radius for fixed cost
+
+Splitting batches can reduce the number of claims affected by one batch failure, but each extra batch adds an invocation and replay pair plus repeated shared input. Combining every claim into one batch minimizes fixed batch count while maximizing failure blast radius. Splitting every claim into a singleton minimizes blast radius while eliminating batch round savings even when no fallback occurs.
+
+The router MUST rank a partition using both terms. It cannot optimize only =g=, only =M=, or only maximum batch size. The expected objective prices fixed batch execution and claim-weighted fallback together; the hard cap remains a separate feasibility gate.
+
+** Calibration identity is part of semantic identity
+
+A risk decision is reusable only when all inputs that can change its meaning are equal. At minimum the identity binds:
+
+- the exact ordered partition-plan digest;
+- the source and graph-generation checkpoint digest;
+- the fallback-eligibility policy digest;
+- the calibration authority and calibration snapshot digest;
+- the search-cost profile, including the =S= and =P= values used by admission;
+- the common denominator and risk-cell digest;
+- the hard fallback cap; and
+- the tail certificate digest and allowed tail numerator in its policy denominator.
+
+Plan equality alone is insufficient. A stale calibration can make the same batch plan appear cheap after provider reliability, resource limits, or workload shape changed.
+
+Model prefix-cache identity remains orthogonal. A prefix-cache hit may reduce model-side input cost, but it cannot satisfy any risk-envelope equality listed above.
+
+* Mathematical model
+
+Let:
+
+- =n= be the number of source claims;
+- =g= be the number of compatible nonempty batches;
+- =D > 0= be the calibration denominator;
+- =k_i > 0= be the number of claims in batch =i=;
+- =q_i= be its eligible technical-failure numerator with =q_i <= D=;
+- =S= be shared input tokens repeated per executable request;
+- =P= be per-claim input tokens;
+- =h= be the enforced maximum number of individual fallback claims; and
+- =tau= be the certified numerator for the event that demanded fallback exceeds =h=.
+
+The following Typst block is the normative mathematical presentation. It is intentionally an inline Org-Babel source block and is checked through standard input with =typst eval=; no generated =.typ= source file is an RFC authority.
+
+#+begin_src typst
+#set page(width: 18cm, height: auto, margin: 1.2cm)
+#set text(size: 10pt)
+= Risk-bounded batch admission
+
+For nonempty batches and a positive calibration denominator,
+
+$ D > 0, quad k_i > 0, quad 0 <= q_i <= D. $
+
+The event numerator and claim-weighted fallback-mass numerator are distinct:
+
+$ E_("event") = sum_i q_i, quad M_("fallback") = sum_i k_i q_i. $
+
+Therefore,
+
+$ E_("event") <= M_("fallback"), $
+
+with strict inequality whenever some $k_i > 1$ and $q_i > 0$.
+
+Expected executable half-round admission is
+
+$ D g + M_("fallback") <= D n. $
+
+Expected input-token admission is
+
+$ D (g S + n P) + M_("fallback") (S + P) <= D n (S + P). $
+
+Neither expected inequality implies realized safety. Execution authority must satisfy both worst-case bounds
+
+$ g + h <= n, $
+
+$ (g + h) S + h P <= n S. $
+
+Then any executed fallback count below the cap preserves both inequalities:
+
+$ u <= h ==> g + u <= n, $
+
+$ u <= h ==> (g + u) S + u P <= n S. $
+
+The tail certificate is a separate bound,
+
+$ upright("Pr")[U > h] <= tau / D_("tail"), $
+
+and does not follow from marginal cells without an explicit dependence model.
+#+end_src
+
+The token equation deliberately distinguishes provider/search input from model prefix-cache savings. =S= and =P= measure executable search requests. A model may reuse a prompt prefix, but that does not erase provider invocations, replay work, or the risk that fallback requests are needed.
+
+* Normative protocol
+
+** ASP-RFC-10.05-RBBA-ELIGIBLE-RISK-ONLY
+
+Every risk cell MUST name a fallback-eligible RFC 01.24 technical failure reason. =semanticRejection=, =policyMismatch=, =replayMismatch=, and =agentPreference= MUST NOT enter the fallback probability mass. These failures remain fail-closed.
+
+** ASP-RFC-10.05-RBBA-EXACT-PARTITION-MASS
+
+Risk cells MUST form an ordered exact cover of the admitted partition. Each cell MUST bind the corresponding batch digest, contain a positive claim count, and use the envelope denominator. The sum of cell claim counts MUST equal =n=, and the number of cells MUST equal =g=.
+
+** ASP-RFC-10.05-RBBA-CLAIM-WEIGHTED-EXPECTATION
+
+The expected fallback-mass numerator MUST equal the sum of =k_i*q_i=. A router MUST NOT substitute the number of failure events, the number of risky batches, the largest =q_i=, or an unweighted sum of =q_i=.
+
+** ASP-RFC-10.05-RBBA-EXPECTED-ROUND-ADMISSION
+
+A plan advertised as expected-round-nonregressing MUST prove =D*g + M <= D*n=. Strict expected savings SHOULD reserve at least one denominator unit of margin so rounding or integer presentation cannot turn equality into a savings claim.
+
+** ASP-RFC-10.05-RBBA-EXPECTED-TOKEN-ADMISSION
+
+A plan advertised as expected-token-nonregressing MUST prove =D*(g*S + n*P) + M*(S+P) <= D*n*(S+P)= using the same =D= and =M= as its expected-round decision.
+
+** ASP-RFC-10.05-RBBA-HARD-FALLBACK-CAP
+
+Execution authority MUST bind a hard cap =h= satisfying both =g + h <= n= and =(g+h)*S + h*P <= n*S=. The first inequality preserves executable rounds; the second preserves provider/search input tokens after repeated per-claim input is included. Once =h= eligible claims have been individually retried, further demanded fallback MUST stop and emit an overflow/fail-closed receipt. It MUST NOT silently exceed the cap because the expected model predicted a low probability.
+
+A count-only cap is nonconforming. For =n= eight, =g= two, =S= ten, and =P= two, cap six satisfies the round inequality but yields token-side cost =92 > 80=. Cap five satisfies both dimensions.
+
+** ASP-RFC-10.05-RBBA-TAIL-SEPARATION
+
+The envelope MUST carry a tail-overflow certificate for demand greater than =h=. The certificate MUST identify its authority, denominator, threshold, dependence assumptions, evidence window, and digest. Expected fallback mass MUST NOT be treated as this certificate.
+
+** ASP-RFC-10.05-RBBA-CALIBRATION-IDENTITY
+
+Risk admission and risk-cache reuse MUST bind the plan, checkpoint/generation, eligibility policy, calibration snapshot, search-cost profile, risk cells and their digest, hard cap, allowed tail policy, and tail certificate. The exact =S= and =P= values or a digest that resolves to them are semantic inputs because changing either value can invalidate the hard token cap. Equality of plan digest alone is not sufficient.
+
+** ASP-RFC-10.05-RBBA-CACHE-SEPARATION
+
+Search-result cache identity, search-risk cache identity, and model prefix-cache identity are separate contracts. A hit in one cache MUST NOT be projected as a hit in another without an explicit equality proof over the target cache identity.
+
+** ASP-RFC-10.05-RBBA-NO-EXPECTED-AUTHORITY
+
+=ExpectedCostAdmissible= is ranking evidence, not permission for unbounded execution. Only the hard cap authorizes pre-execution fallback, and only RFC 01.24 realized receipts establish post-execution cost admission.
+
+** ASP-RFC-10.05-RBBA-OVERFLOW-FAIL-CLOSED
+
+If demanded eligible fallback exceeds =h=, the router MUST preserve completed successful claims, record the unresolved overflow set and reason annotations, and stop individual fallback. It MUST NOT relabel overflow as agent preference, split it into hidden loops, or start a new plan generation without a new identity and admission decision.
+
+* Risk envelope
+
+A conforming =RiskEnvelope= contains at least:
+
+| Field | Meaning |
+|-
+| =planDigest= | exact ordered compatible partition |
+| =checkpointDigest= | source and graph generation used to plan |
+| =eligibilityPolicyDigest= | RFC 01.24 failure-reason classifier |
+| =calibrationAuthorityDigest= | owner of the calibrated risk statement |
+| =calibrationSnapshotDigest= | immutable evidence window and estimator inputs |
+| =sharedTokens= | =S= used by expected and hard token admission |
+| =perClaimTokens= | =P= used by expected and hard token admission |
+| =denominator= | common positive denominator for risk cells |
+| =riskCellsDigest= | ordered batch size and eligible-risk cells |
+| =expectedFallbackMassNumerator= | exact claim-weighted sum |
+| =hardFallbackCap= | executable retry ceiling satisfying round and token bounds |
+| =tailCertificateDigest= | identity of the bound for demand above the ceiling |
+| =tailDenominator= | positive denominator owned by the tail certificate |
+| =tailThreshold= | threshold that MUST equal =hardFallbackCap= |
+| =tailOverflowNumerator= | certified numerator for demand above the threshold |
+| =allowedTailOverflowNumerator= | policy threshold expressed in the same tail denominator |
+| =modelPrefixCacheIdentity= | optional orthogonal model-cost observation only |
+
+The envelope is valid only if all digests resolve, the search-cost profile resolves to the exact =S/P= values used by the equations, the exact-partition equations hold, expected round and token gates pass, the tail denominator is positive, the tail numerator is bounded by both its denominator and policy in that denominator, the tail threshold equals =hardFallbackCap=, =g + hardFallbackCap <= n=, and the worst-case token inequality also holds.
+
+* Agent-facing decision flow
+
+The SearchLoop uses the envelope progressively:
+
+1. Construct only compatible partitions that preserve the RFC 01.24 exact ordered claim cover.
+2. Resolve a current calibration snapshot for eligible technical failures.
+3. Compute claim-weighted expected fallback mass.
+4. Reject plans that fail expected round or token non-regression.
+5. Reject plans whose tail certificate exceeds policy.
+6. Reject plans whose hard cap cannot satisfy both the round and token worst-case inequalities.
+7. Rank the remaining plans by the existing multiobjective graph cost, retaining the risk-envelope identity in the chosen route.
+8. Execute the plan and enforce =h= as a runtime ceiling.
+9. Reconcile the realized attempts through RFC 01.24 receipts; never replace realized evidence with the planning expectation.
+10. Feed eligible technical-failure observations into a future calibration snapshot without mutating the snapshot that authorized the current execution.
+
+This flow reduces agent/LLM interaction rounds because the router decides a bounded batch plan before entering fallback. It also prevents the apparent optimization from degenerating into many fine-grained agent-triggered commands.
+
+* Lean proof obligations
+
+The project Lean module proves:
+
+- nonempty batch cells make event risk no greater than fallback mass;
+- a multi-claim positive-risk batch makes the inequality strict;
+- a concrete eight-claim plan is expected-cost admissible while full fallback is not realized-safe;
+- fallback within a valid hard cap preserves the RFC 01.24 round and token bounds;
+- a valid tail certificate targets the same hard cap enforced by execution;
+- singleton fragmentation has no expected round savings when risk is zero;
+- fail-closed failure reasons cannot become valid risk cells;
+- plan-only equality does not prove risk-cache reuse;
+- changing the search token-cost profile invalidates risk-cache reuse even when the plan is unchanged;
+- model prefix-cache equality does not prove risk-cache reuse; and
+- changing the calibration snapshot invalidates the risk identity even when the plan is unchanged.
+
+The modular audit emits a compact JSON inventory. The inventory is not a substitute for kernel compilation; it makes theorem families, RFC clauses, and axiom dependencies machine-auditable without expanding the RFC into a monolithic audit document.
+
+* AXLE independent challenge
+
+AXLE checks a standalone Mathlib model under =lean-4.32.0=. It separately verifies the formal statement that expected admission does not imply realized round safety. The AXLE input does not import =ASPProof=, so it challenges the arithmetic boundary independently of the project module.
+
+The normalized receipt binds the exact AXLE input digest, formal-statement digest, environment, executor commit, executor artifact digest, theorem count, strict-check status, and proof-verification status.
+
+* Consequences for later implementation
+
+This RFC intentionally does not prescribe a complex public CLI. Risk-envelope construction belongs to the graph router and interactive SearchLoop. An agent should trigger progressive search, inspect the compact decision evidence, and receive a bounded next action. Provider-specific commands may expose diagnostics for humans, but they are not the semantic owner of admission.
+
+The later shared schema must version the envelope before provider implementation. Python graph work under the future Turbo Graph architecture must consume the same language-neutral fields; it must not invent a Python-private expected-cost or cache identity. Rust, Python, TypeScript, Julia, and future providers remain downstream of the RFC and shared schema.
+
+* Non-goals
+
+- This RFC does not claim that a marginal calibration proves independence.
+- It does not place statistical estimation inside Lean.
+- It does not equate expected savings with realized savings.
+- It does not allow semantic or policy failures to enter fallback risk.
+- It does not define a new public search command family.
+- It does not implement Rust or product Python code in this session.
+
+* Open implementation evidence
+
+Before a provider may claim conformance, a real-project evaluation must report partition size, claim-weighted expected fallback mass, hard cap, tail bound, realized fallback count, executable tool rounds, provider/search input tokens, model prefix-cache observations, and every overflow/fail-closed event. The report must keep search-result caching and model prefix caching visibly separate.

@@ -14,7 +14,7 @@ pub(super) fn run_resident_exact_query(
 ) -> Result<(), String> {
     let exact = super::provider_exact_args::parse_exact_query_args(provider_args)?;
     super::runtime_server::block_on_runtime_server_client(async move {
-        let read = fresh_resident_exact_projection(language_id, project_root, &exact).await?;
+        let read = resident_exact_projection(language_id, project_root, &exact).await?;
         crate::exact_projection_trace::stage("mmap-generation-open", started);
         match crate::resident_exact_projection::resolve(read, &exact.structural_selector)? {
             crate::resident_exact_projection::ResidentExactProjection::Hit(projection) => {
@@ -41,6 +41,7 @@ pub(super) fn run_resident_exact_query(
                         structural_selector: miss.structural_selector.clone(),
                         resolution_state: miss.state.to_owned(),
                         reason_kind: miss.reason_kind.to_owned(),
+                        active_generation_digest: miss.active_generation_digest,
                         root_digest: miss.root_digest,
                         item_kind: miss.item_kind,
                         item_name: miss.item_name,
@@ -64,97 +65,15 @@ pub(super) fn run_resident_exact_query(
     })?
 }
 
-pub(super) async fn fresh_resident_exact_projection(
-    language_id: &str,
+async fn resident_exact_projection(
+    _language_id: &str,
     project_root: &Path,
     exact: &super::provider_exact_args::ExactQueryArgs,
 ) -> Result<WorkspaceRuntimeSelectorRead, String> {
-    let owner_path = owner_path_from_selector(&exact.structural_selector)?;
-    let mut client = match super::runtime_server::runtime_server_workspace_exact_open_async(
-        project_root,
-    )
-    .await?
-    {
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceExactProjectionDataPlaneOpen::Ready(client) => client,
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceExactProjectionDataPlaneOpen::Missing
-        | agent_semantic_client_db::runtime_server_workspace::WorkspaceExactProjectionDataPlaneOpen::RecoveryRequired { .. } => {
-            super::runtime_server::ensure_runtime_owner_projection_async(
-                project_root,
-                language_id,
-                owner_path,
-            )
+    let client =
+        super::runtime_server::runtime_server_workspace_exact_projection_client_async(project_root)
             .await?;
-            super::runtime_server::runtime_server_workspace_exact_client_async(project_root).await?
-        }
-    };
-    client.refresh_if_changed().await?;
-    let read = client.read_runtime_selector(&exact.projection, &exact.structural_selector)?;
-    if matches!(read, WorkspaceRuntimeSelectorRead::Projection { .. }) {
-        return Ok(read);
-    }
-    let freshness = super::runtime_server::ensure_runtime_owner_projection_async(
-        project_root,
-        language_id,
-        owner_path,
-    )
-    .await?;
-    if !resident_owner_needs_repair(
-        &freshness,
-        &read,
-        &exact.projection,
-        &exact.structural_selector,
-    ) {
-        return Ok(read);
-    }
-    client.refresh_if_changed().await?;
     client.read_runtime_selector(&exact.projection, &exact.structural_selector)
-}
-
-fn owner_path_from_selector(structural_selector: &str) -> Result<&str, String> {
-    agent_semantic_content_identity::CanonicalItemSelector::parse_root_or_exact_descendant(
-        structural_selector,
-    )?;
-    structural_selector
-        .split_once("://")
-        .and_then(|(_, body)| body.split_once('#'))
-        .map(|(owner_path, _)| owner_path)
-        .ok_or_else(|| "exact structural selector is missing its owner path".to_owned())
-}
-
-fn resident_owner_needs_repair(
-    freshness: &agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeOwnerFreshnessReceipt,
-    read: &WorkspaceRuntimeSelectorRead,
-    projection_kind: &str,
-    structural_selector: &str,
-) -> bool {
-    if freshness.removed {
-        return false;
-    }
-    if freshness.changed {
-        return true;
-    }
-    match read {
-        WorkspaceRuntimeSelectorRead::GenerationMissing
-        | WorkspaceRuntimeSelectorRead::OwnerMissing { .. } => true,
-        WorkspaceRuntimeSelectorRead::Projection { .. } => false,
-        WorkspaceRuntimeSelectorRead::OwnerForRepair { owner, .. } => {
-            if owner.selectors.is_empty() {
-                return true;
-            }
-            let Some(selector) = owner
-                .selectors
-                .iter()
-                .find(|selector| selector.selector == structural_selector)
-            else {
-                return false;
-            };
-            projection_kind != "source"
-                && !selector
-                    .derived_projections
-                    .iter()
-                    .any(|projection| projection.projection_kind == projection_kind)
-        }
-    }
 }
 
 pub(super) async fn build_resident_owner_projection(
@@ -163,7 +82,12 @@ pub(super) async fn build_resident_owner_projection(
     owner_path: &str,
     owner: WorkspaceOwnerSnapshot,
 ) -> Result<WorkspaceOwnerSnapshot, String> {
-    let runtime = agent_semantic_hook::registered_language_runtime(project_root, language_id)?;
+    let activation_path = super::provider_activation::provider_activation_path(project_root);
+    let runtime = agent_semantic_hook::registered_language_runtime(
+        project_root,
+        language_id,
+        &activation_path,
+    )?;
     let provider = runtime
         .providers
         .iter()
@@ -235,21 +159,6 @@ pub(super) async fn build_resident_owner_projection(
     })
 }
 
-#[cfg(test)]
-async fn mmap_exact_projection_for_scope(
-    workspace_identity: &str,
-    project_root: &Path,
-    exact: &super::provider_exact_args::ExactQueryArgs,
-) -> Result<agent_semantic_client_db::runtime_server_workspace::WorkspaceRuntimeSelectorRead, String>
-{
-    let client = super::runtime_server::runtime_server_workspace_exact_client_for_scope_async(
-        workspace_identity,
-        project_root,
-    )
-    .await?;
-    client.read_runtime_selector(&exact.projection, &exact.structural_selector)
-}
-
 fn registered_provider_id(language_id: &str) -> Result<String, String> {
     agent_semantic_hook::schema_registry_provider_manifests()
         .iter()
@@ -257,7 +166,3 @@ fn registered_provider_id(language_id: &str) -> Result<String, String> {
         .map(|manifest| manifest.provider_id().as_str().to_owned())
         .ok_or_else(|| format!("no registered provider manifest for language {language_id}"))
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/provider_resident_exact_mmap.rs"]
-mod mmap_tests;

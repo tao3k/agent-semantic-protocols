@@ -9,6 +9,7 @@ pub(crate) enum ResidentExactProjection {
 pub(crate) struct ResidentExactProjectionMiss {
     pub(crate) owner_path: String,
     pub(crate) structural_selector: String,
+    pub(crate) active_generation_digest: String,
     pub(crate) root_digest: String,
     pub(crate) item_kind: String,
     pub(crate) item_name: String,
@@ -28,7 +29,7 @@ pub(crate) fn resolve(
         .and_then(|(_, selector)| selector.split_once('#'))
         .map(|(owner_path, _)| owner_path)
         .ok_or_else(|| "exact structural selector is missing its owner path".to_owned())?;
-    let (root_digest, owner) = match read {
+    let (active_generation_digest, root_digest, owner) = match read {
         WorkspaceRuntimeSelectorRead::Projection { bytes, .. } => {
             return Ok(ResidentExactProjection::Hit(bytes));
         }
@@ -36,16 +37,28 @@ pub(crate) fn resolve(
             generation_digest,
             root_digest,
             owner,
-        } => {
-            let _ = generation_digest;
-            (root_digest, Some(owner))
-        }
+        } => (generation_digest, root_digest, Some(owner)),
         WorkspaceRuntimeSelectorRead::OwnerMissing {
             generation_digest,
             root_digest,
+        } => (generation_digest, root_digest, None),
+        WorkspaceRuntimeSelectorRead::RelocationAmbiguous {
+            generation_digest,
+            root_digest,
+            candidates,
         } => {
-            let _ = generation_digest;
-            (root_digest, None)
+            return Ok(ResidentExactProjection::Miss(ResidentExactProjectionMiss {
+                owner_path: owner_path.to_owned(),
+                structural_selector: structural_selector.to_owned(),
+                active_generation_digest: generation_digest,
+                root_digest,
+                item_kind: requested.kind.as_str().to_owned(),
+                item_name: requested.symbol.as_str().to_owned(),
+                candidates,
+                actual_kinds: vec![requested.kind.as_str().to_owned()],
+                state: "ambiguous",
+                reason_kind: "canonical-item-identity-ambiguous",
+            }));
         }
         WorkspaceRuntimeSelectorRead::GenerationMissing => {
             return Err("runtime workspace generation is not admitted".to_owned());
@@ -55,13 +68,14 @@ pub(crate) fn resolve(
         return Ok(ResidentExactProjection::Miss(ResidentExactProjectionMiss {
             owner_path: owner_path.to_owned(),
             structural_selector: structural_selector.to_owned(),
+            active_generation_digest,
             root_digest,
             item_kind: requested.kind.as_str().to_owned(),
             item_name: requested.symbol.as_str().to_owned(),
             candidates: Vec::new(),
             actual_kinds: Vec::new(),
-            state: "owner-missing",
-            reason_kind: "owner-not-in-workspace",
+            state: "selector-stale",
+            reason_kind: "selector-not-in-active-generation",
         }));
     };
     let candidates = owner
@@ -79,7 +93,15 @@ pub(crate) fn resolve(
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
-    let (state, reason_kind) = if actual_kinds.is_empty() {
+    let selector_exists = candidates
+        .iter()
+        .any(|candidate| candidate == structural_selector);
+    let (state, reason_kind) = if selector_exists {
+        (
+            "source-unavailable",
+            "projection-mode-not-in-active-generation",
+        )
+    } else if actual_kinds.is_empty() {
         ("item-missing", "item-not-in-live-owner")
     } else {
         ("kind-mismatch", "snapshot-item-kind-mismatch")
@@ -87,6 +109,7 @@ pub(crate) fn resolve(
     Ok(ResidentExactProjection::Miss(ResidentExactProjectionMiss {
         owner_path: owner_path.to_owned(),
         structural_selector: structural_selector.to_owned(),
+        active_generation_digest,
         root_digest,
         item_kind: requested.kind.as_str().to_owned(),
         item_name: requested.symbol.as_str().to_owned(),
@@ -96,3 +119,7 @@ pub(crate) fn resolve(
         reason_kind,
     }))
 }
+
+#[cfg(test)]
+#[path = "../tests/unit/resident_exact_projection.rs"]
+mod tests;

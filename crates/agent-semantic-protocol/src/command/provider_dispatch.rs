@@ -61,35 +61,6 @@ fn exact_query_trace(stage: &str, started: Instant) {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum OwnerItemsExecutionRoute {
-    NativeIncremental,
-    RegisteredProviderSurface,
-}
-
-fn owner_items_execution_route(
-    native_incremental_owner: bool,
-    provider_resolves_to_asp: bool,
-    language_id: &str,
-    provider_id: &str,
-) -> Result<OwnerItemsExecutionRoute, String> {
-    if provider_resolves_to_asp {
-        let reason_kind = if native_incremental_owner {
-            "native-owner-provider-resolves-to-asp"
-        } else {
-            "provider-owner-surface-resolves-to-asp"
-        };
-        return Err(format!(
-            "owner-items route is recursive: reasonKind={reason_kind} languageId={language_id} providerId={provider_id}"
-        ));
-    }
-    Ok(if native_incremental_owner {
-        OwnerItemsExecutionRoute::NativeIncremental
-    } else {
-        OwnerItemsExecutionRoute::RegisteredProviderSurface
-    })
-}
-
 pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
     let exact_query_started = Instant::now();
     fn uses_client_backend(args: &[String]) -> bool {
@@ -97,19 +68,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
             || matches!(args.first().map(String::as_str), Some("check"))
             || matches!(args.first().map(String::as_str), Some("cache"))
-    }
-
-    fn provider_invokes_asp_facade(
-        language_id: &str,
-        provider: &agent_semantic_hook::ActivatedProvider,
-        config: &AspConfig,
-    ) -> bool {
-        let binary = config
-            .provider_bin(language_id)
-            .unwrap_or(provider.binary.as_str());
-        Path::new(binary)
-            .file_name()
-            .is_some_and(|name| name.to_string_lossy() == "asp")
     }
 
     fn run_client_backend_command(
@@ -224,6 +182,19 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             exact_query_started,
         );
     }
+    if super::search_pipe::is_search_owner_items_query(&command_args) {
+        exact_query_trace("owner-resident-read-admitted", exact_query_started);
+        return super::search_pipe::run_asp_incremental_owner_search_command(
+            &command_args,
+            super::search_pipe::IncrementalOwnerSearchContext {
+                language_id,
+                project_root: &invocation_root,
+                locator_root: &invocation_root,
+                provider_context: None,
+                frontier_receipt: frontier_receipt.as_ref(),
+            },
+        );
+    }
     let canonical_activation_path = provider_activation_path(&invocation_root);
     let activation_path = canonical_activation_path.clone();
     let runtime = super::provider_activation::load_activation_for_language(
@@ -322,57 +293,6 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         );
     }
     if is_asp_fast_search(&provider_args) {
-        if super::search_pipe::is_search_owner_items_query(&provider_args) {
-            match owner_items_execution_route(
-                agent_semantic_hook::registered_provider_method_invocation_v1(
-                    language_id,
-                    provider.provider_id.as_str(),
-                    "search/owner-native",
-                )?
-                .is_some(),
-                provider_invokes_asp_facade(language_id, provider, &config),
-                language_id,
-                provider.provider_id.as_str(),
-            )? {
-                OwnerItemsExecutionRoute::RegisteredProviderSurface => {
-                    exact_query_trace("owner-provider-surface-admitted", exact_query_started);
-                    let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
-                    let provider_argv = provider_process_args(&provider_args);
-                    for invocation in provider_invocations(
-                        provider,
-                        &provider_argv,
-                        &project_root,
-                        &runtime_profiles,
-                    )? {
-                        run_provider_command(
-                            language_id,
-                            provider,
-                            &invocation,
-                            &project_root,
-                            false,
-                        )?;
-                    }
-                    return Ok(());
-                }
-                OwnerItemsExecutionRoute::NativeIncremental => {}
-            }
-            exact_query_trace("owner-native-incremental-admitted", exact_query_started);
-            let runtime_profiles = runtime_profiles_for_runtime(&project_root, &runtime);
-            let provider_context = ProviderGraphFactsContext {
-                provider,
-                profiles: &runtime_profiles,
-            };
-            return super::search_pipe::run_asp_incremental_owner_search_command(
-                &provider_args,
-                super::search_pipe::IncrementalOwnerSearchContext {
-                    language_id,
-                    project_root: &project_root,
-                    locator_root: search_locator_root,
-                    provider_context: Some(&provider_context),
-                    frontier_receipt: frontier_receipt.as_ref(),
-                },
-            );
-        }
         let ranker = runtime
             .rankers
             .iter()
@@ -428,14 +348,16 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             );
         }
         exact_query_trace("ranker-admitted", exact_query_started);
-        let current_snapshot =
+        let current_generation_client =
             super::search_pipe::fast_search_requires_source_index_snapshot(&provider_args)
                 .then(|| {
-                    super::runtime_server::runtime_server_current_source_index_snapshot(
-                        &project_root,
-                    )
+                    super::runtime_server::runtime_server_workspace_generation_client(&project_root)
                 })
                 .transpose()?;
+        let current_snapshot = current_generation_client
+            .as_ref()
+            .map(super::runtime_server::runtime_server_current_source_index_snapshot_from_client)
+            .transpose()?;
         let provider_context_required =
             fast_search_needs_provider_context(&provider_args, provider)?;
         exact_query_trace("provider-context-classified", exact_query_started);
@@ -457,6 +379,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                     provider_context: Some(&provider_context),
                     frontier_receipt: frontier_receipt.as_ref(),
                     source_index_snapshot: current_snapshot.as_ref(),
+                    source_index_client: current_generation_client.as_ref(),
                 },
             );
         }
@@ -472,6 +395,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
                 provider_context: None,
                 frontier_receipt: frontier_receipt.as_ref(),
                 source_index_snapshot: current_snapshot.as_ref(),
+                source_index_client: current_generation_client.as_ref(),
             },
         );
     }

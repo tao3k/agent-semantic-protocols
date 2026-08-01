@@ -40,6 +40,41 @@ publication, and platform-command execution are asynchronous Tokio operations.
 The Runtime Server drains through its typed control protocol before the
 platform supervisor starts the latest canonical artifact.
 
+* Acyclic supervisor control plane
+
+The supervisor control socket is a stable lifecycle authority and is not the
+workspace/provider data plane.  Its schema identity, owner epoch, and binding
+token authenticate =Status=, =Reconcile=, and =Restart=.  A data-plane
+=transportContractDigest= mismatch must reject =Status=, but it must not reject
+an authenticated =Reconcile= request: that mismatch is precisely the evidence
+which asks the resident daemon to drain.
+
+=Reconcile= compares both the expected canonical runtime artifact digest and
+the expected data-plane transport contract digest with the running endpoint
+receipt.  If either differs, exactly one resident owner enters draining and the
+operating-system supervisor replaces it.  If neither differs, reconciliation
+is a no-op.  The hook never writes a LaunchAgent or systemd definition and does
+not wait for replacement; installation owns definition publication, while the
+resident Tokio lifecycle owns drain and termination.
+
+This separation removes the recovery cycle
+
+#+begin_example
+hook -> data-plane health -> synchronous supervisor install -> data-plane health
+#+end_example
+
+and replaces it with
+
+#+begin_example
+hook -> stable supervisor reconcile intent -> drain -> OS replacement
+                                      \-> latest healthy data-plane receipt
+#+end_example
+
+Concurrent reconcile callers authenticate against the same owner epoch and
+binding token.  The resident event loop folds all restart requests into one
+draining transition, so callers converge on one Global daemon rather than
+creating project or session daemons.
+
 * Gates
 
 The v1 gate set must prove:
@@ -51,4 +86,9 @@ The v1 gate set must prove:
 - an executable digest change produces one drain/restart transition
 - the replacement daemon publishes a healthy receipt with the latest digest
 - concurrent callers converge on one Global daemon and one owner epoch
-
+- a stale data-plane contract is accepted by authenticated =Reconcile= and
+  rejected by =Status=
+- matching runtime and transport digests make =Reconcile= a no-op
+- runtime or transport drift produces exactly one draining transition
+- hook reconciliation performs zero supervisor-definition writes and never
+  waits for daemon replacement

@@ -172,6 +172,34 @@ impl RuntimeServerWorkspaceRegistry {
         self.counters.snapshot()
     }
 
+    pub async fn published_generation_is_ready(
+        &self,
+        workspace_identity: &str,
+        project_root: &std::path::Path,
+    ) -> Result<bool, String> {
+        let pointer_path = crate::runtime_server_workspace::workspace_generation_pointer_path(
+            &self.root,
+            workspace_identity,
+            project_root,
+        )?;
+        match crate::runtime_server_workspace::WorkspaceGenerationDataPlaneClient::open_state(
+            &pointer_path,
+        )
+        .await?
+        {
+            crate::runtime_server_workspace::WorkspaceGenerationDataPlaneOpen::Ready(client) => {
+                client.lease().generation().validate()?;
+                Ok(true)
+            }
+            crate::runtime_server_workspace::WorkspaceGenerationDataPlaneOpen::Missing => Ok(false),
+            crate::runtime_server_workspace::WorkspaceGenerationDataPlaneOpen::RecoveryRequired {
+                reason,
+            } => Err(format!(
+                "published workspace generation requires reconciliation: workspaceIdentity={workspace_identity} reason={reason}"
+            )),
+        }
+    }
+
     pub fn lease(
         &self,
         workspace_identity: &str,

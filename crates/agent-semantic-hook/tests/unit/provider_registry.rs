@@ -159,3 +159,40 @@ fn registry_method_inventory_is_explicit() {
         .contains("provider drift")
     );
 }
+
+#[test]
+fn every_registered_language_has_provider_owned_development_authority() {
+    use crate::ProviderDevelopmentArtifactDomain::{Checkout, StateHomeProviderStaging};
+
+    for (language, source_root, artifact_domain) in [
+        ("rust", "languages/rust-lang-project-harness", Checkout),
+        (
+            "typescript",
+            "languages/typescript-lang-project-harness",
+            StateHomeProviderStaging,
+        ),
+        (
+            "python",
+            "languages/python-lang-project-harness",
+            StateHomeProviderStaging,
+        ),
+        (
+            "gerbil-scheme",
+            "languages/gerbil-scheme-language-project-harness",
+            StateHomeProviderStaging,
+        ),
+        ("julia", "languages/JuliaLangProjectHarness.jl", Checkout),
+        ("org", "languages/orgize", Checkout),
+        ("md", "languages/orgize", Checkout),
+    ] {
+        let registration =
+            crate::registered_provider_development_v1(language).expect("development authority");
+        assert_eq!(registration.development.schema_version, "1");
+        assert_eq!(registration.development.source_root, source_root);
+        assert_eq!(registration.development.artifact_domain, artifact_domain);
+        assert_eq!(
+            registration.development.build_binding,
+            "root-development-installer-v1"
+        );
+    }
+}

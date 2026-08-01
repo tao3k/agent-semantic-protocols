@@ -12,10 +12,12 @@ use agent_semantic_client_db::{
 };
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 const SCENARIO_ROOT: &str = "tests/unit/scenarios/code_search_merkle_memory_warm_path";
 const TURSO_SCENARIO_ROOT: &str =
     "tests/unit/scenarios/code_search_turso_resident_session_warm_path";
+static PERFORMANCE_GATE: Mutex<()> = Mutex::new(());
 
 fn benchmark_u64(manifest: &str, key: &str) -> u64 {
     manifest
@@ -34,6 +36,9 @@ fn benchmark_u64(manifest: &str, key: &str) -> u64 {
 
 #[tokio::test(flavor = "current_thread")]
 async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
+    let _performance_gate = PERFORMANCE_GATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let scenario_root = Path::new(env!("CARGO_MANIFEST_DIR")).join(TURSO_SCENARIO_ROOT);
     let scenario =
         fs::read_to_string(scenario_root.join("scenario.toml")).expect("read scenario fixture");
@@ -80,7 +85,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         source_kind: agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
         leaf_count: 1,
         base_root_digest: None,
-        provider_digest: "resident-provider-digest".to_string(),
+        provider_digest: "22".repeat(32),
         dirty_paths_digest: None,
     };
     let rust_language_id = LanguageId::from("rust");
@@ -125,9 +130,11 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
     );
     import.file_hashes[0].sha256 = fixture_sha256.clone();
     import.file_hashes[0].byte_len = fixture_source.len() as u64;
-    let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-        [(fixture_owner_path.clone(), fixture_sha256.clone())],
-    );
+    let workspace_snapshot =
+        agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
+            fixture_owner_path.clone(),
+            blake3::hash(&fixture_source).to_hex().to_string(),
+        )]);
     let source_snapshot = workspace_snapshot.evidence(
         source_snapshot.source_kind.clone(),
         source_snapshot.provider_digest.clone(),
@@ -353,6 +360,9 @@ fn temp_root() -> PathBuf {
 
 #[test]
 fn code_search_merkle_memory_warm_path_is_a_strong_gate() {
+    let _performance_gate = PERFORMANCE_GATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let scenario_root = Path::new(env!("CARGO_MANIFEST_DIR")).join(SCENARIO_ROOT);
     let scenario =
         fs::read_to_string(scenario_root.join("scenario.toml")).expect("read scenario fixture");
@@ -415,6 +425,24 @@ fn code_search_merkle_memory_warm_path_is_a_strong_gate() {
     };
     let expected_artifact_digest = client_db_source_index_artifact_digest(&source_snapshot);
     let rust_language_id = LanguageId::from("rust");
+
+    let warmup = ClientDbEngine::lookup_source_index_from_client_dir(
+        ClientDbSourceIndexClientDirLookupRequest {
+            client_dir: &client_dir,
+            indexed_project_root: &project_root,
+            language_id: Some(&rust_language_id),
+            query_keys: vec!["needle".into()],
+            limit: 8,
+            expected_snapshot_root: source_snapshot.root_digest.as_str(),
+            expected_index_artifact_digest: expected_artifact_digest.as_str(),
+            live_facts: Some(ClientDbLiveSourceIndexFacts {
+                source_snapshot: &source_snapshot,
+                import: &source_index_import,
+            }),
+        },
+    )
+    .expect("prewarm Merkle-qualified memory code search");
+    assert_eq!(warmup.state, ClientDbSourceIndexLookupState::Hit);
 
     let mut samples = Vec::with_capacity(sample_count);
     for _ in 0..sample_count {

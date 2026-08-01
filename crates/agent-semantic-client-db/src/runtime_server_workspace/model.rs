@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 pub const WORKSPACE_GENERATION_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-workspace-generation-snapshot.v1";
@@ -200,6 +200,23 @@ pub enum WorkspaceRuntimeSelectorRead {
         generation_digest: String,
         root_digest: String,
     },
+    RelocationAmbiguous {
+        generation_digest: String,
+        root_digest: String,
+        candidates: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceGenerationBuild {
+    pub workspace_identity: String,
+    pub project_root: String,
+    pub active_epoch: u64,
+    pub workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
+    pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
+    pub module_graph_digest: String,
+    pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+    pub owners: Vec<WorkspaceOwnerSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -214,6 +231,9 @@ pub struct WorkspaceMemoryGeneration {
     pub workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
+    pub provider_schema_digest: String,
+    pub module_graph_digest: String,
+    pub selector_set_digest: String,
     pub memory_backend_digest: String,
     pub workspace_source_scope_generation: String,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
@@ -221,10 +241,74 @@ pub struct WorkspaceMemoryGeneration {
 }
 
 impl WorkspaceMemoryGeneration {
+    pub fn try_from_build(input: WorkspaceGenerationBuild) -> Result<Self, String> {
+        let workspace_generation =
+            agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
+                root_digest: input.source_snapshot.root_digest.clone(),
+                root_depth: 1,
+                leaf_count: u64::try_from(input.source_snapshot.leaf_count)
+                    .map_err(|_| "workspace generation leaf count overflow".to_owned())?,
+                owner_count: u64::try_from(input.owners.len())
+                    .map_err(|_| "workspace generation owner count overflow".to_owned())?,
+            };
+        let provider_schema_digest = agent_semantic_runtime::project_resolution_schema_digest();
+        let workspace_source_scope_generation =
+            agent_semantic_runtime::workspace_source_scope_generation_digest(
+                &input.project_resolutions,
+            )?;
+        let selector_set_digest = typed_digest(
+            &input
+                .owners
+                .iter()
+                .map(|owner| (&owner.owner_path, &owner.selectors))
+                .collect::<Vec<_>>(),
+        )?;
+        let memory_backend_digest = typed_digest(&(
+            &input.owners,
+            &workspace_source_scope_generation,
+            &input.project_resolutions,
+        ))?;
+        let generation_digest = typed_digest(&(
+            &input.workspace_identity,
+            &input.project_root,
+            &input.workspace_snapshot,
+            &input.source_snapshot,
+            &workspace_generation,
+            &provider_schema_digest,
+            &input.module_graph_digest,
+            &selector_set_digest,
+            &workspace_source_scope_generation,
+            &memory_backend_digest,
+        ))?;
+        let generation = Self {
+            workspace_identity: input.workspace_identity,
+            project_root: input.project_root,
+            state: WorkspaceGenerationState::Ready,
+            active_epoch: input.active_epoch,
+            generation_digest,
+            root_depth: [1, 0],
+            workspace_snapshot: input.workspace_snapshot,
+            source_snapshot: input.source_snapshot,
+            workspace_generation,
+            provider_schema_digest,
+            module_graph_digest: input.module_graph_digest,
+            selector_set_digest,
+            memory_backend_digest,
+            workspace_source_scope_generation,
+            project_resolutions: input.project_resolutions,
+            owners: input.owners,
+        };
+        generation.validate()?;
+        Ok(generation)
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         self.workspace_snapshot.validate()?;
         self.validate_identity()?;
         validate_digest("generationDigest", &self.generation_digest)?;
+        validate_digest("providerSchemaDigest", &self.provider_schema_digest)?;
+        validate_digest("moduleGraphDigest", &self.module_graph_digest)?;
+        validate_digest("selectorSetDigest", &self.selector_set_digest)?;
         validate_digest("memoryBackendDigest", &self.memory_backend_digest)?;
         validate_digest(
             "workspaceSourceScopeGeneration",
@@ -236,6 +320,43 @@ impl WorkspaceMemoryGeneration {
             )?
         {
             return Err("workspace generation ProjectResolution evidence drift".to_owned());
+        }
+        if self.provider_schema_digest != agent_semantic_runtime::project_resolution_schema_digest()
+        {
+            return Err("workspace generation provider schema authority drift".to_owned());
+        }
+        let selector_set_digest = typed_digest(
+            &self
+                .owners
+                .iter()
+                .map(|owner| (&owner.owner_path, &owner.selectors))
+                .collect::<Vec<_>>(),
+        )?;
+        if self.selector_set_digest != selector_set_digest {
+            return Err("workspace generation selector-set digest drift".to_owned());
+        }
+        let memory_backend_digest = typed_digest(&(
+            &self.owners,
+            &self.workspace_source_scope_generation,
+            &self.project_resolutions,
+        ))?;
+        if self.memory_backend_digest != memory_backend_digest {
+            return Err("workspace generation MemoryBackend digest drift".to_owned());
+        }
+        let generation_digest = typed_digest(&(
+            &self.workspace_identity,
+            &self.project_root,
+            &self.workspace_snapshot,
+            &self.source_snapshot,
+            &self.workspace_generation,
+            &self.provider_schema_digest,
+            &self.module_graph_digest,
+            &self.selector_set_digest,
+            &self.workspace_source_scope_generation,
+            &self.memory_backend_digest,
+        ))?;
+        if self.generation_digest != generation_digest {
+            return Err("workspace generation identity digest drift".to_owned());
         }
         if self.workspace_snapshot.root_digest() != self.source_snapshot.root_digest
             || self.workspace_generation.root_digest != self.source_snapshot.root_digest
@@ -286,8 +407,16 @@ pub struct WorkspaceGenerationSnapshot {
     pub active_epoch: u64,
     pub generation_digest: String,
     pub root_depth: [u8; 2],
+    pub provider_schema_digest: String,
+    pub source_root_digest: String,
+    pub base_root_digest: Option<String>,
+    pub source_provider_digest: String,
+    pub dirty_paths_digest: Option<String>,
+    pub module_graph_digest: String,
+    pub selector_set_digest: String,
     pub memory_backend_digest: String,
     pub workspace_source_scope_generation: String,
+    pub durable_commit_digest: String,
     pub mmap_segment_path: String,
     pub previous_epoch_readable: bool,
 }
@@ -307,7 +436,19 @@ impl WorkspaceGenerationSnapshot {
             return Err("workspace generation snapshot is not publishable".to_owned());
         }
         validate_digest("generationDigest", &self.generation_digest)?;
+        validate_digest("providerSchemaDigest", &self.provider_schema_digest)?;
+        validate_digest("sourceRootDigest", &self.source_root_digest)?;
+        if let Some(base_root_digest) = self.base_root_digest.as_deref() {
+            validate_digest("baseRootDigest", base_root_digest)?;
+        }
+        validate_digest("sourceProviderDigest", &self.source_provider_digest)?;
+        if let Some(dirty_paths_digest) = self.dirty_paths_digest.as_deref() {
+            validate_digest("dirtyPathsDigest", dirty_paths_digest)?;
+        }
+        validate_digest("moduleGraphDigest", &self.module_graph_digest)?;
+        validate_digest("selectorSetDigest", &self.selector_set_digest)?;
         validate_digest("memoryBackendDigest", &self.memory_backend_digest)?;
+        validate_digest("durableCommitDigest", &self.durable_commit_digest)?;
         validate_digest(
             "workspaceSourceScopeGeneration",
             &self.workspace_source_scope_generation,
@@ -417,120 +558,6 @@ impl RuntimeServerShutdownReceipt {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct WorkspaceMemoryBackend {
-    generation: Arc<WorkspaceMemoryGeneration>,
-    selector_index: HashMap<String, (usize, usize)>,
-    term_index: HashMap<String, Vec<usize>>,
-}
-
-impl WorkspaceMemoryBackend {
-    pub(crate) fn from_generation(generation: WorkspaceMemoryGeneration) -> Result<Self, String> {
-        generation.validate()?;
-        let mut selector_index = HashMap::new();
-        let mut term_index = HashMap::<String, Vec<usize>>::new();
-        for (owner_position, owner) in generation.owners.iter().enumerate() {
-            let text = std::str::from_utf8(&owner.bytes).unwrap_or_default();
-            for term in crate::source_index::source_query_keys(&owner.owner_path, text) {
-                term_index.entry(term).or_default().push(owner_position);
-            }
-            for (selector_position, selector) in owner.selectors.iter().enumerate() {
-                selector_index.insert(
-                    selector.selector.clone(),
-                    (owner_position, selector_position),
-                );
-            }
-        }
-        Ok(Self {
-            generation: Arc::new(generation),
-            selector_index,
-            term_index,
-        })
-    }
-
-    pub(crate) fn generation(&self) -> &Arc<WorkspaceMemoryGeneration> {
-        &self.generation
-    }
-
-    pub(crate) fn projection(self: &Arc<Self>, selector: &str) -> Option<WorkspaceProjectionLease> {
-        let (owner_position, selector_position) = *self.selector_index.get(selector)?;
-        Some(WorkspaceProjectionLease {
-            backend: Arc::clone(self),
-            owner_position,
-            selector_position,
-        })
-    }
-
-    pub(crate) fn source_index_owner_positions(&self, query: &str, limit: usize) -> Vec<usize> {
-        let query_terms = crate::source_index::source_query_keys("", query);
-        let query = query.trim();
-        if !query.is_empty()
-            && query.chars().all(|character| {
-                character.is_alphanumeric() || character == '-' || character == '_'
-            })
-            && query.contains(['-', '_'])
-        {
-            return self
-                .term_index
-                .get(&query.to_ascii_lowercase())
-                .into_iter()
-                .flatten()
-                .copied()
-                .take(limit)
-                .collect();
-        }
-        let mut scores = HashMap::<usize, usize>::new();
-        for term in query_terms {
-            if let Some(positions) = self.term_index.get(&term) {
-                for &position in positions {
-                    *scores.entry(position).or_default() += 1;
-                }
-            }
-        }
-        let mut ranked = scores.into_iter().collect::<Vec<_>>();
-        ranked.sort_unstable_by(
-            |(left_position, left_score), (right_position, right_score)| {
-                right_score
-                    .cmp(left_score)
-                    .then_with(|| left_position.cmp(right_position))
-            },
-        );
-        ranked.truncate(limit);
-        ranked
-            .into_iter()
-            .map(|(position, _score)| position)
-            .collect()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct WorkspaceProjectionLease {
-    pub(crate) backend: Arc<WorkspaceMemoryBackend>,
-    pub(crate) owner_position: usize,
-    pub(crate) selector_position: usize,
-}
-
-impl WorkspaceProjectionLease {
-    pub fn workspace_identity(&self) -> &str {
-        &self.backend.generation.workspace_identity
-    }
-
-    pub fn epoch(&self) -> u64 {
-        self.backend.generation.active_epoch
-    }
-
-    pub fn selector(&self) -> &str {
-        &self.backend.generation.owners[self.owner_position].selectors[self.selector_position]
-            .selector
-    }
-
-    pub fn bytes(&self) -> &[u8] {
-        let owner = &self.backend.generation.owners[self.owner_position];
-        let selector = &owner.selectors[self.selector_position];
-        &owner.bytes[selector.byte_start..selector.byte_end]
-    }
-}
-
 fn validate_digest(field: &str, digest: &str) -> Result<(), String> {
     let Some(value) = digest.strip_prefix("blake3-256:") else {
         return Err(format!("{field} must use blake3-256"));
@@ -539,6 +566,12 @@ fn validate_digest(field: &str, digest: &str) -> Result<(), String> {
         return Err(format!("{field} must contain a 64-character hex digest"));
     }
     Ok(())
+}
+
+fn typed_digest<T: Serialize + ?Sized>(value: &T) -> Result<String, String> {
+    let bytes = serde_json::to_vec(value)
+        .map_err(|error| format!("encode workspace generation digest input: {error}"))?;
+    Ok(format!("blake3-256:{}", blake3::hash(&bytes).to_hex()))
 }
 
 pub(crate) fn validate_owners(owners: &[WorkspaceOwnerSnapshot]) -> Result<(), String> {

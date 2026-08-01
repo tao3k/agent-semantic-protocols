@@ -124,3 +124,41 @@ fn optional_subcommand_is_configured_for_toml_projection() {
             .is_err()
     );
 }
+#[test]
+fn managed_template_serializes_provider_owned_language_extensions() {
+    let template = crate::hook_config::default_client_config_template();
+    let parsed: toml::Value = toml::from_str(&template).expect("managed hook config TOML");
+    let providers = parsed
+        .get("languageProviders")
+        .and_then(toml::Value::as_array)
+        .expect("languageProviders projection");
+    for (language_id, provider_id, extension) in [
+        ("rust", "rs-harness", ".rs"),
+        ("typescript", "ts-harness", ".ts"),
+        ("python", "py-harness", ".py"),
+        ("julia", "julia-lang-project-harness", ".jl"),
+        ("gerbil-scheme", "gerbil-scheme-harness", ".ss"),
+    ] {
+        let provider = providers
+            .iter()
+            .find(|provider| {
+                provider.get("languageId").and_then(toml::Value::as_str) == Some(language_id)
+                    && provider.get("providerId").and_then(toml::Value::as_str) == Some(provider_id)
+            })
+            .unwrap_or_else(|| panic!("provider projection {language_id}/{provider_id}"));
+        assert!(
+            provider
+                .get("manifestDigest")
+                .and_then(toml::Value::as_str)
+                .is_some_and(|digest| digest.starts_with("sha256:"))
+        );
+        assert!(
+            provider
+                .get("sourceExtensions")
+                .and_then(toml::Value::as_array)
+                .is_some_and(|extensions| extensions
+                    .iter()
+                    .any(|candidate| { candidate.as_str() == Some(extension) }))
+        );
+    }
+}

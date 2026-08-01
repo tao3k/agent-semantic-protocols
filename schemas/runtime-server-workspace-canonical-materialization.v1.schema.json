@@ -12,7 +12,9 @@
     "workspaceSnapshot",
     "sourceSnapshot",
     "workspaceGeneration",
+    "providerSchemaDigest",
     "importDigest",
+    "selectorSetDigest",
     "workspaceSourceScopeGeneration",
     "projectResolutions",
     "fileCount",
@@ -163,7 +165,15 @@
         }
       }
     },
+    "providerSchemaDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
     "importDigest": {
+      "type": "string",
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "selectorSetDigest": {
       "type": "string",
       "pattern": "^blake3-256:[0-9a-f]{64}$"
     },

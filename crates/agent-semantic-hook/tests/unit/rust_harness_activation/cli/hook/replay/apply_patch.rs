@@ -1,12 +1,21 @@
 use serde_json::json;
 
-use crate::rust_harness_activation::support::temp_project_root;
+use crate::rust_harness_activation::support::{stage_project_candidates, temp_project_root};
 
 use crate::rust_harness_activation::cli::hook::support::{last_hook_event, run_hook_decision};
 
 #[test]
 fn cli_hook_replay_blocks_source_apply_patch() {
     let root = temp_project_root("hook-source-apply-patch");
+    std::fs::create_dir_all(root.join("src")).expect("create Rust source root");
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"hook-source-apply-patch\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    )
+    .expect("write Rust package entry");
+    std::fs::write(root.join("src/lib.rs"), "pub fn old() {}\n")
+        .expect("write registered Rust source");
+    stage_project_candidates(&root);
     let command = r#"apply_patch <<'PATCH'
 *** Begin Patch
 *** Update File: src/lib.rs

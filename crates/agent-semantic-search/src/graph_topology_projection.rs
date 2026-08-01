@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, fs, path::Path};
 
 use serde_json::{Value, json};
 
-use crate::{GraphProjectionCandidate, language_file_spec, stable_graph_node_id};
+use crate::{GraphProjectionCandidate, stable_graph_node_id};
 
 #[derive(
     Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
@@ -109,7 +109,7 @@ pub fn graph_project_topology_projection(
     let mut projection = GraphTopologyProjection::default();
     let language_id = request.language_id;
     let workspace_root = request.workspace_root;
-    let candidates = request.candidates;
+    let _candidates = request.candidates;
     let workspace_id = stable_graph_node_id("workspace", ".");
     projection.nodes.push(json!({
         "id": workspace_id.clone(),
@@ -142,7 +142,7 @@ pub fn graph_project_topology_projection(
     }));
 
     let submodule_paths = graph_project_submodule_paths(workspace_root);
-    let language_projects = language_project_roots(workspace_root, &language_id, candidates);
+    let language_projects: Vec<LanguageProjectRoot> = Vec::new();
     for submodule_path in &submodule_paths {
         let submodule_id = stable_graph_node_id("submodule", submodule_path);
         projection.nodes.push(json!({
@@ -317,142 +317,4 @@ struct LanguageProjectRoot {
 struct TopologyMarker {
     name: String,
     path: String,
-}
-
-fn language_project_roots(
-    workspace_root: &Path,
-    language_id: &str,
-    candidates: &[GraphProjectionCandidate],
-) -> Vec<LanguageProjectRoot> {
-    let file_spec = language_file_spec(language_id);
-    if file_spec.project_markers().is_empty() || !workspace_root.exists() {
-        return Vec::new();
-    }
-    let mut seen_roots = BTreeSet::new();
-    let mut projects = Vec::new();
-    push_language_project_root(
-        &mut projects,
-        &mut seen_roots,
-        workspace_root,
-        workspace_root,
-        file_spec.project_markers(),
-        file_spec.dependency_markers(),
-    );
-    for candidate in candidates {
-        let candidate_path = workspace_root.join(&candidate.path);
-        let start = if candidate_path.is_file() {
-            candidate_path.parent().unwrap_or(workspace_root)
-        } else {
-            candidate_path.as_path()
-        };
-        for root in candidate_project_roots(workspace_root, start, file_spec.project_markers()) {
-            push_language_project_root(
-                &mut projects,
-                &mut seen_roots,
-                workspace_root,
-                root,
-                file_spec.project_markers(),
-                file_spec.dependency_markers(),
-            );
-        }
-    }
-    projects.sort_by(|left, right| {
-        left.root_path.cmp(&right.root_path).then_with(|| {
-            left.project_markers
-                .first()
-                .map(|marker| marker.path.as_str())
-                .cmp(
-                    &right
-                        .project_markers
-                        .first()
-                        .map(|marker| marker.path.as_str()),
-                )
-        })
-    });
-    projects
-}
-
-fn candidate_project_roots<'a>(
-    workspace_root: &'a Path,
-    start: &'a Path,
-    config_filenames: &[String],
-) -> Vec<&'a Path> {
-    let mut roots = Vec::new();
-    let mut current = Some(start);
-    while let Some(path) = current {
-        if !path.starts_with(workspace_root) {
-            break;
-        }
-        if config_filenames
-            .iter()
-            .any(|config_filename| path.join(config_filename).is_file())
-        {
-            roots.push(path);
-        }
-        if path == workspace_root {
-            break;
-        }
-        current = path.parent();
-    }
-    roots
-}
-
-fn push_language_project_root(
-    projects: &mut Vec<LanguageProjectRoot>,
-    seen_roots: &mut BTreeSet<String>,
-    workspace_root: &Path,
-    root: &Path,
-    project_markers: &[String],
-    dependency_markers: &[String],
-) {
-    let project_markers = topology_marker_paths(workspace_root, root, project_markers);
-    if project_markers.is_empty() {
-        return;
-    }
-    let dependency_markers = topology_marker_paths(workspace_root, root, dependency_markers);
-    let root_path = relative_topology_path(workspace_root, root).unwrap_or_else(|| ".".to_string());
-    if !seen_roots.insert(root_path.clone()) {
-        return;
-    }
-    projects.push(LanguageProjectRoot {
-        root_path,
-        project_markers,
-        dependency_markers,
-    });
-}
-
-fn topology_marker_paths(
-    workspace_root: &Path,
-    root: &Path,
-    marker_names: &[String],
-) -> Vec<TopologyMarker> {
-    marker_names
-        .iter()
-        .filter_map(|marker_name| {
-            let marker_path = root.join(marker_name);
-            let path = marker_path
-                .is_file()
-                .then(|| relative_topology_path(workspace_root, &marker_path))
-                .flatten()?;
-            Some(TopologyMarker {
-                name: marker_name.clone(),
-                path,
-            })
-        })
-        .collect()
-}
-
-fn relative_topology_path(workspace_root: &Path, path: &Path) -> Option<String> {
-    let relative = path.strip_prefix(workspace_root).ok()?;
-    if relative.as_os_str().is_empty() {
-        return Some(".".to_string());
-    }
-    Some(normalize_topology_path(relative))
-}
-
-fn normalize_topology_path(path: &Path) -> String {
-    path.components()
-        .map(|component| component.as_os_str().to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
 }

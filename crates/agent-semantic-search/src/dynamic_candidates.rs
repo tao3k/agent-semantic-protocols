@@ -269,7 +269,7 @@ pub fn collect_dynamic_lexical_overlay_candidates(
 
 fn resolved_owner_roots(project_root: &Path, owners: &[PathBuf]) -> Vec<PathBuf> {
     if owners.is_empty() {
-        return vec![project_root.to_path_buf()];
+        return Vec::new();
     }
     owners
         .iter()

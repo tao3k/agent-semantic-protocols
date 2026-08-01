@@ -50,13 +50,14 @@ fn generation_fixture(
         }],
         selectors: vec![ClientDbSourceIndexSelector {
             owner_path: ClientDbSourceIndexPath::new(owner_path),
+            provider_id: ProviderId::from("rs-harness"),
             selector_id: selector.into(),
             symbol: Some("materialized".into()),
             kind: Some("function".into()),
             source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
             query_keys: vec![ClientDbSourceIndexQueryKey::from("materialized")],
-            materialization_proof: crate::materialization_fixture::materialization_proof(
-                crate::materialization_fixture::MaterializationFixtureInput {
+            projection_record: crate::projection_fixture::projection_record(
+                crate::projection_fixture::ProjectionFixtureInput {
                     language_id: "rust",
                     provider_id: "rs-harness",
                     owner_path,
@@ -71,12 +72,20 @@ fn generation_fixture(
         }],
     };
     let source_blobs =
-        crate::materialization_fixture::source_blobs_fixture([(owner_path, source.as_slice())]);
+        crate::projection_fixture::source_blobs_fixture([(owner_path, source.as_slice())]);
+    let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
+        owner_path,
+        blake3::hash(source).to_hex().to_string(),
+    )])
+    .evidence(
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
+        "materialization-fixture-provider",
+    );
     (
         ClientDbSourceIndexRefreshRequest {
             import,
             file_count: 1,
-            source_snapshot: crate::snapshot_fixture::source_snapshot_evidence(),
+            source_snapshot,
         },
         source_blobs,
     )
@@ -136,17 +145,7 @@ fn project_resolution_graph_is_part_of_canonical_and_mmap_generation_identity() 
     let project_root = root.join("project-resolution-generation");
     std::fs::create_dir_all(&project_root).expect("create ProjectResolution fixture root");
     let (request, source_blobs) = generation_fixture(&project_root);
-    let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-        request
-            .import
-            .file_hashes
-            .iter()
-            .map(|file| (file.path.clone(), file.sha256.clone())),
-    )
-    .evidence(
-        request.source_snapshot.source_kind.clone(),
-        request.source_snapshot.provider_digest.clone(),
-    );
+    let source_snapshot = request.source_snapshot.clone();
     let first = agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
         "workspace-project-resolution-generation",
         &source_snapshot,
@@ -277,13 +276,7 @@ fn one_workspace_persists_identical_generation_ids_per_project_resolution() {
 
     for project_root in [&first_root, &second_root] {
         let (mut request, source_blobs) = generation_fixture(project_root);
-        let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-            [("src/materialized.rs".to_owned(), "a".repeat(64))],
-        )
-        .evidence(
-            request.source_snapshot.source_kind.clone(),
-            request.source_snapshot.provider_digest.clone(),
-        );
+        let source_snapshot = request.source_snapshot.clone();
         request.source_snapshot = source_snapshot.clone();
         let materialization =
             agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(

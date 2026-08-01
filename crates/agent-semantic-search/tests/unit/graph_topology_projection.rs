@@ -8,7 +8,7 @@ use crate::graph_topology_projection::{
 };
 
 #[test]
-fn graph_topology_projection_discovers_project_and_dependency_markers() {
+fn graph_topology_projection_does_not_infer_package_graph_from_marker_files() {
     let root = tempfile::Builder::new()
         .prefix("asp-graph-topology-projection-")
         .tempdir()
@@ -48,29 +48,15 @@ fn graph_topology_projection_discovers_project_and_dependency_markers() {
             .any(|node| node["kind"] == "workspace"),
         "{projection:?}"
     );
-    assert!(
-        projection
-            .nodes
-            .iter()
-            .any(|node| { node["kind"] == "language-project" && node["path"] == "." })
-    );
-    assert!(
-        projection
-            .nodes
-            .iter()
-            .any(|node| { node["kind"] == "project-marker" && node["path"] == "Cargo.toml" })
-    );
-    assert!(
-        projection
-            .nodes
-            .iter()
-            .any(|node| { node["kind"] == "dependency-marker" && node["path"] == "Cargo.lock" })
-    );
+    assert!(projection.nodes.iter().all(|node| !matches!(
+        node["kind"].as_str(),
+        Some("language-project" | "project-marker" | "dependency-marker")
+    )));
     assert!(
         projection
             .edges
             .iter()
-            .any(|edge| { edge["relation"] == "has_language_project" })
+            .all(|edge| edge["relation"] != "has_language_project")
     );
 }
 

@@ -109,6 +109,17 @@ negativeTools = [
 wrapperExemption = "host read is a typed action, not a shell command"
 
 [[rules]]
+id = "materialize-structured-document-read-action"
+positiveTools = [
+  { name = "Read", input = { file_path = "schemas/semantic-hook-match-scenario.v1.schema.json" } },
+  { name = "Read", input = { file_path = "crates/agent-semantic-config/templates/hooks/config.toml" } },
+]
+negativeTools = [
+  { name = "Read", input = { file_path = "Cargo.lock" } },
+]
+wrapperExemption = "host read is a typed action, not a shell command"
+
+[[rules]]
 id = "materialize-source-access-policy"
 positiveCommands = [
   "custom-runner Path('crates/agent-semantic-hook/src/lib.rs').read_text()",

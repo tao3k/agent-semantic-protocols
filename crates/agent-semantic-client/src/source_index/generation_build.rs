@@ -48,8 +48,27 @@ impl SourceIndexRefreshContext {
                 request.registry,
             )
             .await?;
+        let workspace_identity =
+            agent_semantic_client_core::state_core::ResolvedState::resolve(request.index_root)?
+                .workspace
+                .workspace_id
+                .to_string();
+        let projected_files = super::projection::project_generation(
+            request.index_root,
+            &workspace_identity,
+            request.provider_registry,
+            request.files,
+            &source_blobs,
+        )
+        .await?;
         self.prepare_generation_from_snapshot(
-            request,
+            SourceIndexGenerationRefresh {
+                index_root: request.index_root,
+                files: &projected_files,
+                project_resolutions: request.project_resolutions,
+                registry: request.registry,
+                provider_registry: request.provider_registry,
+            },
             file_hashes,
             source_snapshot,
             source_blobs,
@@ -119,4 +138,5 @@ pub(super) struct SourceIndexGenerationRefresh<'a> {
     pub(super) files: &'a [SourceIndexScopeFile],
     pub(super) project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
     pub(super) registry: &'a ProviderRegistryEvidence,
+    pub(super) provider_registry: &'a agent_semantic_client_core::ProviderRegistrySnapshot,
 }

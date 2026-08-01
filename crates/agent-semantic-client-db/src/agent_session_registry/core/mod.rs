@@ -1,7 +1,9 @@
 //! Agent-session registry facade over storage and synchronous API ownership.
 
 mod api;
+mod retirement;
 mod storage;
+mod storage_bootstrap;
 
 pub use storage::AgentSessionRegistry;
 pub(super) use storage::{

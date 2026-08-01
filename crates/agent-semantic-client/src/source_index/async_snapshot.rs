@@ -5,7 +5,6 @@ use agent_semantic_client_db::{
     ClientDbSourceIndexPath, ClientDbSourceIndexScopeFile, ClientDbSourceIndexSourceBlobs,
     source_index_file_hashes,
 };
-use sha2::{Digest as _, Sha256};
 
 pub(crate) async fn source_index_snapshot_from_files_async(
     index_root: &Path,
@@ -66,7 +65,7 @@ pub(crate) async fn source_index_snapshot_from_files_async(
             result.ok_or_else(|| "workspace source read task omitted a file".to_owned())?;
         workspace_file_hashes.push((
             snapshot_path.clone(),
-            format!("{:x}", Sha256::digest(&bytes)),
+            blake3::hash(&bytes).to_hex().to_string(),
         ));
         source_blobs.push((ClientDbSourceIndexPath::new(snapshot_path), bytes));
     }

@@ -106,7 +106,8 @@ theorem cheaper_alternative_invalidates_old_bound :
     ¬ GlobalLowerBound driftedProblem 10 := by
   intro alleged
   have invalid := alleged .newCheap True.intro
-  exact (by decide) invalid
+  change 10 ≤ 4 at invalid
+  exact (by decide : ¬ 10 ≤ 4) invalid
 
 inductive MonotoneCandidate where
   | existing
@@ -128,6 +129,7 @@ def monotoneTransport :
       exact True.intro
     costMonotone := by
       intro candidate feasible
+      cases candidate
       decide
   }
 

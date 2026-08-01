@@ -205,6 +205,26 @@ pub struct WorkspaceSnapshot {
 }
 
 impl WorkspaceSnapshot {
+    /// Build the canonical workspace snapshot directly from source bytes.
+    ///
+    /// Callers that own source bytes must use this constructor instead of
+    /// choosing a digest encoding independently from the Merkle contract.
+    pub fn from_file_bytes<I, P, B>(files: I) -> Self
+    where
+        I: IntoIterator<Item = (P, B)>,
+        P: Into<String>,
+        B: AsRef<[u8]>,
+    {
+        Self::from_file_hashes(files.into_iter().map(|(path, bytes)| {
+            (
+                path,
+                crate::exact_selector_merkle::blake3_content_digest_v1(bytes.as_ref())
+                    .as_str()
+                    .to_owned(),
+            )
+        }))
+    }
+
     /// Build a deterministic workspace snapshot from normalized path and file digests.
     pub fn from_file_hashes<I, P, H>(file_hashes: I) -> Self
     where
@@ -525,29 +545,16 @@ fn overlay_dirty_paths_digest(
 }
 
 fn merkle_root(leaves: &BTreeMap<String, String>) -> String {
-    let children = leaves
-        .iter()
-        .enumerate()
-        .map(|(ordinal, (path, digest))| crate::ArtifactChildRef {
-            role: "source".to_owned(),
-            name: path.clone(),
-            child_hash: crate::hash_leaf(crate::ArtifactLeafInput {
-                codec: "text",
-                media_type: "application/vnd.asp.source-content-digest",
-                payload: digest.as_bytes(),
-            }),
-            ordinal: u64::try_from(ordinal).expect("source snapshot leaf count exceeds u64"),
-        })
-        .collect();
-    let root = crate::hash_node(&crate::ArtifactNodeInput {
-        kind: crate::ArtifactKind::new("sourceSnapshot"),
-        schema_id: SOURCE_SNAPSHOT_SCHEMA_ID.to_owned(),
-        schema_version: "1".to_owned(),
-        producer_hash: None,
-        payload_hash: None,
-        metadata_hash: None,
-        children,
+    let file_digests = leaves.iter().map(|(path, digest)| {
+        let digest =
+            crate::exact_selector_merkle::parse_content_digest_v1(digest).unwrap_or_else(|_| {
+                crate::exact_selector_merkle::blake3_content_digest_v1(digest.as_bytes())
+            });
+        (path.clone(), digest)
     });
-    debug_assert_eq!(root.algorithm, crate::HASH_ALGORITHM_BLAKE3);
-    root.value
+    crate::workspace_merkle_v1::WorkspacePathMerkleTreeV1::from_file_digests(file_digests)
+        .expect("workspace snapshot paths are normalized and unique")
+        .root_digest()
+        .as_str()
+        .to_owned()
 }

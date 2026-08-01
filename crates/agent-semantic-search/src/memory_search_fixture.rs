@@ -1,6 +1,6 @@
 use agent_semantic_client_db::{
-    ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest,
-    ProviderIncrementalScoped, WorkspaceDbRegistry,
+    ClientDbSourceIndexRefreshReport, ClientDbSourceIndexRefreshRequest, ProviderIncrementalScoped,
+    WorkspaceDbRegistry,
 };
 use serde::Deserialize;
 

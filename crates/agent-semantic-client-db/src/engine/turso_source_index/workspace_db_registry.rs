@@ -637,6 +637,13 @@ impl ProviderSearchWorkspaceSession {
             .get(project_root_key.as_str())
             .cloned()
         {
+            if let Err(reason) = materialization.validate_persisted(self.workspace_identity()) {
+                return Ok(
+                    crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Incompatible {
+                        reason,
+                    },
+                );
+            }
             return Ok(
                 crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Ready(
                     materialization,

@@ -92,7 +92,9 @@ fn document_verbatim_bypasses_cache_probe() {
 
 #[test]
 fn prime_seed_probe_rejects_latest_fresh_prime_generation_after_fingerprint_miss() {
+    let _guard = CACHE_TEST_LOCK.lock().expect("cache test lock");
     let root = temp_root("fresh-prime-reuse");
+    let _state_home = EnvVarGuard::set("ASP_STATE_HOME", root.join(".asp-state"));
     std::fs::create_dir_all(root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(root.join("src")).expect("create src dir");
     std::fs::write(root.join("src/lib.rs"), "pub fn cached_prime() {}\n").expect("write source");

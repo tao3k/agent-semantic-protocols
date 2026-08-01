@@ -16,6 +16,8 @@ pub(crate) struct ProviderNativeExactResolution {
     pub(crate) resolution_state: String,
     pub(crate) reason_kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) active_generation_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) root_digest: Option<String>,
     pub(crate) item_kind: String,
     pub(crate) item_name: String,
@@ -33,6 +35,7 @@ pub(crate) struct ProviderExactResolutionFacts {
     pub(crate) structural_selector: String,
     pub(crate) resolution_state: String,
     pub(crate) reason_kind: String,
+    pub(crate) active_generation_digest: String,
     pub(crate) root_digest: String,
     pub(crate) item_kind: String,
     pub(crate) item_name: String,
@@ -52,18 +55,26 @@ pub(crate) fn resolution_from_facts(
         provider_id: facts.provider_id,
         owner_path: facts.owner_path.clone(),
         requested_structural_selector: facts.structural_selector,
-        resolution_state: facts.resolution_state,
+        resolution_state: facts.resolution_state.clone(),
         reason_kind: facts.reason_kind,
+        active_generation_digest: Some(facts.active_generation_digest),
         root_digest: Some(facts.root_digest),
-        item_kind: facts.item_kind,
+        item_kind: facts.item_kind.clone(),
         item_name: facts.item_name,
         candidates: facts.candidates,
         actual_kinds: facts.actual_kinds,
         recommended_next: ProviderNativeExactRecommendedNext {
-            command: format!(
-                "asp {} search owner {} items --query '{}' --workspace {} --view seeds",
-                facts.language_id, facts.owner_path, next_query, facts.workspace
-            ),
+            command: if facts.resolution_state == "selector-stale" {
+                format!(
+                    "asp {} search lexical --query '{}' --query '{} {}' --workspace {} --view seeds",
+                    facts.language_id, next_query, facts.item_kind, next_query, facts.workspace
+                )
+            } else {
+                format!(
+                    "asp {} search owner {} items --query '{}' --workspace {} --view seeds",
+                    facts.language_id, facts.owner_path, next_query, facts.workspace
+                )
+            },
         },
     }
 }
@@ -136,6 +147,10 @@ fn render_human_diagnostic(resolution: &ProviderNativeExactResolution) -> String
     if let Some(root_digest) = resolution.root_digest.as_deref() {
         diagnostic.push_str(" rootDigest=");
         diagnostic.push_str(root_digest);
+    }
+    if let Some(generation_digest) = resolution.active_generation_digest.as_deref() {
+        diagnostic.push_str(" activeGenerationDigest=");
+        diagnostic.push_str(generation_digest);
     }
     if !resolution.candidates.is_empty() {
         diagnostic.push_str(" candidates=");

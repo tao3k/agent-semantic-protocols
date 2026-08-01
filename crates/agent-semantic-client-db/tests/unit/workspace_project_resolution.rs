@@ -148,6 +148,7 @@ async fn failed_manifest_delta_never_replaces_last_good_generation() {
 
 #[tokio::test]
 async fn warm_generation_receipt_is_sub_millisecond_per_request() {
+    let _performance = crate::test_support::performance_lock();
     let resolver = Arc::new(CountingResolver::new());
     let daemon = spawn_workspace_project_resolution_actor(identity(), resolver);
     daemon.attach_session("session-a").await;

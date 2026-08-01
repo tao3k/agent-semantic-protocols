@@ -71,6 +71,7 @@ theorem ambiguous_execution_permits_reconciliation :
       ambiguousCheckpoint
       ambiguousObservation
       .reconcile := by
+  unfold SafeResume ObservationBound ambiguousCheckpoint ambiguousObservation
   decide
 
 theorem ambiguous_execution_rejects_execute :
@@ -78,6 +79,7 @@ theorem ambiguous_execution_rejects_execute :
       ambiguousCheckpoint
       ambiguousObservation
       .execute := by
+  unfold SafeResume ObservationBound ambiguousCheckpoint ambiguousObservation
   decide
 
 theorem ambiguous_execution_rejects_accept_completed :
@@ -85,6 +87,7 @@ theorem ambiguous_execution_rejects_accept_completed :
       ambiguousCheckpoint
       ambiguousObservation
       .acceptCompleted := by
+  unfold SafeResume ObservationBound ambiguousCheckpoint ambiguousObservation
   decide
 
 def mismatchedObservation : RemoteObservation :=
@@ -97,7 +100,9 @@ theorem identity_mismatch_rejects_every_action
       mismatchedObservation
       action := by
   intro alleged
-  exact (by decide) alleged.1.1
+  unfold SafeResume ObservationBound ambiguousCheckpoint mismatchedObservation
+    ambiguousObservation at alleged
+  exact (by decide : ¬ (111 : Nat) = 999) alleged.1.1
 
 def admittedCheckpoint : DurableCheckpoint :=
   {
@@ -119,6 +124,7 @@ theorem admitted_not_started_permits_execute :
       admittedCheckpoint
       notStartedObservation
       .execute := by
+  unfold SafeResume ObservationBound admittedCheckpoint notStartedObservation
   decide
 
 def completedCheckpoint : DurableCheckpoint :=
@@ -141,6 +147,7 @@ theorem completed_checkpoint_permits_stay_completed :
       completedCheckpoint
       completedObservation
       .stayCompleted := by
+  unfold SafeResume ObservationBound completedCheckpoint completedObservation
   decide
 
 theorem completed_checkpoint_rejects_execute :
@@ -148,6 +155,7 @@ theorem completed_checkpoint_rejects_execute :
       completedCheckpoint
       completedObservation
       .execute := by
+  unfold SafeResume ObservationBound completedCheckpoint completedObservation
   decide
 
 theorem completed_checkpoint_rejects_reconciliation :
@@ -155,6 +163,7 @@ theorem completed_checkpoint_rejects_reconciliation :
       completedCheckpoint
       completedObservation
       .reconcile := by
+  unfold SafeResume ObservationBound completedCheckpoint completedObservation
   decide
 
 theorem completed_checkpoint_rejects_accept_completed :
@@ -162,6 +171,7 @@ theorem completed_checkpoint_rejects_accept_completed :
       completedCheckpoint
       completedObservation
       .acceptCompleted := by
+  unfold SafeResume ObservationBound completedCheckpoint completedObservation
   decide
 
 end ASPProof.SearchRouteCrashSafeReconciliation

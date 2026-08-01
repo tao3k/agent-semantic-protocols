@@ -55,6 +55,7 @@
       "enum": [
         "none",
         "direct-source-read",
+        "structured-source-read",
         "bulk-source-dump",
         "raw-broad-search",
         "asp-reasoning-routed",

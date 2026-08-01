@@ -14,7 +14,7 @@ use agent_semantic_client_db::{
 };
 
 #[test]
-fn runtime_generation_admission_and_ensure_have_distinct_typed_wire_shapes() {
+fn runtime_generation_admission_ensure_and_locator_repair_have_distinct_typed_wire_shapes() {
     let admit = serde_json::to_value(WorkspaceDbIpcOperation::AdmitRuntimeGeneration {
         project_root: "/workspace".to_owned(),
     })
@@ -23,6 +23,10 @@ fn runtime_generation_admission_and_ensure_have_distinct_typed_wire_shapes() {
         project_root: "/workspace".to_owned(),
     })
     .expect("encode ensured runtime generation");
+    let repair = serde_json::to_value(WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator {
+        project_root: "/workspace".to_owned(),
+    })
+    .expect("encode runtime generation locator repair");
     assert_eq!(
         admit,
         serde_json::json!({
@@ -34,6 +38,13 @@ fn runtime_generation_admission_and_ensure_have_distinct_typed_wire_shapes() {
         ensure,
         serde_json::json!({
             "kind": "ensure-runtime-generation",
+            "projectRoot": "/workspace"
+        })
+    );
+    assert_eq!(
+        repair,
+        serde_json::json!({
+            "kind": "repair-runtime-generation-locator",
             "projectRoot": "/workspace"
         })
     );
@@ -189,6 +200,7 @@ fn owner_epochs_use_distinct_socket_paths_within_one_workspace() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn warm_workspace_owner_transport_is_sub_millisecond() {
+    let _performance = crate::test_support::performance_lock();
     const SAMPLES: u64 = 32;
     let fixture = TempDir::new().expect("create workspace IPC performance fixture");
     let endpoint = prepare_workspace_db_owner_endpoint(
@@ -279,16 +291,6 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
         let source_index_request = WorkspaceDbSourceIndexLookupRequest {
             project_root: _project_root.clone(),
             indexed_project_root: _project_root.clone(),
-            source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence {
-                schema_id: "asp.source-snapshot.v1".to_owned(),
-                algorithm: "blake3-256".to_owned(),
-                root_digest: format!("{:064x}", 41),
-                source_kind: agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-                leaf_count: 1,
-                base_root_digest: None,
-                provider_digest: format!("{:064x}", 43),
-                dirty_paths_digest: None,
-            },
             query: "example".to_owned(),
             language_id: Some("rust".into()),
             limit: 32,
@@ -302,20 +304,27 @@ async fn ipc_session_roundtrips_all_workspace_db_operations() {
             reads.spawn(async move { session.read_source_index(&request).await });
         }
         while let Some(read) = reads.join_next().await {
-            read.expect("join resident source-index read")
-                .expect("resident source-index read must not open a competing Turso database");
+            let error = read
+                .expect("join rejected control-plane source-index read")
+                .expect_err("control-plane source-index reads must fail closed");
+            assert!(
+                error.contains(
+                    "source-index reads are only accepted by the Runtime Server data plane"
+                ),
+                "unexpected source-index control-plane rejection: {error}"
+            );
         }
         let source_index_elapsed = source_index_started.elapsed();
         let average_nanos = source_index_elapsed.as_nanos() / (SOURCE_INDEX_SAMPLES as u128);
         assert!(
             average_nanos < 1_000_000,
-            "warm resident source-index IPC average must remain sub-millisecond: samples={} elapsedMicros={} averageNanos={}",
+            "warm rejected source-index control-plane IPC average must remain sub-millisecond: samples={} elapsedMicros={} averageNanos={}",
             SOURCE_INDEX_SAMPLES,
             source_index_elapsed.as_micros(),
             average_nanos,
         );
         eprintln!(
-            "[workspace-db-source-index-performance] samples={} elapsedMicros={} averageNanos={} budgetNanos=1000000",
+            "[workspace-db-source-index-control-plane-rejection-performance] samples={} elapsedMicros={} averageNanos={} budgetNanos=1000000",
             SOURCE_INDEX_SAMPLES,
             source_index_elapsed.as_micros(),
             average_nanos,

@@ -116,6 +116,7 @@ def providerOrSelector : Obligation :=
 
 theorem provider_atom_is_reachable :
     Realizes providerOnlyState providerObligation := by
+  unfold Realizes providerObligation SatisfiesAtom providerOnlyState
   decide
 
 theorem provider_only_realizes_alternative :
@@ -124,7 +125,8 @@ theorem provider_only_realizes_alternative :
 
 theorem provider_only_does_not_realize_conjunction :
     ¬ Realizes providerOnlyState providerAndSelector := by
-  decide
+  simp [Realizes, providerAndSelector, providerObligation,
+    selectorObligation, SatisfiesAtom, providerOnlyState]
 
 theorem atomic_reachability_does_not_realize_required_evidence :
     Realizes providerOnlyState providerObligation ∧
@@ -148,4 +150,3 @@ theorem no_plan_certifies_missing_conjunct
         certificate)
 
 end ASPProof.SearchRouteAndOrEvidenceGraph
-

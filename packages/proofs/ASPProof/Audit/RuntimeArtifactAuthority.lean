@@ -1,0 +1,24 @@
+import ASPProof.RuntimeArtifactAuthority
+
+namespace ASPProof.Audit.RuntimeArtifactAuthority
+
+open ASPProof.RuntimeArtifactAuthority
+
+#check dev_never_admits_locked_release
+#check dev_never_admits_path_fallback
+#check release_never_admits_develop_workspace
+#check dev_receipt_requires_develop_workspace_origin
+#check dev_receipt_requires_configured_root
+#check missing_dev_artifact_fails_closed
+#check release_candidate_fails_closed_in_dev_model
+#check disabled_dev_config_selects_release
+#check enabled_dev_config_selects_its_root
+#check dev_plain_install_uses_configured_root
+#check dev_plain_install_never_uses_locked_release
+#check delegated_receipt_cannot_reenter_build
+#check checkout_domain_does_not_admit_staging_only
+#check staging_domain_does_not_admit_checkout_only
+#check provenance_uses_provider_owned_source_root
+#check canonical_warm_receipt_is_resident
+
+end ASPProof.Audit.RuntimeArtifactAuthority

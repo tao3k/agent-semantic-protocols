@@ -37,14 +37,19 @@ mod hook_config;
 mod hook_config_agent_org;
 mod hook_config_global;
 mod hook_recovery_prompt;
+mod match_policy_conformance;
 mod protocol;
 mod protocol_activation;
 pub use protocol_activation::digest::provider_execution_command_digest;
+pub use protocol_activation::protocol_activation_manifest::{
+    ProviderDevelopmentArtifactDomain, ProviderDevelopmentDescriptor,
+};
 mod provider_manifest;
 mod provider_registry;
 pub use provider_registry::registered_language_ids;
 pub use provider_registry::{
-    RegisteredProviderBinaryV1, registered_provider_binaries_v1, registered_provider_binary_v1,
+    ProviderDevelopmentRegistrationV1, RegisteredProviderBinaryV1, registered_provider_binaries_v1,
+    registered_provider_binary_v1, registered_provider_development_v1,
     registered_provider_matches_candidate_paths,
 };
 pub use provider_registry::{
@@ -105,6 +110,9 @@ pub use hook_config::{
     load_client_config_overlay_for_project, load_embedded_client_config_for_project,
 };
 pub use hook_config_global::default_global_client_config_path;
+pub use match_policy_conformance::{
+    MatchPolicyConformanceReport, evaluate_match_policy_conformance,
+};
 pub use protocol::{
     ActionPolicy, AgentHookError, CANONICAL_SCHEMA_AUTHORITY, CommandTemplate, DecisionKind,
     DecisionRoute, DecisionRouteKind, DecisionSubject, HOOK_ACTIVATION_SCHEMA_ID,
@@ -117,9 +125,10 @@ pub use protocol_activation::digest::provider_manifest_digest;
 pub(crate) use protocol_activation::protocol_activation_manifest::SourceSelectorKind;
 pub use protocol_activation::protocol_activation_manifest::{
     ActivatedProvider, ActivatedProviderConfig, ActivationCoverage, ActivationGeneratedBy,
-    HookActivation, HookRuntime, ProviderExecution, ProviderManifest,
-    ProviderProjectResolutionDescriptor, ProviderQueryPackDescriptor, ProviderQueryPackTermRole,
-    ProviderSearchCapabilities, ProviderSemanticFactsDescriptor, ProviderSemanticFactsIntentAxis,
+    HookActivation, HookRuntime, ProviderExecution, ProviderLanguageProjectionDescriptor,
+    ProviderManifest, ProviderProjectResolutionDescriptor, ProviderQueryPackDescriptor,
+    ProviderQueryPackTermRole, ProviderSearchCapabilities, ProviderSemanticFactsDescriptor,
+    ProviderSemanticFactsIntentAxis,
 };
 pub use protocol_activation::protocol_activation_runtime::parse_activation;
 pub use provider_manifest::{

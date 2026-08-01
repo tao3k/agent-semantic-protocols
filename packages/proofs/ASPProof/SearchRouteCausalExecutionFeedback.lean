@@ -131,10 +131,12 @@ def mismatchedOutcome : OutcomeReceipt :=
 
 theorem feasible_receipt_is_bound :
     ReceiptBound feasibleAdmission feasibleOutcome := by
+  unfold ReceiptBound feasibleAdmission feasibleOutcome
   decide
 
 theorem mismatched_receipt_is_rejected :
     ¬ ReceiptBound feasibleAdmission mismatchedOutcome := by
+  unfold ReceiptBound feasibleAdmission mismatchedOutcome feasibleOutcome
   decide
 
 theorem equal_observed_cost_does_not_determine_admission_feasibility :
@@ -142,11 +144,14 @@ theorem equal_observed_cost_does_not_determine_admission_feasibility :
         infeasibleHypotheticalOutcome.observedTokens ∧
       AdmissionFeasible feasibleAdmission ∧
       ¬ AdmissionFeasible infeasibleHypothesis := by
+  unfold AdmissionFeasible feasibleAdmission infeasibleHypothesis
+    feasibleOutcome infeasibleHypotheticalOutcome
   decide
 
 theorem successful_incomplete_execution_is_not_exact :
     feasibleOutcome.outcome = .succeeded ∧
       ¬ ExactAdmission feasibleAdmission := by
+  unfold ExactAdmission feasibleAdmission feasibleOutcome
   decide
 
 def examplePriorGeneration : ProblemGeneration :=
@@ -156,12 +161,9 @@ def examplePriorGeneration : ProblemGeneration :=
   }
 
 theorem example_feedback_advances_to_generation_eight :
-    (applyFeedback
-      examplePriorGeneration
-      feasibleAdmission
-      feasibleOutcome
-      feasible_receipt_is_bound)
-        .next.generation = 8 := by
+    (applyFeedback examplePriorGeneration feasibleAdmission feasibleOutcome
+      feasible_receipt_is_bound).next.generation = 8 := by
+  unfold applyFeedback examplePriorGeneration
   decide
 
 end ASPProof.SearchRouteCausalExecutionFeedback

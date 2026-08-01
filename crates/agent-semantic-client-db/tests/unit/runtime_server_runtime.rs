@@ -59,6 +59,7 @@ fn client_executor_is_shared_across_concurrent_sessions() {
 
 #[test]
 fn client_executor_warm_lookup_is_sub_millisecond() {
+    let _performance = crate::test_support::performance_lock();
     use std::time::Instant;
 
     let expected =

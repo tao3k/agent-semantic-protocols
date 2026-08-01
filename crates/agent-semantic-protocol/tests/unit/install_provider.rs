@@ -1,6 +1,6 @@
 use super::{
-    asset_name, checksum_name, parse_sha256_checksum, path_segment, provider_release,
-    validate_target,
+    ProviderArtifactAuthority, asset_name, checksum_name, parse_sha256_checksum, path_segment,
+    provider_release, validate_target,
 };
 
 #[test]
@@ -27,10 +27,12 @@ fn registered_provider_receipt_covers_language_alias_for_same_binary() {
         execution_command_digest: "execution".to_string(),
     };
 
-    assert!(super::registered_provider_receipt_covers_binary(
-        &[receipt],
-        "orgize"
-    ));
+    assert!(
+        super::super::install_provider_runtime_reconcile::registered_provider_receipt_covers_binary(
+            &[receipt],
+            "orgize"
+        )
+    );
 }
 
 #[test]
@@ -168,4 +170,41 @@ fn global_provider_state_is_separate_from_runtime_bin_and_project_state() {
     );
     assert_ne!(provider_root, state_home.join("runtime").join("bin"));
     std::fs::remove_dir_all(state_home).expect("remove isolated test state");
+}
+
+#[test]
+fn developer_mode_never_selects_locked_release_or_path_fallback() {
+    let root = std::path::PathBuf::from("/checkout/agent-semantic-protocols");
+    let artifact = root.join("target/debug/asp-rs-harness");
+    let mode = agent_semantic_config::runtime_dev::parse_runtime_artifact_mode(&format!(
+        "[dev]\nenabled = true\nroot = {:?}\n",
+        root
+    ))
+    .expect("parse developer runtime mode");
+    assert_eq!(
+        super::provider_artifact_authority(&mode, Some(&artifact)).expect("dev artifact"),
+        ProviderArtifactAuthority::Develop {
+            root: root.as_path(),
+            artifact: artifact.as_path(),
+        }
+    );
+    assert_eq!(
+        super::provider_artifact_authority(&mode, None).expect("dev build authority"),
+        ProviderArtifactAuthority::DevelopBuild {
+            root: root.as_path(),
+        }
+    );
+}
+
+#[test]
+fn release_mode_never_accepts_development_receipt() {
+    let mode = agent_semantic_config::runtime_dev::RuntimeArtifactMode::Release;
+    assert_eq!(
+        super::provider_artifact_authority(&mode, None).expect("locked release"),
+        ProviderArtifactAuthority::LockedRelease
+    );
+    assert!(
+        super::provider_artifact_authority(&mode, Some(std::path::Path::new("/tmp/provider")))
+            .is_err()
+    );
 }

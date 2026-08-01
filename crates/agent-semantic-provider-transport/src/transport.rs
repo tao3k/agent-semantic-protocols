@@ -14,10 +14,10 @@ use tokio::task::JoinHandle;
 use tracing::{Instrument, debug, info_span, warn};
 
 use crate::byte_text;
-use crate::capture::{LimitedRead, ProviderOutputStream, capture_output_stream};
+use crate::capture::LimitedRead;
 use crate::process_contract::{
-    OutputMode, ProviderProcessError, ProviderProcessFraming, ProviderProcessLimits,
-    ProviderProcessReceipt, ProviderProcessSpec, StdinMode,
+    ProviderProcessError, ProviderProcessFraming, ProviderProcessLimits, ProviderProcessReceipt,
+    ProviderProcessSpec, StdinMode,
 };
 
 const EXECUTABLE_BUSY_SPAWN_RETRIES: usize = 5;
@@ -399,48 +399,9 @@ fn configure_provider_process(command: &mut Command, memory_limit_bytes: Option<
 #[cfg(not(unix))]
 fn configure_provider_process(_command: &mut Command, _memory_limit_bytes: Option<u64>) {}
 
-struct ProviderIoTasks {
-    stdin: JoinHandle<Result<(), ProviderProcessError>>,
-    stdout: JoinHandle<Result<LimitedRead, ProviderProcessError>>,
-    stderr: JoinHandle<Result<LimitedRead, ProviderProcessError>>,
-}
-
-fn spawn_provider_io_tasks(
-    child: &mut Child,
-    stdin_mode: StdinMode,
-    stdout_mode: OutputMode,
-    stderr_mode: OutputMode,
-    limits: ProviderProcessLimits,
-    framing: ProviderProcessFraming,
-) -> Result<ProviderIoTasks, ProviderProcessError> {
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or(ProviderProcessError::CaptureStdout)?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or(ProviderProcessError::CaptureStderr)?;
-    let stdin = child.stdin.take();
-
-    Ok(ProviderIoTasks {
-        stdin: tokio::spawn(write_stdin(stdin, stdin_mode)),
-        stdout: tokio::spawn(capture_output_stream(
-            stdout,
-            limits.max_stdout_bytes(),
-            ProviderOutputStream::Stdout,
-            stdout_mode,
-            framing.stdout,
-        )),
-        stderr: tokio::spawn(capture_output_stream(
-            stderr,
-            limits.max_stderr_bytes(),
-            ProviderOutputStream::Stderr,
-            stderr_mode,
-            framing.stderr,
-        )),
-    })
-}
+#[path = "transport_io.rs"]
+mod io_tasks;
+use io_tasks::{ProviderIoTasks, spawn_provider_io_tasks};
 
 async fn collect_provider_output(
     mut child: ProviderChild,

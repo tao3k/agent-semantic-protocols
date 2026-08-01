@@ -115,14 +115,6 @@
         },
         "identity": {
           "$ref": "canonical-language-item-identity.v1.schema.json"
-        },
-        "implOwner": {
-          "type": "string",
-          "minLength": 1
-        },
-        "traitOwner": {
-          "type": "string",
-          "minLength": 1
         }
       }
     },

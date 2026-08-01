@@ -183,6 +183,35 @@ fn topology_projects_typed_packages_policy_handles_and_prime_facts() {
             .contains("T=test:path(tests/rules.rs)!tests")
     );
 
+    let owner_with_test = SemanticSearchPacketV1::from_value(json!({
+        "schemaId": "agent.semantic-protocols.semantic-search-packet",
+        "schemaVersion": "1",
+        "languageId": "typescript",
+        "providerId": "ts-harness",
+        "view": "lexical",
+        "query": "findOrderStatus",
+        "items": [],
+        "owners": [
+            {"path": "tests/index.test.ts", "role": "test"},
+            {"path": "src/index.ts", "role": "source"}
+        ],
+        "nextActions": []
+    }))
+    .expect("test owner packet");
+    let owner_with_test = renderer
+        .render(&owner_with_test, &request)
+        .expect("test owner projection");
+    assert!(
+        owner_with_test
+            .content()
+            .contains("T=test:path(tests/index.test.ts)!tests")
+    );
+    assert!(
+        owner_with_test
+            .content()
+            .contains("O=owner:path(src/index.ts)!owner")
+    );
+
     let prime = SemanticSearchPacketV1::from_value(json!({
         "schemaId": "agent.semantic-protocols.semantic-search-packet",
         "schemaVersion": "1",

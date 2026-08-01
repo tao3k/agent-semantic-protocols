@@ -221,8 +221,8 @@ fn generated_activation_sync_admits_a_newly_installed_nested_provider() {
         .iter()
         .find(|provider| provider.language_id == "python")
         .expect("newly installed Python provider activated");
-    assert_eq!(python.package_roots, ["packages/python/src"]);
-    assert_eq!(python.config_files, ["packages/python/pyproject.toml"]);
+    assert!(python.package_roots.is_empty());
+    assert_eq!(python.config_files, ["pyproject.toml"]);
 
     fs::remove_dir_all(root).expect("remove temp root");
 }

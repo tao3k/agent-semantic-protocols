@@ -46,6 +46,7 @@ pub struct ResolvedProvider {
     pub source_extensions: Vec<String>,
     pub scope_authority: ProviderScopeAuthority,
     pub search_capabilities: agent_semantic_hook::ProviderSearchCapabilities,
+    pub language_projection: Option<agent_semantic_hook::ProviderLanguageProjectionDescriptor>,
     pub query_pack_descriptor: agent_semantic_hook::ProviderQueryPackDescriptor,
     pub semantic_facts_descriptor: Option<agent_semantic_hook::ProviderSemanticFactsDescriptor>,
 }
@@ -142,6 +143,7 @@ impl TryFrom<&ActivatedProvider> for ResolvedProvider {
             source_extensions: provider.source_extensions.clone(),
             scope_authority,
             search_capabilities: provider.search_capabilities.clone(),
+            language_projection: manifest.language_projection().cloned(),
             query_pack_descriptor: provider.query_pack_descriptor.clone(),
             semantic_facts_descriptor: provider.semantic_facts_descriptor.clone(),
         })
@@ -363,6 +365,11 @@ fn provider_fingerprint(provider: &ResolvedProvider) -> String {
             "searchCapabilities={}",
             serde_json::to_string(&provider.search_capabilities)
                 .expect("search-capabilities serialization must be infallible")
+        ),
+        format!(
+            "languageProjection={}",
+            serde_json::to_string(&provider.language_projection)
+                .expect("language-projection descriptor serialization must be infallible")
         ),
         format!(
             "queryPackDescriptor={}",

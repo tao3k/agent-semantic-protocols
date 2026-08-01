@@ -22,6 +22,17 @@ A language provider reads its distributed JSON Schema and returns a typed projec
 scope and source-snapshot evidence.  It MUST NOT choose, activate, invalidate, or
 publish a workspace generation.
 
+For package-manager-owned scopes, the provider MUST implement the package
+manager's complete membership semantics before publishing source roots.  For
+Cargo this includes explicit =[workspace].members= and non-excluded path
+dependencies located below the workspace root, including paths declared by
+=[workspace.dependencies]= and their transitive in-workspace path dependencies.
+ASP MUST NOT reconstruct this closure from extensions or directory heuristics.
+Every package admitted by that closure contributes its parser-owned target
+roots to the same project-scope digest and generation transaction.  Omitting a
+live package from that closure is a generation-production failure; exact query
+MUST NOT compensate with a filesystem or provider fallback.
+
 * Server-owned generation identity
 
 For one canonical workspace identity, the Runtime Server derives one generation
@@ -62,6 +73,21 @@ load, synchronize, repair, rebuild, activate, or publish configuration or index
 state.  A resident read receipt is admissible only when it reports a memory hit
 and zero database opens.
 
+The query data plane MUST NOT connect to the Runtime Server control endpoint,
+including when the workspace admission catalog, generation pointer, or mmap
+segment is absent or invalid.  Those states return a typed
+=active-workspace-generation-required= receipt.  Hook lifecycle admission owns
+the explicit =--workspace= target before an ASP tool executes, and the
+supervisor writer lane owns asynchronous construction and reconciliation.  A
+query MUST therefore never turn a missing generation into an implicit repair
+round trip.
+
+Canonical selector relocation is part of the immutable generation segment.
+When an owner path changes, exact lookup MUST resolve the language-provider
+identity through the active generation's relocation index before reporting
+=selector-stale=.  A selector produced by the same generation but absent from
+that index is an atomic-publication failure, not a query fallback opportunity.
+
 * Multi-workspace isolation
 
 Each canonical workspace owns an independent writer lane and read-lease set.
@@ -77,6 +103,15 @@ Lean proves the state-machine safety invariants:
 - single-writer staging and publication;
 - atomic publication-field agreement;
 - writer failure and stale reconciliation preserve the active generation;
+
+Repository candidate identity is the immutable Git baseline plus a scoped
+worktree overlay digest.  The overlay is derived with =gix status= and hashes
+only changed, staged, removed, or untracked files inside the admitted workspace
+scope.  Hashing candidate paths alone is forbidden: a same-path tracked edit
+must advance the candidate generation and schedule the workspace writer lane.
+Unrelated workspace changes MUST NOT invalidate this workspace.  This keeps the
+root-depth ={1,0}= model: committed Git identity supplies the stable root while
+the small dynamic overlay supplies unbiased live coding state.
 - read leases do not mutate the active generation;
 - transitions are isolated by workspace identity.
 

@@ -1,0 +1,321 @@
+#+title: RFC 10.25.01 — Lean, Org, and Typst Proof-Bundle Admission
+#+startup: overview
+
+* Status
+
+Draft / structural admission implemented in =packages/proofs=; built-in Typst
+eval is implemented, while executable bundle admission remains blocked on
+lint/format execution and digest-bound receipts.
+
+* Problem
+
+A compiled Lean file is not sufficient evidence that the protocol is specified.
+Without an Org authority, the theorem has no durable RFC clause ownership. Without
+a Typst block in that authority, the human-readable mathematical model can drift
+or disappear while the executable proof remains green.
+
+The repository previously allowed an unverified
+=AgentSessionLifecycleLeaseRenewalClockAuthority.lean= draft into the proof tree
+without an RFC or Typst model. The first bundle audit rejected that state. The
+draft was withdrawn rather than retroactively documenting an implementation model
+that had not been grounded in current Codex Multi-Agent v2 source evidence.
+
+* Org owns the source-block lifecycle
+
+Manual extraction followed by an ad hoc =typst eval= or =lake env lean= command
+is diagnostic evidence, not the durable proof gate. Orgize owns every embedded
+proof block from discovery through formatting, linting, execution admission, and
+result attribution.
+
+The effective source-block policy has three orthogonal fields:
+
+- =runtime=: a registered runtime identity such as =typst=, =lean=, or
+  =mermaid=;
+- =lint=: a registered stdin lint strategy for that runtime;
+- =format=: a registered formatter strategy or an explicit disabled policy.
+
+These header arguments are optional syntax. Absence means “resolve the
+language-registry default,” not “skip validation.” Explicit values override the
+registry, while =no= disables one capability intentionally. Arbitrary shell text,
+environment interpolation, and executable paths in header values are forbidden.
+
+Command bindings are Orgize-owned registry entries. Ordinary source blocks do
+not spell a command or binding token.
+
+#+begin_example
+#+name: mathematical-witness
+#+begin_src typst
+#assert(true)
+"ok"
+#+end_src
+#+end_example
+
+The built-in =typst= runtime is an Orgize-owned binding. Orgize resolves it through the runtime
+registry into an argv template, stdin mode, accepted exit statuses, timeout, and
+diagnostic decoder. The effective Typst lint binding must supply the block body on
+stdin and invoke the equivalent of =typst eval --in - '"ok"'= without shell
+interpolation. The formatter binding follows the same rule.
+
+For each named proof block, =orgize lint= MUST compute and return an effective
+policy with provenance, execute the registered lint strategy through stdin, and
+bind its exit status and normalized diagnostics to the document path, block name,
+language, body digest, and policy digest. =orgize eval run= and =orgize lint= MUST
+share the same planner; a second command-specific header parser is forbidden.
+
+#+name: proof-block-effective-policy
+#+begin_src typst
+#let policy = $P_b = (
+  upright("runtime"),
+  upright("lint"),
+  upright("format"),
+  upright("bodyDigest"),
+  upright("policyDigest"),
+)$
+#let admitted = $upright("BlockAdmitted")(b) arrow.r.double
+  upright("HeaderPolicyParsed")(P_b)
+  and upright("CommandBindingResolved")(P_b)
+  and upright("FormatSucceeded")(b, P_b)
+  and upright("LintSucceeded")(b, P_b)
+  and upright("ReceiptBound")(b, P_b)$
+#assert(type(policy) == content)
+#assert(type(admitted) == content)
+"ok"
+#+end_src
+
+The complete bundle law is therefore
+
+#+name: proof-bundle-executable-admission
+#+begin_src typst
+#let bundle = $B = (L, O, T, R_L, R_T)$
+#let admitted = $upright("BundleAdmitted")(B) arrow.r.double
+  upright("ReferencesExactly")(O, L)
+  and upright("LeanReceiptValid")(L, R_L)
+  and upright("TypstReceiptValid")(T, R_T)
+  and upright("SameOrgAuthority")(O, T)
+  and upright("DigestBound")(B)$
+#assert(type(bundle) == content)
+#assert(type(admitted) == content)
+"ok"
+#+end_src
+
+* Current Orgize lifecycle blocker
+
+The current Orgize implementation establishes structural admission and the
+built-in Typst eval path, but not the complete executable bundle lifecycle:
+
+- =orgize lint --format json= reports no structural findings for this RFC;
+- =orgize eval plan --json= projects the effective built-in runtime with
+  provenance, registered program, argv, and block-body transport; explicit
+  =:runtime= values are stable registry identifiers, not command text;
+- =orgize lint= reports structural success without executing the resolved lint
+  binding;
+- =orgize eval run= resolves the default =typst= runtime, sends the block body
+  on stdin to =typst eval --in - '"ok"'=, and returns block-bound output.
+
+Consequently a green structural =orgize lint= MUST NOT be interpreted as a green
+Typst, Lean, Mermaid, or AXLE result. Until Orgize emits block-bound executable
+receipts, the proof package receipt remains structural and MUST identify that
+admission level explicitly.
+
+* Bundle identity
+
+An admitted bundle is a tuple
+
+#+name: proof-bundle-admission-definition
+#+begin_src typst
+#let bundle = $B = (L, O, T, d_L, d_O)$
+#let admitted = $upright("Admitted")(B) arrow.r.double
+  upright("Exists")(L)
+  and upright("Exists")(O)
+  and upright("ReferencesExactly")(O, L)
+  and upright("TypstBlocks")(O) >= 1
+  and d_L = upright("sha256")(L)
+  and d_O = upright("sha256")(O)$
+#assert(type(bundle) == content)
+#assert(type(admitted) == content)
+"ok"
+#+end_src
+
+The index also declares an enforced Lean inventory. For every Lean path matched
+by an enforced glob, exactly one bundle entry must exist:
+
+#+name: proof-bundle-coverage-law
+#+begin_src typst :runtime typst :lint <typst eval> :format <typstyle>
+#let coverage = $forall L in upright("EnforcedLean"),
+  exists! B in upright("BundleIndex"), upright("leanPath")(B) = L$
+#assert(type(coverage) == content)
+"ok"
+#+end_src
+
+This makes omission observable. Adding a matching Lean file without creating its
+Org and Typst views blocks the audit.
+
+* Lean admission model embedded in Org
+
+#+name: proof-bundle-admission-lean-model
+#+begin_src lean
+structure ProofBundle where
+  leanExists : Bool
+  orgExists : Bool
+  orgReferencesLean : Bool
+  typstBlockCount : Nat
+  headerPolicyParsed : Bool
+  commandBindingResolved : Bool
+  leanReceiptValid : Bool
+  typstReceiptValid : Bool
+
+def ProofBundle.StructuralAdmitted (bundle : ProofBundle) : Prop :=
+  bundle.leanExists = true ∧
+  bundle.orgExists = true ∧
+  bundle.orgReferencesLean = true ∧
+  0 < bundle.typstBlockCount
+
+def ProofBundle.ExecutableAdmitted (bundle : ProofBundle) : Prop :=
+  bundle.StructuralAdmitted ∧
+  bundle.headerPolicyParsed = true ∧
+  bundle.commandBindingResolved = true ∧
+  bundle.leanReceiptValid = true ∧
+  bundle.typstReceiptValid = true
+
+theorem admitted_requires_org (bundle : ProofBundle)
+    (admitted : bundle.StructuralAdmitted) : bundle.orgExists = true :=
+  admitted.2.1
+
+theorem admitted_requires_exact_lean_reference (bundle : ProofBundle)
+    (admitted : bundle.StructuralAdmitted) : bundle.orgReferencesLean = true :=
+  admitted.2.2.1
+
+theorem admitted_requires_typst (bundle : ProofBundle)
+    (admitted : bundle.StructuralAdmitted) : 0 < bundle.typstBlockCount :=
+  admitted.2.2.2
+
+theorem missing_typst_blocks_admission (bundle : ProofBundle)
+    (missing : bundle.typstBlockCount = 0) : ¬ bundle.StructuralAdmitted := by
+  intro admitted
+  have positive := admitted_requires_typst bundle admitted
+  rw [missing] at positive
+  exact (Nat.not_lt_zero 0) positive
+
+theorem executable_admission_requires_structural_admission
+    (bundle : ProofBundle) (admitted : bundle.ExecutableAdmitted) :
+    bundle.StructuralAdmitted :=
+  admitted.1
+
+theorem unparsed_policy_blocks_executable_admission
+    (bundle : ProofBundle)
+    (unparsed : bundle.headerPolicyParsed = false) :
+    ¬ bundle.ExecutableAdmitted := by
+  intro admitted
+  have parsed := admitted.2.1
+  rw [unparsed] at parsed
+  contradiction
+
+theorem unresolved_binding_blocks_executable_admission
+    (bundle : ProofBundle)
+    (unresolved : bundle.commandBindingResolved = false) :
+    ¬ bundle.ExecutableAdmitted := by
+  intro admitted
+  have resolved := admitted.2.2.1
+  rw [unresolved] at resolved
+  contradiction
+
+theorem parsed_policy_does_not_establish_executable_admission :
+    ∃ bundle : ProofBundle,
+      bundle.headerPolicyParsed = true ∧
+      ¬ bundle.ExecutableAdmitted := by
+  let parserOnly : ProofBundle := {
+    leanExists := true
+    orgExists := true
+    orgReferencesLean := true
+    typstBlockCount := 1
+    headerPolicyParsed := true
+    commandBindingResolved := false
+    leanReceiptValid := true
+    typstReceiptValid := true
+  }
+  refine ⟨parserOnly, rfl, ?_⟩
+  exact unresolved_binding_blocks_executable_admission parserOnly rfl
+#+end_src
+
+The block is checked without materializing a temporary Lean source file:
+
+#+begin_src sh
+asp org query --workspace . \
+  --term '<named-lean-block>' --content | \
+  uv run --project packages/proofs --frozen \
+    axle check --environment lean-4.32.0 --strict -
+#+end_src
+
+* Fail-closed laws
+
+Admission fails when any of the following holds:
+
+1. an enforced Lean file has no bundle;
+2. two bundles claim the same Lean file or bundle identifier;
+3. the Lean or Org path escapes the repository;
+4. either referenced file is missing or has the wrong suffix;
+5. the Org authority does not contain the exact repository-relative Lean path;
+6. the Org authority contains fewer Typst blocks than its declared minimum;
+7. an indexed Lean path is outside the explicitly enforced inventory;
+8. the index or generated receipt violates its JSON schema.
+
+* State-bearing admission flow
+
+#+name: proof-bundle-admission-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+  state "LeanDiscovered\nstate: InventoryMember" as L
+  state "BundleResolved\nstate: UniqueOwner" as B
+  state "OrgBound\nstate: ExactLeanReference" as O
+  state "MathBound\nstate: TypstPresent" as T
+  state "StructuralReceipt\nstate: DigestsBound" as R
+  state "HeaderPolicyParsed\nstate: BindingsNamed" as P
+  state "CommandBindingsResolved\nstate: ArgvAndStdinKnown" as C
+  state "ExecutorReceiptsBound\nstate: LeanAndTypstValidated" as E
+  state "ExecutableAdmitted\nstate: BundleClosed" as A
+  state "Blocked\nstate: MissingOrAmbiguousView" as X
+  state "ExecutorBlocked\nstate: CommandExecutorUnavailable" as Y
+
+  [*] --> L: "transition; state: glob match -> inventory member"
+  L --> B: "guard; state: inventory member -> exactly one bundle"
+  L --> X: "prohibitedEffect; state: missing bundle -> blocked"
+  B --> O: "guard; state: bundle -> exact Org reference"
+  B --> X: "prohibitedEffect; state: missing or escaping path -> blocked"
+  O --> T: "guard; state: Org bound -> minimum Typst blocks satisfied"
+  O --> X: "prohibitedEffect; state: stale Lean reference -> blocked"
+  T --> R: "transition; state: three views bound -> structural receipt"
+  T --> X: "prohibitedEffect; state: no Typst model -> blocked"
+  R --> P: "transition; state: headers preserved with provenance"
+  P --> C: "guard; state: registry resolves argv, stdin, timeout, exits, decoder"
+  P --> Y: "prohibitedEffect; state: parser success without command resolution"
+  C --> E: "transition; state: shared executor runs format and lint"
+  C --> Y: "prohibitedEffect; state: language executor unavailable"
+  E --> A: "guard; state: body and policy digests match receipts"
+  A --> [*]: "capability; state: executable bundle admitted"
+#+end_src
+
+* Executable ownership
+
+- uv project: =packages/proofs/pyproject.toml=
+- public package: =packages/proofs/src/asp_proofs/=
+- immutable domain model: =packages/proofs/src/asp_proofs/models.py=
+- admission service: =packages/proofs/src/asp_proofs/bundle.py=
+- command adapter: =packages/proofs/src/asp_proofs/cli.py=
+- index schema: =schemas/lean-org-typst-proof-bundle-index.v1.schema.json=
+- receipt schema: =schemas/axle-proof-bundle-audit-receipt.v1.schema.json=
+- first enforced index:
+  =packages/proofs/proof-bundles/agent-session-lifecycle-v1.json=
+
+#+begin_src sh
+uv run --project packages/proofs --frozen \
+  python -m asp_proofs bundle-audit \
+  packages/proofs/proof-bundles/agent-session-lifecycle-v1.json \
+  --output packages/proofs/receipts/agent-session-lifecycle-proof-bundle-audit-v1.json
+#+end_src
+
+* Adoption boundary
+
+The first enforced inventory covers the transactional-generation and lifecycle
+proof families. New proof families must add their own explicit index instead of
+silently inheriting a global filename heuristic. Expansion is complete only when
+the relevant proof-owned test executes that index and retains its audit receipt.

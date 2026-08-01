@@ -1,0 +1,204 @@
+#+title: RFC 10.15.02.09 - Hook Bootstrap Repair and Server Warm Path
+#+property: RFC_ID ASP-RFC-10.15-HOOK-BOOTSTRAP-REPAIR
+#+property: LEAN_MODULE ASPProof.HookBootstrapRepair
+
+* Status
+
+Normative extension of the agent hook interception protocol.
+
+* Failure found by formal and runtime audit
+
+The previous recovery order was circular:
+
+1. the plugin invoked =asp hook ...=;
+2. the installed binary parsed the complete matcher configuration;
+3. only after parsing failed did recovery attempt to materialize the managed
+   configuration;
+4. an older binary could not parse a newly published enum value, while
+   ownership protection correctly refused to overwrite a different file that
+   had no matching sidecar.
+
+Consequently the recovery implementation was downstream of the parser whose
+failure it was meant to repair. A Stop event could repeat the same failure and
+prevent the agent session from reaching another lifecycle transition.
+
+This is a design defect, not an enum-compatibility problem. Mapping a new
+reason kind to an old kind would erase policy meaning and leave the publication
+race intact.
+
+* Normative architecture
+
+** Configuration-independent bootstrap
+
+Every installed Codex hook command MUST enter through the stable public surface
+=asp hook <event> ...=. The =asp= entrypoint delegates to its internal
+bootstrap before parsing the hook matcher document. The bootstrap MUST NOT
+parse that document before it has established artifact coherence. Its initial
+authority is limited to:
+
+- the canonical ASP state home;
+- the immutable =asp.toml= development or release artifact mode;
+- the digest-addressed bootstrap and protocol entries;
+- a bounded input envelope and a stable hook event name.
+
+The bootstrap and =asp= MUST be published as one installer transaction under
+the global reconciliation writer. A development repair may delegate only to
+the canonical installer below the configured =[dev].root=. It MUST NOT call
+=asp sync=, fetch a repository, or reinterpret an unowned configuration file.
+
+** Warm path and ASP Server
+
+The host necessarily starts one command process for a command hook. The warm
+path MUST NOT start a second =asp= process. The bootstrap executes the hook
+runtime in-process, while workspace-generation admission and graph-backed
+state remain resident in ASP Server. Thus multiple workspaces and sessions
+share the server generation without duplicating graph/index construction.
+
+The next resident optimization boundary is a server-owned compiled matcher
+generation keyed by matcher contract fingerprint, provider projection
+generation, and artifact catalog generation. A cache hit may remove parsing
+work, but it MUST NOT weaken configuration identity checks. Cache identity is
+not model prefix caching and is not a search-result cache.
+
+** Cold repair, replay, and failure policy
+
+A recognized freshness failure transitions through one stable global repair
+key. Concurrent hooks MUST coalesce behind the same writer. After publication,
+the original event is replayed at most once with the original bytes.
+
+If repair cannot complete within its deadline:
+
+- =pre-tool= and =permission-request= remain fail-closed because they are
+  enforcement events;
+- lifecycle and observational events, including =Stop=, degrade open with an
+  explicit receipt so version drift cannot deadlock the whole session.
+
+An observational degrade-open result does not authorize a previously denied
+source read. It only permits the lifecycle event itself to finish.
+
+* Stateful architecture
+
+#+begin_src mermaid
+stateDiagram-v2
+    [*] --> BootstrapReady: plugin dispatch
+    BootstrapReady --> WarmClassify: coherent artifact pair
+    WarmClassify --> ServerGeneration: workspace admission
+    ServerGeneration --> DecisionPublished: healthy or nonblocking receipt
+    BootstrapReady --> DriftObserved: typed freshness failure
+    DriftObserved --> RepairReserved: CAS stable repair key
+    RepairReserved --> RepairReserved: concurrent request coalesced
+    RepairReserved --> PairPublished: binary + bootstrap + config/plugin generation
+    PairPublished --> ReplayOnce: original bytes, replayCount = 1
+    ReplayOnce --> DecisionPublished: current parser succeeds
+    RepairReserved --> EnforcementBlocked: deadline + enforcement event
+    RepairReserved --> LifecycleDegradedOpen: deadline + observational event
+    EnforcementBlocked --> [*]
+    LifecycleDegradedOpen --> [*]
+    DecisionPublished --> [*]
+#+end_src
+
+The stable repair key is global to one ASP state home and desired artifact
+generation. Workspace and session identities are request metadata, not repair
+writer identities; otherwise high-frequency multi-workspace hooks could start
+duplicate builds for the same artifact.
+
+* Mathematical model
+
+Let =P=(b,c)= be the published binary and configuration generations,
+=r= be replay count, and =e= be the event plane. Coherent publication and
+bounded replay require =b=c= and =r <= 1=. Failure classification is local to
+the event plane.
+
+#+name: hook-bootstrap-repair-model
+#+begin_src typst
+#let coherent(binary-generation, config-generation) = (
+  binary-generation == config-generation
+)
+#let replay-bounded(replay-count) = replay-count <= 1
+#let failure-decision(event-plane) = if event-plane == "enforcement" {
+  "deny"
+} else {
+  "allow"
+}
+#let warm-cost = (
+  host-process-starts: 1,
+  asp-child-process-starts: 0,
+  server-generation-admissions: 1,
+)
+
+#assert(coherent(17, 17))
+#assert(not coherent(16, 17))
+#assert(replay-bounded(0))
+#assert(replay-bounded(1))
+#assert(not replay-bounded(2))
+#assert(failure-decision("enforcement") == "deny")
+#assert(failure-decision("observational") == "allow")
+#assert(warm-cost.host-process-starts == 1)
+#assert(warm-cost.asp-child-process-starts == 0)
+"ok"
+#+end_src
+
+For =n= warm events sharing one resident server generation, the process-start
+component is =n= rather than =2n=, and graph/index construction remains one
+server generation rather than one construction per hook. This inequality is a
+performance refinement only; the safety proof remains generation equality,
+single-writer publication, and bounded replay.
+
+* Lean correspondence
+
+The executable model is =ASPProof.HookBootstrapRepair=. The audit owner is
+=ASPProof.Audit.HookBootstrapRepair=.
+
+| RFC obligation | Lean theorem |
+|-
+| coherent pair publication | =publish_pair_is_coherent= |
+| parser cannot precede artifact repair | =drift_cannot_parse_full_config= |
+| one stable writer survives contention | =existing_repair_owner_is_preserved= |
+| replay count is at most one | =repair_replays_at_most_once= |
+| enforcement failure remains closed | =enforcement_failure_is_denied= |
+| lifecycle failure cannot globally deadlock | =observational_failure_is_allowed= |
+| warm path starts no child ASP process | =warm_path_has_no_second_process= |
+| server generation is shared across warm events | =server_warm_generation_is_not_per_hook= |
+
+The AXLE audit MUST reject the RFC if any target has axioms, lacks this Org
+reference, or no longer corresponds to the named clause.
+
+* Implementation correspondence
+
+| Contract owner | Rust owner |
+|-
+| configuration-independent entry | =crates/agent-semantic-protocol/src/hook_bootstrap.rs= |
+| bounded Tokio child ownership | =crates/agent-semantic-runtime/src/hook_process_runtime.rs= |
+| exact stdin replay | =hook_runtime_stdin::with_hook_stdin_override= |
+| digest-addressed single-binary publication | =protocol_binary::ensure_protocol_binary_installed= |
+| Codex command surface | =asp-codex-plugin/hooks/hooks.json= |
+| server generation reuse | =hook_runtime_generation_admission= |
+
+* Acceptance evidence
+
+- a stale matcher enum is detected before compatibility rewriting;
+- the configured development installer publishes a current binary and
+  bootstrap companion;
+- the original hook payload is replayed no more than once;
+- concurrent repair requests converge on one writer;
+- Stop remains completable after bounded repair failure;
+- pre-tool access remains fail-closed after bounded repair failure;
+- warm execution starts no second =asp= process;
+
+The complete server-resident evaluator and compiled-generation cache are
+specified separately by RFC 10.15.02.10. This module continues to own bootstrap
+repair and failure-plane behavior.
+- Typst evaluation, Lean build, AXLE audit, plugin schema validation, and a
+  live installed-hook replay all pass before hooks are re-enabled.
+* Stable public hook interface
+
+The client-visible command is permanently =asp hook <event> --client <client>=.
+The bootstrap is an internal module of the sole =asp= executable and MUST NOT
+be published as a second binary. The =asp= binary recognizes the =hook=
+namespace before the complete matcher is loaded and delegates internally to
+that module. Cold repair re-enters the same digest-matched =asp= artifact.
+
+A second executable does not add isolation or correctness: it only creates a
+publication pair whose drift can deadlock recovery. The stable =asp hook=
+surface keeps client registration invariant while the internal bootstrap and
+resident evaluator evolve inside one atomic artifact.

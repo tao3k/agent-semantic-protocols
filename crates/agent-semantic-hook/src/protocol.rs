@@ -272,6 +272,7 @@ pub enum ReasonKind {
     None,
     ActivationUnavailable,
     DirectSourceRead,
+    StructuredSourceRead,
     BulkSourceDump,
     RawBroadSearch,
     AspReasoningRouted,

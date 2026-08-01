@@ -125,6 +125,7 @@ fn rust_project_resolution_provider() -> agent_semantic_client_core::ResolvedPro
         config_files: Vec::new(),
         source_extensions: vec![".rs".to_string()],
         search_capabilities: manifest.search_capabilities().clone(),
+        language_projection: manifest.language_projection().cloned(),
         query_pack_descriptor: manifest.query_pack_descriptor().clone(),
         semantic_facts_descriptor: manifest.semantic_facts_descriptor().cloned(),
     }

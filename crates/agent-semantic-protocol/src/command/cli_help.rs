@@ -414,6 +414,9 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
         [install, language, ..] if install == "install" && language == "language" => {
             install_language_command()
         }
+        [install, binary, ..] if install == "install" && binary == "binary" => {
+            install_binary_command()
+        }
         [graph, render, ..] if graph == "graph" && render == "render" => graph_render_command(),
         [document, leaf, ..] if is_document_facade(document) => DOCUMENT_COMMANDS
             .iter()

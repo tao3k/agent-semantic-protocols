@@ -281,7 +281,7 @@ fn production_branch_atom_inventory_is_derived_from_the_template() {
     let policy = parse_production_policy();
     assert_eq!(
         policy.rules.len(),
-        17,
+        18,
         "production rule discovery drifted: {:?}",
         policy.rules
     );
@@ -372,6 +372,7 @@ fn command_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> String {
         "materialize-registered-source-read-action" => {
             format!("read {}", source_path_for(alt))
         }
+        "materialize-structured-document-read-action" => "read package.json".to_owned(),
         "materialize-source-access-policy" => {
             let contains = value_after(alt, "commandContainsAny").unwrap_or(alt);
             format!("custom-reader '{contains}' src/app.ts")
@@ -474,14 +475,19 @@ fn command_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> String {
 fn payload_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> Value {
     let command = command_for_atom(atom, policy);
     if atom.matcher.ends_with("authorityAny") {
+        let path = if atom.rule_id == "materialize-structured-document-read-action" {
+            "package.json"
+        } else {
+            "src/app.ts"
+        };
         return match atom.alternative.as_str() {
             "raw-host-action" => json!({
                 "tool_name": "execute",
-                "tool_input": {"path": "src/app.ts", "command": command},
+                "tool_input": {"path": path, "command": command},
             }),
             "unknown" => json!({
                 "tool_name": "mystery_execute",
-                "tool_input": {"path": "src/app.ts", "command": command},
+                "tool_input": {"path": path, "command": command},
             }),
             _ => shell_surface("exec_command", "cmd", &command),
         };
@@ -497,6 +503,10 @@ fn payload_for_atom(atom: &CoverageKey, policy: &ProductionPolicy) -> Value {
         "materialize-registered-source-read-action" => json!({
             "tool_name": "Read",
             "tool_input": {"file_path": source_path_for(&atom.alternative)},
+        }),
+        "materialize-structured-document-read-action" => json!({
+            "tool_name": "Read",
+            "tool_input": {"file_path": "package.json"},
         }),
         _ => shell_surface("exec_command", "cmd", &command),
     }

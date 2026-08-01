@@ -28,7 +28,22 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         layout.state_home.join("runtime").join("bin").join("asp"),
     );
     let skill = check_skill(&options.project_root);
-    let resident_result = super::runtime_server::healthcheck_runtime_server();
+    let resident_result = super::runtime_server::block_on_runtime_server_client(async {
+        match super::runtime_server::healthcheck_runtime_server_at(&layout.state_home).await {
+            Ok(receipt)
+                if receipt.state
+                    == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy =>
+            {
+                Ok(receipt)
+            }
+            Ok(_) | Err(_) => {
+                super::runtime_server_supervisor::reconcile_healthy_runtime_server(
+                    &layout.state_home,
+                )
+                .await
+            }
+        }
+    })?;
     let resident = match &resident_result {
         Ok(receipt) => GlobalResidentRuntimeCheck {
             status: format!("{:?}", receipt.state).to_lowercase(),

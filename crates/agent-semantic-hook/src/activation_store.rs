@@ -39,14 +39,16 @@ pub fn load_or_sync_activation(
 /// or materializing unrelated provider receipts.
 /// Resolve one registered language into an in-memory runtime selection.
 ///
-/// This is a read-only query boundary: it does not read, write, refresh, or
-/// require a project-language activation artifact.
+/// This is a read-only query boundary: it consumes the immutable active
+/// artifact receipt and never re-hashes the ASP executable.
 pub fn registered_language_runtime(
     project_root: &Path,
     language_id: &str,
+    activation_path: &Path,
 ) -> Result<HookRuntime, String> {
     let scope = ProviderCommandSelectionScopeV1::TargetLanguage(language_id.into());
-    let selections = default_activation_selections_for_scope(project_root, &scope, None)?;
+    let selections =
+        default_activation_selections_for_scope(project_root, &scope, Some(activation_path))?;
     let activation = build_default_activation_from_selections(project_root, &selections)?;
     activation_to_runtime(&activation)
 }
@@ -74,6 +76,7 @@ pub enum ActivationAdmissionReason {
     ActivationSchemaInvalid,
     ProjectIdentityMismatch,
     ProviderSelectionDrift,
+    RepositoryCandidateGenerationDrift,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
@@ -84,6 +87,7 @@ pub struct ActivationAdmissionGates {
     pub schema_valid: bool,
     pub project_identity_matches: bool,
     pub provider_selection_matches: bool,
+    pub repository_candidate_generation_matches: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize)]
@@ -285,6 +289,10 @@ fn assess_activation(
         });
     }
     gates.provider_selection_matches = true;
+    // The current selections were resolved from this invocation's repository
+    // candidate generation. Reaching reuse means the persisted activation
+    // matched that freshly resolved selection set.
+    gates.repository_candidate_generation_matches = true;
     Ok(ActivationAssessment {
         activation: Some(activation),
         receipt: ActivationAdmissionReceipt::reuse(gates),
@@ -326,7 +334,6 @@ fn activation_matches_provider_command_selections(
                 })
         })
 }
-
 
 fn sync_activation(project_root: &Path, activation_path: &Path) -> Result<HookRuntime, String> {
     let sync = load_or_refresh_default_activation(activation_path, project_root)?;

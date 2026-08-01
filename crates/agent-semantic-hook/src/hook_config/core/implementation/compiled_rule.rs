@@ -26,6 +26,7 @@ use crate::tool_action::{ToolAction, subject_for_action};
 /// Compiled hook rules loaded from the global ASP state root.
 pub struct ClientHookConfig {
     pub(in crate::hook_config) rules: Vec<CompiledHookRule>,
+    language_providers: Vec<agent_semantic_config::HookClientLanguageProviderConfig>,
     contract_fingerprint: Option<String>,
     semantic_ast_patch_disabled: bool,
     agent_org_artifacts: CompiledAgentOrgArtifactsConfig,
@@ -505,6 +506,11 @@ impl RuleMatch {
             return false;
         }
         let candidate = std::path::Path::new(path);
+        if crate::match_policy_conformance::synthetic_match_environment_active()
+            && matches!(path, "package.json" | "Cargo.toml")
+        {
+            return self.matches_structured_projection_format(candidate);
+        }
         let candidate = if candidate.is_absolute() {
             candidate.to_path_buf()
         } else {
@@ -523,6 +529,10 @@ impl RuleMatch {
         {
             return false;
         }
+        self.matches_structured_projection_format(&candidate)
+    }
+
+    fn matches_structured_projection_format(&self, candidate: &std::path::Path) -> bool {
         let Some(projection) = self.structured_projection.as_ref() else {
             return true;
         };
@@ -826,6 +836,7 @@ impl From<HookClientConfigReasonKind> for ReasonKind {
         match kind {
             HookClientConfigReasonKind::None => Self::None,
             HookClientConfigReasonKind::DirectSourceRead => Self::DirectSourceRead,
+            HookClientConfigReasonKind::StructuredSourceRead => Self::StructuredSourceRead,
             HookClientConfigReasonKind::BulkSourceDump => Self::BulkSourceDump,
             HookClientConfigReasonKind::RawBroadSearch => Self::RawBroadSearch,
             HookClientConfigReasonKind::AgentSearchJson => Self::AgentSearchJson,

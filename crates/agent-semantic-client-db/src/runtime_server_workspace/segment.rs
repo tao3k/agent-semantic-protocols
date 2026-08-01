@@ -1,6 +1,7 @@
+use super::WorkspaceMemoryBackend;
 use super::model::{
     WORKSPACE_GENERATION_SCHEMA_ID, WorkspaceGenerationSnapshot, WorkspaceGenerationState,
-    WorkspaceMemoryBackend, WorkspaceMemoryGeneration,
+    WorkspaceMemoryGeneration,
 };
 use super::pointer::WorkspaceGenerationPointerWriter;
 use memmap2::{Mmap, MmapOptions};
@@ -80,6 +81,20 @@ impl WorkspaceGenerationPublisher {
             generation.active_epoch
         ));
         let exact_segment = super::exact_segment::encode_exact_projection_segment(generation)?;
+        let segment_digest = agent_semantic_content_identity::ArtifactHash::blake3(&segment).value;
+        let exact_segment_digest =
+            agent_semantic_content_identity::ArtifactHash::blake3(&exact_segment).value;
+        let durable_commit_binding = format!(
+            "{}\u{1f}{}\u{1f}{}",
+            generation.generation_digest, segment_digest, exact_segment_digest
+        );
+        let durable_commit_digest = format!(
+            "blake3-256:{}",
+            agent_semantic_content_identity::ArtifactHash::blake3(
+                durable_commit_binding.as_bytes()
+            )
+            .value
+        );
         fs::write(&temporary_path, segment)
             .await
             .map_err(|error| format!("write workspace generation segment: {error}"))?;
@@ -93,6 +108,13 @@ impl WorkspaceGenerationPublisher {
             .await
             .map_err(|error| format!("publish workspace exact projection segment: {error}"))?;
         let mapped = MappedWorkspaceGeneration::open(&final_path).await?;
+        let qualified_digest = |digest: &str| {
+            if digest.starts_with("blake3-256:") {
+                digest.to_owned()
+            } else {
+                format!("blake3-256:{digest}")
+            }
+        };
         let snapshot = WorkspaceGenerationSnapshot {
             schema_id: WORKSPACE_GENERATION_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),
@@ -101,8 +123,24 @@ impl WorkspaceGenerationPublisher {
             active_epoch: generation.active_epoch,
             generation_digest: generation.generation_digest.clone(),
             root_depth: generation.root_depth,
+            provider_schema_digest: generation.provider_schema_digest.clone(),
+            source_root_digest: qualified_digest(&generation.source_snapshot.root_digest),
+            base_root_digest: generation
+                .source_snapshot
+                .base_root_digest
+                .as_deref()
+                .map(qualified_digest),
+            source_provider_digest: qualified_digest(&generation.source_snapshot.provider_digest),
+            dirty_paths_digest: generation
+                .source_snapshot
+                .dirty_paths_digest
+                .as_deref()
+                .map(qualified_digest),
+            module_graph_digest: generation.module_graph_digest.clone(),
+            selector_set_digest: generation.selector_set_digest.clone(),
             memory_backend_digest: generation.memory_backend_digest.clone(),
             workspace_source_scope_generation: generation.workspace_source_scope_generation.clone(),
+            durable_commit_digest,
             mmap_segment_path: final_path.to_string_lossy().into_owned(),
             previous_epoch_readable,
         };

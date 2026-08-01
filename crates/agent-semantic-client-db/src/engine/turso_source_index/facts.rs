@@ -25,7 +25,7 @@ pub(super) async fn write_turso_source_index_rows(
     source_snapshot_json: &str,
 ) -> Result<TursoSourceIndexWriteStats, String> {
     let cold_write_started = std::time::Instant::now();
-    super::readiness::validate_turso_source_index_selector_materialization_proofs(import)?;
+    super::readiness::validate_turso_source_index_selector_projection_records(import)?;
     let imported_membership = turso_source_index_import_membership(import)?;
     let transaction = connection
         .transaction_with_behavior(turso::transaction::TransactionBehavior::Immediate)
@@ -92,8 +92,19 @@ pub(super) async fn write_turso_source_index_rows(
                 )
             }
         };
-        let prepared =
-            super::prepare::prepare_turso_source_index_rows(import, &imported_membership).await?;
+        let materialization_digest = materialization.generation_identity_digest()?;
+        let physical_generation_id = format!(
+            "source-index-{}",
+            materialization_digest
+                .strip_prefix("blake3-256:")
+                .unwrap_or(materialization_digest.as_str())
+        );
+        let prepared = super::prepare::prepare_turso_source_index_rows(
+            import,
+            &imported_membership,
+            &physical_generation_id,
+        )
+        .await?;
         let physical_generation_id = prepared.physical_generation_id.as_str();
         let selector_fingerprint = prepared.selector_fingerprint;
         let changed_owner_paths = prepared.changed_owner_paths;

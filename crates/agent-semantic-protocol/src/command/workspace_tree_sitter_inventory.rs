@@ -21,15 +21,15 @@ pub(super) fn collect_provider_inventory(
     provider: &ActivatedProvider,
 ) -> Result<Vec<InventoryOwner>, String> {
     let mut owners = Vec::new();
-    for source_path in &provider.source_paths {
-        let relative_path = PathBuf::from(source_path);
+    for package_root in &provider.package_roots {
+        let relative_path = PathBuf::from(package_root);
         if relative_path.is_absolute()
             || relative_path
                 .components()
                 .any(|component| matches!(component, std::path::Component::ParentDir))
         {
             return Err(format!(
-                "activated ProjectResolution contains a non-relative source path: languageId={} providerId={} path={}",
+                "activated provider contains a non-relative package root: languageId={} providerId={} path={}",
                 provider.language_id,
                 provider.provider_id,
                 relative_path.display()

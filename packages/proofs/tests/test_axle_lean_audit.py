@@ -21,7 +21,7 @@ EXPECTED_RECEIPT = PROOFS_ROOT / "receipts" / (
     "agent-session-host-registry-semantic-abstraction-"
     "discriminator-conformance-axle-audit-v1.json"
 )
-CLI = Path(sys.executable).parent / "asp-axle-lean-audit"
+CLI = [sys.executable, "-m", "asp_proofs", "lean-audit"]
 
 REQUIRED_ARGUMENTS = [
     "--require-family",
@@ -48,7 +48,7 @@ REQUIRED_ARGUMENTS = [
 class AxleLeanAuditTest(unittest.TestCase):
     def run_audit(self, *extra: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [str(CLI), str(AUDIT), *extra],
+            [*CLI, str(AUDIT), *extra],
             cwd=REPOSITORY_ROOT,
             check=False,
             capture_output=True,

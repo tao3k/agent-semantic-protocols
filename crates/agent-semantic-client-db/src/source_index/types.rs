@@ -311,7 +311,20 @@ pub struct ClientDbSourceIndexScopeFile {
     pub path: PathBuf,
     pub language_id: LanguageId,
     pub provider_id: ProviderId,
+    pub projection_coverage: ClientDbSourceIndexProjectionCoverage,
     pub selector_receipts: Vec<ClientDbSourceIndexSelector>,
+}
+
+/// Provider-owned semantic projection coverage for one source owner.
+///
+/// `Complete` is a typed receipt and can legitimately contain zero selectors.
+/// `NotDeclared` means the provider did not publish the shared projection
+/// capability; it must never be confused with a projected empty owner.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ClientDbSourceIndexProjectionCoverage {
+    NotDeclared,
+    Complete,
 }
 
 /// Source-index lookup state for agent-facing search fallbacks.
@@ -353,8 +366,8 @@ pub struct ClientDbSourceIndexCandidate {
     pub selector_symbol: Option<ClientDbSourceIndexSelectorSymbol>,
     /// Parser-owned item kind associated with the bounded selector proof.
     pub selector_kind: Option<ClientDbSourceIndexSelectorKind>,
-    pub selector_proof:
-        Option<agent_semantic_content_identity::ExactSelectorMaterializationProofV1>,
+    pub selector_projection:
+        Option<agent_semantic_content_identity::ExactSelectorProjectionRecordV1>,
 }
 
 /// Typed source category for source-index candidate rows.
@@ -389,7 +402,7 @@ impl From<ClientDbSourceIndexOwner> for ClientDbSourceIndexCandidate {
         Self {
             selector_symbol: None,
             selector_kind: None,
-            selector_proof: None,
+            selector_projection: None,
             path: owner.owner_path.as_str().to_string().into(),
             language_id: owner.language_id,
             provider_id: owner.provider_id,
@@ -444,18 +457,19 @@ pub struct ClientDbSourceIndexCandidateLookupResult {
 
 /// Parser-owned selector row retained for exact owner-local materialization.
 ///
-/// `selector_id` and `materialization_proof` are the complete identity and
-/// source projection contract. Consumers must not reconstruct either from
-/// line numbers or source rereads.
+/// `projection_record` is the single complete identity and source projection
+/// contract. Consumers must not duplicate its canonical selector or reconstruct
+/// it from line numbers or source rereads.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ClientDbSourceIndexSelector {
     pub owner_path: ClientDbSourceIndexPath,
+    pub provider_id: ProviderId,
     pub selector_id: ClientDbSourceIndexSelectorId,
     pub symbol: Option<ClientDbSourceIndexSelectorSymbol>,
     pub kind: Option<ClientDbSourceIndexSelectorKind>,
     pub source: ClientDbSourceIndexSource,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
-    pub materialization_proof: agent_semantic_content_identity::ExactSelectorMaterializationProofV1,
+    pub projection_record: agent_semantic_content_identity::ExactSelectorProjectionRecordV1,
 }
 
 /// Aggregate row counts for one source index generation.

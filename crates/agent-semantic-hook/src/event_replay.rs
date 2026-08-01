@@ -10,15 +10,7 @@ pub(crate) fn deny_replay_key(decision: &HookDecision) -> Option<String> {
     let mut language_ids = decision.language_ids.clone();
     language_ids.sort();
     language_ids.dedup();
-    if matches!(
-        reason.as_str(),
-        Some(
-            "bulk-source-dump"
-                | "direct-source-read"
-                | "raw-broad-search"
-                | "source-directory-enumeration"
-        )
-    ) {
+    if is_source_access_replay_reason(reason.as_str()) {
         let key = json!({
             "platform": decision.platform,
             "replayFamily": "source-access-recovery",
@@ -59,6 +51,32 @@ pub(crate) fn deny_replay_key(decision: &HookDecision) -> Option<String> {
     serde_json::to_string(&key).ok()
 }
 
+fn is_source_access_replay_reason(reason: Option<&str>) -> bool {
+    matches!(
+        reason,
+        Some(
+            "bulk-source-dump"
+                | "direct-source-read"
+                | "structured-source-read"
+                | "raw-broad-search"
+                | "source-directory-enumeration"
+        )
+    )
+}
+
+fn structured_source_read_repeated_message(
+    reason: &str,
+    configured_message: &str,
+    recovery_ref: &str,
+) -> Option<String> {
+    (reason == "structured-source-read")
+        .then(|| format!("{configured_message}\nrecoveryRef={recovery_ref}"))
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/event_replay.rs"]
+mod event_replay_tests;
+
 pub(crate) fn recovery_ref_for_replay_key(replay_key: &str) -> String {
     let prefix = if is_source_access_replay_key(replay_key) {
         "source-access"
@@ -87,6 +105,11 @@ pub(crate) fn compact_source_access_deny_message(
 ) -> String {
     let reason = replay_reason_label(decision);
     if decision.fields.get("denyReplay").and_then(Value::as_str) == Some("repeated") {
+        if let Some(message) =
+            structured_source_read_repeated_message(&reason, &decision.message, recovery_ref)
+        {
+            return message;
+        }
         if let Some(message) = render_compact_source_access_template(
             decision,
             "sourceAccessCompactRepeatedMessage",

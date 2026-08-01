@@ -160,7 +160,8 @@ fn codex_hook_child_with_profile_drift_cannot_replace_resident_owner() {
     )
     .expect("open registry")
     .expect("registry exists");
-    let project_id = agent_semantic_client_db::AgentSessionRegistry::project_resolution_id(&root);
+    let project_id = agent_semantic_client_db::AgentSessionRegistry::workspace_id(&root)
+        .expect("resolve workspace identity");
     let retained = registry
         .session_by_name(&project_id, root_id, "asp-explore")
         .expect("read resident route")

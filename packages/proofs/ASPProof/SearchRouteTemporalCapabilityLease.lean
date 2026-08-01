@@ -138,7 +138,9 @@ theorem runtime_ready_does_not_imply_lease_usable
     routeDigest := candidate.routeDigest
   }
   refine ⟨observation, lease, ready, ?_⟩
-  exact expired_lease_is_not_usable (by decide)
+  apply expired_lease_is_not_usable
+  change 1 < 2
+  decide
 
 structure RecoveryState where
   attemptsRemaining : Nat

@@ -42,6 +42,8 @@
         "ownerEpoch",
         "runtimeArtifactPath",
         "runtimeArtifactDigest",
+        "artifactMode",
+        "artifactCatalogDigest",
         "bindingToken",
         "dataPlaneSocketPath",
         "socketPath"
@@ -69,6 +71,13 @@
         "runtimeArtifactDigest": {
           "type": "string",
           "minLength": 1
+        },
+        "artifactMode": {
+          "enum": ["dev", "release"]
+        },
+        "artifactCatalogDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
         },
         "bindingToken": {
           "type": "string",
@@ -355,6 +364,8 @@
         "generation",
         "state",
         "runtimeArtifactDigest",
+        "artifactMode",
+        "artifactCatalogDigest",
         "transportContractDigest",
         "workspaceEntryCount",
         "ownerEpoch"
@@ -381,6 +392,13 @@
         "runtimeArtifactDigest": {
           "type": "string",
           "minLength": 1
+        },
+        "artifactMode": {
+          "enum": ["dev", "release"]
+        },
+        "artifactCatalogDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
         },
         "transportContractDigest": {
           "type": "string",
@@ -468,6 +486,8 @@
         "requestId",
         "state",
         "runtimeArtifactDigest",
+        "artifactMode",
+        "artifactCatalogDigest",
         "transportContractDigest",
         "workspaceEntryCount"
       ],
@@ -493,6 +513,13 @@
         "runtimeArtifactDigest": {
           "type": "string",
           "minLength": 1
+        },
+        "artifactMode": {
+          "enum": ["dev", "release"]
+        },
+        "artifactCatalogDigest": {
+          "type": "string",
+          "pattern": "^blake3-256:[0-9a-f]{64}$"
         },
         "transportContractDigest": {
           "type": "string",

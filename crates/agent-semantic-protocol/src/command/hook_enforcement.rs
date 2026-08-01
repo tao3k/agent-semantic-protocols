@@ -125,6 +125,7 @@ pub(super) fn classify_codex_probe_output(output: &Output) -> CodexEnforcementRe
     let saw_deny = (combined.contains("permissionDecision") && combined.contains("deny"))
         || combined.contains("\"decision\":\"deny\"")
         || combined.contains("direct-source-read")
+        || combined.contains("structured-source-read")
         || combined.contains("bulk-source-dump")
         || combined.contains("raw-broad-search");
     let saw_hook_event = combined.contains("HookStarted") || combined.contains("HookCompleted");

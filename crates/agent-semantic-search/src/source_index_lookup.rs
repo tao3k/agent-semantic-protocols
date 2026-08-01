@@ -71,7 +71,6 @@ pub fn lookup_source_index_in_cache(
         WorkspaceDbSourceIndexLookupRequest {
             project_root: request.cache_project_root.to_path_buf(),
             indexed_project_root: request.indexed_project_root.to_path_buf(),
-            source_snapshot: request.source_snapshot.clone(),
             query: request.query.to_owned(),
             language_id: request.language_id.cloned(),
             limit: request.limit,
@@ -127,7 +126,7 @@ fn source_index_file_locator_lookup(
                 query_keys: vec![path.into()],
                 selector_symbol: None,
                 selector_kind: None,
-                selector_proof: None,
+                selector_projection: None,
             }
         })
         .collect::<Vec<_>>();
@@ -184,7 +183,7 @@ pub fn search_pipe_source_index_lookup_from_client_result(
                     .into_iter()
                     .map(|key| key.as_str().to_string().into())
                     .collect(),
-                selector_proof: candidate.selector_proof,
+                selector_projection: candidate.selector_projection,
             })
             .collect(),
         source_snapshot: result.source_snapshot,

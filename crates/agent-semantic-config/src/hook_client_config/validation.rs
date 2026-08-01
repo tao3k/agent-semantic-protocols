@@ -22,12 +22,60 @@ pub(super) fn validate_config(config: &HookClientConfigFile) -> Result<(), Strin
     validate_recovery_prompt(&config.recovery_prompt)?;
     validate_agent_session_guide(&config.agent_session_guide)?;
     validate_agent_session_messages(&config.agent_session_messages)?;
+    validate_language_providers(&config.language_providers)?;
     validate_resident_agents(&config.agents.resident_agents)?;
     validate_agent_placeholders(&config.agents)?;
     validate_command_profiles(&config.command_profiles)?;
     validate_rule_dispatches(&config.rules, &config.agents)?;
     validate_unique_rule_ids(&config.rules)?;
     validate_rule_schema_shape(&config.rules, &config.command_profiles)
+}
+
+fn validate_language_providers(
+    providers: &[super::document::HookClientLanguageProviderConfig],
+) -> Result<(), String> {
+    let mut identities = HashSet::new();
+    for provider in providers {
+        validate_identifier("languageProviders[].languageId", &provider.language_id)?;
+        validate_identifier("languageProviders[].providerId", &provider.provider_id)?;
+        if !identities.insert((provider.language_id.as_str(), provider.provider_id.as_str())) {
+            return Err(format!(
+                "duplicate languageProviders identity `{}/{}`",
+                provider.language_id, provider.provider_id
+            ));
+        }
+        if !provider.manifest_digest.starts_with("sha256:")
+            || provider.manifest_digest.len() <= "sha256:".len()
+        {
+            return Err(format!(
+                "languageProviders[{}/{}].manifestDigest must be a sha256 content identity",
+                provider.language_id, provider.provider_id
+            ));
+        }
+        if provider.source_extensions.is_empty() {
+            return Err(format!(
+                "languageProviders[{}/{}].sourceExtensions must not be empty",
+                provider.language_id, provider.provider_id
+            ));
+        }
+        validate_unique_values(
+            "languageProviders[].sourceExtensions[]",
+            &provider.source_extensions,
+        )?;
+        for extension in &provider.source_extensions {
+            if !extension.starts_with('.')
+                || extension.len() == 1
+                || extension.contains(['/', '\\'])
+                || extension.chars().any(char::is_whitespace)
+            {
+                return Err(format!(
+                    "languageProviders[{}/{}].sourceExtensions contains invalid extension `{extension}`",
+                    provider.language_id, provider.provider_id
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_rule_dispatches(

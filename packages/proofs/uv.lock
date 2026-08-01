@@ -105,7 +105,7 @@ wheels = [
 ]
 
 [[package]]
-name = "asp-proof-toolchain"
+name = "asp-proofs"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

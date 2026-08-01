@@ -1,0 +1,32 @@
+import ASPProof.Audit.HookLazyLoaderCapability
+
+open ASPProof.HookLazyLoaderCapability
+open ASPProof.Audit.HookLazyLoaderCapability
+
+#check json_read_with_jq_activates
+#check json_read_with_jq_routes_to_structured_read
+#check json_read_without_jq_is_unavailable
+#check unavailable_jq_cannot_forge_a_route
+#check non_read_json_does_not_activate
+#check non_json_read_does_not_activate
+#check jq_route_implies_all_activation_preconditions
+#check raw_json_read_remains_fail_closed
+#check missing_jq_does_not_globally_deadlock_the_hook
+#check config_compilation_preserves_json_jq_activation
+#check jq_route_is_bounded
+#check incompatible_candidate_cannot_publish
+#check compatible_candidate_may_publish
+
+#print axioms json_read_with_jq_activates
+#print axioms json_read_with_jq_routes_to_structured_read
+#print axioms json_read_without_jq_is_unavailable
+#print axioms unavailable_jq_cannot_forge_a_route
+#print axioms non_read_json_does_not_activate
+#print axioms non_json_read_does_not_activate
+#print axioms jq_route_implies_all_activation_preconditions
+#print axioms raw_json_read_remains_fail_closed
+#print axioms missing_jq_does_not_globally_deadlock_the_hook
+#print axioms config_compilation_preserves_json_jq_activation
+#print axioms jq_route_is_bounded
+#print axioms incompatible_candidate_cannot_publish
+#print axioms compatible_candidate_may_publish

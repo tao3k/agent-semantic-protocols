@@ -32,22 +32,13 @@ pub(super) fn run_search_owner_items_query_command(
         search_owner_items_workspace(args).as_deref(),
     );
     let owner_path = normalized_owner_key(&project_root, &owner_query_args.owner)?;
-    let freshness = super::runtime_server::block_on_runtime_server_client(
-        super::runtime_server::ensure_runtime_owner_projection_async(
-            &project_root,
-            context.language_id,
-            &owner_path,
-        ),
-    )??;
-    if freshness.removed {
-        return Err(format!(
-            "owner search state=owner-missing reasonKind=owner-not-in-workspace ownerPath={owner_path} generation={}",
-            freshness.generation_digest
-        ));
-    }
     let client = super::runtime_server::block_on_runtime_server_client(
         super::runtime_server::runtime_server_workspace_generation_client_async(&project_root),
     )??;
+    // Search is a pure resident read. Provider execution and owner freshness
+    // reconciliation belong to the Runtime Server writer lane and must never
+    // be triggered by an agent query.
+    let provider_invocations = 0;
     let lease = client.lease();
     let generation = lease.generation();
     generation.validate()?;
@@ -100,11 +91,12 @@ pub(super) fn run_search_owner_items_query_command(
         );
     }
     println!(
-        "entries={} generation={} rootDigest={} rootDepth=1,0 providerInvocations={} databaseOpens=0 controlRoundtrips=2",
+        "entries={} generation={} rootDigest={} rootDepth=1,0 providerInvocations={} databaseOpens=0 controlRoundtrips={}",
         items.len(),
         generation.generation_digest,
         generation.source_snapshot.root_digest,
-        u8::from(freshness.changed)
+        provider_invocations,
+        0
     );
     let _ = context.language_id;
     let _ = context.provider_context;

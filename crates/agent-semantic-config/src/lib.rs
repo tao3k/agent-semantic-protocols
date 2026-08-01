@@ -5,6 +5,7 @@
 pub mod codex_agent_projection;
 mod codex_plugin_config;
 mod hook_client_config;
+pub mod runtime_dev;
 
 pub use codex_plugin_config::codex_config_plugin_enabled;
 
@@ -25,14 +26,15 @@ pub use hook_client_config::{
     HookClientAgentSessionGuideConfig, HookClientAgentSessionMessagesConfig,
     HookClientAgentsConfig, HookClientCommandProfileConfig, HookClientCommandProfileRef,
     HookClientConfigDecision, HookClientConfigFile, HookClientConfigReasonKind,
-    HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientLazyProviderPolicy,
-    HookClientRecoveryPromptConfig, HookClientResidentAgentConfig, HookClientRuleConfig,
-    HookClientRuleDispatchConfig, HookClientRuleDispatchTransport, HookClientRuleMatchConfig,
-    HookClientRuleRouteConfig, WrapperMatchMode, default_hook_client_config_file,
-    default_hook_client_config_template, expand_command_profile_prefixes,
-    load_asp_project_config_file, load_hook_client_config_declared_contract_fingerprint,
-    load_hook_client_config_file, load_hook_client_config_overlay_file,
-    merge_asp_project_hook_config, render_hook_client_message_template,
+    HookClientConfigRouteKind, HookClientConfigStdinMode, HookClientLanguageProviderConfig,
+    HookClientLazyProviderPolicy, HookClientRecoveryPromptConfig, HookClientResidentAgentConfig,
+    HookClientRuleConfig, HookClientRuleDispatchConfig, HookClientRuleDispatchTransport,
+    HookClientRuleMatchConfig, HookClientRuleRouteConfig, WrapperMatchMode,
+    default_hook_client_config_file, default_hook_client_config_template,
+    expand_command_profile_prefixes, load_asp_project_config_file,
+    load_hook_client_config_declared_contract_fingerprint, load_hook_client_config_file,
+    load_hook_client_config_overlay_file, merge_asp_project_hook_config,
+    render_hook_client_message_template,
 };
 pub use hook_client_config::{
     HookClientStructuredFilterGrammar, HookClientStructuredProjectionMatchConfig,

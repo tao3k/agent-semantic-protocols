@@ -50,7 +50,7 @@ impl SourceIndexFixture {
             let project_root = request.import.project_root.clone();
             let session =
                 fixture_session(&registry, &sessions, binding.as_ref(), &project_root).await?;
-            let canonical_source_snapshot = canonical_source_snapshot(&request);
+            let canonical_source_snapshot = canonical_source_snapshot(&request, &source_blobs);
             request.source_snapshot = canonical_source_snapshot.clone();
             let materialization =
                 crate::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
@@ -177,25 +177,12 @@ pub fn workspace_identity_from_fixture_dir(
 
 fn canonical_source_snapshot(
     request: &crate::ClientDbSourceIndexRefreshRequest,
+    source_blobs: &crate::ClientDbSourceIndexSourceBlobs,
 ) -> agent_semantic_content_identity::SourceSnapshotEvidence {
     agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-        request
-            .import
-            .file_hashes
+        source_blobs
             .iter()
-            .filter(|file| {
-                request
-                    .import
-                    .owners
-                    .iter()
-                    .any(|owner| owner.owner_path.as_str() == file.path.as_str())
-            })
-            .map(|file| {
-                (
-                    file.path.as_str().to_owned(),
-                    file.sha256.as_str().to_owned(),
-                )
-            }),
+            .map(|(path, bytes)| (path.to_owned(), blake3::hash(bytes).to_hex().to_string())),
     )
     .evidence(
         request.source_snapshot.source_kind.clone(),

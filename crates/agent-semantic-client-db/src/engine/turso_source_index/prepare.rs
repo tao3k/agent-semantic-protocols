@@ -169,9 +169,10 @@ pub(super) struct PreparedTursoSourceIndexRows {
 pub(super) async fn prepare_turso_source_index_rows(
     import: &ClientDbSourceIndexImport,
     imported_membership: &std::collections::HashMap<&str, &str>,
+    physical_generation_id: &str,
 ) -> Result<PreparedTursoSourceIndexRows, String> {
     let selector_fingerprint = turso_source_index_selector_fingerprint(import)?;
-    let physical_generation_id = import.generation_id.as_str().to_string();
+    let physical_generation_id = physical_generation_id.to_string();
     let row_owner_paths = import
         .owners
         .iter()
@@ -249,21 +250,11 @@ pub(super) async fn prepare_turso_source_index_rows(
         .iter()
         .filter(|selector| changed_owner_paths.contains(selector.owner_path.as_str()))
         .map(|selector| {
-            let structural_selector = selector
-                .materialization_proof
-                .structural_selector
-                .as_str();
-            let canonical =
-                agent_semantic_content_identity::CanonicalItemSelector::parse(
-                    structural_selector,
-                )
-                .map_err(|error| {
-                    format!(
-                        "failed to normalize Turso source-index selector identity: owner={} selector={} error={error}",
-                        selector.owner_path.as_str(),
-                        structural_selector,
-                    )
-                })?;
+            let structural_selector = selector.selector_id.as_str();
+            let canonical = selector
+                .projection_record
+                .proof
+                .canonical_item_selector();
             let owner_content_digest = imported_membership
                 .get(selector.owner_path.as_str())
                 .expect("source-index selector membership validated before prepare")
@@ -279,17 +270,17 @@ pub(super) async fn prepare_turso_source_index_rows(
                 owner_content_digest,
                 language_id: canonical.language_id.as_str().to_string(),
                 parser_identity_digest: selector
-                    .materialization_proof
-                    .parser_identity_digest
-                    .iter()
-                    .map(|byte| format!("{byte:02x}"))
-                    .collect(),
+                    .projection_record
+                    .proof
+                    .parser_identity_digest()
+                    .as_str()
+                    .to_owned(),
                 query_pack_digest: selector
-                    .materialization_proof
-                    .query_pack_digest
-                    .iter()
-                    .map(|byte| format!("{byte:02x}"))
-                    .collect(),
+                    .projection_record
+                    .proof
+                    .query_pack_digest()
+                    .as_str()
+                    .to_owned(),
                 item_kind: canonical.kind.as_str().to_string(),
                 item_symbol: canonical.symbol.as_str().to_string(),
                 scopes_json,

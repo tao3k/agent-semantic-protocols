@@ -7,19 +7,14 @@ use std::{
 
 use agent_semantic_client_core::state_core::{ResolvedState, STATE_LAYOUT_VERSION, TURSO_BACKEND};
 use agent_semantic_client_core::{CacheExportMethod, ClientCacheManifest, LanguageId, ProviderId};
-use agent_semantic_client_core::{
-    CacheGenerationId, ClientCacheFileHash, SemanticSchemaId, SemanticSchemaVersion,
-};
+use agent_semantic_client_core::{CacheGenerationId, SemanticSchemaId, SemanticSchemaVersion};
+use agent_semantic_client_db::{ClientDbArtifactEvent, ClientDbBackend, ClientDbEngine};
 use agent_semantic_client_db::{
-    CLIENT_DB_SOURCE_INDEX_PROVIDER_ID, CLIENT_DB_SOURCE_INDEX_SCHEMA_ID,
-    CLIENT_DB_SOURCE_INDEX_SCHEMA_VERSION, ClientDbSourceIndexImportFile,
-    ClientDbSourceIndexImportRequest, ClientDbSourceIndexLookupState, ClientDbSourceIndexSource,
     ClientDbStructuralDependencyUsage, ClientDbStructuralIndexImport, ClientDbStructuralKind,
     ClientDbStructuralLocator, ClientDbStructuralName, ClientDbStructuralOwner,
     ClientDbStructuralPath, ClientDbStructuralQueryKey, ClientDbStructuralSource,
-    ClientDbStructuralSymbol, build_source_index_import,
+    ClientDbStructuralSymbol,
 };
-use agent_semantic_client_db::{ClientDbArtifactEvent, ClientDbBackend, ClientDbEngine};
 use serde_json::json;
 
 include!("artifact_events.rs");

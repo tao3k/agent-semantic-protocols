@@ -68,6 +68,23 @@ fn arbitrary_wrapper_with_inferred_read_effect_matches_registered_source_pattern
 }
 
 #[test]
+fn configured_non_read_effects_remain_typed() {
+    for (configured, expected) in [
+        (HookClientActionKind::Test, AgentActionKind::Test),
+        (HookClientActionKind::Build, AgentActionKind::Build),
+        (HookClientActionKind::Delete, AgentActionKind::Delete),
+    ] {
+        assert_eq!(
+            crate::tool_action::action_kind_from_config(configured),
+            Some(expected)
+        );
+        assert!(crate::tool_action::action_kind_matches(
+            expected, configured
+        ));
+    }
+}
+
+#[test]
 fn structured_query_program_is_not_projected_as_a_shell_subject() {
     let registry = HookRuntime {
         rankers: Vec::new(),

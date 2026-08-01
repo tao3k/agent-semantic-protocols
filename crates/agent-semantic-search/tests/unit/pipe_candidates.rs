@@ -22,13 +22,14 @@ fn pipe_candidates_collect_dynamic_overlay_for_non_path_query() {
 
     let ignore_dirs = vec!["target".to_string()];
     let include_hidden_dirs = Vec::new();
+    let owners = vec![std::path::PathBuf::from("src/pipe_owner.rs")];
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let collection = collect_search_pipe_candidates(SearchPipeCandidateRequest {
         language_id: "rust",
         project_root: &root,
         locator_root: &root,
         query: "pipe_candidate",
-        owners: &[],
+        owners: &owners,
         ignore_dirs: &ignore_dirs,
         include_hidden_dirs: &include_hidden_dirs,
         base_snapshot: &fixture.workspace,
@@ -174,7 +175,7 @@ fn source_index_acquisition_quarantines_stale_candidates_and_defers_overlay() {
             source_kind: ("file".to_string()).into(),
             line_count: Some(42),
             query_keys: vec![("source_index_owner".to_string()).into()],
-            selector_proof: None,
+            selector_projection: None,
         }],
     };
 
@@ -227,7 +228,7 @@ fn source_index_acquisition_keeps_existing_rows_inventory_only() {
             source_kind: ("file".to_string()).into(),
             line_count: Some(1),
             query_keys: vec![("current_owner".to_string()).into()],
-            selector_proof: None,
+            selector_projection: None,
         }],
     };
 

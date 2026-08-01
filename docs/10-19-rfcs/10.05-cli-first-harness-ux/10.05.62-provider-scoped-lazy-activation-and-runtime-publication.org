@@ -454,6 +454,48 @@ before installation.
 - warm live-corpus search has zero Git operations, zero corpus
   materializations, and zero source-tree rehashes after artifact qualification.
 
+* Proof-discovered operation-closure obligations
+
+Clause identities:
+
+- =ASP-RFC-10.05.62-OPERATION-CLOSURE=
+- =ASP-RFC-10.05.62-UNRELATED-FAILURE-NONINTERFERENCE=
+
+Provider scoping is an operation property, not a receipt property.  Let =P= be
+the registered provider set, =selected(o)= the provider selected for operation
+=o=, and =required(o) subseteq P= the provider closure materialized by that
+operation.  For ordinary language search, language-scoped source-index lookup,
+and exact query:
+
+#+begin_src typst
+$ forall o, "ordinary"(o) => "required"(o) = { "selected"(o) } $
+#+end_src
+
+Therefore, for every unrelated provider =q != selected(o)=, changing only the
+readiness of =q= MUST NOT change admission of =o=.  A project-scoped provider
+receipt does not establish this theorem: the router and every downstream cache,
+generation, source-index, and health materializer MUST preserve the same
+closure.
+
+The July 31 runtime counterexample exercises two independent violations:
+
+- Python cache recovery was rejected by Rust project resolution; and
+- a language-scoped Python source-index lookup was rejected because TypeScript
+  did not find =package.json= in the Python workspace.
+
+Both operations had an admitted Python provider and no declared dependency on
+the failing provider.  These traces refute any implementation claim that
+provider-scoped installation alone implies provider-scoped execution.
+
+=CompleteGeneration= remains the only implicit fan-in operation.  Its caller
+MUST name that operation class before provider materialization.  A cache import,
+health check, or recovery helper MUST NOT silently promote an ordinary or
+language-scoped request into =CompleteGeneration=.
+
+The Lean model =ASPProof.SearchRouteProviderClosure= proves the singleton
+closure admission equivalence and unrelated-failure noninterference theorem.
+It also contains the finite schema/runtime drift witness used by 10.05.63.
+
 * Migration
 
 The aggregate generated activation is migration input, not a second runtime

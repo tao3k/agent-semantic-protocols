@@ -235,7 +235,7 @@ fn default_template_round_trips_through_config_parser() {
         .expect("TOML projection matcher");
     assert_eq!(toml_projection.binary, "yq");
     assert_eq!(toml_projection.optional_subcommand_any, ["eval", "e"]);
-    assert_eq!(config.rules.len(), 17);
+    assert_eq!(config.rules.len(), 18);
     assert_eq!(
         config
             .rules
@@ -250,6 +250,7 @@ fn default_template_round_trips_through_config_parser() {
             "deny-agent-search-json",
             "materialize-apply-patch-policy",
             "materialize-registered-source-read-action",
+            "materialize-structured-document-read-action",
             "materialize-source-access-policy",
             "deny-uncontrolled-source-search-commands",
             "allow-bounded-json-projection",

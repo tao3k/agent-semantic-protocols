@@ -222,9 +222,31 @@ callables cheap to inspect without weakening selector or generation identity.
 
 A canonical structural selector is a provider parser declaration identity, not a lexical occurrence. Only a complete-owner parser projection may create it. Search, graph ranking, renderers, re-export adapters, and query clients MUST NOT infer an item kind, enclosing owner, implementation owner, trait owner, or declaration path from matched text. A reference occurrence may point to a declaration identity only through a typed parser-produced relation; without that relation it remains graph-only evidence and is not executable as an exact selector.
 
+The language-neutral v1 identity has exactly one representation:
+=languageId + kind + symbol + ordered scopes[]=.  Each scope is
+=relation + kind + symbol=.  Trait ownership, implementation ownership,
+lexical ownership, conditional-compilation scope, namespace, class, and future
+language frames are represented only as ordered scopes.  Flat sibling fields
+such as =implOwner=, =implementationOwner=, =traitOwner=, or =lexicalOwner=
+are non-conforming duplicates and MUST NOT appear in provider batch items,
+shared schemas, source-index rows, graph nodes, or render packets.  The typed
+identity, encoded structural-selector fragment, and decoded identity MUST be
+equal before a selector can enter a generation.
+
 Owner bytes, their complete declaration selector set, derived projections, content digest, and rootDepth overlay identity form one immutable epoch. Search may render a selector only from the same leased epoch that exact query uses to resolve it. A moved, replaced, deleted, untracked, or reparsed owner advances the workspace writer lane atomically; no query-time repair may combine a selector from one generation with owner bytes from another. Re-exports, modules, structs, enums, traits, impls, methods, associated items, cfg-scoped declarations, and macro-produced declarations retain their provider-emitted kind and enclosing identity without aliasing.
 
 =snapshot-item-kind-mismatch= and =item-not-in-live-owner= are valid diagnostics only for externally supplied invalid selectors or corrupted persisted evidence. A selector emitted by ASP Search and consumed against its bound generation MUST never reach either state. Cross-generation fixtures MUST prove this invariant for live edits, moves, tombstones, untracked owners, re-exports, and repeated method names.
+
+Projection availability is independent from canonical item identity.  When the
+requested selector exists in the leased generation but that generation does not
+contain the requested derived projection, the resolver MUST return
+=source-unavailable= with
+=projection-mode-not-in-active-generation=.  It MUST NOT reinterpret the
+missing projection mode as =snapshot-item-kind-mismatch=, because the item's
+provider-emitted kind and scoped identity already matched.  A real
+=snapshot-item-kind-mismatch= therefore requires a same-symbol candidate whose
+canonical item kind differs from the requested selector; fixtures MUST cover
+both branches.
 
 **** Active artifact handoff identity
 
@@ -2375,18 +2397,23 @@ legend: ID=kind:role(value)!next; edge SRC>{DST:rel}; frontier ID.next
 aliases: graph:{G=search,O=owner,Q=query,I=item,H=hot}
 O=owner:path(crates/agent-semantic-hook/src/tool_action.rs)!owner
 Q=query:term(tool_action|structured|payload|command_intent|from_payload|from_action)!query
-I=item:symbol(payload_string)@crates/agent-semantic-hook/src/tool_action.rs:212:214!code
-I2=item:symbol(collect_tool_actions)@crates/agent-semantic-hook/src/tool_action.rs:216:419!outline
-I3=item:symbol(nested_tool_actions)@crates/agent-semantic-hook/src/tool_action.rs:555:571!code
-H=hot:symbol(command_source_paths)@crates/agent-semantic-hook/src/tool_action.rs:397:401!code
-H2=hot:symbol(nested_action_from_tool_use)@crates/agent-semantic-hook/src/tool_action.rs:567:568!code
+I=item:symbol(payload_string)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/method/payload_string/scope/implementation-owner/type/ToolAction!syntax
+I2=item:symbol(collect_tool_actions)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/collect_tool_actions!syntax
+I3=item:symbol(nested_tool_actions)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/nested_tool_actions!syntax
+H=hot:symbol(command_source_paths)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/command_source_paths!syntax
+H2=hot:symbol(nested_action_from_tool_use)@rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/nested_action_from_tool_use!syntax
+syntax I selector=rust://crates/agent-semantic-hook/src/tool_action.rs#item/method/payload_string/scope/implementation-owner/type/ToolAction
+syntax I2 selector=rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/collect_tool_actions
+syntax I3 selector=rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/nested_tool_actions
+syntax H selector=rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/command_source_paths
+syntax H2 selector=rust://crates/agent-semantic-hook/src/tool_action.rs#item/function/nested_action_from_tool_use
 
 G>{O:selects,Q:matches}
 O>{I:contains,I2:contains,I3:contains,H:contains,H2:contains}
 Q>{I:matches,I2:matches,I3:matches,H:revise,H2:revise}
 
 rank=H,H2,I,I2,I3,O
-frontier=H.code,H2.code,I.code,I2.outline,I3.code
+frontier=H.syntax,H2.syntax,I.syntax,I2.syntax,I3.syntax
 revise=command_intent->command_source_paths,from_action->nested_action_from_tool_use
 omit=code,projection-nodes,large-item-text
 avoid=inline-code-in-search,raw-read,repeat-owner
@@ -2403,6 +2430,15 @@ a parser-owned candidate, and =O>{I:contains,H:contains}= records ownership.
 Owner-item search output must not inline source code.  It gives exact
 structural selectors/frontier only; a follow-up exact =query --projection
 source= is the source extraction boundary.
+
+The seed-view renderer is a single selector-preserving projection interface,
+not a second symbol search.  Once an item locator carries a canonical
+=structuralSelector=, the renderer MUST bind the item node to that complete
+selector and MUST NOT reduce it to =syntax:<symbol>=.  Two methods with the
+same symbol but different implementation-owner or trait-owner scopes are two
+different item nodes and remain independently executable.  This rule applies
+to every registered language provider; language-specific parsers produce the
+canonical identity, while the shared rendering contract preserves it.
 
 * Prime search example
 

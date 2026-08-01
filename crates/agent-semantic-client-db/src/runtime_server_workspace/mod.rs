@@ -2,15 +2,17 @@ mod canonical_materialization;
 mod client;
 mod exact_segment;
 mod lease;
+mod memory_backend;
 mod model;
 mod owner_freshness;
 pub use canonical_materialization::{
     WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID, WorkspaceCanonicalMaterialization,
     WorkspaceCanonicalMaterializationLoad,
 };
+pub(crate) use memory_backend::WorkspaceMemoryBackend;
 pub(crate) use model::{
     RUNTIME_SERVER_SHUTDOWN_RECEIPT_SCHEMA_ID, WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID,
-    WorkspaceMemoryBackend, validate_owners,
+    validate_owners,
 };
 pub use owner_freshness::{WorkspaceOwnerProjectionBuildFuture, WorkspaceOwnerProjectionBuilder};
 pub(crate) use resident_overlay::{ResidentOverlaySnapshot, ResidentOverlayStore};
@@ -30,10 +32,11 @@ pub use exact_segment::{
     WorkspaceExactProjectionDataPlaneClient, WorkspaceExactProjectionDataPlaneOpen,
 };
 pub use lease::WorkspaceGenerationLease;
+pub use memory_backend::WorkspaceProjectionLease;
 pub use model::{
     RuntimeDataPlaneCounters, RuntimeServerShutdownReceipt, WorkspaceDataPlanePerformanceReceipt,
-    WorkspaceDerivedProjectionSnapshot, WorkspaceGenerationSnapshot, WorkspaceGenerationState,
-    WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot, WorkspaceProjectionLease,
+    WorkspaceDerivedProjectionSnapshot, WorkspaceGenerationBuild, WorkspaceGenerationSnapshot,
+    WorkspaceGenerationState, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
     WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeOwnerFreshnessReceipt,
     WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
     WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,

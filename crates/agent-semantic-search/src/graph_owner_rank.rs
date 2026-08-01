@@ -296,8 +296,8 @@ fn owner_rank_entries(
         .iter()
         .map(|candidate| prepare_owner_rank_candidate(candidate, query_axes, submodule_paths))
         .collect::<Vec<_>>();
-    let package_axes = package_query_axes(&prepared_candidates);
-    let topology_axes = topology_query_axes(&prepared_candidates);
+    let package_axis_counts = package_query_axis_counts(&prepared_candidates);
+    let topology_axis_counts = topology_query_axis_counts(&prepared_candidates);
     prepared_candidates
         .into_iter()
         .enumerate()
@@ -312,15 +312,15 @@ fn owner_rank_entries(
             }
         });
     owner_ranks.values_mut().for_each(|rank| {
-        rank.package_query_axis_count = package_axes
+        rank.package_query_axis_count = package_axis_counts
             .get(&rank.package_root)
-            .map(HashSet::len)
+            .copied()
             .unwrap_or_default();
         rank.topology_query_axis_count = rank
             .topology_submodule_path
             .as_deref()
-            .and_then(|submodule_path| topology_axes.get(submodule_path))
-            .map(HashSet::len)
+            .and_then(|submodule_path| topology_axis_counts.get(submodule_path))
+            .copied()
             .unwrap_or_default();
     });
     owner_ranks.into_values().collect()
@@ -520,45 +520,43 @@ fn owner_path_is_test(path: &str) -> bool {
         || path.ends_with("_tests.rs")
 }
 
-fn package_query_axes(
+fn package_query_axis_counts(
     candidates: &[PreparedGraphOwnerRankCandidate<'_>],
-) -> HashMap<String, HashSet<String>> {
-    let mut package_axes: HashMap<String, HashSet<String>> = HashMap::new();
+) -> HashMap<String, usize> {
+    let mut package_axes: HashMap<&str, HashSet<&str>> = HashMap::new();
     candidates.iter().for_each(|candidate| {
-        candidate
-            .matched_query_axes
-            .iter()
-            .cloned()
-            .for_each(|axis| {
-                package_axes
-                    .entry(candidate.package_root.clone())
-                    .or_default()
-                    .insert(axis);
-            });
+        candidate.matched_query_axes.iter().for_each(|axis| {
+            package_axes
+                .entry(candidate.package_root.as_str())
+                .or_default()
+                .insert(axis.as_str());
+        });
     });
     package_axes
+        .into_iter()
+        .map(|(package_root, axes)| (package_root.to_owned(), axes.len()))
+        .collect()
 }
 
-fn topology_query_axes(
+fn topology_query_axis_counts(
     candidates: &[PreparedGraphOwnerRankCandidate<'_>],
-) -> HashMap<String, HashSet<String>> {
-    let mut topology_axes: HashMap<String, HashSet<String>> = HashMap::new();
+) -> HashMap<String, usize> {
+    let mut topology_axes: HashMap<&str, HashSet<&str>> = HashMap::new();
     candidates.iter().for_each(|candidate| {
         let Some(submodule_path) = candidate.matching_submodule_path else {
             return;
         };
-        candidate
-            .matched_query_axes
-            .iter()
-            .cloned()
-            .for_each(|axis| {
-                topology_axes
-                    .entry(submodule_path.to_owned())
-                    .or_default()
-                    .insert(axis);
-            });
+        candidate.matched_query_axes.iter().for_each(|axis| {
+            topology_axes
+                .entry(submodule_path)
+                .or_default()
+                .insert(axis.as_str());
+        });
     });
     topology_axes
+        .into_iter()
+        .map(|(submodule_path, axes)| (submodule_path.to_owned(), axes.len()))
+        .collect()
 }
 
 fn owner_rank_package_root(path: &str) -> String {

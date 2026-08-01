@@ -38,9 +38,13 @@ pub struct RuntimeServerRuntimeBuilder {
 
 impl RuntimeServerRuntimeBuilder {
     pub fn new_daemon() -> Self {
-        Self {
-            builder: tokio::runtime::Builder::new_multi_thread(),
-        }
+        let worker_count = std::thread::available_parallelism()
+            .map(std::num::NonZeroUsize::get)
+            .unwrap_or(2)
+            .max(2);
+        let mut builder = tokio::runtime::Builder::new_multi_thread();
+        builder.worker_threads(worker_count);
+        Self { builder }
     }
 
     pub fn new_client() -> Self {

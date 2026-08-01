@@ -7,10 +7,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use agent_semantic_client_db::ClientDbSourceIndexScopeFile as SourceIndexScopeFile;
 use agent_semantic_content_identity::exact_selector_generation_fixture::{
-    ExactSelectorGenerationIdentityV1, ExactSelectorGenerationRecordV1,
-    build_exact_selector_generation_fixture_v1, fixture_digest_v1,
+    ExactSelectorGenerationIdentityV1, fixture_digest_v1,
 };
 use agent_semantic_content_identity::workspace_search_identity::WorkspaceSearchIdentityV1;
+use agent_semantic_search::exact_selector_fixture_publication::build_exact_selector_fixture_from_projection_records_v1;
 use agent_semantic_search::exact_selector_generation_fixture::{
     ExactSelectorGenerationMemorySearchV1, publish_immutable_exact_selector_generation_fixture_v1,
 };
@@ -101,10 +101,15 @@ pub fn publish_target_provider_source_envelope_v1(
             requested_provider.language_id, requested_provider.provider_id
         ));
     }
+    let address_provider_digest = super::provider_envelope::provider_registry_address_digest(
+        publication.provider_registry,
+        publication.project_root,
+    );
     let immutable_envelope = super::publish_provider_source_snapshot_envelope(
         super::ProviderSourceSnapshotEnvelopePublicationV1 {
             snapshot: &snapshot,
             provider_id: requested_provider.provider_id.as_str(),
+            address_provider_digest: &address_provider_digest,
             source_extensions: &requested_provider.source_extensions,
             artifact_root: publication.artifact_root,
             provider_workspace_root: publication.project_root,
@@ -116,7 +121,7 @@ pub fn publish_target_provider_source_envelope_v1(
         .join("v1");
     let canonical_file_name = super::provider_envelope::source_snapshot_envelope_file_name(
         requested_provider.provider_id.as_str(),
-        &snapshot.source_snapshot.provider_digest,
+        &address_provider_digest,
         &super::provider_envelope::provider_workspace_identity_v1(publication.project_root)?.digest,
     );
     let canonical_envelope = canonical_directory.join(&canonical_file_name);
@@ -153,8 +158,6 @@ pub struct WorkspaceSearchGenerationPublicationRequestV1<'a> {
     pub source_extensions: &'a [String],
     pub workspace_identity: &'a WorkspaceSearchIdentityV1,
     pub generation_identity: ExactSelectorGenerationIdentityV1,
-    pub exact_selector_projection_records:
-        Vec<agent_semantic_content_identity::exact_selector_cache::ExactSelectorProjectionRecordV1>,
 }
 
 /// Paths and content identities committed by one generation transaction.
@@ -201,45 +204,51 @@ fn publish_complete_workspace_search_generation_v1(
             publication.provider_id
         ));
     }
-    if provider_files
-        .iter()
-        .any(|file| file.selector_receipts.is_empty())
-    {
+    if provider_files.iter().any(|file| {
+        file.projection_coverage
+            != agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::Complete
+    }) {
         return Err(format!(
-            "complete generation owner is missing selector materialization proofs: providerId={}",
+            "complete generation owner is missing its provider projection receipt: providerId={}",
             publication.provider_id
         ));
     }
-    let proofs_are_from_one_generation = provider_files
+    let projection_records = provider_files
         .iter()
         .flat_map(|file| file.selector_receipts.iter())
-        .all(|selector| {
-            selector.materialization_proof.workspace_root_digest
-                == publication.generation_identity.workspace_root_digest
-                && selector.materialization_proof.workspace_root_digest
-                    == *publication.workspace_identity.source_snapshot_root_digest()
-                && selector.materialization_proof.parser_identity_digest
-                    == publication.generation_identity.parser_identity_digest
-                && selector.materialization_proof.query_pack_digest
-                    == publication.generation_identity.query_pack_digest
-        });
+        .map(|selector| selector.projection_record.clone())
+        .collect::<Vec<_>>();
+    let proofs_are_from_one_generation = projection_records.iter().all(|record| {
+        let proof = &record.proof;
+        proof.validate_shape().is_ok()
+            && digest_matches_bytes(
+                proof.workspace_root_digest().as_str(),
+                &publication.generation_identity.workspace_root_digest,
+            )
+            && proof.workspace_root_digest().as_str()
+                == blake3::Hash::from_bytes(
+                    *publication.workspace_identity.source_snapshot_root_digest(),
+                )
+                .to_hex()
+                .as_str()
+            && digest_matches_bytes(
+                proof.parser_identity_digest().as_str(),
+                &publication.generation_identity.parser_identity_digest,
+            )
+            && digest_matches_bytes(
+                proof.query_pack_digest().as_str(),
+                &publication.generation_identity.query_pack_digest,
+            )
+    });
     if !proofs_are_from_one_generation {
         return Err(format!(
             "selector materialization proofs cross generation identity: providerId={}",
             publication.provider_id
         ));
     }
-    let records = provider_files
+    let covered_owner_paths = projection_records
         .iter()
-        .flat_map(|file| file.selector_receipts.iter())
-        .map(|selector| {
-            ExactSelectorGenerationRecordV1::try_from(&selector.materialization_proof)
-                .map_err(|error| error.to_string())
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let covered_owner_paths = records
-        .iter()
-        .map(|record| record.owner_path.as_str())
+        .map(|record| record.proof.owner_path())
         .collect::<BTreeSet<_>>();
     let provider_owner_paths = provider_files
         .iter()
@@ -251,13 +260,12 @@ fn publish_complete_workspace_search_generation_v1(
             path.to_string_lossy().replace('\\', "/")
         })
         .collect::<BTreeSet<_>>();
-    if covered_owner_paths.len() != provider_owner_paths.len()
-        || !provider_owner_paths
-            .iter()
-            .all(|path| covered_owner_paths.contains(path.as_str()))
+    if !covered_owner_paths
+        .iter()
+        .all(|path| provider_owner_paths.contains(*path))
     {
         return Err(format!(
-            "complete generation owner coverage does not match provider source envelope: providerId={} ownerCount={} coveredOwnerCount={}",
+            "provider projection contains an owner outside the admitted source envelope: providerId={} ownerCount={} projectedNonEmptyOwnerCount={}",
             publication.provider_id,
             provider_owner_paths.len(),
             covered_owner_paths.len()
@@ -266,7 +274,7 @@ fn publish_complete_workspace_search_generation_v1(
     if publication.workspace_identity.owner_count()
         != u32::try_from(provider_owner_paths.len()).unwrap_or(u32::MAX)
         || publication.workspace_identity.selector_count()
-            != u32::try_from(records.len()).unwrap_or(u32::MAX)
+            != u32::try_from(projection_records.len()).unwrap_or(u32::MAX)
     {
         return Err(format!(
             "complete generation coverage does not match admitted workspace identity: providerId={}",
@@ -274,11 +282,11 @@ fn publish_complete_workspace_search_generation_v1(
         ));
     }
 
-    let fixture =
-        build_exact_selector_generation_fixture_v1(&publication.generation_identity, records)
-            .map_err(|error| {
-                format!("failed to build complete exact-selector generation: {error}")
-            })?;
+    let fixture = build_exact_selector_fixture_from_projection_records_v1(
+        &publication.generation_identity,
+        projection_records.clone(),
+    )
+    .map_err(|error| format!("failed to build complete exact-selector generation: {error}"))?;
     let fixture_digest = *fixture_digest_v1(&fixture)
         .map_err(|error| format!("failed to identify exact-selector fixture: {error}"))?;
     let generation_digest = publication.generation_identity.generation_digest;
@@ -312,6 +320,9 @@ fn publish_complete_workspace_search_generation_v1(
         super::ProviderSourceSnapshotEnvelopePublicationV1 {
             snapshot: publication.snapshot,
             provider_id: publication.provider_id,
+            address_provider_digest: &agent_semantic_artifacts::provider_digest(
+                publication.registry_evidence.fingerprint.as_bytes(),
+            ),
             source_extensions: publication.source_extensions,
             artifact_root: &staging_directory,
             provider_workspace_root: publication.project_root,
@@ -402,7 +413,7 @@ fn publish_complete_workspace_search_generation_v1(
             agent_semantic_search::exact_selector_fixture_publication::publish_exact_selector_fixture_v1(
                 publication.artifact_root,
                 &publication.generation_identity,
-                publication.exact_selector_projection_records.clone(),
+                projection_records,
             )?,
         provider_envelope_path: generation_directory.join(envelope_relative_path),
         exact_selector_fixture_path: generation_directory.join(fixture_relative_path),
@@ -411,4 +422,8 @@ fn publish_complete_workspace_search_generation_v1(
         fixture_digest,
         workspace_identity_digest: *publication.workspace_identity.identity_digest(),
     })
+}
+
+fn digest_matches_bytes(encoded: &str, expected: &[u8; 32]) -> bool {
+    encoded == blake3::Hash::from_bytes(*expected).to_hex().as_str()
 }

@@ -148,6 +148,7 @@ fn agent_config_sync_is_provider_independent_and_does_not_materialize_activation
     let output = protocol_command()
         .env("PATH", path)
         .env("SEMANTIC_AGENT_BIN_DIR", &asp_bin_dir)
+        .env("CODEX_HOME", root.join(".codex-home"))
         .env("ASP_STATE_HOME", &asp_state_home)
         .args(["agent", "config", "sync"])
         .output()

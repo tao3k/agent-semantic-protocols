@@ -10,6 +10,42 @@ use tokio::{io::AsyncWriteExt, sync::Mutex};
 
 const SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-workspace-admission-catalog.v1";
 
+#[derive(Debug)]
+pub enum RuntimeWorkspaceAdmissionCatalogResolveError {
+    RootNotAbsolute(PathBuf),
+    Unavailable {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    WorkspaceNotAdmitted(PathBuf),
+    Invalid(String),
+}
+
+impl std::fmt::Display for RuntimeWorkspaceAdmissionCatalogResolveError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RootNotAbsolute(root) => write!(
+                formatter,
+                "workspace admission locator root must be absolute: {}",
+                root.display()
+            ),
+            Self::Unavailable { path, source } => write!(
+                formatter,
+                "workspace admission locator is unavailable at {}: {source}",
+                path.display()
+            ),
+            Self::WorkspaceNotAdmitted(root) => write!(
+                formatter,
+                "canonical workspace scope is not admitted: projectRoot={}",
+                root.display()
+            ),
+            Self::Invalid(error) => formatter.write_str(error),
+        }
+    }
+}
+
+impl std::error::Error for RuntimeWorkspaceAdmissionCatalogResolveError {}
+
 #[cfg(unix)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct CatalogFileIdentity {
@@ -110,9 +146,26 @@ impl RuntimeWorkspaceAdmissionCatalog {
                 entry.workspace_identity
             ));
         }
+        if let Some(existing) = entries.iter().find(|existing| {
+            existing.workspace_identity == entry.workspace_identity
+                && existing.project_root != entry.project_root
+        }) {
+            return Err(format!(
+                "workspace admission catalog identity already owns a canonical root: workspaceIdentity={} existingProjectRoot={} requestedProjectRoot={}",
+                entry.workspace_identity,
+                existing.project_root.display(),
+                entry.project_root.display()
+            ));
+        }
         let inserted_entry = entry.clone();
         if !entries.insert(entry) {
-            return Ok(false);
+            match tokio::fs::metadata(&self.path).await {
+                Ok(metadata) if metadata.is_file() && metadata.len() > 0 => return Ok(false),
+                Ok(_) | Err(_) => {
+                    publish_catalog(&self.path, &entries).await?;
+                    return Ok(true);
+                }
+            }
         }
         if let Err(error) = publish_catalog(&self.path, &entries).await {
             entries.remove(&inserted_entry);
@@ -126,31 +179,41 @@ impl RuntimeWorkspaceAdmissionCatalog {
     pub fn resolve_mapped(
         path: &std::path::Path,
         project_root: &std::path::Path,
-    ) -> Result<RuntimeWorkspaceAdmissionCatalogEntry, String> {
+    ) -> Result<RuntimeWorkspaceAdmissionCatalogEntry, RuntimeWorkspaceAdmissionCatalogResolveError>
+    {
         if !project_root.is_absolute() {
-            return Err("workspace admission locator root must be absolute".to_owned());
+            return Err(
+                RuntimeWorkspaceAdmissionCatalogResolveError::RootNotAbsolute(
+                    project_root.to_path_buf(),
+                ),
+            );
         }
-        let file = std::fs::File::open(path).map_err(|error| {
-            format!(
-                "workspace admission locator is unavailable at {}: {error}",
-                path.display()
-            )
+        let file = std::fs::File::open(path).map_err(|source| {
+            RuntimeWorkspaceAdmissionCatalogResolveError::Unavailable {
+                path: path.to_path_buf(),
+                source,
+            }
         })?;
-        let identity = catalog_file_identity(&file)?;
-        if let Some(entries_by_root) = cached_catalog_entries(path, &identity)? {
+        let invalid = RuntimeWorkspaceAdmissionCatalogResolveError::Invalid;
+        let identity = catalog_file_identity(&file).map_err(&invalid)?;
+        if let Some(entries_by_root) = cached_catalog_entries(path, &identity).map_err(&invalid)? {
             return resolve_catalog_entry(entries_by_root.as_ref(), project_root);
         }
         // SAFETY: catalog publication is immutable and atomic. Existing mappings retain
         // the previous inode while a writer publishes the next complete catalog.
-        let mapping = unsafe { memmap2::MmapOptions::new().map(&file) }
-            .map_err(|error| format!("map workspace admission locator: {error}"))?;
+        let mapping = unsafe { memmap2::MmapOptions::new().map(&file) }.map_err(|error| {
+            RuntimeWorkspaceAdmissionCatalogResolveError::Invalid(format!(
+                "map workspace admission locator: {error}"
+            ))
+        })?;
         let entries_by_root = Arc::new(
-            decode_catalog(mapping.as_ref())?
+            decode_catalog(mapping.as_ref())
+                .map_err(&invalid)?
                 .into_iter()
                 .map(|entry| (entry.project_root.clone(), entry))
                 .collect(),
         );
-        cache_catalog_entries(path, identity, Arc::clone(&entries_by_root))?;
+        cache_catalog_entries(path, identity, Arc::clone(&entries_by_root)).map_err(&invalid)?;
         resolve_catalog_entry(entries_by_root.as_ref(), project_root)
     }
 }
@@ -191,11 +254,10 @@ fn cache_catalog_entries(
 fn resolve_catalog_entry(
     entries_by_root: &BTreeMap<PathBuf, RuntimeWorkspaceAdmissionCatalogEntry>,
     project_root: &std::path::Path,
-) -> Result<RuntimeWorkspaceAdmissionCatalogEntry, String> {
+) -> Result<RuntimeWorkspaceAdmissionCatalogEntry, RuntimeWorkspaceAdmissionCatalogResolveError> {
     entries_by_root.get(project_root).cloned().ok_or_else(|| {
-        format!(
-            "canonical workspace scope is not admitted: projectRoot={}",
-            project_root.display()
+        RuntimeWorkspaceAdmissionCatalogResolveError::WorkspaceNotAdmitted(
+            project_root.to_path_buf(),
         )
     })
 }
@@ -248,6 +310,18 @@ fn decode_catalog(bytes: &[u8]) -> Result<BTreeSet<RuntimeWorkspaceAdmissionCata
                 entry.project_root.display()
             ));
         }
+        if entries
+            .iter()
+            .any(|existing: &RuntimeWorkspaceAdmissionCatalogEntry| {
+                existing.workspace_identity == entry.workspace_identity
+                    && existing.project_root != entry.project_root
+            })
+        {
+            return Err(format!(
+                "Runtime Server workspace admission catalog maps one workspace identity to multiple roots: workspaceIdentity={}",
+                entry.workspace_identity
+            ));
+        }
         if !entries.insert(entry) {
             return Err(
                 "Runtime Server workspace admission catalog contains duplicates".to_owned(),
@@ -288,9 +362,13 @@ async fn publish_catalog(
     file.write_all(&bytes)
         .await
         .map_err(|error| format!("write workspace admission catalog: {error}"))?;
-    file.sync_all()
+    // This catalog is a derived locator, not the canonical generation authority.
+    // Complete bytes plus atomic rename prevent torn readers; if the locator is
+    // lost across a crash, the Runtime Server reconstructs it from the validated
+    // immutable generation pointer through typed IPC.
+    file.flush()
         .await
-        .map_err(|error| format!("sync workspace admission catalog: {error}"))?;
+        .map_err(|error| format!("flush workspace admission catalog: {error}"))?;
     drop(file);
     tokio::fs::rename(&pending, path)
         .await

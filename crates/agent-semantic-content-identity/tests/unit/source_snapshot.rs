@@ -18,6 +18,18 @@ fn snapshot_root_is_order_independent() {
 }
 
 #[test]
+fn source_bytes_have_one_canonical_workspace_leaf_digest() {
+    let bytes = b"pub fn owner() {}\n";
+    let from_bytes = WorkspaceSnapshot::from_file_bytes([("src/lib.rs", bytes.as_slice())]);
+    let digest = crate::exact_selector_merkle::blake3_content_digest_v1(bytes);
+    let from_canonical_digest =
+        WorkspaceSnapshot::from_file_hashes([("src/lib.rs", digest.as_str())]);
+
+    assert_eq!(from_bytes, from_canonical_digest);
+    assert_eq!(from_bytes.file_digest("src/lib.rs"), Some(digest.as_str()));
+}
+
+#[test]
 fn changed_blob_changes_snapshot_root() {
     let before = WorkspaceSnapshot::from_file_hashes([("src/lib.rs", "sha256:before")]);
     let after = WorkspaceSnapshot::from_file_hashes([("src/lib.rs", "sha256:after")]);

@@ -59,7 +59,7 @@ fn lexical_overlay_candidates_project_path_and_content_hits_without_executable_r
 }
 
 #[test]
-fn root_candidates_walk_workspace_with_language_filter_and_ignore_dirs() {
+fn explicit_owner_candidates_apply_language_filter_without_workspace_walk() {
     let root = std::env::temp_dir().join(format!(
         "asp-dynamic-root-candidates-{}",
         SystemTime::now()
@@ -84,13 +84,14 @@ fn root_candidates_walk_workspace_with_language_filter_and_ignore_dirs() {
     let terms = vec!["dynamic".to_string()];
     let ignore_dirs = vec!["target".to_string()];
     let include_hidden_dirs = Vec::new();
+    let owners = vec![std::path::PathBuf::from("src/dynamic_overlay_owner.rs")];
     let fixture = crate::source_snapshot_fixture::canonical_test_snapshot();
     let collection =
         collect_dynamic_lexical_overlay_candidates_from_roots(DynamicSearchRootCandidateRequest {
             project_root: &root,
             locator_root: &root,
             terms: &terms,
-            owners: &[],
+            owners: &owners,
             ignore_dirs: &ignore_dirs,
             include_hidden_dirs: &include_hidden_dirs,
             base_snapshot: &fixture.workspace,

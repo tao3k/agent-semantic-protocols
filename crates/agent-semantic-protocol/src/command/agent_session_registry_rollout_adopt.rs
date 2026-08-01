@@ -54,6 +54,9 @@ pub(super) fn adopt_reusable_rollout_session(
     else {
         return Ok(None);
     };
+    if registry.session_is_retired(request.project_id, candidate_session_id.as_str())? {
+        return Ok(None);
+    }
     let validation = validate_recent_session_profile(
         candidate_session_id.as_str(),
         request.root_session_id,

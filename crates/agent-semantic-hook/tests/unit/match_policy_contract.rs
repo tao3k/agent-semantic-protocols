@@ -1,6 +1,7 @@
 use agent_semantic_hook::{
     DecisionKind, HookClassificationRequest, ReasonKind, classify_hook_with_config,
-    default_client_config_template, load_client_config_for_project,
+    default_client_config_template, evaluate_match_policy_conformance,
+    load_client_config_for_project,
 };
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, fs, path::PathBuf, process::Command};
@@ -198,6 +199,16 @@ fn production_match_policy_contract() {
             reason: ReasonKind::DirectSourceRead,
         },
         MatchCase {
+            name: "structured document read materializer",
+            payload: json!({
+                "tool_name": "Read",
+                "tool_input": {"file_path": "package.json"},
+            }),
+            rule_id: "materialize-structured-document-read-action",
+            decision: DecisionKind::Deny,
+            reason: ReasonKind::StructuredSourceRead,
+        },
+        MatchCase {
             name: "bounded JSON projection",
             payload: shell("jq -c '.package.name' package.json"),
             rule_id: "allow-bounded-json-projection",
@@ -299,6 +310,12 @@ fn production_match_policy_contract() {
         .iter()
         .map(|rule_id| (*rule_id).to_owned())
         .collect::<BTreeSet<_>>();
+    let report = evaluate_match_policy_conformance(&runtime, &config, "codex");
+    if !report.is_complete() {
+        failures.push(format!(
+            "production conformance receipt incomplete: {report:?}"
+        ));
+    }
     fs::remove_dir_all(root).expect("cleanup match-policy contract root");
     if matched != configured {
         failures.push(format!(

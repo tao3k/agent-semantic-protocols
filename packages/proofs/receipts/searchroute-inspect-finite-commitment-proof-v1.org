@@ -57,7 +57,7 @@ serialization only.
 
 #+begin_src sh
 uv run --project packages/proofs --frozen \
-  asp-axle-lean-audit \
+  python -m asp_proofs lean-audit \
   packages/proofs/receipts/searchroute-inspect-finite-commitment-audit-v1.json \
   --allow-axiom Classical.choice \
   --allow-axiom Quot.sound \

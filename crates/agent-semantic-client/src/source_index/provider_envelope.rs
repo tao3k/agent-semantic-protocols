@@ -8,6 +8,7 @@ use super::CurrentSourceIndexSnapshot;
 pub struct ProviderSourceSnapshotEnvelopePublicationV1<'a> {
     pub snapshot: &'a CurrentSourceIndexSnapshot,
     pub provider_id: &'a str,
+    pub address_provider_digest: &'a str,
     pub source_extensions: &'a [String],
     pub artifact_root: &'a Path,
     pub provider_workspace_root: &'a Path,
@@ -19,6 +20,7 @@ struct ProviderSourceSnapshotEnvelopeV1<'a> {
     schema_id: &'static str,
     schema_version: &'static str,
     provider_id: &'a str,
+    address_provider_digest: &'a str,
     provider_workspace_root: &'a str,
     provider_workspace_identity_digest: &'a str,
     source_snapshot: &'a agent_semantic_content_identity::SourceSnapshotEvidence,
@@ -244,6 +246,7 @@ pub fn publish_provider_source_snapshot_envelope(
         schema_id: "asp.exact-source-snapshot-envelope.v1",
         schema_version: "1",
         provider_id: provider_id.as_str(),
+        address_provider_digest: request.address_provider_digest,
         provider_workspace_root: &provider_workspace_identity.root,
         provider_workspace_identity_digest: &provider_workspace_identity.digest,
         source_snapshot: &source_snapshot,
@@ -256,7 +259,7 @@ pub fn publish_provider_source_snapshot_envelope(
     publish_provider_source_snapshot_envelope_file(
         request.artifact_root,
         &envelope,
-        &request.snapshot.source_snapshot.provider_digest,
+        request.address_provider_digest,
     )
 }
 
@@ -292,9 +295,8 @@ fn provider_source_envelope_lookup(
                 request.language_id, request.provider_id
             )
         })?;
-    let registry = request.provider_registry.evidence(request.project_root);
     let provider_digest =
-        agent_semantic_artifacts::provider_digest(registry.fingerprint.as_bytes());
+        provider_registry_address_digest(request.provider_registry, request.project_root);
     let provider_workspace_identity = provider_workspace_identity_v1(request.project_root)?;
     let file_name = source_snapshot_envelope_file_name(
         provider.provider_id.as_str(),
@@ -311,6 +313,14 @@ fn provider_source_envelope_lookup(
         provider_workspace_identity,
         envelope_path,
     })
+}
+
+pub(super) fn provider_registry_address_digest(
+    provider_registry: &agent_semantic_client_core::ProviderRegistrySnapshot,
+    project_root: &Path,
+) -> String {
+    let registry = provider_registry.evidence(project_root);
+    agent_semantic_artifacts::provider_digest(registry.fingerprint.as_bytes())
 }
 
 /// Load one already-published provider workspace envelope without materializing it.

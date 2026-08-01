@@ -18,7 +18,7 @@ pub(super) type TursoSourceIndexCanonicalSelectorProjection = (
     String,
     Option<crate::ClientDbSourceIndexSelectorSymbol>,
     Option<crate::ClientDbSourceIndexSelectorKind>,
-    Option<agent_semantic_content_identity::ExactSelectorMaterializationProofV1>,
+    Option<agent_semantic_content_identity::ExactSelectorProjectionRecordV1>,
 );
 
 pub(super) fn decode_turso_source_index_canonical_selectors(
@@ -32,12 +32,12 @@ pub(super) fn decode_turso_source_index_canonical_selectors(
     let mut haystack = String::new();
     let mut selector_symbol = None;
     let mut selector_kind = None;
-    let mut selector_proof = None;
+    let mut selector_projection = None;
     for selector in selector_facts {
-        if selector_proof.is_none() {
+        if selector_projection.is_none() {
             selector_symbol = selector.symbol.clone().map(Into::into);
             selector_kind = selector.kind.clone().map(Into::into);
-            selector_proof = Some(selector.materialization_proof);
+            selector_projection = Some(selector.projection_record);
         }
         haystack.push(' ');
         haystack.push_str(&selector.selector_id);
@@ -54,7 +54,12 @@ pub(super) fn decode_turso_source_index_canonical_selectors(
             })?,
         );
     }
-    Ok((haystack, selector_symbol, selector_kind, selector_proof))
+    Ok((
+        haystack,
+        selector_symbol,
+        selector_kind,
+        selector_projection,
+    ))
 }
 
 pub(super) async fn resolve_turso_source_index_lookup_scope(
@@ -344,7 +349,7 @@ JOIN asp_source_index_owner_v1 AS owner
                 .into_iter()
                 .map(crate::ClientDbSourceIndexQueryKey::from)
                 .collect::<Vec<_>>();
-            let (selector_haystack, selector_symbol, selector_kind, selector_proof) =
+            let (selector_haystack, selector_symbol, selector_kind, selector_projection) =
                 decode_turso_source_index_canonical_selectors(&selector_facts_json)?;
             let match_score = source_index_structured_candidate_score(
                 &path,
@@ -371,7 +376,7 @@ JOIN asp_source_index_owner_v1 AS owner
                     query_keys,
                     selector_symbol,
                     selector_kind,
-                    selector_proof,
+                    selector_projection,
                 },
             ));
         }

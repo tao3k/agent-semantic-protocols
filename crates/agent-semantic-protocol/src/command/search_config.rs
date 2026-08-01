@@ -19,7 +19,6 @@ pub(super) struct SearchConfig {
 #[derive(Debug, Clone, Default)]
 struct LanguageConfig {
     enabled: Option<bool>,
-    bin: Option<String>,
 }
 
 impl Default for SearchConfig {
@@ -50,12 +49,6 @@ impl AspConfig {
             .get(language_id)
             .and_then(|language| language.enabled)
             .unwrap_or(true)
-    }
-
-    pub(super) fn provider_bin(&self, language_id: &str) -> Option<&str> {
-        self.languages
-            .get(language_id)
-            .and_then(|language| language.bin.as_deref())
     }
 
     fn merge_text(&mut self, text: &str) {
@@ -91,7 +84,6 @@ impl AspConfig {
                 let language = self.languages.entry(language_id.clone()).or_default();
                 match key {
                     "enabled" => language.enabled = parse_bool(value),
-                    "bin" => language.bin = parse_string(value),
                     _ => {}
                 }
             }

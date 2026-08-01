@@ -1,6 +1,7 @@
 use agent_semantic_client_db::runtime_server_workspace::{
-    RuntimeServerWorkspaceRegistry, WorkspaceGenerationDataPlaneClient,
-    WorkspaceGenerationDataPlaneOpen, WorkspaceGenerationState, WorkspaceMemoryGeneration,
+    RuntimeServerWorkspaceRegistry, WorkspaceExactProjectionDataPlaneClient,
+    WorkspaceExactProjectionDataPlaneOpen, WorkspaceGenerationDataPlaneClient,
+    WorkspaceGenerationDataPlaneOpen, WorkspaceGenerationPointerReader, WorkspaceMemoryGeneration,
     WorkspaceOwnerSnapshot, WorkspaceRecoverySource,
 };
 
@@ -16,37 +17,32 @@ fn generation(workspace_identity: &str) -> WorkspaceMemoryGeneration {
     );
     let source_snapshot = workspace_snapshot.evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        "resident-recovery-fixture".to_owned(),
+        format!(
+            "blake3-256:{}",
+            blake3::hash(b"resident-recovery-fixture-provider").to_hex()
+        ),
     );
-    let workspace_generation =
-        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
-            root_digest: source_snapshot.root_digest.clone(),
-            root_depth: 1,
-            leaf_count: 1,
-            owner_count: 1,
-        };
-    WorkspaceMemoryGeneration {
-        workspace_identity: workspace_identity.to_owned(),
-        project_root: project_root(workspace_identity).display().to_string(),
-        state: WorkspaceGenerationState::Ready,
-        active_epoch: 1,
-        generation_digest: content_digest.clone(),
-        root_depth: [1, 0],
-        workspace_snapshot,
-        source_snapshot,
-        workspace_generation,
-        memory_backend_digest: content_digest.clone(),
-        workspace_source_scope_generation:
-            agent_semantic_runtime::workspace_source_scope_generation_digest(&[])
-                .expect("empty ProjectResolution generation"),
-        project_resolutions: Vec::new(),
-        owners: vec![WorkspaceOwnerSnapshot {
-            owner_path: "src/lib.rs".to_owned(),
-            content_digest,
-            bytes: bytes.to_vec(),
-            selectors: Vec::new(),
-        }],
-    }
+    WorkspaceMemoryGeneration::try_from_build(
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            workspace_identity: workspace_identity.to_owned(),
+            project_root: project_root(workspace_identity).display().to_string(),
+            active_epoch: 1,
+            workspace_snapshot,
+            source_snapshot,
+            module_graph_digest: format!(
+                "blake3-256:{}",
+                blake3::hash(b"resident-recovery-fixture-module-graph").to_hex()
+            ),
+            project_resolutions: Vec::new(),
+            owners: vec![WorkspaceOwnerSnapshot {
+                owner_path: "src/lib.rs".to_owned(),
+                content_digest,
+                bytes: bytes.to_vec(),
+                selectors: Vec::new(),
+            }],
+        },
+    )
+    .expect("typed resident recovery generation")
 }
 
 #[tokio::test]
@@ -134,5 +130,49 @@ async fn resident_writer_replaces_a_corrupt_pointer_with_one_complete_generation
     assert_eq!(counters.database_opens, 0);
     assert_eq!(counters.provider_spawns, 0);
     assert_eq!(counters.control_socket_roundtrips, 0);
+    registry.shutdown().await.expect("drain writer lane");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn obsolete_exact_segment_format_requires_typed_rebuild() {
+    let temporary = tempfile::tempdir().expect("temporary runtime root");
+    let workspace_identity = "workspace-obsolete-exact-format";
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    registry
+        .publish(
+            "publish-current-exact-format",
+            WorkspaceRecoverySource::TursoGeneration,
+            generation(workspace_identity),
+        )
+        .await
+        .expect("publish current exact projection segment");
+    let pointer =
+        agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+            temporary.path(),
+            workspace_identity,
+            &project_root(workspace_identity),
+        )
+        .expect("workspace generation pointer path");
+    let pointer_reader = WorkspaceGenerationPointerReader::open(&pointer)
+        .await
+        .expect("open generation pointer");
+    let snapshot = pointer_reader.read().expect("read generation pointer");
+    let exact_path = std::path::Path::new(&snapshot.mmap_segment_path).with_extension("exact.mmap");
+    let mut bytes = tokio::fs::read(&exact_path)
+        .await
+        .expect("read exact segment");
+    bytes[..16].copy_from_slice(b"ASPEXACTMMAP0001");
+    tokio::fs::write(&exact_path, bytes)
+        .await
+        .expect("write obsolete exact segment identity");
+
+    let state = WorkspaceExactProjectionDataPlaneClient::open_state(&pointer)
+        .await
+        .expect("classify obsolete exact segment");
+    let WorkspaceExactProjectionDataPlaneOpen::RecoveryRequired { reason } = state else {
+        panic!("obsolete exact segment format must require a typed rebuild");
+    };
+    assert!(reason.contains("header is invalid"), "reason={reason}");
     registry.shutdown().await.expect("drain writer lane");
 }

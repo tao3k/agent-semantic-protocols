@@ -19,14 +19,9 @@ use agent_semantic_client_core::{
 use agent_semantic_client_db::{ClientDbEngine, ClientDbEngineReport, ClientDbReport};
 use serde_json::json;
 
-use super::source_index_evidence::{
-    source_index_lookup_artifact_evidence,
-};
+use super::source_index_evidence::source_index_lookup_artifact_evidence;
 use super::structural_index_import::import_structural_index_artifacts;
-use crate::source_index::{
-    SourceIndexLookupRequest, lookup_source_index_in_cache,
-};
-
+use crate::source_index::{SourceIndexLookupRequest, lookup_source_index_in_cache};
 
 pub(crate) fn run_cache(
     project_root: &Path,
@@ -386,7 +381,6 @@ pub(crate) fn run_cache(
     }
 }
 
-
 struct SourceIndexLookupSpec {
     query: String,
     index_root: PathBuf,
@@ -437,7 +431,6 @@ fn parse_source_index_lookup_args(
     })
 }
 
-
 fn next_flag_value<'a>(
     flag: &str,
     iter: &mut impl Iterator<Item = &'a String>,
@@ -451,7 +444,6 @@ fn next_flag_value<'a>(
         Ok(value.clone())
     }
 }
-
 
 fn clear_manifest_generations(
     cache_report: &CacheManifestReport,

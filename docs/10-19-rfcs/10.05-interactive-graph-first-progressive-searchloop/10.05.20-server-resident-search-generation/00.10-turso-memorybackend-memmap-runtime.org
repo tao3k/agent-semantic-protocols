@@ -155,6 +155,33 @@ The Runtime Server IPC boundary is a control plane, never a canonical-generation
 
 The workspace writer lane resolves the admitted project scope, invokes the selected provider parsers, constructs the next canonical generation inside the daemon, commits it to Turso, builds the MemoryBackend and mmap projections, and then atomically publishes the epoch. Consequently, growing a workspace or generation MUST NOT grow an IPC control request. Protocol fixtures MUST reject source-bearing generation operations and MUST enforce a fixed control-frame budget independent of owner count and source byte count.
 
+** Provider language-projection closure
+
+Every programming-language provider selected for a generation declares the
+shared =languageProjection= v1 descriptor in ProviderRegistry.  Activation
+preserves that descriptor and its command, transport, request, response, and
+canonical-item identity contracts in the registry fingerprint.  The daemon
+writer lane invokes the declared framed batch exactly once for the provider's
+same-pass owner bytes; ASP, not the provider, binds returned canonical item
+identities and byte ranges to the workspace Merkle tree and creates exact
+materialization proofs.
+
+The provider response covers every owner in its admitted source envelope,
+including owners with zero canonical items.  A generation records that owner
+coverage independently from selector count.  Publication rejects a missing
+descriptor, missing owner response, duplicate owner response, source-leaf
+digest mismatch, out-of-bounds item range, duplicate structural selector, or
+an owner/item identity outside the selected provider.  Owner bytes, selectors,
+relations, module graph, generation evidence, Turso rows, MemoryBackend, and
+mmap projections cross one writer transaction and one publication barrier.
+There is no owner-only generation that can become active.
+
+Document providers use their Git candidate scope and document AST projection
+contract; they do not masquerade as programming-language project providers.
+All registered programming-language harnesses converge on the shared batch
+contract.  A Rust-only consumer or a provider-private reconstruction path is
+non-conforming.
+
 * Query-path prohibition
 
 After workspace admission, warm search and exact query must not:
@@ -175,12 +202,40 @@ Lifecycle hooks request admission before query execution and never wait for a
 generation build.  Search and exact consumers must not call the admission
 operation or poll its progress.
 
+Generation reconciliation is edge-triggered, not query-triggered.  Session
+start and the first user-prompt event may establish a missing workspace entry.
+After that, a successful workspace mutation submits exactly one asynchronous
+reconciliation request from the post-tool lifecycle edge.  Pre-tool search or
+query events MUST NOT restart an admission attempt: doing so races the command
+against the generation it just requested and makes
+=selector-not-in-active-generation= nondeterministic.  Read-only post-tool
+events do not submit reconciliation.  The hook returns the accepted receipt
+
+Mutation classification is owned by the hook match engine and its typed
+configuration.  Session activity rendering is an orthogonal output concern:
+an =agentSessionAction= decision MUST NOT replace or hide the classifier's
+=operationIntent= before generation admission is selected.  The post-tool edge
+classifies once, records session activity when applicable, and submits the
+generation request from the preserved classified mutation evidence.
+without waiting; the workspace writer lane coalesces concurrent submissions
+and publishes the complete next epoch atomically.
+
 =search owner <path> items= is a projection over the owner and canonical
 selectors already stored in that immutable generation.  It must not stat the
 owner, read source bytes, probe an incremental DB record, invoke a language
 provider, or publish a runtime overlay.  An absent owner is a generation
 diagnostic; changed bytes are admitted asynchronously by the workspace writer
 lane as the next complete epoch.
+
+=search lexical= and unscoped =search pipe= consume the same resident
+generation lease.  Their source-index candidate lookup MUST execute against
+the generation's load-once MemoryBackend and MUST NOT create a workspace-owner
+IPC session, connect a control/data socket, open Turso, bootstrap a schema, or
+spawn a provider.  Snapshot evidence, lexical candidates, selectors, and owner
+bytes therefore come from one epoch lease.  The provider-dispatch layer opens
+that lease once and passes it through the SearchLoop context; individual search
+stages MUST NOT reopen the mmap generation or recover through the legacy DB
+client facade.
 
 Provider owner fingerprint probes and complete-owner snapshot reads follow the
 same rule.  A successful durable owner write atomically replaces the
@@ -213,6 +268,29 @@ owner source ranges or immutable derived projection bytes.  A process-cold
 exact read maps the pointer and this index, performs a hash binary search, and
 copies only the selected bytes.  It must not deserialize the complete
 generation JSON into a per-command heap.
+
+Exact search and exact projection consume the same atomic pointer authority.
+The projection hot path MUST NOT create a =WorkspaceDbIpcSession=, connect a
+workspace-owner socket, or perform a Runtime Server control roundtrip.  It
+opens the published exact-projection mmap, validates the pointer-bound epoch
+and generation digest, and reads the selector from that immutable generation.
+Consequently a selector returned by owner search is executable against the
+same published generation; =selector-not-in-active-generation= is a failed
+publication invariant, not a normal retry state or a reason to consult an old
+session endpoint.
+
+Miss recovery is control-plane work.  The single workspace writer lane may
+materialize an owner and atomically publish a replacement generation, after
+which a new mmap reader follows the new pointer.  A read command never keeps a
+session-local generation alive as its current authority and never repairs an
+exact miss by falling back to a provider process on the hot path.
+
+Owner-local search follows the same rule.  When the requested owner already
+exists in the active mmap generation it ranks that generation directly with
+zero control socket roundtrips and zero provider invocations.  Only an owner
+absent from the published generation may request writer-lane recovery; search
+must not contact the workspace endpoint merely to prove that a resident owner
+is resident.
 
 The same index stores one canonical complete-projection digest per owner.  A
 warm owner admission compares content identity plus that digest and never
@@ -346,6 +424,20 @@ entrypoints.  They may submit one non-blocking generation build to the Runtime
 Server owner.  Exact query and search query are resident consumers: they MUST
 NOT submit, poll, or wait for generation admission.  A consumer that observes
 no published canonical generation fails closed with typed evidence.
+
+The hook-side admission request calls only the submit operation.  It MUST NOT
+call =ensure=, =wait-terminal=, poll =Ready=, or hold the hook open for provider
+work.  The immediate typed receipt may be =Building=; completion is published
+by the daemon-owned Tokio task and observed through the next immutable epoch.
+
+Admission coordination is partitioned by
+=(workspaceIdentity, canonicalProjectRoot)=.  The registry uses a sharded
+concurrent key map, an atomic single-flight state and attempt counter per entry,
+and a per-entry watch receipt/task handle.  A global async mutex over all
+admission states or all generation tasks is non-conforming because it couples
+unrelated workspaces and makes hook latency scale with concurrent sessions.
+The submit-only admission p99 gate is below 1,000 microseconds under at least
+256 concurrent requests to one source scope while accepting exactly one build.
 
 ** ASP-RFC-10.05-ESGA-PROJECT-ROOT-ISOLATION
 
@@ -486,3 +578,12 @@ TypeScript, Julia, Gerbil Scheme, document providers, and future lazy-loaded
 providers consume the same scoped candidate meaning.  A provider-facing
 request whose candidate paths were not rebased to its declared candidate base
 is an ASP producer defect and MUST fail before the provider process starts.
+
+* Global daemon health and workspace generation readiness are distinct
+
+The Runtime Server is Global-Healthy as soon as its control and data sockets
+are bound.  Catalog restoration and provider generation builds are
+workspace-keyed background states and expose their own =Building=, =Ready=, or
+=Failed= receipt.  A slow provider, an incompatible old generation, or one
+failed workspace MUST NOT leave the Global daemon in =Starting= or block
+healthcheck and unrelated workspaces/sessions.

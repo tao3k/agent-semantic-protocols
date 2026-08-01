@@ -6,8 +6,8 @@ use agent_semantic_hook::{
     DecisionKind, HOOK_PROTOCOL_ID, HookClassificationRequest, ROOT_BLOCK_BEGIN, ROOT_BLOCK_END,
     ReasonKind, RuntimeProviderHealthStatus, classify_hook_with_config,
     codex_user_trust_state_status, default_activation_path, default_claude_settings_path,
-    default_client_config_path, load_client_config_for_project, load_or_sync_activation,
-    runtime_profiles_for_runtime,
+    default_client_config_path, evaluate_match_policy_conformance, load_client_config_for_project,
+    load_or_sync_activation, runtime_profiles_for_runtime,
 };
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
@@ -183,14 +183,21 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     } else {
         ("not-applicable", "non-codex-client", "none".to_owned())
     };
-    let match_policy_probe_count = usize::from(client == "codex");
-    let match_policy_covered_rule_count = usize::from(classifier_rule_id != "none");
-    let match_policy_status = if client != "codex" {
-        "not-applicable"
-    } else if match_policy_rule_count == match_policy_covered_rule_count {
-        "complete"
-    } else {
-        "partial"
+    let match_policy_report = (client == "codex")
+        .then(|| evaluate_match_policy_conformance(&runtime, &hook_config, client));
+    let match_policy_probe_count = match_policy_report
+        .as_ref()
+        .map_or(0, |report| report.case_count);
+    let match_policy_covered_rule_count = match_policy_report
+        .as_ref()
+        .map_or(0, |report| report.covered_rule_ids.len());
+    let match_policy_failure_count = match_policy_report
+        .as_ref()
+        .map_or(0, |report| report.failures.len());
+    let match_policy_status = match match_policy_report.as_ref() {
+        None => "not-applicable",
+        Some(report) if report.is_complete() => "complete",
+        Some(_) => "partial",
     };
     let trust_status = if client == "codex" {
         codex_user_trust_state_status(&config_path).ok()
@@ -282,6 +289,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
             && root_hook
             && matches!(event_state_status, "missing" | "empty" | "unreadable"))
         || (client == "codex" && enforcement_status != "ok")
+        || (client == "codex" && match_policy_status != "complete")
     {
         "warning"
     } else {
@@ -293,7 +301,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         "not-applicable"
     };
     println!(
-        "[agent-doctor] status={doctor_status} client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} configContractStatus={} configuredContractFingerprint={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} binaryPathStatus={} binaryContractStatus={} binaryContractFingerprint={} activeContractFingerprint={} aspPathStatus={} aspPath={} hookShell={} hookShellMode=non-login hookShellBinaryStatus={} hookShellBinaryPath={} eventState={} eventStatePath={} eventStateBytes={} eventStateAgeMs={} classifierProbe={} classifierReason={} classifierRule={} matchPolicyStatus={} matchPolicyRules={} matchPolicyCases={} matchPolicyCovered={} enforcement={} enforcementProbe={} enforcementReason={} backgroundThreadHook={} protocol={}",
+        "[agent-doctor] status={doctor_status} client={client} providers={} activation={} activationRuntime=derived config={} clientConfig={} clientConfigStatus={} configContractStatus={} configuredContractFingerprint={} hook={} hookMode={} pluginHook={} trust={} projectTrust={} hookStateTrust={} trustMissing={} trustStale={} trustConfig={} binary={} binaryPath={} binaryPathStatus={} binaryContractStatus={} binaryContractFingerprint={} activeContractFingerprint={} aspPathStatus={} aspPath={} hookShell={} hookShellMode=login hookShellBinaryStatus={} hookShellBinaryPath={} eventState={} eventStatePath={} eventStateBytes={} eventStateAgeMs={} classifierProbe={} classifierReason={} classifierRule={} matchPolicyStatus={} matchPolicyRules={} matchPolicyCases={} matchPolicyCovered={} matchPolicyFailures={} enforcement={} enforcementProbe={} enforcementReason={} backgroundThreadHook={} protocol={}",
         runtime.providers.len(),
         display_path(&project_root, &activation_path),
         config_path.is_file(),
@@ -334,6 +342,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         match_policy_rule_count,
         match_policy_probe_count,
         match_policy_covered_rule_count,
+        match_policy_failure_count,
         enforcement_status,
         enforcement
             .as_ref()
@@ -346,6 +355,11 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         background_thread_hook,
         HOOK_PROTOCOL_ID,
     );
+    if let Some(report) = match_policy_report.as_ref() {
+        for failure in &report.failures {
+            println!("|match-policy failure={failure}");
+        }
+    }
     if let Some(report) = enforcement.as_ref()
         && let Some(detail) = report.detail.as_ref()
     {
@@ -434,6 +448,7 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
         && (config_contract_status != "match"
             || binary_contract_status != "match"
             || hook_binary_probe.status != "found"
+            || (client == "codex" && match_policy_status != "complete")
             || (client == "codex" && root_hook && hook_shell_binary_status != "match"))
     {
         return Err(format!(
@@ -480,6 +495,7 @@ fn reason_kind_label(kind: ReasonKind) -> &'static str {
         ReasonKind::None => "none",
         ReasonKind::ActivationUnavailable => "activation-unavailable",
         ReasonKind::DirectSourceRead => "direct-source-read",
+        ReasonKind::StructuredSourceRead => "structured-source-read",
         ReasonKind::BulkSourceDump => "bulk-source-dump",
         ReasonKind::RawBroadSearch => "raw-broad-search",
         ReasonKind::AspReasoningRouted => "asp-reasoning-routed",

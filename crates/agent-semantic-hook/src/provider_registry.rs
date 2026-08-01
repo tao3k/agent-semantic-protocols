@@ -118,6 +118,11 @@ const LANGUAGE_PROVIDER_MANIFEST_JSON: &[&str] = &[
 ];
 
 pub fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
+    static MANIFESTS: std::sync::OnceLock<Vec<ProviderManifest>> = std::sync::OnceLock::new();
+    MANIFESTS.get_or_init(build_provider_manifests).clone()
+}
+
+fn build_provider_manifests() -> Vec<ProviderManifest> {
     let language_manifests = language_provider_manifests();
     schema_registry()
         .languages
@@ -146,9 +151,68 @@ pub fn schema_registry_provider_manifests() -> Vec<ProviderManifest> {
                 "registry binary drift for language `{}` provider `{}`",
                 language.language_id, language.provider_id
             );
+            validate_provider_development_descriptor(&manifest).unwrap_or_else(|error| {
+                panic!(
+                    "invalid provider development descriptor for language `{}` provider `{}`: {error}",
+                    language.language_id, language.provider_id
+                )
+            });
             manifest
         })
         .collect()
+}
+
+fn validate_provider_development_descriptor(manifest: &ProviderManifest) -> Result<(), String> {
+    let development = manifest.development();
+    if development.schema_id != "agent.semantic-protocols.provider-development-descriptor"
+        || development.schema_version != "1"
+    {
+        return Err("development descriptor schema identity must be v1".to_string());
+    }
+    if development.build_binding != "root-development-installer-v1" {
+        return Err(format!(
+            "unsupported development build binding `{}`",
+            development.build_binding
+        ));
+    }
+    let source_root = std::path::Path::new(&development.source_root);
+    if source_root.is_absolute()
+        || source_root.as_os_str().is_empty()
+        || source_root
+            .components()
+            .any(|component| component == std::path::Component::ParentDir)
+    {
+        return Err(format!(
+            "development sourceRoot must be a non-empty repository-relative path: {}",
+            development.source_root
+        ));
+    }
+    Ok(())
+}
+
+pub fn registered_provider_development_v1(
+    language_id: &str,
+) -> Result<ProviderDevelopmentRegistrationV1, String> {
+    let manifest = schema_registry_provider_manifests()
+        .into_iter()
+        .find(|manifest| manifest.language_id().as_str() == language_id)
+        .ok_or_else(|| format!("no ProviderRegistry development descriptor for `{language_id}`"))?;
+    let development = manifest.development().clone();
+    Ok(ProviderDevelopmentRegistrationV1 {
+        language_id: manifest.language_id().clone(),
+        provider_id: manifest.provider_id().clone(),
+        binary: manifest.binary().to_string(),
+        development,
+    })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderDevelopmentRegistrationV1 {
+    pub language_id: agent_semantic_config::LanguageId,
+    pub provider_id: agent_semantic_config::ProviderId,
+    pub binary: String,
+    pub development:
+        crate::protocol_activation::protocol_activation_manifest::ProviderDevelopmentDescriptor,
 }
 
 pub fn registered_provider_method_invocation_v1(
@@ -262,22 +326,10 @@ fn language_provider_manifests() -> Vec<ProviderManifest> {
     LANGUAGE_PROVIDER_MANIFEST_JSON
         .iter()
         .map(|json| {
-            let manifest_id = serde_json::from_str::<serde_json::Value>(json)
-                .ok()
-                .and_then(|value| {
-                    value
-                        .get("manifestId")
-                        .and_then(serde_json::Value::as_str)
-                        .map(str::to_string)
-                })
-                .unwrap_or_else(|| "<missing-manifest-id>".to_string());
-            let mut manifest = serde_json::from_str::<ProviderManifest>(json).unwrap_or_else(
-                |error| {
-                    panic!(
-                        "embedded language provider manifest must be valid JSON: manifestId={manifest_id} error={error}"
-                    )
-                },
-            );
+            let mut manifest =
+                serde_json::from_str::<ProviderManifest>(json).unwrap_or_else(|error| {
+                    panic!("embedded language provider manifest must be valid JSON: {error}")
+                });
             normalize_language_provider_manifest(&mut manifest);
             manifest
         })
@@ -302,19 +354,8 @@ pub(crate) fn registered_language_id(candidate: &str) -> Option<agent_semantic_c
 }
 
 #[cfg(test)]
-mod registered_language_projection_tests {
-    #[test]
-    fn build_projection_matches_the_registry_schema() {
-        let mut schema_language_ids = super::schema_registry()
-            .languages
-            .iter()
-            .map(|registration| registration.language_id.as_str())
-            .collect::<Vec<_>>();
-        schema_language_ids.sort_unstable();
-        schema_language_ids.dedup();
-        assert_eq!(schema_language_ids, super::REGISTERED_LANGUAGE_ID_STRINGS);
-    }
-}
+#[path = "../tests/unit/provider_registry/registered_language_projection.rs"]
+mod registered_language_projection_tests;
 
 fn normalize_language_provider_manifest(manifest: &mut ProviderManifest) {
     manifest.schema_id = PROVIDER_MANIFEST_SCHEMA_ID.to_string();

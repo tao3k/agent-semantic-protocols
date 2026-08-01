@@ -46,30 +46,37 @@ def strategicSplit : SplitOption :=
 
 theorem greedy_split_is_informative :
     Informative 4 greedySplit := by
+  unfold Informative greedySplit
   decide
 
 theorem strategic_split_is_informative :
     Informative 4 strategicSplit := by
+  unfold Informative strategicSplit
   decide
 
 theorem greedy_is_immediately_no_worse :
     ImmediateNoWorse 4 greedySplit strategicSplit := by
+  unfold ImmediateNoWorse ambiguityReduction greedySplit strategicSplit
   decide
 
 theorem greedy_minimum_total_is_three :
     minimumTotalTokens greedySplit = 3 := by
+  unfold minimumTotalTokens greedySplit
   decide
 
 theorem strategic_minimum_total_is_two :
     minimumTotalTokens strategicSplit = 2 := by
+  unfold minimumTotalTokens strategicSplit
   decide
 
 theorem greedy_is_not_continuation_feasible :
     ¬ ContinuationFeasible 2 greedySplit := by
+  unfold ContinuationFeasible minimumTotalTokens greedySplit
   decide
 
 theorem strategic_is_continuation_feasible :
     ContinuationFeasible 2 strategicSplit := by
+  unfold ContinuationFeasible minimumTotalTokens strategicSplit
   decide
 
 theorem immediate_preference_does_not_imply_continuation_feasibility :
@@ -83,4 +90,3 @@ theorem immediate_preference_does_not_imply_continuation_feasibility :
   ⟩
 
 end ASPProof.SearchRouteContinuationAwareInspect
-

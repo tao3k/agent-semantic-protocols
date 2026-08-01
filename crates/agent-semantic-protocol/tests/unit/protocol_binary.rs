@@ -1,4 +1,7 @@
-use super::{install_protocol_binary_target, protocol_binary_artifact_digest};
+use super::{
+    install_protocol_binary_alias, install_protocol_binary_target,
+    protocol_binary_artifact_digest,
+};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use super::RuntimeBinaryIdentityV1;
@@ -142,6 +145,82 @@ fn unrelated_path_asp_is_ignored_by_canonical_target_selection() {
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
 
+#[cfg(unix)]
+#[test]
+fn runtime_health_establishes_the_user_path_symlink() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-runtime-user-path-alias-{}-{nonce}",
+        std::process::id()
+    ));
+    let protocol_home = root.join("state-home");
+    let source = root.join("source/asp");
+    let canonical_target = protocol_home.join("runtime/bin/asp");
+    let artifact_root = protocol_home.join("runtime/artifacts");
+    let user_path_alias = root.join("home/.local/bin/asp");
+    std::fs::create_dir_all(source.parent().expect("source parent")).expect("create source parent");
+    std::fs::write(&source, b"runtime asp").expect("write source");
+    super::install_protocol_binary_target(
+        &source,
+        &canonical_target,
+        &artifact_root,
+        &super::RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .expect("install canonical runtime target");
+
+    super::ensure_runtime_protocol_binary_alias(&protocol_home, &user_path_alias)
+        .expect("establish runtime PATH alias");
+
+    assert_eq!(
+        std::fs::read_link(&user_path_alias).expect("read runtime PATH alias"),
+        canonical_target
+    );
+    assert_eq!(
+        std::fs::canonicalize(&user_path_alias).expect("resolve runtime PATH alias"),
+        std::fs::canonicalize(protocol_home.join("runtime/bin/asp"))
+            .expect("resolve canonical runtime target")
+    );
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
+#[test]
+fn runtime_health_refuses_an_unmanaged_user_path_entry() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "asp-runtime-user-path-refusal-{}-{nonce}",
+        std::process::id()
+    ));
+    let protocol_home = root.join("state-home");
+    let source = root.join("source/asp");
+    let canonical_target = protocol_home.join("runtime/bin/asp");
+    let artifact_root = protocol_home.join("runtime/artifacts");
+    let user_path_alias = root.join("home/.local/bin/asp");
+    std::fs::create_dir_all(source.parent().expect("source parent")).expect("create source parent");
+    std::fs::create_dir_all(user_path_alias.parent().expect("alias parent"))
+        .expect("create alias parent");
+    std::fs::write(&source, b"runtime asp").expect("write source");
+    std::fs::write(&user_path_alias, b"unmanaged asp").expect("write unmanaged entry");
+    super::install_protocol_binary_target(
+        &source,
+        &canonical_target,
+        &artifact_root,
+        &super::RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .expect("install canonical runtime target");
+
+    let error = super::ensure_runtime_protocol_binary_alias(&protocol_home, &user_path_alias)
+        .expect_err("unmanaged runtime PATH entry must fail closed");
+
+    assert!(error.contains("refusing to replace unmanaged ASP runtime PATH entry"));
+    std::fs::remove_dir_all(root).expect("cleanup temp root");
+}
+
 #[test]
 fn missing_artifact_root_is_not_a_digest_addressed_binary() {
     let root = std::env::temp_dir().join(format!(
@@ -265,7 +344,7 @@ fn install_plan_capture_rejects_non_asp_process_identity() {
 
 #[cfg(unix)]
 #[test]
-fn non_login_shell_probe_uses_cold_host_path() {
+fn login_shell_probe_uses_shell_resolved_path() {
     use std::os::unix::fs::PermissionsExt;
 
     let root = protocol_binary_probe_root("found");
@@ -278,16 +357,24 @@ fn non_login_shell_probe_uses_cold_host_path() {
         .permissions();
     permissions.set_mode(0o755);
     std::fs::set_permissions(&asp, permissions).expect("chmod probe asp");
+    let shell = root.join("login-shell");
+    std::fs::write(
+        &shell,
+        format!("#!/bin/sh\nprintf '%s\\n' '{}'\n", asp.display()),
+    )
+    .expect("write probe shell");
+    let mut shell_permissions = std::fs::metadata(&shell)
+        .expect("inspect probe shell")
+        .permissions();
+    shell_permissions.set_mode(0o755);
+    std::fs::set_permissions(&shell, shell_permissions).expect("chmod probe shell");
 
-    let probe = super::probe_protocol_binary_in_non_login_shell(
-        std::path::Path::new("/bin/sh"),
-        bin.as_os_str(),
-    );
+    let probe = super::probe_protocol_binary_in_login_shell(&shell);
 
     assert_eq!(
         probe,
         super::ProtocolBinaryShellProbe {
-            shell: std::path::PathBuf::from("/bin/sh"),
+            shell,
             path: Some(asp),
             status: "found",
         }
@@ -297,18 +384,25 @@ fn non_login_shell_probe_uses_cold_host_path() {
 
 #[cfg(unix)]
 #[test]
-fn non_login_shell_probe_reports_missing_without_terminal_path() {
-    let root = protocol_binary_probe_root("missing");
+fn login_shell_probe_reports_missing_when_shell_cannot_resolve_asp() {
+    use std::os::unix::fs::PermissionsExt;
 
-    let probe = super::probe_protocol_binary_in_non_login_shell(
-        std::path::Path::new("/bin/sh"),
-        root.as_os_str(),
-    );
+    let root = protocol_binary_probe_root("missing");
+    std::fs::create_dir_all(&root).expect("create probe root");
+    let shell = root.join("login-shell");
+    std::fs::write(&shell, b"#!/bin/sh\nexit 127\n").expect("write missing probe shell");
+    let mut permissions = std::fs::metadata(&shell)
+        .expect("inspect missing probe shell")
+        .permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&shell, permissions).expect("chmod missing probe shell");
+
+    let probe = super::probe_protocol_binary_in_login_shell(&shell);
 
     assert_eq!(
         probe,
         super::ProtocolBinaryShellProbe {
-            shell: std::path::PathBuf::from("/bin/sh"),
+            shell,
             path: None,
             status: "missing",
         }

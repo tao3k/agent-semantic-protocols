@@ -2,12 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use agent_semantic_client_db::WorkspaceDbRegistry;
-use agent_semantic_client_db::runtime_server::{
-    RuntimeServer, RuntimeServerEvent, RuntimeServerExit,
-};
-use agent_semantic_client_db::runtime_server_admission_catalog::{
-    RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
-};
+use agent_semantic_client_db::runtime_server::{RuntimeServer, RuntimeServerExit};
 use agent_semantic_client_db::runtime_server_control::{
     RuntimeServerControlRequest, RuntimeServerEndpoint, RuntimeServerOperation, RuntimeServerState,
     call_runtime_server, prepare_runtime_server_endpoint_in, prewarm_runtime_server_status_memory,
@@ -48,14 +43,22 @@ fn runtime_transport_identity_binds_control_and_workspace_data_plane_contracts()
     );
 }
 
-async fn fixture_endpoint(
+pub(super) async fn fixture_endpoint(
     runtime_dir: &tempfile::TempDir,
     epoch: u64,
 ) -> agent_semantic_client_db::RuntimeServerEndpoint {
+    let state_home = agent_semantic_runtime::resolve_state_home().expect("resolve State Home");
+    let catalog = agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
+        &state_home,
+    )
+    .await
+    .expect("load runtime artifact catalog");
     prepare_runtime_server_endpoint_in(
         runtime_dir.path(),
         std::path::Path::new("/runtime/asp"),
         "runtime-digest",
+        catalog.mode_label(),
+        &catalog.digest(),
         epoch,
         &format!("binding-{epoch}"),
     )
@@ -142,80 +145,6 @@ async fn explicit_restart_is_not_downgraded_to_status_for_the_current_digest() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn startup_restore_is_starting_then_isolates_scope_failure_without_global_restart() {
-    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let project_root = runtime_dir.path().join("stale-workspace");
-    tokio::fs::create_dir_all(&project_root)
-        .await
-        .expect("create catalog project root");
-    let catalog = RuntimeWorkspaceAdmissionCatalog::load(
-        runtime_dir.path().join("workspace-admissions.v1.json"),
-    )
-    .await
-    .expect("load admission catalog");
-    catalog
-        .record(RuntimeWorkspaceAdmissionCatalogEntry {
-            workspace_identity: "workspace-stale".to_owned(),
-            project_root,
-        })
-        .await
-        .expect("record stale scope");
-    let endpoint = fixture_endpoint(&runtime_dir, 31).await;
-    let (events, mut event_receipts) = tokio::sync::mpsc::unbounded_channel();
-    let server = RuntimeServer::bind(
-        endpoint.clone(),
-        Arc::new(WorkspaceDbRegistry::with_state_home(
-            &runtime_dir.path().join("state"),
-        )),
-    )
-    .await
-    .expect("bind Runtime Server")
-    .with_workspace_generation_builder_and_catalog(
-        Arc::new(|_, _| Box::pin(async { Err("fixture canonical generation missing".to_owned()) })),
-        catalog,
-    )
-    .with_event_sender(events);
-    let shutdown = server.shutdown_handle();
-
-    let starting = call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
-        "status-during-catalog-restore".to_owned(),
-    )
-    .await
-    .expect("read Starting status from mmap");
-    assert_eq!(starting.state, RuntimeServerState::Starting);
-
-    let server = tokio::spawn(server.serve());
-    let event = event_receipts.recv().await.expect("scope failure event");
-    let RuntimeServerEvent::WorkspaceGenerationRestoreFailed {
-        workspace_identity,
-        error,
-    } = event
-    else {
-        panic!("expected workspace restore failure event: {event:?}");
-    };
-    assert_eq!(workspace_identity, "workspace-stale");
-    assert!(!error.is_empty());
-    let healthy = call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Status,
-        endpoint.runtime_artifact_digest.clone(),
-        "status-after-scope-isolation".to_owned(),
-    )
-    .await
-    .expect("read Healthy status after isolated scope failure");
-    assert_eq!(healthy.state, RuntimeServerState::Healthy);
-
-    shutdown.shutdown();
-    assert_eq!(
-        server.await.expect("join Runtime Server").expect("serve"),
-        RuntimeServerExit::ShutdownRequested
-    );
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn source_index_lease_miss_is_fail_fast_and_never_opens_turso() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
     let project_root = runtime_dir.path().join("query-miss-workspace");
@@ -242,16 +171,6 @@ async fn source_index_lease_miss_is_fail_fast_and_never_opens_turso() {
     let request = agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest {
         project_root: project_root.clone(),
         indexed_project_root: project_root,
-        source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence {
-            schema_id: "asp.source-snapshot.v1".to_owned(),
-            algorithm: "blake3-256".to_owned(),
-            root_digest: format!("{:064x}", 71),
-            source_kind: agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-            leaf_count: 1,
-            base_root_digest: None,
-            provider_digest: format!("{:064x}", 73),
-            dirty_paths_digest: None,
-        },
         query: "missing-generation".to_owned(),
         language_id: Some("rust".into()),
         limit: 8,
@@ -435,6 +354,7 @@ async fn failed_endpoint_publication_removes_every_bound_runtime_artifact() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn adaptive_concurrent_runtime_control_is_sub_millisecond_at_p99() {
+    let _performance = crate::test_support::performance_lock();
     let request_count = std::thread::available_parallelism()
         .map(usize::from)
         .unwrap_or(1)
@@ -536,6 +456,7 @@ async fn adaptive_concurrent_runtime_control_is_sub_millisecond_at_p99() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn adaptive_persistent_control_lanes_are_millisecond_bounded_at_p99() {
+    let _performance = crate::test_support::performance_lock();
     let request_count = std::thread::available_parallelism()
         .map(usize::from)
         .unwrap_or(1)
@@ -642,6 +563,7 @@ async fn concurrent_tokio_shutdown_drains_the_runtime_server_once() {
 
 #[test]
 fn hook_generation_admission_is_non_blocking_and_single_flight() {
+    let _performance = crate::test_support::performance_lock();
     let worker_count = std::thread::available_parallelism()
         .map(std::num::NonZeroUsize::get)
         .unwrap_or(1);
@@ -773,6 +695,7 @@ async fn hook_generation_admission_is_non_blocking_and_single_flight_async() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn multi_workspace_multi_session_admission_is_single_flight_and_bounded() {
+    let _performance = crate::test_support::performance_lock();
     const WORKSPACE_COUNT: usize = 3;
     const SESSION_COUNT_PER_WORKSPACE: usize = 12;
     const CALL_COUNT_PER_SESSION: usize = 16;
@@ -916,77 +839,5 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_bounded() 
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn shared_runtime_admission_plane_is_workspace_keyed_and_drains() {
-    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 29).await;
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
-        .await
-        .expect("bind Runtime Server");
-    let server = tokio::spawn(server.serve());
-    let first = Arc::new(
-        agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
-            &endpoint,
-            "workspace-first",
-            runtime_dir.path().join("workspace-first"),
-        ),
-    );
-    let second = Arc::new(
-        agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
-            &endpoint,
-            "workspace-second",
-            runtime_dir.path().join("workspace-second"),
-        ),
-    );
-    first.health().await.expect("prewarm first workspace lane");
-    second
-        .health()
-        .await
-        .expect("prewarm second workspace lane");
-
-    let parallelism = std::thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(1);
-    let request_count = parallelism.saturating_mul(32).max(64);
-    let mut tasks = tokio::task::JoinSet::new();
-    for index in 0..request_count {
-        let session = if index % 2 == 0 {
-            Arc::clone(&first)
-        } else {
-            Arc::clone(&second)
-        };
-        tasks.spawn(async move {
-            let started = tokio::time::Instant::now();
-            session.health().await.expect("warm workspace health");
-            started.elapsed().as_micros()
-        });
-    }
-    let mut samples = Vec::with_capacity(request_count);
-    while let Some(sample) = tasks.join_next().await {
-        samples.push(sample.expect("join warm workspace health"));
-    }
-    samples.sort_unstable();
-    let p99 = samples[(samples.len() - 1) * 99 / 100];
-    let shutdown_error = first
-        .shutdown()
-        .await
-        .expect_err("workspace request must not stop the shared Runtime Server");
-    assert!(shutdown_error.contains("runtime-server-shutdown-control-required"));
-
-    let restart = call_runtime_server(
-        &endpoint,
-        RuntimeServerOperation::Restart,
-        "next-runtime-digest".to_owned(),
-        "restart-data-plane".to_owned(),
-    )
-    .await
-    .expect("request Runtime Server restart");
-    assert_eq!(restart.state, RuntimeServerState::Draining);
-    assert_eq!(
-        server.await.expect("join Runtime Server").expect("serve"),
-        RuntimeServerExit::RestartRequested
-    );
-    eprintln!(
-        "runtime-server-admission-concurrency requestCount={request_count} p99Micros={p99} workspaceCount=2"
-    );
-}
+#[path = "runtime_server_control/shared_admission.rs"]
+mod shared_admission;

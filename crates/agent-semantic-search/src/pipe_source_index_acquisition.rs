@@ -79,8 +79,8 @@ pub struct SearchPipeSourceIndexCandidate {
     pub source_kind: SearchPipeSourceIndexSourceKind,
     pub line_count: Option<u32>,
     pub query_keys: Vec<SearchPipeSourceIndexQueryKey>,
-    pub selector_proof:
-        Option<agent_semantic_content_identity::ExactSelectorMaterializationProofV1>,
+    pub selector_projection:
+        Option<agent_semantic_content_identity::ExactSelectorProjectionRecordV1>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

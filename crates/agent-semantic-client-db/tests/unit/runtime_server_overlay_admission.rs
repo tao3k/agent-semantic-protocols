@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use agent_semantic_client_db::runtime_server_workspace::{
-    RuntimeServerWorkspaceRegistry, WorkspaceCanonicalMaterialization, WorkspaceGenerationState,
-    WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot, WorkspaceRecoverySource,
+    RuntimeServerWorkspaceRegistry, WorkspaceCanonicalMaterialization, WorkspaceMemoryGeneration,
+    WorkspaceOwnerSnapshot, WorkspaceRecoverySource,
 };
 
 static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(1);
@@ -21,48 +21,48 @@ fn generation(
     epoch: u64,
     bytes: &[u8],
 ) -> WorkspaceMemoryGeneration {
+    generation_with_selectors(workspace_identity, project_root, epoch, bytes, Vec::new())
+}
+
+fn generation_with_selectors(
+    workspace_identity: &str,
+    project_root: &std::path::Path,
+    epoch: u64,
+    bytes: &[u8],
+    selectors: Vec<agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot>,
+) -> WorkspaceMemoryGeneration {
     let content_digest = format!("blake3-256:{}", blake3::hash(bytes).to_hex());
     let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
         [("src/lib.rs", content_digest.clone())],
     );
     let source_snapshot = workspace_snapshot.evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        "runtime-overlay-fixture".to_owned(),
+        format!(
+            "blake3-256:{}",
+            blake3::hash(b"runtime-overlay-fixture-provider").to_hex()
+        ),
     );
-    let workspace_generation =
-        agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1 {
-            root_digest: source_snapshot.root_digest.clone(),
-            root_depth: 1,
-            leaf_count: 1,
-            owner_count: 1,
-        };
-    let generation_digest = format!(
-        "blake3-256:{}",
-        blake3::hash(format!("{workspace_identity}\0{epoch}\0{content_digest}").as_bytes())
-            .to_hex()
-    );
-    WorkspaceMemoryGeneration {
-        workspace_identity: workspace_identity.to_owned(),
-        project_root: project_root.display().to_string(),
-        state: WorkspaceGenerationState::Ready,
-        active_epoch: epoch,
-        generation_digest: generation_digest.clone(),
-        root_depth: [1, 0],
-        workspace_snapshot,
-        source_snapshot,
-        workspace_generation,
-        memory_backend_digest: generation_digest,
-        workspace_source_scope_generation:
-            agent_semantic_runtime::workspace_source_scope_generation_digest(&[])
-                .expect("empty ProjectResolution generation"),
-        project_resolutions: Vec::new(),
-        owners: vec![WorkspaceOwnerSnapshot {
-            owner_path: "src/lib.rs".to_owned(),
-            content_digest,
-            bytes: bytes.to_vec(),
-            selectors: Vec::new(),
-        }],
-    }
+    WorkspaceMemoryGeneration::try_from_build(
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            workspace_identity: workspace_identity.to_owned(),
+            project_root: project_root.display().to_string(),
+            active_epoch: epoch,
+            workspace_snapshot,
+            source_snapshot,
+            module_graph_digest: format!(
+                "blake3-256:{}",
+                blake3::hash(b"runtime-overlay-fixture-module-graph").to_hex()
+            ),
+            project_resolutions: Vec::new(),
+            owners: vec![WorkspaceOwnerSnapshot {
+                owner_path: "src/lib.rs".to_owned(),
+                content_digest,
+                bytes: bytes.to_vec(),
+                selectors,
+            }],
+        },
+    )
+    .expect("typed runtime overlay generation")
 }
 
 #[test]
@@ -103,10 +103,7 @@ fn canonical_materialization_binds_snapshot_import_and_complete_owner_count() {
     )
     .expect("build canonical materialization source-index import");
     let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-        import
-            .file_hashes
-            .iter()
-            .map(|file| (file.path.clone(), file.sha256.clone())),
+        [("src/lib.rs", blake3::hash(b"source").to_hex().to_string())],
     );
     let source_snapshot = workspace_snapshot.evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
@@ -264,15 +261,20 @@ async fn stale_owner_is_reconciled_before_a_resident_projection_can_serve() {
     );
     let stale_selector = "rust://src/lib.rs#item/function/stale";
     let current_selector = "rust://src/lib.rs#item/function/current";
-    let mut stale_generation = generation(&workspace_identity, &root, 1, b"fn stale() {}\n");
-    stale_generation.owners[0].selectors = vec![
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot {
-            selector: stale_selector.to_owned(),
-            byte_start: 0,
-            byte_end: b"fn stale() {}\n".len(),
-            derived_projections: Vec::new(),
-        },
-    ];
+    let stale_generation = generation_with_selectors(
+        &workspace_identity,
+        &root,
+        1,
+        b"fn stale() {}\n",
+        vec![
+            agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot {
+                selector: stale_selector.to_owned(),
+                byte_start: 0,
+                byte_end: b"fn stale() {}\n".len(),
+                derived_projections: Vec::new(),
+            },
+        ],
+    );
     registry
         .publish(
             "publish-stale-generation",
@@ -283,7 +285,7 @@ async fn stale_owner_is_reconciled_before_a_resident_projection_can_serve() {
         .expect("publish stale canonical generation");
 
     let build_started = std::sync::Arc::new(tokio::sync::Notify::new());
-    let release_build = std::sync::Arc::new(tokio::sync::Notify::new());
+    let release_build = std::sync::Arc::new(tokio::sync::Semaphore::new(0));
     let build_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let builder: agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerProjectionBuilder = {
         let build_started = std::sync::Arc::clone(&build_started);
@@ -296,13 +298,22 @@ async fn stale_owner_is_reconciled_before_a_resident_projection_can_serve() {
             Box::pin(async move {
                 build_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 build_started.notify_one();
-                release_build.notified().await;
+                release_build
+                    .acquire_owned()
+                    .await
+                    .expect("fixture release semaphore remains open")
+                    .forget();
                 owner.selectors = vec![
                     agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot {
                         selector: current_selector.to_owned(),
                         byte_start: 0,
                         byte_end: owner.bytes.len(),
-                        derived_projections: Vec::new(),
+                        derived_projections: vec![
+                            agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
+                                projection_kind: "callable-skeleton".to_owned(),
+                                bytes: owner.bytes.clone(),
+                            },
+                        ],
                     },
                 ];
                 Ok(owner)
@@ -363,7 +374,7 @@ async fn stale_owner_is_reconciled_before_a_resident_projection_can_serve() {
             )
             .await
     });
-    release_build.notify_waiters();
+    release_build.add_permits(1);
     let refreshed = refresh
         .await
         .expect("join primary refresh")
@@ -527,15 +538,15 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
         }],
         selectors: Vec::new(),
     };
-    let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-        import
-            .file_hashes
-            .iter()
-            .map(|file| (file.path.clone(), file.sha256.clone())),
-    )
+    let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
+        "src/lib.rs",
+        blake3::hash(source).to_hex().to_string(),
+    )])
     .evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        "concurrent-cold-restore-provider".to_owned(),
+        blake3::hash(b"concurrent-cold-restore-provider")
+            .to_hex()
+            .to_string(),
     );
     let materialization = WorkspaceCanonicalMaterialization::new(
         workspace_identity,

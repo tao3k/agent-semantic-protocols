@@ -137,6 +137,7 @@ pub enum SourceAccessReasonKind {
     None,
     /// Direct source read was attempted.
     DirectSourceRead,
+    StructuredSourceRead,
     /// Bulk source dump was attempted.
     BulkSourceDump,
     /// Broad raw search was attempted.

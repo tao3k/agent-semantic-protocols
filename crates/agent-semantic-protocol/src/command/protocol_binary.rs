@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
 
-const SEMANTIC_AGENT_PROTOCOL_BIN: &str = "asp";
+pub(super) const SEMANTIC_AGENT_PROTOCOL_BIN: &str = "asp";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RuntimeBinaryIdentityV1 {
@@ -278,6 +278,47 @@ fn install_protocol_binary_alias(
     Ok(())
 }
 
+pub(super) fn ensure_runtime_protocol_binary_alias(
+    protocol_home: &Path,
+    alias: &Path,
+) -> Result<(), String> {
+    let runtime_root = protocol_home.join("runtime");
+    let artifact_root = runtime_root.join("artifacts");
+    let canonical_target = runtime_root.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
+    let expected = resolve_protocol_binary_artifact_entry(&canonical_target, &artifact_root)?;
+
+    match fs::symlink_metadata(alias) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "failed to inspect ASP runtime PATH entry {}: {error}",
+                alias.display()
+            ));
+        }
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            resolve_protocol_binary_artifact_entry(alias, &artifact_root)?;
+        }
+        Ok(_) => {
+            return Err(format!(
+                "refusing to replace unmanaged ASP runtime PATH entry {}",
+                alias.display()
+            ));
+        }
+    }
+
+    install_protocol_binary_alias(alias, &canonical_target, &artifact_root)?;
+    let installed = resolve_protocol_binary_artifact_entry(alias, &artifact_root)?;
+    if installed != expected {
+        return Err(format!(
+            "ASP runtime PATH entry {} resolves to {}, expected {}",
+            alias.display(),
+            installed.display(),
+            expected.display()
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn protocol_binary_on_path() -> Option<PathBuf> {
     protocol_binary_path_probe().path
 }
@@ -365,8 +406,7 @@ pub(crate) fn protocol_binary_in_codex_hook_shell() -> ProtocolBinaryShellProbe 
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("/bin/sh"));
-        let base_path = codex_hook_parent_path();
-        probe_protocol_binary_in_non_login_shell(&shell, &base_path)
+        probe_protocol_binary_in_login_shell(&shell)
     }
 
     #[cfg(windows)]
@@ -385,52 +425,12 @@ pub(crate) fn protocol_binary_in_codex_hook_shell() -> ProtocolBinaryShellProbe 
 }
 
 #[cfg(unix)]
-fn codex_hook_parent_path() -> std::ffi::OsString {
-    let mut dirs = Vec::new();
-    if cfg!(target_os = "macos")
-        && let Some(home) = env::var_os("HOME").filter(|value| !value.is_empty())
-    {
-        let runtime_bin = PathBuf::from(home)
-            .join(".cache")
-            .join("codex-runtimes")
-            .join("codex-primary-runtime")
-            .join("dependencies")
-            .join("bin");
-        dirs.push(runtime_bin.join("override"));
-        dirs.extend([
-            PathBuf::from("/usr/bin"),
-            PathBuf::from("/bin"),
-            PathBuf::from("/usr/sbin"),
-            PathBuf::from("/sbin"),
-        ]);
-        dirs.push(runtime_bin.join("fallback"));
-    } else {
-        dirs.extend([
-            PathBuf::from("/usr/bin"),
-            PathBuf::from("/bin"),
-            PathBuf::from("/usr/sbin"),
-            PathBuf::from("/sbin"),
-        ]);
-    }
-    env::join_paths(dirs).unwrap_or_else(|_| std::ffi::OsString::from("/usr/bin:/bin"))
-}
-
-#[cfg(unix)]
-fn probe_protocol_binary_in_non_login_shell(
-    shell: &Path,
-    base_path: &std::ffi::OsStr,
-) -> ProtocolBinaryShellProbe {
+fn probe_protocol_binary_in_login_shell(shell: &Path) -> ProtocolBinaryShellProbe {
     let mut command = std::process::Command::new(shell);
-    command
-        .args(["-c", "command -v asp"])
-        .env_clear()
-        .env("PATH", base_path)
-        .env("SHELL", shell);
-    for key in ["HOME", "USER", "LOGNAME", "TMPDIR"] {
-        if let Some(value) = env::var_os(key) {
-            command.env(key, value);
-        }
-    }
+    // Codex's command Hook runner invokes the configured shell with `-lc` and
+    // inherits the host environment.  Doctor must exercise that exact surface;
+    // a synthetic non-login PATH probe can report a false exit-127 failure.
+    command.args(["-lc", "command -v asp"]);
     let output = match command.output() {
         Ok(output) => output,
         Err(_) => {
@@ -505,6 +505,7 @@ fn managed_protocol_binary_path_aliases(
             aliases.push(candidate);
         }
     }
+
     Ok(aliases)
 }
 

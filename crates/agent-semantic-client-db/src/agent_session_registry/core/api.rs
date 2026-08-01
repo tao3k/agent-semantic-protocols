@@ -22,6 +22,12 @@ impl AgentSessionRegistry {
         &self,
         request: AgentSessionRegisterRequest<'_>,
     ) -> Result<AgentSessionRecord, String> {
+        if self.session_is_retired(request.project_id.as_str(), request.session_id.as_str())? {
+            return Err(format!(
+                "retired physical session generation cannot be registered again: projectId={} sessionId={}",
+                request.project_id, request.session_id
+            ));
+        }
         block_on_agent_session_registry_async(turso_register_session(&self.db_path, request))
     }
 
@@ -227,6 +233,21 @@ impl AgentSessionRegistry {
         let session_id = session_id.into();
         block_on_agent_session_registry_async(turso_delete_session(
             &self.db_path,
+            project_id.as_str(),
+            session_id.as_str(),
+        ))
+    }
+
+    /// Return whether an exact physical session generation has been retired.
+    pub fn session_is_retired(
+        &self,
+        project_id: impl Into<AgentSessionProjectId>,
+        session_id: impl Into<AgentSessionId>,
+    ) -> Result<bool, String> {
+        let project_id = project_id.into();
+        let session_id = session_id.into();
+        block_on_agent_session_registry_async(super::storage::turso_session_is_retired(
+            self.db_path(),
             project_id.as_str(),
             session_id.as_str(),
         ))

@@ -1,0 +1,134 @@
+#+TITLE: 10.15.02.08 Hook Lazy Loader Capability
+#+PROPERTY: RFC_ID ASP-RFC-10.15-HOOK-LAZY-LOADER-CAPABILITY
+#+PROPERTY: SCHEMA_VERSION 1
+
+* Status
+
+Normative extension of the agent hook interception protocol.
+
+* Problem
+
+A generic =Read= action does not carry enough structure for every document
+format.  When a format-aware executable is available, the hook should activate
+the corresponding loader and route the agent toward a bounded structured read.
+That activation must remain serialized policy rather than a hidden matcher
+heuristic, and capability discovery must not make unrelated hook actions depend
+on the loader process.
+
+The first registered capability is JSON through =jq=.  The rule applies when
+all of the following predicates hold:
+
+- the normalized action effect is =read=;
+- a subject path has the =.json= document extension;
+- the serialized rule names the =jq= executable;
+- executable resolution against the hook process =PATH= succeeds.
+
+* Normative contract
+
+** Serialized authority
+
+Lazy-loader rules MUST be represented in the hook client configuration and
+validated by the shared hook configuration schema.  Runtime matching MUST use
+the compiled serialized rule.  The Rust hook MUST NOT embed an independent
+=.json= or =jq= special case.
+
+Each rule identifies at least its stable rule ID, action effect, document
+extensions, required executable, capability lookup policy, route kind, and
+bounded structured projection.  Schema version values remain the string ="1"=.
+
+The current serialized vocabulary is not replaced by this RFC.  A bounded
+loader rule declares =capabilityActivation = "lazy-executable"= and a
+=[rules.match.structuredProjection]= table.  The table names =binary=,
+=documentFormat=, and =filterGrammar = "bounded-path-v1"=.  The managed
+configuration currently publishes =allow-bounded-json-projection= for =jq= and
+the corresponding TOML projection for =yq=.  The sibling
+=deny-unbounded-structured-projection= rule remains authoritative for jq/yq
+commands that do not satisfy the bounded grammar.
+
+** Capability activation
+
+Executable availability is sampled lazily only after the action and extension
+predicates match.  Availability MUST be resolved without invoking a shell.
+An available executable activates the route.  An unavailable executable does
+not activate or fabricate a route.
+
+** Fail-closed data access
+
+A raw JSON =Read= remains denied.  When =jq= is available, the denial carries a
+structured-read route whose initial projection is bounded; it does not silently
+execute =jq= inside the hook.  When =jq= is unavailable, the denial reports
+capability unavailability and carries no executable route.
+
+The serialized denial reason is =structured-source-read=.  It names an
+unprojected direct read of structured source; it MUST NOT reuse
+=direct-source-read=, which is reserved for language-provider source access.
+
+Loader failure is local to the matching data-plane action.  It MUST NOT deny
+unrelated actions, recovery commands, configuration checks, or hook lifecycle
+operations.
+
+** Binary/config publication admission
+
+A candidate ASP binary MUST parse and compile its own embedded managed hook
+configuration before any runtime artifact, canonical symlink, or managed config
+is switched to that candidate.  An incompatible candidate preserves the current
+binary and current readable config.  Publishing a config vocabulary before the
+binary understands it is forbidden because pre-tool freshness evaluation would
+otherwise deny every recovery action.
+
+** JSON initial projection
+
+The default JSON route uses a compact, bounded skeleton projection (for example
+top-level keys or an equivalent schema-oriented summary).  Reading an entire
+unbounded JSON value is not an acceptable lazy-loader fallback.  An agent may
+refine the projection with an explicit =jq= filter in a later action.
+
+The hook's response to a raw =Read *.json= is therefore a policy decision and
+route recommendation.  Actual JSON projection remains an explicit jq action;
+the hook neither reads the file nor spawns jq during pre-tool evaluation.
+
+* Formal correspondence
+
+The executable contract is modeled by
+=ASPProof.HookLazyLoaderCapability= and audited under the RFC clause
+=ASP-RFC-10.15-HOOK-LAZY-LOADER-CAPABILITY=.
+
+| RFC obligation | Lean theorem |
+|-
+| Matching JSON reads activate only with =jq= | =json_read_with_jq_activates= |
+| Activated JSON reads receive the structured route | =json_read_with_jq_routes_to_structured_read= |
+| Missing =jq= is represented explicitly | =json_read_without_jq_is_unavailable= |
+| Missing capability cannot forge a route | =unavailable_jq_cannot_forge_a_route= |
+| Non-read actions do not activate | =non_read_json_does_not_activate= |
+| Non-JSON reads do not activate | =non_json_read_does_not_activate= |
+| Every =jq= route implies all activation predicates | =jq_route_implies_all_activation_preconditions= |
+| Every activated =jq= route uses the bounded grammar | =jq_route_is_bounded= |
+| Raw JSON read remains fail-closed | =raw_json_read_remains_fail_closed= |
+| Missing =jq= cannot globally deadlock the hook | =missing_jq_does_not_globally_deadlock_the_hook= |
+| Config compilation preserves activation semantics | =config_compilation_preserves_json_jq_activation= |
+| Incompatible binary/config candidates cannot publish | =incompatible_candidate_cannot_publish= |
+| Compatible binary/config candidates may publish | =compatible_candidate_may_publish= |
+
+The audit driver is
+=packages/proofs/audit/HookLazyLoaderCapabilityAudit.lean=.  Its
+=#print axioms= output is the proof receipt for the obligations above.
+
+* Delivery order
+
+The feature is delivered in this order:
+
+1. Lean state machine and audit targets;
+2. this normative RFC;
+3. shared hook client configuration schema;
+4. managed =config.toml= serialization;
+5. Rust configuration compiler and action matcher;
+6. focused schema, matcher, and live hook replay tests.
+
+Later format loaders reuse the same shared activation contract.  A provider may
+own format-specific projection details, but it may not weaken the generic
+capability, fail-closed, or non-deadlock obligations.
+
+The binary/config publication admission above is refined by
+[[file:10.15.02.09-hook-bootstrap-repair-and-server-warm-path.org][10.15.02.09 Hook Bootstrap Repair and Server Warm Path]].  That module owns
+the parser-independent bootstrap order, server-backed warm path, stable repair
+writer, bounded replay, and lifecycle degradation semantics.

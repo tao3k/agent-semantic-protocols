@@ -229,14 +229,13 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
         byte_len: source.len() as u64,
         mtime_ms: 1,
     }];
-    let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-        file_hashes
-            .iter()
-            .map(|file| (file.path.clone(), file.sha256.clone())),
-    )
+    let source_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes([(
+        "src/lib.rs",
+        blake3::hash(source).to_hex().to_string(),
+    )])
     .evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
-        "resident-provider".to_owned(),
+        blake3::hash(b"resident-provider").to_hex().to_string(),
     );
     let import = agent_semantic_client_db::ClientDbSourceIndexImport {
         generation_id: agent_semantic_client_core::CacheGenerationId::from("resident-cold-restore"),
@@ -259,7 +258,7 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
         selectors: vec![],
     };
     let source_blobs =
-        crate::materialization_fixture::source_blobs_fixture([("src/lib.rs", source.as_slice())]);
+        crate::projection_fixture::source_blobs_fixture([("src/lib.rs", source.as_slice())]);
     let materialization =
         agent_semantic_client_db::runtime_server_workspace::WorkspaceCanonicalMaterialization::from_source_index(
             scope.workspace_identity.clone(),

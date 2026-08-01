@@ -1,5 +1,5 @@
 [project]
-name = "asp-proof-toolchain"
+name = "asp-proofs"
 version = "0.1.0"
 description = "Lean, AXLE, and proof-receipt audit toolchain for Agent Semantic Protocols"
 requires-python = ">=3.13"
@@ -8,12 +8,9 @@ dependencies = [
   "jsonschema>=4.23,<5",
 ]
 
-[project.scripts]
-asp-axle-lean-audit = "asp_proof_toolchain.axle_lean_audit:main"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/asp_proof_toolchain"]
+packages = ["src/asp_proofs"]

@@ -28,7 +28,7 @@ fn write_activation_specs(root: &Path, specs: &[(&str, &[&str])]) -> PathBuf {
     let manifests = builtin_provider_manifests();
     let providers: Vec<_> = specs
         .iter()
-        .map(|(language_id, package_roots)| {
+        .map(|(language_id, _package_roots)| {
             let manifest = manifests
                 .iter()
                 .find(|manifest| manifest.language_id().as_str() == *language_id)
@@ -51,13 +51,9 @@ fn write_activation_specs(root: &Path, specs: &[(&str, &[&str])]) -> PathBuf {
                 "semanticRegistryDigest": agent_semantic_hook::semantic_registry_digest(),
                 "routes": routes,
                 "coverage": {
-                    "packageRoots": package_roots,
+                    "packageRoots": [],
                     "configFiles": crate::provider_manifest_scope::project_entries(manifest),
-                    "sourceExtensions": crate::provider_manifest_scope::document_extensions(manifest),
-                    "sourcePaths": [],
-                    "repositoryCandidateGeneration": "test-repository-candidate-generation",
-                    "workspaceSourceScopeGeneration": "test-project-resolution-generation",
-                    "projectResolutions": []
+                    "sourceExtensions": crate::provider_manifest_scope::document_extensions(manifest)
                 }
             })
         })

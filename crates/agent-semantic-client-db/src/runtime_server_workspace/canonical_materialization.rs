@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    WorkspaceGenerationState, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
-    WorkspaceSelectorSnapshot, validate_owners,
+    WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot, validate_owners,
 };
 
 pub const WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID: &str =
@@ -18,7 +17,9 @@ pub struct WorkspaceCanonicalMaterialization {
     pub workspace_snapshot: agent_semantic_content_identity::WorkspaceSnapshot,
     pub source_snapshot: agent_semantic_content_identity::SourceSnapshotEvidence,
     pub workspace_generation: agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
+    pub provider_schema_digest: String,
     pub import_digest: String,
+    pub selector_set_digest: String,
     pub workspace_source_scope_generation: String,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     pub file_count: u32,
@@ -34,6 +35,16 @@ pub enum WorkspaceCanonicalMaterializationLoad {
 }
 
 impl WorkspaceCanonicalMaterialization {
+    fn canonical_import_digest(
+        import: &crate::ClientDbSourceIndexImport,
+    ) -> Result<String, String> {
+        let mut canonical = import.clone();
+        for selector in &mut canonical.selectors {
+            selector.source = "".into();
+        }
+        Self::typed_digest(&canonical)
+    }
+
     pub(crate) fn canonical_project_root(
         project_root: impl AsRef<std::path::Path>,
     ) -> Result<String, String> {
@@ -54,12 +65,52 @@ impl WorkspaceCanonicalMaterialization {
                 .source_snapshot
                 .has_same_content_identity(&other.source_snapshot)
             && self.workspace_generation == other.workspace_generation
+            && self.provider_schema_digest == other.provider_schema_digest
             && self.import_digest == other.import_digest
+            && self.selector_set_digest == other.selector_set_digest
             && self.workspace_source_scope_generation == other.workspace_source_scope_generation
             && self.project_resolutions == other.project_resolutions
             && self.file_count == other.file_count
             && self.root_depth == other.root_depth
             && self.owners == other.owners
+    }
+
+    pub(crate) fn generation_identity_digest(&self) -> Result<String, String> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct GenerationIdentity<'a> {
+            schema_id: &'a str,
+            schema_version: &'a str,
+            workspace_identity: &'a str,
+            project_root: &'a str,
+            workspace_snapshot: &'a agent_semantic_content_identity::WorkspaceSnapshot,
+            workspace_generation: &'a agent_semantic_content_identity::workspace_generation_evidence::WorkspaceGenerationEvidenceV1,
+            provider_schema_digest: &'a str,
+            import_digest: &'a str,
+            selector_set_digest: &'a str,
+            workspace_source_scope_generation: &'a str,
+            project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
+            file_count: u32,
+            root_depth: [u8; 2],
+            owners: &'a [WorkspaceOwnerSnapshot],
+        }
+
+        Self::typed_digest(&GenerationIdentity {
+            schema_id: &self.schema_id,
+            schema_version: &self.schema_version,
+            workspace_identity: &self.workspace_identity,
+            project_root: &self.project_root,
+            workspace_snapshot: &self.workspace_snapshot,
+            workspace_generation: &self.workspace_generation,
+            provider_schema_digest: &self.provider_schema_digest,
+            import_digest: &self.import_digest,
+            selector_set_digest: &self.selector_set_digest,
+            workspace_source_scope_generation: &self.workspace_source_scope_generation,
+            project_resolutions: &self.project_resolutions,
+            file_count: self.file_count,
+            root_depth: self.root_depth,
+            owners: &self.owners,
+        })
     }
 
     fn generation_evidence(
@@ -106,49 +157,59 @@ impl WorkspaceCanonicalMaterialization {
             );
         }
         for selector in &import.selectors {
-            let proof = &selector.materialization_proof;
-            let owner = owners.get_mut(&proof.owner_path).ok_or_else(|| {
+            let record = &selector.projection_record;
+            let proof = &record.proof;
+            let owner = owners.get_mut(proof.owner_path()).ok_or_else(|| {
                 format!(
                     "source-index selector omitted exact owner bytes: ownerPath={} selector={}",
-                    proof.owner_path, proof.structural_selector
+                    proof.owner_path(),
+                    proof.structural_selector()
                 )
             })?;
-            if proof.source_blob_digest != *blake3::hash(&owner.bytes).as_bytes() {
+            if proof.source_blob_digest()
+                != &agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                    &owner.bytes,
+                )
+            {
                 return Err(format!(
                     "source-index selector source blob digest drift: ownerPath={} selector={}",
-                    proof.owner_path, proof.structural_selector
+                    proof.owner_path(),
+                    proof.structural_selector()
                 ));
             }
-            let byte_start = usize::try_from(proof.source_byte_start).map_err(|_| {
+            let byte_start = usize::try_from(record.source_byte_range.start).map_err(|_| {
                 format!(
                     "source-index selector byte start overflow: ownerPath={} selector={}",
-                    proof.owner_path, proof.structural_selector
+                    proof.owner_path(),
+                    proof.structural_selector()
                 )
             })?;
-            let byte_end = usize::try_from(proof.source_byte_end).map_err(|_| {
+            let byte_end = usize::try_from(record.source_byte_range.end).map_err(|_| {
                 format!(
                     "source-index selector byte end overflow: ownerPath={} selector={}",
-                    proof.owner_path, proof.structural_selector
+                    proof.owner_path(),
+                    proof.structural_selector()
                 )
             })?;
             let projected = owner.bytes.get(byte_start..byte_end).ok_or_else(|| {
                 format!(
                     "source-index selector range is outside exact owner bytes: ownerPath={} selector={} byteStart={} byteEnd={} ownerBytes={}",
-                    proof.owner_path,
-                    proof.structural_selector,
+                    proof.owner_path(),
+                    proof.structural_selector(),
                     byte_start,
                     byte_end,
                     owner.bytes.len()
                 )
             })?;
-            if projected != proof.projection {
+            if projected != record.projection_payload {
                 return Err(format!(
                     "source-index selector projection drift: ownerPath={} selector={}",
-                    proof.owner_path, proof.structural_selector
+                    proof.owner_path(),
+                    proof.structural_selector()
                 ));
             }
             owner.selectors.push(WorkspaceSelectorSnapshot {
-                selector: proof.structural_selector.clone(),
+                selector: proof.structural_selector().to_owned(),
                 byte_start,
                 byte_end,
                 derived_projections: Vec::new(),
@@ -180,26 +241,11 @@ impl WorkspaceCanonicalMaterialization {
     ) -> Result<Self, String> {
         let file_count = u32::try_from(owners.len())
             .map_err(|_| "workspace canonical materialization file count overflow".to_owned())?;
-        let file_hashes = import
-            .file_hashes
-            .iter()
-            .map(|file| (file.path.as_str(), file.sha256.as_str()))
-            .collect::<std::collections::BTreeMap<_, _>>();
-        let source_file_hashes = owners
-            .iter()
-            .map(|owner| {
-                let hash = file_hashes.get(owner.owner_path.as_str()).ok_or_else(|| {
-                    format!(
-                        "workspace canonical materialization missing source hash: ownerPath={}",
-                        owner.owner_path
-                    )
-                })?;
-                Ok((owner.owner_path.as_str(), *hash))
-            })
-            .collect::<Result<Vec<_>, String>>()?;
         let workspace_snapshot =
-            agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-                source_file_hashes,
+            agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(
+                owners
+                    .iter()
+                    .map(|owner| (owner.owner_path.as_str(), owner.bytes.as_slice())),
             );
         if workspace_snapshot.root_digest() != source_snapshot.root_digest {
             return Err(format!(
@@ -212,6 +258,12 @@ impl WorkspaceCanonicalMaterialization {
             Self::generation_evidence(&source_snapshot, root_depth, owners.len())?;
         let workspace_source_scope_generation =
             agent_semantic_runtime::workspace_source_scope_generation_digest(&project_resolutions)?;
+        let selector_set_digest = Self::typed_digest(
+            &owners
+                .iter()
+                .map(|owner| (&owner.owner_path, &owner.selectors))
+                .collect::<Vec<_>>(),
+        )?;
         Ok(Self {
             schema_id: WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),
@@ -220,7 +272,9 @@ impl WorkspaceCanonicalMaterialization {
             workspace_snapshot,
             source_snapshot,
             workspace_generation,
-            import_digest: Self::typed_digest(import)?,
+            provider_schema_digest: agent_semantic_runtime::project_resolution_schema_digest(),
+            import_digest: Self::canonical_import_digest(import)?,
+            selector_set_digest,
             workspace_source_scope_generation,
             project_resolutions,
             file_count,
@@ -271,7 +325,7 @@ impl WorkspaceCanonicalMaterialization {
                 self.source_snapshot
             ));
         }
-        let expected_import_digest = Self::typed_digest(import)?;
+        let expected_import_digest = Self::canonical_import_digest(import)?;
         let expected_project_root = Self::canonical_project_root(&import.project_root)?;
         let actual_project_root = Self::canonical_project_root(&self.project_root)?;
         if actual_project_root != expected_project_root {
@@ -391,33 +445,13 @@ impl WorkspaceCanonicalMaterialization {
         let target_epoch = active_epoch
             .checked_add(1)
             .ok_or_else(|| "workspace generation epoch overflow".to_owned())?;
-        let memory_backend_digest = Self::typed_digest(&(
-            &self.owners,
-            &self.workspace_source_scope_generation,
-            &self.project_resolutions,
-        ))?;
-        let generation_digest = Self::typed_digest(&(
-            &self.workspace_identity,
-            &self.project_root,
-            &self.workspace_snapshot,
-            &self.source_snapshot,
-            &self.workspace_generation,
-            &self.import_digest,
-            &self.workspace_source_scope_generation,
-            &memory_backend_digest,
-        ))?;
-        Ok(WorkspaceMemoryGeneration {
+        WorkspaceMemoryGeneration::try_from_build(super::WorkspaceGenerationBuild {
             workspace_identity: self.workspace_identity,
             project_root: self.project_root,
-            state: WorkspaceGenerationState::Ready,
             active_epoch: target_epoch,
-            generation_digest,
-            root_depth: self.root_depth,
             workspace_snapshot: self.workspace_snapshot,
             source_snapshot: self.source_snapshot,
-            workspace_generation: self.workspace_generation,
-            memory_backend_digest,
-            workspace_source_scope_generation: self.workspace_source_scope_generation,
+            module_graph_digest: self.import_digest,
             project_resolutions: self.project_resolutions,
             owners: self.owners,
         })
@@ -474,54 +508,59 @@ impl WorkspaceCanonicalMaterialization {
             .collect::<std::collections::BTreeMap<_, _>>();
         let mut expected_selectors = std::collections::BTreeSet::new();
         for selector in &import.selectors {
-            let proof = &selector.materialization_proof;
-            let owner = owners.get(proof.owner_path.as_str()).ok_or_else(|| {
+            let record = &selector.projection_record;
+            let proof = &record.proof;
+            let owner = owners.get(proof.owner_path()).ok_or_else(|| {
                 format!(
                     "workspace canonical materialization omitted proof owner: ownerPath={} selector={}",
-                    proof.owner_path, proof.structural_selector
+                    proof.owner_path(), proof.structural_selector()
                 )
             })?;
-            if proof.source_blob_digest != *blake3::hash(&owner.bytes).as_bytes() {
+            if proof.source_blob_digest()
+                != &agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(
+                    &owner.bytes,
+                )
+            {
                 return Err(format!(
                     "workspace canonical materialization proof source drift: ownerPath={} selector={}",
-                    proof.owner_path, proof.structural_selector
+                    proof.owner_path(),
+                    proof.structural_selector()
                 ));
             }
-            let byte_start = usize::try_from(proof.source_byte_start).map_err(|_| {
+            let byte_start = usize::try_from(record.source_byte_range.start).map_err(|_| {
                 format!(
                     "workspace canonical materialization proof start overflow: ownerPath={} selector={}",
-                    proof.owner_path, proof.structural_selector
+                    proof.owner_path(), proof.structural_selector()
                 )
             })?;
-            let byte_end = usize::try_from(proof.source_byte_end).map_err(|_| {
+            let byte_end = usize::try_from(record.source_byte_range.end).map_err(|_| {
                 format!(
                     "workspace canonical materialization proof end overflow: ownerPath={} selector={}",
-                    proof.owner_path, proof.structural_selector
+                    proof.owner_path(), proof.structural_selector()
                 )
             })?;
             let materialized_selector = owner
                 .selectors
                 .iter()
-                .find(|candidate| candidate.selector == proof.structural_selector)
+                .find(|candidate| candidate.selector == proof.structural_selector())
                 .ok_or_else(|| {
                     format!(
                         "workspace canonical materialization omitted proof selector: ownerPath={} selector={}",
-                        proof.owner_path, proof.structural_selector
+                        proof.owner_path(), proof.structural_selector()
                     )
                 })?;
             if materialized_selector.byte_start != byte_start
                 || materialized_selector.byte_end != byte_end
-                || owner.bytes.get(byte_start..byte_end) != Some(proof.projection.as_slice())
+                || owner.bytes.get(byte_start..byte_end)
+                    != Some(record.projection_payload.as_slice())
             {
                 return Err(format!(
                     "workspace canonical materialization proof projection drift: ownerPath={} selector={}",
-                    proof.owner_path, proof.structural_selector
+                    proof.owner_path(),
+                    proof.structural_selector()
                 ));
             }
-            expected_selectors.insert((
-                proof.owner_path.as_str(),
-                proof.structural_selector.as_str(),
-            ));
+            expected_selectors.insert((proof.owner_path(), proof.structural_selector()));
         }
         let actual_selectors =
             self.owners

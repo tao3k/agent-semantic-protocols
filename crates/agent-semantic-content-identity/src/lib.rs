@@ -79,6 +79,7 @@ pub mod active_artifact_merkle_v1;
 #[path = "../tests/unit/canonical_item_identity.rs"]
 mod canonical_item_identity_tests;
 pub mod exact_selector_cache;
+pub use exact_selector_cache::ExactSelectorProjectionRecordV1;
 pub mod exact_selector_generation_fixture;
 pub use exact_selector_generation_fixture::{
     ExactSelectorGenerationRecordV1, ExactSelectorMaterializationProofErrorV1,

@@ -53,9 +53,13 @@ fn asp_no_agent_source(payload: &Value, inherited: bool) -> Option<AspNoAgentSou
 fn hook_payload_command(payload: &Value) -> Option<&str> {
     [
         "/tool_input/command",
+        "/tool_input/cmd",
         "/toolInput/command",
+        "/toolInput/cmd",
         "/input/command",
+        "/input/cmd",
         "/command",
+        "/cmd",
     ]
     .into_iter()
     .find_map(|pointer| payload.pointer(pointer).and_then(Value::as_str))

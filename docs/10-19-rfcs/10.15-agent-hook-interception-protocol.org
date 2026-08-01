@@ -123,6 +123,59 @@ the project activation plus static manifests, not provider APIs.
 
 * Platform Facts
 
+** Serialized lazy-loader capability
+
+Format-aware document access is a root hook policy projection, not a hidden
+file-extension branch in the CLI.  The managed hook configuration serializes
+bounded structured-projection rules with
+=capabilityActivation = "lazy-executable"=.  Capability lookup is delayed
+until normalized action and document-format predicates match; lookup failure is
+local to that data-plane request and cannot globally block hook recovery or
+unrelated actions.
+
+For JSON the registered executable is =jq=, the filter grammar is
+=bounded-path-v1=, and raw =Read *.json= remains fail-closed.  An available jq
+capability authorizes only the serialized bounded route; it does not cause the
+pre-tool hook to read the document or spawn jq.  Missing jq cannot fabricate a
+route.  The TOML/yq rule is an instance of the same contract rather than a
+separate matcher heuristic.
+
+This denial uses =reasonKind = "structured-source-read"=.  The existing
+=direct-source-read= reason remains scoped to provider-owned language source
+and is not an alias for structured document projection.
+
+The normative serialized contract, delivery order, and Lean correspondence are
+defined by
+[[file:10.15.02.08-hook-lazy-loader-capability.org][10.15.02.08 Hook Lazy Loader Capability]].
+Its formal audit clause is
+=ASP-RFC-10.15-HOOK-LAZY-LOADER-CAPABILITY=.
+
+** Configuration-independent bootstrap and server warm path
+
+The plugin command enters through the configuration-independent =asp hook=
+early-dispatch module before the complete matcher document is parsed.  A
+recognized binary/config freshness drift is repaired from the configured
+artifact authority under one stable writer and the original event is replayed
+at most once.  Enforcement failures remain fail-closed, while bounded failure
+of an observational lifecycle event cannot deadlock the agent session.
+
+On the warm path the bootstrap executes the hook runtime in-process rather
+than starting a second =asp= process.  Workspace generation admission and
+graph-backed state reuse ASP Server across workspaces and sessions.  The
+normative state machine, Typst model, Lean correspondence, and implementation
+owners are defined by
+[[file:10.15.02.09-hook-bootstrap-repair-and-server-warm-path.org][10.15.02.09 Hook Bootstrap Repair and Server Warm Path]].
+Its formal audit clause is =ASP-RFC-10.15-HOOK-BOOTSTRAP-REPAIR=.
+
+The next warm-path generation moves the complete hook evaluator into ASP
+Server.  The server owns generation-keyed compiled matcher reuse; the
+bootstrap transfers only the bounded event envelope and final platform
+response.  Workspace and activation identities participate in the generation
+key, and a server miss falls back to the local evaluator without weakening
+hook policy.  The normative contract is
+[[file:10.15.02.10-server-resident-hook-evaluator.org][10.15.02.10 Server-Resident Hook Evaluator Generations]].  Its formal audit
+clause is =ASP-RFC-10.15-SERVER-HOOK-EVALUATOR=.
+
 Claude Code hook documentation describes command hooks as JSON on stdin plus
 stdout/stderr/exit-code or structured JSON decisions.  =PreToolUse= receives
 =tool_name= and =tool_input=; a deny decision can be returned in
@@ -785,6 +838,9 @@ testing/build command either matches =executionLanes.testing= and runs in the
 current session with its receipt, or it falls through to ordinary hook policy.
 
 ** Non-self-locking control-plane upgrade boundary
+:PROPERTIES:
+:CUSTOM_ID: ASP-RFC-10.15-HOOK-GENERATION-NONBLOCKING
+:END:
 
 Hook installation and recovery commands form a stable bootstrap surface.  The
 parser MUST classify configured =controlPlane.rootCommands= before resident
@@ -792,6 +848,18 @@ reasoning policy and before generic ASP fallback handling.  In particular,
 =install=, =sync=, =hook=, =paths=, and =healthcheck= must never require an
 =asp-explore= lifecycle merely because the invoked executable
 is named =asp=.
+
+Runtime generation admission is an observed data-plane readiness receipt, not
+a prerequisite for running the root hook classifier.  A failed or non-ready
+generation MAY be attached to the hook decision as diagnostic evidence, but it
+MUST NOT abort =SessionStart=, =UserPromptSubmit=, or =PreToolUse= before policy
+matching.  Otherwise one broken provider can deny unrelated commands and also
+deny the =healthcheck=, restart, install, test, and repair operations needed to
+recover it.  Commands that actually consume generation-owned search or query
+state remain fail-closed at the Runtime Server data-plane boundary; obvious
+direct source reads remain fail-closed through the language-extension matcher.
+This separation guarantees that data-plane failure cannot deadlock the hook
+control plane.
 
 An installer updates the runtime through a versioned artifact followed by an
 atomic active-binary switch.  The running hook process may finish on its pinned

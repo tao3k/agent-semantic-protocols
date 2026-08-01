@@ -8,5 +8,7 @@ mod exact_selector_merkle_contract;
 mod exact_selector_projection_packet_contract;
 #[path = "unit/structural_selector.rs"]
 mod structural_selector;
+#[path = "unit/workspace_generation_evidence.rs"]
+mod workspace_generation_evidence;
 #[path = "unit/workspace_merkle_v1_contract.rs"]
 mod workspace_merkle_v1_contract;

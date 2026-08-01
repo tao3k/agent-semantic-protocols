@@ -38,7 +38,7 @@ tool = "Bash"
     let stdout = stdout(&output);
     assert!(stdout.contains("clientConfigStatus=ok"));
     assert!(stdout.contains("configContractStatus=missing"));
-    assert!(stdout.contains("hookShellMode=non-login"));
+    assert!(stdout.contains("hookShellMode=login"));
     assert!(stdout.contains("hookShellBinaryStatus="));
     assert!(stdout.contains("hookShellBinaryPath="));
     assert!(stdout.contains("eventState=missing"));
@@ -156,7 +156,7 @@ tool = "Bash"
 }
 
 #[test]
-fn codex_plugin_hooks_use_global_asp_and_bounded_timeout() {
+fn codex_plugin_hooks_use_stable_public_surface_and_bounded_timeout() {
     let hooks: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../../asp-codex-plugin/hooks/hooks.json"
     ))
@@ -181,7 +181,7 @@ fn codex_plugin_hooks_use_global_asp_and_bounded_timeout() {
             .unwrap_or_else(|| panic!("{event} command string"));
         assert!(
             command.starts_with("asp hook "),
-            "{event} command must use global asp: {command}"
+            "{event} command must use the stable public hook surface: {command}"
         );
         assert!(
             !command.contains("direnv exec"),

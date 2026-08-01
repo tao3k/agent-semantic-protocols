@@ -1,0 +1,1205 @@
+#+title: RFC 10.15.02.06 — ASP AgentSession Refinement over Codex Multi-Agent v2
+#+author: ASP Architecture
+
+* Status
+
+Draft / ASP downstream refinement model. This RFC does not relocate, wrap,
+verify, or judge the Codex Rust implementation. Codex Multi-Agent v2 is an
+opaque host capability contract. The only proof target is the rigor of ASP's
+AgentSession protocol while using those capabilities.
+
+The corresponding executable proof kernel is
+=packages/proofs/ASPProof/CodexMultiAgentV2Lifecycle.lean=. Its AXLE audit is
+=packages/proofs/ASPProof/Audit/CodexMultiAgentV2Lifecycle.lean=.
+
+* Host capability assumption boundary
+
+ASP assumes that the host exposes this public operation set:
+
+- =spawn_agent=: create and register a child agent;
+- =send_message=: enqueue a message without starting an idle turn;
+- =followup_task=: enqueue a task and start a turn when the agent is idle;
+- =interrupt_agent=: stop the current turn while retaining the agent;
+- =list_agents=: observe the registered agent tree;
+- =wait_agent=: wait for an observation update.
+
+These are assumptions, not proof obligations. This RFC does not determine
+whether the host's internal lifecycle is correct. ASP admits only the observable
+capability results required by its adapter and never imports host-internal state
+as ASP authority.
+
+The refinement boundary is one-way:
+
+#+begin_example
+Codex Multi-Agent v2 host capabilities
+                 |
+                 v
+ASP adapter observations
+                 |
+                 v
+ASP durable AgentSession authority
+#+end_example
+
+Host success is necessary for effects such as child creation or interruption,
+but it is never sufficient for ASP binding. ASP independently requires durable
+intent, stable dispatch identity, indexed receipts, delivery publication, and
+session-scoped registry authority.
+
+* Design correction: lifecycle is a product, not one enum
+
+An agent being =completed= does not imply that the agent is destroyed.
+=followup_task= can reactivate a previously completed registered agent.
+Therefore the lifecycle is the product of three independent axes:
+
+1. session phase;
+2. durable agent binding phase;
+3. current turn phase plus the previous turn outcome.
+
+#+name: multi-agent-v2-product-state
+#+begin_src typst
+#let session = ("open", "draining", "closed")
+#let binding = (
+  "absent",
+  "reserved",
+  "intent-durable",
+  "host-accepted",
+  "delivered",
+  "orphaned",
+  "released",
+)
+#let turn = ("idle", "queued", "running", "interrupting")
+#let outcome = ("none", "completed", "failed", "interrupted")
+#let state-space-size = (
+  session.len() *
+  binding.len() *
+  turn.len() *
+  outcome.len()
+)
+#assert(state-space-size == 336)
+#assert(turn.contains("idle"))
+#assert(outcome.contains("completed"))
+#assert("completed" not in binding)
+"ok"
+#+end_src
+
+This decomposition prevents four category errors:
+
+- turn completion being interpreted as agent destruction;
+- server health being interpreted as session binding health;
+- caller activity being interpreted as host ownership authority;
+- registered name resolution being interpreted as typed-role admission.
+
+* ASP refinement predicate
+
+Let =H= be the opaque host-capability contract and =A= be ASP durable state.
+ASP use is admissible only when both the required host capabilities are
+available and the ASP authority chain is closed:
+
+#+name: asp-host-refinement-admission
+#+begin_src typst
+#let host-ready(host) = (
+  host.spawn and
+  host.send and
+  host.followup and
+  host.interrupt and
+  host.list and
+  host.wait
+)
+#let asp-chain-closed(asp) = (
+  asp.intent and
+  asp.stable-key and
+  asp.accept-receipt and
+  asp.delivery
+)
+#let admissible(host, asp) = (
+  host-ready(host) and asp-chain-closed(asp)
+)
+#let host = (
+  spawn: true,
+  send: true,
+  followup: true,
+  interrupt: true,
+  list: true,
+  wait: true,
+)
+#let incomplete-asp = (
+  intent: true,
+  stable-key: true,
+  accept-receipt: true,
+  delivery: false,
+)
+#assert(host-ready(host))
+#assert(not admissible(host, incomplete-asp))
+"ok"
+#+end_src
+
+This is the central refinement theorem: complete host capability cannot create
+ASP AgentSession authority without the ASP-owned durable chain.
+
+* Identity model
+
+Every durable spawn has:
+
+- =IntentId=: retry-stable downstream intent identity;
+- =DispatchKey=: stable key used for idempotent host acceptance;
+- =AgentId=: host identity returned by acceptance;
+- =AgentPath=: canonical tree identity;
+- =parentPath=: durable parent binding;
+- =typedRole=: immutable admitted role;
+- =ForkMode=: =none=, =all=, or =lastN(n)=.
+
+The canonical child path is a pure function of parent path and reserved child
+slot. Nickname, display label, Started activity, and tool-result text are
+observations; none is an identity authority.
+
+A Codex =@name= symbol is projected when and only when its static export chain
+is valid: the canonical profile exists under =ASP_STATE_HOME/agents=, the
+corresponding =~/.codex/agents/*_codex.toml= entry is a symbolic link, and that
+link targets the canonical state-home profile. Runtime binding state is not an
+input to symbol projection. Binding admission still governs ASP's durable
+authority, receipts, and internal reconciliation, but it MUST NOT hide an
+otherwise valid Codex symbol.
+
+* Session phase
+
+#+name: session-phase-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+    [*] --> Open
+    Open --> Draining: close requested
+    Draining --> Draining: settle or interrupt active turns
+    Draining --> Closed: every binding released with receipt
+    Closed --> [*]
+#+end_src
+
+=Open= admits new reservations and turns. =Draining= rejects new spawn
+reservations and new external turn triggers, but it may deliver already durable
+messages, finish active turns, interrupt them, and release idle agents.
+=Closed= admits no agent mutation.
+
+Server health is external to this state machine. Closing an AgentSession must
+not stop the ASP server, and restarting the server must not synthesize an
+AgentSession binding.
+
+* Durable binding phase
+
+#+name: durable-binding-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+    [*] --> Absent
+    Absent --> Reserved: reservation CAS
+    Reserved --> IntentDurable: persist intent and stable dispatch key
+    IntentDurable --> HostAccepted: idempotent host accept
+    HostAccepted --> Delivered: index accept receipt and delivery CAS
+    HostAccepted --> Orphaned: host child exists but authority cannot close
+    IntentDurable --> IntentDurable: retry same dispatch key
+    Orphaned --> Delivered: reconcile indexed host receipt
+    Orphaned --> Released: quarantine and reclaim
+    Delivered --> Released: draining release with receipt
+    Released --> [*]
+#+end_src
+
+The required spawn closure is:
+
+#+name: complete-spawn-chain
+#+begin_src typst
+#let spawn-closed(edge) = (
+  edge.reservation and
+  edge.intent and
+  edge.stable-key and
+  edge.host-accept and
+  edge.accept-receipt and
+  edge.delivery
+)
+#let accepted-before-delivery = (
+  reservation: true,
+  intent: true,
+  stable-key: true,
+  host-accept: true,
+  accept-receipt: true,
+  delivery: false,
+)
+#let delivered = (
+  reservation: true,
+  intent: true,
+  stable-key: true,
+  host-accept: true,
+  accept-receipt: true,
+  delivery: true,
+)
+#assert(not spawn-closed(accepted-before-delivery))
+#assert(spawn-closed(delivered))
+"ok"
+#+end_src
+
+The linearization points are:
+
+1. reservation CAS owns the future canonical path;
+2. durable intent authorizes dispatch and retry;
+3. host accept owns the host child identity;
+4. intent-indexed receipt binds host identity to downstream intent;
+5. delivery CAS publishes the registered child to callers.
+
+No Started activity, nickname lookup, list result, or tool result may replace
+these authorities.
+
+* Turn phase
+
+#+name: turn-phase-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Queued: followup_task
+    Queued --> Running: scheduler accepts turn
+    Running --> Running: send_message or followup queued for boundary
+    Running --> Interrupting: interrupt_agent
+    Interrupting --> Idle: interrupt receipt
+    Running --> Idle: completion receipt
+    Running --> Idle: failure receipt
+    Idle --> Idle: send_message only
+#+end_src
+
+The previous turn outcome is recorded independently as =completed=, =failed=,
+or =interrupted=. Every one returns the registered agent to =idle= unless the
+session concurrently releases the binding.
+
+* Operation semantics
+
+** =spawn_agent=
+
+Preconditions:
+
+- session is =open=;
+- parent binding is =delivered=, except for the root session authority;
+- canonical child path is unbound;
+- requested typed role and fork mode are compatible.
+
+Effect:
+
+- closes the durable binding chain;
+- publishes one registered child;
+- leaves the new child =idle=;
+- emits activity and tool-result observations only after delivery authority.
+
+Retry:
+
+- same =IntentId= and =DispatchKey= must return the same accepted =AgentId=;
+- retry must not allocate a second child path or emit a second delivery commit.
+
+** =send_message=
+
+Effect:
+
+- appends a mailbox record;
+- does not trigger an idle turn;
+- does not change binding phase;
+- while running, makes the message available at the next prompt boundary.
+
+** =followup_task=
+
+When idle:
+
+- appends a task record;
+- changes turn from =idle= to =queued=;
+- permits exactly one scheduler start.
+
+When running:
+
+- appends the task record;
+- leaves the current turn =running=;
+- marks a boundary wakeup;
+- must not create a second simultaneous turn.
+
+** =interrupt_agent=
+
+When running:
+
+- changes =running= to =interrupting=;
+- records interrupt intent;
+- after host acknowledgment, returns to =idle= with outcome =interrupted=;
+- preserves the delivered binding and pending mailbox.
+
+When idle, interruption is an idempotent observation and does not release the
+agent.
+
+** =list_agents=
+
+=list_agents= projects registered bindings and current turn observations. It
+does not create, repair, release, or prove a binding.
+
+** =wait_agent=
+
+=wait_agent= is read-only with respect to lifecycle authority. Timeouts and
+unchanged snapshots do not mean failure. A returned completion is a turn
+observation backed by a completion receipt, not an agent terminal state.
+
+* Message and follow-up algebra
+
+#+name: message-followup-algebra
+#+begin_src typst
+#let send(turn) = (
+  turn: turn,
+  mailbox: true,
+  boundary-wake: false,
+)
+#let followup(turn) = if turn == "idle" {
+  (turn: "queued", mailbox: true, boundary-wake: false)
+} else {
+  (turn: "running", mailbox: true, boundary-wake: true)
+}
+#assert(send("idle").turn == "idle")
+#assert(followup("idle").turn == "queued")
+#assert(followup("running").turn == "running")
+#assert(followup("running").boundary-wake)
+"ok"
+#+end_src
+
+* Authority fencing and ABA prevention
+
+Every command, receipt, observation, mailbox cell, and turn lease is indexed by
+an ASP authority fence:
+
+#+begin_example
+AuthorityFence = (SessionEpoch, AgentGeneration)
+TurnFence      = (AuthorityFence, TurnToken)
+#+end_example
+
+=SessionEpoch= changes when a logical AgentSession is replaced.
+=AgentGeneration= changes when the canonical registry slot is rebound after
+release. =TurnToken= changes for every new turn of the same registered agent.
+
+A receipt is admissible only when all fence components match current ASP
+authority. This prevents:
+
+- a receipt from a previous session completing a new session;
+- a released AgentId completing a replacement binding at the same path;
+- a late completion from an interrupted turn completing a later turn;
+- a stale wait/list observation becoming recovery authority.
+
+#+name: fenced-receipt-admission
+#+begin_src typst
+#let fence-matches(current, receipt) = (
+  current.session-epoch == receipt.session-epoch and
+  current.agent-generation == receipt.agent-generation
+)
+#let completion-admissible(current, receipt) = (
+  fence-matches(current, receipt) and
+  current.turn-token == receipt.turn-token and
+  current.turn == "running" and
+  receipt.kind == "turn-complete"
+)
+#let current = (
+  session-epoch: 7,
+  agent-generation: 3,
+  turn-token: 41,
+  turn: "running",
+)
+#let stale-session = (
+  session-epoch: 6,
+  agent-generation: 3,
+  turn-token: 41,
+  kind: "turn-complete",
+)
+#let stale-generation = (
+  session-epoch: 7,
+  agent-generation: 2,
+  turn-token: 41,
+  kind: "turn-complete",
+)
+#let stale-turn = (
+  session-epoch: 7,
+  agent-generation: 3,
+  turn-token: 40,
+  kind: "turn-complete",
+)
+#assert(not completion-admissible(current, stale-session))
+#assert(not completion-admissible(current, stale-generation))
+#assert(not completion-admissible(current, stale-turn))
+"ok"
+#+end_src
+
+#+name: authority-fence-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+    [*] --> SessionEpoch7
+    SessionEpoch7 --> AgentGeneration3: bind registry slot
+    AgentGeneration3 --> TurnToken41: start turn
+    TurnToken41 --> ReceiptAccepted: exact fence match
+    TurnToken41 --> ReceiptRejected: stale session epoch
+    TurnToken41 --> ReceiptRejected: stale agent generation
+    TurnToken41 --> ReceiptRejected: stale turn token
+    ReceiptAccepted --> TurnToken42: next turn
+    AgentGeneration3 --> AgentGeneration4: release and rebind
+    SessionEpoch7 --> SessionEpoch8: replace logical session
+#+end_src
+
+* Idempotency cells
+
+Message and receipt deduplication is modeled as a map from stable identity to a
+single finite cell:
+
+#+name: indexed-idempotency-cell
+#+begin_src typst
+#let apply-once(cell) = if cell.applied {
+  cell
+} else {
+  (applied: true)
+}
+#let fresh = (applied: false)
+#let applied = apply-once(fresh)
+#assert(applied.applied)
+#assert(apply-once(applied) == applied)
+#assert(apply-once(apply-once(fresh)) == apply-once(fresh))
+"ok"
+#+end_src
+
+The implementation may store these cells in a database, outbox, or in-memory
+index backed by durable receipts. The mathematical unit is per =MessageId= or
+=ReceiptId=; applying the same key twice has the same state as applying it once.
+
+* Draining corrections
+
+The formal transition audit requires:
+
+- external =send_message= and =followup_task= only while session is =open=;
+- =queued -> running= only when durable mailbox work is pending;
+- draining may settle existing work and interrupt turns;
+- both delivered and quarantined orphan bindings may be released;
+- no mutation begins from =closed=.
+
+* Crash and recovery matrix
+
+| Crash point | Durable evidence | Required recovery |
+|-
+| before reservation CAS | none | retry as a new reservation |
+| after reservation, before intent | reserved path | expire or persist intent |
+| after intent, before host accept | intent plus dispatch key | retry same dispatch |
+| after host accept, before receipt | host may own child | query by dispatch key; never blind respawn |
+| after receipt, before delivery | indexed accept | replay delivery CAS |
+| after delivery, before Started activity | delivered binding | regenerate observation only |
+| running turn before completion receipt | delivered binding plus turn lease | reconcile host turn; interrupt or resume |
+| draining before release receipt | delivered or orphaned binding | retry release idempotently |
+
+An orphan is a host-visible child for which ASP cannot yet close the durable
+binding proof. ASP quarantines the orphan from treating ordinary
+=send_message= or =followup_task= receipts as durable binding authority. A
+valid static Codex symbol remains projected as =@name= while ASP reconciles the
+binding internally. Only a missing, non-symbolic, or misdirected export under
+=~/.codex/agents/*_codex.toml= suppresses the target.
+
+* Concurrency invariants
+
+The ASP implementation must preserve:
+
+1. one canonical child path has at most one delivered binding;
+2. one dispatch key has at most one accepted AgentId;
+3. one registered agent has at most one running turn;
+4. follow-up while running creates boundary work, not a concurrent turn;
+5. delivery requires reservation, durable intent, stable dispatch key, host
+   accept, and indexed accept receipt;
+6. release is published before session close;
+7. a completion/failure/interrupt receipt terminates a turn, not the agent;
+8. observations never repair missing authority;
+9. server lifecycle and AgentSession lifecycle are independent;
+10. provider failure may close one route but may not erase unrelated session
+    authority.
+
+* Resident agent semantics
+
+A session resident is a registered agent whose binding survives individual
+turn completion. It is not an operating-system daemon and not the ASP Runtime
+Server.
+
+Admission requires:
+
+- typed role selected explicitly;
+- canonical path and registered name bound to the same entry;
+- fork mode compatible with the typed role;
+- durable delivery receipt;
+- active AgentSession.
+
+=@registeredSubagentName= is a routing projection onto that durable registry.
+It may enqueue a message or follow-up according to the caller operation, but it
+does not itself spawn or repair the target.
+
+* ASP implementation obligations
+
+ASP AgentSession must own:
+
+- reservation ledger;
+- durable spawn intent/outbox;
+- stable dispatch key;
+- host acceptance adapter;
+- intent-indexed acceptance receipt;
+- delivery CAS;
+- registry name/path/role binding;
+- mailbox and boundary-wakeup state;
+- turn lease and completion receipt;
+- interrupt intent and acknowledgment;
+- orphan quarantine and reconciliation;
+- drain/release receipts;
+- session recovery projection.
+
+The ASP Runtime Server may execute storage, scheduling, indexing, and recovery
+work, but it does not become the AgentSession authority. Every server-side
+action must be indexed by session and intent identity.
+
+* Lean correspondence
+
+=CodexMultiAgentV2Lifecycle.lean= formalizes:
+
+- the three orthogonal state axes;
+- the complete durable spawn chain;
+- message versus follow-up semantics;
+- reusable completion, failure, and interruption;
+- wait observation non-authority;
+- server/session independence;
+- registered-name versus typed-resident admission;
+- canonical child-path stability;
+- release-receipt requirements for session close;
+- one admissible =Step= relation spanning every lifecycle mutation;
+- prohibition of lifecycle mutation after the source session is closed;
+- idempotent host acceptance for a stable dispatch identity.
+- separation of opaque host capability from ASP binding authority.
+- rejection of new external follow-up while draining;
+- release admission for a quarantined orphan.
+
+=ASPAgentSessionFencing.lean= separately formalizes:
+
+- session-epoch fencing;
+- agent-generation fencing;
+- turn-token fencing;
+- exact observation-version admission;
+- external-command rejection while draining;
+- per-key message and receipt idempotency cells.
+
+The core audit contains twenty-one axiom checks and the fencing audit contains
+nine more. This proof kernel is an ASP design constraint. Future Rust, Python,
+or storage implementations must refine it; they must not redefine its
+authority boundaries privately.
+
+* Single interactive AgentSession portal
+
+The agent-facing command surface SHOULD converge on one interactive entry,
+=asp session=. Bootstrap, registration, reconciliation, recovery, and symbol
+export repair are internal directives selected by the portal reducer. They are
+not separate commands that the model must discover, remember, or sequence.
+
+The portal returns two orthogonal projections:
+
+- an agent action: call =@name=, queue =@name= at the next boundary, wait, or
+  report a closed session;
+- an internal directive: none, register the binding, reconcile the binding, or
+  repair the static Codex symbol export.
+
+The static symbol export is authoritative only for name availability:
+
+#+name: agent-session-symbol-export
+#+begin_src typst
+#let exported(symbol) = (
+  symbol.state-definition-present and
+  symbol.codex-symlink-present and
+  symbol.symlink-targets-state-definition
+)
+
+#let valid = (
+  state-definition-present: true,
+  codex-symlink-present: true,
+  symlink-targets-state-definition: true,
+)
+#let wrong-target = (
+  state-definition-present: true,
+  codex-symlink-present: true,
+  symlink-targets-state-definition: false,
+)
+
+#assert(exported(valid))
+#assert(not exported(wrong-target))
+"ok"
+#+end_src
+
+The reducer MUST preserve =@name= across runtime binding repair. This rule
+supersedes any earlier wording that quarantines the static Codex symbol merely
+because the ASP binding is stale or orphaned. The call may proceed through the
+host while ASP independently closes its durable binding chain. Host acceptance
+still does not prove that the ASP binding is delivered.
+
+#+name: agent-session-portal-reducer
+#+begin_src typst
+#let portal(symbol-exported, session, binding, turn, fence-current) = {
+  let target = symbol-exported
+  if not symbol-exported {
+    return (
+      state: "link-broken",
+      action: "blocked",
+      internal: "repair-symbol-export",
+      target: target,
+    )
+  }
+  if session == "closed" or session == "draining" {
+    return (
+      state: session,
+      action: "blocked",
+      internal: "none",
+      target: target,
+    )
+  }
+  if turn == "running" or turn == "queued" {
+    return (
+      state: "active",
+      action: "queue-@name",
+      internal: "none",
+      target: target,
+    )
+  }
+  if turn == "interrupting" {
+    return (
+      state: "active",
+      action: "wait",
+      internal: "none",
+      target: target,
+    )
+  }
+  if binding == "delivered" and fence-current {
+    return (
+      state: "ready",
+      action: "call-@name",
+      internal: "none",
+      target: target,
+    )
+  }
+  if binding == "absent" or binding == "released" {
+    return (
+      state: "absent",
+      action: "call-@name",
+      internal: "register-binding",
+      target: target,
+    )
+  }
+  (
+    state: "repairing",
+    action: "call-@name",
+    internal: "reconcile-binding",
+    target: target,
+  )
+}
+
+#let stale = portal(true, "open", "delivered", "idle", false)
+#let orphaned = portal(true, "open", "orphaned", "idle", true)
+#let broken = portal(false, "open", "delivered", "idle", true)
+#assert(stale.target and stale.action == "call-@name")
+#assert(stale.internal == "reconcile-binding")
+#assert(orphaned.target and orphaned.action == "call-@name")
+#assert(orphaned.internal == "reconcile-binding")
+#assert(not broken.target and broken.action == "blocked")
+#assert(broken.internal == "repair-symbol-export")
+
+#let projection-field-count = 4
+#let pane-token-cost(history-length) = projection-field-count
+#assert(pane-token-cost(0) == pane-token-cost(1000000))
+"ok"
+#+end_src
+
+The stateful control flow is:
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> ExportAudit
+  ExportAudit --> LinkBroken: source missing, link missing, or wrong target
+  ExportAudit --> Exported: state-home profile -> Codex symlink is valid
+  LinkBroken --> ExportAudit: internal repair-symbol-export
+
+  state Exported {
+    [*] --> BindingAudit
+    BindingAudit --> Ready: delivered and current fence
+    BindingAudit --> Absent: absent or released
+    BindingAudit --> Repairing: stale, intermediate, or orphaned
+    BindingAudit --> Active: queued or running turn
+    BindingAudit --> Waiting: interrupting turn
+    Absent --> Ready: internal register-binding closes
+    Repairing --> Ready: internal reconcile-binding closes
+    Active --> BindingAudit: turn boundary
+    Waiting --> BindingAudit: interrupt receipt
+  }
+
+  note right of Exported
+    @name remains projected in Ready,
+    Absent, Repairing, Active, and Waiting.
+  end note
+#+end_src
+
+The executable Lean refinement is
+=packages/proofs/ASPProof/ASPAgentSessionPortal.lean=, with the modular axiom
+audit in =packages/proofs/ASPProof/Audit/ASPAgentSessionPortal.lean=. Its key
+law is definitionally exact:
+
+#+name: agent-session-portal-cost-law
+#+begin_src typst
+#let target-projected(snapshot) = snapshot.symbol-exported
+#let stale = (symbol-exported: true, binding: "orphaned")
+#assert(target-projected(stale))
+
+#let agent-rounds-ready = 1
+#let administrative-commands-exposed = 0
+#assert(agent-rounds-ready == 1)
+#assert(administrative-commands-exposed == 0)
+"ok"
+#+end_src
+
+The Portal audit adds nineteen axiom-free theorems to the twenty-one core and
+nine fencing theorems. Lean also exposed a proof-engineering constraint: the
+strict kernel must use explicit finite-state eliminations rather than wildcard
+or multi-scrutinee compilation paths that introduce =propext= into the audit.
+
+The strengthened orthogonality law quantifies over the runtime axes: changing
+the binding phase, turn phase, or fence observation cannot change
+=targetProjected=. Conversely, a wrong symlink target dominates every binding
+phase and always selects =repair-symbol-export=. This prevents a healthy
+runtime binding from laundering an invalid Codex symbol export.
+
+* LifeSession aggregate correction
+
+The first Portal model still collapses two different authorities into
+=callResident=. Lean constructs a counterexample: a snapshot with an exported
+name, an absent binding, and a running turn is projected as =queueResident= by
+the legacy reducer even though no ASP durable command is admissible. The state
+may be unreachable in a correct implementation, but the reducer neither states
+nor checks that invariant. A recovery bug, partial row update, or stale
+observation can therefore be turned into an apparently authorized queue.
+
+The LifeSession refinement replaces that ambiguous result with an explicit
+authority lattice:
+
+| Authority | Meaning | Permitted agent result |
+|-
+| =none= | no command authority | wait or block |
+| =host-only= | Codex can resolve the statically exported =@name= | direct host call while ASP repairs internally |
+| =asp-durable= | delivered binding, current fence, and current profile evidence | durable call or durable boundary queue |
+
+The =@name= visibility rule does not change. It still depends only on
+=ASP_STATE_HOME/agents/<profile> -> ~/.codex/agents/<name>_codex.toml=. Profile
+evidence, registry phase, turn phase, and Runtime Server generation cannot hide
+that name. They can only withhold =asp-durable= authority.
+
+#+name: agent-lifesession-authority-refinement
+#+begin_src typst
+#let projected(symbol) = (
+  symbol.state-definition-present and
+  symbol.codex-symlink-present and
+  symbol.symlink-targets-state-definition
+)
+
+#let durable(snapshot) = (
+  snapshot.binding == "delivered" and
+  snapshot.fence-current and
+  snapshot.profile-evidence-current
+)
+
+#let authority(snapshot) = if not projected(snapshot.symbol) {
+  "none"
+} else if durable(snapshot) {
+  "asp-durable"
+} else {
+  "host-only"
+}
+
+#let symbol = (
+  state-definition-present: true,
+  codex-symlink-present: true,
+  symlink-targets-state-definition: true,
+)
+#let absent = (
+  symbol: symbol,
+  binding: "absent",
+  fence-current: true,
+  profile-evidence-current: true,
+)
+#let delivered = (
+  symbol: symbol,
+  binding: "delivered",
+  fence-current: true,
+  profile-evidence-current: true,
+)
+#let stale-profile = (
+  symbol: symbol,
+  binding: "delivered",
+  fence-current: true,
+  profile-evidence-current: false,
+)
+
+#assert(projected(absent.symbol))
+#assert(authority(absent) == "host-only")
+#assert(authority(delivered) == "asp-durable")
+#assert(authority(stale-profile) == "host-only")
+"ok"
+#+end_src
+
+The corrected reducer fails closed for queued or running states that lack
+durable evidence. It does not remove the name; it blocks the ASP queue and
+selects internal registration or reconciliation. An idle =host-only= call is
+still allowed because it is explicitly labeled as host authority rather than
+being admitted as an ASP durable command.
+
+#+name: agent-lifesession-corrected-active-state
+#+begin_src typst
+#let active-decision(binding, durable-evidence) = if durable-evidence {
+  (action: "durable-queue", authority: "asp-durable", internal: "none")
+} else if binding == "absent" or binding == "released" {
+  (action: "blocked", authority: "none", internal: "register-binding")
+} else {
+  (action: "blocked", authority: "none", internal: "reconcile-binding")
+}
+
+#let invalid-running-absent = active-decision("absent", false)
+#let valid-running-delivered = active-decision("delivered", true)
+#assert(invalid-running-absent.action == "blocked")
+#assert(invalid-running-absent.internal == "register-binding")
+#assert(valid-running-delivered.action == "durable-queue")
+#assert(valid-running-delivered.authority == "asp-durable")
+"ok"
+#+end_src
+
+The aggregate state machine is event-sourced at the authority boundary. The
+database row, Runtime Server memory, and host observations are projections of
+committed events; none is independently allowed to advance the aggregate.
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> PortalEntered: public enter-session
+  PortalEntered --> ExportBroken: symbol export invalid
+  PortalEntered --> HostOnly: symbol valid, durable evidence incomplete
+  PortalEntered --> DurableReady: delivered + current fence + current profile evidence
+
+  ExportBroken --> PortalEntered: internal symbol-export repair receipt
+  HostOnly --> ReservationPublished: reservation CAS + durable intent/outbox
+  ReservationPublished --> HostAccepted: stable dispatch key accepted idempotently
+  HostAccepted --> ReceiptIndexed: intent-indexed accept receipt
+  ReceiptIndexed --> DurableReady: delivered CAS
+
+  DurableReady --> TurnQueued: durable follow-up
+  TurnQueued --> TurnRunning: fenced scheduler start
+  TurnRunning --> DurableReady: indexed completion receipt
+  TurnRunning --> Interrupting: durable interrupt intent
+  Interrupting --> DurableReady: indexed interrupt receipt
+
+  DurableReady --> Draining: drain intent committed
+  HostOnly --> Draining: drain during repair
+  Draining --> Released: release receipt indexed
+  Released --> Closed: close CAS
+
+  HostOnly --> HostOnly: retry/reconcile with same intent and dispatch key
+  DurableReady --> HostOnly: fence or profile evidence becomes stale
+
+  note right of HostOnly
+    @name remains visible.
+    ASP durable send and queue are not admitted.
+  end note
+
+  note right of ReservationPublished
+    Session reservation and outbox intent
+    are one publication boundary.
+  end note
+#+end_src
+
+The current Rust owner audit reinforces this boundary. The registry exposes
+separate =register_session=, =claim_resident_session=, dispatch claim/complete,
+status, archive, and delete operations. The storage projection currently uses
+multi-statement delete/insert paths for some registration flows. Those paths
+must not define LifeSession semantics: the refactor must place one aggregate
+command handler above them and require atomic publication or replay from a
+durable intent. In particular, clearing a stale route before publishing its
+replacement is not an admissible aggregate transition.
+
+The Runtime Server already carries its own owner epoch, artifact digest,
+transport contract digest, and binding token. LifeSession MUST retain that
+separation. Runtime health or artifact generation may decide where repair work
+runs, but it cannot manufacture session binding authority, suppress an
+otherwise valid =@name=, or turn a stale provider snapshot into a session
+receipt.
+
+** Refactor ownership map
+
+The refactor SHOULD introduce one aggregate root and keep the existing
+mechanisms behind explicit ports:
+
+| Component | Owns | Must not own |
+|-
+| public Session Portal | one =enter-session= interaction and compact projection | registration, retries, SQL mutation, or server restart policy |
+| symbol export reconciler | state-home profile and exact Codex symlink target evidence | ASP binding delivery or turn authority |
+| LifeSession aggregate | command admission, event ordering, fences, name/path slot, drain and close | Runtime Server process lifetime or provider index generation |
+| durable intent/outbox | stable intent, dispatch key, retry state, and next internal action | agent-visible command vocabulary |
+| host adapter | idempotent Codex call and host acceptance observation | declaring ASP delivery without an indexed receipt |
+| registry projection | queryable current row derived from committed aggregate events | destructive replacement as an independent source of truth |
+| retirement ledger | irreversible physical-generation tombstone | logical =@name= visibility |
+| Runtime Server | storage execution, recovery scheduling, indexing, and provider snapshots | LifeSession identity, binding authority, or close semantics |
+
+Every mutation enters through a LifeSession command envelope containing
+=SessionEpoch=, =AgentGeneration=, expected aggregate revision, stable intent
+identity, and an idempotency key. Internal effects return events; only the
+aggregate reducer can publish a new revision. This makes the following current
+storage shapes implementation details rather than protocol semantics:
+
+- delete stale mapping followed by insert/update;
+- delete archived or closed row followed by resident claim;
+- status mutation independent of dispatch completion;
+- Runtime Server recovery that observes a row but lacks the aggregate event.
+
+Before Rust migration, the existing =claim_resident_session= path must be
+checked against the same retired-physical-generation rule already applied by
+=register_session=. Removing an archived or closed projection is not proof that
+the physical generation may be reused. The target rule is conservative:
+retirement tombstones are monotone, while a logical registered name may bind a
+fresh generation through a fenced CAS.
+
+** Migration gates
+
+The Rust refactor is not admitted merely because the new command handler can
+write the current registry table. It must pass these gates in order:
+
+1. dual-read: reconstruct one LifeSession from the event log and compare its
+   projection with the legacy row without changing routing;
+2. shadow-decision: run the new reducer and record disagreements with the
+   legacy Portal, especially active states without durable evidence;
+3. intent-first write: publish reservation plus outbox atomically while the
+   legacy row remains a derived compatibility projection;
+4. fenced host dispatch: retry only by stable dispatch key and index the accept
+   receipt by intent;
+5. delivered CAS: make durable call/queue authority visible only after the
+   receipt-indexed delivery revision commits;
+6. retirement migration: import physical-generation tombstones before enabling
+   replacement claims;
+7. command contraction: remove agent-facing bootstrap/register/recover commands
+   only after the single Portal can explain every internal next action;
+8. rollback: disable new writes without deleting the append-only log or
+   re-enabling ambiguous durable authority.
+
+** Same-child rebind progress law
+
+A live audit exposed a non-progressing repair loop that the refactor MUST
+eliminate. The registry contained an =existing-child-discovered= resident with
+an unbound message target. Native =list_agents= did not initially project the
+canonical target, but a bounded native follow-up to =/root/asp_testing=
+succeeded. ASP then recorded a verified =observe-host-ack= with
+=registersResidentChild=false=. Re-entering the lifecycle reducer nevertheless
+returned the same =resume-existing-child-for-live-target-rebind= action.
+
+The individual safety decisions are correct:
+
+- list absence is not proof that the target is unreachable;
+- a live host acknowledgement is not an ASP delivered binding;
+- the existing child identity must not be replaced after a successful probe.
+
+The composition is incomplete because no authoritative event consumes the
+acknowledgement and advances the repair phase. Repeating host follow-up plus
+observation can therefore remain safe while never converging.
+
+The corrected reducer consumes host reachability once and exposes the next
+internal transition:
+
+#+name: agent-lifesession-rebind-progress
+#+begin_src typst
+#let next(phase, event) = {
+  if phase == "awaiting-host-probe" and event == "host-ack" {
+    return "rebind-intent-required"
+  }
+  if phase == "rebind-intent-required" and event == "persist-intent" {
+    return "delivery-receipt-required"
+  }
+  if phase == "delivery-receipt-required" and event == "index-receipt" {
+    return "rebound"
+  }
+  if phase == "rebind-intent-required" and event == "host-ack" {
+    return "rebind-intent-required"
+  }
+  "rejected"
+}
+
+#let after-ack = next("awaiting-host-probe", "host-ack")
+#let after-intent = next(after-ack, "persist-intent")
+#let after-receipt = next(after-intent, "index-receipt")
+#assert(after-ack == "rebind-intent-required")
+#assert(next(after-ack, "host-ack") == after-ack)
+#assert(after-intent == "delivery-receipt-required")
+#assert(after-receipt == "rebound")
+#assert(next("awaiting-host-probe", "index-receipt") == "rejected")
+"ok"
+#+end_src
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> AwaitingHostProbe
+  AwaitingHostProbe --> RebindIntentRequired: verified canonical host acknowledgement
+  AwaitingHostProbe --> ReplacementClassificationRequired: bounded target-not-found receipt
+  RebindIntentRequired --> RebindIntentRequired: duplicate host acknowledgement
+  RebindIntentRequired --> DeliveryReceiptRequired: durable rebind intent committed
+  DeliveryReceiptRequired --> DeliveryReceiptRequired: duplicate intent or host acknowledgement
+  DeliveryReceiptRequired --> Rebound: intent-indexed delivery receipt + delivered CAS
+  Rebound --> Rebound: duplicate acknowledgement or receipt
+  ReplacementClassificationRequired --> [*]: fenced replacement decision
+
+  note right of RebindIntentRequired
+    Do not probe the host again as the next action.
+    Persist the same-child rebind intent.
+  end note
+
+  note right of Rebound
+    Only this state grants ASP durable authority.
+  end note
+#+end_src
+
+This chain has three successful transitions. Host acknowledgement advances the
+repair state but does not confer delivered authority. Duplicate acknowledgement
+is idempotent. Receipt indexing before durable rebind intent is rejected. The
+single Session Portal may render progress, but these steps remain internal and
+must not become three agent-facing commands.
+
+** Archive acceptance is not canonical path release
+
+The Codex host experiment exposes another state dimension that must not be
+collapsed into registry visibility. Archiving the two resident child rollouts
+successfully removed both children from the native =list_agents= projection,
+but immediate typed creation under the same =/root/asp_explorer= and
+=/root/asp_testing= paths still returned =agent path ... already exists=.
+Therefore archive acceptance proves neither canonical path release nor
+replacement authority.
+
+The lifecycle model MUST distinguish these facts:
+
+- =hostTreeVisible=: whether the current host-tree projection renders the child;
+- =archiveReceipt=: whether Codex accepted the archive action for the child rollout;
+- =closeReceipt=: whether =close_agent= durably closed the parent-child spawn
+  edge and initiated native shutdown;
+- =pathReleaseReceipt=: whether shutdown completion released the exact canonical
+  path from the live collaboration registry;
+- =replacementAuthorized=: true only after both close and path-release receipts
+  are durable and refer to the same child generation and path.
+
+Host-tree absence after archive is a presentation observation. It MUST NOT be
+promoted to a path-release receipt. A duplicate archive is idempotent and
+orthogonal to retirement. A path release observed before =close_agent= is
+rejected, while =close_agent= MAY precede archive. Replacement creation is a
+fenced CAS after the release receipt, not a retry loop driven by =list_agents=
+absence.
+
+#+name: agent-lifesession-archive-release-model
+#+begin_src typst
+#let replacement-authorized(close-receipt, path-release-receipt) = close-receipt and path-release-receipt
+
+#assert(not replacement-authorized(true, false))
+#assert(replacement-authorized(true, true))
+
+#let archived-hidden = $ A = 1, V = 0, C = 0, R = 0, P = 0 $
+#let released-without-archive = $ A = 0, V = 1, C = 1, R = 1, P = 1 $
+
+(
+  archived-hidden: archived-hidden,
+  released-without-archive: released-without-archive,
+  invariant: "P = C and R; A and V are presentation facts",
+)
+#+end_src
+
+#+name: agent-lifesession-archive-release-state-machine
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> Live
+  state "Live<br/>visible=yes<br/>archive=no<br/>close=no<br/>release=no" as Live
+  state "ArchiveHidden<br/>visible=no<br/>archive=yes<br/>close=no<br/>release=no" as ArchiveHidden
+  state "CloseRequested<br/>close=yes<br/>release=no" as CloseRequested
+  state "CloseRequestedHidden<br/>archive=yes<br/>close=yes<br/>release=no" as CloseRequestedHidden
+  state "PathReleased<br/>close=yes<br/>release=yes" as PathReleased
+  state "ReplacementAuthorized<br/>fenced create permitted" as ReplacementAuthorized
+  state "Rejected<br/>release cannot precede close" as Rejected
+
+  Live --> ArchiveHidden: Host archive accepted
+  Live --> CloseRequested: close_agent accepted
+  Live --> Rejected: Premature path-release event
+  ArchiveHidden --> ArchiveHidden: Duplicate archive
+  ArchiveHidden --> CloseRequestedHidden: close_agent accepted
+  CloseRequested --> CloseRequestedHidden: Optional archive
+  CloseRequested --> PathReleased: Shutdown + canonical release
+  CloseRequestedHidden --> PathReleased: Shutdown + canonical release
+  PathReleased --> PathReleased: Duplicate release
+  PathReleased --> ReplacementAuthorized: Replacement-generation CAS
+#+end_src
+
+The corresponding Lean model is
+=ASPProof.ASPAgentLifeSessionClose.CloseState=.  Its normative state machine
+and direct audit are owned by
+[[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/01-close-release-protocol.org][the modular close and canonical path-release protocol]].
+
+- archive acceptance may hide the child without releasing its path;
+- archive alone and host-tree absence do not authorize replacement;
+- release before =close_agent= is rejected;
+- =close_agent= may precede archive and archive is not required for release;
+- duplicate archive acceptance is idempotent;
+- an indexed close plus path-release receipt authorizes the fenced replacement
+  step.
+
+#+name: agent-lifesession-rebind-cost
+#+begin_src typst
+#let corrected = (
+  agent-rounds: 1,
+  internal-transitions: 3,
+  projected-fields: 4,
+)
+#let observed-two-probe-loop = (
+  agent-rounds: 4,
+  internal-transitions: 0,
+  projected-fields: 4,
+)
+
+#assert(corrected.agent-rounds == 1)
+#assert(corrected.internal-transitions == 3)
+#assert(corrected.projected-fields == observed-two-probe-loop.projected-fields)
+#assert(corrected.agent-rounds < observed-two-probe-loop.agent-rounds)
+"ok"
+#+end_src
+
+The cost law intentionally counts internal durable transitions rather than
+hiding them. The optimization is that their count is bounded and they do not
+require additional model decisions. The Portal projection remains four compact
+fields regardless of repair history length.
+
+The executable proof family is split across
+=ASPAgentLifeSessionRefinement.lean=, =ASPAgentLifeSessionClose.lean=, and
+=ASPAgentLifeSessionAggregate.lean=, with one direct audit per module.  The
+audits contain 24, 17, and 6 axiom-free theorem declarations respectively.
+Detailed ownership and AXLE correspondence are maintained in
+[[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/03-proof-correspondence.org][the modular proof correspondence]].
+
+* Rust LifeSession refactor modules
+
+The detailed Rust-readiness contract is intentionally split from this Host
+lifecycle RFC:
+
+- [[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/00-overview.org][module map]];
+- [[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/01-close-release-protocol.org][close, termination, and canonical path release]];
+- [[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/02-rust-lifesession-aggregate.org][Rust LifeSession aggregate and recovery boundary]]; and
+- [[file:10.15.02.06-codex-multi-agent-v2-state-lifecycle/03-proof-correspondence.org][Lean, Typst, Mermaid, and AXLE correspondence]].
+
+The parent retains only the cross-module invariant: presentation visibility,
+binding authority, close authority, and replacement authority are distinct.
+
+* Proof completion boundary
+
+The proof is complete when ASP implementations refine this state machine:
+
+- every adapter effect is indexed by ASP session and intent identity;
+- every published binding closes the ASP durable chain;
+- every operation implements one admissible =Step= transition;
+- recovery replays ASP receipts rather than inferring authority from host
+  observations;
+- every command and receipt matches current session epoch, agent generation,
+  and turn token where applicable;
+- every agent-facing call reports whether its authority is =host-only= or
+  =asp-durable=;
+- active queueing requires delivered binding, current fence, and current
+  profile evidence;
+- the aggregate event log is authoritative over registry rows, Runtime Server
+  memory, and host observations;
+- resident routing resolves through the ASP registry;
+- session close releases ASP bindings without coupling to server shutdown.
+
+No audit or proof of Codex internal design is required. A stronger host
+implementation may improve performance or observations, but it cannot weaken
+ASP durable intent, idempotency, isolation, or recovery invariants.

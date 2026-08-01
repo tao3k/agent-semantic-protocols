@@ -103,6 +103,7 @@ theorem corrected_view_advances_revision
 
 theorem ordinary_consumed_to_no_effect_remains_invalid :
     ¬ OutcomeRefines .consumed .noEffect := by
+  unfold OutcomeRefines
   decide
 
 def originalMoneyReceipt : FinalReceipt :=
@@ -139,6 +140,8 @@ theorem example_correction_is_bound :
       originalMoneyReceipt
       moneyCorrectionAuthority
       moneyCorrection := by
+  unfold CorrectionBound originalMoneyReceipt moneyCorrectionAuthority
+    moneyCorrection
   decide
 
 def correctedMoneyView : CorrectedView :=
@@ -167,6 +170,7 @@ theorem mismatched_authority_rejects_correction :
       originalMoneyReceipt
       wrongAuthority
       moneyCorrection := by
+  unfold CorrectionBound originalMoneyReceipt wrongAuthority moneyCorrection
   decide
 
 def wrongRequestCorrection : CorrectionReceipt :=
@@ -177,6 +181,8 @@ theorem mismatched_request_rejects_correction :
       originalMoneyReceipt
       moneyCorrectionAuthority
       wrongRequestCorrection := by
+  unfold CorrectionBound originalMoneyReceipt moneyCorrectionAuthority
+    wrongRequestCorrection moneyCorrection
   decide
 
 def wrongDimensionCorrection : CorrectionReceipt :=
@@ -187,6 +193,8 @@ theorem mismatched_dimension_rejects_correction :
       originalMoneyReceipt
       moneyCorrectionAuthority
       wrongDimensionCorrection := by
+  unfold CorrectionBound originalMoneyReceipt moneyCorrectionAuthority
+    wrongDimensionCorrection moneyCorrection
   decide
 
 end ASPProof.SearchRouteNonDestructiveCorrection

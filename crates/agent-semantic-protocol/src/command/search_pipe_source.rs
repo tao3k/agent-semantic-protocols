@@ -62,6 +62,8 @@ pub(super) struct CollectSearchPipeCandidatesRequest<'a> {
     pub(super) project_root: &'a Path,
     pub(super) current_snapshot:
         &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+    pub(super) source_index_client:
+        &'a agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
     pub(super) locator_root: &'a Path,
     pub(super) intent: &'a str,
     pub(super) scopes: &'a [PathBuf],
@@ -79,6 +81,7 @@ pub(super) fn collect_search_pipe_candidates(
         language_id,
         project_root,
         current_snapshot,
+        source_index_client,
         locator_root,
         intent,
         scopes,
@@ -124,6 +127,7 @@ pub(super) fn collect_search_pipe_candidates(
             query_clause_count: query_clauses.len(),
             query_terms: &query_terms,
             current_snapshot,
+            source_index_client,
         }),
         SourceSpec::SearchOverlay => search_overlay_candidates(SearchOverlayCandidateRequest {
             language_id,
@@ -214,6 +218,8 @@ struct AutoCandidateRequest<'a> {
     query_clause_count: usize,
     query_terms: &'a [agent_semantic_search::SearchPipeQueryTerm],
     current_snapshot: &'a agent_semantic_client::source_index::CurrentSourceIndexSnapshot,
+    source_index_client:
+        &'a agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
 }
 
 fn auto_candidates(request: AutoCandidateRequest<'_>) -> Result<CandidateAcquisition, String> {
@@ -228,25 +234,18 @@ fn auto_candidates(request: AutoCandidateRequest<'_>) -> Result<CandidateAcquisi
         query_clause_count,
         query_terms,
         current_snapshot,
+        source_index_client,
     } = request;
     let language = agent_semantic_client::LanguageId::from(language_id);
     let source_index_query = source_index_lookup_query(intent, query_clause_count, query_terms);
     let source_index_query_gated = scopes.is_empty()
         && agent_semantic_search::search_pipe_source_index_query_gate(query_terms).is_some();
     let source_index_lookup = if scopes.is_empty() && !source_index_query_gated {
-        let session = super::runtime_server::runtime_server_workspace_session(project_root)?;
-        let lookup =
-            super::runtime_server::block_on_runtime_server_client(session.read_source_index(
-                &agent_semantic_client_db::workspace_db_ipc::WorkspaceDbSourceIndexLookupRequest {
-                    project_root: project_root.to_path_buf(),
-                    indexed_project_root: project_root.to_path_buf(),
-                    source_snapshot: current_snapshot.source_snapshot.clone(),
-                    query: source_index_query.clone(),
-                    language_id: Some(language),
-                    limit: PIPE_CANDIDATE_LINE_LIMIT as u32,
-                },
-            ))?
-            .map_err(|error| error.to_string())?;
+        let lookup = source_index_client.lease().read_source_index(
+            &source_index_query,
+            Some(&language),
+            PIPE_CANDIDATE_LINE_LIMIT as u32,
+        )?;
         Some(
             agent_semantic_search::search_pipe_source_index_lookup_from_client_result(
                 agent_semantic_search::rank_source_index_lookup_result(lookup, &source_index_query),
