@@ -50,6 +50,7 @@ mod provider_exact_args;
 mod provider_execution;
 mod provider_fast_path;
 mod provider_fast_search;
+mod provider_native_exact;
 mod provider_owner_native;
 mod provider_process;
 mod provider_resident_exact;

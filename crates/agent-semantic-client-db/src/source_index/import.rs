@@ -110,6 +110,7 @@ pub fn source_index_import_with_file_hashes(
             provider_id: file.provider_id.clone(),
             text,
             selectors: file.selector_receipts.clone(),
+            relations: file.relations.clone(),
         });
     }
     build_source_index_import_from_started(
@@ -146,6 +147,7 @@ fn build_source_index_import_from_started(
         .collect::<BTreeMap<_, _>>();
     let mut owners = Vec::with_capacity(request.files.len());
     let mut selectors = Vec::with_capacity(request.files.len());
+    let mut relations = Vec::new();
     for (file_index, file) in request.files.iter().enumerate() {
         ensure_source_index_cold_assembly_budget(
             cold_assembly_started,
@@ -186,7 +188,25 @@ fn build_source_index_import_from_started(
             }
             selectors.push(selector.clone());
         }
+        relations.extend(file.relations.iter().cloned());
     }
+    relations.sort_by(|left, right| {
+        (
+            &left.from.kind,
+            &left.from.id,
+            &left.kind,
+            &left.to.kind,
+            &left.to.id,
+        )
+            .cmp(&(
+                &right.from.kind,
+                &right.from.id,
+                &right.kind,
+                &right.to.kind,
+                &right.to.id,
+            ))
+    });
+    relations.dedup();
     Ok(ClientDbSourceIndexImport {
         generation_id: request.generation_id,
         project_root: request.project_root,
@@ -195,6 +215,7 @@ fn build_source_index_import_from_started(
         file_hashes: request.file_hashes,
         owners,
         selectors,
+        relations,
     })
 }
 

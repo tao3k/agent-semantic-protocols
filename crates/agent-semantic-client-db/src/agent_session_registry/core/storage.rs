@@ -4,6 +4,7 @@ use agent_semantic_client_core::state_core::ResolvedState;
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
@@ -19,6 +20,19 @@ use super::types::{
 };
 
 const AGENT_SESSION_EXPIRED_REFRESH_LOCK_STALE_AFTER: Duration = Duration::from_secs(60);
+static AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS: AtomicBool = AtomicBool::new(false);
+
+fn runtime_server_endpoint_is_published(state_home: &Path) -> Result<bool, String> {
+    let endpoint_path = crate::runtime_server_endpoint_path(state_home);
+    match fs::metadata(&endpoint_path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!(
+            "failed to inspect Runtime Server endpoint {}: {error}",
+            endpoint_path.display()
+        )),
+    }
+}
 
 struct ExpiredRefreshLock {
     path: PathBuf,
@@ -66,9 +80,16 @@ fn try_acquire_expired_refresh_lock(db_path: &Path) -> Option<ExpiredRefreshLock
 /// Turso-backed registry for agent session routing state.
 pub struct AgentSessionRegistry {
     pub(super) db_path: PathBuf,
+    pub(super) runtime_project_root: Option<PathBuf>,
 }
 
 impl AgentSessionRegistry {
+    /// Mark the current dedicated Runtime Server process as the sole direct
+    /// owner of the canonical agent-session Turso database.
+    pub fn mark_runtime_server_owner_process() {
+        AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.store(true, Ordering::Release);
+    }
+
     /// Return the canonical identity of one concrete checkout/worktree workspace.
     pub fn workspace_id(project_root: impl AsRef<Path>) -> Result<String, String> {
         Ok(ResolvedState::resolve(project_root.as_ref())?
@@ -112,23 +133,60 @@ impl AgentSessionRegistry {
     }
 
     pub fn open_or_create_project(project_root: impl AsRef<Path>) -> Result<Self, String> {
-        let state = ResolvedState::resolve(project_root.as_ref())?;
+        let project_root = project_root.as_ref();
+        let state = ResolvedState::resolve(project_root)?;
         state.ensure_minimal_layout()?;
+        if let Some(proxy) = Self::runtime_proxy(&state, project_root)? {
+            return Ok(proxy);
+        }
+        let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home);
+        if runtime_server_endpoint_is_published(&state.state_home)? {
+            return Err(format!(
+                "project registry create/open is forbidden while Runtime Server endpoint is published: endpoint={} runtimeOwnerProcess={}",
+                endpoint_path.display(),
+                AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
+            ));
+        }
         Self::open_or_create_state_root(Self::state_root_for_resolved_state(&state))
     }
 
     pub fn open_existing_project_read_only(
         project_root: impl AsRef<Path>,
     ) -> Result<Option<Self>, String> {
-        let state = ResolvedState::resolve(project_root.as_ref())?;
+        let project_root = project_root.as_ref();
+        let state = ResolvedState::resolve(project_root)?;
+        if let Some(proxy) = Self::runtime_proxy(&state, project_root)? {
+            return Ok(Some(proxy));
+        }
+        let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home);
+        if runtime_server_endpoint_is_published(&state.state_home)? {
+            return Err(format!(
+                "read-only project registry direct-open is forbidden while Runtime Server endpoint is published: endpoint={} runtimeOwnerProcess={}",
+                endpoint_path.display(),
+                AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
+            ));
+        }
         Self::open_existing_state_root_read_only(Self::state_root_for_resolved_state(&state))
     }
 
     pub fn open_existing_project(project_root: impl AsRef<Path>) -> Result<Option<Self>, String> {
-        let state = ResolvedState::resolve(project_root.as_ref())?;
+        let project_root = project_root.as_ref();
+        let state = ResolvedState::resolve(project_root)?;
+        if let Some(proxy) = Self::runtime_proxy(&state, project_root)? {
+            return Ok(Some(proxy));
+        }
+        let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home);
+        if runtime_server_endpoint_is_published(&state.state_home)? {
+            return Err(format!(
+                "project registry direct-open is forbidden while Runtime Server endpoint is published: endpoint={} runtimeOwnerProcess={}",
+                endpoint_path.display(),
+                AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
+            ));
+        }
         Self::open_existing_state_root(Self::state_root_for_resolved_state(&state))
     }
 
+    #[track_caller]
     pub fn open_or_create_state_root(state_root: impl AsRef<Path>) -> Result<Self, String> {
         fs::create_dir_all(state_root.as_ref()).map_err(|error| {
             format!(
@@ -137,17 +195,55 @@ impl AgentSessionRegistry {
             )
         })?;
         let db_path = Self::db_path_for_state_root(state_root);
-        let registry = Self::open_path(&db_path)?;
+        let registry = Self::open_path(&db_path).map_err(|error| {
+            let caller = std::panic::Location::caller();
+            format!(
+                "direct state-root registry open failed at {}:{}: {error}",
+                caller.file(),
+                caller.line()
+            )
+        })?;
         registry.ensure_schema()?;
         Ok(registry)
     }
 
+    /// Open the Runtime Server-owned registry without crossing a synchronous
+    /// `block_on` bridge. Daemon bootstrap already runs inside the server's
+    /// Tokio runtime, so schema initialization must remain in that lifecycle.
+    pub async fn open_or_create_state_root_async(
+        state_root: impl AsRef<Path>,
+    ) -> Result<Self, String> {
+        let state_root = state_root.as_ref();
+        tokio::fs::create_dir_all(state_root)
+            .await
+            .map_err(|error| {
+                format!(
+                    "failed to create agent session state root `{}`: {error}",
+                    state_root.display()
+                )
+            })?;
+        let registry = Self {
+            db_path: Self::db_path_for_state_root(state_root),
+            runtime_project_root: None,
+        };
+        bootstrap_turso_agent_session_schema(&registry.db_path).await?;
+        Ok(registry)
+    }
+
+    #[track_caller]
     pub fn open_existing_state_root(state_root: impl AsRef<Path>) -> Result<Option<Self>, String> {
         let db_path = Self::db_path_for_state_root(state_root);
         if !db_path.is_file() {
             return Ok(None);
         }
-        let registry = Self::open_path(&db_path)?;
+        let registry = Self::open_path(&db_path).map_err(|error| {
+            let caller = std::panic::Location::caller();
+            format!(
+                "direct existing state-root registry open failed at {}:{}: {error}",
+                caller.file(),
+                caller.line()
+            )
+        })?;
         registry.ensure_schema()?;
         registry.refresh_expired_sessions()?;
         Ok(Some(registry))
@@ -160,7 +256,10 @@ impl AgentSessionRegistry {
         if !db_path.is_file() {
             return Ok(None);
         }
-        Ok(Some(Self { db_path }))
+        Ok(Some(Self {
+            db_path,
+            runtime_project_root: None,
+        }))
     }
 
     #[must_use]
@@ -171,9 +270,55 @@ impl AgentSessionRegistry {
     fn open_path(db_path: &Path) -> Result<Self, String> {
         let registry = Self {
             db_path: db_path.to_path_buf(),
+            runtime_project_root: None,
         };
         registry.ensure_schema()?;
         Ok(registry)
+    }
+
+    fn runtime_proxy(state: &ResolvedState, project_root: &Path) -> Result<Option<Self>, String> {
+        if !runtime_server_endpoint_is_published(&state.state_home)? {
+            return Ok(None);
+        }
+        let project_root = fs::canonicalize(project_root).map_err(|error| {
+            format!(
+                "failed to canonicalize agent-session Runtime Server project root {}: {error}",
+                project_root.display()
+            )
+        })?;
+        Ok(Some(Self {
+            db_path: Self::db_path_for_state_root(&state.state_home),
+            runtime_project_root: Some(project_root),
+        }))
+    }
+
+    pub(super) fn runtime_operation(
+        &self,
+        operation: crate::workspace_db_ipc::AgentSessionRegistryIpcOperation,
+    ) -> Result<Option<crate::workspace_db_ipc::AgentSessionRegistryIpcResult>, String> {
+        let Some(project_root) = self.runtime_project_root.clone() else {
+            let runtime_endpoint_present = match self.db_path.parent() {
+                Some(state_home) => runtime_server_endpoint_is_published(state_home)?,
+                None => false,
+            };
+            if runtime_endpoint_present
+                && !AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
+            {
+                return Err(format!(
+                    "direct agent-session registry access is forbidden while the Runtime Server endpoint is published: operation={operation:?}"
+                ));
+            }
+            return Ok(None);
+        };
+        block_on_agent_session_registry_async(async move {
+            let session =
+                crate::workspace_db_ipc::connect_runtime_server_workspace_session(&project_root)
+                    .await?;
+            session
+                .call_agent_session_registry(operation)
+                .await
+                .map(Some)
+        })
     }
 
     fn ensure_schema(&self) -> Result<(), String> {

@@ -190,6 +190,7 @@ pub struct ClientDbSourceIndexImport {
     pub file_hashes: Vec<ClientCacheFileHash>,
     pub owners: Vec<ClientDbSourceIndexOwner>,
     pub selectors: Vec<ClientDbSourceIndexSelector>,
+    pub relations: Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
 }
 
 /// Immutable source bytes captured by the same pass that produced snapshot evidence.
@@ -264,6 +265,7 @@ pub struct ClientDbSourceIndexImportFile {
     pub provider_id: ProviderId,
     pub text: String,
     pub selectors: Vec<ClientDbSourceIndexSelector>,
+    pub relations: Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
 }
 
 /// Request for building one Rust-owned source-index import packet.
@@ -313,6 +315,9 @@ pub struct ClientDbSourceIndexScopeFile {
     pub provider_id: ProviderId,
     pub projection_coverage: ClientDbSourceIndexProjectionCoverage,
     pub selector_receipts: Vec<ClientDbSourceIndexSelector>,
+    pub relations: Vec<
+        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+    >,
 }
 
 /// Provider-owned semantic projection coverage for one source owner.

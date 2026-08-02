@@ -111,6 +111,50 @@ pub struct WorkspaceOwnerSnapshot {
     pub selectors: Vec<WorkspaceSelectorSnapshot>,
 }
 
+pub const WORKSPACE_GENERATION_DELTA_SCHEMA_ID: &str =
+    "agent.semantic-protocols.workspace-generation-delta.v1";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceGenerationDelta {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub base_generation_digest: String,
+    pub owners: Vec<WorkspaceOwnerSnapshot>,
+    pub tombstones: Vec<String>,
+}
+
+impl WorkspaceGenerationDelta {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != WORKSPACE_GENERATION_DELTA_SCHEMA_ID || self.schema_version != "1" {
+            return Err("workspace generation delta schema identity mismatch".to_owned());
+        }
+        if !self.base_generation_digest.starts_with("blake3-256:") {
+            return Err("workspace generation delta base digest is invalid".to_owned());
+        }
+        if self.owners.is_empty() && self.tombstones.is_empty() {
+            return Err("workspace generation delta must contain at least one mutation".to_owned());
+        }
+        validate_owners(&self.owners)?;
+        let mut tombstones = std::collections::HashSet::with_capacity(self.tombstones.len());
+        for owner_path in &self.tombstones {
+            if owner_path.trim().is_empty() || !tombstones.insert(owner_path.as_str()) {
+                return Err("workspace generation delta tombstones must be unique paths".to_owned());
+            }
+        }
+        if self
+            .owners
+            .iter()
+            .any(|owner| tombstones.contains(owner.owner_path.as_str()))
+        {
+            return Err(
+                "workspace generation delta cannot upsert and tombstone the same owner".to_owned(),
+            );
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceRuntimeSelectorOverlay {
@@ -189,6 +233,7 @@ pub enum WorkspaceRuntimeSelectorRead {
     Projection {
         generation_digest: String,
         root_digest: String,
+        resolved_selector: String,
         bytes: Vec<u8>,
     },
     OwnerForRepair {
@@ -217,6 +262,9 @@ pub struct WorkspaceGenerationBuild {
     pub module_graph_digest: String,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
+    pub relations: Vec<
+        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+    >,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -238,6 +286,9 @@ pub struct WorkspaceMemoryGeneration {
     pub workspace_source_scope_generation: String,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
     pub owners: Vec<WorkspaceOwnerSnapshot>,
+    pub relations: Vec<
+        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+    >,
 }
 
 impl WorkspaceMemoryGeneration {
@@ -265,6 +316,7 @@ impl WorkspaceMemoryGeneration {
         )?;
         let memory_backend_digest = typed_digest(&(
             &input.owners,
+            &input.relations,
             &workspace_source_scope_generation,
             &input.project_resolutions,
         ))?;
@@ -277,6 +329,7 @@ impl WorkspaceMemoryGeneration {
             &provider_schema_digest,
             &input.module_graph_digest,
             &selector_set_digest,
+            &input.relations,
             &workspace_source_scope_generation,
             &memory_backend_digest,
         ))?;
@@ -297,6 +350,7 @@ impl WorkspaceMemoryGeneration {
             workspace_source_scope_generation,
             project_resolutions: input.project_resolutions,
             owners: input.owners,
+            relations: input.relations,
         };
         generation.validate()?;
         Ok(generation)
@@ -337,6 +391,7 @@ impl WorkspaceMemoryGeneration {
         }
         let memory_backend_digest = typed_digest(&(
             &self.owners,
+            &self.relations,
             &self.workspace_source_scope_generation,
             &self.project_resolutions,
         ))?;
@@ -352,6 +407,7 @@ impl WorkspaceMemoryGeneration {
             &self.provider_schema_digest,
             &self.module_graph_digest,
             &self.selector_set_digest,
+            &self.relations,
             &self.workspace_source_scope_generation,
             &self.memory_backend_digest,
         ))?;
@@ -374,6 +430,15 @@ impl WorkspaceMemoryGeneration {
             self.workspace_generation.clone(),
         )
         .map_err(|error| format!("workspace generation evidence is incomplete: {error}"))?;
+        let mut unique_relations = std::collections::BTreeSet::new();
+        for relation in &self.relations {
+            relation.validate()?;
+            if !unique_relations.insert(relation) {
+                return Err(
+                    "workspace generation contains a duplicate provider relation".to_owned(),
+                );
+            }
+        }
         validate_owners(&self.owners)
     }
 
@@ -604,6 +669,10 @@ pub(crate) fn validate_owners(owners: &[WorkspaceOwnerSnapshot]) -> Result<(), S
     Ok(())
 }
 
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_workspace_projection_validation.rs"]
+mod derived_projection_validation_tests;
+
 fn validate_owner(owner: &WorkspaceOwnerSnapshot) -> Result<(), String> {
     if owner.owner_path.trim().is_empty() {
         return Err("workspace owner path must be non-empty text".to_owned());
@@ -619,49 +688,6 @@ fn validate_owner(owner: &WorkspaceOwnerSnapshot) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_selector(
-    owner: &WorkspaceOwnerSnapshot,
-    selector: &WorkspaceSelectorSnapshot,
-) -> Result<(), String> {
-    if selector.selector.trim().is_empty() {
-        return Err("workspace selector must be non-empty text".to_owned());
-    }
-    let (_, selector_target) = selector
-        .selector
-        .split_once("://")
-        .ok_or_else(|| "workspace selector must include a language scheme".to_owned())?;
-    let (selector_owner, _) = selector_target
-        .split_once('#')
-        .ok_or_else(|| "workspace selector must include an owner fragment".to_owned())?;
-    if selector_owner != owner.owner_path {
-        return Err(format!(
-            "workspace selector owner drift: selector={} ownerPath={}",
-            selector.selector, owner.owner_path
-        ));
-    }
-    if selector.byte_start > selector.byte_end || selector.byte_end > owner.bytes.len() {
-        return Err(format!(
-            "workspace selector byte range is invalid: selector={}",
-            selector.selector
-        ));
-    }
-    let mut projection_kinds = std::collections::HashSet::new();
-    for projection in &selector.derived_projections {
-        if projection.projection_kind != "callable-skeleton" {
-            return Err(format!(
-                "workspace derived selector projection kind is unsupported: projectionKind={}",
-                projection.projection_kind
-            ));
-        }
-        if projection.bytes.is_empty() {
-            return Err("workspace derived selector projection bytes are empty".to_owned());
-        }
-        if !projection_kinds.insert(projection.projection_kind.as_str()) {
-            return Err(format!(
-                "duplicate workspace derived selector projection: selector={} projectionKind={}",
-                selector.selector, projection.projection_kind
-            ));
-        }
-    }
-    Ok(())
-}
+#[path = "projection_validation.rs"]
+mod projection_validation;
+use projection_validation::validate_selector;

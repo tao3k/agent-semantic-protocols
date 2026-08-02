@@ -1,0 +1,7 @@
+import ASPProof.Audit.ResidentWorkspaceRetirement
+
+#print axioms ASPProof.ResidentWorkspaceRetirement.missing_workspace_without_activity_is_eligible
+#print axioms ASPProof.ResidentWorkspaceRetirement.idle_workspace_without_activity_is_eligible
+#print axioms ASPProof.ResidentWorkspaceRetirement.live_lease_prevents_retirement
+#print axioms ASPProof.ResidentWorkspaceRetirement.in_flight_request_prevents_retirement
+#print axioms ASPProof.ResidentWorkspaceRetirement.retirement_implies_quiescence

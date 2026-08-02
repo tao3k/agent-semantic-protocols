@@ -1,0 +1,13 @@
+{
+  "schemaId": "agent.semantic-protocols.agent-facing-search-wall-receipt",
+  "schemaVersion": "1",
+  "surface": "query",
+  "languageId": "rust",
+  "commandDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "timingScope": "agent-facing-end-to-end",
+  "wallTimeMicros": 10300000,
+  "budgetMicros": 1000000,
+  "budgetStatus": "budget-exceeded",
+  "replyKind": "evidence",
+  "exitCode": 0
+}

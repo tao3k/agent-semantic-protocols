@@ -434,13 +434,39 @@
           ],
           "properties": {
             "kind": {
-              "enum": [
-                "ensure-runtime-generation",
-                "admit-runtime-generation"
-              ]
+              "const": "ensure-runtime-generation"
             },
             "projectRoot": {
               "$ref": "#/$defs/identity"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "mutationId",
+            "projectRoot",
+            "changedPaths"
+          ],
+          "properties": {
+            "kind": {
+              "const": "admit-runtime-generation"
+            },
+            "mutationId": {
+              "$ref": "#/$defs/identity"
+            },
+            "projectRoot": {
+              "$ref": "#/$defs/identity"
+            },
+            "changedPaths": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/identity"
+              }
             }
           }
         },
@@ -660,9 +686,10 @@
           "properties": {
             "state": {
               "enum": [
-                "source-index-generation",
-                "runtime-generation",
-                "runtime-generation-admission"
+            "source-index-generation",
+            "runtime-generation",
+            "runtime-generation-admission",
+            "runtime-generation-mutation-admission"
               ]
             },
             "receipt": {

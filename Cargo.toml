@@ -30,6 +30,7 @@ edition = "2024"
 [workspace.lints]
 
 [workspace.dependencies]
+memmap2 = "0.9"
 agent-semantic-hook = { path = "crates/agent-semantic-hook" }
 jsonschema = { version = "0.48.1", default-features = false }
 aho-corasick = "1.1.4"

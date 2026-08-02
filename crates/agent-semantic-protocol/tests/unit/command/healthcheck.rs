@@ -53,3 +53,14 @@ fn healthcheck_error_status_returns_nonzero_contract() {
     assert_eq!(healthcheck_command_result("degraded"), Ok(()));
     assert_eq!(healthcheck_command_result("ok"), Ok(()));
 }
+
+#[test]
+fn healthcheck_schedules_workspace_generation_without_waiting_for_terminal_state() {
+    let source = include_str!("../../../src/command/healthcheck.rs");
+
+    assert!(source.contains("runtime_server_workspace_session_for_admission_async"));
+    assert!(source.contains("session.ensure_runtime_generation().await"));
+    assert!(source.contains("workspace_generation_started.elapsed().as_micros()"));
+    assert!(source.contains("elapsedMicros={} error={}"));
+    assert!(!source.contains("wait_terminal"));
+}

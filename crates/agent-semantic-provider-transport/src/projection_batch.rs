@@ -5,7 +5,6 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::{
     OutputFraming, OutputMode, ProviderProcessFraming, ProviderProcessLimits, ProviderProcessSpec,
@@ -52,7 +51,7 @@ pub struct ProviderProjectedOwner {
     pub owner_path: String,
     pub source_leaf_digest: String,
     pub items: Vec<ProviderProjectedItem>,
-    pub relations: Vec<Value>,
+    pub relations: Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -314,6 +313,20 @@ fn validate_response(
                 return Err(ProviderProjectionBatchError(format!(
                     "projection batch item proof mismatch: ownerPath={} itemId={}",
                     projected_owner.owner_path, item.item_id
+                )));
+            }
+        }
+        let mut relations = BTreeSet::new();
+        for relation in &projected_owner.relations {
+            if relation.validate().is_err() || !relations.insert(relation) {
+                return Err(ProviderProjectionBatchError(format!(
+                    "projection batch relation proof mismatch: ownerPath={} from={}:{} kind={} to={}:{}",
+                    projected_owner.owner_path,
+                    relation.from.kind,
+                    relation.from.id,
+                    relation.kind,
+                    relation.to.kind,
+                    relation.to.id
                 )));
             }
         }

@@ -1,0 +1,194 @@
+#+title: 10.25.03 Fallback Governance and Proof-Lane Closure
+#+startup: overview
+
+* Status
+
+Draft.
+
+* Purpose
+
+Fallback is not evidence that the primary contract succeeded.  This RFC
+separates two cases that must not be conflated:
+
+1. The Lean proof lane is closed under proof failure.  It has no operational
+   fallback.  A missing proof remains missing and cannot be replaced by
+   =sorry=, a new axiom, an unchecked default, or a runtime receipt.
+2. Runtime and search lanes may use a fallback only through a typed,
+   fail-closed transition that records why the primary lane failed and which
+   guarantees were degraded.
+
+The design goal is defensive engineering against fallback abuse, not broader
+permission to add fallback paths.
+
+* Abuse classes
+
+- *Eager fallback*: selecting a fallback without evidence that the primary
+  lane failed.
+- *Catch-all fallback*: converting an unknown failure into a successful result.
+- *Evidence laundering*: reporting a fallback result as if it carried the
+  primary lane's guarantees.
+- *Silent degradation*: changing precision, authority, provenance, or replay
+  semantics without a degradation receipt.
+- *Fallback cycle*: moving between recovery lanes without a decreasing rank or
+  budget.
+- *Cache laundering*: storing a semantically different fallback result in the
+  primary search-cache or model-cache domain.
+- *Proof fallback*: using operational evidence, =sorry=, or a fresh axiom to
+  close a theorem that the model did not prove.
+
+* Normative separation
+
+** Proof lane
+
+- =FG-PROOF-001=: an operational fallback whose source lane is =proof= MUST be
+  rejected.
+- =FG-PROOF-002=: audits MUST report theorem dependencies and MUST fail closure
+  when =sorryAx= or an undeclared axiom appears.
+- =FG-PROOF-003=: a runtime test, packet, or receipt MAY corroborate a theorem's
+  application, but MUST NOT substitute for the theorem.
+
+** Runtime and search lanes
+
+A runtime fallback is guarded only when all of the following hold:
+
+- primary failure is observed and typed;
+- the exact source-to-target transition is authorized;
+- degradation is declared;
+- target rank is lower than source rank;
+- remaining fallback budget strictly decreases;
+- target guarantees do not exceed source guarantees;
+- every guarantee required for acceptance remains present at the target; and
+- semantically different results use a separate cache domain.
+
+Authorization alone is therefore insufficient for acceptance.
+
+* Mathematical model
+
+The mathematical source is embedded as Org Babel Typst.  It is evaluated from
+standard input; no generated =.typ= file is required.
+
+#+name: fallback-governance-typst-model
+#+begin_src typst :runtime typst :lint :format
+#let proof = "proof"
+#let runtime = "runtime"
+
+#let guarded(f) = (
+  f.source-kind == runtime and
+  f.target-kind == runtime and
+  f.failure-observed and
+  f.authorized and
+  f.degradation-declared and
+  f.target-rank < f.source-rank and
+  f.budget-after < f.budget-before and
+  f.target-guarantees.all(g => g in f.source-guarantees) and
+  (f.semantics-equivalent or f.cache-separated)
+)
+
+#let safe-for(required, f) = (
+  guarded(f) and required.all(g => g in f.target-guarantees)
+)
+
+$
+  G(f) :=
+    F(f) and A(f) and D(f)
+    and r_t < r_s
+    and b_t < b_s
+    and Gamma_t subset.eq Gamma_s
+$
+
+$
+  S_R(f) := G(f) and R subset.eq Gamma_t
+$
+
+$
+  k_s = "proof" arrow.r.double not G(f)
+$
+
+$
+  not E(f) arrow.r.double C_t != C_s
+$
+
+#let example = (
+  source-kind: runtime,
+  target-kind: runtime,
+  failure-observed: true,
+  authorized: true,
+  degradation-declared: true,
+  source-rank: 3,
+  target-rank: 2,
+  budget-before: 2,
+  budget-after: 1,
+  source-guarantees: ("owner", "provenance"),
+  target-guarantees: ("owner",),
+  semantics-equivalent: false,
+  cache-separated: true,
+)
+
+#assert(guarded(example))
+#assert(safe-for(("owner",), example))
+#assert(not safe-for(("owner", "provenance"), example))
+#+end_src
+
+Here =Gamma_s= and =Gamma_t= are the source and target guarantee sets, =R= is
+the acceptance requirement set, =r= is the termination rank, =b= is the
+remaining fallback budget, =E= means semantic equivalence, and =C= is the
+cache domain.
+
+* Lean correspondence
+
+The executable proof model is owned by
+=packages/proofs/ASPProof/FallbackGovernance.lean=.
+
+| RFC obligation | Lean declaration |
+|-
+| Proof lane has no operational fallback | =proof_lane_rejects_operational_fallback= |
+| Primary failure must be observed | =no_eager_fallback= |
+| Transition must be authorized | =no_unauthorized_fallback= |
+| Degradation must be declared | =no_silent_degradation= |
+| Fallback cannot inflate guarantees | =guarded_fallback_does_not_inflate_guarantees= |
+| Different semantics require cache separation | =non_equivalent_fallback_separates_cache= |
+| Missing required guarantees deny acceptance | =missing_required_guarantee_denies_acceptance= |
+| Budget must decrease | =no_zero_budget_fallback= |
+| Rank transitions cannot cycle | =no_rank_cycle= and =rank_step_well_founded= |
+
+The audit owner is
+=packages/proofs/ASPProof/Audit/FallbackGovernance.lean=.  It checks the axiom
+inventory of every normative theorem independently of runtime conformance.
+
+* Relationship Contract projection
+
+The fallback relationship is directional:
+
+#+begin_example
+primary lane --fallback-to--> degraded lane
+failure evidence --authorizes--> fallback transition
+fallback transition --emits--> degradation receipt
+fallback transition --consumes--> fallback budget
+fallback result --uses-cache-domain--> fallback cache domain
+required guarantees --gate--> accepted result
+#+end_example
+
+A reverse =fallback-to= edge is invalid unless it independently decreases a
+different well-founded rank.  Reciprocal fallback edges under the same rank are
+therefore forbidden.
+
+* SearchLoop application
+
+Parser-owned search failure does not authorize an uncontrolled source dump.
+The fallback result may expose recovery metadata, owner-map diagnostics, and a
+typed blocker receipt.  It cannot claim parser provenance or primary-lane
+acceptance.  If recovery changes selector, authority, or source semantics, its
+search-cache and model-cache identity must be separated from the primary lane.
+
+An unavailable or locked session registry is a runtime failure observation; it
+is not proof that raw-source fallback is safe.
+
+* Acceptance criteria
+
+- The Lean module and its audit build without =sorry= or undeclared axioms.
+- Org Babel evaluates the Typst block from standard input.
+- At least one negative case demonstrates that authorization without required
+  guarantees is denied.
+- Runtime conformance reports fallback and primary cache domains separately
+  whenever their semantics differ.
+- No proof-lane closure depends on a runtime fallback receipt.

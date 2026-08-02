@@ -87,6 +87,86 @@ pub struct CallableSkeletonCostV1 {
     pub token_estimator: Option<String>,
 }
 
+/// Typed provider response for a resolved native exact callable projection.
+///
+/// The schema owns the wire version. Rust callers validate every authority
+/// field independently so transport drift cannot collapse into an opaque
+/// identity-mismatch error.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderNativeExactProjection {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub language_id: String,
+    pub provider_id: String,
+    pub owner_path: String,
+    pub requested_structural_selector: String,
+    pub structural_selector: String,
+    pub projection_mode: String,
+    pub normalized_parser_facts: Value,
+    pub projection_payload: CallableSkeletonProjectionV1,
+    pub source_content_digest: String,
+    pub source_byte_start: u64,
+    pub source_byte_end: u64,
+}
+
+/// Expected authority for one provider-native exact response.
+#[derive(Debug, Clone, Copy)]
+pub struct ProviderNativeExactAuthority<'a> {
+    pub language_id: &'a str,
+    pub provider_id: &'a str,
+    pub owner_path: &'a str,
+    pub requested_structural_selector: &'a str,
+}
+
+impl ProviderNativeExactProjection {
+    /// Validates the response envelope and reports the exact drifting field.
+    pub fn validate_authority(
+        &self,
+        expected: ProviderNativeExactAuthority<'_>,
+    ) -> Result<(), String> {
+        for (field, actual, expected) in [
+            (
+                "schemaId",
+                self.schema_id.as_str(),
+                "agent.semantic-protocols.provider-native-exact-projection",
+            ),
+            ("schemaVersion", self.schema_version.as_str(), "1"),
+            (
+                "languageId",
+                self.language_id.as_str(),
+                expected.language_id,
+            ),
+            (
+                "providerId",
+                self.provider_id.as_str(),
+                expected.provider_id,
+            ),
+            ("ownerPath", self.owner_path.as_str(), expected.owner_path),
+            (
+                "requestedStructuralSelector",
+                self.requested_structural_selector.as_str(),
+                expected.requested_structural_selector,
+            ),
+            (
+                "projectionMode",
+                self.projection_mode.as_str(),
+                "callable-skeleton",
+            ),
+        ] {
+            if actual != expected {
+                return Err(format!(
+                    "provider-native exact response {field} mismatch: expected={expected} actual={actual}"
+                ));
+            }
+        }
+        if self.source_byte_start > self.source_byte_end {
+            return Err("provider-native exact response source byte range is inverted".to_owned());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CallableSkeletonProjectionV1 {
@@ -116,6 +196,10 @@ impl CallableSkeletonProjectionV1 {
         "skeleton"
     }
 
+    pub const fn projection_kind() -> &'static str {
+        "callable-skeleton"
+    }
+
     pub fn validate(&self) -> Result<(), CallableSkeletonValidationError> {
         if self.schema_id != CALLABLE_SKELETON_PROJECTION_SCHEMA_ID {
             return Err(CallableSkeletonValidationError::SchemaId);
@@ -123,7 +207,7 @@ impl CallableSkeletonProjectionV1 {
         if self.schema_version != CALLABLE_SKELETON_PROJECTION_SCHEMA_VERSION {
             return Err(CallableSkeletonValidationError::SchemaVersion);
         }
-        if self.projection_kind != "callable-skeleton" {
+        if self.projection_kind != Self::projection_kind() {
             return Err(CallableSkeletonValidationError::ProjectionKind);
         }
         if self.language_id.is_empty()

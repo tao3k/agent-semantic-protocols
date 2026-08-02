@@ -8,10 +8,179 @@ use super::{
     WorkspaceProjectionLease,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
+pub(crate) struct WorkspaceResidentActivity {
+    accepting: std::sync::atomic::AtomicBool,
+    in_flight_requests: std::sync::atomic::AtomicUsize,
+    live_leases: std::sync::atomic::AtomicUsize,
+    last_activity: std::sync::Mutex<std::time::Instant>,
+}
+
+impl WorkspaceResidentActivity {
+    pub(crate) fn new() -> Self {
+        Self {
+            accepting: std::sync::atomic::AtomicBool::new(true),
+            in_flight_requests: std::sync::atomic::AtomicUsize::new(0),
+            live_leases: std::sync::atomic::AtomicUsize::new(0),
+            last_activity: std::sync::Mutex::new(std::time::Instant::now()),
+        }
+    }
+
+    fn touch(&self) {
+        let mut last_activity = self
+            .last_activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *last_activity = std::time::Instant::now();
+    }
+
+    pub(crate) fn begin_request(self: &Arc<Self>) -> Result<WorkspaceResidentRequestGuard, String> {
+        use std::sync::atomic::Ordering;
+
+        if !self.accepting.load(Ordering::Acquire) {
+            return Err("resident workspace admission is closed".to_owned());
+        }
+        self.in_flight_requests.fetch_add(1, Ordering::AcqRel);
+        if !self.accepting.load(Ordering::Acquire) {
+            self.in_flight_requests.fetch_sub(1, Ordering::AcqRel);
+            return Err("resident workspace admission closed during request entry".to_owned());
+        }
+        self.touch();
+        Ok(WorkspaceResidentRequestGuard {
+            activity: Arc::clone(self),
+        })
+    }
+
+    fn acquire_lease(self: &Arc<Self>) -> Result<(), String> {
+        use std::sync::atomic::Ordering;
+
+        if !self.accepting.load(Ordering::Acquire) {
+            return Err("resident workspace admission is closed".to_owned());
+        }
+        self.live_leases.fetch_add(1, Ordering::AcqRel);
+        if !self.accepting.load(Ordering::Acquire) {
+            self.live_leases.fetch_sub(1, Ordering::AcqRel);
+            return Err("resident workspace admission closed during lease acquisition".to_owned());
+        }
+        self.touch();
+        Ok(())
+    }
+
+    fn clone_lease(&self) {
+        self.live_leases
+            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        self.touch();
+    }
+
+    fn release_lease(&self) {
+        self.live_leases
+            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        self.touch();
+    }
+
+    pub(crate) fn try_close_for_retirement(
+        &self,
+        workspace_path_exists: bool,
+        idle_timeout: std::time::Duration,
+    ) -> bool {
+        use std::sync::atomic::Ordering;
+
+        let idle_elapsed = self
+            .last_activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .elapsed();
+        if workspace_path_exists && idle_elapsed < idle_timeout {
+            return false;
+        }
+        if self.live_leases.load(Ordering::Acquire) != 0
+            || self.in_flight_requests.load(Ordering::Acquire) != 0
+        {
+            return false;
+        }
+        if self
+            .accepting
+            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return false;
+        }
+        if self.live_leases.load(Ordering::Acquire) == 0
+            && self.in_flight_requests.load(Ordering::Acquire) == 0
+        {
+            true
+        } else {
+            self.accepting.store(true, Ordering::Release);
+            false
+        }
+    }
+
+    pub(crate) fn reopen(&self) {
+        self.accepting
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.touch();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_idle_for_test(&self, idle_for: std::time::Duration) {
+        let mut last_activity = self
+            .last_activity
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *last_activity = std::time::Instant::now()
+            .checked_sub(idle_for)
+            .expect("test idle duration must fit in Instant");
+    }
+
+    pub(crate) fn counts(&self) -> (usize, usize) {
+        use std::sync::atomic::Ordering;
+        (
+            self.live_leases.load(Ordering::Acquire),
+            self.in_flight_requests.load(Ordering::Acquire),
+        )
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct WorkspaceResidentRequestGuard {
+    activity: Arc<WorkspaceResidentActivity>,
+}
+
+impl Drop for WorkspaceResidentRequestGuard {
+    fn drop(&mut self) {
+        self.activity
+            .in_flight_requests
+            .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+        self.activity.touch();
+    }
+}
+
+#[derive(Debug)]
 pub struct WorkspaceGenerationLease {
     pub(super) backend: Arc<WorkspaceMemoryBackend>,
     pub(super) overlay: super::resident_overlay::ResidentOverlaySnapshot,
+    pub(super) activity: Option<Arc<WorkspaceResidentActivity>>,
+}
+
+impl Clone for WorkspaceGenerationLease {
+    fn clone(&self) -> Self {
+        if let Some(activity) = &self.activity {
+            activity.clone_lease();
+        }
+        Self {
+            backend: Arc::clone(&self.backend),
+            overlay: self.overlay.clone(),
+            activity: self.activity.clone(),
+        }
+    }
+}
+
+impl Drop for WorkspaceGenerationLease {
+    fn drop(&mut self) {
+        if let Some(activity) = &self.activity {
+            activity.release_lease();
+        }
+    }
 }
 
 impl WorkspaceGenerationLease {
@@ -20,7 +189,24 @@ impl WorkspaceGenerationLease {
             backend.generation(),
         )));
         let overlay = overlays.snapshot(backend.generation());
-        Self { backend, overlay }
+        Self {
+            backend,
+            overlay,
+            activity: None,
+        }
+    }
+
+    pub(crate) fn from_resident(
+        backend: Arc<WorkspaceMemoryBackend>,
+        overlay: super::resident_overlay::ResidentOverlaySnapshot,
+        activity: Arc<WorkspaceResidentActivity>,
+    ) -> Result<Self, String> {
+        activity.acquire_lease()?;
+        Ok(Self {
+            backend,
+            overlay,
+            activity: Some(activity),
+        })
     }
 
     pub fn workspace_identity(&self) -> &str {
@@ -63,6 +249,15 @@ impl WorkspaceGenerationLease {
 
     pub fn runtime_generation_digest(&self) -> String {
         self.overlay.generation_digest().to_owned()
+    }
+
+    pub fn relations_from(
+        &self,
+        endpoint_kind: &str,
+        endpoint_id: &str,
+    ) -> Vec<&agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>
+    {
+        self.backend.relations_from(endpoint_kind, endpoint_id)
     }
 
     pub fn read_source_index(

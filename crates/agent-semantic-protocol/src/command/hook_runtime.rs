@@ -281,6 +281,9 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     });
     let workspace_mutated =
         hook_runtime_generation_admission::decision_mutates_workspace(&classified_decision);
+    let changed_paths =
+        hook_runtime_generation_admission::decision_changed_paths(&classified_decision);
+    let mutation_id = hook_runtime_generation_admission::decision_mutation_id(&classified_decision);
     let mut decision = if let Some(read_only_decision) = classify_read_only_resident_receipt(
         &project_root,
         client,
@@ -321,8 +324,13 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let runtime_generation_admission = hook_runtime_generation_admission::observe(
         args,
         workspace_mutated,
+        mutation_id,
+        changed_paths,
         requests_explicit_asp_workspace(&payload),
-        || hook_runtime_generation_admission::request(&project_root),
+        |mutation_id, changed_paths| {
+            hook_runtime_generation_admission::request(&project_root, mutation_id, changed_paths)
+        },
+        || hook_runtime_generation_admission::ensure(&project_root),
     );
     if let Some(auto_refresh) = hook_config_auto_refresh {
         annotate_hook_config_repair(

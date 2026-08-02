@@ -1,0 +1,18 @@
+{
+  "schemaId": "agent.semantic-protocols.provider-native-exact-projection",
+  "schemaVersion": "1",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "ownerPath": "src/live.rs",
+  "requestedStructuralSelector": "rust://src/live.rs#item/function/definitely_missing",
+  "resolutionState": "item-missing",
+  "reasonKind": "item-not-in-live-owner",
+  "activeGenerationDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "rootDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "itemKind": "function",
+  "itemName": "definitely_missing",
+  "candidates": [
+    "rust://src/live.rs#item/function/live"
+  ],
+  "actualKinds": []
+}

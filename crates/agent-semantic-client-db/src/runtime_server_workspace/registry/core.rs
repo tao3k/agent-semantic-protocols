@@ -52,7 +52,12 @@ struct WorkspaceResident {
     scopes: RwLock<HashMap<String, Arc<tokio::sync::OnceCell<Arc<WorkspaceEntry>>>>>,
     writer: mpsc::Sender<WorkspaceWriteCommand>,
     task: tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
+    activity: Arc<crate::runtime_server_workspace::lease::WorkspaceResidentActivity>,
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/runtime_server_workspace_retirement.rs"]
+mod retirement_tests;
 
 impl Drop for WorkspaceResident {
     fn drop(&mut self) {
@@ -104,6 +109,7 @@ pub(super) enum WorkspaceWriteCommand {
         request_id: String,
         workspace_identity: String,
         materialization: WorkspaceCanonicalMaterialization,
+        accepted: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
         reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
     },
     RestoreCheckpoint {
@@ -162,6 +168,19 @@ impl RuntimeServerWorkspaceRegistry {
 
     pub fn workspace_count(&self) -> usize {
         self.entries.read().len()
+    }
+
+    pub(crate) fn begin_request(
+        &self,
+        workspace_identity: &str,
+    ) -> Result<Option<crate::runtime_server_workspace::lease::WorkspaceResidentRequestGuard>, String>
+    {
+        self.entries
+            .read()
+            .get(workspace_identity)
+            .cloned()
+            .map(|resident| resident.activity.begin_request())
+            .transpose()
     }
 
     pub fn subscribe_workspace_count(&self) -> watch::Receiver<usize> {
@@ -236,10 +255,11 @@ impl RuntimeServerWorkspaceRegistry {
                 "runtime workspace generation is not ready: workspaceIdentity={workspace_identity}"
             )
         })?;
-        Ok(WorkspaceGenerationLease {
-            overlay: entry.overlays.snapshot(backend.generation()),
-            backend,
-        })
+        WorkspaceGenerationLease::from_resident(
+            Arc::clone(&backend),
+            entry.overlays.snapshot(backend.generation()),
+            Arc::clone(&resident.activity),
+        )
     }
 
     pub(crate) async fn admit_runtime_workspace_root(
@@ -282,19 +302,111 @@ impl RuntimeServerWorkspaceRegistry {
         structural_selector: &str,
     ) -> Result<WorkspaceRuntimeSelectorRead, String> {
         validate_projection_kind(projection_kind)?;
-        let entry = match self.ready_entry(workspace_identity, project_root) {
-            Ok(entry) => entry,
+        let lease = match self.lease(workspace_identity, project_root) {
+            Ok(lease) => lease,
             Err(_) => return Ok(WorkspaceRuntimeSelectorRead::GenerationMissing),
         };
-        let backend = match entry.current.borrow().clone() {
-            Some(backend) => backend,
-            None => return Ok(WorkspaceRuntimeSelectorRead::GenerationMissing),
-        };
-        let lease = WorkspaceGenerationLease {
-            overlay: entry.overlays.snapshot(backend.generation()),
-            backend,
-        };
         lease.read_runtime_selector(projection_kind, structural_selector)
+    }
+
+    pub async fn retire_inactive(
+        &self,
+    ) -> Result<Vec<crate::runtime_server_workspace::ResidentWorkspaceRetirementReceipt>, String>
+    {
+        use crate::runtime_server_workspace::{
+            RESIDENT_WORKSPACE_RETIREMENT_RECEIPT_SCHEMA_ID, ResidentWorkspaceRetirementReason,
+            ResidentWorkspaceRetirementReceipt,
+        };
+
+        const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3_600);
+
+        let candidates = self
+            .entries
+            .read()
+            .iter()
+            .map(|(identity, resident)| (identity.clone(), Arc::clone(resident)))
+            .collect::<Vec<_>>();
+        let mut receipts = Vec::new();
+        for (workspace_identity, resident) in candidates {
+            let project_roots = resident
+                .scopes
+                .read()
+                .keys()
+                .map(std::path::PathBuf::from)
+                .collect::<Vec<_>>();
+            let mut workspace_path_exists = false;
+            for project_root in &project_roots {
+                match tokio::fs::try_exists(project_root).await {
+                    Ok(true) => {
+                        workspace_path_exists = true;
+                        break;
+                    }
+                    Ok(false) => {}
+                    Err(_) => {
+                        // A transient metadata failure must not retire the workspace or
+                        // terminate the resident server. Keep the entry until a later sweep
+                        // can establish either a missing workspace or the idle timeout.
+                        workspace_path_exists = true;
+                        break;
+                    }
+                }
+            }
+            if !resident
+                .activity
+                .try_close_for_retirement(workspace_path_exists, IDLE_TIMEOUT)
+            {
+                continue;
+            }
+            let removed = {
+                let mut entries = self.entries.write();
+                if entries
+                    .get(&workspace_identity)
+                    .is_some_and(|current| Arc::ptr_eq(current, &resident))
+                {
+                    entries.remove(&workspace_identity)
+                } else {
+                    None
+                }
+            };
+            let Some(resident) = removed else {
+                resident.activity.reopen();
+                continue;
+            };
+            let (reply, receive) = oneshot::channel();
+            resident
+                .writer
+                .send(WorkspaceWriteCommand::Shutdown { reply })
+                .await
+                .map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?;
+            receive
+                .await
+                .map_err(|_| "runtime workspace writer lane dropped shutdown receipt".to_owned())?;
+            if let Some(task) = resident.task.lock().await.take() {
+                task.await
+                    .map_err(|error| format!("join runtime workspace writer lane: {error}"))?;
+            }
+            let (live_lease_count, in_flight_request_count) = resident.activity.counts();
+            let receipt = ResidentWorkspaceRetirementReceipt {
+                schema_id: RESIDENT_WORKSPACE_RETIREMENT_RECEIPT_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                workspace_identity,
+                reason: if workspace_path_exists {
+                    ResidentWorkspaceRetirementReason::IdleTimeout
+                } else {
+                    ResidentWorkspaceRetirementReason::WorkspaceMissing
+                },
+                idle_timeout_seconds: IDLE_TIMEOUT.as_secs(),
+                live_lease_count,
+                in_flight_request_count,
+                checkpoint_completed: true,
+                writer_lane_drained: true,
+                endpoint_retired: true,
+            };
+            receipt.validate()?;
+            receipts.push(receipt);
+        }
+        self.workspace_count.send_replace(self.entries.read().len());
+        Ok(receipts)
     }
 
     pub async fn shutdown(&self) -> Result<RuntimeServerShutdownReceipt, String> {
@@ -360,6 +472,9 @@ impl RuntimeServerWorkspaceRegistry {
                     scopes: RwLock::new(HashMap::new()),
                     writer,
                     task: tokio::sync::Mutex::new(Some(task)),
+                    activity: Arc::new(
+                        crate::runtime_server_workspace::lease::WorkspaceResidentActivity::new(),
+                    ),
                 });
                 entries.insert(workspace_identity.to_owned(), Arc::clone(&resident));
                 (resident, true, entries.len())
@@ -368,6 +483,7 @@ impl RuntimeServerWorkspaceRegistry {
         if inserted {
             self.workspace_count.send_replace(workspace_count);
         }
+        let _request = resident.activity.begin_request()?;
         let slot = {
             let mut scopes = resident.scopes.write();
             scopes
@@ -383,13 +499,14 @@ impl RuntimeServerWorkspaceRegistry {
                     project_root,
                 )?;
                 let pointer_path = directory.join("active-generation.pointer");
-                let restored = match WorkspaceGenerationDataPlaneClient::open_state(&pointer_path)
-                    .await?
-                {
-                    WorkspaceGenerationDataPlaneOpen::Ready(client) => Some(client.lease().backend),
-                    WorkspaceGenerationDataPlaneOpen::Missing
-                    | WorkspaceGenerationDataPlaneOpen::RecoveryRequired { .. } => None,
-                };
+                let restored =
+                    match WorkspaceGenerationDataPlaneClient::open_state(&pointer_path).await? {
+                        WorkspaceGenerationDataPlaneOpen::Ready(client) => {
+                            Some(Arc::clone(&client.lease().backend))
+                        }
+                        WorkspaceGenerationDataPlaneOpen::Missing
+                        | WorkspaceGenerationDataPlaneOpen::RecoveryRequired { .. } => None,
+                    };
                 if restored.is_some() {
                     self.counters
                         .filesystem_reads
@@ -420,10 +537,22 @@ impl RuntimeServerWorkspaceRegistry {
         project_root: &std::path::Path,
     ) -> Result<Arc<WorkspaceEntry>, String> {
         let project_root = project_root.to_string_lossy();
-        self.entries
+        let resident = self
+            .entries
             .read()
             .get(workspace_identity)
-            .and_then(|resident| resident.scopes.read().get(project_root.as_ref()).cloned())
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "runtime workspace is not checked out: workspaceIdentity={workspace_identity}"
+                )
+            })?;
+        let _request = resident.activity.begin_request()?;
+        resident
+            .scopes
+            .read()
+            .get(project_root.as_ref())
+            .cloned()
             .and_then(|slot| slot.get().cloned())
             .ok_or_else(|| {
                 format!(
@@ -590,6 +719,7 @@ async fn workspace_writer_lane(
                 request_id,
                 workspace_identity,
                 materialization,
+                accepted,
                 reply,
             } => {
                 let WorkspaceWriteTarget {
@@ -607,12 +737,14 @@ async fn workspace_writer_lane(
                     Ok(generation)
                         if active.as_ref().is_some_and(|backend| {
                             backend.generation().generation_digest == generation.generation_digest
+                                && backend.generation().selector_set_digest
+                                    == generation.selector_set_digest
                         })
                             && tokio::fs::try_exists(publisher.pointer_path())
                                 .await
                                 .unwrap_or(false) =>
                     {
-                        last_receipts.get(&scope_key).cloned().or_else(|| {
+                        let result = last_receipts.get(&scope_key).cloned().or_else(|| {
                             let target_epoch = active_epoch;
                             target_epoch.checked_sub(1).map(|previous_epoch| {
                                 WorkspaceRecoveryReceipt {
@@ -633,26 +765,56 @@ async fn workspace_writer_lane(
                             "runtime workspace canonical generation has no reusable recovery receipt"
                                 .to_owned()
                         })
-                    }
-                    Ok(generation) => {
-                        let result = publish_generation(
-                            &current,
-                            publisher.as_ref(),
-                            request_id,
-                            WorkspaceRecoverySource::TursoGeneration,
-                            active_epoch,
-                            generation,
-                            &counters,
-                        )
-                        .await;
-                        if result.is_ok()
-                            && let Some(backend) = current.borrow().clone()
-                        {
-                            overlays.reset(backend.generation());
-                        }
+                        .and_then(|receipt| {
+                            receipt.validate()?;
+                            Ok(receipt)
+                        });
+                        let _ = accepted.send(result.clone());
                         result
                     }
-                    Err(error) => Err(error),
+                    Ok(generation) => {
+                        let progress = WorkspaceRecoveryReceipt {
+                            schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
+                            schema_version: "1".to_owned(),
+                            request_id: request_id.clone(),
+                            workspace_identity: workspace_identity.clone(),
+                            source: WorkspaceRecoverySource::TursoGeneration,
+                            state: WorkspaceGenerationState::PublishingNext,
+                            active_epoch,
+                            target_epoch: generation.active_epoch,
+                            old_generation_readable: active.is_some(),
+                            counters: RuntimeDataPlaneCounters::default(),
+                        };
+                        match progress.validate() {
+                            Ok(()) => {
+                                let _ = accepted.send(Ok(progress));
+                                let result = publish_generation(
+                                    &current,
+                                    publisher.as_ref(),
+                                    request_id,
+                                    WorkspaceRecoverySource::TursoGeneration,
+                                    active_epoch,
+                                    generation,
+                                    &counters,
+                                )
+                                .await;
+                                if result.is_ok()
+                                    && let Some(backend) = current.borrow().clone()
+                                {
+                                    overlays.reset(backend.generation());
+                                }
+                                result
+                            }
+                            Err(error) => {
+                                let _ = accepted.send(Err(error.clone()));
+                                Err(error)
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        let _ = accepted.send(Err(error.clone()));
+                        Err(error)
+                    }
                 }
                 .and_then(|receipt| {
                     receipt.validate()?;

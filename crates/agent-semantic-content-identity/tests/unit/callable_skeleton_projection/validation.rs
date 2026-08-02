@@ -37,6 +37,35 @@ fn root_selector() -> ExactStructuralSelectorV1 {
     }
 }
 
+#[test]
+fn public_projection_mode_matches_the_wire_projection_kind() {
+    assert_eq!(CallableSkeletonProjectionV1::projection_mode(), "skeleton");
+    assert_eq!(
+        CallableSkeletonProjectionV1::projection_kind(),
+        "callable-skeleton"
+    );
+}
+
+#[test]
+fn shared_json_schema_keeps_wire_identity_at_version_one() {
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../schemas/callable-skeleton-projection.v1.schema.json"
+    ))
+    .expect("callable skeleton shared schema must be valid JSON");
+    assert_eq!(
+        schema["properties"]["schemaId"]["const"],
+        CALLABLE_SKELETON_PROJECTION_SCHEMA_ID
+    );
+    assert_eq!(
+        schema["properties"]["schemaVersion"]["const"],
+        CALLABLE_SKELETON_PROJECTION_SCHEMA_VERSION
+    );
+    assert_eq!(
+        schema["properties"]["projectionKind"]["const"],
+        CallableSkeletonProjectionV1::projection_kind()
+    );
+}
+
 fn projection() -> CallableSkeletonProjectionV1 {
     let root = root_selector();
     let mut arm_selector = root.clone();

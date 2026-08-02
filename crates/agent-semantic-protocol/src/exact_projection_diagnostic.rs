@@ -15,17 +15,16 @@ pub(crate) struct ProviderNativeExactResolution {
     pub(crate) requested_structural_selector: String,
     pub(crate) resolution_state: String,
     pub(crate) reason_kind: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) active_generation_digest: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) root_digest: Option<String>,
+    pub(crate) active_generation_digest: String,
+    pub(crate) root_digest: String,
     pub(crate) item_kind: String,
     pub(crate) item_name: String,
     #[serde(default)]
     pub(crate) candidates: Vec<String>,
     #[serde(default)]
     pub(crate) actual_kinds: Vec<String>,
-    pub(crate) recommended_next: ProviderNativeExactRecommendedNext,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) recommended_next: Option<ProviderNativeExactRecommendedNext>,
 }
 
 pub(crate) struct ProviderExactResolutionFacts {
@@ -57,25 +56,28 @@ pub(crate) fn resolution_from_facts(
         requested_structural_selector: facts.structural_selector,
         resolution_state: facts.resolution_state.clone(),
         reason_kind: facts.reason_kind,
-        active_generation_digest: Some(facts.active_generation_digest),
-        root_digest: Some(facts.root_digest),
+        active_generation_digest: facts.active_generation_digest,
+        root_digest: facts.root_digest,
         item_kind: facts.item_kind.clone(),
         item_name: facts.item_name,
         candidates: facts.candidates,
         actual_kinds: facts.actual_kinds,
-        recommended_next: ProviderNativeExactRecommendedNext {
-            command: if facts.resolution_state == "selector-stale" {
+        recommended_next: matches!(
+            facts.resolution_state.as_str(),
+            "selector-stale" | "owner-missing"
+        )
+        .then(|| ProviderNativeExactRecommendedNext {
+            command: if facts.resolution_state == "selector-stale"
+                || facts.resolution_state == "owner-missing"
+            {
                 format!(
                     "asp {} search lexical --query '{}' --query '{} {}' --workspace {} --view seeds",
                     facts.language_id, next_query, facts.item_kind, next_query, facts.workspace
                 )
             } else {
-                format!(
-                    "asp {} search owner {} items --query '{}' --workspace {} --view seeds",
-                    facts.language_id, facts.owner_path, next_query, facts.workspace
-                )
+                unreachable!("recovery command exists only for stale or missing owner authority")
             },
-        },
+        }),
     }
 }
 
@@ -114,6 +116,14 @@ pub(crate) fn validate_resolution(
     if resolution.resolution_state.is_empty() || resolution.reason_kind.is_empty() {
         return Err("exact-selector semantic resolution is incomplete".to_owned());
     }
+    if resolution.resolution_state == "item-missing" && resolution.recommended_next.is_some() {
+        return Err(
+            "active-generation item-missing resolution must not request repeat discovery"
+                .to_owned(),
+        );
+    }
+    validate_generation_digest(&resolution.active_generation_digest)?;
+    validate_root_digest(&resolution.root_digest)?;
     Ok(())
 }
 
@@ -144,14 +154,10 @@ fn render_human_diagnostic(resolution: &ProviderNativeExactResolution) -> String
         resolution.item_kind,
         resolution.item_name,
     );
-    if let Some(root_digest) = resolution.root_digest.as_deref() {
-        diagnostic.push_str(" rootDigest=");
-        diagnostic.push_str(root_digest);
-    }
-    if let Some(generation_digest) = resolution.active_generation_digest.as_deref() {
-        diagnostic.push_str(" activeGenerationDigest=");
-        diagnostic.push_str(generation_digest);
-    }
+    diagnostic.push_str(" rootDigest=");
+    diagnostic.push_str(&resolution.root_digest);
+    diagnostic.push_str(" activeGenerationDigest=");
+    diagnostic.push_str(&resolution.active_generation_digest);
     if !resolution.candidates.is_empty() {
         diagnostic.push_str(" candidates=");
         diagnostic.push_str(&resolution.candidates.join(","));
@@ -160,8 +166,10 @@ fn render_human_diagnostic(resolution: &ProviderNativeExactResolution) -> String
         diagnostic.push_str(" actualKinds=");
         diagnostic.push_str(&resolution.actual_kinds.join(","));
     }
-    diagnostic.push_str(" next=");
-    diagnostic.push_str(&resolution.recommended_next.command);
+    if let Some(next) = resolution.recommended_next.as_ref() {
+        diagnostic.push_str(" next=");
+        diagnostic.push_str(&next.command);
+    }
     diagnostic
 }
 
@@ -172,4 +180,25 @@ fn validate_field(field: &str, actual: &str, expected: &str) -> Result<(), Strin
         ));
     }
     Ok(())
+}
+
+fn validate_generation_digest(digest: &str) -> Result<(), String> {
+    let Some(value) = digest.strip_prefix("blake3-256:") else {
+        return Err("exact-selector activeGenerationDigest is not BLAKE3 authority".to_owned());
+    };
+    validate_hex_digest("activeGenerationDigest", value)
+}
+
+fn validate_root_digest(digest: &str) -> Result<(), String> {
+    validate_hex_digest("rootDigest", digest)
+}
+
+fn validate_hex_digest(field: &str, digest: &str) -> Result<(), String> {
+    if digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Ok(())
+    } else {
+        Err(format!(
+            "exact-selector {field} is not a 256-bit hex digest"
+        ))
+    }
 }

@@ -13,6 +13,12 @@ close protocol, Rust aggregate boundary, and proof correspondence.
 - [[file:01-close-release-protocol.org][01 — Close, termination, and canonical path release]]
 - [[file:02-rust-lifesession-aggregate.org][02 — Rust LifeSession aggregate boundary]]
 - [[file:03-proof-correspondence.org][03 — Lean, Typst, and AXLE correspondence]]
+- [[file:04-single-resident-archive-release.org][04 — Single resident archive and release]]
+- [[file:05-server-owned-session-registry-authority.org][05 — Server-owned session registry authority]]
+- [[file:06-layered-runtime-session-turn-model.org][06 — Layered runtime, Agent Session, and Codex turn model]]
+- [[file:07-workspace-generation-readiness.org][07 — Runtime workspace generation readiness]]
+- [[file:08-workspace-reconcile-closure.org][08 — Workspace-specific reconcile closure]]
+- [[file:09-warm-publication-recovery.org][09 — Warm publication crash recovery and bounded progress]]
 
 * Cross-module invariant
 

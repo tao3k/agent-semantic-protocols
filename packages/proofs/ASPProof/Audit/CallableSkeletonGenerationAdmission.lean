@@ -1,0 +1,23 @@
+import ASPProof.CallableSkeletonGenerationAdmission
+
+open ASPProof.CallableSkeletonGenerationAdmission
+
+#check admission_implies_selector_present
+#check admission_implies_requested_projection_kind
+#check admission_implies_same_generation
+#check missing_projection_is_not_admitted
+#check schema_failure_is_not_admitted
+#check stale_repair_is_not_admissible
+#check repair_admission_implies_same_generation
+#check skeleton_cache_mode_maps_to_callable_skeleton
+#check code_cache_mode_is_not_callable_skeleton
+
+#print axioms admission_implies_selector_present
+#print axioms admission_implies_requested_projection_kind
+#print axioms admission_implies_same_generation
+#print axioms missing_projection_is_not_admitted
+#print axioms schema_failure_is_not_admitted
+#print axioms stale_repair_is_not_admissible
+#print axioms repair_admission_implies_same_generation
+#print axioms skeleton_cache_mode_maps_to_callable_skeleton
+#print axioms code_cache_mode_is_not_callable_skeleton

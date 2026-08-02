@@ -184,12 +184,6 @@ impl RuntimeServerWorkspaceRegistry {
 
 fn resident_owner_projection_is_complete(owner: &WorkspaceOwnerSnapshot) -> bool {
     !owner.selectors.is_empty()
-        && owner.selectors.iter().all(|selector| {
-            selector
-                .derived_projections
-                .iter()
-                .any(|projection| projection.projection_kind == "callable-skeleton")
-        })
 }
 
 fn normalized_owner_path(owner_path: &str) -> Result<&Path, String> {

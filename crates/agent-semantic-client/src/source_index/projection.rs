@@ -143,6 +143,7 @@ async fn project_provider(
             &parser_identity_digest,
             &query_pack_digest,
         )?;
+        file.relations = projected_owner.relations.clone();
         file.projection_coverage = ClientDbSourceIndexProjectionCoverage::Complete;
     }
     Ok(())

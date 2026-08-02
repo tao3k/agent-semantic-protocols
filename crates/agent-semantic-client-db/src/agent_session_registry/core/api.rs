@@ -28,6 +28,46 @@ impl AgentSessionRegistry {
                 request.project_id, request.session_id
             ));
         }
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::Register {
+                request: crate::workspace_db_ipc::AgentSessionRegisterIpcRequest {
+                    project_id: request.project_id.as_str().to_owned(),
+                    root_session_id: request.root_session_id.as_str().to_owned(),
+                    session_id: request.session_id.as_str().to_owned(),
+                    message_target_id: request
+                        .message_target_id
+                        .as_ref()
+                        .map(|value| value.as_str().to_owned()),
+                    parent_session_id: request
+                        .parent_session_id
+                        .as_ref()
+                        .map(|value| value.as_str().to_owned()),
+                    name: request.name.as_str().to_owned(),
+                    role: request.role.as_str().to_owned(),
+                    model_observation: request.model_observation.map(|observation| {
+                        crate::workspace_db_ipc::AgentSessionModelObservationIpc {
+                            model: observation.model.to_owned(),
+                            source: observation.source.as_str().to_owned(),
+                            observed_at: observation.observed_at,
+                            evidence_ref: observation.evidence_ref.map(str::to_owned),
+                        }
+                    }),
+                    status: request.status.as_str().to_owned(),
+                    expires_at: request.expires_at,
+                    metadata_json: request.metadata_json.as_str().to_owned(),
+                    now: request.now,
+                },
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Registered { session } => {
+                    Ok(session)
+                }
+                _ => Err(
+                    "Runtime Server returned an unexpected session registration result".to_owned(),
+                ),
+            };
+        }
         block_on_agent_session_registry_async(turso_register_session(&self.db_path, request))
     }
 
@@ -47,6 +87,22 @@ impl AgentSessionRegistry {
         name: Option<AgentSessionResidentName>,
     ) -> Result<Vec<AgentSessionRecord>, String> {
         let project_id = project_id.into();
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::Query {
+                project_id: project_id.as_str().to_owned(),
+                root_session_id: root_session_id
+                    .as_ref()
+                    .map(|value| value.as_str().to_owned()),
+                name: name.as_ref().map(|value| value.as_str().to_owned()),
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Sessions { sessions } => {
+                    Ok(sessions)
+                }
+                _ => Err("Runtime Server returned an unexpected session query result".to_owned()),
+            };
+        }
         block_on_agent_session_registry_async(turso_query_sessions(
             &self.db_path,
             project_id.as_str(),
@@ -65,6 +121,19 @@ impl AgentSessionRegistry {
     ) -> Result<Option<AgentSessionRecord>, String> {
         let project_id = project_id.into();
         let session_id = session_id.into();
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionById {
+                project_id: project_id.as_str().to_owned(),
+                session_id: session_id.as_str().to_owned(),
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Session { session } => {
+                    Ok(session)
+                }
+                _ => Err("Runtime Server returned an unexpected session lookup result".to_owned()),
+            };
+        }
         block_on_agent_session_registry_async(turso_session_by_id(
             &self.db_path,
             project_id.as_str(),
@@ -82,6 +151,22 @@ impl AgentSessionRegistry {
         let project_id = project_id.into();
         let root_session_id = root_session_id.into();
         let name = name.into();
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionByName {
+                project_id: project_id.as_str().to_owned(),
+                root_session_id: root_session_id.as_str().to_owned(),
+                name: name.as_str().to_owned(),
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Session { session } => {
+                    Ok(session)
+                }
+                _ => Err(
+                    "Runtime Server returned an unexpected named session lookup result".to_owned(),
+                ),
+            };
+        }
         block_on_agent_session_registry_async(turso_session_by_name(
             &self.db_path,
             project_id.as_str(),
@@ -164,6 +249,21 @@ impl AgentSessionRegistry {
         let project_id = project_id.into();
         let session_id = session_id.into();
         let status = status.into();
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::UpdateStatus {
+                project_id: project_id.as_str().to_owned(),
+                session_id: session_id.as_str().to_owned(),
+                status: status.as_str().to_owned(),
+                now,
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Changed { changed } => {
+                    Ok(changed)
+                }
+                _ => Err("Runtime Server returned an unexpected session status result".to_owned()),
+            };
+        }
         block_on_agent_session_registry_async(turso_update_session_status(
             &self.db_path,
             project_id.as_str(),
@@ -246,6 +346,19 @@ impl AgentSessionRegistry {
     ) -> Result<bool, String> {
         let project_id = project_id.into();
         let session_id = session_id.into();
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionIsRetired {
+                project_id: project_id.as_str().to_owned(),
+                session_id: session_id.as_str().to_owned(),
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Changed { changed } => {
+                    Ok(changed)
+                }
+                _ => Err("Runtime Server returned an unexpected retired-session result".to_owned()),
+            };
+        }
         block_on_agent_session_registry_async(super::storage::turso_session_is_retired(
             self.db_path(),
             project_id.as_str(),
@@ -255,6 +368,14 @@ impl AgentSessionRegistry {
 
     /// Refresh expired routable sessions in this registry DB.
     pub fn refresh_expired_sessions(&self) -> Result<(), String> {
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::RefreshExpired,
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Refreshed => Ok(()),
+                _ => Err("Runtime Server returned an unexpected session refresh result".to_owned()),
+            };
+        }
         let now = agent_session_unix_timestamp()?;
         block_on_agent_session_registry_async(turso_refresh_expired_sessions(&self.db_path, now))
     }
@@ -265,6 +386,20 @@ impl AgentSessionRegistry {
         session_id: impl Into<AgentSessionId>,
     ) -> Result<Option<AgentSessionRecord>, String> {
         let session_id = session_id.into();
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SessionByIdAnyProject {
+                session_id: session_id.as_str().to_owned(),
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Session { session } => {
+                    Ok(session)
+                }
+                _ => Err(
+                    "Runtime Server returned an unexpected global session lookup result".to_owned(),
+                ),
+            };
+        }
         block_on_agent_session_registry_async(turso_session_by_id_any_project(
             &self.db_path,
             session_id.as_str(),
@@ -277,6 +412,20 @@ impl AgentSessionRegistry {
         root_session_id: impl Into<AgentSessionRootSessionId>,
     ) -> Result<Option<String>, String> {
         let root_session_id = root_session_id.into();
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::ProjectIdForRootSessionId {
+                root_session_id: root_session_id.as_str().to_owned(),
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::ProjectId {
+                    project_id,
+                } => Ok(project_id),
+                _ => Err(
+                    "Runtime Server returned an unexpected root-session project result".to_owned(),
+                ),
+            };
+        }
         Ok(
             block_on_agent_session_registry_async(turso_session_for_root_session_id_any_project(
                 &self.db_path,

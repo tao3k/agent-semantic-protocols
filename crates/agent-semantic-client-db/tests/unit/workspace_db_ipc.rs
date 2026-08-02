@@ -16,7 +16,12 @@ use agent_semantic_client_db::{
 #[test]
 fn runtime_generation_admission_ensure_and_locator_repair_have_distinct_typed_wire_shapes() {
     let admit = serde_json::to_value(WorkspaceDbIpcOperation::AdmitRuntimeGeneration {
+        mutation_id: "session-root/tool-use-1".to_owned(),
         project_root: "/workspace".to_owned(),
+        changed_paths: vec![
+            "/workspace/src/lib.rs".to_owned(),
+            "/workspace/languages/rust/src/lib.rs".to_owned(),
+        ],
     })
     .expect("encode runtime generation admission");
     let ensure = serde_json::to_value(WorkspaceDbIpcOperation::EnsureRuntimeGeneration {
@@ -31,7 +36,12 @@ fn runtime_generation_admission_ensure_and_locator_repair_have_distinct_typed_wi
         admit,
         serde_json::json!({
             "kind": "admit-runtime-generation",
-            "projectRoot": "/workspace"
+            "mutationId": "session-root/tool-use-1",
+            "projectRoot": "/workspace",
+            "changedPaths": [
+                "/workspace/src/lib.rs",
+                "/workspace/languages/rust/src/lib.rs"
+            ]
         })
     );
     assert_eq!(
@@ -48,6 +58,57 @@ fn runtime_generation_admission_ensure_and_locator_repair_have_distinct_typed_wi
             "projectRoot": "/workspace"
         })
     );
+}
+
+#[test]
+fn runtime_generation_mutation_admission_rejects_a_pathless_wire_request() {
+    let error = serde_json::from_value::<WorkspaceDbIpcOperation>(serde_json::json!({
+            "kind": "admit-runtime-generation",
+            "mutationId": "session-root/tool-use-1",
+            "projectRoot": "/workspace",
+            "changedPaths": []
+    }))
+    .expect_err("mutation admission must carry changed paths");
+
+    assert!(error.to_string().contains("changedPaths"));
+}
+
+#[test]
+fn runtime_generation_mutation_admission_rejects_duplicate_wire_paths() {
+    let error = serde_json::from_value::<WorkspaceDbIpcOperation>(serde_json::json!({
+        "kind": "admit-runtime-generation",
+        "mutationId": "session-root/tool-use-1",
+        "projectRoot": "/workspace",
+        "changedPaths": ["/workspace/src/lib.rs", "/workspace/src/lib.rs"]
+    }))
+    .expect_err("mutation admission paths must be unique");
+
+    assert!(error.to_string().contains("duplicate paths"));
+}
+
+#[test]
+fn runtime_generation_mutation_admission_rejects_a_missing_mutation_identity() {
+    let error = serde_json::from_value::<WorkspaceDbIpcOperation>(serde_json::json!({
+        "kind": "admit-runtime-generation",
+        "projectRoot": "/workspace",
+        "changedPaths": ["/workspace/src/lib.rs"]
+    }))
+    .expect_err("mutation admission must carry an event identity");
+
+    assert!(error.to_string().contains("mutationId"));
+}
+
+#[test]
+fn runtime_generation_mutation_admission_rejects_an_empty_mutation_identity() {
+    let error = serde_json::from_value::<WorkspaceDbIpcOperation>(serde_json::json!({
+        "kind": "admit-runtime-generation",
+        "mutationId": " ",
+        "projectRoot": "/workspace",
+        "changedPaths": ["/workspace/src/lib.rs"]
+    }))
+    .expect_err("mutation admission identity must be non-empty");
+
+    assert!(error.to_string().contains("mutationId"));
 }
 
 #[test]

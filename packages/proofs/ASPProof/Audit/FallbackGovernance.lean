@@ -1,0 +1,16 @@
+import ASPProof.FallbackGovernance
+
+namespace ASPProof.Audit.FallbackGovernance
+
+#print axioms ASPProof.FallbackGovernance.proof_lane_rejects_operational_fallback
+#print axioms ASPProof.FallbackGovernance.no_eager_fallback
+#print axioms ASPProof.FallbackGovernance.no_unauthorized_fallback
+#print axioms ASPProof.FallbackGovernance.no_silent_degradation
+#print axioms ASPProof.FallbackGovernance.guarded_fallback_does_not_inflate_guarantees
+#print axioms ASPProof.FallbackGovernance.non_equivalent_fallback_separates_cache
+#print axioms ASPProof.FallbackGovernance.missing_required_guarantee_denies_acceptance
+#print axioms ASPProof.FallbackGovernance.no_zero_budget_fallback
+#print axioms ASPProof.FallbackGovernance.no_rank_cycle
+#print axioms ASPProof.FallbackGovernance.rank_step_well_founded
+
+end ASPProof.Audit.FallbackGovernance

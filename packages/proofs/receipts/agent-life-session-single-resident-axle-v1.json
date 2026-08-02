@@ -1,0 +1,22 @@
+{
+  "schemaId": "asp.axle-lean-audit-receipt.v1",
+  "schemaVersion": "1",
+  "auditSha256": "ef60b76401ad3329eb0f8b8924a1aa96bbab3767bcd0803411e5a05790cf46d5",
+  "declarationCount": 7,
+  "axiomFreeDeclarationCount": 7,
+  "axiomDependentDeclarationCount": 0,
+  "axiomInventory": [],
+  "rfcClauseIds": [
+    "ASP-RFC-10.15-SINGLE-RESIDENT-ARCHIVE-NOT-RELEASE",
+    "ASP-RFC-10.15-SINGLE-RESIDENT-FRESH-GENERATION",
+    "ASP-RFC-10.15-SINGLE-RESIDENT-MISSING-RELEASE",
+    "ASP-RFC-10.15-SINGLE-RESIDENT-UNIQUENESS"
+  ],
+  "theoremFamilies": [
+    "single-resident-archive-not-release",
+    "single-resident-fresh-generation",
+    "single-resident-missing-release",
+    "single-resident-same-name-reservation",
+    "single-resident-slot-uniqueness"
+  ]
+}

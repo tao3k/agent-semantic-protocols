@@ -8,7 +8,67 @@ pub(super) struct HookGenerationAdmissionObservation {
     pub(super) error: Option<String>,
 }
 
-pub(crate) fn request(project_root: &Path) -> Result<serde_json::Value, String> {
+pub(super) fn decision_changed_paths(decision: &agent_semantic_hook::HookDecision) -> Vec<String> {
+    let mut changed_paths = decision
+        .fields
+        .get("normalizedActions")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|action| {
+            action
+                .get("operationIntent")
+                .and_then(serde_json::Value::as_str)
+                == Some("apply-patch")
+        })
+        .flat_map(|action| {
+            action
+                .get("paths")
+                .and_then(serde_json::Value::as_array)
+                .into_iter()
+                .flatten()
+        })
+        .filter_map(serde_json::Value::as_str)
+        .filter(|path| !path.trim().is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    if decision
+        .fields
+        .get("operationIntent")
+        .and_then(serde_json::Value::as_str)
+        == Some("apply-patch")
+    {
+        changed_paths.extend(
+            decision
+                .fields
+                .get("paths")
+                .and_then(serde_json::Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(serde_json::Value::as_str)
+                .filter(|path| !path.trim().is_empty())
+                .map(str::to_owned),
+        );
+    }
+    changed_paths.sort();
+    changed_paths.dedup();
+    changed_paths
+}
+
+pub(super) fn decision_mutation_id(decision: &agent_semantic_hook::HookDecision) -> Option<String> {
+    let session_id = decision.fields.get("sessionId")?.as_str()?.trim();
+    let tool_use_id = decision.fields.get("toolUseId")?.as_str()?.trim();
+    if session_id.is_empty() || tool_use_id.is_empty() {
+        return None;
+    }
+    Some(format!("{session_id}/{tool_use_id}"))
+}
+
+pub(crate) fn request(
+    project_root: &Path,
+    mutation_id: String,
+    changed_paths: Vec<String>,
+) -> Result<serde_json::Value, String> {
     let project_root = project_root.to_path_buf();
     crate::command::runtime_server::block_on_runtime_server_client(async move {
         let session =
@@ -16,7 +76,9 @@ pub(crate) fn request(project_root: &Path) -> Result<serde_json::Value, String> 
                 &project_root,
             )
             .await?;
-        let receipt = session.admit_runtime_generation().await?;
+        let receipt = session
+            .submit_runtime_generation_mutation(mutation_id, changed_paths)
+            .await?;
         receipt.validate()?;
         serde_json::to_value(receipt)
             .map_err(|error| format!("failed to encode runtime generation admission: {error}"))
@@ -55,17 +117,49 @@ pub(super) fn decision_mutates_workspace(decision: &agent_semantic_hook::HookDec
             })
 }
 
+pub(crate) fn ensure(project_root: &Path) -> Result<serde_json::Value, String> {
+    let project_root = project_root.to_path_buf();
+    crate::command::runtime_server::block_on_runtime_server_client(async move {
+        let session =
+            crate::command::runtime_server::runtime_server_workspace_session_for_admission_async(
+                &project_root,
+            )
+            .await?;
+        let receipt = session.ensure_runtime_generation().await?;
+        receipt.validate()?;
+        serde_json::to_value(receipt)
+            .map_err(|error| format!("failed to encode runtime generation ensure: {error}"))
+    })?
+}
+
 pub(super) fn observe(
     args: &[String],
     workspace_mutated: bool,
+    mutation_id: Option<String>,
+    changed_paths: Vec<String>,
     explicit_asp_workspace: bool,
-    request: impl FnOnce() -> Result<serde_json::Value, String>,
+    admit: impl FnOnce(String, Vec<String>) -> Result<serde_json::Value, String>,
+    ensure: impl FnOnce() -> Result<serde_json::Value, String>,
 ) -> HookGenerationAdmissionObservation {
     if !hook_event_requires_generation_admission(args, workspace_mutated, explicit_asp_workspace) {
         return HookGenerationAdmissionObservation::default();
     }
 
-    match request() {
+    let result = if workspace_mutated {
+        if mutation_id.is_none() {
+            Err("post-tool workspace mutation omitted typed mutation identity".to_owned())
+        } else if changed_paths.is_empty() {
+            Err("post-tool workspace mutation omitted normalized changed paths".to_owned())
+        } else {
+            admit(
+                mutation_id.expect("validated mutation identity"),
+                changed_paths,
+            )
+        }
+    } else {
+        ensure()
+    };
+    match result {
         Ok(receipt) => HookGenerationAdmissionObservation {
             receipt: Some(receipt),
             error: None,

@@ -203,6 +203,10 @@ async fn dispatch_workspace_db_session_operation(
     let dispatched = match operation {
         WorkspaceDbIpcOperation::Health => return WorkspaceDbIpcResult::Healthy,
         WorkspaceDbIpcOperation::Shutdown => return WorkspaceDbIpcResult::ShutdownAccepted,
+        WorkspaceDbIpcOperation::AgentSessionRegistry { .. } => Err(
+            "agent-session registry operations are not admitted until the staged registry dispatcher is published"
+                .to_owned(),
+        ),
         WorkspaceDbIpcOperation::ReadSourceIndex { .. } => {
             Err("source-index reads are only accepted by the Runtime Server data plane".to_owned())
         }
@@ -373,6 +377,131 @@ pub(crate) async fn admitted_or_bootstrap_workspace(
     }
     Ok(session)
 }
+
+async fn run_agent_session_registry_operation(
+    registry: std::sync::Arc<crate::AgentSessionRegistry>,
+    project_root: std::path::PathBuf,
+    operation: crate::workspace_db_ipc::AgentSessionRegistryIpcOperation,
+) -> Result<crate::workspace_db_ipc::AgentSessionRegistryIpcResult, String> {
+    let state_root = crate::AgentSessionRegistry::state_root_for_project(&project_root)?;
+    let requested_db_path = crate::AgentSessionRegistry::db_path_for_state_root(state_root);
+    if requested_db_path != registry.db_path() {
+        return Err(format!(
+            "agent-session registry owner state-root mismatch: owner={} requested={}",
+            registry.db_path().display(),
+            requested_db_path.display()
+        ));
+    }
+    tokio::task::spawn_blocking(move || {
+        use crate::workspace_db_ipc::{
+            AgentSessionRegistryIpcOperation as Operation,
+            AgentSessionRegistryIpcResult as IpcResult,
+        };
+
+        match operation {
+            Operation::Register { request } => {
+                let model_source = request
+                    .model_observation
+                    .as_ref()
+                    .map(|observation| match observation.source.as_str() {
+                        "codex.subagent-start" => Ok(
+                            crate::agent_session_registry::AgentSessionModelObservationSource::CodexSubagentStart,
+                        ),
+                        "codex.rollout" => Ok(
+                            crate::agent_session_registry::AgentSessionModelObservationSource::CodexRollout,
+                        ),
+                        source => Err(format!(
+                            "unsupported agent-session model observation source: {source}"
+                        )),
+                    })
+                    .transpose()?;
+                let model_observation = match (request.model_observation.as_ref(), model_source) {
+                    (Some(observation), Some(source)) => Some(
+                        crate::agent_session_registry::AgentSessionModelObservationRef {
+                            model: observation.model.as_str(),
+                            source,
+                            observed_at: observation.observed_at,
+                            evidence_ref: observation.evidence_ref.as_deref(),
+                        },
+                    ),
+                    (None, None) => None,
+                    _ => {
+                        return Err(
+                            "agent-session model observation/source presence mismatch".to_owned()
+                        );
+                    }
+                };
+                let session = registry.register_session(crate::AgentSessionRegisterRequest {
+                    project_id: request.project_id.into(),
+                    root_session_id: request.root_session_id.into(),
+                    session_id: request.session_id.into(),
+                    message_target_id: request.message_target_id.map(Into::into),
+                    parent_session_id: request.parent_session_id.map(Into::into),
+                    name: request.name.into(),
+                    role: request.role.into(),
+                    model_observation,
+                    status: request.status.into(),
+                    expires_at: request.expires_at,
+                    metadata_json: request.metadata_json.into(),
+                    now: request.now,
+                })?;
+                Ok(IpcResult::Registered { session })
+            }
+            Operation::Query {
+                project_id,
+                root_session_id,
+                name,
+            } => Ok(IpcResult::Sessions {
+                sessions: registry.query_sessions(
+                    project_id,
+                    root_session_id.map(Into::into),
+                    name.map(Into::into),
+                )?,
+            }),
+            Operation::SessionById {
+                project_id,
+                session_id,
+            } => Ok(IpcResult::Session {
+                session: registry.session_by_id(project_id, session_id)?,
+            }),
+            Operation::SessionByName {
+                project_id,
+                root_session_id,
+                name,
+            } => Ok(IpcResult::Session {
+                session: registry.session_by_name(project_id, root_session_id, name)?,
+            }),
+            Operation::UpdateStatus {
+                project_id,
+                session_id,
+                status,
+                now,
+            } => Ok(IpcResult::Changed {
+                changed: registry.update_session_status(project_id, session_id, status, now)?,
+            }),
+            Operation::SessionIsRetired {
+                project_id,
+                session_id,
+            } => Ok(IpcResult::Changed {
+                changed: registry.session_is_retired(project_id, session_id)?,
+            }),
+            Operation::RefreshExpired => {
+                registry.refresh_expired_sessions()?;
+                Ok(IpcResult::Refreshed)
+            }
+            Operation::SessionByIdAnyProject { session_id } => Ok(IpcResult::Session {
+                session: registry.session_by_id_any_project(session_id)?,
+            }),
+            Operation::ProjectIdForRootSessionId { root_session_id } => {
+                Ok(IpcResult::ProjectId {
+                    project_id: registry.project_id_for_root_session_id(root_session_id)?,
+                })
+            }
+        }
+    })
+    .await
+    .map_err(|error| format!("agent-session registry owner task failed: {error}"))?
+}
 /// Serve workspace-scoped data-plane requests through the single Runtime Server.
 ///
 /// Unlike the removed per-workspace owner transport, the endpoint authenticates
@@ -388,8 +517,11 @@ pub async fn serve_runtime_server_workspace_stream(
         &crate::runtime_server_workspace::WorkspaceOwnerProjectionBuilder,
     >,
     hook_evaluation_builder: Option<&crate::runtime_server::HookEvaluationBuilder>,
+    agent_session_registry_owner: Option<&std::sync::Arc<crate::AgentSessionRegistry>>,
     mut drain: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), String> {
+    static AGENT_SESSION_REGISTRY_OWNER_LANE: std::sync::LazyLock<tokio::sync::Mutex<()>> =
+        std::sync::LazyLock::new(|| tokio::sync::Mutex::new(()));
     loop {
         let request = tokio::select! {
             request = read_optional_frame::<WorkspaceDbIpcRequest>(&mut *stream) => request?,
@@ -401,6 +533,7 @@ pub async fn serve_runtime_server_workspace_stream(
         let Some(request) = request else {
             return Ok(());
         };
+        let workspace_request = memory_registry.begin_request(&request.workspace_identity);
         let result = if request.schema_id != WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID {
             WorkspaceDbIpcResult::Failed {
                 code: "runtime-server-data-request-schema-id-mismatch".to_owned(),
@@ -436,6 +569,11 @@ pub async fn serve_runtime_server_workspace_stream(
             WorkspaceDbIpcResult::Failed {
                 code: "runtime-server-shutdown-control-required".to_owned(),
                 message: "workspace requests cannot stop the shared Runtime Server".to_owned(),
+            }
+        } else if let Err(message) = &workspace_request {
+            WorkspaceDbIpcResult::Failed {
+                code: "runtime-server-workspace-retiring".to_owned(),
+                message: message.clone(),
             }
         } else {
             match request.operation {
@@ -495,37 +633,64 @@ pub async fn serve_runtime_server_workspace_stream(
                         },
                     }
                 }
-                WorkspaceDbIpcOperation::AdmitRuntimeGeneration { project_root } => {
-                    match generation_admission {
-                        Some(admission) => match admission
-                            .admit(
-                                request.workspace_identity.clone(),
-                                std::path::PathBuf::from(project_root),
-                            )
-                            .await
-                        {
-                            Ok(receipt) => {
-                                WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }
-                            }
-                            Err(message) => WorkspaceDbIpcResult::Failed {
-                                code: "runtime-server-generation-admission-failed".to_owned(),
-                                message,
-                            },
+                WorkspaceDbIpcOperation::AdmitRuntimeGeneration {
+                    mutation_id,
+                    project_root,
+                    changed_paths,
+                } => match generation_admission {
+                    Some(admission) => match admission
+                        .admit_changed_paths(
+                            mutation_id,
+                            request.workspace_identity.clone(),
+                            std::path::PathBuf::from(project_root),
+                            changed_paths
+                                .into_iter()
+                                .map(std::path::PathBuf::from)
+                                .collect(),
+                        )
+                        .await
+                    {
+                        Ok(receipt) => {
+                            WorkspaceDbIpcResult::RuntimeGenerationMutationAdmission { receipt }
+                        }
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-generation-admission-failed".to_owned(),
+                            message,
                         },
-                        None => WorkspaceDbIpcResult::Failed {
-                            code: "runtime-server-generation-admission-unavailable".to_owned(),
-                            message: "Runtime Server has no canonical generation builder"
-                                .to_owned(),
-                        },
-                    }
-                }
+                    },
+                    None => WorkspaceDbIpcResult::Failed {
+                        code: "runtime-server-generation-admission-unavailable".to_owned(),
+                        message: "Runtime Server has no canonical generation builder".to_owned(),
+                    },
+                },
                 WorkspaceDbIpcOperation::EnsureRuntimeGeneration { project_root } => {
                     match generation_admission {
                         Some(admission) => {
                             let project_root = std::path::PathBuf::from(project_root);
-                            let ensured = admission
-                                .ensure(&request.workspace_identity, &project_root)
-                                .await;
+                            let ensured = match admission
+                        .ensure(&request.workspace_identity, &project_root)
+                        .await
+                    {
+                        Ok(receipt)
+                            if receipt.state
+                                == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Building =>
+                        {
+                            bounded_runtime_generation_wait(
+                                std::time::Duration::from_secs(30),
+                                admission.wait_terminal(
+                                    &request.workspace_identity,
+                                    &project_root,
+                                ),
+                                format!(
+                                    "workspace generation admission timed out: workspaceIdentity={} projectRoot={}",
+                                    request.workspace_identity,
+                                    project_root.display()
+                                ),
+                            )
+                            .await
+                        }
+                        other => other,
+                    };
                             match ensured {
                                 Ok(receipt) => {
                                     WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }
@@ -583,6 +748,32 @@ pub async fn serve_runtime_server_workspace_stream(
                         None => WorkspaceDbIpcResult::Failed {
                             code: "runtime-server-generation-admission-unavailable".to_owned(),
                             message: "Runtime Server has no canonical generation admission owner"
+                                .to_owned(),
+                        },
+                    }
+                }
+                WorkspaceDbIpcOperation::AgentSessionRegistry {
+                    project_root,
+                    operation,
+                } => {
+                    let _owner_guard = AGENT_SESSION_REGISTRY_OWNER_LANE.lock().await;
+                    match agent_session_registry_owner {
+                        Some(owner) => match run_agent_session_registry_operation(
+                            std::sync::Arc::clone(owner),
+                            std::path::PathBuf::from(project_root),
+                            operation,
+                        )
+                        .await
+                        {
+                            Ok(result) => WorkspaceDbIpcResult::AgentSessionRegistry { result },
+                            Err(message) => WorkspaceDbIpcResult::Failed {
+                                code: "runtime-server-agent-session-registry-failed".to_owned(),
+                                message,
+                            },
+                        },
+                        None => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-agent-session-registry-unavailable".to_owned(),
+                            message: "Runtime Server has no resident agent-session registry owner"
                                 .to_owned(),
                         },
                     }
@@ -751,5 +942,20 @@ async fn ensure_runtime_owner_freshness(
         )
         .await
 }
+
+async fn bounded_runtime_generation_wait<T>(
+    timeout: std::time::Duration,
+    wait: impl std::future::Future<Output = Result<T, String>>,
+    timeout_error: String,
+) -> Result<T, String> {
+    match tokio::time::timeout(timeout, wait).await {
+        Ok(result) => result,
+        Err(_) => Err(timeout_error),
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/unit/workspace_db_ipc_server_bounded_wait.rs"]
+mod bounded_runtime_generation_wait_tests;
 
 use crate::workspace_db_ipc::transport::{read_frame, read_optional_frame, write_frame};

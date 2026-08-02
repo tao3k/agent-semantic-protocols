@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{
-    ActiveAspArtifactInput, ActiveAspArtifactReconciliationV1,
+    ActiveAspArtifactInput, ActiveAspArtifactReconciliationV1, atomic_write_compare_exchange,
     materialize_active_asp_artifact_receipt, rebind_active_asp_binary_receipt_if_present,
     reconcile_active_asp_artifact_receipt_if_present, verify_active_asp_artifact_receipt,
 };
@@ -16,6 +16,59 @@ fn fixture_root(label: &str) -> std::path::PathBuf {
         "asp-active-artifact-reconciliation-{label}-{}-{nonce}",
         std::process::id()
     ))
+}
+
+#[test]
+fn concurrent_receipt_publishers_admit_exactly_one_matching_base() {
+    let root = fixture_root("publication-cas");
+    let receipt = root.join("hooks/state/active-asp-artifact-receipt.v1.json");
+    let base = br#"{"root":"base"}"#;
+    atomic_write_compare_exchange(&receipt, base, None).expect("publish base receipt");
+
+    let publisher_count = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1)
+        .max(2);
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(publisher_count));
+    let mut publishers = Vec::with_capacity(publisher_count);
+    for publisher in 0..publisher_count {
+        let barrier = std::sync::Arc::clone(&barrier);
+        let receipt = receipt.clone();
+        publishers.push(std::thread::spawn(move || {
+            let candidate = format!(r#"{{"root":"candidate-{publisher}"}}"#).into_bytes();
+            barrier.wait();
+            let result = atomic_write_compare_exchange(&receipt, &candidate, Some(base));
+            (candidate, result)
+        }));
+    }
+
+    let outcomes = publishers
+        .into_iter()
+        .map(|publisher| publisher.join().expect("join receipt publisher"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        outcomes.iter().filter(|(_, result)| result.is_ok()).count(),
+        1,
+        "one current-base publisher must win"
+    );
+    assert!(
+        outcomes
+            .iter()
+            .filter(|(_, result)| result.is_err())
+            .all(|(_, result)| result
+                .as_ref()
+                .expect_err("stale publisher must fail")
+                .contains("compare-and-swap conflict"))
+    );
+    let published = std::fs::read(&receipt).expect("read winning receipt");
+    assert!(
+        outcomes
+            .iter()
+            .any(|(candidate, result)| result.is_ok() && candidate == &published),
+        "active receipt must equal the one admitted complete candidate"
+    );
+
+    std::fs::remove_dir_all(root).expect("remove fixture");
 }
 
 #[test]

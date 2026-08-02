@@ -9,6 +9,7 @@ pub(crate) struct WorkspaceMemoryBackend {
     generation: Arc<WorkspaceMemoryGeneration>,
     selector_index: HashMap<String, (usize, usize)>,
     term_index: HashMap<String, Vec<usize>>,
+    relation_index: HashMap<(String, String), Vec<usize>>,
 }
 
 impl WorkspaceMemoryBackend {
@@ -28,10 +29,18 @@ impl WorkspaceMemoryBackend {
                 );
             }
         }
+        let mut relation_index = HashMap::<(String, String), Vec<usize>>::new();
+        for (relation_position, relation) in generation.relations.iter().enumerate() {
+            relation_index
+                .entry((relation.from.kind.clone(), relation.from.id.clone()))
+                .or_default()
+                .push(relation_position);
+        }
         Ok(Self {
             generation: Arc::new(generation),
             selector_index,
             term_index,
+            relation_index,
         })
     }
 
@@ -86,6 +95,20 @@ impl WorkspaceMemoryBackend {
         ranked
             .into_iter()
             .map(|(position, _score)| position)
+            .collect()
+    }
+
+    pub(crate) fn relations_from(
+        &self,
+        endpoint_kind: &str,
+        endpoint_id: &str,
+    ) -> Vec<&agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>
+    {
+        self.relation_index
+            .get(&(endpoint_kind.to_owned(), endpoint_id.to_owned()))
+            .into_iter()
+            .flatten()
+            .filter_map(|position| self.generation.relations.get(*position))
             .collect()
     }
 }

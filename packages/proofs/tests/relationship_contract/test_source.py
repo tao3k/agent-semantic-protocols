@@ -13,12 +13,12 @@ from asp_proofs.relationship_contract import (
     verify_relationship_contract,
 )
 
+from ._digests import dependency_digest
 from ._support import (
     CLAUSE_A,
     CLAUSE_B,
     RECEIPT_CHAIN_ID,
     RelationshipContractFixture,
-    dependency_digest,
 )
 
 

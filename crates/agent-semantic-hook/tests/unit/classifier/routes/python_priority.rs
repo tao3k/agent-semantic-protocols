@@ -87,6 +87,141 @@ fn exact_document_reads_route_to_owner_discovery_without_projection_flags() {
 }
 
 #[test]
+fn known_root_session_denies_direct_registered_rust_provider_binary() {
+    let decision = classify_hook(
+        &super::registry_with_documents(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {"cmd": "rs-harness query --selector example"},
+            "session_id": "root-session-known"
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision.reason_kind,
+        ReasonKind::ProviderBinaryDirectExecution
+    );
+    assert_eq!(decision.language_ids, ["rust"]);
+    assert_eq!(decision.routes.len(), 1);
+    assert_eq!(decision.routes[0].binary, "asp");
+    assert_eq!(&decision.routes[0].argv[..2], ["asp", "rust"]);
+    assert_eq!(
+        decision.fields["runtimeBinaryAdmissionDenial"],
+        "missing-dispatch-capability"
+    );
+}
+
+#[test]
+fn known_root_session_denies_absolute_registered_runtime_artifact_path() {
+    let decision = classify_hook(
+        &super::registry_with_documents(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {
+                "cmd": "/canonical/asp/runtime/bin/rs-harness query --selector example"
+            },
+            "session_id": "root-session-known"
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision.reason_kind,
+        ReasonKind::ProviderBinaryDirectExecution
+    );
+    assert_eq!(decision.routes[0].argv, ["asp", "rust"]);
+}
+
+#[test]
+fn asp_facade_and_unknown_host_tool_are_not_provider_profile_denials() {
+    for command in ["asp rust query --selector example", "git status --short"] {
+        let decision = classify_hook(
+            &super::registry_with_documents(),
+            "codex",
+            "pre-tool",
+            &json!({
+                "tool_name": "functions.exec_command",
+                "tool_input": {"cmd": command},
+                "session_id": "root-session-known"
+            }),
+        );
+
+        assert_ne!(
+            decision.reason_kind,
+            ReasonKind::ProviderBinaryDirectExecution,
+            "{command}"
+        );
+        assert!(
+            decision
+                .fields
+                .get("runtimeBinaryAdmissionDenial")
+                .is_none()
+        );
+    }
+}
+
+#[test]
+fn plain_environment_string_cannot_bypass_missing_dispatch_capability() {
+    let decision = classify_hook(
+        &super::registry_with_documents(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {
+                "cmd": "rs-harness query --selector example",
+                "env": {
+                    "ASP_RUNTIME_DISPATCH_CAPABILITY": "spoofed-unverified-string"
+                }
+            },
+            "session_id": "root-session-known"
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision.reason_kind,
+        ReasonKind::ProviderBinaryDirectExecution
+    );
+    assert_eq!(
+        decision.fields["runtimeBinaryAdmissionDenial"],
+        "missing-dispatch-capability"
+    );
+}
+
+#[test]
+fn shell_environment_assignment_cannot_hide_registered_provider_binary() {
+    let decision = classify_hook(
+        &super::registry_with_documents(),
+        "codex",
+        "pre-tool",
+        &json!({
+            "tool_name": "functions.exec_command",
+            "tool_input": {
+                "cmd": "TRACE=1 MODE=audit rs-harness query --selector example"
+            },
+            "session_id": "root-session-known"
+        }),
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Deny);
+    assert_eq!(
+        decision.reason_kind,
+        ReasonKind::ProviderBinaryDirectExecution
+    );
+    assert_eq!(decision.fields["runtimeBinary"], "rs-harness");
+    assert_eq!(
+        decision.fields["runtimeBinaryAdmissionDenial"],
+        "missing-dispatch-capability"
+    );
+}
+
+#[test]
 fn python_pattern_read_routes_to_lexical_discovery() {
     let decision = classify_hook(
         &registry_with_python(),

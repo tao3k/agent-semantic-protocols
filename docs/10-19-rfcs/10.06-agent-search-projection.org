@@ -3627,6 +3627,85 @@ invalid because its edges already distort graph topology and frontier choice.
 
 * Callable skeleton projection and structural descent
 
+The wire identity is =agent.semantic-protocols.callable-skeleton-projection= with
+=schemaVersion: "1"=.  File-name or Rust-type suffixes may carry =v1= for
+artifact discovery, but version suffixes MUST NOT leak into the schema value.
+
+The public projection kind =callable-skeleton= and the exact-selector cache mode
+=skeleton= are distinct identifiers.  The former names the shared response
+contract; the latter is the compact discriminator inside an authenticated exact
+projection lookup key.  Implementations MUST expose separate accessors and MUST
+NOT compare either identifier against the other.
+
+An admitted base generation MAY contain only exact selector identity and source.
+It MUST NOT eagerly compute every callable skeleton merely to admit the
+generation.  Whenever a generation or its immutable overlay claims to contain a
+derived projection, it records that projection beside the exact selector that
+owns it: the public projection kind, the validated shared-schema payload, and the
+same generation identity used by the selector proof.  A runtime read admits the
+payload only when all three identities agree:
+
+1. the exact selector exists in the active generation;
+2. the derived projection kind equals the explicitly requested kind; and
+3. the projection proof belongs to that same generation and validates against
+   the shared schema.
+
+Projection absence, schema failure, or generation-identity drift is not a source
+fallback.  The runtime returns a typed projection miss and MAY request
+parser-owned repair only when the requested exact selector already belongs to
+the active base generation.  A selector absent from that generation is stale;
+lazy projection repair MUST NOT recreate it from an older generation, overlay,
+owner cache, or provider result.
+A repair candidate is published atomically only after rechecking the active
+generation identity; a candidate computed for an older generation is discarded.
+Readers therefore observe either the previous complete generation or the next
+complete generation, never a selector whose derived projection was attached
+across generations.
+
+A mutation-triggered admission is a rebuild, not a generic restore-or-build
+request.  Once the runtime admits a mutation receipt, that admission MUST NOT
+restore a durable generation produced before the mutation.  Concurrent
+mutation work is single-flight only for the same authenticated mutation
+identity; distinct mutation identities MUST wait and retry or create distinct
+successor work, never alias one in-flight result.
+
+Canonical generation publication and no-op reuse bind both source content and
+structural identity.  The publication identity includes the workspace root
+digest and selector-set digest, and an existing generation is reusable only
+when both its generation digest and selector-set digest equal the candidate.
+Equal source bytes with a renamed owner are therefore not a no-op: the old
+selector must disappear and the replacement selector must be published.
+
+An exact projection result exposes the selector it actually resolved.  The
+active generation Merkle root and selector-set digest authenticate the segment,
+but a public exact hit additionally requires membership of the requested
+selector and equality between requested and resolved selector identities.
+Canonical-item relocation MAY be retained as typed discovery evidence; it MUST
+NOT turn an absent old selector into executable source or derived-projection
+bytes.
+
+The provider-native exact repair response carries validated derived-projection
+packets.  A source-index/import ABI MAY preseed the same packets, but omission is
+valid and triggers lazy parser-owned repair on explicit request.  Neither path
+teaches the DB core Rust, Python, Gerbil Scheme, or any future language syntax.
+Language providers own language facts and skeleton extraction.  Shared schema,
+identity admission, atomic publication, compact rendering, and typed misses stay
+in the language-neutral projection/core and resident-generation layers.  The CLI
+only selects and dispatches the explicit projection.
+
+The provider-native route is an internal structured transport.  A route that
+accepts the v1 stdin JSON request MUST also force the v1 JSON response wrapper;
+it MUST NOT inherit a public CLI renderer default that emits a bare source or
+callable-skeleton payload.  The registered argv therefore carries both the
+provider-native stdin binding and its JSON response mode, and registry tests
+admit those arguments as one contract.
+
+A provider owner-search signature is discovery metadata, not a derived
+projection payload.  The resident layer MUST deserialize and validate the full
+=agent.semantic-protocols.callable-skeleton-projection= object before attaching
+bytes under =projectionKind: "callable-skeleton"=; non-empty signature text alone
+MUST be rejected.
+
 The contract family is v1, while every JSON wire object uses
 =schemaVersion: "1"=.  Queryable callable children append the parser-owned
 =/segment/<kind>/ordinal-N= identity to the canonical root item selector.

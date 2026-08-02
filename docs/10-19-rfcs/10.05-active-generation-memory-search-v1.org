@@ -113,6 +113,27 @@ The installed-search performance gate rejects any process tree containing
 =uv= and requires the ranker receipt to identify the same bytes selected by
 activation.
 
+* Resident Provider Relation Graph
+
+The provider language-projection batch response already carries schema-v1
+=relations= with typed =from=, =kind=, and =to= endpoints. Generation
+publication MUST retain those relations as first-class immutable generation
+data. The relation set is validated together with owner and selector coverage,
+participates in the generation and MemoryBackend digests, and is published in
+the same logical transaction as the selector fixture and active receipt.
+
+Installed Search reads provider relations only from the pinned resident
+generation. A search request MUST NOT spawn a provider, invoke a package
+manager, decode a provider stdout envelope, or reconstruct relations from
+query text. Missing or invalid relation evidence is a typed generation
+publication failure; it is not an empty-graph success and does not authorize a
+lexical fallback.
+
+The resident relation projection MUST preserve workspace isolation. Every
+edge records the generation identity that admitted it; a reader may use an
+edge only when its generation equals the pinned selector generation. Cross
+workspace relation reads and mixtures of two generation epochs fail closed.
+
 * Async Hook Activation Recovery
 
 PreToolUse is a bounded read-only decision path.  It MUST NOT synchronously

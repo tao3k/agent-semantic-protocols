@@ -2,7 +2,7 @@
   "schemaId": "agent.semantic-protocols.searchloop-triad-handoff",
   "schemaVersion": "1",
   "handoffId": "searchroute-scipy-triad-handoff-v1",
-  "receiptChainId": "sha256:d003465decf1753129a29ff3f1ed2c1ad7ddae6ca085f69db81df6c927310f51",
+  "receiptChainId": "sha256:6b565dac30706aa39e10b36ef09d74a8d8bedcbf16510adf24b565e22dd319c6",
   "receiptChainCanonicalization": "json-sort-keys-compact-utf8-omit-receipt-chain-id-v1",
   "selectorGate": {
     "languageId": "python",
@@ -319,8 +319,8 @@
       {
       "clauseId": "ASP-RFC-10.05.64-RELATIONSHIP-CONTRACT",
         "sourcePath": "docs/10-19-rfcs/10.05-interactive-graph-first-progressive-searchloop/10.05.64-scipy-bounded-lexicographic-routing.org",
-        "outlinePath": ["Normative contract", "RFC semantic commitment"],
-        "sourceSha256": "cd06c365ba4db1d18627e45d594a74a3938098ff8fefcfbf953157da4b23af41",
+      "outlinePath": ["Normative contract", "Relationship contract binding"],
+        "sourceSha256": "faa73bb3203181905e8f925ea34fc689989e57a4abed442e603c47cfd0071af4",
         "dependsOn": [
           "ASP-RFC-10.05.64-TRIAD-HANDOFF-IDENTITY",
           "ASP-RFC-10.05.64-TRIAD-PREFLIGHT-VALIDITY"

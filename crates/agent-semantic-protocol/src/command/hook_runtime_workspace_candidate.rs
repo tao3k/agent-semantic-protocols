@@ -26,7 +26,6 @@ pub(in crate::command::hook_runtime) fn hook_workspace_candidate(
     explicit_asp_workspace(payload, &command_root).unwrap_or(command_root)
 }
 
-
 fn explicit_asp_workspace(payload: &serde_json::Value, command_root: &Path) -> Option<PathBuf> {
     super::hook_runtime_agent_session::payload_command_strings(payload)
         .into_iter()

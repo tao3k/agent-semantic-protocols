@@ -105,6 +105,18 @@ fn registry_method_inventory_is_explicit() {
         ]
     );
 
+    let rust_native_exact = crate::registered_provider_method_invocation_v1(
+        "rust",
+        "rs-harness",
+        "query/exact-selector-native-v1",
+    )
+    .expect("resolve Rust native exact transport")
+    .expect("Rust native exact transport must be registered");
+    assert_eq!(
+        rust_native_exact.argv,
+        ["rs-harness", "query", "--asp-exact-request-stdin", "--json"]
+    );
+
     let registry = super::schema_registry();
     for language in registry
         .languages

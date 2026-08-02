@@ -18,6 +18,8 @@ inductive Authority where
   | nativeSpawn
   | nativeDispatch
   | taskExecutionReceipt
+  | sessionRegistryOpen
+  | sessionRegistryWrite
 deriving DecidableEq, Repr
 
 inductive HookRoute where
@@ -35,6 +37,10 @@ inductive Owns : Principal → Authority → Prop where
       Owns .runtimeServer .generationPublish
   | runtimeQueryLeaseIssue :
       Owns .runtimeServer .queryLeaseIssue
+  | runtimeSessionRegistryOpen :
+      Owns .runtimeServer .sessionRegistryOpen
+  | runtimeSessionRegistryWrite :
+      Owns .runtimeServer .sessionRegistryWrite
   | sessionGraph :
       Owns .agentSession .sessionGraph
   | sessionSubagentBinding :
@@ -72,6 +78,54 @@ def DispatchAdmissible
     (sessionBound : Bool) : Prop :=
   hostAttested = true ∧ sessionBound = true
 
+inductive RegistryEndpointDescriptor where
+  | missing
+  | regularFile
+  | other
+deriving DecidableEq, Repr
+
+inductive RegistryTransportNode where
+  | missing
+  | unixSocket
+  | other
+deriving DecidableEq, Repr
+
+inductive RegistryRoute where
+  | typedIpc
+  | directOpen
+  | unavailable
+deriving DecidableEq, Repr
+
+def descriptorPresent : RegistryEndpointDescriptor → Bool
+  | .missing => false
+  | .regularFile => true
+  | .other => false
+
+def transportNodePresent : RegistryTransportNode → Bool
+  | .missing => false
+  | .unixSocket => true
+  | .other => false
+
+def chooseRegistryRoute
+    (runtimeOwnerProcess : Bool)
+    (descriptor : RegistryEndpointDescriptor)
+    (transport : RegistryTransportNode) : RegistryRoute :=
+  if runtimeOwnerProcess then
+    .directOpen
+  else if descriptorPresent descriptor && transportNodePresent transport then
+    .typedIpc
+  else
+    .unavailable
+
+def registryStorageOwner (_sessionCount : Nat) : Principal :=
+  .runtimeServer
+
+def residentRegistryInstanceCount (_requestCount : Nat) : Nat :=
+  1
+
+def perRequestRegistryInstanceCount (requestCount : Nat) : Nat :=
+  requestCount
+
 theorem runtime_server_owns_index_write :
     Owns .runtimeServer .indexWrite := by
   exact .runtimeIndexWrite
@@ -79,6 +133,58 @@ theorem runtime_server_owns_index_write :
 theorem runtime_server_owns_generation_publication :
     Owns .runtimeServer .generationPublish := by
   exact .runtimeGenerationPublish
+
+theorem runtime_server_owns_session_registry_open :
+    Owns .runtimeServer .sessionRegistryOpen := by
+  exact .runtimeSessionRegistryOpen
+
+theorem runtime_server_owns_session_registry_write :
+    Owns .runtimeServer .sessionRegistryWrite := by
+  exact .runtimeSessionRegistryWrite
+
+theorem agent_session_has_no_registry_open_authority :
+    ¬ Owns .agentSession .sessionRegistryOpen := by
+  intro ownership
+  cases ownership
+
+theorem resident_subagent_has_no_registry_open_authority :
+    ¬ Owns .residentSubagent .sessionRegistryOpen := by
+  intro ownership
+  cases ownership
+
+theorem descriptor_and_transport_require_distinct_node_kinds :
+    descriptorPresent .regularFile = true ∧
+      transportNodePresent .unixSocket = true := by
+  constructor <;> rfl
+
+theorem valid_descriptor_and_socket_route_non_owner_through_typed_ipc :
+    chooseRegistryRoute false .regularFile .unixSocket = .typedIpc := by
+  rfl
+
+theorem non_owner_registry_route_never_direct_opens
+    (descriptor : RegistryEndpointDescriptor)
+    (transport : RegistryTransportNode) :
+    chooseRegistryRoute false descriptor transport ≠ .directOpen := by
+  cases descriptor <;> cases transport <;> decide
+
+theorem missing_endpoint_preserves_sole_owner :
+    chooseRegistryRoute false .missing .missing = .unavailable := by
+  rfl
+
+theorem multiple_sessions_preserve_one_storage_owner
+    (sessionCount : Nat) :
+    registryStorageOwner sessionCount = .runtimeServer := by
+  rfl
+
+theorem resident_registry_reuses_one_database_instance
+    (requestCount : Nat) :
+    residentRegistryInstanceCount requestCount = 1 := by
+  rfl
+
+theorem two_requests_refute_per_request_database_ownership :
+    perRequestRegistryInstanceCount 2 = 2 ∧
+      perRequestRegistryInstanceCount 2 ≠ residentRegistryInstanceCount 2 := by
+  decide
 
 theorem agent_session_has_no_index_write_authority :
     ¬ Owns .agentSession .indexWrite := by

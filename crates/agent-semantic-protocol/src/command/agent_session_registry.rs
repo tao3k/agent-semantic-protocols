@@ -62,7 +62,6 @@ use agent_session_registry_command_parts::{
 use agent_session_registry_commands::{
     lifecycle_audit_session, list_sessions, register_session, show_session, smoke_session,
 };
-use agent_session_registry_state::open_or_create_default_registry;
 use std::{env, path::PathBuf};
 
 pub(crate) use agent_session_registry_state::{
@@ -112,28 +111,13 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         &args.command,
         SessionCommand::Bootstrap | SessionCommand::Show | SessionCommand::Status
     );
-    let registry = match (projection_only, args.state_root.as_deref()) {
-        (true, Some(state_root)) => {
-            let state_root =
-                AgentSessionRegistry::resolve_state_root_override(&project_root, state_root);
-            AgentSessionRegistry::open_existing_state_root_read_only(state_root)?.ok_or_else(
-                || {
-                    "registryStatus=missing registryWriteStatus=not-attempted; run `asp sync` before resident lifecycle projection"
-                        .to_string()
-                },
-            )?
-        }
-        (true, None) => AgentSessionRegistry::open_existing_project_read_only(&project_root)?
-            .ok_or_else(|| {
-                "registryStatus=missing registryWriteStatus=not-attempted; run `asp sync` before resident lifecycle projection"
-                    .to_string()
-            })?,
-        (false, Some(state_root)) => {
-            let state_root =
-                AgentSessionRegistry::resolve_state_root_override(&project_root, state_root);
-            AgentSessionRegistry::open_or_create_state_root(state_root)?
-        }
-        (false, None) => open_or_create_default_registry(&project_root)?,
+    let registry = if projection_only {
+        AgentSessionRegistry::open_existing_project_read_only(&project_root)?.ok_or_else(|| {
+            "registryStatus=missing registryWriteStatus=not-attempted; Runtime Server registry projection is unavailable"
+                .to_string()
+        })?
+    } else {
+        AgentSessionRegistry::open_or_create_project(&project_root)?
     };
 
     match args.command {

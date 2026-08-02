@@ -158,6 +158,127 @@ fn classify_non_tool_event(request: &HookClassificationRequest<'_>) -> Option<Ho
     classify_user_prompt(request.platform, request.event, request.payload)
 }
 
+fn direct_executable_token_v1(command: &str) -> Option<&str> {
+    let mut tokens = command.split_whitespace();
+    let mut executable = tokens.next()?;
+    while shell_environment_assignment_v1(executable) {
+        executable = tokens.next()?;
+    }
+    if executable.is_empty()
+        || executable.bytes().any(|byte| {
+            matches!(
+                byte,
+                b'\'' | b'"' | b'`' | b'$' | b'\\' | b';' | b'|' | b'&' | b'<' | b'>' | b'(' | b')'
+            )
+        })
+    {
+        return None;
+    }
+    Some(executable)
+}
+
+fn shell_environment_assignment_v1(token: &str) -> bool {
+    let Some((name, _value)) = token.split_once('=') else {
+        return false;
+    };
+    let mut bytes = name.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    (first == b'_' || first.is_ascii_alphabetic())
+        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
+}
+
+fn root_session_is_known_v1(payload: &Value) -> bool {
+    payload_string(payload, "session_id")
+        .or_else(|| payload_string(payload, "sessionId"))
+        .is_some_and(|session_id| !session_id.is_empty())
+}
+
+fn classify_runtime_binary_action_v1(
+    request: &HookClassificationRequest<'_>,
+    action: &ToolAction,
+) -> Option<HookDecision> {
+    if !root_session_is_known_v1(request.payload) {
+        return None;
+    }
+    let executable = direct_executable_token_v1(action.command.as_deref()?)?;
+    let crate::provider_registry::RuntimeBinaryClassificationV1::RegisteredProviderInternal(
+        registrations,
+    ) = crate::provider_registry::classify_runtime_executable_v1(executable)
+    else {
+        return None;
+    };
+
+    let language_ids = registrations
+        .iter()
+        .map(|registration| registration.language_id().clone())
+        .collect::<Vec<_>>();
+    let routes = registrations
+        .iter()
+        .map(|registration| crate::protocol::DecisionRoute {
+            language_id: registration.language_id().clone(),
+            provider_id: registration.provider_id().clone(),
+            binary: "asp".to_string(),
+            kind: crate::protocol::DecisionRouteKind::Query,
+            argv: vec![
+                "asp".to_string(),
+                registration.language_id().as_str().to_string(),
+            ],
+            stdin_mode: None,
+        })
+        .collect::<Vec<_>>();
+    let route_guide = registrations
+        .iter()
+        .map(|registration| format!("asp {}", registration.language_id().as_str()))
+        .collect::<Vec<_>>()
+        .join("; ");
+    let registered_binary = registrations
+        .first()
+        .map(|registration| registration.binary().to_string())
+        .unwrap_or_else(|| executable.to_string());
+    let denial =
+        crate::provider_registry::RuntimeBinaryAdmissionDenialV1::MissingDispatchCapability;
+    let mut decision = deny_for_action(
+        request.platform,
+        request.event,
+        super::decision::DenyForActionRequest {
+            reason_kind: ReasonKind::ProviderBinaryDirectExecution,
+            action,
+            language_ids,
+            subject: subject_for_action(action),
+            routes,
+            message: format!(
+                "registered provider-internal binary `{executable}` denied: root session is known but no server-verified ASP runtime dispatch capability is present. Use a registry-derived facade route: {route_guide}."
+            ),
+        },
+    );
+    decision.fields.insert(
+        "runtimeBinaryProfile".to_string(),
+        Value::String("provider-internal".to_string()),
+    );
+    decision.fields.insert(
+        "runtimeBinaryAdmissionDenial".to_string(),
+        Value::String(match denial {
+            crate::provider_registry::RuntimeBinaryAdmissionDenialV1::MissingDispatchCapability => {
+                "missing-dispatch-capability"
+            }
+            crate::provider_registry::RuntimeBinaryAdmissionDenialV1::DirectProviderInternal => {
+                "direct-provider-internal"
+            }
+            crate::provider_registry::RuntimeBinaryAdmissionDenialV1::UnregisteredRuntimeBinary => {
+                "unregistered-runtime-binary"
+            }
+        }
+        .to_string()),
+    );
+    decision.fields.insert(
+        "runtimeBinary".to_string(),
+        Value::String(registered_binary),
+    );
+    Some(decision)
+}
+
 fn classify_tool_actions(
     request: &HookClassificationRequest<'_>,
     actions: &[ToolAction],
@@ -171,6 +292,9 @@ fn classify_tool_actions(
     } = request;
     let mut first_allow = None;
     for action in actions {
+        if let Some(decision) = classify_runtime_binary_action_v1(request, action) {
+            return Some(decision);
+        }
         let Some(decision) = config.classify(registry, platform, event, action) else {
             continue;
         };

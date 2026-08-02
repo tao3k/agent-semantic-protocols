@@ -411,6 +411,7 @@ pub async fn latest_turso_source_index_scope_files(
                     provider_id: ProviderId::from(provider_id),
                     projection_coverage: crate::ClientDbSourceIndexProjectionCoverage::NotDeclared,
                     selector_receipts: Vec::new(),
+                    relations: Vec::new(),
                 })
             })
             .collect(),

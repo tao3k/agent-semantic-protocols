@@ -125,8 +125,12 @@ pub(super) async fn runtime_server_workspace_generation_client_async(
 > {
     let (workspace_identity, canonical_project_root) =
         runtime_server_admitted_workspace_scope(project_root).await?;
-    let workspace_store_root =
-        agent_semantic_client_db::runtime_server_runtime_base().join("workspaces");
+    let state_home = state_home()?;
+    let endpoint = read_endpoint(&runtime_server_endpoint_path(&state_home)).await?;
+    let workspace_store_root = std::path::Path::new(&endpoint.socket_path)
+        .parent()
+        .ok_or_else(|| "Runtime Server endpoint socket has no parent".to_owned())?
+        .join("workspaces");
     let pointer_path =
         agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
             &workspace_store_root,
@@ -166,8 +170,12 @@ pub(super) async fn runtime_server_workspace_exact_projection_client_async(
 > {
     let (workspace_identity, canonical_project_root) =
         runtime_server_admitted_workspace_scope(project_root).await?;
-    let workspace_store_root =
-        agent_semantic_client_db::runtime_server_runtime_base().join("workspaces");
+    let state_home = state_home()?;
+    let endpoint = read_endpoint(&runtime_server_endpoint_path(&state_home)).await?;
+    let workspace_store_root = std::path::Path::new(&endpoint.socket_path)
+        .parent()
+        .ok_or_else(|| "Runtime Server endpoint socket has no parent".to_owned())?
+        .join("workspaces");
     let pointer_path =
         agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
             &workspace_store_root,
@@ -448,6 +456,7 @@ async fn print_receipt(receipt: &RuntimeServerControlReceipt) -> Result<(), Stri
 }
 
 async fn run_daemon() -> Result<(), String> {
+    agent_semantic_client_db::AgentSessionRegistry::mark_runtime_server_owner_process();
     let election = acquire_runtime_server_election().await?;
     agent_semantic_client_db::runtime_server_workspace::prepare_runtime_server_workspace_store()
         .await?;
@@ -486,6 +495,12 @@ async fn run_daemon() -> Result<(), String> {
                 .join("workspace-admissions.v1.json"),
         )
         .await?;
+    let agent_session_registry_owner = std::sync::Arc::new(
+        agent_semantic_client_db::AgentSessionRegistry::open_or_create_state_root_async(
+            &state_home,
+        )
+        .await?,
+    );
     let (diagnostic_events, diagnostics) =
         agent_semantic_client_db::runtime_server_diagnostics::RuntimeServerDiagnostics::start(
             state_home
@@ -563,6 +578,7 @@ async fn run_daemon() -> Result<(), String> {
     )
     .with_workspace_owner_projection_builder(owner_projection_builder)
     .with_hook_evaluation_builder(hook_evaluation_builder)
+    .with_agent_session_registry_owner(agent_session_registry_owner)
     .with_event_sender(diagnostic_events);
     let result = server.serve().await.map(|_| ());
     let diagnostic_result = diagnostics.join().await;

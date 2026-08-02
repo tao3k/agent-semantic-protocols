@@ -152,6 +152,9 @@ impl RuntimeServerWorkspaceRegistry {
         workspace_identity: impl Into<String>,
         materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
     ) -> Result<WorkspaceRecoveryReceipt, String> {
+        const FOREGROUND_ACCEPTANCE_DEADLINE: std::time::Duration =
+            std::time::Duration::from_millis(100);
+        let request_id = request_id.into();
         let workspace_identity = workspace_identity.into();
         materialization.validate_persisted(&workspace_identity)?;
         let entry = self
@@ -160,21 +163,45 @@ impl RuntimeServerWorkspaceRegistry {
                 std::path::Path::new(&materialization.project_root),
             )
             .await?;
+        let (accepted, acceptance) = oneshot::channel();
         let (reply, receive) = oneshot::channel();
-        entry
+        let acceptance_deadline = tokio::time::Instant::now() + FOREGROUND_ACCEPTANCE_DEADLINE;
+        let send = entry
             .writer
             .send(WorkspaceWriteCommand::EnsureCanonicalGeneration {
                 target: entry.write_target(),
-                request_id: request_id.into(),
+                request_id,
                 workspace_identity,
                 materialization,
+                accepted,
                 reply,
-            })
-            .await
-            .map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?;
-        receive
-            .await
-            .map_err(|_| "runtime workspace writer lane dropped its receipt".to_owned())?
+            });
+        match tokio::time::timeout_at(acceptance_deadline, send).await {
+            Ok(result) => {
+                result.map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?
+            }
+            Err(_) => {
+                return Err(format!(
+                    "runtime workspace writer lane exceeded its {} ms enqueue deadline",
+                    FOREGROUND_ACCEPTANCE_DEADLINE.as_millis()
+                ));
+            }
+        }
+        drop(receive);
+        Self::await_recovery_acceptance(acceptance, acceptance_deadline).await
+    }
+
+    async fn await_recovery_acceptance(
+        acceptance: oneshot::Receiver<Result<WorkspaceRecoveryReceipt, String>>,
+        deadline: tokio::time::Instant,
+    ) -> Result<WorkspaceRecoveryReceipt, String> {
+        match tokio::time::timeout_at(deadline, acceptance).await {
+            Ok(receipt) => receipt
+                .map_err(|_| "runtime workspace writer lane dropped its acceptance".to_owned())?,
+            Err(_) => {
+                Err("runtime workspace writer lane exceeded its acceptance deadline".to_owned())
+            }
+        }
     }
 
     pub async fn restore_checkpoint(
@@ -203,3 +230,7 @@ impl RuntimeServerWorkspaceRegistry {
             .map_err(|_| "runtime workspace writer lane dropped its receipt".to_owned())?
     }
 }
+
+#[cfg(test)]
+#[path = "../../../tests/unit/runtime_server_workspace_registry_publication.rs"]
+mod acceptance_tests;

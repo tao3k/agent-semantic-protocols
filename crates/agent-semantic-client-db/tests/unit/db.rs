@@ -24,6 +24,16 @@ fn schema_version_stays_on_first_turso_release_contract() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn runtime_registry_bootstrap_does_not_start_a_nested_tokio_runtime() {
+    let root = temp_root("agent-session-async-bootstrap");
+    let registry = AgentSessionRegistry::open_or_create_state_root_async(root.join("state"))
+        .await
+        .expect("bootstrap registry inside the resident Tokio runtime");
+
+    assert!(registry.db_path().is_file());
+}
+
 #[test]
 fn absent_host_target_atomically_revokes_live_binding() {
     let root = temp_root("agent-session-absent-target");

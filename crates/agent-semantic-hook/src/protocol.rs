@@ -279,6 +279,7 @@ pub enum ReasonKind {
     SourceDirectoryEnumeration,
     AgentSearchJson,
     SemanticAstPatchRequired,
+    ProviderBinaryDirectExecution,
     ReadOnlySubagentWrite,
     SubagentReceiptRequired,
 }

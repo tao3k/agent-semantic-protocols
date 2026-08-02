@@ -2,7 +2,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use agent_semantic_client_db::runtime_server_workspace::{
-    WorkspaceDerivedProjectionSnapshot, WorkspaceOwnerSnapshot, WorkspaceRuntimeSelectorRead,
+    WorkspaceOwnerSnapshot, WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorRead,
     WorkspaceSelectorSnapshot,
 };
 
@@ -66,14 +66,125 @@ pub(super) fn run_resident_exact_query(
 }
 
 async fn resident_exact_projection(
-    _language_id: &str,
+    language_id: &str,
     project_root: &Path,
     exact: &super::provider_exact_args::ExactQueryArgs,
 ) -> Result<WorkspaceRuntimeSelectorRead, String> {
     let client =
         super::runtime_server::runtime_server_workspace_exact_projection_client_async(project_root)
             .await?;
-    client.read_runtime_selector(&exact.projection, &exact.structural_selector)
+    let read = client.read_runtime_selector(&exact.projection, &exact.structural_selector)?;
+    if exact.projection != "callable-skeleton"
+        || !matches!(&read, WorkspaceRuntimeSelectorRead::OwnerForRepair { .. })
+    {
+        return Ok(read);
+    }
+    let owner_path = exact
+        .structural_selector
+        .split_once("://")
+        .and_then(|(_, target)| target.split_once('#'))
+        .map(|(owner_path, _)| owner_path)
+        .ok_or_else(|| "exact structural selector omitted owner path".to_owned())?;
+    let session =
+        super::runtime_server::runtime_server_workspace_session_async(project_root).await?;
+    session
+        .ensure_runtime_owner(language_id, owner_path)
+        .await?;
+    // The mmap generation is immutable. Once repair is required, read through
+    // the resident session so an already-published lazy selector overlay is
+    // visible without rebuilding it or mutating the durable generation.
+    let refreshed_read = session
+        .read_runtime_selector(exact.projection.clone(), exact.structural_selector.clone())
+        .await?;
+    let WorkspaceRuntimeSelectorRead::OwnerForRepair { owner, .. } = refreshed_read else {
+        return Ok(refreshed_read);
+    };
+    let overlay = build_resident_selector_overlay(
+        language_id,
+        project_root,
+        exact.structural_selector.as_str(),
+        owner,
+    )
+    .await?;
+    session.publish_runtime_selector_overlay(overlay).await?;
+    session
+        .read_runtime_selector(exact.projection.clone(), exact.structural_selector.clone())
+        .await
+}
+
+async fn build_resident_selector_overlay(
+    language_id: &str,
+    project_root: &Path,
+    structural_selector: &str,
+    owner: WorkspaceOwnerSnapshot,
+) -> Result<WorkspaceRuntimeSelectorOverlay, String> {
+    let selector = owner
+        .selectors
+        .iter()
+        .find(|selector| selector.selector == structural_selector)
+        .ok_or_else(|| {
+            format!("provider owner projection omitted requested selector: {structural_selector}")
+        })?;
+    let activation_path = super::provider_activation::provider_activation_path(project_root);
+    let runtime = agent_semantic_hook::registered_language_runtime(
+        project_root,
+        language_id,
+        &activation_path,
+    )?;
+    let provider = runtime
+        .providers
+        .iter()
+        .find(|provider| provider.language_id == language_id)
+        .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
+    let profiles = agent_semantic_hook::runtime_profiles_for_runtime(project_root, &runtime);
+    let raw_digest = |field: &str, digest: &str| {
+        let value = digest.rsplit_once(':').map_or(digest, |(_, value)| value);
+        if value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            Ok(value.to_owned())
+        } else {
+            Err(format!(
+                "resident exact {field} is not a canonical digest: {digest}"
+            ))
+        }
+    };
+    let generation_identity_digest =
+        raw_digest("generation identity", owner.content_digest.as_str())?;
+    let parser_identity_digest = raw_digest(
+        "parser identity",
+        provider.semantic_registry_digest.as_str(),
+    )?;
+    let query_pack_digest = blake3::hash(
+        &serde_json::to_vec(&provider.query_pack_descriptor)
+            .map_err(|error| format!("encode provider query-pack identity: {error}"))?,
+    )
+    .to_hex()
+    .to_string();
+    let projection_bytes = super::provider_native_exact::run_provider_native_callable_skeleton(
+        super::provider_native_exact::ProviderNativeExactContext {
+            language_id,
+            provider,
+            profiles: &profiles,
+            project_root,
+        },
+        super::provider_native_exact::ProviderNativeExactRequest {
+            owner_path: owner.owner_path.as_str(),
+            structural_selector,
+            source_bytes: owner.bytes.as_slice(),
+            generation_identity_digest: &generation_identity_digest,
+            parser_identity_digest: &parser_identity_digest,
+            query_pack_digest: &query_pack_digest,
+        },
+    )
+    .await?;
+    Ok(WorkspaceRuntimeSelectorOverlay {
+        projection_kind: "callable-skeleton".to_owned(),
+        structural_selector: structural_selector.to_owned(),
+        owner_path: owner.owner_path,
+        owner_content_digest: owner.content_digest,
+        byte_start: selector.byte_start,
+        byte_end: selector.byte_end,
+        projection_bytes,
+    })
 }
 
 pub(super) async fn build_resident_owner_projection(
@@ -134,28 +245,25 @@ pub(super) async fn build_resident_owner_projection(
         },
     )
     .await?;
+    let selectors = projections
+        .into_iter()
+        .map(|projection| {
+            Ok(WorkspaceSelectorSnapshot {
+                selector: projection.structural_selector,
+                byte_start: usize::try_from(projection.source_byte_start).map_err(|_| {
+                    "provider owner selector start exceeds platform usize".to_owned()
+                })?,
+                byte_end: usize::try_from(projection.source_byte_end)
+                    .map_err(|_| "provider owner selector end exceeds platform usize".to_owned())?,
+                derived_projections: Vec::new(),
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     Ok(WorkspaceOwnerSnapshot {
         owner_path: owner.owner_path,
         content_digest: owner.content_digest,
         bytes: owner.bytes,
-        selectors: projections
-            .into_iter()
-            .map(|projection| {
-                Ok(WorkspaceSelectorSnapshot {
-                    selector: projection.structural_selector,
-                    byte_start: usize::try_from(projection.source_byte_start).map_err(|_| {
-                        "provider owner selector start exceeds platform usize".to_owned()
-                    })?,
-                    byte_end: usize::try_from(projection.source_byte_end).map_err(|_| {
-                        "provider owner selector end exceeds platform usize".to_owned()
-                    })?,
-                    derived_projections: vec![WorkspaceDerivedProjectionSnapshot {
-                        projection_kind: "callable-skeleton".to_owned(),
-                        bytes: projection.signature.into_bytes(),
-                    }],
-                })
-            })
-            .collect::<Result<Vec<_>, String>>()?,
+        selectors,
     })
 }
 

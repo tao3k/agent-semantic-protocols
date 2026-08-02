@@ -272,6 +272,7 @@ fn append_provider_scope_files(
                     projection_coverage:
                         agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
                     selector_receipts: Vec::new(),
+                    relations: Vec::new(),
                 });
             }
             Ok(())

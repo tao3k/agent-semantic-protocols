@@ -1,0 +1,14 @@
+import ASPProof.ASPInteractiveSearchLatency
+
+open ASPProof.ASPInteractiveSearchLatency
+
+#print axioms fortySecondForegroundWaitRejected
+#print axioms everyGenerationStateReturnsProtocolReply
+#print axioms evidenceRequiresCurrentGeneration
+#print axioms missingGenerationReturnsProgress
+#print axioms buildingGenerationReturnsProgress
+#print axioms staleGenerationReturnsProgress
+#print axioms terminalFailureReturnsUnavailable
+#print axioms retryAfterIsBounded
+#print axioms backgroundDeadlineCannotReplaceFirstReceiptBudget
+

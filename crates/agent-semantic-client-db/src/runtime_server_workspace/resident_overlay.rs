@@ -249,6 +249,7 @@ impl ResidentOverlaySnapshot {
             source_snapshot,
             module_graph_digest: base.module_graph_digest.clone(),
             project_resolutions: base.project_resolutions.clone(),
+            relations: base.relations.clone(),
             owners,
         })
     }
@@ -365,6 +366,7 @@ impl ResidentOverlaySnapshot {
             return Ok(WorkspaceRuntimeSelectorRead::Projection {
                 generation_digest: self.state.generation_digest.clone(),
                 root_digest: self.state.workspace_snapshot.root_digest().to_owned(),
+                resolved_selector: structural_selector.to_owned(),
                 bytes: overlay.projection_bytes.clone(),
             });
         }
@@ -540,6 +542,7 @@ fn read_owner_selector(
             return Ok(WorkspaceRuntimeSelectorRead::Projection {
                 generation_digest: generation_digest.to_owned(),
                 root_digest: root_digest.to_owned(),
+                resolved_selector: structural_selector.to_owned(),
                 bytes,
             });
         }
@@ -551,6 +554,7 @@ fn read_owner_selector(
             return Ok(WorkspaceRuntimeSelectorRead::Projection {
                 generation_digest: generation_digest.to_owned(),
                 root_digest: root_digest.to_owned(),
+                resolved_selector: structural_selector.to_owned(),
                 bytes: derived.bytes.clone(),
             });
         }

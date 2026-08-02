@@ -1,0 +1,127 @@
+#+title: Resident Merkle Freshness and Performance Gates
+#+startup: overview
+
+* Status
+
+Proposed v1 contract for daemon-owned workspace freshness and measurable
+foreground/background performance gates.
+
+* Problem
+
+An exact selector may be resolved from an admitted generation whose Merkle root
+predates the current workspace contents.  Returning an empty successful query
+in that state is incorrect: absence in an obsolete generation is not evidence
+of absence in the workspace.
+
+The ASP ServerProcess already owns workspace generations.  File observation,
+incremental Merkle computation, selector rebuilding, and publication therefore
+belong to its workspace-keyed WorkspaceResident rather than an AgentSession or
+foreground CLI process.
+
+* Resident ownership vocabulary
+
+- =ServerProcess= is the physical ASP Server daemon.  One process may host many
+  workspaces.
+- =WorkspaceResident= is the logically unique service for one workspace
+  identity inside the ServerProcess.
+- =AgentSession= is a client lifecycle.  It may be long-lived, but it never owns
+  workspace durability, Merkle workers, writer lanes, or publication.
+
+Exactly one WorkspaceResident may be active for a workspace identity.  Several
+AgentSessions, turns, and subagents may share it.  Agent exit cannot terminate
+or replace the WorkspaceResident and cannot discard server-accepted work.
+
+* Merkle boundary
+
+Merkle identities control content and publication identity only.  They bind:
+
+- workspace identity;
+- base and observed workspace roots;
+- changed-path set digest;
+- selector-set digest;
+- provider/parser/query-pack identities;
+- published generation identity.
+
+Merkle identities do not render compact output, choose query semantics, or
+replace latency accounting.
+
+* WorkspaceResident freshness loop
+
+1. A WorkspaceResident watcher records changed paths for its active workspace.
+2. The ASP Server coalesces observations into a bounded changed-path set.
+3. A background worker computes the next incremental Merkle root and provider
+   selector materialization.
+4. Work is single-flight by
+   =(workspaceIdentity, baseRoot, changedPathSetDigest)=.
+5. Publication is admitted only when the worker still corresponds to the most
+   recent observation epoch.  Obsolete results are discarded.
+6. The atomic generation pointer changes only after validation succeeds.
+7. Warm readers continue using the previous immutable generation until the new
+   generation is ready.
+
+A foreground CLI, hook, or AgentSession may return only after the target
+WorkspaceResident acknowledges
+the mutation admission.  It must not spawn an unacknowledged client-local task
+and report =Queued=: process exit would otherwise discard the changed paths
+before the daemon observes them.  Acceptance is synchronous and bounded;
+materialization and publication remain asynchronous and server-owned.
+
+Removed or inactive workspaces follow the existing checkpoint and retirement
+policy.  Watchers are released with the WorkspaceResident entry; retirement of
+one entry does not imply shutdown of the ServerProcess.
+
+* Foreground correctness
+
+A foreground exact query may:
+
+- read a generation whose published root covers the latest admitted
+  observation; or
+- return a typed =generation-stale= / =generation-building= result carrying
+  the observed root, active root, and retry guidance.
+
+It must not translate a stale-generation miss into an empty successful result.
+Foreground query execution must not perform a full workspace scan, provider
+reindex, or Merkle rebuild.
+
+* Independent performance gates
+
+Each phase owns a fresh monotonic clock.  One absolute deadline must not be
+shared across setup, enqueue, acceptance, and completion.
+
+| Gate | Default v1 budget | Failure meaning |
+|------+-------------------+-----------------|
+| watcher coalescing | 50 ms | observation backlog |
+| writer enqueue | 100 ms | resident writer saturation |
+| writer acceptance | 100 ms | foreground admission unavailable |
+| warm exact read p95 | 100 ms | resident read regression |
+| background materialization | measured, no foreground blocking | worker receipt required |
+| atomic publication | 250 ms | publication regression |
+
+Background materialization may exceed foreground budgets, but it must emit a
+terminal receipt and remain cancellable or supersedable by a newer observation.
+
+* Performance receipt
+
+The shared receipt schema records:
+
+- workspace and observation identity;
+- active, observed, and published Merkle roots;
+- changed-path set digest and count;
+- enqueue, acceptance, materialization, publication, and warm-read durations;
+- scanned, reused, rebuilt, and published owner counts;
+- whether work was coalesced, superseded, or published;
+- budget verdicts per phase.
+
+Receipts are evidence for performance gates.  A digest alone is never evidence
+that latency or runtime conformance passed.
+
+* Required tests
+
+- delayed workspace-entry initialization cannot consume writer acceptance
+  budget;
+- enqueue and acceptance clocks are independent;
+- a newer observation supersedes an older background worker;
+- stale-generation misses are typed and never emitted as empty success;
+- unchanged owners are reused under incremental Merkle materialization;
+- cold repair terminates and a repeated warm query stays within its budget;
+- watcher retirement releases all workspace-owned tasks and paths.

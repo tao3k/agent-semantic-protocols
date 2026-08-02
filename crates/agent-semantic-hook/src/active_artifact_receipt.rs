@@ -13,6 +13,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_config::{LanguageId, ProviderId};
+use fs2::FileExt;
 
 const ACTIVE_ASP_ARTIFACT_RECEIPT_FILE: &str = "active-asp-artifact-receipt.v1.json";
 const ACTIVE_ASP_ARTIFACT_SET_ID: &str = "asp-runtime";
@@ -223,7 +224,7 @@ pub fn reconcile_active_asp_artifact_receipt_from_materialized_set(
     }
     let bytes = serde_json::to_vec_pretty(&receipt)
         .map_err(|error| format!("failed to encode active ASP artifact receipt: {error}"))?;
-    atomic_write(&receipt_path, &bytes)?;
+    atomic_write_compare_exchange(&receipt_path, &bytes, Some(&receipt_bytes))?;
     Ok(true)
 }
 
@@ -343,7 +344,7 @@ pub fn materialize_active_asp_artifact_receipt(
     let binary_path = canonical_regular_file(binary_path, "ASP binary")?;
     let activation_path = canonical_regular_file(activation_path, "activation")?;
     let receipt_path = active_asp_artifact_receipt_path(&activation_path)?;
-    let previous_receipt = if receipt_path.is_file() {
+    let previous_receipt_bytes = if receipt_path.is_file() {
         let bytes = fs::read(&receipt_path).map_err(|error| {
             format!(
                 "failed to read active ASP artifact receipt {}: {error}",
@@ -363,7 +364,7 @@ pub fn materialize_active_asp_artifact_receipt(
                 receipt_path.display()
             )
         })?;
-        Some(receipt)
+        Some((bytes, receipt))
     } else {
         None
     };
@@ -438,7 +439,10 @@ pub fn materialize_active_asp_artifact_receipt(
     }
     let receipt = ActiveAspArtifactReceiptV1::build(ACTIVE_ASP_ARTIFACT_SET_ID, leaves)
         .map_err(|error| format!("failed to build active ASP artifact receipt: {error:?}"))?;
-    if previous_receipt.as_ref() == Some(&receipt) {
+    if previous_receipt_bytes
+        .as_ref()
+        .is_some_and(|(_, previous)| previous == &receipt)
+    {
         return Ok(ActiveAspArtifactMaterialization {
             receipt_path,
             receipt,
@@ -449,7 +453,13 @@ pub fn materialize_active_asp_artifact_receipt(
     }
     let bytes = serde_json::to_vec_pretty(&receipt)
         .map_err(|error| format!("failed to encode active ASP artifact receipt: {error}"))?;
-    atomic_write(&receipt_path, &bytes)?;
+    atomic_write_compare_exchange(
+        &receipt_path,
+        &bytes,
+        previous_receipt_bytes
+            .as_ref()
+            .map(|(bytes, _)| bytes.as_slice()),
+    )?;
     Ok(ActiveAspArtifactMaterialization {
         receipt_path,
         receipt,
@@ -618,7 +628,11 @@ fn utf8_path(path: &Path, label: &str) -> Result<String, String> {
         .ok_or_else(|| format!("{label} path is not UTF-8: {}", path.display()))
 }
 
-fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+fn atomic_write_compare_exchange(
+    path: &Path,
+    bytes: &[u8],
+    expected: Option<&[u8]>,
+) -> Result<(), String> {
     let parent = path.parent().ok_or_else(|| {
         format!(
             "active artifact receipt path has no parent: {}",
@@ -627,6 +641,27 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     })?;
     fs::create_dir_all(parent)
         .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+    let lock_path = parent.join(format!(".{ACTIVE_ASP_ARTIFACT_RECEIPT_FILE}.lock"));
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|error| format!("failed to open {}: {error}", lock_path.display()))?;
+    lock.lock_exclusive()
+        .map_err(|error| format!("failed to lock {}: {error}", lock_path.display()))?;
+    let current = match fs::read(path) {
+        Ok(bytes) => Some(bytes),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(format!("failed to read {}: {error}", path.display())),
+    };
+    if current.as_deref() != expected {
+        return Err(format!(
+            "active artifact receipt compare-and-swap conflict: {}",
+            path.display()
+        ));
+    }
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?

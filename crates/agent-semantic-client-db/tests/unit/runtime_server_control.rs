@@ -639,29 +639,85 @@ async fn hook_generation_admission_is_non_blocking_and_single_flight_async() {
         .map(std::num::NonZeroUsize::get)
         .unwrap_or(1);
     let request_count = parallelism.saturating_mul(32).max(64);
+    let changed_path = project_root
+        .join("src/lib.rs")
+        .to_string_lossy()
+        .into_owned();
     let mut requests = tokio::task::JoinSet::new();
     for _ in 0..request_count {
         let session = Arc::clone(&session);
+        let changed_path = changed_path.clone();
         requests.spawn(async move {
             let started = tokio::time::Instant::now();
-            (session.admit_runtime_generation().await, started.elapsed())
+            (
+                session
+                    .submit_runtime_generation_mutation(
+                        "mutation-single-flight",
+                        vec![changed_path],
+                    )
+                    .await,
+                started.elapsed(),
+            )
         });
     }
-    let mut accepted_count = 0_u32;
+    let mut queued_count = 0_usize;
     let mut latencies = Vec::with_capacity(request_count);
     while let Some(result) = requests.join_next().await {
         let (receipt, latency) = result.expect("join hook admission");
         let receipt = receipt.expect("hook admission receipt");
-        accepted_count += u32::from(receipt.accepted);
+        receipt
+            .validate()
+            .expect("valid mutation admission receipt");
+        assert_eq!(receipt.mutation_id, "mutation-single-flight");
+        queued_count += usize::from(matches!(
+            receipt.state,
+            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationMutationSubmissionState::Queued
+        ));
         latencies.push(latency);
     }
     latencies.sort_unstable();
     let p99 = latencies[(latencies.len() * 99 / 100).min(latencies.len() - 1)];
-    assert_eq!(accepted_count, 1);
-    assert!(
-        p99 < Duration::from_millis(25),
-        "hook admission control p99 exceeded 25ms: {p99:?}"
+    eprintln!(
+        "runtime-server-single-workspace-submission requestCount={request_count} p99Micros={}",
+        p99.as_micros()
     );
+    assert_eq!(queued_count, 1);
+    assert!(
+        p99 < Duration::from_millis(1),
+        "hook admission control p99 must remain sub-millisecond: {p99:?}"
+    );
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while *source_build_count.lock().await == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("background mutation submission must reach the Runtime Server");
+
+    let successor_b = session
+        .submit_runtime_generation_mutation("mutation-successor-b", vec![changed_path.clone()])
+        .await
+        .expect("queue first successor mutation");
+    let successor_c = session
+        .submit_runtime_generation_mutation("mutation-successor-c", vec![changed_path.clone()])
+        .await
+        .expect("queue second successor mutation");
+    let duplicate_b = session
+        .submit_runtime_generation_mutation("mutation-successor-b", vec![changed_path.clone()])
+        .await
+        .expect("coalesce duplicate mutation already present in the active chain");
+    assert!(matches!(
+        successor_b.state,
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationMutationSubmissionState::Queued
+    ));
+    assert!(matches!(
+        successor_c.state,
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationMutationSubmissionState::Queued
+    ));
+    assert!(matches!(
+        duplicate_b.state,
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationMutationSubmissionState::Coalesced
+    ));
 
     let ensure = tokio::spawn({
         let session = Arc::clone(&session);
@@ -672,7 +728,7 @@ async fn hook_generation_admission_is_non_blocking_and_single_flight_async() {
         !ensure.is_finished(),
         "typed ensure must wait for the admitted generation's terminal receipt"
     );
-    source_build_release.add_permits(1);
+    source_build_release.add_permits(3);
     let ensured = ensure
         .await
         .expect("join ensured generation")
@@ -681,6 +737,7 @@ async fn hook_generation_admission_is_non_blocking_and_single_flight_async() {
         ensured.state,
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Failed
     );
+    assert_eq!(ensured.attempt, 3);
     assert_eq!(
         ensured.error.as_deref(),
         Some("fixture stops before source publication")
@@ -690,7 +747,7 @@ async fn hook_generation_admission_is_non_blocking_and_single_flight_async() {
         server.await.expect("join Runtime Server").expect("serve"),
         RuntimeServerExit::ShutdownRequested
     );
-    assert_eq!(*source_build_count.lock().await, 1);
+    assert_eq!(*source_build_count.lock().await, 3);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -760,6 +817,7 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_bounded() 
                 .workspace_id
                 .to_string();
         workspace_projects.push((workspace_identity.clone(), project_root.clone()));
+        let mutation_id = format!("mutation-workspace-{workspace_index}");
         for _ in 0..SESSION_COUNT_PER_WORKSPACE {
             let session = Arc::new(
                 agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
@@ -770,23 +828,39 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_bounded() 
             );
             for _ in 0..CALL_COUNT_PER_SESSION {
                 let session = Arc::clone(&session);
+                let changed_path = project_root
+                    .join("src/lib.rs")
+                    .to_string_lossy()
+                    .into_owned();
+                let mutation_id = mutation_id.clone();
                 requests.spawn(async move {
                     let started = tokio::time::Instant::now();
-                    (session.admit_runtime_generation().await, started.elapsed())
+                    (
+                        session
+                            .submit_runtime_generation_mutation(mutation_id, vec![changed_path])
+                            .await,
+                        started.elapsed(),
+                    )
                 });
             }
         }
     }
 
     let request_count = WORKSPACE_COUNT * SESSION_COUNT_PER_WORKSPACE * CALL_COUNT_PER_SESSION;
-    let mut accepted_by_workspace = std::collections::BTreeMap::<String, usize>::new();
+    let mut queued_by_workspace = std::collections::BTreeMap::<String, usize>::new();
     let mut latencies = Vec::with_capacity(request_count);
     while let Some(result) = requests.join_next().await {
         let (receipt, latency) = result.expect("join multi-session hook admission");
         let receipt = receipt.expect("multi-session hook admission receipt");
-        if receipt.accepted {
-            *accepted_by_workspace
-                .entry(receipt.workspace_identity)
+        receipt
+            .validate()
+            .expect("valid mutation admission receipt");
+        if matches!(
+            receipt.state,
+            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationMutationSubmissionState::Queued
+        ) {
+            *queued_by_workspace
+                .entry(receipt.workspace_identity.clone())
                 .or_default() += 1;
         }
         latencies.push(latency);
@@ -798,6 +872,14 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_bounded() 
         WORKSPACE_COUNT * SESSION_COUNT_PER_WORKSPACE,
         p99.as_micros()
     );
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while source_build_count.load(std::sync::atomic::Ordering::Relaxed) < WORKSPACE_COUNT {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("background workspace submissions must reach the Runtime Server");
 
     source_build_release.add_permits(WORKSPACE_COUNT);
     let build_start = tokio::time::Instant::now();
@@ -822,16 +904,14 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_bounded() 
         server.await.expect("join Runtime Server").expect("serve"),
         RuntimeServerExit::ShutdownRequested
     );
-    assert_eq!(accepted_by_workspace.len(), WORKSPACE_COUNT);
+    assert_eq!(queued_by_workspace.len(), WORKSPACE_COUNT);
     assert!(
-        accepted_by_workspace
-            .values()
-            .all(|accepted| *accepted == 1),
-        "each workspace must accept exactly one generation build: {accepted_by_workspace:?}"
+        queued_by_workspace.values().all(|queued| *queued == 1),
+        "each workspace must enqueue exactly one mutation flight: {queued_by_workspace:?}"
     );
     assert!(
-        p99 < Duration::from_millis(25),
-        "multi-workspace multi-session admission p99 exceeded 25ms: {p99:?}"
+        p99 < Duration::from_millis(1),
+        "multi-workspace multi-session admission p99 must remain sub-millisecond: {p99:?}"
     );
     assert_eq!(
         source_build_count.load(std::sync::atomic::Ordering::Relaxed),

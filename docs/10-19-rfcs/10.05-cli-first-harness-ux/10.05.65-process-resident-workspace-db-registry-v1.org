@@ -170,6 +170,20 @@ crate; ASP protocols, IPC types, receipts, and owners MUST NOT depend on it.
 
 * Durability, checkpoint, shutdown, and restart
 
+The resident registry records monotonic last-activity for every workspace
+service. Accepted IPC, lease acquisition, and lease release are activity;
+health inspection alone is not. A service whose canonical workspace path no
+longer exists is immediately retirement-eligible. A service whose path still
+exists is retirement-eligible only after at least one hour without activity,
+with no in-flight request and no live lease.
+
+Retirement is a checkpoint boundary, not deletion. The registry first closes
+admission, drains requests and leases, executes =OwnerDurabilityBoundary=,
+publishes the shutdown receipt, and only then removes the workspace entry and
+endpoint. A new request racing with retirement either observes the still-live
+generation or starts a new uniquely elected service after endpoint retirement;
+it must never attach to a partially retired owner or create a second owner.
+
 Committed writes use one typed mode:
 
 - =ResidentBatch= proves committed MVCC visibility and records pending

@@ -1,0 +1,25 @@
+{
+  "schemaId": "agent.semantic-protocols.workspace-generation-mutation-admission-receipt",
+  "schemaVersion": "1",
+  "mutationId": "session-root/tool-use-1",
+  "changedPathCount": 2,
+  "affectedWorkspaceCount": 2,
+  "receipts": [
+    {
+      "schemaId": "agent.semantic-protocols.runtime-server-workspace-generation-admission.v1",
+      "schemaVersion": "1",
+      "workspaceIdentity": "workspace-parent",
+      "state": "ready",
+      "accepted": true,
+      "attempt": 1
+    },
+    {
+      "schemaId": "agent.semantic-protocols.runtime-server-workspace-generation-admission.v1",
+      "schemaVersion": "1",
+      "workspaceIdentity": "workspace-nested",
+      "state": "building",
+      "accepted": true,
+      "attempt": 2
+    }
+  ]
+}

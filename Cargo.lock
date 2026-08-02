@@ -325,6 +325,7 @@ dependencies = [
  "globset",
  "ignore",
  "jsonschema",
+ "memmap2",
  "orgize",
  "rust-lang-project-harness 0.1.2",
  "serde",

@@ -1,0 +1,14 @@
+import ASPProof.ASPWorkspaceReconcileClosure
+
+open ASPProof.ASPWorkspaceReconcileClosure
+
+#print axioms noReceiptCannotClose
+#print axioms canonicalReceiptCloses
+#print axioms wrongWorkspaceIdentityRejected
+#print axioms wrongRootDigestRejected
+#print axioms uncommittedReceiptRejected
+#print axioms missingSourceProjectionRejected
+#print axioms healthOnlyCannotCloseRequiredWorkspace
+#print axioms stableKeyDeterministic
+#print axioms changedRootDigestChangesStableKey
+

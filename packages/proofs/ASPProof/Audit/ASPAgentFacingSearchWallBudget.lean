@@ -1,0 +1,7 @@
+import ASPProof.ASPAgentFacingSearchWallBudget
+
+#print axioms ASPProof.ASPAgentFacingSearchWallBudget.subsecond_is_admitted
+#print axioms ASPProof.ASPAgentFacingSearchWallBudget.one_second_is_rejected
+#print axioms ASPProof.ASPAgentFacingSearchWallBudget.three_seconds_is_rejected
+#print axioms ASPProof.ASPAgentFacingSearchWallBudget.observed_ten_point_three_seconds_is_rejected
+#print axioms ASPProof.ASPAgentFacingSearchWallBudget.evidence_correctness_does_not_override_wall_budget

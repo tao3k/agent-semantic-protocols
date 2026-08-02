@@ -28,8 +28,13 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         layout.state_home.join("runtime").join("bin").join("asp"),
     );
     let skill = check_skill(&options.project_root);
-    let resident_result = super::runtime_server::block_on_runtime_server_client(async {
-        match super::runtime_server::healthcheck_runtime_server_at(&layout.state_home).await {
+    let (resident_result, workspace_generation_result, workspace_generation_elapsed_micros) =
+        super::runtime_server::block_on_runtime_server_client(async {
+            let resident_result = match super::runtime_server::healthcheck_runtime_server_at(
+                &layout.state_home,
+            )
+            .await
+            {
             Ok(receipt)
                 if receipt.state
                     == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy =>
@@ -42,8 +47,32 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
                 )
                 .await
             }
-        }
-    })?;
+            };
+            let workspace_generation_started = tokio::time::Instant::now();
+            let workspace_generation_result = match &resident_result {
+                Ok(_) => {
+                    match super::runtime_server::runtime_server_workspace_session_for_admission_async(
+                        context.cwd(),
+                    )
+                    .await
+                    {
+                        Ok(session) => session.ensure_runtime_generation().await,
+                        Err(error) => Err(error),
+                    }
+                }
+                Err(error) => Err(format!(
+                    "workspace generation admission requires a healthy Runtime Server: {error}"
+                )),
+            };
+            let workspace_generation_elapsed_micros =
+                u64::try_from(workspace_generation_started.elapsed().as_micros())
+                    .unwrap_or(u64::MAX);
+            (
+                resident_result,
+                workspace_generation_result,
+                workspace_generation_elapsed_micros,
+            )
+        })?;
     let resident = match &resident_result {
         Ok(receipt) => GlobalResidentRuntimeCheck {
             status: format!("{:?}", receipt.state).to_lowercase(),
@@ -60,12 +89,39 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
             error: Some(resident_error.clone()),
         },
     };
+    let workspace_generation = match &workspace_generation_result {
+        Ok(receipt) => WorkspaceGenerationHealthCheck {
+            status: format!("{:?}", receipt.state).to_lowercase(),
+            workspace_identity: Some(receipt.workspace_identity.clone()),
+            accepted: Some(receipt.accepted),
+            attempt: Some(receipt.attempt),
+            elapsed_micros: workspace_generation_elapsed_micros,
+            error: receipt.error.clone(),
+        },
+        Err(error) => WorkspaceGenerationHealthCheck {
+            status: "error".to_owned(),
+            workspace_identity: None,
+            accepted: None,
+            attempt: None,
+            elapsed_micros: workspace_generation_elapsed_micros,
+            error: Some(error.clone()),
+        },
+    };
 
     let mut issues = collect_layout_issues(&layout, &skill);
     if let Err(resident_error) = &resident_result {
         issues.push(error(
             "global-resident-runtime-degraded",
             resident_error.clone(),
+        ));
+    }
+    if workspace_generation.status == "failed" || workspace_generation.status == "error" {
+        issues.push(error(
+            "workspace-generation-admission-failed",
+            workspace_generation
+                .error
+                .clone()
+                .unwrap_or_else(|| "workspace generation admission failed".to_owned()),
         ));
     }
     collect_read_issue(
@@ -92,6 +148,7 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         activation_runtime: &activation_runtime,
         binary: &binary,
         resident: &resident,
+        workspace_generation: &workspace_generation,
         skill: &skill,
         catalog: &catalog,
         issues: &issues,
@@ -532,6 +589,17 @@ struct GlobalResidentRuntimeCheck {
     error: Option<String>,
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceGenerationHealthCheck {
+    status: String,
+    workspace_identity: Option<String>,
+    accepted: Option<bool>,
+    attempt: Option<u64>,
+    elapsed_micros: u64,
+    error: Option<String>,
+}
+
 struct HealthcheckStateLayout {
     project_root: PathBuf,
     state_home: PathBuf,
@@ -564,6 +632,7 @@ struct HealthcheckReport<'a> {
     activation_runtime: &'a ActivationRuntimeCheck,
     binary: &'a BinaryCheck,
     resident: &'a GlobalResidentRuntimeCheck,
+    workspace_generation: &'a WorkspaceGenerationHealthCheck,
     skill: &'a SkillHealthReceipt,
     catalog: &'a CatalogReadinessReceipt,
     issues: &'a [HealthIssue],
@@ -582,6 +651,7 @@ fn print_compact(report: &HealthcheckReport<'_>) {
         activation_runtime,
         binary,
         resident,
+        workspace_generation,
         skill,
         catalog,
         issues,
@@ -644,6 +714,26 @@ fn print_compact(report: &HealthcheckReport<'_>) {
         resident.runtime_binary_digest.as_deref().unwrap_or("none"),
         resident.error.as_deref().unwrap_or("none"),
     );
+    println!(
+        "|workspaceGeneration status={} workspaceIdentity={} accepted={} attempt={} elapsedMicros={} error={}",
+        workspace_generation.status,
+        workspace_generation
+            .workspace_identity
+            .as_deref()
+            .unwrap_or("none"),
+        workspace_generation
+            .accepted
+            .map(|value| value.to_string())
+            .as_deref()
+            .unwrap_or("none"),
+        workspace_generation
+            .attempt
+            .map(|value| value.to_string())
+            .as_deref()
+            .unwrap_or("none"),
+        workspace_generation.elapsed_micros,
+        workspace_generation.error.as_deref().unwrap_or("none"),
+    );
     if let Some(profiles) = activation_runtime.profiles.as_ref() {
         for provider in &profiles.providers {
             println!(
@@ -691,6 +781,7 @@ fn print_json(report: &HealthcheckReport<'_>) -> Result<(), String> {
         activation_runtime,
         binary,
         resident,
+        workspace_generation,
         skill,
         catalog,
         issues,
@@ -754,6 +845,7 @@ fn print_json(report: &HealthcheckReport<'_>) -> Result<(), String> {
             "error": binary.error,
         },
         "residentRuntime": resident,
+        "workspaceGeneration": workspace_generation,
         "providers": providers,
         "catalogReadiness": catalog,
         "issues": issues,

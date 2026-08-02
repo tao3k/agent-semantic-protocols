@@ -1,6 +1,5 @@
 use super::{
-    install_protocol_binary_alias, install_protocol_binary_target,
-    protocol_binary_artifact_digest,
+    install_protocol_binary_alias, install_protocol_binary_target, protocol_binary_artifact_digest,
 };
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 

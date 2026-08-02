@@ -38,7 +38,8 @@
             "argv": [
               "rs-harness",
               "query",
-              "--asp-exact-request-stdin"
+              "--asp-exact-request-stdin",
+              "--json"
             ]
           },
           "method": "query/exact-selector-native-v1",

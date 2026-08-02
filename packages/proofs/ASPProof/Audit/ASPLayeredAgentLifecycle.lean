@@ -1,0 +1,14 @@
+import ASPProof.ASPLayeredAgentLifecycle
+
+open ASPProof.ASPLayeredAgentLifecycle
+
+#print axioms serverRestartPreservesSession
+#print axioms serverRestartPreservesResidentAuthority
+#print axioms runtimeIdentityCannotAuthorizeReplacement
+#print axioms visibilityCannotRemoveResidentAuthority
+#print axioms transportFailureCannotProveResidentAbsence
+#print axioms completionDoesNotReleaseCanonicalPath
+#print axioms interruptDoesNotReleaseCanonicalPath
+#print axioms replacementRequiresTermination
+#print axioms replacementRequiresPathRelease
+#print axioms sameGenerationReplacementRejected

@@ -48,9 +48,12 @@ mod provider_manifest;
 mod provider_registry;
 pub use provider_registry::registered_language_ids;
 pub use provider_registry::{
-    ProviderDevelopmentRegistrationV1, RegisteredProviderBinaryV1, registered_provider_binaries_v1,
+    ProviderDevelopmentRegistrationV1, RegisteredProviderBinaryV1, RuntimeBinaryAdmissionDenialV1,
+    RuntimeBinaryClassificationV1, RuntimeBinaryDispatchRequirementsV1,
+    RuntimeBinaryIdentityBindingV1, RuntimeBinaryInvocationAuthorityV1, RuntimeBinaryProfileV1,
+    SessionBindingV1, classify_runtime_executable_v1, registered_provider_binaries_v1,
     registered_provider_binary_v1, registered_provider_development_v1,
-    registered_provider_matches_candidate_paths,
+    registered_provider_matches_candidate_paths, runtime_binary_dispatch_requirements_v1,
 };
 pub use provider_registry::{
     materialize_provider_routes, registered_language_descriptor_digest,

@@ -48,6 +48,7 @@ mod pipe_source_index_projection;
 mod pipe_source_lexical_frame;
 mod prompt_output_replay;
 mod provider_candidate_annotations;
+pub mod provider_relation_memory;
 mod search_candidate;
 mod search_language_files;
 mod search_lexical_replay;

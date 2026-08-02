@@ -22,6 +22,7 @@ pub struct WorkspaceCanonicalMaterialization {
     pub selector_set_digest: String,
     pub workspace_source_scope_generation: String,
     pub project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+    pub relations: Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
     pub file_count: u32,
     pub root_depth: [u8; 2],
     pub owners: Vec<WorkspaceOwnerSnapshot>,
@@ -277,6 +278,7 @@ impl WorkspaceCanonicalMaterialization {
             selector_set_digest,
             workspace_source_scope_generation,
             project_resolutions,
+            relations: import.relations.clone(),
             file_count,
             root_depth,
             owners,
@@ -453,6 +455,7 @@ impl WorkspaceCanonicalMaterialization {
             source_snapshot: self.source_snapshot,
             module_graph_digest: self.import_digest,
             project_resolutions: self.project_resolutions,
+            relations: self.relations,
             owners: self.owners,
         })
     }

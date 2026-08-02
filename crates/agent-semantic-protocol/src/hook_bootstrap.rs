@@ -61,9 +61,7 @@ fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
             }
             Ok(_) => {
                 if std::env::var_os(TRACE_ENV).is_some() {
-                    eprintln!(
-                        "[asp-hook] route=local-fallback serverError=activation-unavailable"
-                    );
+                    eprintln!("[asp-hook] route=local-fallback serverError=activation-unavailable");
                 }
             }
             Err(error) => {

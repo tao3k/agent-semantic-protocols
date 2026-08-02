@@ -168,8 +168,10 @@ pub struct PublishedSourceIndexGenerationV1 {
     pub generation_directory: PathBuf,
     pub provider_envelope_path: PathBuf,
     pub exact_selector_fixture_path: PathBuf,
+    pub provider_relation_path: PathBuf,
     pub generation_digest: [u8; 32],
     pub fixture_digest: [u8; 32],
+    pub provider_relation_digest: [u8; 32],
     pub workspace_identity_digest: [u8; 32],
 }
 
@@ -282,6 +284,28 @@ fn publish_complete_workspace_search_generation_v1(
         ));
     }
 
+    let generation_digest = publication.generation_identity.generation_digest;
+    let generation_digest_hex = generation_digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let mut relations = provider_files
+        .iter()
+        .flat_map(|file| file.relations.iter().cloned())
+        .collect::<Vec<_>>();
+    relations.sort();
+    relations.dedup();
+    let relation_generation = agent_semantic_content_identity::provider_projection_relation::ProviderRelationGeneration {
+        schema_id: agent_semantic_content_identity::provider_projection_relation::PROVIDER_RELATION_GENERATION_SCHEMA_ID.to_owned(),
+        schema_version: "1".to_owned(),
+        generation_digest: format!("blake3-256:{generation_digest_hex}"),
+        relations,
+    };
+    relation_generation.validate()?;
+    let relation_bytes = serde_json::to_vec(&relation_generation)
+        .map_err(|error| format!("failed to encode provider relation generation: {error}"))?;
+    let provider_relation_digest = *blake3::hash(&relation_bytes).as_bytes();
+
     let fixture = build_exact_selector_fixture_from_projection_records_v1(
         &publication.generation_identity,
         projection_records.clone(),
@@ -289,7 +313,6 @@ fn publish_complete_workspace_search_generation_v1(
     .map_err(|error| format!("failed to build complete exact-selector generation: {error}"))?;
     let fixture_digest = *fixture_digest_v1(&fixture)
         .map_err(|error| format!("failed to identify exact-selector fixture: {error}"))?;
-    let generation_digest = publication.generation_identity.generation_digest;
     let digest_hex = generation_digest
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -342,6 +365,11 @@ fn publish_complete_workspace_search_generation_v1(
         let _ = fs::remove_dir_all(&staging_directory);
         format!("failed to stage exact-selector generation: {error:?}")
     })?;
+    let provider_relation_path = staging_directory.join("provider-relations.v1.json");
+    fs::write(&provider_relation_path, &relation_bytes).map_err(|error| {
+        let _ = fs::remove_dir_all(&staging_directory);
+        format!("failed to stage provider relation generation: {error}")
+    })?;
     fs::File::open(&provider_envelope_path)
         .and_then(|file| file.sync_all())
         .map_err(|error| {
@@ -349,6 +377,15 @@ fn publish_complete_workspace_search_generation_v1(
             format!(
                 "failed to sync provider source envelope {}: {error}",
                 provider_envelope_path.display()
+            )
+        })?;
+    fs::File::open(&provider_relation_path)
+        .and_then(|file| file.sync_all())
+        .map_err(|error| {
+            let _ = fs::remove_dir_all(&staging_directory);
+            format!(
+                "failed to sync provider relation generation {}: {error}",
+                provider_relation_path.display()
             )
         })?;
     fs::File::open(&staging_directory)
@@ -375,10 +412,22 @@ fn publish_complete_workspace_search_generation_v1(
             format!("exact-selector fixture escaped generation transaction: {error}")
         })?
         .to_path_buf();
+    let relation_relative_path = provider_relation_path
+        .strip_prefix(&staging_directory)
+        .map_err(|error| {
+            let _ = fs::remove_dir_all(&staging_directory);
+            format!("provider relation generation escaped transaction: {error}")
+        })?
+        .to_path_buf();
     if let Err(rename_error) = fs::rename(&staging_directory, &generation_directory) {
         let existing_fixture = generation_directory.join(&fixture_relative_path);
         let existing_envelope = generation_directory.join(&envelope_relative_path);
+        let existing_relations = generation_directory.join(&relation_relative_path);
+        let existing_relation_digest = fs::read(&existing_relations)
+            .ok()
+            .map(|bytes| *blake3::hash(&bytes).as_bytes());
         let concurrent_generation_is_complete = existing_envelope.is_file()
+            && existing_relation_digest == Some(provider_relation_digest)
             && ExactSelectorGenerationMemorySearchV1::load_immutable_artifact(
                 &existing_fixture,
                 publication.workspace_identity,
@@ -417,9 +466,11 @@ fn publish_complete_workspace_search_generation_v1(
             )?,
         provider_envelope_path: generation_directory.join(envelope_relative_path),
         exact_selector_fixture_path: generation_directory.join(fixture_relative_path),
+        provider_relation_path: generation_directory.join(relation_relative_path),
         generation_directory,
         generation_digest,
         fixture_digest,
+        provider_relation_digest,
         workspace_identity_digest: *publication.workspace_identity.identity_digest(),
     })
 }

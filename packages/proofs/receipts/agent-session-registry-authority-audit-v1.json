@@ -1,0 +1,78 @@
+{
+  "schemaId": "asp.lean-proof-audit.v1",
+  "schemaVersion": "1",
+  "leanVersion": "4.32.2",
+  "proofPackage": "ASPProof",
+  "module": "ASPProof.ASPAgentSessionRegistryAuthority",
+  "sourcePath": "packages/proofs/ASPProof/ASPAgentSessionRegistryAuthority.lean",
+  "declarationCount": 7,
+  "axiomFreeDeclarationCount": 7,
+  "axiomDependentDeclarationCount": 0,
+  "axiomInventory": [],
+  "hasSorryAx": false,
+  "declarations": [
+    {
+      "name": "ASPProof.ASPAgentSessionRegistryAuthority.normalServerIpcIsAdmitted",
+      "type": "accessAdmitted RuntimeMode.normal RegistryOwner.server RegistryRoute.serverIpc RegistryTransport.ready = Flag.yes",
+      "kind": "theorem",
+      "theoremFamily": "registry-normal-ipc",
+      "rfcClauseIds": ["ASP-RFC-10.15-REGISTRY-NORMAL-SERVER-IPC"],
+      "hasSorryAx": false,
+      "axioms": []
+    },
+    {
+      "name": "ASPProof.ASPAgentSessionRegistryAuthority.normalServerOwnerRejectsDirectFile",
+      "type": "accessAdmitted RuntimeMode.normal RegistryOwner.server RegistryRoute.directFile RegistryTransport.ready = Flag.no",
+      "kind": "theorem",
+      "theoremFamily": "registry-single-writer",
+      "rfcClauseIds": ["ASP-RFC-10.15-REGISTRY-SINGLE-WRITER"],
+      "hasSorryAx": false,
+      "axioms": []
+    },
+    {
+      "name": "ASPProof.ASPAgentSessionRegistryAuthority.serverLockRejectsDirectFile",
+      "type": "accessAdmitted RuntimeMode.normal RegistryOwner.server RegistryRoute.directFile RegistryTransport.locked = Flag.no",
+      "kind": "theorem",
+      "theoremFamily": "registry-single-writer",
+      "rfcClauseIds": ["ASP-RFC-10.15-REGISTRY-SINGLE-WRITER"],
+      "hasSorryAx": false,
+      "axioms": []
+    },
+    {
+      "name": "ASPProof.ASPAgentSessionRegistryAuthority.offlineDirectFileRequiresCliOwnership",
+      "type": "offline direct-file access is admitted exactly for exclusive CLI ownership",
+      "kind": "theorem",
+      "theoremFamily": "registry-offline-ownership",
+      "rfcClauseIds": ["ASP-RFC-10.15-REGISTRY-OFFLINE-OWNERSHIP"],
+      "hasSorryAx": false,
+      "axioms": []
+    },
+    {
+      "name": "ASPProof.ASPAgentSessionRegistryAuthority.restartPreservesSessionAuthority",
+      "type": "restartServer preserves sessionGeneration, bindingDelivered, and pathReleaseReceipt",
+      "kind": "theorem",
+      "theoremFamily": "registry-restart-independence",
+      "rfcClauseIds": ["ASP-RFC-10.15-REGISTRY-RESTART-INDEPENDENCE"],
+      "hasSorryAx": false,
+      "axioms": []
+    },
+    {
+      "name": "ASPProof.ASPAgentSessionRegistryAuthority.registryLockFailureCannotAuthorizeReplacement",
+      "type": "registry transport locked and missing path release imply replacementAuthorized state = Flag.no",
+      "kind": "theorem",
+      "theoremFamily": "registry-lock-no-replacement",
+      "rfcClauseIds": ["ASP-RFC-10.15-REGISTRY-LOCK-NO-REPLACEMENT"],
+      "hasSorryAx": false,
+      "axioms": []
+    },
+    {
+      "name": "ASPProof.ASPAgentSessionRegistryAuthority.registryLockFailureCannotReserveSameName",
+      "type": "registry transport locked and missing path release imply reserveReplacement state generation = none",
+      "kind": "theorem",
+      "theoremFamily": "registry-lock-no-replacement",
+      "rfcClauseIds": ["ASP-RFC-10.15-REGISTRY-LOCK-NO-REPLACEMENT"],
+      "hasSorryAx": false,
+      "axioms": []
+    }
+  ]
+}

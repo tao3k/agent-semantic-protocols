@@ -1,0 +1,50 @@
+#+title: Agent Session Registry Owner Lifetime Refinement
+#+startup: overview
+
+* Status
+
+Normative refinement of =00.03-agent-session-runtime-server-boundary.org=.
+
+* Counterexample discovered by implementation replay
+
+A process-global Boolean that labels the Runtime Server as the registry owner is
+not an owner capability.  When project constructors ignore the Runtime Server
+endpoint under that Boolean, code executing inside the daemon can open the
+registry again or route back through the daemon data plane.  The latter can
+self-deadlock when hook evaluation and registry operations share the serialized
+owner lane.
+
+The rejected legacy state is therefore:
+
+#+begin_src text
+processOwnerFlag=true + project constructor + published endpoint
+  -> local open or self IPC
+#+end_src
+
+* Runtime owner contract
+
+1. A =RuntimeServer= instance MUST construct exactly one resident
+   =AgentSessionRegistry= owner before publishing its endpoint.
+2. The owner handle MUST be stored in that =RuntimeServer= instance and passed
+   by reference to registry request handlers.
+3. A registry request handler MUST NOT call an open/create constructor.
+4. The handler MUST verify that the request project resolves to the same State
+   Home registry path owned by the resident handle.
+5. A non-server caller MUST route through typed IPC whenever the endpoint is
+   published.  A process-global flag MUST NOT grant local-open authority.
+6. The Runtime Server with its resident handle MUST execute locally and MUST
+   NOT route back to its own endpoint.
+7. Missing owner handles, path mismatches, and response timeouts MUST return
+   typed failures.  They MUST NOT fall back to direct Turso open.
+8. Client IPC response waits MUST be bounded and must retire a timed-out lane.
+9. Hook evaluation MUST NOT hold the registry writer lane across evaluation.
+   Any registry operation required by a hook is a separate typed owner request;
+   otherwise pre-tool evaluation and resident bootstrap can form a self-deadlock.
+
+* Validation cycle
+
+The Lean refinement MUST exhibit the legacy counterexample and prove that the
+corrected route prevents client local-open and Runtime Server self-IPC.  Rust
+tests MUST then cover one resident owner across multiple session requests,
+owner-path mismatch, missing-owner failure, bounded IPC wait, and installed
+normal-thread bootstrap.

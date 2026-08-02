@@ -11,12 +11,16 @@ async fn exact_selector_code_reads_modified_source_without_stale_index() {
     fs::write(&owner, "pub fn alpha() {\n    let value = 1;\n}\n").expect("write first source");
     let runtime = ExactQueryRuntime::start(&root).await;
 
-    runtime.admit().await;
+    runtime
+        .admit("alpha-initial", vec!["src/lib.rs".to_owned()])
+        .await;
     let first = run_exact_selector_query(&root, &runtime.state_home).await;
     assert!(first.contains("let value = 1;"), "{first}");
 
     fs::write(&owner, "pub fn alpha() {\n    let value = 2;\n}\n").expect("write second source");
-    runtime.admit().await;
+    runtime
+        .admit("alpha-rewrite", vec!["src/lib.rs".to_owned()])
+        .await;
 
     let second = run_exact_selector_query(&root, &runtime.state_home).await;
     assert!(second.contains("let value = 2;"), "{second}");
@@ -39,7 +43,9 @@ async fn exact_selector_changed_and_moved_owner_never_requires_sync() {
         .expect("write initial live owner");
     let runtime = ExactQueryRuntime::start(&root).await;
 
-    runtime.admit().await;
+    runtime
+        .admit("live-owner-initial", vec!["src/lib.rs".to_owned()])
+        .await;
     let (initial, initial_elapsed) = run_exact_selector_query_for(
         &root,
         &runtime.state_home,
@@ -71,12 +77,18 @@ async fn exact_selector_changed_and_moved_owner_never_requires_sync() {
         "{item_missing}"
     );
     assert!(
+        !item_missing.contains(" next="),
+        "a live-owner item miss is terminal and must not repeat discovery: {item_missing}"
+    );
+    assert!(
         item_missing_elapsed < std::time::Duration::from_millis(250),
         "missing item exact query exceeded 250ms: {item_missing_elapsed:?}"
     );
 
     fs::write(&original_owner, "pub fn live_owner() -> u8 { 2 }\n").expect("rewrite live owner");
-    runtime.admit().await;
+    runtime
+        .admit("live-owner-rewrite", vec!["src/lib.rs".to_owned()])
+        .await;
     let (changed, changed_elapsed) = run_exact_selector_query_for(
         &root,
         &runtime.state_home,
@@ -92,7 +104,12 @@ async fn exact_selector_changed_and_moved_owner_never_requires_sync() {
 
     let moved_owner = root.join("src/moved.rs");
     fs::rename(&original_owner, &moved_owner).expect("move live owner");
-    runtime.admit().await;
+    runtime
+        .admit(
+            "live-owner-move",
+            vec!["src/lib.rs".to_owned(), "src/moved.rs".to_owned()],
+        )
+        .await;
     let (missing, missing_elapsed) = run_exact_selector_query_for(
         &root,
         &runtime.state_home,
@@ -302,7 +319,7 @@ impl ExactQueryRuntime {
         }
     }
 
-    async fn admit(&self) {
+    async fn admit(&self, mutation_id: &str, changed_paths: Vec<String>) {
         let session =
             agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(
                 &self.endpoint,
@@ -310,10 +327,21 @@ impl ExactQueryRuntime {
                 self.project_root.clone(),
             );
         let admitted = session
-            .admit_runtime_generation()
+            .admit_runtime_generation(mutation_id, changed_paths)
             .await
             .expect("admit exact-query fixture generation");
-        assert!(admitted.accepted, "{admitted:?}");
+        assert!(admitted.changed_path_count > 0, "{admitted:?}");
+        assert_eq!(
+            admitted.affected_workspace_count,
+            admitted.receipts.len(),
+            "{admitted:?}"
+        );
+        let expected_attempt = admitted
+            .receipts
+            .iter()
+            .find(|receipt| receipt.workspace_identity == self.workspace_identity)
+            .expect("mutation receipt includes exact-query workspace")
+            .attempt;
         let receipt = session
             .ensure_runtime_generation()
             .await
@@ -323,6 +351,7 @@ impl ExactQueryRuntime {
             agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
             "{receipt:?}"
         );
+        assert_eq!(receipt.attempt, expected_attempt, "{receipt:?}");
     }
 
     async fn shutdown(self) {
@@ -417,6 +446,7 @@ async fn build_exact_query_generation(
             mtime_ms: 0,
         });
         import_files.push(agent_semantic_client_db::ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: owner_path.to_owned(),
             language_id: "rust".into(),
             provider_id: "rs-harness".into(),

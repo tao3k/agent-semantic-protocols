@@ -85,8 +85,16 @@ def _run_contract_trace(
     ]
     try:
         result = subprocess.run(
-            command, check=False, capture_output=True, encoding="utf-8"
+            command,
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            timeout=30.0,
         )
+    except subprocess.TimeoutExpired as error:
+        raise RelationshipContractVerificationError(
+            f"Org contract trace timed out for {contract_id} after 30 seconds"
+        ) from error
     except (OSError, UnicodeError) as error:
         raise RelationshipContractVerificationError(
             f"failed to execute Org contract trace for {contract_id}: {error}"

@@ -2,49 +2,29 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import tempfile
 import unittest
 from pathlib import Path
+
+from ._digests import dependency_digest, source_digest
+from ._packet_fixture import (
+    build_authority_evaluations,
+    packet_artifacts,
+    packet_relationships,
+)
 
 CLAUSE_A = "ASP-RFC-10.05.64-COST-VECTOR"
 CLAUSE_B = "ASP-RFC-10.05.64-LEXICOGRAPHIC-ORDER"
 RECEIPT_CHAIN_ID = "sha256:" + "a" * 64
 
 
-def source_digest(raw: str) -> str:
-    """Hash a fixture using the protocol line-ending normalization."""
-
-    normalized = raw.replace("\r\n", "\n").replace("\r", "\n")
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
-
-def dependency_digest(*commitments: dict[str, object]) -> str:
-    """Hash fixture dependencies using the recursive canonical shape."""
-
-    canonical = json.dumps(
-        [
-            {
-                "clauseId": commitment["clauseId"],
-                "sourceSha256": commitment["sourceSha256"],
-                "dependencySetSha256": commitment["dependencySetSha256"],
-            }
-            for commitment in sorted(
-                commitments, key=lambda item: str(item["clauseId"])
-            )
-        ],
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
 class RelationshipContractFixture(unittest.TestCase):
     """Own a fake Orgize boundary and typed packet builders."""
 
     def setUp(self) -> None:
+        from ._fake_orgize import FAKE_ORGIZE_SOURCE
+
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name)
         self.contract_id = "fixture.rfc.v1"
@@ -63,39 +43,7 @@ class RelationshipContractFixture(unittest.TestCase):
         self.relationship_contract_source = "* fixture relationship contract\n"
         self.relationship_contract_path.write_text(self.relationship_contract_source)
         self.orgize = self.root / "fake-orgize"
-        self.orgize.write_text(
-            """#!/usr/bin/env python3
-import json
-from pathlib import Path
-import sys
-
-if sys.argv[1:3] == ["elements-query", "--packet"] and len(sys.argv) == 5:
-    query = json.loads(sys.argv[3])
-    source = Path(sys.argv[4])
-    if query == {"schemaVersion": 1, "kind": "node-property"}:
-        print(Path(str(source) + ".properties-response.json").read_text())
-    else:
-        fixture = json.loads(Path(str(source) + ".response.json").read_text())
-        outline = query.get("outlinePathPrefix")
-        if query != {
-            "category": "section",
-            "outlinePathExactLen": len(outline),
-            "outlinePathPrefix": outline,
-            "schemaVersion": 1,
-        }:
-            raise SystemExit("query is not an exact section outline query")
-        records = [
-            record for record in fixture["records"]
-            if record.get("outlinePath") == outline
-        ]
-        print(json.dumps(records))
-elif sys.argv[1:3] == ["contract", "trace"] and len(sys.argv) == 7:
-    target = Path(sys.argv[6])
-    print(Path(str(target) + ".contract-response.json").read_text())
-else:
-    raise SystemExit("unexpected invocation")
-"""
-        )
+        self.orgize.write_text(FAKE_ORGIZE_SOURCE)
         self.orgize.chmod(0o755)
 
     def tearDown(self) -> None:
@@ -179,32 +127,10 @@ else:
         targets = sorted({str(clause["sourcePath"]) for clause in clauses})
         if len(targets) != 1:
             raise AssertionError("fixture application profile requires one target")
-        artifacts = [
-            {
-                "artifactId": "doc.fixture-authority",
-                "artifactKind": "org-document",
-                "artifactPath": "org/relationships/fixture.v1.org",
-                "canonicalization": "org-source-raw-lf-utf8-v1",
-                "expectedSha256": source_digest(self.authority_source),
-            },
-            {
-                "artifactId": "contract.fixture-relationship",
-                "artifactKind": "org-contract",
-                "artifactPath": "org/contracts/relationship.v1.org",
-                "canonicalization": "org-source-raw-lf-utf8-v1",
-                "expectedSha256": source_digest(self.relationship_contract_source),
-            },
-        ]
-        relationships = [
-            {
-                "relationshipId": "fixture-conforms-v1",
-                "subject": "doc.fixture-authority",
-                "predicate": "conforms-to",
-                "object": "contract.fixture-relationship",
-                "impact": "invalidates-subject",
-                "evidenceGates": ["fixture-relationship-gate"],
-            }
-        ]
+        artifacts = packet_artifacts(
+            self.authority_source, self.relationship_contract_source
+        )
+        relationships = packet_relationships()
         property_records = []
         for key, value in {
             "RELATIONSHIP_CONTRACT_ID": "fixture.relationship.v1",
@@ -240,27 +166,7 @@ else:
         Path(str(self.authority_path) + ".properties-response.json").write_text(
             json.dumps(property_records)
         )
-        authority_assertion = {
-            "assertionId": "fixture.relationship",
-            "status": "passed",
-        }
-        authority_evaluations = [
-            {
-                "contractId": "relationship.document.v1",
-                "assertions": [authority_assertion],
-            },
-            *[
-                {
-                    "contractId": "relationship.artifact.v1",
-                    "assertions": [authority_assertion],
-                }
-                for _ in artifacts
-            ],
-            {
-                "contractId": "relationship.edge.v1",
-                "assertions": [authority_assertion],
-            },
-        ]
+        authority_evaluations = build_authority_evaluations(len(artifacts))
         Path(str(self.authority_path) + ".contract-response.json").write_text(
             json.dumps(
                 {

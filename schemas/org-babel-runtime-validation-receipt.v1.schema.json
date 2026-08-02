@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/org-babel-runtime-validation-receipt.v1.schema.json",
+  "title": "Org Babel Runtime Validation Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "sourceContext",
+    "binding",
+    "policy",
+    "observation",
+    "status",
+    "diagnosticCode"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "org-babel-runtime-validation-receipt.v1"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "sourceContext": {
+      "$ref": "#/$defs/sourceContext"
+    },
+    "binding": {
+      "$ref": "#/$defs/runtimeBinding"
+    },
+    "policy": {
+      "$ref": "#/$defs/executionPolicy"
+    },
+    "observation": {
+      "$ref": "#/$defs/executionObservation"
+    },
+    "status": {
+      "enum": ["accepted", "rejected"]
+    },
+    "diagnosticCode": {
+      "type": ["string", "null"],
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "sourceContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourcePath", "workingDirectory", "packageRoot"],
+      "properties": {
+        "sourcePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workingDirectory": {
+          "type": "string",
+          "minLength": 1
+        },
+        "packageRoot": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "runtimeBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "program", "args", "stdin"],
+      "properties": {
+        "kind": {
+          "enum": ["typst-path", "exact-path"]
+        },
+        "program": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stdin": {
+          "const": true
+        }
+      }
+    },
+    "executionPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timeoutMs", "outputByteBudget"],
+      "properties": {
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "outputByteBudget": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "executionObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stdoutBytes",
+        "stderrBytes",
+        "elapsedMs",
+        "terminationOutcome",
+        "exitCode",
+        "childReaped"
+      ],
+      "properties": {
+        "stdoutBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stderrBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "elapsedMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "terminationOutcome": {
+          "enum": [
+            "exited",
+            "timed-out",
+            "output-budget-exceeded",
+            "spawn-failed",
+            "io-failed"
+          ]
+        },
+        "exitCode": {
+          "type": ["integer", "null"]
+        },
+        "childReaped": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

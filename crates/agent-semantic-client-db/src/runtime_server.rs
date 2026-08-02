@@ -59,6 +59,7 @@ pub struct RuntimeServer {
     owner_projection_builder:
         Option<crate::runtime_server_workspace::WorkspaceOwnerProjectionBuilder>,
     hook_evaluation_builder: Option<HookEvaluationBuilder>,
+    agent_session_registry_owner: Option<Arc<crate::AgentSessionRegistry>>,
 }
 
 pub type HookEvaluationBuilder = std::sync::Arc<
@@ -67,9 +68,9 @@ pub type HookEvaluationBuilder = std::sync::Arc<
             std::path::PathBuf,
             Vec<String>,
             String,
-        ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<String, String>> + Send>,
-        > + Send
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>
+        + Send
         + Sync,
 >;
 
@@ -204,6 +205,7 @@ impl RuntimeServer {
             generation_admission: None,
             owner_projection_builder: None,
             hook_evaluation_builder: None,
+            agent_session_registry_owner: None,
         })
     }
 
@@ -217,6 +219,15 @@ impl RuntimeServer {
 
     pub fn with_hook_evaluation_builder(mut self, builder: HookEvaluationBuilder) -> Self {
         self.hook_evaluation_builder = Some(builder);
+        self
+    }
+
+    #[must_use]
+    pub fn with_agent_session_registry_owner(
+        mut self,
+        owner: Arc<crate::AgentSessionRegistry>,
+    ) -> Self {
+        self.agent_session_registry_owner = Some(owner);
         self
     }
 
@@ -339,7 +350,9 @@ impl RuntimeServer {
         let durable_registry = Arc::clone(&self.registry);
         let memory_registry = Arc::clone(&self.workspace_registry);
         let builder = Arc::new(
-            move |workspace_identity: String, project_root: std::path::PathBuf| {
+            move |workspace_identity: String,
+                  project_root: std::path::PathBuf,
+                  build_mode: crate::runtime_server_admission::WorkspaceGenerationBuildMode| {
                 let durable_registry = Arc::clone(&durable_registry);
                 let memory_registry = Arc::clone(&memory_registry);
                 let source_builder = source_builder.clone();
@@ -356,18 +369,21 @@ impl RuntimeServer {
                         .load_active_workspace_generation_materialization_state(&project_root)
                         .await?
                     {
-                        crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Ready(materialization) => {
+                        crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Ready(materialization)
+                            if build_mode
+                                == crate::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOrBuild => {
                             materialization.validate_persisted(&workspace_identity)?;
-                            if canonical_materialization_matches_candidate_generation(
-                                &project_root,
+                            if canonical_materialization_matches_admitted_generation(
                                 &materialization,
                                 provider_catalog_generation.as_deref(),
-                            )
-                            .await?
-                            {
+                            ) {
                                 memory_registry
                                     .ensure_canonical_generation(
-                                        format!("daemon-admission-restore-{workspace_identity}"),
+                                        format!(
+                                            "daemon-admission-restore-{workspace_identity}-{}-{}",
+                                            materialization.workspace_generation.root_digest,
+                                            materialization.selector_set_digest
+                                        ),
                                         &workspace_identity,
                                         materialization,
                                     )
@@ -375,7 +391,8 @@ impl RuntimeServer {
                                 return Ok(());
                             }
                         }
-                        crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Missing
+                        crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Ready(_)
+                        | crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Missing
                         | crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Incompatible { .. } => {}
                     }
                     let source_builder = source_builder.as_ref().ok_or_else(|| {
@@ -403,7 +420,11 @@ impl RuntimeServer {
                     }
                     memory_registry
                         .ensure_canonical_generation(
-                            format!("daemon-admission-build-{workspace_identity}"),
+                            format!(
+                                "daemon-admission-build-{workspace_identity}-{}-{}",
+                                committed_materialization.workspace_generation.root_digest,
+                                committed_materialization.selector_set_digest
+                            ),
                             &workspace_identity,
                             committed_materialization,
                         )
@@ -437,6 +458,7 @@ impl RuntimeServer {
             generation_admission,
             owner_projection_builder,
             hook_evaluation_builder,
+            agent_session_registry_owner,
         } = self;
         let (_lifecycle_state, lifecycle) =
             watch::channel(crate::runtime_server_control::RuntimeServerState::Healthy);
@@ -455,6 +477,9 @@ impl RuntimeServer {
         )?;
         let mut connections = JoinSet::new();
         let (drain_sender, drain_receiver) = watch::channel(false);
+        let mut retirement_sweep = tokio::time::interval(std::time::Duration::from_secs(60));
+        retirement_sweep.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        retirement_sweep.tick().await;
         let exit = loop {
             tokio::select! {
                 connection = listener.accept() => {
@@ -479,6 +504,7 @@ impl RuntimeServer {
                     let generation_admission = generation_admission.clone();
                     let owner_projection_builder = owner_projection_builder.clone();
                     let hook_evaluation_builder = hook_evaluation_builder.clone();
+                    let agent_session_registry_owner = agent_session_registry_owner.clone();
                     let connection_drain = drain_receiver.clone();
                     connections.spawn(async move {
                         crate::workspace_db_ipc_server::serve_runtime_server_workspace_stream(
@@ -489,6 +515,7 @@ impl RuntimeServer {
                             generation_admission.as_deref(),
                             owner_projection_builder.as_ref(),
                             hook_evaluation_builder.as_ref(),
+                            agent_session_registry_owner.as_ref(),
                             connection_drain,
                         )
                         .await?;
@@ -564,6 +591,20 @@ impl RuntimeServer {
                             .max(*workspace_count.borrow_and_update()),
                     )?;
                 }
+                _ = retirement_sweep.tick() => {
+                    for receipt in workspace_registry.retire_inactive().await? {
+                        eprintln!(
+                            "[runtime-server-workspace-retirement] schemaId={} schemaVersion={} workspaceIdentity={} reason={:?} checkpointCompleted={} writerLaneDrained={} endpointRetired={}",
+                            receipt.schema_id,
+                            receipt.schema_version,
+                            receipt.workspace_identity,
+                            receipt.reason,
+                            receipt.checkpoint_completed,
+                            receipt.writer_lane_drained,
+                            receipt.endpoint_retired,
+                        );
+                    }
+                }
                 changed = shutdown.changed() => {
                     if changed.is_err() || *shutdown.borrow_and_update() {
                         let (slot_count, loaded_entry_count) =
@@ -600,32 +641,12 @@ impl RuntimeServer {
     }
 }
 
-async fn canonical_materialization_matches_candidate_generation(
-    project_root: &std::path::Path,
+fn canonical_materialization_matches_admitted_generation(
     materialization: &crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
     provider_catalog_generation: Option<&str>,
-) -> Result<bool, String> {
-    if provider_catalog_generation
-        .is_some_and(|generation| materialization.provider_schema_digest != generation)
-    {
-        return Ok(false);
-    }
-    if materialization.project_resolutions.is_empty() {
-        return Ok(false);
-    }
-    let project_root = project_root.to_path_buf();
-    let snapshot = tokio::task::spawn_blocking(move || {
-        agent_semantic_runtime::git::discover_repository_candidate_snapshot(&project_root)
-    })
-    .await
-    .map_err(|error| format!("join repository candidate generation probe: {error}"))?
-    .map_err(|error| format!("probe repository candidate generation: {error}"))?;
-    let Some(snapshot) = snapshot else {
-        return Ok(false);
-    };
-    Ok(materialization.project_resolutions.iter().all(|admitted| {
-        admitted.resolution.candidate_generation_digest == snapshot.candidate_generation.digest
-    }))
+) -> bool {
+    provider_catalog_generation
+        .is_none_or(|generation| materialization.provider_schema_digest == generation)
 }
 
 #[cfg(unix)]

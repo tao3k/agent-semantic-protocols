@@ -1,5 +1,125 @@
 use super::protocol::{WorkspaceDbIpcOperation, WorkspaceDbIpcResult, WorkspaceDbIpcSession};
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct MutationFlightKey {
+    socket_path: String,
+    owner_epoch: u64,
+    workspace_identity: String,
+}
+
+#[derive(Debug)]
+struct MutationFlight {
+    mutation_id: String,
+    previous: parking_lot::Mutex<Option<std::sync::Arc<MutationFlight>>>,
+    result: tokio::sync::watch::Sender<
+        Option<
+            Result<
+                crate::runtime_server_admission::WorkspaceGenerationMutationAdmissionReceipt,
+                String,
+            >,
+        >,
+    >,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct MutationWorkspaceLane {
+    current: parking_lot::RwLock<Option<std::sync::Arc<MutationFlight>>>,
+}
+
+impl MutationWorkspaceLane {
+    fn current(&self) -> Option<std::sync::Arc<MutationFlight>> {
+        self.current.read().clone()
+    }
+
+    fn replace_if(
+        &self,
+        expected: Option<&std::sync::Arc<MutationFlight>>,
+        next: std::sync::Arc<MutationFlight>,
+    ) -> bool {
+        let mut current = self.current.write();
+        let matches = match (current.as_ref(), expected) {
+            (None, None) => true,
+            (Some(current), Some(expected)) => std::sync::Arc::ptr_eq(current, expected),
+            _ => false,
+        };
+        if matches {
+            *current = Some(next);
+        }
+        matches
+    }
+}
+
+fn find_mutation_flight(
+    current: std::sync::Arc<MutationFlight>,
+    mutation_id: &str,
+) -> Option<std::sync::Arc<MutationFlight>> {
+    let mut candidate = Some(current);
+    while let Some(flight) = candidate {
+        if flight.mutation_id == mutation_id {
+            return Some(flight);
+        }
+        candidate = flight.previous.lock().clone();
+    }
+    None
+}
+
+static MUTATION_FLIGHTS: std::sync::LazyLock<
+    dashmap::DashMap<MutationFlightKey, std::sync::Arc<MutationWorkspaceLane>>,
+> = std::sync::LazyLock::new(|| {
+    let capacity = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1);
+    dashmap::DashMap::with_capacity(capacity)
+});
+
+fn mutation_flights()
+-> &'static dashmap::DashMap<MutationFlightKey, std::sync::Arc<MutationWorkspaceLane>> {
+    &MUTATION_FLIGHTS
+}
+
+pub(super) fn runtime_generation_mutation_lane(
+    socket_path: &str,
+    owner_epoch: u64,
+    workspace_identity: &str,
+) -> std::sync::Arc<MutationWorkspaceLane> {
+    let key = MutationFlightKey {
+        socket_path: socket_path.to_owned(),
+        owner_epoch,
+        workspace_identity: workspace_identity.to_owned(),
+    };
+    mutation_flights()
+        .entry(key)
+        .or_insert_with(|| std::sync::Arc::new(MutationWorkspaceLane::default()))
+        .clone()
+}
+
+async fn wait_for_mutation_flight(
+    flight: &MutationFlight,
+) -> Result<crate::runtime_server_admission::WorkspaceGenerationMutationAdmissionReceipt, String> {
+    let mut result = flight.result.subscribe();
+    loop {
+        if let Some(result) = result.borrow().clone() {
+            return result;
+        }
+        result.changed().await.map_err(|_| {
+            "runtime generation mutation flight closed without a receipt".to_owned()
+        })?;
+    }
+}
+
+fn normalize_changed_paths(changed_paths: Vec<String>) -> Result<Vec<String>, String> {
+    let changed_paths = changed_paths
+        .into_iter()
+        .filter(|path| !path.trim().is_empty())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    if changed_paths.is_empty() {
+        return Err("runtime generation admission requires changed paths".to_owned());
+    }
+    Ok(changed_paths)
+}
+
 impl WorkspaceDbIpcSession {
     pub async fn ensure_runtime_owner(
         &self,
@@ -61,14 +181,124 @@ impl WorkspaceDbIpcSession {
 
     pub async fn admit_runtime_generation(
         &self,
-    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
-        self.call_runtime_generation_admission(self.runtime_project_root()?.display().to_string())
-            .await
+        mutation_id: impl Into<String>,
+        changed_paths: Vec<String>,
+    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationMutationAdmissionReceipt, String>
+    {
+        let mutation_id = mutation_id.into();
+        if mutation_id.trim().is_empty() {
+            return Err("runtime generation admission requires a mutation id".to_owned());
+        }
+        let changed_paths = normalize_changed_paths(changed_paths)?;
+        let lane = &self.shared.runtime_generation_mutations;
+        loop {
+            enum FlightRole {
+                Lead(std::sync::Arc<MutationFlight>),
+                Follow(std::sync::Arc<MutationFlight>),
+                WaitThenRetry(std::sync::Arc<MutationFlight>),
+            }
+
+            let current = lane.current();
+            let role = if let Some(current) = current {
+                if let Some(matching) = find_mutation_flight(current.clone(), &mutation_id) {
+                    FlightRole::Follow(matching)
+                } else if current.result.borrow().is_some() {
+                    let (result, _) = tokio::sync::watch::channel(None);
+                    let flight = std::sync::Arc::new(MutationFlight {
+                        mutation_id: mutation_id.clone(),
+                        previous: parking_lot::Mutex::new(None),
+                        result,
+                    });
+                    if lane.replace_if(Some(&current), std::sync::Arc::clone(&flight)) {
+                        FlightRole::Lead(flight)
+                    } else {
+                        continue;
+                    }
+                } else {
+                    FlightRole::WaitThenRetry(current)
+                }
+            } else {
+                let (result, _) = tokio::sync::watch::channel(None);
+                let flight = std::sync::Arc::new(MutationFlight {
+                    mutation_id: mutation_id.clone(),
+                    previous: parking_lot::Mutex::new(None),
+                    result,
+                });
+                if lane.replace_if(None, std::sync::Arc::clone(&flight)) {
+                    FlightRole::Lead(flight)
+                } else {
+                    continue;
+                }
+            };
+
+            match role {
+                FlightRole::Lead(flight) => {
+                    let result = self
+                        .call_runtime_generation_admission(
+                            mutation_id.clone(),
+                            self.runtime_project_root()?.display().to_string(),
+                            changed_paths.clone(),
+                        )
+                        .await;
+                    flight.result.send_replace(Some(result.clone()));
+                    return result;
+                }
+                FlightRole::Follow(flight) => return wait_for_mutation_flight(&flight).await,
+                FlightRole::WaitThenRetry(flight) => {
+                    let _ = wait_for_mutation_flight(&flight).await;
+                }
+            }
+        }
+    }
+
+    pub async fn submit_runtime_generation_mutation(
+        &self,
+        mutation_id: impl Into<String>,
+        changed_paths: Vec<String>,
+    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationMutationSubmissionReceipt, String>
+    {
+        let mutation_id = mutation_id.into();
+        if mutation_id.trim().is_empty() {
+            return Err("runtime generation submission requires a mutation id".to_owned());
+        }
+        let changed_paths = normalize_changed_paths(changed_paths)?;
+        // Submission is acknowledged only after the resident Runtime Server has
+        // accepted the mutation.  Merkle/provider rebuilding remains
+        // server-owned background work; a short-lived CLI process must never
+        // own the task whose exit could silently discard changed paths.
+        let admission = self
+            .call_runtime_generation_admission(
+                mutation_id.clone(),
+                self.runtime_project_root()?.display().to_string(),
+                changed_paths.clone(),
+            )
+            .await?;
+        let state = if admission.receipts.iter().all(|receipt| !receipt.accepted) {
+            crate::runtime_server_admission::WorkspaceGenerationMutationSubmissionState::Coalesced
+        } else {
+            crate::runtime_server_admission::WorkspaceGenerationMutationSubmissionState::Queued
+        };
+
+        let receipt =
+            crate::runtime_server_admission::WorkspaceGenerationMutationSubmissionReceipt {
+                schema_id: crate::runtime_server_admission::WORKSPACE_GENERATION_MUTATION_SUBMISSION_RECEIPT_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                mutation_id,
+                workspace_identity: self.workspace_identity().to_owned(),
+                changed_path_count: changed_paths.len(),
+                state,
+            };
+        receipt.validate()?;
+        Ok(receipt)
     }
 
     pub async fn ensure_runtime_generation(
         &self,
     ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
+        let pending_mutation = self.shared.runtime_generation_mutations.current();
+        if let Some(pending_mutation) = pending_mutation {
+            wait_for_mutation_flight(&pending_mutation).await?;
+        }
         match self
             .call_operation(WorkspaceDbIpcOperation::EnsureRuntimeGeneration {
                 project_root: self.runtime_project_root()?.display().to_string(),

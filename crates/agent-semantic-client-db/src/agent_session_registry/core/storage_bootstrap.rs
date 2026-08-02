@@ -25,6 +25,9 @@ static AGENT_SESSION_REGISTRY_RUNTIME: std::sync::LazyLock<
 pub(in crate::agent_session_registry) fn block_on_agent_session_registry_async<T>(
     future: impl std::future::Future<Output = Result<T, String>>,
 ) -> Result<T, String> {
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        return tokio::task::block_in_place(move || handle.block_on(future));
+    }
     match &*AGENT_SESSION_REGISTRY_RUNTIME {
         Ok(runtime) => runtime.block_on(future),
         Err(error) => Err(error.clone()),

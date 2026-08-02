@@ -5,7 +5,7 @@ pub(super) fn agent_usage() -> &'static str {
 }
 
 pub(super) fn session_usage() -> &'static str {
-    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|observe-host-ack|dispatch-claim|dispatch-execute|dispatch-complete|dispatch-mark-orphaned|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--state-root PATH] [--name NAME] [--canonical-target PATH] [--dispatch-identity ID] [--command-digest DIGEST] [--command-json JSON] [--resident-bridge] [--evidence-ref REF] [--agent-type-field present|absent] [--resident-target-status present|absent|unroutable] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
+    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|observe-host-ack|dispatch-claim|dispatch-execute|dispatch-complete|dispatch-mark-orphaned|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--name NAME] [--canonical-target PATH] [--dispatch-identity ID] [--command-digest DIGEST] [--command-json JSON] [--resident-bridge] [--evidence-ref REF] [--agent-type-field present|absent] [--resident-target-status present|absent|unroutable] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
 }
 
 #[derive(Clone, Copy)]
@@ -39,7 +39,6 @@ pub(super) struct SessionArgs {
     pub(super) help: bool,
     pub(super) guide: bool,
     pub(super) command: SessionCommand,
-    pub(super) state_root: Option<PathBuf>,
     pub(super) name: Option<String>,
     pub(super) child_session_id: Option<String>,
     pub(super) message_target_id: Option<String>,
@@ -77,7 +76,6 @@ impl SessionArgs {
             help: false,
             guide: false,
             command: SessionCommand::List,
-            state_root: None,
             name: None,
             child_session_id: None,
             message_target_id: None,
@@ -180,14 +178,6 @@ impl SessionArgs {
                 }
                 "--" if is_codex_wrapper_command(parsed.command) => {
                     passthrough_codex_args = true;
-                }
-                "--state-root" => {
-                    index += 1;
-                    parsed.state_root = Some(PathBuf::from(required_flag_value(
-                        args,
-                        index,
-                        "--state-root",
-                    )?));
                 }
                 "--name" => {
                     index += 1;
@@ -718,3 +708,7 @@ fn non_empty_flag<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'
         Ok(value)
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_registry_args.rs"]
+mod tests;

@@ -1,0 +1,13 @@
+import ASPProof.ASPWorkspaceGenerationReadiness
+
+open ASPProof.ASPWorkspaceGenerationReadiness
+
+#print axioms serverHealthPreservesMissingGeneration
+#print axioms registrationDoesNotCreateGeneration
+#print axioms parentPublicationLeavesNestedWorkspaceUnchanged
+#print axioms missingGenerationRejectsExactProjection
+#print axioms digestMismatchRejectsExactProjection
+#print axioms missingProjectionRejectsExactQuery
+#print axioms canonicalPublicationAdmitsEveryProjection
+#print axioms workspaceRepairPreservesAgentAuthority
+

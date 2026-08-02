@@ -1,0 +1,15 @@
+{
+  "schemaId": "runtime-binary-profile.v1",
+  "schemaVersion": "1",
+  "binaryId": "rust-provider",
+  "profile": "provider-internal",
+  "languageId": "rust",
+  "providerId": "rs-harness",
+  "executableAliases": ["rs-harness"],
+  "artifactDigest": "blake3-256:provider-artifact",
+  "invocationAuthorities": ["asp-runtime-dispatch"],
+  "sessionBinding": "required",
+  "allowDirectAgent": false,
+  "generationBinding": true,
+  "argvBinding": true
+}

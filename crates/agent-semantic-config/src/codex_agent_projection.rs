@@ -46,7 +46,9 @@ pub fn write_codex_dynamic_model(config_path: &Path, model: &str) -> Result<(), 
         "primary".to_string(),
         toml::Value::String(model.to_string()),
     );
-    ensure_default_codex_agent_tables(root)?;
+    if !root.contains_key("agents") {
+        ensure_default_codex_agent_tables(root)?;
+    }
     write_toml_value(config_path, &value)
 }
 
@@ -81,7 +83,9 @@ pub fn write_codex_dynamic_model_for_session(
     let root = value
         .as_table_mut()
         .ok_or_else(|| format!("{} must contain a TOML table", config_path.display()))?;
-    ensure_default_codex_agent_tables(root)?;
+    if !root.contains_key("agents") {
+        ensure_default_codex_agent_tables(root)?;
+    }
     let agents = root
         .get_mut("agents")
         .and_then(toml::Value::as_table_mut)
@@ -221,34 +225,131 @@ pub fn update_asp_codex_agent_sources_and_symlink_projections(
     if !asp_agents_dir.exists() {
         return Ok(());
     }
-    fs::create_dir_all(codex_agents_dir)
-        .map_err(|error| format!("failed to create {}: {error}", codex_agents_dir.display()))?;
-    for entry in fs::read_dir(asp_agents_dir)
-        .map_err(|error| format!("failed to read {}: {error}", asp_agents_dir.display()))?
-    {
-        let entry = entry
-            .map_err(|error| format!("failed to read {}: {error}", asp_agents_dir.display()))?;
-        let source_path = entry.path();
-        if !source_path.is_file() {
-            continue;
-        }
-        let Some(file_name) = source_path
-            .file_name()
-            .and_then(|file_name| file_name.to_str())
-        else {
-            continue;
-        };
-        let Some(projection_stem) = file_name.strip_suffix("_codex.toml") else {
-            continue;
-        };
-        update_agent_model_file(&source_path, model)?;
-        updated_agent_configs.push(source_path.clone());
+    let config_path = asp_agents_dir.join("config.toml");
+    let text = fs::read_to_string(&config_path)
+        .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
+    let value = toml::from_str::<toml::Value>(&text)
+        .map_err(|error| format!("failed to parse {}: {error}", config_path.display()))?;
+    let agents = value
+        .get("agents")
+        .and_then(toml::Value::as_table)
+        .ok_or_else(|| format!("{} must contain an agents table", config_path.display()))?;
 
-        let projection_path = codex_agents_dir.join(format!("{projection_stem}.toml"));
-        replace_with_symlink(&source_path, &projection_path)?;
-        updated_agent_configs.push(projection_path);
+    for (agent_key, value) in agents {
+        let agent = value
+            .as_table()
+            .ok_or_else(|| format!("agents.{agent_key} must be a TOML table"))?;
+        let profile = agent
+            .get("profile")
+            .and_then(toml::Value::as_str)
+            .ok_or_else(|| format!("agents.{agent_key}.profile is required"))?
+            .to_owned();
+        let projection = agent
+            .get("projection")
+            .and_then(toml::Value::as_str)
+            .ok_or_else(|| format!("agents.{agent_key}.projection is required"))?
+            .to_owned();
+        reject_path_component(&profile, "profile")?;
+        reject_path_component(&projection, "projection")?;
+        let target = CodexAgentProjectionTarget {
+            agent_key: agent_key.clone(),
+            session_name: agent
+                .get("session_name")
+                .and_then(toml::Value::as_str)
+                .unwrap_or(agent_key)
+                .to_owned(),
+            profile,
+            projection,
+        };
+        update_asp_codex_agent_source_and_symlink_projection(
+            asp_agents_dir,
+            codex_agents_dir,
+            &target,
+            model,
+            updated_agent_configs,
+        )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod dynamic_projection_tests {
+    use super::*;
+
+    #[test]
+    fn configured_agents_drive_projection_and_orphan_profiles_stay_hidden() {
+        let root = tempfile::tempdir().expect("temporary projection root");
+        let asp_agents_dir = root.path().join("state/agents");
+        let codex_agents_dir = root.path().join("codex/agents");
+        fs::create_dir_all(&asp_agents_dir).expect("create ASP agents directory");
+        fs::write(
+            asp_agents_dir.join("config.toml"),
+            r#"
+[agents.domain_review]
+session_name = "domain-review"
+profile = "domain-review_codex.toml"
+projection = "domain-review.toml"
+"#,
+        )
+        .expect("write dynamic agent registry");
+        fs::write(
+            asp_agents_dir.join("domain-review_codex.toml"),
+            "model = \"old-model\"\n",
+        )
+        .expect("write configured profile");
+        fs::write(
+            asp_agents_dir.join("orphan_codex.toml"),
+            "model = \"old-model\"\n",
+        )
+        .expect("write orphan profile");
+
+        let mut updated = Vec::new();
+        update_asp_codex_agent_sources_and_symlink_projections(
+            &asp_agents_dir,
+            &codex_agents_dir,
+            "gpt-5.6-luna",
+            &mut updated,
+        )
+        .expect("project configured agents");
+
+        assert!(codex_agents_dir.join("domain-review.toml").exists());
+        assert!(!codex_agents_dir.join("orphan.toml").exists());
+        assert_eq!(updated.len(), 2);
+        let configured_source = fs::read_to_string(asp_agents_dir.join("domain-review_codex.toml"))
+            .expect("read configured profile");
+        assert!(configured_source.contains("gpt-5.6-luna"));
+    }
+
+    #[test]
+    fn existing_agents_table_is_not_repopulated_with_default_profiles() {
+        let root = tempfile::tempdir().expect("temporary config root");
+        let config_path = root.path().join("agents/config.toml");
+        fs::create_dir_all(config_path.parent().expect("config parent"))
+            .expect("create config directory");
+        fs::write(
+            &config_path,
+            r#"
+[agents.domain_review]
+session_name = "domain-review"
+profile = "domain-review_codex.toml"
+projection = "domain-review.toml"
+"#,
+        )
+        .expect("write existing dynamic registry");
+
+        write_codex_dynamic_model(&config_path, "gpt-5.6-luna").expect("update global model");
+
+        let value = toml::from_str::<toml::Value>(
+            &fs::read_to_string(&config_path).expect("read updated registry"),
+        )
+        .expect("parse updated registry");
+        let agents = value
+            .get("agents")
+            .and_then(toml::Value::as_table)
+            .expect("agents table");
+        assert_eq!(agents.len(), 1);
+        assert!(agents.contains_key("domain_review"));
+    }
 }
 
 pub fn update_asp_codex_agent_source_and_symlink_projection(

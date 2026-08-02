@@ -492,6 +492,7 @@ fn decision_kind_label(kind: DecisionKind) -> &'static str {
 
 fn reason_kind_label(kind: ReasonKind) -> &'static str {
     match kind {
+        ReasonKind::ProviderBinaryDirectExecution => "provider-binary-direct-execution",
         ReasonKind::None => "none",
         ReasonKind::ActivationUnavailable => "activation-unavailable",
         ReasonKind::DirectSourceRead => "direct-source-read",

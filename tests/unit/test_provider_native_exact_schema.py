@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from functools import cache
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
@@ -19,12 +20,14 @@ SKELETON_FIXTURE = (
     ROOT
     / "schemas/fixtures/callable-skeleton-projection/valid-rust-dispatch.v1.json"
 )
+EXACT_RESPONSE_FIXTURES = ROOT / "schemas/fixtures/provider-native-exact-response"
 
 
 def _load(path: Path) -> dict[str, object]:
     return json.loads(path.read_text())
 
 
+@cache
 def _validator(path: Path) -> Draft202012Validator:
     schemas = [_load(item) for item in (*DEPENDENCY_SCHEMAS, path)]
     for schema in schemas:
@@ -107,3 +110,17 @@ def test_skeleton_response_without_payload_fails_closed() -> None:
         error.validator == "required" and "projectionPayload" in error.message
         for error in errors
     )
+
+
+def test_live_owner_item_missing_is_terminal_typed_evidence() -> None:
+    response = _load(EXACT_RESPONSE_FIXTURES / "valid-terminal-item-missing.v1.json")
+    _validator(RESPONSE_SCHEMA).validate(response)
+    assert "recommendedNext" not in response
+
+
+def test_live_owner_item_missing_cannot_request_repeat_discovery() -> None:
+    response = _load(
+        EXACT_RESPONSE_FIXTURES / "invalid-item-missing-repeat-search.v1.json"
+    )
+    errors = list(_validator(RESPONSE_SCHEMA).iter_errors(response))
+    assert any(error.validator == "not" for error in errors)

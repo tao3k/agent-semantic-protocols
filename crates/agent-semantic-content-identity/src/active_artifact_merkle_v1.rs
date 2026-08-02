@@ -41,6 +41,7 @@ impl From<&str> for ActiveArtifactSetIdV1 {
 #[serde(rename_all = "kebab-case")]
 pub enum ActiveArtifactKindV1 {
     ExactSelectorGenerationFixture,
+    ProviderRelationGeneration,
     AspBinary,
     Activation,
     ProviderBinary,
@@ -57,6 +58,7 @@ impl ActiveArtifactKindV1 {
             Self::ProviderRegistry => "provider-registry",
             Self::RuntimeConfig => "runtime-config",
             Self::ExactSelectorGenerationFixture => "exact-selector-generation-fixture",
+            Self::ProviderRelationGeneration => "provider-relation-generation",
         }
     }
 }

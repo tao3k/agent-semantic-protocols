@@ -1,0 +1,130 @@
+#+title: Layered Runtime, Agent Session, and Codex Turn Model
+
+* Status
+
+This module is a proof specification for the later ASP Agent Session refactor.
+It does not change Rust.  It separates runtime supervision evidence from Codex
+agent authority so that a server PID, executable digest, or registry file lock
+can never be interpreted as resident absence or replacement authority.
+
+* Source-grounded boundary
+
+The downstream model distinguishes three state machines:
+
+- =ServerProcess= owns warm execution, IPC, registry access, and runtime
+  artifact generations.
+- =AgentSession= owns the canonical child path, physical agent identity,
+  profile binding, physical generation, archive/termination/path-release
+  receipts, and replacement authority.
+- =CodexTurn= owns idle, queued, running, completed, failed, and interrupted
+  turn transitions.
+
+Codex observations such as =list_agents= visibility are projections.  A hidden
+or not-loaded child may remain routable through its canonical path.  Therefore
+visibility is not an absence certificate.  A completed, failed, or interrupted
+turn is not an archived Agent Session.
+
+The ASP Server may restart automatically after a PID exit or artifact rollover.
+That transition changes only =ServerProcess.generation=.  It preserves the
+=AgentSession= generation, canonical path, delivered binding, durable intents,
+and receipts.  Pending effects resume through their stable dispatch keys.
+
+* Stateful architecture
+
+#+begin_src mermaid
+stateDiagram-v2
+  state "ServerProcess" as Server {
+    [*] --> Warm
+    Warm --> Restarting: PID exit or artifact rollover
+    Restarting --> Warm: supervised restart / new runtime generation
+    Warm --> TransportUnavailable: IPC unavailable
+    TransportUnavailable --> Warm: reconnect
+  }
+
+  state "AgentSession" as Session {
+    [*] --> Bound
+    Bound --> BoundHidden: visibility projection hides child
+    BoundHidden --> Bound: canonical resume succeeds
+    Bound --> CloseIntentDurable: close CAS
+    CloseIntentDurable --> Terminated: termination receipt
+    Terminated --> PathReleased: release receipt
+    PathReleased --> ReplacementReserved: strictly newer generation CAS
+  }
+
+  state "CodexTurn" as Turn {
+    [*] --> Idle
+    Idle --> Queued: followup dispatch
+    Queued --> Running: Host accept
+    Running --> Idle: completion receipt
+    Running --> Idle: interrupt receipt
+    Running --> Idle: recoverable failure receipt
+    Idle --> Idle: send_message only
+  }
+
+  note right of Server
+    PID and runtime artifact identity
+    are supervision observations only.
+  end note
+
+  note right of Session
+    Replacement requires termination,
+    path release, and a newer generation.
+  end note
+#+end_src
+
+* Mathematical contract
+
+#+begin_src typst :lint typst-eval
+#let authority = math.op("authority")
+#let replace = math.op("replace")
+#let serverRestart = math.op("server-restart")
+#let session = math.op("session")
+#let visible = math.op("visible")
+#let routable = math.op("routable")
+#let pid = math.op("pid")
+#let artifact = math.op("artifact")
+#let terminated = math.op("terminated")
+#let released = math.op("released")
+#let generation = math.op("generation")
+
+$ authority(serverRestart(s).session) = authority(session(s)) $
+
+$ not visible(s) and routable(s) => authority(s) $
+
+$ pid(s) != pid(s') => authority(session(s)) = authority(session(s')) $
+
+$ artifact(s) != artifact(s') => authority(session(s)) = authority(session(s')) $
+
+$ replace(s, g') = terminated(s) and released(s) and (g' > generation(s)) $
+#+end_src
+
+The equations are non-interference obligations.  They do not claim that every
+session is authoritative.  They claim that runtime-only changes cannot add or
+remove authority, while replacement remains fenced by Agent Session receipts.
+
+* Lean correspondence
+
+The executable model is maintained in:
+
+- =packages/proofs/ASPProof/ASPLayeredAgentLifecycle.lean=
+- =packages/proofs/ASPProof/Audit/ASPLayeredAgentLifecycle.lean=
+
+The required theorem families are:
+
+- server restart preserves session authority;
+- PID and runtime artifact changes cannot authorize replacement;
+- transport failure cannot prove resident absence;
+- hidden-but-routable remains a resident binding;
+- turn completion and interruption do not release the canonical path; and
+- replacement still requires termination, path release, and a newer physical
+  generation.
+
+* Refinement gate
+
+The later Rust refactor MUST expose separate receipts for runtime supervision,
+Agent Session authority, and Codex turn delivery.  A conversion from a runtime
+diagnostic into =resident-absent= is forbidden.  Bootstrap and search recovery
+must use ASP Server IPC while the server owns the registry.  IPC failure may
+produce =transport-unavailable= only; it may not archive, release, or recreate
+the resident.
+

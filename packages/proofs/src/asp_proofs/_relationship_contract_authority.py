@@ -34,7 +34,12 @@ def _query_node_properties(
             check=False,
             capture_output=True,
             encoding="utf-8",
+            timeout=30.0,
         )
+    except subprocess.TimeoutExpired as error:
+        raise RelationshipContractVerificationError(
+            "relationship authority node-property query timed out after 30 seconds"
+        ) from error
     except (OSError, UnicodeError) as error:
         raise RelationshipContractVerificationError(
             f"failed to query relationship authority: {error}"

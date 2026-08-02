@@ -4,7 +4,7 @@ use agent_semantic_client_db::{
 };
 use agent_semantic_runtime::{
     current_agent_runtime_root_session_id, current_agent_runtime_session,
-    has_current_agent_runtime_session, state_core::resolve_state_home,
+    has_current_agent_runtime_session,
 };
 
 use super::agent_session_registry_validation::validate_session_profile;
@@ -297,15 +297,9 @@ pub(crate) fn registered_resident_session_for_root(
 }
 
 pub(super) fn open_existing_registry(
-    _project_root: &Path,
+    project_root: &Path,
 ) -> Result<Option<AgentSessionRegistry>, String> {
-    AgentSessionRegistry::open_existing_state_root(resolve_state_home()?)
-}
-
-pub(super) fn open_or_create_default_registry(
-    _project_root: &Path,
-) -> Result<AgentSessionRegistry, String> {
-    AgentSessionRegistry::open_or_create_state_root(resolve_state_home()?)
+    AgentSessionRegistry::open_existing_project(project_root)
 }
 
 pub(super) fn current_project_session_scope_id(

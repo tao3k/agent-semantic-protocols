@@ -220,6 +220,7 @@ impl MappedWorkspaceExactProjection {
         projection_kind: &str,
         selector: SelectorEntry,
     ) -> Result<WorkspaceRuntimeSelectorRead, String> {
+        let resolved_selector = self.selector_text(&selector)?.to_owned();
         let owner = self.owner_entry(selector.owner_index)?;
         let projection = if projection_kind == "source" {
             self.owner_bytes(&owner)?
@@ -238,6 +239,7 @@ impl MappedWorkspaceExactProjection {
         Ok(WorkspaceRuntimeSelectorRead::Projection {
             generation_digest: self.generation_digest.clone(),
             root_digest: self.root_digest.clone(),
+            resolved_selector,
             bytes: projection,
         })
     }

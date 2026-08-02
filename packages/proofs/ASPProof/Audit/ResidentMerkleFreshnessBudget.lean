@@ -1,0 +1,13 @@
+import ASPProof.ResidentMerkleFreshnessBudget
+
+namespace ASPProof.Audit.ResidentMerkleFreshnessBudget
+
+open ASPProof.ResidentMerkleFreshnessBudget
+
+#check stale_miss_cannot_be_fresh
+#check obsolete_worker_cannot_publish
+#check phase_gates_are_conjunctive
+#check queued_requires_resident_acceptance
+#check workspace_resident_owner_is_server
+
+end ASPProof.Audit.ResidentMerkleFreshnessBudget

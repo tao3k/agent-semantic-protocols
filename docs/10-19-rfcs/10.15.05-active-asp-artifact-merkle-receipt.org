@@ -41,6 +41,25 @@ The public runtime path is a link or atomic pointer to that immutable target.
 The receipt is published atomically only after the target and activation are
 durable.
 
+* Multi-session publication CAS
+
+Atomic rename prevents a torn receipt, but it does not prevent a complete stale
+receipt from replacing a newer one. Every materializer therefore binds its
+candidate to the exact previous receipt bytes (or to absence for first
+publication). Publication acquires the receipt's writer lock, re-reads the
+current receipt, and performs a compare-and-swap before the atomic rename.
+
+A changed base rejects the whole candidate with an explicit CAS conflict. The
+stale materializer MUST NOT recompute from its old activation, overwrite the
+new artifact root, or repair on the query path. Concurrent sessions may build
+independently, but only a candidate derived from the current complete root may
+advance the active receipt. Readers remain lock-free and observe either the old
+complete receipt or the new complete receipt.
+
+The executable proof obligation is owned by
+=ASPProof.ExactSelectorGenerationAdmission=: a stale artifact base cannot
+publish, while a matching base publishes exactly one complete successor root.
+
 * Lightweight verifier
 
 Healthcheck is a read-only verifier, not a materializer.  It:

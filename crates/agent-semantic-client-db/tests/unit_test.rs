@@ -4,6 +4,8 @@
 mod agent_session_interactive_loop;
 #[path = "unit/agent_session_lifecycle_p0.rs"]
 mod agent_session_lifecycle_p0;
+#[path = "unit/agent_session_runtime_proxy.rs"]
+mod agent_session_runtime_proxy;
 #[path = "unit/context_run_mvcc.rs"]
 mod context_run_mvcc;
 #[path = "unit/db.rs"]

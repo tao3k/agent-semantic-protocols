@@ -112,3 +112,17 @@ their distinct language IDs and selector dialects.
   addressable;
 - genuine missing, kind-mismatch, and ambiguity states remain distinct;
 - ASP core contains no language-specific canonical item constructor.
+- exact failure classification is generation-evidenced: absence of an owner from a
+  complete active envelope is =owner-missing / owner-not-in-workspace=; absence of
+  an item from a present owner is =item-missing / item-not-in-live-owner=; and
+  =selector-stale / selector-not-in-active-generation= requires an explicit
+  selector-generation identity mismatch rather than an inferred missing owner.
+
+The executable proof chain is RFC ->
+=packages/proofs/ASPProof/ExactSelectorGenerationAdmission.lean= ->
+=schemas/provider-native-exact-response.v1.schema.json= -> provider resolution
+implementation -> installed exact-selector replay. Closure requires positive
+and negative schema fixtures plus a replay showing that a current-generation
+missing owner returns =owner-missing= while an explicitly mismatched generation
+returns =selector-stale=. No stage may reclassify absence merely to preserve an
+older CLI expectation.

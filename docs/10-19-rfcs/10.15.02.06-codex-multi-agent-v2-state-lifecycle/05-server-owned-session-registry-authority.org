@@ -1,0 +1,106 @@
+#+TITLE: Server-Owned Agent Session Registry Authority
+#+PROPERTY: header-args:typst :results output
+
+* Status
+
+This module defines an RFC and proof boundary.  It intentionally precedes the
+Rust Agent Session lifecycle refactor.
+
+* Observed Counterexample
+
+The ASP Runtime Server can be healthy while owning the Turso session-registry
+file lock.  A separate =asp agent session bootstrap= process that attempts to
+open the same file directly then fails before producing a lifecycle receipt.
+
+This is not evidence that the server is unhealthy, that the resident is absent,
+or that replacement is authorized.  It is evidence that two control-plane
+routes disagree about registry ownership.
+
+* Authority Contract
+
+Normal operation has one registry owner and one route:
+
+#+begin_example
+owner = ASP Server
+route = typed server IPC
+#+end_example
+
+Direct file access is reserved for explicit offline recovery after the server
+has released ownership and the CLI has acquired an exclusive recovery lease.
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> ServerOwned
+  ServerOwned --> ServerIPCReady: runtime transport ready
+  ServerIPCReady --> ServerOwned: session operation receipt
+  ServerOwned --> Draining: supervised restart
+  Draining --> ServerOwned: new server generation
+  Draining --> OfflineUnowned: server termination and ownership release
+  OfflineUnowned --> OfflineCliOwned: exclusive recovery lease
+  OfflineCliOwned --> OfflineUnowned: recovery receipt and lease release
+  OfflineUnowned --> ServerOwned: supervised server acquisition
+
+  ServerOwned --> DirectFileDenied: CLI direct open
+  DirectFileDenied --> ServerOwned: no lifecycle mutation
+
+  note right of DirectFileDenied
+    A file-lock failure cannot authorize
+    replacement or same-name reservation.
+  end note
+#+end_src
+
+* Mathematical Contract
+
+Let =A(m,o,r,t)= be the registry access-admission function for runtime mode,
+owner, route, and transport state.
+
+#+begin_src typst
+$ A("normal", "server", "server-ipc", "ready") = 1 $
+$ A("normal", "server", "direct-file", t) = 0 $
+$ A("offline", "cli", "direct-file", "ready") = 1 $
+#+end_src
+
+Server restart may change only the server generation.  It cannot change the
+Agent Session generation, delivered binding, or path-release receipt.
+
+#+begin_src typst
+$ pi_S(restart(s, g)) = pi_S(s) $
+$ pi_B(restart(s, g)) = pi_B(s) $
+$ pi_P(restart(s, g)) = pi_P(s) $
+#+end_src
+
+If the path-release receipt is missing, a registry lock failure cannot create
+replacement authority:
+
+#+begin_src typst
+$ T_R = "locked" and P(s) = 0 => R(s, g) = 0 $
+#+end_src
+
+* Lean Correspondence
+
+- =packages/proofs/ASPProof/ASPAgentSessionRegistryAuthority.lean=
+- =packages/proofs/ASPProof/Audit/ASPAgentSessionRegistryAuthority.lean=
+- =packages/proofs/receipts/agent-session-registry-authority-audit-v1.json=
+- =packages/proofs/receipts/agent-session-registry-authority-axle-v1.json=
+
+The admitted audit digest is
+=4532ae9c06d378c2c534f5556b04c4f4456059fde0966194038afd6a7a4ee179=.
+
+| RFC claim | Lean declaration |
+|-
+| Normal server IPC is admitted | =normalServerIpcIsAdmitted= |
+| Server ownership rejects direct file access | =normalServerOwnerRejectsDirectFile= |
+| A live server lock rejects direct fallback | =serverLockRejectsDirectFile= |
+| Offline direct access requires CLI ownership | =offlineDirectFileRequiresCliOwnership= |
+| Restart preserves Session authority | =restartPreservesSessionAuthority= |
+| Lock failure cannot authorize replacement | =registryLockFailureCannotAuthorizeReplacement= |
+| Lock failure cannot reserve the same name | =registryLockFailureCannotReserveSameName= |
+
+* Rust Refinement Boundary
+
+The later Rust refactor must route normal Agent Session operations through the
+ASP Server IPC data plane.  It must not let a CLI process compete for the server
+owned Turso file lock.  Offline direct access requires an explicit ownership
+transition and cannot be selected merely because IPC failed.
+
+No Rust implementation is part of this RFC/proof phase.

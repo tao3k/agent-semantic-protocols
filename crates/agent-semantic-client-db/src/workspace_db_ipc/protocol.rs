@@ -23,7 +23,7 @@ pub use crate::workspace_db_endpoint::{
 };
 pub use crate::workspace_db_owner_election::{
     WorkspaceDbOwnerRetirement, remove_stale_workspace_db_owner_socket,
-    try_acquire_workspace_db_owner_election, try_retire_workspace_db_owner_endpoint,
+    try_retire_workspace_db_owner_endpoint,
 };
 
 pub(super) const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
@@ -32,55 +32,51 @@ fn workspace_db_ipc_read_lane_capacity() -> usize {
     crate::runtime_concurrency::RuntimeConcurrencyPlan::current().reader_limit()
 }
 
-pub async fn connect_runtime_server_workspace_session(
-    project_root: &Path,
-) -> Result<WorkspaceDbIpcSession, String> {
-    let workspace_identity =
-        agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?
-            .workspace
-            .workspace_id
-            .to_string();
-    let state_home =
-        if let Some(path) = std::env::var_os("ASP_STATE_HOME").filter(|value| !value.is_empty()) {
-            PathBuf::from(path)
-        } else {
-            let home = std::env::var_os("HOME")
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| "ASP_STATE_HOME and HOME are both unset".to_owned())?;
-            PathBuf::from(home).join(".agent-semantic-protocols")
-        };
-    let endpoint_path = crate::runtime_server_endpoint_path(&state_home);
-    let endpoint_bytes = tokio::fs::read(&endpoint_path).await.map_err(|error| {
-        format!(
-            "Runtime Server endpoint is unavailable at {}: {error}",
-            endpoint_path.display()
-        )
-    })?;
-    let endpoint: crate::RuntimeServerEndpoint = serde_json::from_slice(&endpoint_bytes)
-        .map_err(|error| format!("failed to decode Runtime Server endpoint: {error}"))?;
-    endpoint.validate()?;
-    Ok(WorkspaceDbIpcSession::for_runtime_server(
-        &endpoint,
-        workspace_identity,
-        tokio::fs::canonicalize(project_root)
-            .await
-            .map_err(|error| {
-                format!(
-                    "failed to canonicalize Runtime Server project root {}: {error}",
-                    project_root.display()
-                )
-            })?,
-    ))
+fn deserialize_changed_paths<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let paths = Vec::<String>::deserialize(deserializer)?;
+    if paths.is_empty() {
+        return Err(serde::de::Error::custom(
+            "changedPaths must contain at least one normalized path",
+        ));
+    }
+    let mut unique = std::collections::BTreeSet::new();
+    for path in &paths {
+        if path.trim().is_empty() {
+            return Err(serde::de::Error::custom(
+                "changedPaths must not contain empty paths",
+            ));
+        }
+        if !unique.insert(path) {
+            return Err(serde::de::Error::custom(
+                "changedPaths must not contain duplicate paths",
+            ));
+        }
+    }
+    Ok(paths)
 }
 
-pub fn read_source_index_via_runtime_server(
-    request: WorkspaceDbSourceIndexLookupRequest,
-) -> Result<ClientDbSourceIndexLookupResult, String> {
-    crate::engine::facade::block_on_db_engine_async(async move {
-        let session = connect_runtime_server_workspace_session(&request.project_root).await?;
-        session.read_source_index(&request).await
-    })
+fn deserialize_mutation_id<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let mutation_id = String::deserialize(deserializer)?;
+    if mutation_id.trim().is_empty() {
+        return Err(serde::de::Error::custom(
+            "mutationId must be non-empty text",
+        ));
+    }
+    Ok(mutation_id)
 }
+
+#[path = "client.rs"]
+mod client;
+#[path = "session.rs"]
+mod session;
+pub use client::{connect_runtime_server_workspace_session, read_source_index_via_runtime_server};
+
 /// Typed workspace operation accepted by the Runtime Server data-plane protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -109,7 +105,11 @@ pub enum WorkspaceDbIpcOperation {
         overlay: crate::runtime_server_workspace::WorkspaceRuntimeSelectorOverlay,
     },
     AdmitRuntimeGeneration {
+        #[serde(deserialize_with = "deserialize_mutation_id")]
+        mutation_id: String,
         project_root: String,
+        #[serde(deserialize_with = "deserialize_changed_paths")]
+        changed_paths: Vec<String>,
     },
     EnsureRuntimeGeneration {
         project_root: String,
@@ -121,6 +121,10 @@ pub enum WorkspaceDbIpcOperation {
         project_root: String,
         arguments: Vec<String>,
         input: String,
+    },
+    AgentSessionRegistry {
+        project_root: String,
+        operation: AgentSessionRegistryIpcOperation,
     },
     WriteProviderIncrementalOwner {
         request: ProviderIncrementalOwnerWrite,
@@ -231,10 +235,16 @@ pub enum WorkspaceDbIpcResult {
     RuntimeGenerationAdmission {
         receipt: crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt,
     },
+    RuntimeGenerationMutationAdmission {
+        receipt: crate::runtime_server_admission::WorkspaceGenerationMutationAdmissionReceipt,
+    },
     HookEvaluation {
         workspace_identity: String,
         project_root: String,
         output: String,
+    },
+    AgentSessionRegistry {
+        result: AgentSessionRegistryIpcResult,
     },
     RuntimeSelector {
         read: crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
@@ -276,7 +286,6 @@ pub struct WorkspaceDbIpcResponse {
 
 pub use crate::workspace_db_ipc_server::{
     serve_one_workspace_db_ipc_request, serve_one_workspace_db_session_request,
-    serve_workspace_db_session_until_shutdown,
 };
 
 static NEXT_WORKSPACE_DB_IPC_CLIENT_ID: std::sync::atomic::AtomicU64 =
@@ -285,7 +294,7 @@ static NEXT_WORKSPACE_DB_IPC_CLIENT_ID: std::sync::atomic::AtomicU64 =
 #[derive(Debug)]
 pub struct WorkspaceDbIpcSession {
     endpoint: WorkspaceDbSessionBinding,
-    shared: std::sync::Arc<WorkspaceDbIpcSessionState>,
+    pub(super) shared: std::sync::Arc<WorkspaceDbIpcSessionState>,
 }
 
 #[derive(Clone, Debug)]
@@ -301,11 +310,12 @@ struct WorkspaceDbSessionBinding {
 }
 
 #[derive(Debug)]
-struct WorkspaceDbIpcSessionState {
+pub(super) struct WorkspaceDbIpcSessionState {
     client_id: u64,
     next_request_id: std::sync::atomic::AtomicU64,
     lanes: Vec<tokio::sync::Mutex<Option<UnixStream>>>,
-    generation_admission_started: std::sync::atomic::AtomicBool,
+    pub(super) runtime_generation_mutations:
+        std::sync::Arc<super::runtime_generation::MutationWorkspaceLane>,
 }
 
 impl Clone for WorkspaceDbIpcSession {
@@ -319,6 +329,12 @@ impl Clone for WorkspaceDbIpcSession {
 
 impl WorkspaceDbIpcSession {
     pub fn new(endpoint: WorkspaceDbOwnerEndpoint) -> Self {
+        let runtime_generation_mutations =
+            super::runtime_generation::runtime_generation_mutation_lane(
+                &endpoint.socket_path,
+                endpoint.owner_epoch,
+                &endpoint.workspace_identity,
+            );
         Self {
             endpoint: WorkspaceDbSessionBinding {
                 workspace_identity: endpoint.workspace_identity,
@@ -337,7 +353,7 @@ impl WorkspaceDbIpcSession {
                 lanes: (0..workspace_db_ipc_read_lane_capacity())
                     .map(|_| tokio::sync::Mutex::new(None))
                     .collect(),
-                generation_admission_started: std::sync::atomic::AtomicBool::new(false),
+                runtime_generation_mutations,
             }),
         }
     }
@@ -347,9 +363,16 @@ impl WorkspaceDbIpcSession {
         workspace_identity: impl Into<String>,
         project_root: PathBuf,
     ) -> Self {
+        let workspace_identity = workspace_identity.into();
+        let runtime_generation_mutations =
+            super::runtime_generation::runtime_generation_mutation_lane(
+                &endpoint.data_plane_socket_path,
+                endpoint.owner_epoch,
+                &workspace_identity,
+            );
         Self {
             endpoint: WorkspaceDbSessionBinding {
-                workspace_identity: workspace_identity.into(),
+                workspace_identity,
                 project_root: Some(project_root),
                 transport_contract_digest: endpoint.transport_contract_digest.clone(),
                 owner_epoch: endpoint.owner_epoch,
@@ -365,7 +388,7 @@ impl WorkspaceDbIpcSession {
                 lanes: (0..workspace_db_ipc_read_lane_capacity())
                     .map(|_| tokio::sync::Mutex::new(None))
                     .collect(),
-                generation_admission_started: std::sync::atomic::AtomicBool::new(false),
+                runtime_generation_mutations,
             }),
         }
     }
@@ -378,48 +401,41 @@ impl WorkspaceDbIpcSession {
 
     pub(super) async fn call_runtime_generation_admission(
         &self,
+        mutation_id: String,
         project_root: String,
-    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
-        if self
-            .shared
-            .generation_admission_started
-            .compare_exchange(
-                false,
-                true,
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-            )
-            .is_err()
-        {
-            return Ok(
-                crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt {
-                    schema_id: crate::runtime_server_admission::WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID
-                        .to_owned(),
-                    schema_version: "1".to_owned(),
-                    workspace_identity: self.endpoint.workspace_identity.clone(),
-                    state: crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Building,
-                    accepted: false,
-                    attempt: 1,
-                    error: None,
-                },
-            );
+        changed_paths: Vec<String>,
+    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationMutationAdmissionReceipt, String>
+    {
+        if changed_paths.is_empty() {
+            return Err("runtime generation admission requires changed paths".to_owned());
         }
-        let result = match self
-            .call_operation(WorkspaceDbIpcOperation::AdmitRuntimeGeneration { project_root })
+        if mutation_id.trim().is_empty() {
+            return Err("runtime generation admission requires a mutation id".to_owned());
+        }
+        let expected_mutation_id = mutation_id.clone();
+        match self
+            .call_operation(WorkspaceDbIpcOperation::AdmitRuntimeGeneration {
+                mutation_id,
+                project_root,
+                changed_paths,
+            })
             .await
         {
-            Ok(WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }) => Ok(receipt),
+            Ok(WorkspaceDbIpcResult::RuntimeGenerationMutationAdmission { receipt }) => {
+                receipt.validate()?;
+                if receipt.mutation_id != expected_mutation_id {
+                    return Err(format!(
+                        "Runtime Server returned a mutation admission identity mismatch: expectedMutationId={} actualMutationId={}",
+                        expected_mutation_id, receipt.mutation_id
+                    ));
+                }
+                Ok(receipt)
+            }
             Ok(_) => {
                 Err("Runtime Server returned an unexpected generation admission result".to_owned())
             }
             Err(error) => Err(error),
-        };
-        if result.is_err() {
-            self.shared
-                .generation_admission_started
-                .store(false, std::sync::atomic::Ordering::Release);
         }
-        result
     }
 
     pub(super) async fn call_operation(
@@ -520,165 +536,6 @@ impl WorkspaceDbIpcSession {
             result => Ok(result),
         }
     }
-
-    pub fn workspace_identity(&self) -> &str {
-        self.endpoint.workspace_identity.as_str()
-    }
-
-    /// Digest of the typed transport contract bound to this resident owner.
-    pub fn transport_contract_digest(&self) -> &str {
-        self.endpoint.transport_contract_digest.as_str()
-    }
-
-    /// Epoch of the resident owner that accepted this IPC session.
-    pub fn owner_epoch(&self) -> u64 {
-        self.endpoint.owner_epoch
-    }
-
-    /// Immutable ASP artifact used to start the resident.
-    pub fn runtime_binary_path(&self) -> &str {
-        &self.endpoint.runtime_binary_path
-    }
-
-    /// Content digest of the ASP artifact used to start the resident.
-    pub fn runtime_binary_digest(&self) -> &str {
-        &self.endpoint.runtime_binary_digest
-    }
-
-    pub async fn health(&self) -> Result<(), String> {
-        let result = tokio::time::timeout(
-            std::time::Duration::from_millis(50),
-            self.call_operation(WorkspaceDbIpcOperation::Health),
-        )
-        .await
-        .map_err(|_| "workspace resident DB service health exceeded 50ms".to_owned())??;
-        match result {
-            WorkspaceDbIpcResult::Healthy => Ok(()),
-            result => Err(format!(
-                "workspace resident DB service returned an unexpected health result: {result:?}"
-            )),
-        }
-    }
-
-    pub async fn shutdown(&self) -> Result<(), String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::Shutdown)
-            .await?
-        {
-            WorkspaceDbIpcResult::ShutdownAccepted => Ok(()),
-            result => Err(format!(
-                "workspace resident DB service returned an unexpected shutdown result: {result:?}"
-            )),
-        }
-    }
-
-    pub async fn read_source_index(
-        &self,
-        request: &WorkspaceDbSourceIndexLookupRequest,
-    ) -> Result<ClientDbSourceIndexLookupResult, String> {
-        let mut request = request.clone();
-        if let Some(project_root) = self.endpoint.project_root.as_ref() {
-            request.project_root = project_root.clone();
-        }
-        match self
-            .call_operation(WorkspaceDbIpcOperation::ReadSourceIndex { request })
-            .await?
-        {
-            WorkspaceDbIpcResult::SourceIndex { lookup } => Ok(lookup),
-            _ => Err("workspace owner IPC returned an unexpected source-index result".to_owned()),
-        }
-    }
-
-    pub async fn read_provider_treesitter_query(
-        &self,
-        query: &ProviderTreeSitterQueryIdentity,
-        incremental_budget: u32,
-        continuation: Option<&ProviderTreeSitterContinuation>,
-    ) -> Result<ProviderTreeSitterQueryRead, String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::ReadProviderTreeSitterQuery {
-                query: query.clone(),
-                incremental_budget,
-                continuation: continuation.cloned(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::ProviderTreeSitterQuery { read } => Ok(read),
-            _ => {
-                Err("workspace owner IPC returned an unexpected Tree-sitter read result".to_owned())
-            }
-        }
-    }
-
-    pub async fn read_resident_selector(
-        &self,
-        request: &TursoResidentSelectorQuery,
-    ) -> Result<Option<TursoResidentSelectorRead>, String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::ReadResidentSelector {
-                request: request.clone(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::ResidentSelector { read } => Ok(read),
-            _ => Err(
-                "workspace owner IPC returned an unexpected resident selector result".to_owned(),
-            ),
-        }
-    }
-
-    pub async fn write_provider_treesitter_owner_result(
-        &self,
-        query: &ProviderTreeSitterQueryIdentity,
-        result: &ProviderTreeSitterOwnerResult,
-    ) -> Result<ProviderTreeSitterOwnerWriteReceipt, String> {
-        match self
-            .call_operation(
-                WorkspaceDbIpcOperation::WriteProviderTreeSitterOwnerResult {
-                    query: query.clone(),
-                    result: result.clone(),
-                },
-            )
-            .await?
-        {
-            WorkspaceDbIpcResult::ProviderTreeSitterOwner { receipt } => Ok(receipt),
-            _ => Err(
-                "workspace owner IPC returned an unexpected Tree-sitter write result".to_owned(),
-            ),
-        }
-    }
-
-    pub async fn upsert_provider_owner_inventory(
-        &self,
-        request: &ProviderOwnerInventoryWrite,
-    ) -> Result<ProviderOwnerInventoryWriteReceipt, String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::UpsertProviderInventory {
-                request: request.clone(),
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::ProviderInventory { receipt } => Ok(receipt),
-            _ => Err("workspace owner IPC returned an unexpected inventory result".to_owned()),
-        }
-    }
-
-    pub async fn finish_writes(
-        &self,
-        scope: &ProviderIncrementalScoped,
-        mode: WorkspaceDbWriteFinishMode,
-    ) -> Result<WorkspaceDbWriteFinishReceipt, String> {
-        match self
-            .call_operation(WorkspaceDbIpcOperation::FinishWrites {
-                scope: scope.clone(),
-                mode,
-            })
-            .await?
-        {
-            WorkspaceDbIpcResult::WriteFinish { receipt } => Ok(receipt),
-            _ => Err("workspace owner IPC returned an unexpected write finish result".to_owned()),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -691,3 +548,6 @@ pub const WORKSPACE_DB_OWNER_REQUEST_SCHEMA_ID: &str =
 pub const WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID: &str =
     "agent.semantic-protocols.workspace-db-owner-response.v1";
 pub const WORKSPACE_DB_OWNER_SCHEMA_VERSION: &str = "1";
+use super::agent_session_registry::{
+    AgentSessionRegistryIpcOperation, AgentSessionRegistryIpcResult,
+};

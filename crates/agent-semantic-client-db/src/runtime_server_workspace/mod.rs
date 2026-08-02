@@ -34,8 +34,9 @@ pub use exact_segment::{
 pub use lease::WorkspaceGenerationLease;
 pub use memory_backend::WorkspaceProjectionLease;
 pub use model::{
-    RuntimeDataPlaneCounters, RuntimeServerShutdownReceipt, WorkspaceDataPlanePerformanceReceipt,
-    WorkspaceDerivedProjectionSnapshot, WorkspaceGenerationBuild, WorkspaceGenerationSnapshot,
+    RuntimeDataPlaneCounters, RuntimeServerShutdownReceipt, WORKSPACE_GENERATION_DELTA_SCHEMA_ID,
+    WorkspaceDataPlanePerformanceReceipt, WorkspaceDerivedProjectionSnapshot,
+    WorkspaceGenerationBuild, WorkspaceGenerationDelta, WorkspaceGenerationSnapshot,
     WorkspaceGenerationState, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
     WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeOwnerFreshnessReceipt,
     WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
@@ -47,3 +48,8 @@ pub use restore::restore_active_turso_generation;
 pub use scope_path::{workspace_generation_directory, workspace_generation_pointer_path};
 pub use segment::{MappedWorkspaceGeneration, WorkspaceGenerationPublisher};
 pub use store::prepare_runtime_server_workspace_store;
+mod retirement;
+pub use retirement::{
+    RESIDENT_WORKSPACE_RETIREMENT_RECEIPT_SCHEMA_ID, ResidentWorkspaceRetirementReason,
+    ResidentWorkspaceRetirementReceipt,
+};

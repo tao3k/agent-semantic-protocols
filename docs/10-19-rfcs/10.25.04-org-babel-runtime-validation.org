@@ -1,0 +1,326 @@
+#+title: 10.25.04 Org Babel Runtime Validation Evidence
+#+startup: overview
+
+* Status
+
+Draft.
+
+* Problem
+
+Structural Org lint is not runtime validation.  A Typst source block can be a
+valid Org element while its body is invalid Typst.  Returning a clean Org lint
+report without executing the registered Typst validator launders structural
+evidence into runtime evidence.
+
+The observed counterexample was concrete:
+
+1. =orgize lint= returned a clean report for an Org document containing an
+   invalid Typst block.
+2. =typst eval --in - '"ok"'= over the same block body returned a non-zero
+   diagnostic.
+
+The Typst block MUST remain in the document.  The repair belongs to Orgize's
+embedded lint dependency contract, not to downstream PDF compilation and not
+to removal of mathematical content.
+
+* Scientific engineering cycle
+
+#+begin_example
+counterexample -> RFC obligation -> Lean model -> axiom audit
+               -> Rust implementation -> executable fixture
+               -> new counterexample or closure receipt
+#+end_example
+
+Each arrow is directional.  A later-stage success does not retroactively prove
+an earlier obligation that it did not check.
+
+* Normative obligations
+
+- =ORG-TYPST-LINT-RUNTIME-RECEIPT-013=: admitted runtime evidence MUST conform
+  to =org-babel-runtime-validation-receipt.v1= version =1=. An accepted receipt
+  MUST report =terminationOutcome= = =exited=, =exitCode= = =0=,
+  =childReaped= = =true=, exact non-empty source context, exact binding,
+  positive bounded policy, combined output observations within policy, and
+  =status= = =accepted=. Every failure termination outcome and every
+  =rejected= status MUST deny proof acceptance.
+
+The v1 receipt has this typed projection:
+
+- =sourceContext=: =sourcePath=, =workingDirectory=, and =packageRoot=;
+- =binding=: =kind= (=typst-path= or =exact-path=), =program=, =args=, and
+  =stdin=true=;
+- =policy=: positive =timeoutMs= and positive =outputByteBudget=;
+- =observation=: =stdoutBytes=, =stderrBytes=, =elapsedMs=,
+  =terminationOutcome=, optional =exitCode=, and =childReaped=;
+- =status=: =accepted= or =rejected=; and
+- optional =diagnosticCode=.
+
+The receipt intentionally contains no raw stdout or stderr bodies, no
+executable or source digests, and no no-side-effect assertion. The
+=ORG-TYPST-LINT-SIDE-EFFECT-007= requirement remains an independently tested
+behavioral obligation; it MUST NOT be fabricated as a v1 receipt field.
+
+The following correspondence refinements are normative and disambiguate
+=ORG-TYPST-LINT-SOURCE-CONTEXT-011= and
+=ORG-TYPST-LINT-OUTPUT-BOUND-012=:
+
+- =workingDirectory= is the operational process context and MUST equal the
+  source file's parent directory.
+- =packageRoot= is the logical document or project-resolution identity. It
+  MUST be carried in the structured runtime receipt and MUST NOT be interpreted
+  as a second operating-system current directory.
+- Missing or mismatched =workingDirectory= or =packageRoot= evidence MUST fail
+  closed.
+- Stdout and stderr MUST share one finite combined output-byte budget.
+  Acceptance requires =outputByteBudget > 0= and
+  =stdoutBytes + stderrBytes <= outputByteBudget=. Two independent per-stream
+  limits of the same size are not equivalent because they may admit twice the
+  intended budget.
+- The structured runtime receipt MUST expose the exact source context,
+  =outputByteBudget=, =stdoutBytes=, =stderrBytes=, and an overflow or
+  termination outcome.
+- Behavioral success alone is not proof acceptance. A zero exit without the
+  structured receipt cannot discharge the runtime evidence lane.
+
+- =ORG-TYPST-LINT-STRUCTURAL-001=: structural Org validity MUST be recorded
+  independently from runtime validity.
+- =ORG-TYPST-LINT-RUNTIME-002=: Typst source blocks MUST use the registered
+  Typst runtime validator during =orgize lint=.
+- =ORG-TYPST-LINT-BINDING-003=: the receipt MUST identify the exact runtime,
+  arguments, and body transport mode.
+- =ORG-TYPST-LINT-STDIN-004=: the Typst body MUST be supplied through standard
+  input.  Lint MUST NOT require an intermediate =.typ=, PDF, or image file.
+- =ORG-TYPST-LINT-EXIT-005=: spawn errors and non-zero runtime exits MUST produce
+  lint findings and a failing lint exit.
+- =ORG-TYPST-LINT-TIMEOUT-006=: runtime validation MUST have a finite timeout;
+  timeout MUST kill and reap the child and MUST fail closed.
+- =ORG-TYPST-LINT-SIDE-EFFECT-007=: successful lint MUST NOT depend on a runtime
+  output artifact.
+- =ORG-TYPST-LINT-ACCEPTANCE-008=: acceptance requires both structural and
+  runtime evidence.
+- =ORG-TYPST-LINT-IMPLICIT-009=: =:lint=, =:format=, and =:runtime= MAY be
+  omitted.  A Typst block defaults to the registered Typst contracts; omission
+  MUST NOT disable validation.
+- =ORG-TYPST-LINT-BOUNDED-RUNTIME-010=: authorization of a runtime binding alone
+  MUST NOT imply acceptance; bounded execution evidence is still required.
+- =ORG-TYPST-LINT-SOURCE-CONTEXT-011=: runtime validation MUST bind the source
+  file's parent directory so relative imports are checked in the same context
+  as the document; caller working directory is not sufficient evidence.
+- =ORG-TYPST-LINT-OUTPUT-BOUND-012=: captured stdout and stderr MUST have finite
+  byte budgets.  Runtime timeout alone MUST NOT authorize unbounded memory use.
+
+* Mathematical model
+
+For a v1 receipt =r=, runtime admission additionally requires the typed
+termination/status conjunction. Neither a zero exit code nor an =accepted=
+status is sufficient in isolation.
+
+The mathematical source is an Org Babel Typst block.  It intentionally omits
+=:lint=, =:format=, and =:runtime= so the implicit Typst contract is exercised.
+
+#+name: org-babel-runtime-validation-model
+#+begin_src typst
+#let accepted(
+  structural,
+  runtime,
+  exact-binding,
+  bounded-time,
+  bounded-output,
+  source-context,
+  no-artifact,
+) = (
+  structural and runtime and exact-binding and bounded-time and
+  bounded-output and source-context and no-artifact
+)
+
+#let structural-only = accepted(true, false, false, false, false, false, true)
+#let validated = accepted(true, true, true, true, true, true, true)
+#let unbounded-time = accepted(true, true, true, false, true, true, true)
+#let unbounded-output = accepted(true, true, true, true, false, true, true)
+#let wrong-context = accepted(true, true, true, true, true, false, true)
+
+#assert(not structural-only)
+#assert(validated)
+#assert(not unbounded-time)
+#assert(not unbounded-output)
+#assert(not wrong-context)
+
+$
+  "Accept"(d) := S(d) and V(d) and B(d) and T(d) and O(d) and C(d) and N(d)
+$
+
+$
+  S(d) arrow.r.double not V(d)
+$
+
+$
+  not T(d) arrow.r.double not "Accept"(d)
+$
+#let source-context-bound(working-directory-exact, package-root-bound) = (
+  working-directory-exact and package-root-bound
+)
+#let combined-output-bounded(stdout-bytes, stderr-bytes, output-byte-budget) = (
+  output-byte-budget > 0 and
+  stdout-bytes + stderr-bytes <= output-byte-budget
+)
+#assert(source-context-bound(true, true))
+#assert(not source-context-bound(true, false))
+#assert(combined-output-bounded(400, 500, 1024))
+#assert(not combined-output-bounded(600, 600, 1024))
+$
+  C(d) := W(d) and P(d)
+$
+$
+  O(d) := B_o(d) > 0 and
+    "stdoutBytes"(d) + "stderrBytes"(d) <= B_o(d)
+$
+#let v1-receipt-accepted(
+  outcome,
+  exit-code,
+  child-reaped,
+  status,
+  exact-context,
+  combined-output-in-budget,
+) = (
+  outcome == "exited" and exit-code == 0 and child-reaped and
+  status == "accepted" and exact-context and combined-output-in-budget
+)
+#assert(v1-receipt-accepted(
+  "exited", 0, true, "accepted", true, true,
+))
+#assert(not v1-receipt-accepted(
+  "spawn-failed", 0, true, "accepted", true, true,
+))
+#assert(not v1-receipt-accepted(
+  "exited", 0, true, "rejected", true, true,
+))
+#assert(not v1-receipt-accepted(
+  "exited", 1, true, "accepted", true, true,
+))
+$
+  R_"v1"(d) := E(d) and Z(d) and H(d) and X(d) and Q(d)
+$
+$
+  "AcceptedStatus"(d) arrow.r.double not R_"v1"(d)
+$
+#+end_src
+
+Here =S= is structural evidence, =V= is runtime validation evidence, =B= is
+exact binding identity, =T= is bounded termination evidence, =O= is bounded
+output evidence, =C= is source-context identity, and =N= is the no-artifact
+side-effect condition.
+
+* Lean correspondence
+
+The proof owner is
+=packages/proofs/ASPProof/OrgizeTypstLintEvidence.lean=.  Its independent audit
+owner is =packages/proofs/ASPProof/Audit/OrgizeTypstLintEvidence.lean=, and its
+machine-readable generator is
+=packages/proofs/audit/OrgizeTypstLintEvidenceJson.lean=.
+
+The Lean model MUST provide both countermodels and preservation theorems:
+
+- structural success does not imply runtime success;
+- an untyped =Other= header classification cannot establish a typed runtime
+  binding;
+- a zero-timeout or unbounded execution policy cannot establish bounded runtime
+  evidence;
+- missing runtime evidence denies acceptance;
+- non-zero exit and timeout deny acceptance;
+- exact stdin binding plus bounded zero-exit validation preserves acceptance;
+- mismatched source context or unbounded runtime output denies acceptance;
+- runtime evidence cannot be replaced with proof-lane or structural evidence.
+
+No target theorem may be introduced as an axiom.  The JSON audit MUST list all
+normative declarations, their axiom inventories, and clause coverage.
+
+* Rust correspondence
+
+The Rust-to-proof projection MUST preserve the v1 field names and enum domains
+listed above. In particular, =Option<i32>= exit status projects to optional
+integer =exitCode=; it does not invent zero for spawn, I/O, timeout, or output
+budget failures. The five termination outcomes are =exited=, =timed-out=,
+=output-budget-exceeded=, =spawn-failed=, and =io-failed=.
+
+The executable correspondence distinguishes operational context from logical
+identity. Rust MUST execute the child with =workingDirectory= equal to the
+source parent. Project or document resolution MUST supply =packageRoot= to the
+runtime receipt, but =packageRoot= is not an argument to
+=Command::current_dir=. The runtime MUST also report one shared output budget,
+the observed stdout and stderr byte counts, and the terminal outcome. These
+receipt fields are acceptance evidence; reconstructing them after a successful
+process exit is evidence laundering.
+
+Orgize is an ASP dependency owner, not an independently authoritative search
+CLI.  The implementation therefore belongs to the Orgize crate API used by the
+integrated ASP binary.
+
+The implementation MUST:
+
+1. classify =lint=, =format=, and =runtime= as typed source-block header kinds;
+2. resolve the implicit Typst binding when the headers are absent;
+3. execute =typst eval --in - '"ok"'= with the source block body on stdin;
+4. bound execution time and reap timed-out children;
+5. bind the runtime current directory to the source file's parent directory;
+6. bound captured stdout and stderr bytes;
+7. convert spawn, timeout, output-budget, and non-zero diagnostics into lint
+   findings; and
+8. preserve the existing pure structural findings instead of replacing them.
+
+* Implementation status
+
+The current Rust implementation behaviorally binds the child current directory
+to =source_path.parent()= and enforces a shared combined 1,048,576-byte
+stdout-plus-stderr budget. Focused regressions reject a combined overflow even
+when neither stream alone exceeds that total budget.
+
+Rust now implements an evidence-producing API and accepts explicit
+=packageRoot= input, but the observation data-shape refactor has not yet passed
+its focused policy and regression gates. Its status is therefore =Implemented,
+not yet verified or replay-admitted=. This RFC remains Draft; source-context,
+output-bound, and receipt behavior MUST NOT be reported as complete conformance
+until those gates pass against the v1 schema.
+
+Even after behavioral verification, broader proof acceptance still requires
+independent evidence for executable/source identity, persistence and replay,
+and the no-artifact side-effect obligation. Those claims are intentionally not
+fields of the v1 receipt and MUST NOT be inferred from a passing receipt.
+
+* Conformance matrix
+
+| Case | Structural | Runtime | Expected |
+|-
+| Valid Typst, implicit headers | pass | zero exit | lint pass |
+| Invalid Typst, implicit headers | pass | non-zero exit | lint finding |
+| Missing Typst executable | pass | spawn error | lint finding |
+| Hanging Typst executable | pass | timeout | lint finding and child reaped |
+| Unbounded runtime output | pass | output budget exceeded | lint finding |
+| Relative import in source directory | pass | correct source context | lint pass |
+| Typst validator writes no artifact | pass | zero exit | lint pass, no output file |
+| Org syntax error before runtime | fail | not authoritative | lint finding |
+
+* Relationship Contract projection
+
+#+begin_example
+Org AST --emits--> structural evidence
+source block --selects--> registered runtime binding
+source body --flows-via--> stdin
+runtime process --emits--> bounded validation receipt
+structural evidence --gates--> acceptance
+runtime receipt --gates--> acceptance
+timeout or non-zero exit --invalidates--> acceptance
+Lean audit --constrains--> Rust conformance fixture
+#+end_example
+
+The two acceptance gates are conjunctive.  Neither relationship can be replaced
+by a fallback edge from the other.
+
+* Closure criteria
+
+- The embedded Typst block passes real stdin evaluation.
+- The Lean declarations are axiom-free and =sorryAx=false=.
+- The invalid Typst fixture fails through =orgize lint= without writing an
+  artifact.
+- The valid implicit-header fixture passes.
+- The hanging-runtime fixture proves bounded termination.
+- Rebuilding the integrated ASP binary retains the same behavior.

@@ -102,8 +102,7 @@ fn contains_command_token(source: &str, token: &str) -> bool {
 }
 
 use implementation::{
-    ProviderExactResolutionRender, ProviderNativeExactRecommendedNext,
-    ProviderNativeExactResolution, render_provider_exact_resolution,
+    ProviderExactResolutionRender, ProviderNativeExactResolution, render_provider_exact_resolution,
 };
 
 fn missing_resolution() -> ProviderNativeExactResolution {
@@ -113,21 +112,18 @@ fn missing_resolution() -> ProviderNativeExactResolution {
         language_id: "rust".to_owned(),
         provider_id: "rs-harness".to_owned(),
         owner_path: "src/runtime_server.rs".to_owned(),
-        requested_structural_selector:
-            "rust://src/runtime_server.rs#item/function/missing".to_owned(),
+        requested_structural_selector: "rust://src/runtime_server.rs#item/function/missing"
+            .to_owned(),
         resolution_state: "item-missing".to_owned(),
         reason_kind: "item-not-in-live-owner".to_owned(),
-        active_generation_digest: None,
-        root_digest: Some("root-current".to_owned()),
+        active_generation_digest:
+            "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+        root_digest: "b".repeat(64),
         item_kind: "function".to_owned(),
         item_name: "missing".to_owned(),
         candidates: vec!["rust://src/runtime_server.rs#item/function/live".to_owned()],
         actual_kinds: Vec::new(),
-        recommended_next: ProviderNativeExactRecommendedNext {
-            command:
-                "asp rust search owner src/runtime_server.rs items --query missing --workspace . --view seeds"
-                    .to_owned(),
-        },
+        recommended_next: None,
     }
 }
 
@@ -145,7 +141,7 @@ fn default_resolution_is_a_human_failure_not_json_stdout() {
     assert!(!diagnostic.starts_with('{'));
     assert!(diagnostic.contains("state=item-missing"));
     assert!(diagnostic.contains("reasonKind=item-not-in-live-owner"));
-    assert!(diagnostic.contains("next=asp rust search owner"));
+    assert!(!diagnostic.contains(" next="));
 }
 
 #[test]
@@ -187,15 +183,52 @@ fn diagnostic_owner_constructs_stale_selector_receipt() {
     assert_eq!(resolution.resolution_state, "selector-stale");
     assert_eq!(resolution.reason_kind, "selector-not-in-active-generation");
     assert_eq!(
-        resolution.active_generation_digest.as_deref(),
-        Some("blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        resolution.active_generation_digest,
+        "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     );
     assert_eq!(resolution.item_kind, "function");
     assert_eq!(resolution.item_name, "missing");
     assert_eq!(
-        resolution.recommended_next.command,
+        resolution
+            .recommended_next
+            .as_ref()
+            .expect("stale selector must carry recovery")
+            .command,
         "asp rust search lexical --query 'missing' --query 'function missing' --workspace . --view seeds"
     );
+}
+
+#[test]
+fn active_owner_item_missing_is_terminal_and_cannot_repeat_discovery() {
+    let resolution = resolution_from_facts(ProviderExactResolutionFacts {
+        language_id: "rust".to_owned(),
+        provider_id: "rs-harness".to_owned(),
+        owner_path: "src/runtime_server.rs".to_owned(),
+        structural_selector: "rust://src/runtime_server.rs#item/function/definitely_missing"
+            .to_owned(),
+        resolution_state: "item-missing".to_owned(),
+        reason_kind: "item-not-in-live-owner".to_owned(),
+        active_generation_digest:
+            "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_owned(),
+        root_digest: "b".repeat(64),
+        item_kind: "function".to_owned(),
+        item_name: "definitely_missing".to_owned(),
+        candidates: vec!["rust://src/runtime_server.rs#item/function/live".to_owned()],
+        actual_kinds: Vec::new(),
+        workspace: ".".to_owned(),
+    });
+
+    assert!(resolution.recommended_next.is_none());
+    let ProviderExactResolutionRender::Diagnostic(diagnostic) = render_provider_exact_resolution(
+        &resolution,
+        implementation::ProviderExactResolutionFormat::Human,
+        None,
+    )
+    .expect("terminal miss should render") else {
+        panic!("terminal miss must remain a diagnostic")
+    };
+    assert!(diagnostic.contains("state=item-missing"));
+    assert!(!diagnostic.contains(" next="));
 }
 
 #[test]

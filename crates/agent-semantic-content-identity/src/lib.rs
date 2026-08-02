@@ -87,6 +87,7 @@ pub use exact_selector_generation_fixture::{
     ExactSelectorMerkleProofStepV1, ExactSelectorProjectionModeV1,
 };
 pub mod callable_skeleton_projection;
+pub mod provider_projection_relation;
 pub mod exact_selector_merkle;
 pub mod exact_selector_projection_packet;
 pub mod exact_structural_selector;

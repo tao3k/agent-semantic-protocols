@@ -1,0 +1,323 @@
+#+title: Session-Bound Runtime Binary Profiles
+#+property: header-args:typst :lint :runtime typst
+
+* Status
+
+Partially implemented. The v1 schemas and axiom-free Lean model are verified,
+and the installed hook has a registry-derived provider-internal denial path. A
+live PreTool replay denies direct and absolute-path provider execution while an
+=asp rust= facade replay is admitted. Full runtime closure remains open until
+exactly one server-side dispatch is claimed and consumed.
+
+* Problem
+
+When an ASP root session is known, an agent can still attempt to execute a
+provider binary such as a language harness directly. That bypasses the ASP
+facade, resident dispatch accounting, generation admission, and graph-route
+receipt even if the provider itself remains parser-owned.
+
+Blocking a fixed list of executable names is insufficient. Binaries can be
+renamed, installed under content-addressed paths, invoked through symlinks, or
+replaced by future providers. Isolation MUST be derived from a registry-owned
+runtime binary profile and a session-bound dispatch capability.
+
+* Relationship Contract
+
+This module refines the resident SearchLoop and hook contracts. It is not a new
+search command surface.
+
+- Profile schema owner:
+  =schemas/runtime-binary-profile.v1.schema.json=.
+- Dispatch receipt schema owner:
+  =schemas/runtime-binary-dispatch-receipt.v1.schema.json=.
+- Lean owner:
+  =packages/proofs/ASPProof/RuntimeBinaryProfileDispatch.lean=.
+- Hook and runtime implementation owners are selected through parser-owned ASP
+  Rust evidence before editing.
+
+* Binary profiles
+
+Every executable admitted inside an ASP runtime domain MUST resolve to exactly
+one of these registry-owned profiles:
+
+- =facade=: an agent-facing ASP entrypoint. Direct agent invocation is allowed
+  subject to normal hook policy.
+- =provider-internal=: a parser or language provider executable. It MUST be
+  launched by an admitted ASP runtime dispatch.
+- =support-tool=: an ASP-owned helper. It MUST be launched through an admitted
+  wrapper or an explicitly authorized support-tool policy.
+- =host-tool=: an external host executable. Existing host action policy owns its
+  admission.
+- =test-fixture=: a fixture executable admitted only inside an explicit test
+  runtime profile.
+
+An executable inside an ASP content-addressed runtime directory that has no
+profile is =unregistered-runtime-binary= and fails closed. Unknown host tools do
+not silently become provider binaries; they remain under host policy.
+
+Profile resolution MUST use registry identity, canonical artifact path or
+artifact digest, and declared executable aliases. It MUST NOT depend on a
+hard-coded harness-name blacklist.
+
+* Session-bound dispatch capability
+
+A =provider-internal= invocation is admitted only when the ASP runtime has
+created a live, single-use dispatch capability bound to all of:
+
+- root and child session identities;
+- provider and language identities;
+- provider generation and executable artifact digest;
+- canonical argv digest;
+- dispatch identity and attempt number;
+- issuance and expiry times;
+- single-use consumption state.
+
+The agent cannot mint this capability. A plain environment variable is not
+authority. The workspace owner or another ASP-owned authority MUST claim and
+consume the dispatch atomically. A missing, expired, replayed, mismatched, or
+already-consumed capability fails closed.
+
+* Admission
+
+Let =P(b)= be the registered profile of binary =b=, =S= the active session, and
+=C= a claimed dispatch capability.
+
+#+name: runtime-binary-profile-admission-model
+#+begin_src typst :lint :runtime typst
+#let capability-matches(c, r, clock) = (
+  c.root-session == r.root-session and
+  c.child-session == r.child-session and
+  c.binary == r.binary and
+  c.profile == r.profile and
+  c.provider == r.provider and
+  c.language == r.language and
+  c.generation == r.generation and
+  c.artifact-digest == r.artifact-digest and
+  c.argv-digest == r.argv-digest and
+  c.attempt == r.attempt and
+  c.issued-at <= clock.now and
+  clock.now < c.expires-at and
+  not c.consumed
+)
+
+#let profile-admitted(profile, request, capability-valid) = (
+  if profile == "facade" { request.facade-policy-authorized }
+  else if profile == "provider-internal" {
+    not request.direct-agent and capability-valid
+  }
+  else if profile == "support-tool" {
+    request.support-policy-authorized or capability-valid
+  }
+  else if profile == "host-tool" { request.host-policy-authorized }
+  else if profile == "test-fixture" {
+    request.test-runtime and capability-valid
+  }
+  else { false }
+)
+#let admitted(registered, profile, request, capability-valid) = (
+  registered and profile-admitted(profile, request, capability-valid)
+)
+
+#let request = (
+  root-session: "root-7",
+  child-session: "child-3",
+  binary: "python-provider",
+  profile: "provider-internal",
+  provider: "python",
+  language: "python",
+  generation: 11,
+  artifact-digest: "sha256:artifact",
+  argv-digest: "sha256:argv",
+  attempt: 2,
+  direct-agent: false,
+  facade-policy-authorized: false,
+  support-policy-authorized: false,
+  host-policy-authorized: false,
+  test-runtime: false,
+)
+#let capability = (
+  root-session: request.root-session,
+  child-session: request.child-session,
+  binary: request.binary,
+  profile: request.profile,
+  provider: request.provider,
+  language: request.language,
+  generation: request.generation,
+  artifact-digest: request.artifact-digest,
+  argv-digest: request.argv-digest,
+  attempt: request.attempt,
+  issued-at: 10,
+  expires-at: 20,
+  consumed: false,
+)
+#let live = capability-matches(capability, request, (now: 15))
+#assert(live)
+#assert(admitted(true, "provider-internal", request, live))
+#assert(not admitted(
+  true,
+  "provider-internal",
+  request + (direct-agent: true),
+  live,
+))
+#assert(not admitted(
+  true,
+  "provider-internal",
+  request,
+  capability-matches(capability + (consumed: true), request, (now: 15)),
+))
+#assert(not admitted(
+  true,
+  "test-fixture",
+  request + (test-runtime: false),
+  live,
+))
+#assert(admitted(
+  true,
+  "facade",
+  request + (facade-policy-authorized: true),
+  false,
+))
+#assert(not admitted(false, "provider-internal", request, live))
+
+$ "Admitted" = "Registered" ∧ "ProfilePolicy" ∧ "ExactLiveCapability" $
+$ "ExactLiveCapability" ⇒ "single use in one root/child session and attempt" $
+#+end_src
+
+* Lean proof correspondence
+
+The executable model exposed a flaw in the earlier prose-level formula: a
+provider-internal binary with a capability was admitted even when the request
+was still a direct agent invocation. Admission now requires both a non-direct
+dispatch and an exact live capability. The capability identity also includes
+the active root and child sessions, profile, provider, language, generation,
+artifact digest, argv digest, and attempt. Its lifetime is the half-open
+interval =[issued-at, expires-at)=, and consumption is irreversible for the
+modeled attempt.
+
+The proof owner is
+=packages/proofs/ASPProof/RuntimeBinaryProfileDispatch.lean=. Its modular audit
+is =packages/proofs/ASPProof/Audit/RuntimeBinaryProfileDispatch.lean=; the JSON
+generator is =packages/proofs/audit/RuntimeBinaryProfileDispatchJson.lean=; and
+the checked v1 receipt is
+=packages/proofs/receipts/runtime-binary-profile-dispatch-audit-v1.json=.
+
+| Clause | Relationship Contract obligation | Lean coverage |
+|-
+| RBPD-PROFILE-001 | Admission is selected by the registered profile, never by a binary-name blacklist. | Profile admission and binary-name independence theorems |
+| RBPD-CAPABILITY-002 | Provider-internal dispatch requires a matching capability and rejects direct-agent entry. | Provider capability requirement, positive admission, and direct denial |
+| RBPD-SESSION-003 | Root and child sessions must equal the active session pair. | Stored and active root/child mismatch denials |
+| RBPD-IDENTITY-004 | Binary, profile, provider, language, generation, artifact, argv, and attempt must all match. | Exact identity mismatch denials |
+| RBPD-LIVENESS-005 | The capability is valid only when issued and strictly before expiry. | Not-yet-issued and expired denials |
+| RBPD-SINGLE-USE-006 | A consumed capability or a different attempt is a replay. | Consumed and wrong-attempt replay denials |
+| RBPD-TEST-007 | Test fixtures require both the test runtime and a matching capability. | Outside-test-runtime denial |
+| RBPD-UNREGISTERED-008 | Missing runtime registration fails closed. | Unregistered runtime binary denial |
+
+The =host-tool= branch above denotes delegation to existing host policy, not
+unconditional allow. The Lean model owns the precise typed decision algebra.
+
+* Hook behavior
+
+For a direct tool action with a known ASP session:
+
+1. Resolve the executable through runtime and provider registries.
+2. If its profile is =provider-internal= and no valid dispatch capability is
+   attached, deny with reason =provider-binary-direct-execution=.
+3. Return the matching =asp <language> ...= facade route from registry metadata.
+4. If the action names =asp=, apply normal facade policy; ASP owns subsequent
+   provider dispatch and capability consumption.
+5. Never recommend the provider binary as a recovery command.
+
+The same rule applies to absolute paths, PATH lookup, canonical symlinks, and
+content-addressed runtime artifact paths.
+
+* Required counterexamples
+
+- A known root session plus direct =provider-internal= execution is rejected.
+- POSIX environment-assignment prefixes cannot hide a registered
+  =provider-internal= executable from classification.
+- Renaming a provider binary does not change its artifact-profile identity.
+- A valid capability for another session is rejected.
+- A valid capability with a different argv or provider generation is rejected.
+- An expired or replayed capability is rejected.
+- A =test-fixture= capability is rejected outside the test runtime profile.
+- A =facade= invocation is not incorrectly rejected as provider-internal.
+- An unknown runtime artifact fails closed without being guessed from its name.
+
+* Implementation gates
+
+- RFC, schemas, Lean model, and JSON audit are present before classifier edits.
+- Provider registry descriptors carry profile metadata rather than classifier
+  source containing harness-name lists.
+- Unit tests cover all profiles and capability mismatch axes.
+- A real hook smoke rejects direct provider execution and returns an ASP facade
+  route.
+- The same smoke admits =asp rust ...= and proves exactly one provider dispatch
+  was claimed and consumed.
+- Direct provider execution remains available only under an explicit test
+  profile with its own receipt.
+
+* Implementation calibration
+
+The v1 profile and dispatch-receipt schemas, their positive and negative
+fixtures, the Lean model, the modular audit, and the checked JSON audit receipt
+are implemented. The Lean counterexamples forced direct-agent denial to remain
+an independent conjunct even when all capability identity fields match.
+
+The Rust hook classifier now derives provider-internal identity and recovery
+routes from the provider registry. Focused source tests cover a registered
+provider name, an absolute registered artifact path, ASP facade preservation,
+an unrelated host tool, and an environment-string spoof. Live exact-source
+inspection then found a stronger shell counterexample: a POSIX assignment prefix
+made the provider executable no longer be the first token. The classifier now
+normalizes consecutive assignment prefixes before registry classification, and
+a focused regression rejects that escape. This is a fail-closed outer admission
+fence; it does not yet prove server-side single-use capability claim and
+consumption.
+
+Before republishing that source fix, an installed PreTool replay of
+=TRACE=1 rs-harness query= returned the empty allow response. The represented
+provider command was not executed. This is the runtime counterexample proving
+that the assignment-prefix source regression is a release blocker rather than
+an optional hardening test.
+
+Assignment-prefix normalization is not a general shell-wrapper parser. Host
+wrappers such as =env=, =command=, or =exec= require a typed wrapper profile and
+an effective-executable projection from the shell action parser. The classifier
+MUST NOT grow a provider-name blacklist or claim wrapper closure from the prefix
+regression alone; an ambiguous wrapper chain remains a fail-closed design gate.
+
+This also exposes the formal refinement boundary. The current Lean admission
+theorems begin after the executable has been resolved to a registered binary
+identity; they do not prove that command normalization finds that identity. A
+separate command-normalization model MUST prove that every admitted wrapper or
+prefix transformation either preserves the effective registered executable or
+fails closed before =providerInternalAdmission=. Until that theorem and its
+runtime refinement receipt exist, the Lean audit proves admission correctness
+conditional on identity resolution, not end-to-end shell-command non-escape.
+
+Full installed closure is deliberately open. The first publication build
+exposed an exhaustiveness gap in the protocol doctor's =ReasonKind= projection.
+After that projection was repaired, publication reached an unrelated dead owner
+in the concurrent agent-session registry refactor. A later protocol check moved
+past that owner and stopped at a missing =relations= field in a concurrent
+=ClientDbSourceIndexScopeFile= initializer. No duplicate or unreachable
+=ProviderBinaryDirectExecution= projection warning remained. The installed ASP artifact
+nevertheless advanced and produced live outer-admission receipts: direct
+=rs-harness= and its absolute registered artifact path were denied with
+=provider-binary-direct-execution=, while =asp rust= returned no denial. These
+receipts establish the outer safety fence only. The exactly-once dispatch
+claim/consume gate and explicit test-profile receipt remain pending, and runtime
+health is not closed while workspace-generation admission exceeds its deadline.
+
+The absolute-path replay exposed one remaining recovery defect. Its typed
+=routes= field still names =asp rust=, but the repeated-denial message is
+replaced by the generic =asp-explore= bootstrap text. Replay rendering MUST
+preserve the profile-specific facade recovery message and route; a correct typed
+route hidden behind stale generic prose is not agent-facing closure.
+
+This failure adds a cross-owner gate: every new denial reason MUST compile
+through all receipt, doctor, JSON, and rendering projections before runtime
+publication is attempted. An enum declaration plus classifier tests is not a
+closed protocol change.
+
+Passing provider tests without the hook and runtime receipts is not closure.

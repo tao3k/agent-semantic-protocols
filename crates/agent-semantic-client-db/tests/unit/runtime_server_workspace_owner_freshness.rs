@@ -13,9 +13,9 @@ fn owner(selectors: Vec<WorkspaceSelectorSnapshot>) -> WorkspaceOwnerSnapshot {
 }
 
 #[test]
-fn unchanged_owner_is_warm_only_after_complete_projection_publication() {
+fn unchanged_owner_is_warm_after_selector_discovery_without_derived_projection() {
     assert!(!resident_owner_projection_is_complete(&owner(Vec::new())));
-    assert!(!resident_owner_projection_is_complete(&owner(vec![
+    assert!(resident_owner_projection_is_complete(&owner(vec![
         WorkspaceSelectorSnapshot {
             selector: "rust://src/lib.rs#item/function/run".to_owned(),
             byte_start: 0,

@@ -61,7 +61,7 @@ async fn daemon_is_healthy_while_workspace_restore_isolates_scope_failure() {
     let release_restore = Arc::new(tokio::sync::Notify::new());
     let builder_started = Arc::clone(&restore_started);
     let builder_release = Arc::clone(&release_restore);
-    let admission = WorkspaceGenerationAdmission::new(Arc::new(move |_, _| {
+    let admission = WorkspaceGenerationAdmission::new(Arc::new(move |_, _, _| {
         let restore_started = Arc::clone(&builder_started);
         let release_restore = Arc::clone(&builder_release);
         Box::pin(async move {

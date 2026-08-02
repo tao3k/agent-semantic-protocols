@@ -1,0 +1,12 @@
+import ASPProof.ASPWorkspacePublicationRecovery
+
+open ASPProof.ASPWorkspacePublicationRecovery
+
+#print axioms advanceDoesNotRegress
+#print axioms advancePreservesStableKey
+#print axioms timeoutPreservesPublicationPhase
+#print axioms advanceFivePreservesStableKey
+#print axioms fiveSuccessfulAdvancesDeliver
+#print axioms duplicateReceiptIndexKeepsFirst
+#print axioms deliverPreservesStableKey
+#print axioms oldDigestReceiptRejectedAfterRetarget

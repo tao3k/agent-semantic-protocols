@@ -39,6 +39,28 @@ fn existing_item_without_requested_projection_is_not_a_kind_mismatch() {
 }
 
 #[test]
+fn relocated_projection_is_not_an_exact_selector_hit() {
+    let requested = "rust://src/lib.rs#item/function/target";
+    let resolved = "rust://src/moved.rs#item/function/target";
+    let resolution = resolve(
+        WorkspaceRuntimeSelectorRead::Projection {
+            generation_digest: "generation".to_owned(),
+            root_digest: "root".to_owned(),
+            resolved_selector: resolved.to_owned(),
+            bytes: b"fn target() {}\n".to_vec(),
+        },
+        requested,
+    )
+    .expect("resolve relocated resident projection");
+    let ResidentExactProjection::Miss(miss) = resolution else {
+        panic!("relocated selector must not be an exact hit");
+    };
+    assert_eq!(miss.state, "selector-stale");
+    assert_eq!(miss.reason_kind, "selector-not-in-active-generation");
+    assert_eq!(miss.candidates, [resolved]);
+}
+
+#[test]
 fn same_symbol_with_another_item_kind_remains_a_real_kind_mismatch() {
     let resolution = resolve(
         WorkspaceRuntimeSelectorRead::OwnerForRepair {

@@ -67,7 +67,13 @@ pub(crate) fn run_org_state_sync(project_root: &Path) -> Result<OrgStateSync, St
     let state_root = paths.protocol_home.join("org");
     let mut sync = sync_default_org_state(&state_root)?;
     if matches!(sync.status, "updated" | "cloned") {
-        match super::hook_runtime::request_runtime_generation_admission(&state_root) {
+        let revision = git_output(&["rev-parse", "HEAD"], Some(&state_root))?;
+        let mutation_id = format!("org-state-sync:{}", revision.trim());
+        match super::hook_runtime::request_runtime_generation_admission(
+            &state_root,
+            mutation_id,
+            vec![".".to_owned()],
+        ) {
             Ok(receipt) => {
                 sync.source_index_status = "runtime-admitted".to_string();
                 sync.source_index_generation = receipt

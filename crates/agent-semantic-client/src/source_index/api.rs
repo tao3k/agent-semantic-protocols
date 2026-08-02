@@ -462,6 +462,7 @@ fn current_source_index_snapshot_for_owner_with_registry(
         projection_coverage:
             agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
         selector_receipts: Vec::new(),
+        relations: Vec::new(),
     }];
     let (_, workspace_snapshot, source_snapshot, source_blobs) =
         source_index_snapshot_from_files(project_root, &files, &registry)?;
@@ -560,6 +561,7 @@ pub(crate) fn current_runtime_source_index_snapshot(
     )?
     .into_iter()
     .map(|file| SourceIndexScopeFile {
+        relations: Vec::new(),
         path: file.path,
         language_id: LanguageId::from(file.language_id),
         provider_id: ProviderId::from(file.provider_id),

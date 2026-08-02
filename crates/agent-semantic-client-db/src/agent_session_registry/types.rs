@@ -182,7 +182,7 @@ agent_session_registry_id!(
     AgentSessionDispatchLeaseStatus
 );
 /// Durable agent session registry row stored in the Turso DB Engine.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AgentSessionRecord {
     /// Stable State Core project scope that owns this session row.
     #[serde(rename = "projectId")]
@@ -610,7 +610,7 @@ pub struct AgentSessionDispatchDerivedIdentity {
 }
 
 /// Durable dispatch lease for one exact resident-child command.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AgentSessionDispatchLeaseRecord {
     /// Stable State Core project scope that owns this dispatch.
     #[serde(rename = "projectId")]
@@ -656,7 +656,7 @@ pub struct AgentSessionDispatchLeaseRecord {
 }
 
 /// Result of atomically claiming one resident dispatch identity.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AgentSessionDispatchClaimResult {
     /// Host action authorized by the lease: `send`, `wait`, or `complete`.
     pub action: String,
