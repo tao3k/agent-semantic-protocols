@@ -4,5 +4,3 @@ mod model_lifetime;
 mod profile_config;
 #[path = "validation_cases/replacement_cas.rs"]
 mod replacement_cas;
-#[path = "validation_cases/switch_model.rs"]
-mod switch_model;

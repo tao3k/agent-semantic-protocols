@@ -1,3 +1,5 @@
+harness = "libtest"
+test = "test_release_search_cli_millisecond_gate"
 snapshot = "test_release_search_cli_millisecond_gate"
 target_total = "50ms"
 max_total = "150ms"

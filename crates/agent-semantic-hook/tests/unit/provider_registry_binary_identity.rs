@@ -4,43 +4,36 @@ use super::{registered_provider_binaries_v1, registered_provider_catalog_identit
 
 #[test]
 fn registered_binary_identities_are_materialized_from_the_v1_registry_schema() {
-    let registry: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../schemas/semantic-language-registry.providers.v1.json"
-    ))
-    .expect("v1 provider registry must be valid JSON");
-    let expected = registry["languages"]
-        .as_array()
-        .expect("v1 provider registry must declare languages")
+    let binaries = registered_provider_binaries_v1();
+    let manifests = crate::provider_registry::language_provider_manifests();
+    let programming_language_count = manifests
         .iter()
-        .map(|registration| {
-            (
-                registration["languageId"]
-                    .as_str()
-                    .expect("registration must declare languageId")
-                    .to_string(),
-                registration["providerId"]
-                    .as_str()
-                    .expect("registration must declare providerId")
-                    .to_string(),
-                registration["binary"]
-                    .as_str()
-                    .expect("registration must declare binary")
-                    .to_string(),
-            )
+        .filter(|manifest| {
+            crate::registered_provider_kind(manifest.language_id().as_str())
+                == Ok(crate::RegisteredProviderKind::ProgrammingLanguage)
         })
-        .collect::<Vec<_>>();
-    let actual = registered_provider_binaries_v1()
-        .into_iter()
-        .map(|identity| {
-            (
-                identity.language_id().as_str().to_string(),
-                identity.provider_id().as_str().to_string(),
-                identity.binary().to_string(),
-            )
-        })
-        .collect::<Vec<_>>();
+        .count();
 
-    assert_eq!(actual, expected);
+    assert_eq!(binaries.len(), programming_language_count);
+    for binary in binaries {
+        assert_eq!(
+            crate::registered_provider_kind(binary.language_id().as_str()),
+            Ok(crate::RegisteredProviderKind::ProgrammingLanguage)
+        );
+    }
+
+    for document_language in ["org", "md"] {
+        assert_eq!(
+            crate::registered_provider_kind(document_language),
+            Ok(crate::RegisteredProviderKind::Document)
+        );
+        assert!(
+            registered_provider_binaries_v1()
+                .iter()
+                .all(|binary| binary.language_id().as_str() != document_language),
+            "embedded document language {document_language} must not enter the external binary inventory"
+        );
+    }
 }
 
 #[test]
@@ -205,7 +198,10 @@ fn known_root_session_denies_direct_provider_binary_without_dispatch_capability(
 #[test]
 fn every_registered_language_has_one_canonical_exact_query_pack_identity() {
     let identities = registered_provider_catalog_identities();
-    assert_eq!(identities.len(), registered_provider_binaries_v1().len());
+    assert_eq!(
+        identities.len(),
+        crate::provider_registry::language_provider_manifests().len()
+    );
     for identity in identities {
         assert_eq!(identity.exact_query_pack_identity_digest.len(), 64);
         assert!(

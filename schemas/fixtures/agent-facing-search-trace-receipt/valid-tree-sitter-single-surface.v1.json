@@ -1,0 +1,33 @@
+{
+  "schemaId": "agent.semantic-protocols.agent-facing-search-trace-receipt",
+  "schemaVersion": "1",
+  "traceSetId": "trace-tree-sitter-1",
+  "requestIdentity": {
+    "requestId": "request-1",
+    "providerWorkspaceIdentity": "workspace-rust-1",
+    "queryDigest": "blake3-256:query-1",
+    "admittedGeneration": "blake3-256:generation-1"
+  },
+  "backend": { "kind": "tree-sitter" },
+  "execution": {
+    "inventory": "exact",
+    "cachedOwners": 4,
+    "scheduledOwners": 0,
+    "remainingOwners": 0,
+    "sourceReads": 0,
+    "providerParses": 0,
+    "ownerWrites": 0,
+    "fullWorkspaceWalks": 0
+  },
+  "result": {
+    "state": "complete",
+    "matchCount": 0,
+    "truncated": false
+  },
+  "terminalEmissionCount": 1,
+  "nextActionEmissionCount": 1,
+  "recommendedNext": {
+    "kind": "refine-query",
+    "command": "asp rust search owner <owner> items --query '<terms>' --workspace . --view seeds"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schemaId": "agent.semantic-protocols.agent-session-lifecycle-projection",
+  "schemaVersion": "1",
+  "workspaceServer": {
+    "workspaceIdentity": "workspace-example",
+    "health": "ready"
+  },
+  "session": {
+    "sessionId": "session-example",
+    "generation": 7,
+    "phase": "active"
+  },
+  "hostBinding": {
+    "generation": 7,
+    "phase": "fresh",
+    "childSessionId": "child-example",
+    "canonicalMessageTarget": "agent://child-example",
+    "terminationReceiptIndexed": false,
+    "pathReleaseReceiptIndexed": false
+  },
+  "dispatch": {
+    "generation": 7,
+    "phase": "idle"
+  },
+  "durableDispatchAuthorized": true
+}

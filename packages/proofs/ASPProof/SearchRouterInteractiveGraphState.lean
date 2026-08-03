@@ -272,7 +272,7 @@ def ownershipDelta : GraphDelta :=
 
 theorem semantic_tool_observation_can_advance_the_graph :
     deltaValid ownershipCapabilities ownershipState ownershipDelta = true := by
-  native_decide
+  decide
 
 def inventedEdgeDelta : GraphDelta :=
   { ownershipDelta with
@@ -284,14 +284,14 @@ def inventedEdgeDelta : GraphDelta :=
 
 theorem model_invented_edge_is_rejected :
     deltaValid ownershipCapabilities ownershipState inventedEdgeDelta = false := by
-  native_decide
+  decide
 
 def nonDecreasingBudgetDelta : GraphDelta :=
   { ownershipDelta with remainingBudget := 4 }
 
 theorem accepted_transition_must_decrease_budget :
     deltaValid ownershipCapabilities ownershipState nonDecreasingBudgetDelta = false := by
-  native_decide
+  decide
 
 def unauthorizedVerticalDelta : GraphDelta :=
   { ownershipDelta with
@@ -306,7 +306,7 @@ def unauthorizedVerticalDelta : GraphDelta :=
 
 theorem unavailable_tool_vertical_pair_is_rejected :
     deltaValid ownershipCapabilities ownershipState unauthorizedVerticalDelta = false := by
-  native_decide
+  decide
 
 def validNoHitObservation : ToolObservation :=
   { invocationId := "invocation:lexical-no-hit"
@@ -346,7 +346,7 @@ def validNoHitDelta : GraphDelta :=
 
 theorem typed_no_hit_is_a_valid_graph_transition :
     deltaValid ownershipCapabilities ownershipState validNoHitDelta = true := by
-  native_decide
+  decide
 
 def cachedFrontierRouteMeasure :
     ASPProof.SearchRouteSemanticPathCacheSeparation.RouteMeasure :=
@@ -378,7 +378,7 @@ theorem resume_to_live_frontier_is_one_bounded_hop :
       7
       "state-7"
       cachedFrontierRouteMeasure = true := by
-  native_decide
+  decide
 
 theorem stale_continuation_is_rejected :
     resumeValid ownershipState
@@ -388,7 +388,7 @@ theorem stale_continuation_is_rejected :
       6
       "state-6"
       cachedFrontierRouteMeasure = false := by
-  native_decide
+  decide
 
 def overflowRouteMeasure :
     ASPProof.SearchRouteSemanticPathCacheSeparation.RouteMeasure :=
@@ -402,11 +402,11 @@ theorem resume_cannot_exceed_existing_hop_budget :
       7
       "state-7"
       overflowRouteMeasure = false := by
-  native_decide
+  decide
 
 theorem unresolved_obligation_prevents_closure :
     closureAllowed ownershipState [] = false := by
-  native_decide
+  decide
 
 theorem resolved_obligation_allows_closure :
     closureAllowed ownershipState ["claim:effective-owner"] = true := by
@@ -418,7 +418,7 @@ def unsupportedDischargeDelta : GraphDelta :=
 
 theorem obligation_discharge_without_observation_evidence_is_rejected :
     deltaValid ownershipCapabilities ownershipState unsupportedDischargeDelta = false := by
-  native_decide
+  decide
 
 def supportedOwnershipObservation : ToolObservation :=
   { ownershipObservation with
@@ -433,7 +433,7 @@ def supportedDischargeDelta : GraphDelta :=
 
 theorem observation_evidence_can_discharge_an_obligation :
     deltaValid ownershipCapabilities ownershipState supportedDischargeDelta = true := by
-  native_decide
+  decide
 
 def validDatalogReceipt : DatalogReceipt :=
   { factGeneration := 7
@@ -443,7 +443,7 @@ def validDatalogReceipt : DatalogReceipt :=
 
 theorem datalog_derivation_is_grounded_in_live_facts :
     datalogReceiptValid ownershipState validDatalogReceipt = true := by
-  native_decide
+  decide
 
 def inventedDatalogSource : DatalogReceipt :=
   { validDatalogReceipt with
@@ -451,6 +451,381 @@ def inventedDatalogSource : DatalogReceipt :=
 
 theorem datalog_derivation_with_unknown_source_is_rejected :
     datalogReceiptValid ownershipState inventedDatalogSource = false := by
+  decide
+
+inductive GraphTurboProposalStatus where
+  | candidate
+  | proposed
+  | heuristic
+  | partialResult
+  deriving Repr, DecidableEq, BEq
+
+structure InteractiveAccounting where
+  toolActions : Nat
+  semanticGraphHops : Nat
+  executedGraphHops : Nat
+  graphTurboInvocations : Nat
+  ruleFirings : Nat
+  derivedFacts : Nat
+  deriving Repr, DecidableEq, BEq
+
+structure GraphTurboInvocation where
+  inputNodes : Nat
+  inputEdges : Nat
+  visitedNodes : Nat
+  visitedEdges : Nat
+  iterations : Nat
+  candidatePaths : Nat
+  deriving Repr, DecidableEq, BEq
+
+structure GraphTurboBudget where
+  maxVisitedNodes : Nat
+  maxVisitedEdges : Nat
+  maxIterations : Nat
+  maxCandidatePaths : Nat
+  deriving Repr, DecidableEq, BEq
+
+def invocationWithinBudget
+    (budget : GraphTurboBudget)
+    (invocation : GraphTurboInvocation) : Bool :=
+  invocation.visitedNodes <= budget.maxVisitedNodes &&
+    invocation.visitedEdges <= budget.maxVisitedEdges &&
+    invocation.iterations <= budget.maxIterations &&
+    invocation.candidatePaths <= budget.maxCandidatePaths
+
+def afterToolAction (accounting : InteractiveAccounting) : InteractiveAccounting :=
+  { accounting with toolActions := accounting.toolActions + 1 }
+
+def afterGraphTurbo
+    (accounting : InteractiveAccounting)
+    (budget : GraphTurboBudget)
+    (invocation : GraphTurboInvocation) : Option InteractiveAccounting :=
+  if invocationWithinBudget budget invocation then
+    some
+      { accounting with
+        toolActions := accounting.toolActions + 1
+        graphTurboInvocations := accounting.graphTurboInvocations + 1 }
+  else
+    none
+
+def interactiveAccounting : InteractiveAccounting :=
+  { toolActions := 2
+    semanticGraphHops := 3
+    executedGraphHops := 2
+    graphTurboInvocations := 0
+    ruleFirings := 0
+    derivedFacts := 0 }
+
+def graphTurboBudget : GraphTurboBudget :=
+  { maxVisitedNodes := 32
+    maxVisitedEdges := 64
+    maxIterations := 8
+    maxCandidatePaths := 4 }
+
+def boundedGraphTurboInvocation : GraphTurboInvocation :=
+  { inputNodes := 20
+    inputEdges := 40
+    visitedNodes := 12
+    visitedEdges := 24
+    iterations := 3
+    candidatePaths := 2 }
+
+theorem tool_action_does_not_change_graph_hops :
+    let next := afterToolAction interactiveAccounting
+    next.semanticGraphHops = interactiveAccounting.semanticGraphHops ∧
+      next.executedGraphHops = interactiveAccounting.executedGraphHops := by
   native_decide
+
+theorem bounded_graph_turbo_does_not_change_graph_hops :
+    (afterGraphTurbo interactiveAccounting graphTurboBudget boundedGraphTurboInvocation).map
+        (fun next =>
+          next.semanticGraphHops == interactiveAccounting.semanticGraphHops &&
+            next.executedGraphHops == interactiveAccounting.executedGraphHops) =
+      some true := by
+  native_decide
+
+def overBudgetGraphTurboInvocation : GraphTurboInvocation :=
+  { boundedGraphTurboInvocation with iterations := 9 }
+
+theorem graph_turbo_iteration_overflow_is_rejected :
+    afterGraphTurbo interactiveAccounting graphTurboBudget overBudgetGraphTurboInvocation = none := by
+  native_decide
+
+structure ContinuationIdentity where
+  sessionId : String
+  nodeId : NodeId
+  snapshotDigest : String
+  stateDigest : String
+  deriving Repr, DecidableEq, BEq
+
+def continuationIdentityValid (identity : ContinuationIdentity) : Bool :=
+  !identity.sessionId.isEmpty &&
+    !identity.nodeId.isEmpty &&
+    !identity.snapshotDigest.isEmpty &&
+    !identity.stateDigest.isEmpty
+
+def cachedResumeValid
+    (cold cached : InteractiveAccounting)
+    (coldIdentity cachedIdentity : ContinuationIdentity) : Bool :=
+  continuationIdentityValid coldIdentity &&
+    coldIdentity == cachedIdentity &&
+    cached.semanticGraphHops == cold.semanticGraphHops &&
+    cached.executedGraphHops <= cold.executedGraphHops
+
+def coldContinuationIdentity : ContinuationIdentity :=
+  { sessionId := "session-owner-model"
+    nodeId := "symbol:ModelConfig"
+    snapshotDigest := "snapshot:7"
+    stateDigest := "state-7" }
+
+def cachedAccounting : InteractiveAccounting :=
+  { interactiveAccounting with executedGraphHops := 0 }
+
+theorem cached_resume_preserves_semantic_hops_and_may_save_execution :
+    cachedResumeValid interactiveAccounting cachedAccounting
+      coldContinuationIdentity coldContinuationIdentity = true := by
+  native_decide
+
+def forgedCachedAccounting : InteractiveAccounting :=
+  { cachedAccounting with semanticGraphHops := 0 }
+
+theorem cached_resume_cannot_rewrite_semantic_hops :
+    cachedResumeValid interactiveAccounting forgedCachedAccounting
+      coldContinuationIdentity coldContinuationIdentity = false := by
+  native_decide
+
+def staleContinuationIdentity : ContinuationIdentity :=
+  { coldContinuationIdentity with snapshotDigest := "snapshot:6" }
+
+theorem cached_resume_rejects_snapshot_substitution :
+    cachedResumeValid interactiveAccounting cachedAccounting
+      coldContinuationIdentity staleContinuationIdentity = false := by
+  native_decide
+
+structure GraphTurboProposal where
+  snapshotDigest : String
+  status : GraphTurboProposalStatus
+  nodeIds : List NodeId
+  edges : List EvidenceEdge
+  deriving Repr, DecidableEq, BEq
+
+def graphTurboProposalGrounded
+    (stateSnapshotDigest : String)
+    (knownNodes : List NodeId)
+    (knownEdges : List EvidenceEdge)
+    (proposal : GraphTurboProposal) : Bool :=
+  proposal.snapshotDigest == stateSnapshotDigest &&
+    proposal.nodeIds.all knownNodes.contains &&
+    proposal.edges.all knownEdges.contains
+
+def groundedTurboProposal : GraphTurboProposal :=
+  { snapshotDigest := "snapshot:7"
+    status := .proposed
+    nodeIds := ["goal:model-owner", "symbol:ModelConfig"]
+    edges := [] }
+
+theorem grounded_python_proposal_can_enter_exact_verification :
+    graphTurboProposalGrounded "snapshot:7" ownershipState.nodeIds []
+      groundedTurboProposal = true := by
+  native_decide
+
+def inventedNodeTurboProposal : GraphTurboProposal :=
+  { groundedTurboProposal with nodeIds := ["symbol:UnknownOwner"] }
+
+theorem python_proposal_with_unknown_node_is_rejected :
+    graphTurboProposalGrounded "snapshot:7" ownershipState.nodeIds []
+      inventedNodeTurboProposal = false := by
+  native_decide
+
+inductive GqlPathUpperBound where
+  | explicit (hops : Nat)
+  | router (hops : Nat)
+  | unbounded
+  deriving Repr, DecidableEq, BEq
+
+def gqlPathExecutable
+    (routeBudget : SearchRouteDAG.GraphRouteBudget)
+    (upperBound : GqlPathUpperBound) : Bool :=
+  match upperBound with
+  | .explicit hops => hops <= routeBudget.maxGraphHops
+  | .router hops => hops <= routeBudget.maxGraphHops
+  | .unbounded => false
+
+theorem bounded_gql_path_is_executable :
+    gqlPathExecutable ownershipState.routeBudget (.explicit 3) = true := by
+  native_decide
+
+theorem unbounded_gql_path_is_rejected :
+    gqlPathExecutable ownershipState.routeBudget .unbounded = false := by
+  native_decide
+
+structure BoundedClosureReceipt where
+  factGeneration : Nat
+  rulesetDigest : String
+  sourceFactIds : List FactId
+  derivedFactIds : List FactId
+  ruleFirings : Nat
+  maxRuleFirings : Nat
+  maxDerivedFacts : Nat
+  deriving Repr, DecidableEq, BEq
+
+def boundedClosureReceiptValid
+    (state : GraphState)
+    (receipt : BoundedClosureReceipt) : Bool :=
+  receipt.factGeneration == state.generation &&
+    !receipt.rulesetDigest.isEmpty &&
+    !receipt.derivedFactIds.isEmpty &&
+    receipt.sourceFactIds.all state.factIds.contains &&
+    receipt.ruleFirings <= receipt.maxRuleFirings &&
+    receipt.derivedFactIds.length <= receipt.maxDerivedFacts
+
+def validBoundedClosureReceipt : BoundedClosureReceipt :=
+  { factGeneration := 7
+    rulesetDigest := "ruleset:ownership-v1"
+    sourceFactIds := ["fact:model-declared"]
+    derivedFactIds := ["fact:configuration-owner"]
+    ruleFirings := 3
+    maxRuleFirings := 8
+    maxDerivedFacts := 4 }
+
+theorem bounded_ascent_closure_is_grounded_and_within_budget :
+    boundedClosureReceiptValid ownershipState validBoundedClosureReceipt = true := by
+  native_decide
+
+def overBudgetClosureReceipt : BoundedClosureReceipt :=
+  { validBoundedClosureReceipt with ruleFirings := 9 }
+
+theorem ascent_closure_over_rule_budget_is_rejected :
+    boundedClosureReceiptValid ownershipState overBudgetClosureReceipt = false := by
+  native_decide
+
+structure GraphTurboCacheIdentity where
+  workspaceDigest : String
+  snapshotDigest : String
+  graphSchemaDigest : String
+  projectionDigest : String
+  algorithmProfile : String
+  algorithmImplementationDigest : String
+  parameterDigest : String
+  deterministicSeed : Nat
+  budgetProfileDigest : String
+  deriving Repr, DecidableEq, BEq
+
+def graphTurboCacheReusable
+    (expected observed : GraphTurboCacheIdentity) : Bool :=
+  expected == observed
+
+def graphTurboCacheIdentity : GraphTurboCacheIdentity :=
+  { workspaceDigest := "workspace:1"
+    snapshotDigest := "snapshot:7"
+    graphSchemaDigest := "schema:1"
+    projectionDigest := "projection:1"
+    algorithmProfile := "local-path.v1"
+    algorithmImplementationDigest := "scipy:1"
+    parameterDigest := "parameters:1"
+    deterministicSeed := 0
+    budgetProfileDigest := "budget:1" }
+
+theorem exact_graph_turbo_cache_identity_is_reusable :
+    graphTurboCacheReusable graphTurboCacheIdentity graphTurboCacheIdentity = true := by
+  native_decide
+
+def staleGraphTurboCacheIdentity : GraphTurboCacheIdentity :=
+  { graphTurboCacheIdentity with snapshotDigest := "snapshot:6" }
+
+theorem graph_turbo_cache_rejects_snapshot_substitution :
+    graphTurboCacheReusable graphTurboCacheIdentity staleGraphTurboCacheIdentity = false := by
+  native_decide
+
+theorem renderer_bytes_are_not_part_of_graph_turbo_cache_identity
+    (_mermaid _dot : String) :
+    graphTurboCacheReusable graphTurboCacheIdentity graphTurboCacheIdentity = true := by
+  native_decide
+
+inductive CacheAuthority where
+  | runtimeServer
+  | cliAdapter
+  deriving Repr, DecidableEq, BEq
+
+structure CacheExecution where
+  requester : CacheAuthority
+  tursoOwner : CacheAuthority
+  generationPublisher : CacheAuthority
+  writerQueueOwner : CacheAuthority
+  throughTypedIpc : Bool
+  requesterOpensTurso : Bool
+  deriving Repr, DecidableEq, BEq
+
+def serverCenteredCacheExecutionValid (execution : CacheExecution) : Bool :=
+  execution.tursoOwner == .runtimeServer &&
+    execution.generationPublisher == .runtimeServer &&
+    execution.writerQueueOwner == .runtimeServer &&
+    !execution.requesterOpensTurso &&
+    (execution.requester == .runtimeServer || execution.throughTypedIpc)
+
+def validCliCacheAdapterExecution : CacheExecution :=
+  { requester := .cliAdapter
+    tursoOwner := .runtimeServer
+    generationPublisher := .runtimeServer
+    writerQueueOwner := .runtimeServer
+    throughTypedIpc := true
+    requesterOpensTurso := false }
+
+theorem cli_cache_adapter_may_request_but_cannot_own_cache :
+    serverCenteredCacheExecutionValid validCliCacheAdapterExecution = true := by
+  decide
+
+def directCliTursoExecution : CacheExecution :=
+  { validCliCacheAdapterExecution with
+    throughTypedIpc := false
+    requesterOpensTurso := true }
+
+theorem cli_direct_turso_open_is_rejected :
+    serverCenteredCacheExecutionValid directCliTursoExecution = false := by
+  decide
+
+def cliGenerationPublisherExecution : CacheExecution :=
+  { validCliCacheAdapterExecution with generationPublisher := .cliAdapter }
+
+theorem second_cli_generation_publisher_is_rejected :
+    serverCenteredCacheExecutionValid cliGenerationPublisherExecution = false := by
+  decide
+
+def cliWriterQueueExecution : CacheExecution :=
+  { validCliCacheAdapterExecution with writerQueueOwner := .cliAdapter }
+
+theorem cli_bypass_of_resident_writer_queue_is_rejected :
+    serverCenteredCacheExecutionValid cliWriterQueueExecution = false := by
+  decide
+
+structure TreeSitterPublicSurface where
+  resultCount : Nat
+  terminalReceiptCount : Nat
+  exposesIncrementalSibling : Bool
+  deriving Repr, DecidableEq, BEq
+
+def treeSitterPublicSurfaceValid (surface : TreeSitterPublicSurface) : Bool :=
+  surface.resultCount == 1 &&
+    surface.terminalReceiptCount == 1 &&
+    !surface.exposesIncrementalSibling
+
+def mergedTreeSitterSurface : TreeSitterPublicSurface :=
+  { resultCount := 1
+    terminalReceiptCount := 1
+    exposesIncrementalSibling := false }
+
+theorem tree_sitter_incremental_execution_has_one_public_surface :
+    treeSitterPublicSurfaceValid mergedTreeSitterSurface = true := by
+  decide
+
+def splitIncrementalSurface : TreeSitterPublicSurface :=
+  { mergedTreeSitterSurface with
+    resultCount := 2
+    terminalReceiptCount := 2
+    exposesIncrementalSibling := true }
+
+theorem sibling_incremental_result_and_trace_are_rejected :
+    treeSitterPublicSurfaceValid splitIncrementalSurface = false := by
+  decide
 
 end ASPProof.SearchRouterInteractiveGraphState

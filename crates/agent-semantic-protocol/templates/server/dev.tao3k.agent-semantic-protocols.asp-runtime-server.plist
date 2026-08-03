@@ -15,6 +15,7 @@
   <dict>
     <key>ASP_STATE_HOME</key>
     <string>@ASP_STATE_HOME@</string>
+@ASP_GRAPH_TURBO_PYTHON_ENV@
   </dict>
   <key>RunAtLoad</key>
   <true/>

@@ -479,6 +479,8 @@ pub struct ClientDbSourceIndexSelector {
     pub source: ClientDbSourceIndexSource,
     pub query_keys: Vec<ClientDbSourceIndexQueryKey>,
     pub projection_record: agent_semantic_content_identity::ExactSelectorProjectionRecordV1,
+    pub derived_projections:
+        Vec<crate::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot>,
 }
 
 /// Aggregate row counts for one source index generation.

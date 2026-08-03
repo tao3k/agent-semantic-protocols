@@ -36,48 +36,7 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "schemaId",
-          "schemaVersion",
-          "workspaceIdentity",
-          "state",
-          "accepted",
-          "attempt"
-        ],
-        "properties": {
-          "schemaId": {
-            "const": "agent.semantic-protocols.runtime-server-workspace-generation-admission.v1"
-          },
-          "schemaVersion": {
-            "const": "1"
-          },
-          "workspaceIdentity": {
-            "type": "string",
-            "minLength": 1
-          },
-          "state": {
-            "enum": [
-              "building",
-              "ready",
-              "failed"
-            ]
-          },
-          "accepted": {
-            "type": "boolean"
-          },
-          "attempt": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
+        "$ref": "runtime-server-workspace-generation-admission.v1.schema.json"
       }
     }
   }

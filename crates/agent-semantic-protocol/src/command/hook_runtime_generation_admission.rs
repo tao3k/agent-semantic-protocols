@@ -132,6 +132,23 @@ pub(crate) fn ensure(project_root: &Path) -> Result<serde_json::Value, String> {
     })?
 }
 
+/// Establish terminal workspace-generation readiness before an explicit ASP
+/// search/query command enters the read-only data plane.
+pub(crate) fn ensure_ready(project_root: &Path) -> Result<serde_json::Value, String> {
+    let project_root = project_root.to_path_buf();
+    crate::command::runtime_server::block_on_runtime_server_client(async move {
+        let session =
+            crate::command::runtime_server::runtime_server_workspace_session_for_admission_async(
+                &project_root,
+            )
+            .await?;
+        let receipt = session.repair_runtime_generation_locator().await?;
+        receipt.validate()?;
+        serde_json::to_value(receipt)
+            .map_err(|error| format!("failed to encode ready runtime generation: {error}"))
+    })?
+}
+
 #[cfg(test)]
 #[path = "../../tests/unit/hook_runtime_generation_admission.rs"]
 mod tests;

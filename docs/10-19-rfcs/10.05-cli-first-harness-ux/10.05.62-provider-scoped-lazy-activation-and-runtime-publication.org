@@ -318,8 +318,22 @@ Rules:
 - binary publication and active-artifact-receipt reconciliation execute under
   the same reconciliation guard whenever an active receipt already exists;
 - a broken, looping, or escaping symlink chain fails closed before switch;
-- previous immutable artifacts remain available for receipt-backed rollback,
-  but stale artifacts never participate in current selection.
+- immutable artifacts are retained by reachability, not indefinitely: every
+  =latest/<binary-name>= target is protected and each binary protects its two
+  newest non-active generations for receipt-backed rollback;
+- Runtime Server reconciliation MUST reach =Healthy= before artifact retention
+  deletes any generation, so a supervisor can never lose the executable it is
+  still running or preparing to load;
+- retention operates on the union of protected digests across all registered
+  binaries because several binary identities share the same algorithm root;
+- a directory with an unknown digest shape, an escaping pointer, or an
+  unreadable entry is never guessed safe to delete; retention fails closed or
+  reports the entry as ignored;
+- every successful retention pass atomically publishes a typed receipt with
+  scanned, retained, removed, ignored, and reclaimed-byte counts;
+- stale immutable artifacts never participate in current selection and an
+  unbounded artifact history is not a conforming developer-mode rollback
+  policy.
 
 The same topology applies independently to provider harnesses:
 

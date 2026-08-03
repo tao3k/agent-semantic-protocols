@@ -8,6 +8,8 @@ use agent_semantic_client_db::{
 pub(super) struct PreparedSourceIndexGeneration {
     refresh_request: ClientDbSourceIndexRefreshRequest,
     materialization: WorkspaceCanonicalMaterialization,
+    candidate:
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
 }
 
 impl PreparedSourceIndexGeneration {
@@ -15,11 +17,13 @@ impl PreparedSourceIndexGeneration {
         _db_path: PathBuf,
         refresh_request: ClientDbSourceIndexRefreshRequest,
         materialization: WorkspaceCanonicalMaterialization,
+        candidate: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
         _trace_started: Instant,
     ) -> Self {
         Self {
             refresh_request,
             materialization,
+            candidate,
         }
     }
 
@@ -27,6 +31,7 @@ impl PreparedSourceIndexGeneration {
         self,
     ) -> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild {
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild::new(
+            self.candidate,
             self.refresh_request,
             self.materialization,
         )

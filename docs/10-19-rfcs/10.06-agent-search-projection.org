@@ -27,6 +27,66 @@ grouped relation edges, a legend-declared search root, algorithm-owned rank,
 inline next actions, exact locators, and explicit omission/avoidance facts.
 
 ** Provider-scoped incremental generation projection
+*** RuntimeServer-centered cache authority
+The Runtime Server is the sole live owner of cache admission, source-index generations,
+Turso connections, MVCC publication, and the resident writer queue.  Agent-facing
+=asp cache= commands are typed IPC adapters only; they MUST NOT open =facts.turso=,
+bootstrap or migrate a client database, publish a second local-cache generation, or
+take ownership from the resident server.
+
+=source-index refresh= is a warm validation request against the server-owned admitted
+generation.  =source-index rebuild= is the explicit cold construction request.  Both
+requests MUST enter the same RuntimeServer data-plane admission and writer queue, and
+both return one typed receipt containing the admitted generation identity and cache
+provenance.  Neither command owns an alternate CLI-side lifecycle.
+
+The sole v1 cache-control action set is =status=, =refresh-source-index=,
+=rebuild-source-index=, and explicitly scoped =invalidate=.  =status= is read-only.
+Every mutating action carries a stable =mutationId= and is serialized by the resident
+writer queue.  The legacy =asp cache import= path is superseded by
+=rebuild-source-index= and MUST NOT open or migrate Turso from the CLI.  A legacy
+=flush syntax-rows= request, while it remains accepted by an adapter, is represented as
+=invalidate(scope=syntax-rows)= inside the server contract rather than as a separate
+cache owner or lifecycle.
+
+A direct CLI database open that fails because the RuntimeServer holds the Turso lock is
+not a recoverable operating mode; it is a conformance counterexample proving that cache
+authority escaped the server boundary.  Stopping the RuntimeServer to make such a CLI
+path succeed MUST NOT be used as the normal repair.
+
+*** Single Tree-sitter public surface
+Tree-sitter owns the single public query and result projection.  Incremental parsing,
+generation acquisition, refresh, and reuse are internal execution properties of that
+Tree-sitter query.  =incremental= MUST NOT identify a sibling mode, result type,
+renderer, trace set, terminal state, or next action.
+
+
+The merge boundary is the query-result state model, not the presentation
+layer.  The provider MUST first combine parser matches, incremental admission
+state, counters, continuation, and terminal status into one result.  Exactly
+one renderer then projects that result.  Implementations MUST NOT render a
+Tree-sitter summary and an incremental summary independently and join the two
+strings, even when the joined text happens to contain only one visible trace
+header.
+
+Tree-sitter and incremental execution are orthogonal dimensions of one search
+projection.  =tree-sitter= identifies the parser/query backend;
+=incremental= identifies how that backend acquires and refreshes its admitted
+generation.  One invocation MUST mint exactly one =traceSetId= and emit exactly
+one agent-facing receipt.  Incremental inventory, cache decisions, mutation
+counters, and completeness are nested execution evidence of the Tree-sitter
+result; they are not a second search result or a sibling trace set.  The
+compact/default renderer MUST NOT emit both a =[search-treesitter]= block and a
+separate =[query-treesitter-incremental]= block for the same request.  It emits
+one merged terminal state and one =recommendedNext= action.  Explicit debug
+projection MAY retain backend subtraces, but every subtrace references the same
+=traceSetId= and cannot independently emit a terminal state or next action.
+Deduplication is fail-closed on request identity, provider-workspace identity,
+query digest, and admitted generation.
+
+The language-neutral conformance surface is
+[[file:../../schemas/agent-facing-search-trace-receipt.v1.schema.json][agent-facing-search-trace-receipt.v1]].  This is the sole v1 contract; an
+incremental backend refinement does not create another protocol version.
 
 A language-scoped source-index lookup MUST derive its index owner from the
 registered provider for the requested =languageId= when no explicit

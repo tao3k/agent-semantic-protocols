@@ -8,6 +8,37 @@ use std::fs;
 
 use super::temp_root;
 
+struct ProtocolBinEnvGuard(Option<std::ffi::OsString>);
+
+impl ProtocolBinEnvGuard {
+    fn set(path: &std::path::Path) -> Self {
+        let previous = std::env::var_os("SEMANTIC_AGENT_PROTOCOL_BIN");
+        unsafe {
+            std::env::set_var("SEMANTIC_AGENT_PROTOCOL_BIN", path);
+        }
+        Self(previous)
+    }
+
+    fn replace(&mut self, path: &std::path::Path) {
+        unsafe {
+            std::env::set_var("SEMANTIC_AGENT_PROTOCOL_BIN", path);
+        }
+    }
+}
+
+impl Drop for ProtocolBinEnvGuard {
+    fn drop(&mut self) {
+        match self.0.take() {
+            Some(previous) => unsafe {
+                std::env::set_var("SEMANTIC_AGENT_PROTOCOL_BIN", previous);
+            },
+            None => unsafe {
+                std::env::remove_var("SEMANTIC_AGENT_PROTOCOL_BIN");
+            },
+        }
+    }
+}
+
 #[test]
 fn generated_activation_sync_refreshes_stale_manifest_coverage_defaults() {
     let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
@@ -171,6 +202,86 @@ fn generated_activation_rebuild_failure_does_not_serve_old_activation() {
     );
 
     fs::remove_dir_all(root).expect("remove temp root");
+}
+
+#[test]
+fn generated_activation_refreshes_a_new_digest_addressed_runtime_binary() {
+    let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let root = temp_root("runtime-binary-selection-drift");
+    super::git_init(&root);
+    fs::create_dir_all(root.join("src")).expect("create Rust source root");
+    fs::write(
+        root.join("Cargo.toml"),
+        "[package]\nname = \"sample\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("write cargo manifest");
+    fs::write(root.join("src/lib.rs"), "pub fn fixture() {}\n").expect("write Rust candidate");
+    let state_parent = temp_root("runtime-binary-selection-drift-state");
+    let state_home = state_parent.join(".agent-semantic-protocols");
+    let _state_home_guard = super::activation_bin::StateHomeEnvGuard::set(&state_home);
+    super::install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+
+    let first_digest = "a".repeat(64);
+    let first_binary = state_home
+        .join("runtime/artifacts/blake3-256")
+        .join(&first_digest)
+        .join("asp");
+    fs::create_dir_all(first_binary.parent().expect("first binary parent"))
+        .expect("create first artifact directory");
+    fs::write(&first_binary, b"first runtime").expect("write first runtime");
+    let mut binary_guard = ProtocolBinEnvGuard::set(&first_binary);
+
+    let activation_path = test_activation_path(&root, &state_parent);
+    let initial = load_or_refresh_default_activation(&activation_path, &root)
+        .expect("publish initial activation");
+    assert_eq!(initial.status, "created");
+
+    let second_digest = "b".repeat(64);
+    let second_binary = state_home
+        .join("runtime/artifacts/blake3-256")
+        .join(&second_digest)
+        .join("asp");
+    fs::create_dir_all(second_binary.parent().expect("second binary parent"))
+        .expect("create second artifact directory");
+    fs::write(&second_binary, b"second runtime").expect("write second runtime");
+    binary_guard.replace(&second_binary);
+
+    let refreshed = load_or_refresh_default_activation(&activation_path, &root)
+        .expect("refresh runtime binary selection");
+    assert_eq!(refreshed.status, "refreshed");
+    assert_eq!(
+        refreshed.admission.reason,
+        ActivationAdmissionReason::ArtifactReceiptInvalid
+    );
+    let ranker = refreshed
+        .activation
+        .rankers
+        .iter()
+        .find(|ranker| ranker.ranker_id == "asp-graph-turbo")
+        .expect("Graph Turbo ranker");
+    assert_eq!(
+        ranker.binary,
+        second_binary
+            .canonicalize()
+            .expect("canonical second runtime")
+            .display()
+            .to_string()
+    );
+    assert_eq!(ranker.content_digest, second_digest);
+    let receipt = verify_active_asp_artifact_receipt(&activation_path, &[&second_binary])
+        .expect("verify refreshed active receipt");
+    assert_eq!(
+        receipt.asp_binary_leaf().artifact_digest().as_str(),
+        second_digest
+    );
+    let unchanged = load_or_refresh_default_activation(&activation_path, &root)
+        .expect("reuse refreshed activation");
+    assert_eq!(unchanged.status, "reused");
+
+    fs::remove_dir_all(root).expect("remove temp root");
+    fs::remove_dir_all(state_parent).expect("remove temp state parent");
 }
 
 #[test]

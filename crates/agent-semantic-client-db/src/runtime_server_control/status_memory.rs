@@ -24,6 +24,8 @@ pub(crate) struct RuntimeServerStatusMemoryWriter {
     mapping: MmapMut,
     endpoint: RuntimeServerEndpoint,
     generation: u64,
+    graph_turbo_resident:
+        Option<std::sync::Arc<std::sync::RwLock<super::GraphTurboResidentStatus>>>,
 }
 
 struct RuntimeServerStatusMemoryReader {
@@ -65,6 +67,7 @@ impl RuntimeServerStatusMemoryWriter {
             mapping,
             endpoint: endpoint.clone(),
             generation: 0,
+            graph_turbo_resident: None,
         };
         writer.publish(RuntimeServerState::Starting, 0)?;
         Ok(writer)
@@ -82,6 +85,13 @@ impl RuntimeServerStatusMemoryWriter {
             &self.endpoint,
             workspace_entry_count,
         );
+        let snapshot = RuntimeServerStatusSnapshot {
+            graph_turbo_resident: self
+                .graph_turbo_resident
+                .as_ref()
+                .and_then(|status| status.read().ok().map(|status| status.clone())),
+            ..snapshot
+        };
         let payload = serde_json::to_vec(&snapshot)
             .map_err(|error| format!("failed to encode Runtime Server status memory: {error}"))?;
         if payload.len() > self.mapping.len().saturating_sub(PAYLOAD_OFFSET) {
@@ -95,6 +105,13 @@ impl RuntimeServerStatusMemoryWriter {
         generation(&self.mapping).store(committed_generation, Ordering::Release);
         self.generation = committed_generation;
         Ok(())
+    }
+
+    pub(crate) fn set_graph_turbo_resident(
+        &mut self,
+        status: std::sync::Arc<std::sync::RwLock<super::GraphTurboResidentStatus>>,
+    ) {
+        self.graph_turbo_resident = Some(status);
     }
 }
 

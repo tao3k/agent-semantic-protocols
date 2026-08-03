@@ -1,4 +1,7 @@
-use super::{development_artifact_is_authorized, development_provider_installer_plan};
+use super::{
+    DEFAULT_DEVELOPMENT_PROVIDER_INSTALL_TIMEOUT, development_artifact_is_authorized,
+    development_provider_installer_plan,
+};
 use agent_semantic_hook::ProviderDevelopmentArtifactDomain;
 
 #[test]
@@ -77,4 +80,12 @@ fn artifact_admission_has_only_checkout_and_typed_state_staging_domains() {
         ProviderDevelopmentArtifactDomain::Checkout,
         std::path::Path::new("/checkout/agent-semantic-protocols/languages/typescript/py-harness")
     ));
+}
+
+#[test]
+fn development_installer_default_timeout_is_bounded() {
+    assert_eq!(
+        DEFAULT_DEVELOPMENT_PROVIDER_INSTALL_TIMEOUT,
+        std::time::Duration::from_secs(15 * 60)
+    );
 }

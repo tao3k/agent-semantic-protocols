@@ -88,7 +88,7 @@ pub(crate) fn current_resident_child_identity_proof(
         return Ok(None);
     };
     if root_session_id.as_str() == session_id
-        || !super::agent_session_registry_validation::rollout_metadata_matches_managed_agent_profile(
+        || !super::agent_session_registry_validation::rollout_metadata_matches_host_agent_identity(
             resident_child_name,
             resident_agent_role,
             &metadata,

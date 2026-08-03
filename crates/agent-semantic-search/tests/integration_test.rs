@@ -1,2 +1,2 @@
-#[path = "integration/mod.rs"]
-mod integration;
+#[path = "integration/graph_owner_rank_report/mod.rs"]
+mod graph_owner_rank_report;

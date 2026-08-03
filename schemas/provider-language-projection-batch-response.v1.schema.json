@@ -82,7 +82,8 @@
         "selector",
         "sourceByteStart",
         "sourceByteEnd",
-        "identity"
+        "identity",
+        "projections"
       ],
       "properties": {
         "itemId": {
@@ -115,6 +116,26 @@
         },
         "identity": {
           "$ref": "canonical-language-item-identity.v1.schema.json"
+        },
+        "projections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/derivedProjection"
+          }
+        }
+      }
+    },
+    "derivedProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectionKind", "payload"],
+      "properties": {
+        "projectionKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {
+          "type": "object"
         }
       }
     },

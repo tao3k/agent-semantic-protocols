@@ -1,7 +1,7 @@
 {
-  "binary": "orgize",
+    "binary": "asp",
   "displayName": "Org Document Provider",
-  "execution": "external-process",
+    "execution": "embedded",
   "languageId": "org",
   "methodDescriptors": [
     {

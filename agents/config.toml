@@ -1,44 +1,24 @@
-schema_id = "asp.subagent-catalog.v1"
+schema_id = "agent.semantic-protocols.agent-route-registry"
 schema_version = 1
 
 [agents.asp_explorer]
 session_name = "asp-explore"
 session_lifetime = "resident"
-model_policy = "low-cost-reasoning"
-reasoning_policy = "low"
-permission_policy = "read-only"
-sandbox_policy = "read-only"
-roles = ["subagent", "search"]
-capabilities = ["search", "query", "evidence-exploration"]
+roles = ["explore", "subagent"]
 
 [agents.asp_explorer.platforms.codex]
 host_agent_name = "asp_explorer"
-profile = "asp-explorer_codex.toml"
-projection = "asp-explorer.toml"
-model = "gpt-5.6-luna"
 
 [agents.asp_explorer.platforms.claude]
 host_agent_name = "asp-explorer"
-profile = "asp-explorer_claude.md"
-projection = "asp-explorer.md"
 
 [agents.asp_testing]
 session_name = "asp-testing"
 session_lifetime = "resident"
-model_policy = "low-cost-reasoning"
-reasoning_policy = "low"
-permission_policy = "workspace-write"
-sandbox_policy = "workspace-write"
-roles = ["subagent", "testing", "build"]
-capabilities = ["test", "build", "receipt-validation"]
+roles = ["build", "subagent", "testing"]
 
 [agents.asp_testing.platforms.codex]
 host_agent_name = "asp_testing"
-profile = "asp-testing_codex.toml"
-projection = "asp-testing.toml"
-model = "gpt-5.6-luna"
 
 [agents.asp_testing.platforms.claude]
 host_agent_name = "asp-testing"
-profile = "asp-testing_claude.md"
-projection = "asp-testing.md"

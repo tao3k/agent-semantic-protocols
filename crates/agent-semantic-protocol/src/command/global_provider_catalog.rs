@@ -197,6 +197,45 @@ fn load_catalog_from_disk() -> Result<Arc<GlobalProviderCatalog>, String> {
     Ok(Arc::new(catalog))
 }
 
+fn runtime_catalog() -> Result<Arc<GlobalProviderCatalog>, String> {
+    if let Some(catalog) = active_catalog()
+        .read()
+        .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?
+        .as_ref()
+        .cloned()
+    {
+        return Ok(catalog);
+    }
+    let catalog = load_catalog_from_disk()?;
+    let mut active = active_catalog()
+        .write()
+        .map_err(|_| "Global provider catalog write guard is poisoned".to_owned())?;
+    if let Some(current) = active.as_ref() {
+        return Ok(Arc::clone(current));
+    }
+    *active = Some(Arc::clone(&catalog));
+    Ok(catalog)
+}
+
+pub(super) fn runtime_projection_provider(
+    language_id: &str,
+) -> Result<GlobalProviderCatalogProvider, String> {
+    let catalog = runtime_catalog()?;
+    let mut providers = catalog
+        .providers
+        .iter()
+        .filter(|provider| provider.language_id == language_id);
+    let provider = providers.next().ok_or_else(|| {
+        format!("Global provider catalog omitted language: languageId={language_id}")
+    })?;
+    if providers.next().is_some() {
+        return Err(format!(
+            "Global provider catalog has ambiguous projection providers: languageId={language_id}"
+        ));
+    }
+    Ok(provider.clone())
+}
+
 pub(super) fn read_global_provider_catalog_readiness()
 -> Result<GlobalProviderCatalogReadiness, String> {
     let started_at = std::time::Instant::now();
@@ -211,7 +250,7 @@ pub(super) fn read_global_provider_catalog_readiness()
 pub(super) fn runtime_provider_registry_snapshot(
     project_root: &Path,
 ) -> Result<(agent_semantic_client_core::ProviderRegistrySnapshot, String), String> {
-    let catalog = load_catalog_from_disk()?;
+    let catalog = runtime_catalog()?;
     let mut snapshot = agent_semantic_client_core::ProviderRegistrySnapshot::load(project_root)?;
     for provider in &mut snapshot.providers {
         let catalog_provider = catalog
@@ -234,13 +273,6 @@ pub(super) fn runtime_provider_registry_snapshot(
         provider.runtime_profile_status =
             Some(agent_semantic_client_core::RuntimeProfileStatus::Available);
     }
-    if snapshot.providers.len() != catalog.providers.len() {
-        return Err(format!(
-            "runtime provider catalog/activation cardinality drift: catalog={} activation={}",
-            catalog.providers.len(),
-            snapshot.providers.len()
-        ));
-    }
     Ok((snapshot, catalog.catalog_generation.clone()))
 }
 
@@ -255,7 +287,30 @@ pub(super) fn publish_global_provider_catalog(
     let phase = std::time::Instant::now();
     let catalog_identities = agent_semantic_hook::registered_provider_catalog_identities();
     registry_digest_micros += phase.elapsed().as_micros();
-    let manifests = agent_semantic_hook::schema_registry_provider_manifests();
+    let manifests = agent_semantic_hook::schema_registry_provider_manifests()
+        .into_iter()
+        .map(|manifest| {
+            let kind =
+                agent_semantic_hook::registered_provider_kind(manifest.language_id().as_str())?;
+            Ok((kind, manifest))
+        })
+        .collect::<Result<Vec<_>, String>>()?
+        .into_iter()
+        .filter_map(|(kind, manifest)| {
+            (kind == agent_semantic_hook::RegisteredProviderKind::ProgrammingLanguage)
+                .then_some(manifest)
+        })
+        .filter(|manifest| {
+            receipts.iter().any(|receipt| {
+                receipt.language_id == manifest.language_id().as_str()
+                    || receipt
+                        .installed_path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        == Some(manifest.binary())
+            })
+        })
+        .collect::<Vec<_>>();
     let active_generation = active_catalog()
         .read()
         .map_err(|_| "Global provider catalog read guard is poisoned".to_owned())?

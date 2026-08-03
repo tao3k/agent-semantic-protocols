@@ -824,6 +824,7 @@ fn source_index_import_assembly_uses_turso_ready_contract_rows() {
             kind: Some("function".into()),
             source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
             query_keys: vec!["turso_source_index_fixture".into()],
+            derived_projections: Vec::new(),
             projection_record: crate::projection_fixture::projection_record(
                 crate::projection_fixture::ProjectionFixtureInput {
                     language_id: "rust",

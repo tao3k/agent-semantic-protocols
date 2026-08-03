@@ -170,7 +170,10 @@ pub(crate) fn run_language_command(
     run_pre_activation_search_command_preflight(language_id, &command_args, &invocation_root)?;
     reject_search_file_workspace(&command_args, &invocation_root)?;
     validate_explicit_workspace_project_root(language_id, &command_args, &invocation_root)?;
-    if is_provider_owned_structural_selector_query(language_id, &command_args) {
+    if is_provider_owned_structural_selector_query(language_id, &command_args)
+        && agent_semantic_hook::registered_provider_kind(language_id)?
+            == agent_semantic_hook::RegisteredProviderKind::ProgrammingLanguage
+    {
         let (exact_project_root, exact_provider_args) =
             super::provider_roots::explicit_workspace_project_root(
                 language_id,

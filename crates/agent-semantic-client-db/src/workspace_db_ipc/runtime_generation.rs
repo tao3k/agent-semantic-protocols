@@ -299,9 +299,14 @@ impl WorkspaceDbIpcSession {
         if let Some(pending_mutation) = pending_mutation {
             wait_for_mutation_flight(&pending_mutation).await?;
         }
+        let project_root = self.runtime_project_root()?.to_path_buf();
+        let candidate =
+            crate::runtime_server_admission::discover_workspace_generation_candidate(&project_root)
+                .await?;
         match self
             .call_operation(WorkspaceDbIpcOperation::EnsureRuntimeGeneration {
-                project_root: self.runtime_project_root()?.display().to_string(),
+                project_root: project_root.display().to_string(),
+                candidate,
             })
             .await?
         {
@@ -312,14 +317,14 @@ impl WorkspaceDbIpcSession {
 
     pub async fn repair_runtime_generation_locator(
         &self,
-    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
+    ) -> Result<crate::runtime_server_admission::WorkspaceGenerationReadinessReceipt, String> {
         match self
             .call_operation(WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator {
                 project_root: self.runtime_project_root()?.display().to_string(),
             })
             .await?
         {
-            WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt } => Ok(receipt),
+            WorkspaceDbIpcResult::RuntimeGenerationReadiness { receipt } => Ok(receipt),
             _ => Err(
                 "Runtime Server returned an unexpected generation locator repair result".to_owned(),
             ),
@@ -341,6 +346,45 @@ impl WorkspaceDbIpcSession {
             })
             .await?;
         admit_hook_evaluation_result(&expected_workspace_identity, &expected_project_root, result)
+    }
+
+    pub async fn evaluate_graph_turbo(
+        &self,
+        message: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let expected_workspace_identity = self.workspace_identity().to_owned();
+        let expected_project_root = self.runtime_project_root()?.display().to_string();
+        let result = self
+            .call_operation(WorkspaceDbIpcOperation::EvaluateGraphTurbo {
+                project_root: expected_project_root.clone(),
+                message,
+            })
+            .await?;
+        match result {
+            WorkspaceDbIpcResult::GraphTurboEvaluation {
+                workspace_identity,
+                project_root,
+                receipt,
+            } if workspace_identity == expected_workspace_identity
+                && project_root == expected_project_root =>
+            {
+                Ok(receipt)
+            }
+            WorkspaceDbIpcResult::GraphTurboEvaluation {
+                workspace_identity,
+                project_root,
+                ..
+            } => Err(format!(
+                "Runtime Server Graph Turbo response binding mismatch: expectedWorkspace={} actualWorkspace={} expectedProjectRoot={} actualProjectRoot={}",
+                expected_workspace_identity,
+                workspace_identity,
+                expected_project_root,
+                project_root,
+            )),
+            other => Err(format!(
+                "Runtime Server returned unexpected Graph Turbo result: {other:?}"
+            )),
+        }
     }
 
     pub async fn publish_runtime_owner(

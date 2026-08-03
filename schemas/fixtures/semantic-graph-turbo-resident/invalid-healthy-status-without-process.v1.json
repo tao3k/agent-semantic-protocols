@@ -1,0 +1,7 @@
+{
+  "state": "healthy",
+  "processId": null,
+  "runtimeArtifact": "/opt/asp/graph-turbo/bin/python3",
+  "executionCommandDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "reason": null
+}

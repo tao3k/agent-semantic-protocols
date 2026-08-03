@@ -1,10 +1,22 @@
 use std::fs;
+use std::time::{Duration, Instant};
 
 #[cfg(target_os = "macos")]
 use crate::ProviderProcessError;
-use crate::{StdinMode, run_provider_process};
+use crate::{
+    DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, ProviderProcessLimits, StdinMode, run_provider_process,
+};
 
 use super::support::{script, spec, temp_dir};
+
+#[test]
+fn default_limits_enforce_the_two_gibibyte_provider_process_group_ceiling() {
+    assert_eq!(
+        ProviderProcessLimits::default().memory_limit_bytes(),
+        Some(DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES)
+    );
+    assert_eq!(DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, 2 * 1024 * 1024 * 1024);
+}
 
 #[test]
 fn captures_stdout_stderr_and_exit_status() {
@@ -32,6 +44,30 @@ fn captures_stdout_stderr_and_exit_status() {
     assert_eq!(
         output.receipt.stderr_sha256(),
         Some("d9eb253e06987fa74a5d3189f73d9f7a8104cca786fafbb52bc9555972f5477f")
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn completed_provider_invocation_kills_background_descendants_before_returning() {
+    let root = temp_dir("provider-orphan-descendant");
+    let program = script(
+        &root,
+        "provider.sh",
+        "#!/bin/sh\nsleep 2 &\nprintf orphan\nexit 0\n",
+    );
+    let started = Instant::now();
+
+    let output = run_provider_process(spec(program, root.clone())).expect("run provider");
+
+    assert!(output.status.success());
+    assert_eq!(output.stdout.as_ref(), b"orphan");
+    assert!(output.receipt.process_group_isolation_enforced());
+    assert!(output.receipt.descendant_cleanup_required());
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "provider output collection waited for an orphan descendant"
     );
     let _ = fs::remove_dir_all(root);
 }
@@ -121,6 +157,7 @@ fn records_success_with_enforced_memory_limit() {
     assert_eq!(output.receipt.termination_reason(), "success");
     assert!(!output.receipt.abnormal_termination());
     assert!(output.receipt.memory_limit_enforced());
+    assert!(!output.receipt.descendant_cleanup_required());
     let _ = fs::remove_dir_all(root);
 }
 
@@ -149,6 +186,36 @@ fn macos_parent_kills_provider_after_rss_limit() {
     assert_eq!(limit_bytes, 32 * 1024 * 1024);
     assert!(receipt.memory_limit_exceeded());
     assert!(receipt.abnormal_termination());
+    assert_eq!(receipt.termination_reason(), "memory-limit-exceeded");
+    let _ = fs::remove_dir_all(root);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_parent_kills_provider_when_child_pushes_process_group_over_rss_limit() {
+    let root = temp_dir("macos-process-group-rss-limit");
+    let program = script(
+        &root,
+        "provider.sh",
+        "#!/bin/sh\n/usr/bin/perl -e '$x = \"x\" x (128 * 1024 * 1024); sleep 2' &\nwait $!\n",
+    );
+    let mut process = spec(program, root.clone());
+    process.limits = process
+        .limits
+        .with_memory_limit_bytes(Some(32 * 1024 * 1024));
+
+    let error =
+        run_provider_process(process).expect_err("process-group memory must terminate provider");
+    let ProviderProcessError::MemoryLimit {
+        limit_bytes,
+        receipt,
+    } = error
+    else {
+        panic!("expected process-group memory-limit receipt");
+    };
+    assert_eq!(limit_bytes, 32 * 1024 * 1024);
+    assert!(receipt.memory_limit_enforced());
+    assert!(receipt.memory_limit_exceeded());
     assert_eq!(receipt.termination_reason(), "memory-limit-exceeded");
     let _ = fs::remove_dir_all(root);
 }

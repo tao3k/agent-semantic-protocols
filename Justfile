@@ -126,12 +126,14 @@ agent-tools-install-asp bin_dir="":
 
 agent-tools-install-protocol bin_dir="":
     @requested_bin_dir="{{bin_dir}}"; \
+      cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
+      asp_artifact="${cargo_target_dir}/release/asp"; \
       if [ -n "${requested_bin_dir}" ]; then \
         mkdir -p "${requested_bin_dir}"; \
         requested_bin_dir="$(cd "${requested_bin_dir}" && pwd -P)"; \
       fi; \
       cargo build --release --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp || exit $?; \
-      target/release/asp --version --require-release >/dev/null; \
+      "${asp_artifact}" --version --require-release >/dev/null; \
       if [ -n "${requested_bin_dir}" ]; then \
         destination="${requested_bin_dir}/asp"; \
       elif [ -n "${SEMANTIC_AGENT_BIN_DIR:-}" ]; then \
@@ -139,7 +141,7 @@ agent-tools-install-protocol bin_dir="":
       else \
         destination="{{asp_runtime_bin}}/asp"; \
       fi; \
-      target/release/asp install binary --target "${destination}"; \
+      "${asp_artifact}" install binary --target "${destination}"; \
       rm -f "$(dirname "${destination}")/semantic-agent-protocol"; \
       test -x "${destination}"; \
       "${destination}" --version --require-release >/dev/null; \
@@ -148,11 +150,13 @@ agent-tools-install-protocol bin_dir="":
 # Install the debug protocol binary into the canonical Global runtime and prewarm it.
 agent-tools-install-protocol-debug bin_dir="":
     @bin_dir="{{bin_dir}}"; \
+      cargo_target_dir="${CARGO_TARGET_DIR:-target}"; \
+      asp_artifact="${cargo_target_dir}/debug/asp"; \
       if [ -z "${bin_dir}" ]; then bin_dir="{{asp_runtime_bin}}"; fi; \
       mkdir -p "${bin_dir}"; \
       bin_dir="$(cd "${bin_dir}" && pwd -P)"; \
       cargo build --manifest-path Cargo.toml --package agent-semantic-protocol --bin asp || exit $?; \
-      target/debug/asp install binary --target "${bin_dir}/asp"; \
+      "${asp_artifact}" install binary --target "${bin_dir}/asp"; \
       rm -f "${bin_dir}/semantic-agent-protocol"; \
       test -x "${bin_dir}/asp"; \
       "${bin_dir}/asp" guide >/dev/null; \
@@ -314,16 +318,10 @@ agent-tools-build-gerbil bin_dir="":
       package_dir="${repo_root}/{{gerbil_harness_project}}"; \
       cd "${package_dir}"; \
       if [ "$(uname -s)" = "Darwin" ]; then \
-        env SDKROOT= CC="$(xcrun --find clang)" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
-          -e '(import :gslph/src/build-api/native-build)' \
-          -e '(gslph/src/build-api/native-build#compile-package-api-if-stale)'; \
         env SDKROOT= CC="$(xcrun --find clang)" GERBIL_PATH="${package_dir}/.gerbil" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
           -e '(import :gslph/src/build-api/native-build)' \
           -e '(gslph/src/build-api/native-build#install-target #f #f #f #f #f #t (quote asp))'; \
       else \
-        env SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
-          -e '(import :gslph/src/build-api/native-build)' \
-          -e '(gslph/src/build-api/native-build#compile-package-api-if-stale)'; \
         env GERBIL_PATH="${package_dir}/.gerbil" SEMANTIC_AGENT_BIN_DIR="${bin_dir}" gxi \
           -e '(import :gslph/src/build-api/native-build)' \
           -e '(gslph/src/build-api/native-build#install-target #f #f #f #f #f #t (quote asp))'; \

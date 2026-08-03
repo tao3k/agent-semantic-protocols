@@ -49,6 +49,7 @@ pub(in crate::command::agent_session_registry) fn status_session(
         root_session_id: root_session_id.as_deref().map(Into::into),
         name: name.as_deref().map(Into::into),
     })?;
+    let lifecycle_record = record.clone();
     let now = agent_session_unix_timestamp()?;
     let host_resident_target_observation = root_session_id
         .as_deref()
@@ -188,6 +189,18 @@ pub(in crate::command::agent_session_registry) fn status_session(
         routable,
         rollout_activity.as_ref(),
     );
+    let lifecycle_projection_result = lifecycle_projection_for_status(
+        project_id.as_str(),
+        lifecycle_record.as_ref(),
+        host_resident_target_observation.is_some(),
+        fresh_host_transport_verified,
+        host_target_absent,
+        rollout_activity.as_ref(),
+    );
+    let (lifecycle_projection, lifecycle_projection_error) = match lifecycle_projection_result {
+        Ok(projection) => (Some(projection), None),
+        Err(error) => (None, Some(error)),
+    };
     let session_lifetime = resolve_session_lifetime(
         project_root,
         name.as_deref(),
@@ -232,6 +245,8 @@ pub(in crate::command::agent_session_registry) fn status_session(
         host_thread_existence,
         host_thread_existence_reason,
         multi_agent_child_state,
+        lifecycle_projection,
+        lifecycle_projection_error,
         message_target_status: None,
         message_target_result_source: None,
         message_agent_target_id: None,
@@ -407,3 +422,84 @@ pub(super) fn multi_agent_child_state_snapshot(
 #[cfg(test)]
 #[path = "../../../tests/unit/agent_session_registry_commands.rs"]
 pub(super) mod multi_agent_child_state_tests;
+fn lifecycle_projection_for_status(
+    workspace_identity: &str,
+    record: Option<&AgentSessionRecord>,
+    host_observation_present: bool,
+    fresh_host_transport_verified: bool,
+    host_target_absent: bool,
+    rollout_activity: Option<
+        &crate::command::agent_session_registry::agent_session_registry_rollout_activity::RolloutActivityReport,
+    >,
+) -> Result<crate::agent_session_lifecycle_projection::AgentSessionLifecycleProjection, String> {
+    use crate::agent_session_lifecycle_projection::{
+        AgentSessionLifecycleFacts, DispatchObservation, HostBindingFacts, HostBindingObservation,
+        ServerHealth, project_agent_session_lifecycle,
+    };
+
+    let session_generation = record
+        .map(|record| {
+            u64::try_from(record.physical_generation).map_err(|_| {
+                format!(
+                    "agent session physical generation must not be negative: {}",
+                    record.physical_generation
+                )
+            })
+        })
+        .transpose()?;
+    let session_id = record.map(|record| record.session_id.as_str().to_owned());
+    let canonical_message_target = record.and_then(|record| {
+        record
+            .message_target_id
+            .as_ref()
+            .map(|target| target.as_str().to_owned())
+            .or_else(|| Some(record.session_id.as_str().to_owned()))
+    });
+    let host_observation = if host_target_absent {
+        HostBindingObservation::Absent
+    } else if fresh_host_transport_verified {
+        HostBindingObservation::PresentFresh
+    } else if host_observation_present {
+        HostBindingObservation::PresentStale
+    } else {
+        HostBindingObservation::Unobserved
+    };
+    let dispatch_observation = match rollout_activity {
+        Some(activity)
+            if activity
+                .session_activity
+                .as_ref()
+                .is_some_and(|session| session.status == "idle-resumable") =>
+        {
+            DispatchObservation::Idle
+        }
+        Some(activity)
+            if activity.session_activity.as_ref().is_some_and(|session| {
+                matches!(session.status.as_str(), "tool-running" | "agent-active")
+            }) =>
+        {
+            DispatchObservation::Running
+        }
+        Some(activity) if activity.running_session_closed => DispatchObservation::Completed,
+        _ => DispatchObservation::Unobserved,
+    };
+
+    project_agent_session_lifecycle(AgentSessionLifecycleFacts {
+        workspace_identity: workspace_identity.to_owned(),
+        server_health: ServerHealth::Unobserved,
+        session_id: session_id.clone(),
+        session_generation,
+        registry_status: record.map(|record| record.status.as_str().to_owned()),
+        host_binding: HostBindingFacts {
+            recorded: record.is_some(),
+            generation: session_generation,
+            child_session_id: session_id,
+            canonical_message_target,
+            observation: host_observation,
+            termination_receipt_indexed: false,
+            path_release_receipt_indexed: false,
+        },
+        dispatch_generation: session_generation,
+        dispatch_observation,
+    })
+}

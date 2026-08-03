@@ -1,0 +1,206 @@
+#+title: Polyglot Parser Conformance and Executable Refinement
+#+property: header-args:typst :lint typst-eval :runtime typst :format typst
+
+* Status
+
+This module refines
+[[file:01.32-polyglot-search-replacement-evidence.org][Typed Polyglot Search and Replacement Evidence]] with an executable reference
+validator and a separate Lean conformance model.  It does not authorize a Rust
+implementation or claim complete ISO GQL conformance.
+
+Canonical AST and executable query semantics are specified separately in
+[[file:01.34-polyglot-search-semantic-refinement.org][Polyglot Search Canonical AST and Semantic Refinement]].
+
+* Purpose
+
+JSON Schema validates the shape of parsed packets but cannot prove that native
+GQL or Logic Query source corresponds to a claimed safe summary.  It also
+cannot express every cross-field invariant, including selection membership,
+continuation binding, row/schema equality, or equality between candidate,
+installed, and live runtime digests.
+
+The reference validator therefore checks the semantic boundaries between:
+
+1. framed agent text and independently parsed language sections;
+2. source text and typed clause/form summaries;
+3. typed summaries and namespaced relation batches;
+4. relation batches and progressive frontier selection;
+5. the exact projected packet and the replacement certificate.
+
+* Reference implementation boundary
+
+The packaged reference implementation is
+[[file:../../../../packages/proofs/src/asp_proofs/polyglot_search_conformance.py][asp_proofs.polyglot_search_conformance]].  It is invoked as a Python module,
+not as an unowned script:
+
+#+begin_src sh
+uv run python -m asp_proofs.polyglot_search_conformance \
+  --kind document \
+  --input SEARCH_DOCUMENT \
+  --state-digest STATE_DIGEST \
+  --registered-predicate gql_candidate \
+  --registered-predicate frontier_member
+#+end_src
+
+The implementation is a deterministic reference lexer, framed-document parser,
+and cross-packet validator.  It currently validates the ASP GQL Core v0.1
+clause order, forbidden write/procedure keywords, balanced delimiters,
+single-line literals, and unbounded-path rejection.  It does not yet implement
+the complete property-graph semantic algebra for nulls, ordering, path
+multiplicity, or every future ISO-inspired grammar production.
+
+Production parsers MUST refine this reference contract.  Passing the reference
+validator is necessary but not sufficient for full language conformance.
+
+* Canonical framing
+
+The five top-level frames are =SEARCH=, =GQL=, =LOGIC=, =TURBO=, and =EMIT=.
+Frame markers occur alone at column zero.  Duplicate frames, content before the
+first frame, non-NFC text, multiline literals crossing a frame, unknown control
+clauses, and unbalanced delimiters fail closed.
+
+Length-delimited transport is required when this document crosses an IPC
+boundary.  Newline framing is the canonical human/agent projection, not a
+permission for a transport decoder to infer boundaries from an arbitrary byte
+stream.
+
+* GQL and Logic Query conformance
+
+The GQL reference admits =MATCH [WHERE] RETURN= in that order, balanced graph
+patterns, and explicitly bounded paths.  It rejects mutation, procedures, and
+unbounded traversal before relation production.
+
+The Logic Query reference requires a =?-= goal and resolves every predicate
+against a digest-bound registry.  It rejects =:-= rule construction and every
+unregistered predicate.  Production evaluation additionally requires a
+server-owned relation/work/time budget; a parser success never proves that
+closure evaluation terminates.
+
+* Cross-packet invariants
+
+Relation admission requires:
+
+- schema and ABI version equality;
+- source snapshot and provider artifact equality;
+- globally namespaced, unique relation identities;
+- nonempty unique columns and row keys equal to the declared column set;
+- known endpoints and registered predicate versions;
+- Graph Turbo feature authority remains =candidate=;
+- provenance is present.
+
+Frontier admission requires:
+
+- at most ten unique visible candidates;
+- at most three selected candidates;
+- selected candidates form a subset of the visible candidate IDs;
+- semantic digest equality;
+- omitted candidates imply a continuation and omission certificate;
+- continuation semantic digest equality.
+
+Replacement admission requires the exact projected-packet digest, five
+language conformance receipts, two benchmark slices, axiom-free formal audit,
+runtime digest equality, zero safety violations, passed quality/efficiency/
+canary gates, and a rollback artifact.
+
+* Stateful refinement
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> BytesReceived
+  BytesReceived --> FramingRejected: noncanonical or ambiguous frame
+  BytesReceived --> SectionsParsed: canonical length/framing contract
+  SectionsParsed --> SourceRejected: GQL write, Logic rule, unknown predicate
+  SectionsParsed --> SummaryBound: source and typed summary digest agree
+  SummaryBound --> RelationRejected: ABI, snapshot, provider, row, or authority drift
+  SummaryBound --> RelationsAdmitted: namespaced typed relations
+  RelationsAdmitted --> FrontierRejected: over budget, duplicate, hidden selection
+  RelationsAdmitted --> FrontierAdmitted: visible subset and continuation valid
+  FrontierAdmitted --> CertificateRejected: packet, runtime, safety, or gate drift
+  FrontierAdmitted --> ReplacementQualified: every receipt is bound
+  FramingRejected --> StatePreserved
+  SourceRejected --> StatePreserved
+  RelationRejected --> StatePreserved
+  FrontierRejected --> StatePreserved
+  CertificateRejected --> StatePreserved
+  StatePreserved --> TypedFailure
+  ReplacementQualified --> Receipt
+  TypedFailure --> [*]
+  Receipt --> [*]
+#+end_src
+
+Every rejecting transition preserves the caller's before-state digest.  The
+reference validator is pure and cannot repair, mutate, or continue on a best-
+effort basis.
+
+* Mathematical model
+
+Let the executable stages be document =D=, relations =R=, frontier =F=, and
+certificate =C=.  Each stage returns an admission bit and a deterministic
+receipt.  End-to-end refinement requires every stage, not merely the final
+certificate.
+
+#+begin_src typst
+#{
+  let admit(x) = $ "admit"(x) $
+
+  $ "Pipeline"(D, R, F, C) =
+      admit(D) and admit(R) and admit(F) and admit(C) $
+
+  $ "Pipeline"(D, R, F, C) arrow
+      admit(D) and admit(R) and admit(F) and admit(C) $
+}
+#+end_src
+
+For every rejecting stage =i=, validation is noninterfering:
+
+#+begin_src typst
+#{
+  $ not "admit"_i(x) arrow
+      S_"after"(x) = S_"before"(x) $
+
+  $ H("source") = H("summary-source") $
+}
+#+end_src
+
+The second equation is a binding obligation, not a claim that equal hashes
+prove semantic correctness.  Parser conformance must establish that the hash
+was computed from the canonical accepted AST and its exact source frame.
+
+* Lean and AXLE mapping
+
+The Lean owner is
+[[file:../../../../packages/proofs/ASPProof/PolyglotSearchConformance.lean][ASPProof.PolyglotSearchConformance]].  The modular audit is
+[[file:../../../../packages/proofs/ASPProof/Audit/PolyglotSearchConformance.lean][ASPProof.Audit.PolyglotSearchConformance]].  Generated receipts are:
+
+- [[file:../../../../packages/proofs/receipts/polyglot-search-conformance-audit-v1.json][polyglot-search-conformance-audit-v1.json]];
+- [[file:../../../../packages/proofs/receipts/polyglot-search-conformance-axle-v1.json][polyglot-search-conformance-axle-v1.json]].
+
+The audit covers document, relation, frontier, certificate, pipeline refinement,
+and rejection-state preservation theorem families independently.
+
+* Adversarial qualification
+
+The focused executable tests cover:
+
+- GQL mutation with unchanged validator state;
+- duplicate section framing;
+- Logic rule injection and unregistered predicates;
+- relation row/column mismatch;
+- Graph Turbo authority elevation;
+- selection of an unexposed candidate;
+- stale continuation digest;
+- replacement runtime drift;
+- deterministic conformance receipts.
+
+Further required fixtures before production implementation are Unicode
+normalization collisions, null/order/path-multiplicity semantics, unknown node
+endpoints, provider registry epoch drift, evaluation timeout, and certificate
+replay against a newer rendered projection.
+
+* Current closure state
+
+The reference Python tests and Lean/AXLE audit close the proof-side executable
+refinement skeleton.  They do not close production parser equivalence,
+cross-language conformance, runtime publication, real search efficiency, or
+canary replacement.  The parser/provider runtime drift identified in =01.32=
+remains a blocker for fresh production-owner projection.

@@ -5,7 +5,7 @@ pub(super) fn agent_usage() -> &'static str {
 }
 
 pub(super) fn session_usage() -> &'static str {
-    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|observe-host-ack|dispatch-claim|dispatch-execute|dispatch-complete|dispatch-mark-orphaned|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive|switch-model> [--guide] [--name NAME] [--canonical-target PATH] [--dispatch-identity ID] [--command-digest DIGEST] [--command-json JSON] [--resident-bridge] [--evidence-ref REF] [--agent-type-field present|absent] [--resident-target-status present|absent|unroutable] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
+    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|observe-host-ack|dispatch-claim|dispatch-execute|dispatch-complete|dispatch-mark-orphaned|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive> [--guide] [--name NAME] [--canonical-target PATH] [--dispatch-identity ID] [--command-digest DIGEST] [--command-json JSON] [--resident-bridge] [--evidence-ref REF] [--agent-type-field present|absent] [--resident-target-status present|absent|unroutable] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
 }
 
 #[derive(Clone, Copy)]
@@ -32,7 +32,6 @@ pub(super) enum SessionCommand {
     Reconcile,
     Delete,
     Unarchive,
-    SwitchModel,
 }
 
 pub(super) struct SessionArgs {
@@ -173,9 +172,6 @@ impl SessionArgs {
                 "reconcile" if index == 0 => parsed.command = SessionCommand::Reconcile,
                 "delete" if index == 0 => parsed.command = SessionCommand::Delete,
                 "unarchive" if index == 0 => parsed.command = SessionCommand::Unarchive,
-                "switch-model" | "switch" if index == 0 => {
-                    parsed.command = SessionCommand::SwitchModel
-                }
                 "--" if is_codex_wrapper_command(parsed.command) => {
                     passthrough_codex_args = true;
                 }
@@ -462,13 +458,6 @@ asp agent session delete --name <resident-name> --force",
 Wrap Codex saved-session unarchive.\n\
 Use an explicit session id, or resolve a registered child by --name/--child-session-id.\n\
 asp agent session unarchive --name <resident-name>",
-        ),
-        SessionCommand::SwitchModel => Some(
-            "asp agent session switch-model guide\n\
-Configuration-layer child-session model switch only. This updates the expected model for ASP-owned subagent/child-session config and Codex agent projections; it never switches the main session model.\n\
-Use --name to switch one resident subagent child-session config, or omit --name to update all ASP-owned Codex subagent projections.\n\
-For a live resumed child mismatch, keep the main session model unchanged; the main agent must send a native message-agent follow-up to that existing child session and ask it to switch/confirm the configured child-session model.\n\
-asp agent session switch-model --name asp-explore --model <model-id>",
         ),
     }
     .filter(|value| !value.trim().is_empty())

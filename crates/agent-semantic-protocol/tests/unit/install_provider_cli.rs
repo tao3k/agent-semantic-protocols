@@ -20,7 +20,7 @@ fn install_language_pinned_release_writes_runtime_bin_package_and_lock() {
 }
 
 #[test]
-fn install_language_without_pinned_release_reports_locked_release_unavailable() {
+fn install_language_rejects_embedded_document_surface_before_release_resolution() {
     let root = temp_project_root();
     let output = Command::new(env!("CARGO_BIN_EXE_asp"))
         .args([
@@ -34,7 +34,7 @@ fn install_language_without_pinned_release_reports_locked_release_unavailable() 
         .arg(&root)
         .env("ASP_NO_AGENT_PLATFORM", "1")
         .output()
-        .expect("run locked release install for an unpinned language");
+        .expect("run install for an embedded document surface");
 
     assert!(!output.status.success());
     let receipt = format!(
@@ -43,12 +43,9 @@ fn install_language_without_pinned_release_reports_locked_release_unavailable() 
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        receipt.contains("state=locked-release-unavailable"),
+        receipt.contains("no installable programming-language provider is registered for `md`"),
         "{receipt}"
     );
-    assert!(receipt.contains("installMode=locked-release"), "{receipt}");
-    assert!(receipt.contains("reason=language-not-pinned"), "{receipt}");
-    assert!(receipt.contains("language=md"), "{receipt}");
 }
 
 #[test]

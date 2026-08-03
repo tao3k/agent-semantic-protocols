@@ -5,6 +5,7 @@
 //! from the crate root while each implementation branch retains a single owner.
 
 pub mod canonical_item_identity;
+mod content_addressed_path;
 mod derived_artifact_evidence;
 mod domain;
 mod file_artifact;
@@ -21,6 +22,7 @@ pub use canonical_item_identity::{
     CanonicalItemScopeKind, CanonicalItemScopeRelation, CanonicalItemScopeSymbol,
     CanonicalItemSelector, CanonicalItemSymbol,
 };
+pub use content_addressed_path::blake3_digest_from_canonical_artifact_path;
 
 pub use derived_artifact_evidence::{
     DERIVED_SOURCE_ARTIFACT_CACHE_DISPOSITION, DERIVED_SOURCE_ARTIFACT_EVIDENCE_SCHEMA_ID,

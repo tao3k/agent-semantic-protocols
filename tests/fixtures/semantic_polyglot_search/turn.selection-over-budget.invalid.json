@@ -1,0 +1,14 @@
+{
+  "schemaId": "agent.semantic-protocols.progressive-search-turn.v1",
+  "schemaVersion": "1",
+  "turnKind": "selection",
+  "semanticDigest": "blake3-256:1111111111111111111111111111111111111111111111111111111111111111",
+  "sourceSnapshotDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "exposureBudget": 10,
+  "selectionBudget": 3,
+  "visibleCandidates": [],
+  "selectedCandidateIds": ["c1", "c2", "c3", "c4"],
+  "omittedItemCount": 0,
+  "obligationState": "partial",
+  "continuation": null
+}

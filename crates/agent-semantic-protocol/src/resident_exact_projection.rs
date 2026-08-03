@@ -36,9 +36,14 @@ pub(crate) fn resolve(
             generation_digest,
             root_digest,
         } => {
-            if resolved_selector == structural_selector {
-                return Ok(ResidentExactProjection::Hit(bytes));
-            }
+            let _ = (resolved_selector, generation_digest, root_digest);
+            return Ok(ResidentExactProjection::Hit(bytes));
+        }
+        WorkspaceRuntimeSelectorRead::ProjectionMissing {
+            generation_digest,
+            root_digest,
+            resolved_selector,
+        } => {
             return Ok(ResidentExactProjection::Miss(ResidentExactProjectionMiss {
                 owner_path: owner_path.to_owned(),
                 structural_selector: structural_selector.to_owned(),
@@ -47,9 +52,9 @@ pub(crate) fn resolve(
                 item_kind: requested.kind.as_str().to_owned(),
                 item_name: requested.symbol.as_str().to_owned(),
                 candidates: vec![resolved_selector],
-                actual_kinds: Vec::new(),
-                state: "selector-stale",
-                reason_kind: "selector-not-in-active-generation",
+                actual_kinds: vec![requested.kind.as_str().to_owned()],
+                state: "source-unavailable",
+                reason_kind: "projection-mode-not-in-active-generation",
             }));
         }
         WorkspaceRuntimeSelectorRead::OwnerForRepair {

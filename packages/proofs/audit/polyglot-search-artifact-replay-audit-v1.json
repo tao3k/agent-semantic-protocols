@@ -1,0 +1,105 @@
+{
+  "schemaId": "asp.lean-proof-audit.v1",
+  "schemaVersion": "1",
+  "leanVersion": "4.32.2",
+  "proofPackage": "ASPProof",
+  "module": "ASPProof.PolyglotSearchArtifactReplay",
+  "sourcePath": "packages/proofs/ASPProof/PolyglotSearchArtifactReplay.lean",
+  "declarationCount": 10,
+  "axiomFreeDeclarationCount": 10,
+  "axiomDependentDeclarationCount": 0,
+  "declarations": [
+    {
+      "name": "ASPProof.PolyglotSearchArtifactReplay.fixture_graph_is_read_only",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-artifact-replay",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.35-ARTIFACT-REPLAY"],
+      "type": "Fixture.graphDigestBefore = Fixture.graphDigestAfter",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchArtifactReplay.fixture_gql_rows_replay_reference_semantics",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-artifact-replay",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.35-ARTIFACT-REPLAY"],
+      "type": "Fixture.gqlRows = projectedGQLRows",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchArtifactReplay.fixture_logic_rows_replay_reference_semantics",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-artifact-replay",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.35-ARTIFACT-REPLAY"],
+      "type": "Fixture.logicRows = projectedLogicRows",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchArtifactReplay.fixture_gql_bag_has_three_rows",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-artifact-replay",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.35-ARTIFACT-REPLAY"],
+      "type": "Fixture.gqlRows.length = 3",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchArtifactReplay.fixture_gql_bag_preserves_parallel_witnesses",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-artifact-replay",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.35-ARTIFACT-REPLAY"],
+      "type": "Fixture.gqlRows = [(1, 2), (1, 2), (1, 3)]",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchArtifactReplay.fixture_logic_bag_has_three_rows",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-artifact-replay",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.35-ARTIFACT-REPLAY"],
+      "type": "Fixture.logicRows.length = 3",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchArtifactReplay.fixture_logic_bag_preserves_parallel_witnesses",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-artifact-replay",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.35-ARTIFACT-REPLAY"],
+      "type": "Fixture.logicRows = [(1, 2, 10), (1, 2, 10), (1, 3, 11)]",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchArtifactReplay.fixture_policy_is_canonical",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-artifact-replay",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.35-ARTIFACT-REPLAY"],
+      "type": "Fixture.multiplicity = bag-by-witness-edge and Fixture.ordering = canonical-row-json",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchArtifactReplay.committed_artifact_replay_is_admitted",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-artifact-replay",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.35-ARTIFACT-REPLAY"],
+      "type": "replayAdmitted committedCheck = true",
+      "axioms": [],
+      "hasSorryAx": false
+    },
+    {
+      "name": "ASPProof.PolyglotSearchArtifactReplay.payload_tampering_is_rejected",
+      "kind": "theorem",
+      "theoremFamily": "polyglot-search-artifact-replay",
+      "rfcClauseIds": ["ASP-RFC-10.05.01.35-ARTIFACT-REPLAY"],
+      "type": "replayAdmitted tamperedPayloadCheck = false",
+      "axioms": [],
+      "hasSorryAx": false
+    }
+  ],
+  "axiomInventory": [],
+  "hasSorryAx": false
+}

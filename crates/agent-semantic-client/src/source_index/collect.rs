@@ -15,6 +15,8 @@ pub enum SourceIndexCollectionScope {
 pub(crate) struct SourceIndexCollectionReceipt {
     pub(crate) files: Vec<agent_semantic_client_db::ClientDbSourceIndexScopeFile>,
     pub(crate) project_resolutions: Vec<agent_semantic_runtime::AdmittedProjectResolution>,
+    pub(crate) candidate:
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -216,6 +218,9 @@ pub(crate) async fn collect_source_index_scope_async(
     Ok(SourceIndexCollectionReceipt {
         files,
         project_resolutions,
+        candidate: agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity::from_snapshot(
+            &repository_candidates,
+        ),
     })
 }
 

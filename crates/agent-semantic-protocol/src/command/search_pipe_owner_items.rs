@@ -33,27 +33,36 @@ pub(super) fn run_search_owner_items_query_command(
         search_owner_items_workspace(args).as_deref(),
     );
     let owner_path = normalized_owner_key(&project_root, &owner_query_args.owner)?;
-    let client = super::runtime_server::block_on_agent_facing_runtime_server_client(
-        context.started,
+    let session = super::runtime_server::block_on_agent_facing_runtime_server_client(
+        tokio::time::Instant::now(),
         "search",
-        "resident-workspace-generation-open",
-        super::runtime_server::runtime_server_workspace_generation_client_async(&project_root),
+        "resident-owner-freshness-session",
+        super::runtime_server::runtime_server_workspace_session_for_admission_async(&project_root),
     )?;
-    // Search is a pure resident read. Provider execution and owner freshness
-    // reconciliation belong to the Runtime Server writer lane and must never
-    // be triggered by an agent query.
+    let freshness = super::runtime_server::block_on_agent_facing_runtime_server_client(
+        tokio::time::Instant::now(),
+        "search",
+        "resident-owner-freshness-ensure",
+        session.ensure_runtime_owner(context.language_id, &owner_path),
+    )?;
+    freshness.validate()?;
+    let client = super::runtime_server::block_on_agent_facing_runtime_server_client(
+        tokio::time::Instant::now(),
+        "search",
+        "resident-exact-generation-open",
+        super::runtime_server::runtime_server_workspace_exact_projection_client_async(
+            &project_root,
+        ),
+    )?;
+    // The CLI remains a pure client: freshness mutation is serialized by the
+    // workspace resident writer lane before this mmap read is opened.
     let provider_invocations = 0;
-    let lease = client.lease();
-    let generation = lease.generation();
-    generation.validate()?;
-    let owner = generation
-        .owners
-        .iter()
-        .find(|owner| owner.owner_path == owner_path)
+    let owner = client
+        .owner_snapshot(&owner_path)?
         .ok_or_else(|| {
             format!(
                 "owner search state=owner-missing reasonKind=owner-not-in-workspace ownerPath={owner_path} rootDigest={}",
-                generation.source_snapshot.root_digest
+                client.root_digest()
             )
         })?;
     let query_terms = owner_query_args
@@ -72,12 +81,24 @@ pub(super) fn run_search_owner_items_query_command(
             let symbol = canonical.symbol.as_str().to_ascii_lowercase();
             let kind = canonical.kind.as_str().to_ascii_lowercase();
             let structural_selector = selector.selector.to_ascii_lowercase();
+            let item_source_matches = owner
+                .bytes
+                .get(selector.byte_start..selector.byte_end)
+                .is_some_and(|item_bytes| {
+                    query_terms.iter().any(|query| {
+                        let query = query.as_bytes();
+                        item_bytes
+                            .windows(query.len())
+                            .any(|window| window.eq_ignore_ascii_case(query))
+                    })
+                });
             let matches = query_terms.is_empty()
                 || query_terms.iter().any(|query| {
                     symbol.contains(query)
                         || kind.contains(query)
                         || structural_selector.contains(query)
-                });
+                })
+                || item_source_matches;
             matches.then_some((canonical, selector))
         })
         .collect::<Vec<_>>();
@@ -95,14 +116,15 @@ pub(super) fn run_search_owner_items_query_command(
         );
     }
     println!(
-        "entries={} generation={} rootDigest={} rootDepth=1,0 providerInvocations={} databaseOpens=0 controlRoundtrips={}",
+        "entries={} generation={} rootDigest={} rootDepth=1,0 ownerChanged={} providerInvocations={} databaseOpens=0 controlRoundtrips={}",
         items.len(),
-        generation.generation_digest,
-        generation.source_snapshot.root_digest,
+        client.generation_digest(),
+        client.root_digest(),
+        freshness.changed,
         provider_invocations,
-        0
+        2
     );
-    let _ = context.language_id;
+    let _ = context.started;
     let _ = context.provider_context;
     Ok(())
 }

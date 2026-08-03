@@ -293,7 +293,7 @@ async fn stale_owner_is_reconciled_before_a_resident_projection_can_serve() {
         let build_started = std::sync::Arc::clone(&build_started);
         let release_build = std::sync::Arc::clone(&release_build);
         let build_count = std::sync::Arc::clone(&build_count);
-        std::sync::Arc::new(move |_language_id, _project_root, mut owner| {
+        std::sync::Arc::new(move |_workspace_identity, _language_id, _project_root, mut owner| {
             let build_started = std::sync::Arc::clone(&build_started);
             let release_build = std::sync::Arc::clone(&release_build);
             let build_count = std::sync::Arc::clone(&build_count);
@@ -564,7 +564,9 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
         }],
         Vec::new(),
     )
-    .expect("build canonical cold-restore materialization");
+    .expect("build canonical cold-restore materialization")
+    .into_validated(workspace_identity)
+    .expect("validate canonical cold-restore materialization");
     let mut restores = tokio::task::JoinSet::new();
     for request in 0..64 {
         let registry = std::sync::Arc::clone(&registry);

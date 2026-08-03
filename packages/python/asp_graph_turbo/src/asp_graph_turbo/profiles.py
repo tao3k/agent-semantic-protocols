@@ -31,7 +31,7 @@ _DEFAULT_FRONTIER_ACTIONS = {
     "package": "package",
     "project": "evidence",
     "provider-root": "evidence",
-    "query": "typed-frontier",
+    "query": "lexical",
     "range": "code",
     "review-action": "evidence",
     "review-packet": "evidence",

@@ -1,0 +1,18 @@
+{
+  "schemaId": "agent.semantic-protocols.agent-route-registry",
+  "schemaVersion": "1",
+  "agents": {
+    "asp_testing": {
+      "sessionName": "asp-testing",
+      "sessionLifetime": "resident",
+      "roles": ["testing"],
+      "platforms": {
+        "codex": {
+          "hostAgentName": "asp_testing",
+          "profile": "asp-testing.toml",
+          "model": "gpt-5.6-luna"
+        }
+      }
+    }
+  }
+}

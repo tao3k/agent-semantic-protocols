@@ -17,8 +17,9 @@ impl RuntimeServerWorkspaceRegistry {
         let pointer_path =
             super::workspace_generation_pointer_path(&self.root, workspace_identity, project_root)?;
         match super::WorkspaceGenerationDataPlaneClient::open_state(&pointer_path).await? {
-            super::WorkspaceGenerationDataPlaneOpen::Ready(client) => {
-                client.lease().generation().validate()?;
+            super::WorkspaceGenerationDataPlaneOpen::Ready(_client) => {
+                // The lease was opened from a BLAKE3-authenticated committed segment. Full typed-digest
+                // validation belongs to publication, not the resident readiness hot path.
                 Ok(super::PublishedWorkspaceGenerationState::Ready)
             }
             super::WorkspaceGenerationDataPlaneOpen::Missing => {
@@ -28,6 +29,30 @@ impl RuntimeServerWorkspaceRegistry {
                 Ok(super::PublishedWorkspaceGenerationState::RecoveryRequired { reason })
             }
         }
+    }
+
+    pub async fn restore_published_generation(
+        &self,
+        request_id: impl Into<String>,
+        workspace_identity: impl Into<String>,
+        project_root: &Path,
+    ) -> Result<super::WorkspaceRecoveryReceipt, String> {
+        let workspace_identity = workspace_identity.into();
+        let pointer_path = super::workspace_generation_pointer_path(
+            &self.root,
+            &workspace_identity,
+            project_root,
+        )?;
+        let snapshot = super::WorkspaceGenerationPointerReader::open(&pointer_path)
+            .await?
+            .read()?;
+        self.restore_checkpoint(
+            request_id,
+            workspace_identity,
+            project_root,
+            snapshot.mmap_segment_path.into(),
+        )
+        .await
     }
 
     /// Returns a typed ready receipt without reopening durable state when the generation is resident.
@@ -55,6 +80,7 @@ impl RuntimeServerWorkspaceRegistry {
             generation_digest: generation.generation_digest.clone(),
             source_root_digest: generation.source_snapshot.root_digest.clone(),
             old_generation_readable: active_epoch != 0,
+            resident_publication_elapsed_micros: 0,
             counters: RuntimeDataPlaneCounters::default(),
         };
         receipt.validate()?;

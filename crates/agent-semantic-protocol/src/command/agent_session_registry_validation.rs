@@ -331,13 +331,6 @@ impl ValidatedAgentKind {
         }
     }
 
-    fn canonical_codex_config_file_name(self) -> &'static str {
-        match self {
-            Self::AspExplore => "asp-explorer_codex.toml",
-            Self::AspTesting => "asp-testing_codex.toml",
-        }
-    }
-
     fn default_role(self) -> &'static str {
         match self {
             Self::AspExplore => "asp_explorer",
@@ -363,7 +356,7 @@ fn validated_agent_kind(name: &str, role: &str) -> Option<ValidatedAgentKind> {
         })
 }
 
-pub(crate) fn rollout_metadata_matches_managed_agent_profile(
+pub(crate) fn rollout_metadata_matches_host_agent_identity(
     name: &str,
     role: &str,
     metadata: &CodexRolloutSessionMetadata,
@@ -435,13 +428,7 @@ fn sandbox_policy_mismatch_reason(expected: &str, actual: Option<&str>) -> Optio
 }
 
 fn load_expected_agent_profile(kind: ValidatedAgentKind) -> Result<ExpectedAgentProfile, String> {
-    let host_config_path = codex_home().join("agents").join(kind.config_file_name());
-    let canonical_config_path = asp_agent_canonical_config_path(kind)?;
-    let config_path = if canonical_config_path.exists() {
-        canonical_config_path
-    } else {
-        host_config_path
-    };
+    let config_path = codex_home().join("agents").join(kind.config_file_name());
     let text = fs::read_to_string(&config_path)
         .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
     let value = toml::from_str::<toml::Value>(&text)
@@ -464,26 +451,6 @@ fn load_expected_agent_profile(kind: ValidatedAgentKind) -> Result<ExpectedAgent
         reasoning_effort: toml_string(&value, "model_reasoning_effort"),
         sandbox,
     })
-}
-
-pub(crate) fn expected_model_for_session_profile(
-    name: &str,
-    role: &str,
-) -> Result<Option<String>, String> {
-    let Some(agent_kind) = validated_agent_kind(name, role) else {
-        return Ok(None);
-    };
-    Ok(Some(load_expected_agent_profile(agent_kind)?.model))
-}
-
-pub(crate) fn expected_reasoning_effort_for_session_profile(
-    name: &str,
-    role: &str,
-) -> Result<Option<String>, String> {
-    let Some(agent_kind) = validated_agent_kind(name, role) else {
-        return Ok(None);
-    };
-    Ok(load_expected_agent_profile(agent_kind)?.reasoning_effort)
 }
 
 fn codex_model_switch_config(value: &toml::Value) -> CodexModelSwitchConfig {
@@ -519,12 +486,6 @@ fn codex_agent_model_overrides(value: &toml::Value) -> BTreeMap<String, String> 
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn asp_agent_canonical_config_path(kind: ValidatedAgentKind) -> Result<PathBuf, String> {
-    Ok(agent_semantic_runtime::state_core::resolve_state_home()?
-        .join("agents")
-        .join(kind.canonical_codex_config_file_name()))
 }
 
 fn asp_agents_config_path() -> Result<PathBuf, String> {

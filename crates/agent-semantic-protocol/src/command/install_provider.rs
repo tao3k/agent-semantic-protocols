@@ -162,12 +162,11 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
         &runtime_state.activation_path,
     )?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryLatest={} binaryStableEntry={} binarySwitch=atomic providerRegistrations={} providerBinaryIdentities={} providerBinariesReconciled={} providerBinariesChanged={} providerBinariesMissing={} providerReceiptsReconciled={} providerReceiptsChanged={} providerReceiptsMissing={} providerBinaryByteReads={} globalProviderCatalog={} globalProviderCatalogChangedLeafCount={} globalProviderCatalogBinaryByteReads={} globalProviderCatalogWrite={} globalProviderCatalogElapsedMicros={} activeArtifactReceipt={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic providerRegistrations={} providerBinaryIdentities={} providerBinariesReconciled={} providerBinariesChanged={} providerBinariesMissing={} providerReceiptsReconciled={} providerReceiptsChanged={} providerReceiptsMissing={} providerBinaryByteReads={} globalProviderCatalog={} globalProviderCatalogChangedLeafCount={} globalProviderCatalogBinaryByteReads={} globalProviderCatalogWrite={} globalProviderCatalogElapsedMicros={} activeArtifactReceipt={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
-        installed.latest.display(),
-        installed.stable_entry.display(),
+        installed.path.display(),
         provider_binaries.registration_count,
         provider_binaries.binary_identity_count,
         provider_binaries.reconciled_count,
@@ -223,6 +222,13 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
     };
     if matches!(language_id, "help" | "--help" | "-h") {
         return Err(usage());
+    }
+    if agent_semantic_hook::registered_provider_kind(language_id)?
+        != agent_semantic_hook::RegisteredProviderKind::ProgrammingLanguage
+    {
+        return Err(format!(
+            "no installable programming-language provider is registered for `{language_id}`"
+        ));
     }
     let install_args = parse_install_args(&args[1..])?;
     let target = match install_args.target {
@@ -424,7 +430,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         None => "not-applicable",
     };
     println!(
-        "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} binaryLatest={} binaryStableEntry={} binarySwitch=atomic orgState={} orgStateSync={}",
+        "[asp-install] provider={} language={} scope={} installMode=locked-release rev={} target={} binary={} sha256={} checksumAuthority={} installedPath={} installTargetSource={} lock={} runtimeBinDir={} binaryCurrent={} binarySwitch=atomic orgState={} orgStateSync={}",
         spec.provider_id,
         spec.language_id,
         scope,
@@ -437,8 +443,7 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         install_target.source,
         lock_path.display(),
         runtime_bin_dir.display(),
-        published.latest.display(),
-        published.stable_entry.display(),
+        published.path.display(),
         project_root
             .map(|root| root
                 .join(".agent-semantic-protocols/org")

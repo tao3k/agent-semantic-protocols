@@ -74,10 +74,6 @@ pub(crate) fn run_protocol_command_started(
         Some("hook") => run_hook_command(&args[1..]),
         Some("agent") => run_agent_command(&args[1..]),
         Some("install") => run_install_command(&args[1..]),
-        Some("sync") => Err(
-            "asp sync has no cross-domain responsibility; use `asp agent config sync` for global agent projections, `asp cache source-index refresh --workspace <path>` for incremental workspace refresh, or `asp cache source-index rebuild --workspace <path>` for explicit recovery"
-                .to_string(),
-        ),
         Some("paths") => run_paths_command(&args[1..]),
         Some("healthcheck") => run_healthcheck_command(&args[1..]),
         Some("server") => run_runtime_server_command(&args[1..]),
@@ -225,7 +221,7 @@ fn option_is_present(args: &[String], option: &str) -> bool {
 }
 
 fn usage() -> String {
-    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|sync|paths|healthcheck|server|workspace-db|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
+    "usage: asp [--help|--version] <guide|providers|tools|wrap|cache|cloud|hook|agent|install|paths|healthcheck|server|workspace-db|live-corpus|source-access|ast-patch|graph|fd|rg|search|query|rust|typescript|python|julia|org|md> ...".to_string()
 }
 
 fn run_client_command(args: Vec<String>) -> Result<(), String> {

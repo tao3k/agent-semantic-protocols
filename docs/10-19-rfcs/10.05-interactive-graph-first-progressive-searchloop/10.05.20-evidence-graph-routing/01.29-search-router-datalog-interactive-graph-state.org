@@ -4,6 +4,12 @@
 
 * Intent
 
+This contract is refined by
+[[file:01.30-asp-gql-scipy-resident-graph-turbo.org][RFC 10.05.20.01.30 — ASP GQL Core and SciPy Resident Graph Turbo]],
+which freezes the read-only GQL profile, resident Python/SciPy algorithm plane,
+Ascent execution boundary, Turso projection cache, and independent accounting
+domains without replacing the Evidence Graph.
+
 This RFC defines the next SearchLoop increment after the four-layer graph
 reasoning pilot.  It keeps the Evidence Graph as the domain model, removes graph
 rendering syntax from the protocol path, and makes each search step a typed
@@ -304,11 +310,11 @@ Implementation follows the repository search-protocol workflow:
 
 #+begin_example
 RFC
+  -> Lean transition model, counterexamples, and audit receipt
   -> shared tool-observation and graph-step schemas
   -> provider normalization across language adapters
   -> Rust Search Router and session-state implementation
   -> Datalog derivation adapter
-  -> Lean refinement and counterexamples
   -> sandtable and schema validation
   -> representative real-project receipts
 #+end_example
@@ -337,3 +343,19 @@ multi-agent fan-in coverage follows only after that vertical slice closes.
 Completion requires replaying the same observations and ruleset into the same
 after-state digest.  A successful isolated query, rendering, Lean theorem, or
 schema validation is not sufficient closure by itself.
+
+* Formal audit closure
+
+The normative model is
+[[file:../../../../packages/proofs/ASPProof/SearchRouterInteractiveGraphState.lean][ASPProof.SearchRouterInteractiveGraphState]].
+Its kernel audit is
+[[file:../../../../packages/proofs/ASPProof/Audit/SearchRouterInteractiveGraphState.lean][ASPProof.Audit.SearchRouterInteractiveGraphState]].
+The generated receipts are:
+
+- [[file:../../../../packages/proofs/receipts/search-router-interactive-graph-state-audit-v1.json][search-router-interactive-graph-state-audit-v1.json]];
+- [[file:../../../../packages/proofs/receipts/search-router-interactive-graph-state-axle-v1.json][search-router-interactive-graph-state-axle-v1.json]].
+
+The audit covers thirteen declarations.  All thirteen are axiom-free and the
+receipt reports =hasSorryAx=false=.  Kernel =decide= is required for audited
+finite counterexamples; =native_decide= is not admitted as an invisible audit
+dependency.

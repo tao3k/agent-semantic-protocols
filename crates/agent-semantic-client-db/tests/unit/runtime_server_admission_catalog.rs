@@ -1,10 +1,24 @@
 use agent_semantic_client_db::runtime_server_admission_catalog::{
     RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
 };
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 static FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
+
+fn candidate_identity()
+-> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity {
+    agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity {
+        candidate_generation: agent_semantic_runtime::git::RepositoryCandidateGeneration {
+            algorithm: "blake3-worktree-state-v1".to_owned(),
+            digest: "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                .to_owned(),
+            authorities: vec![agent_semantic_runtime::git::RepositoryCandidateAuthority::GitIndex],
+        },
+        policy_overlay_digest:
+            "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_owned(),
+    }
+}
 
 fn fixture_root() -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
@@ -14,8 +28,25 @@ fn fixture_root() -> std::path::PathBuf {
     ))
 }
 
-fn committed_generation(
-) -> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+fn initialize_candidate_checkout(path: &std::path::Path) {
+    std::fs::create_dir_all(path).expect("create candidate checkout");
+    let initialized = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .arg(path)
+        .status()
+        .expect("run git init");
+    assert!(initialized.success(), "initialize candidate checkout");
+    std::fs::write(path.join("candidate.txt"), b"candidate\n").expect("write candidate fixture");
+    let staged = std::process::Command::new("git")
+        .args(["add", "candidate.txt"])
+        .current_dir(path)
+        .status()
+        .expect("run git add");
+    assert!(staged.success(), "stage candidate fixture");
+}
+
+fn committed_generation()
+-> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
     agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
         active_epoch: 1,
         generation_digest:
@@ -53,13 +84,15 @@ async fn catalog_rejects_relative_project_roots() {
     let catalog = RuntimeWorkspaceAdmissionCatalog::load(root.join("catalog.json"))
         .await
         .unwrap();
-    assert!(catalog
-        .record(RuntimeWorkspaceAdmissionCatalogEntry {
-            workspace_identity: "workspace-a".to_owned(),
-            project_root: "relative".into(),
-        })
-        .await
-        .is_err());
+    assert!(
+        catalog
+            .record(RuntimeWorkspaceAdmissionCatalogEntry {
+                workspace_identity: "workspace-a".to_owned(),
+                project_root: "relative".into(),
+            })
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -126,13 +159,15 @@ async fn catalog_rejects_two_workspace_identities_for_one_canonical_root() {
         })
         .await
         .unwrap();
-    assert!(catalog
-        .record(RuntimeWorkspaceAdmissionCatalogEntry {
-            workspace_identity: "workspace-second".to_owned(),
-            project_root,
-        })
-        .await
-        .is_err());
+    assert!(
+        catalog
+            .record(RuntimeWorkspaceAdmissionCatalogEntry {
+                workspace_identity: "workspace-second".to_owned(),
+                project_root,
+            })
+            .await
+            .is_err()
+    );
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
 
@@ -212,6 +247,7 @@ async fn process_cold_mapped_locator_p99_is_sub_millisecond() {
 #[tokio::test]
 async fn daemon_restore_replays_each_catalog_scope_once() {
     let root = fixture_root();
+    initialize_candidate_checkout(&root.join("checkout"));
     let catalog = RuntimeWorkspaceAdmissionCatalog::load(root.join("catalog.json"))
         .await
         .unwrap();
@@ -225,7 +261,7 @@ async fn daemon_restore_replays_each_catalog_scope_once() {
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
             Arc::new({
                 let builds = Arc::clone(&builds);
-                move |_, _, _| {
+                move |_, _, _, _| {
                     let builds = Arc::clone(&builds);
                     Box::pin(async move {
                         builds.fetch_add(1, Ordering::Relaxed);
@@ -268,7 +304,7 @@ async fn typed_ipc_admission_publishes_an_initial_missing_locator() {
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
             Arc::new({
                 let builds = Arc::clone(&builds);
-                move |_, _, _| {
+                move |_, _, _, _| {
                     let builds = Arc::clone(&builds);
                     Box::pin(async move {
                         builds.fetch_add(1, Ordering::Relaxed);
@@ -279,11 +315,15 @@ async fn typed_ipc_admission_publishes_an_initial_missing_locator() {
         )
         .with_catalog(catalog);
     admission
-        .admit("workspace-initial", project_root.clone())
+        .admit(
+            "workspace-initial",
+            project_root.clone(),
+            candidate_identity(),
+        )
         .await
         .unwrap();
     let ready = admission
-        .ensure("workspace-initial", &project_root)
+        .ensure("workspace-initial", &project_root, candidate_identity())
         .await
         .unwrap();
     assert_eq!(
@@ -303,7 +343,7 @@ async fn typed_ipc_admission_publishes_an_initial_missing_locator() {
         Err(RuntimeWorkspaceAdmissionCatalogResolveError::Unavailable { .. })
     ));
     admission
-        .ensure("workspace-initial", &project_root)
+        .ensure("workspace-initial", &project_root, candidate_identity())
         .await
         .unwrap();
     assert_eq!(builds.load(Ordering::Relaxed), 1);
@@ -324,6 +364,7 @@ async fn daemon_restore_isolates_failed_workspace_scopes() {
         .await
         .unwrap();
     for workspace_identity in ["workspace-ready", "workspace-failed"] {
+        initialize_candidate_checkout(&root.join(workspace_identity));
         catalog
             .record(RuntimeWorkspaceAdmissionCatalogEntry {
                 workspace_identity: workspace_identity.to_owned(),
@@ -334,7 +375,7 @@ async fn daemon_restore_isolates_failed_workspace_scopes() {
     }
     let admission =
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmission::new(
-            Arc::new(|workspace_identity, _, _build_mode| {
+            Arc::new(|workspace_identity, _, _candidate, _build_mode| {
                 Box::pin(async move {
                     if workspace_identity == "workspace-failed" {
                         Err("fixture canonical generation missing".to_owned())

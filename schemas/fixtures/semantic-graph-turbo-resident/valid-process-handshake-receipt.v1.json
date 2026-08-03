@@ -1,0 +1,14 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-graph-turbo-resident-receipt",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "packetKind": "graph-turbo-resident-receipt",
+  "requestId": "handshake:daemon-generation-7",
+  "status": "process-handshake-accepted",
+  "processIdentity": {
+    "processId": 4242,
+    "runtimeArtifactDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "executionCommandDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}

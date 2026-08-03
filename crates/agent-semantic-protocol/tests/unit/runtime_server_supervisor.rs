@@ -1,7 +1,10 @@
-use super::{LaunchdReconcilePlan, canonical_supervisor_runtime_artifact, launchd_reconcile_plan};
+use super::{
+    LaunchdReconcilePlan, canonical_supervisor_runtime_artifact, launchd_reconcile_plan,
+    server_owned_restart_is_authoritative,
+};
 
 #[tokio::test(flavor = "current_thread")]
-async fn supervisor_definition_pins_the_digest_addressed_runtime_artifact() {
+async fn supervisor_definition_pins_the_stable_canonical_runtime_entry() {
     use std::os::unix::fs::symlink;
 
     let protocol_home = std::env::temp_dir().join(format!(
@@ -23,13 +26,23 @@ async fn supervisor_definition_pins_the_digest_addressed_runtime_artifact() {
         .expect("create stable runtime directory");
     symlink(&artifact, &stable_entry).expect("publish stable runtime entry");
 
-    let canonical_artifact =
-        std::fs::canonicalize(&artifact).expect("canonicalize digest-addressed artifact");
     assert_eq!(
         canonical_supervisor_runtime_artifact(&protocol_home)
             .await
             .expect("resolve supervisor runtime artifact"),
-        canonical_artifact
+        stable_entry
+    );
+
+    let next_artifact = artifact.with_file_name("asp-next");
+    std::fs::write(&next_artifact, b"next-fixture").expect("write next runtime artifact");
+    std::fs::remove_file(&stable_entry).expect("remove previous stable runtime entry");
+    symlink(&next_artifact, &stable_entry).expect("switch stable runtime entry");
+    assert_eq!(
+        canonical_supervisor_runtime_artifact(&protocol_home)
+            .await
+            .expect("resolve switched supervisor runtime artifact"),
+        stable_entry,
+        "artifact switches must not rewrite the platform supervisor definition"
     );
 
     std::fs::remove_dir_all(protocol_home).expect("remove supervisor artifact fixture");
@@ -65,4 +78,22 @@ fn changed_loaded_definition_rebootstraps_without_restarting_the_new_process() {
     let plan = launchd_reconcile_plan(true, true);
     assert_eq!(plan, LaunchdReconcilePlan::Rebootstrap);
     assert!(!plan.requires_kickstart());
+}
+
+#[test]
+fn healthy_or_draining_daemon_owns_unchanged_definition_restart() {
+    use agent_semantic_client_db::runtime_server_control::RuntimeServerState;
+
+    for state in [
+        RuntimeServerState::Healthy,
+        RuntimeServerState::Starting,
+        RuntimeServerState::Draining,
+    ] {
+        assert!(server_owned_restart_is_authoritative(false, state));
+        assert!(!server_owned_restart_is_authoritative(true, state));
+    }
+    assert!(!server_owned_restart_is_authoritative(
+        false,
+        RuntimeServerState::Degraded
+    ));
 }

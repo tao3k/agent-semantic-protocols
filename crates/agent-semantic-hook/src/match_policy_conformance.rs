@@ -74,6 +74,9 @@ pub fn evaluate_match_policy_conformance(
         .map(|case| case.rule_id.to_owned())
         .collect::<BTreeSet<_>>();
     let mut failures = Vec::new();
+    if let Err(error) = config.publish_policy_snapshot(runtime) {
+        failures.push(format!("hook policy snapshot publication failed: {error}"));
+    }
     if configured != witnessed {
         failures.push(format!(
             "configured and witnessed rule IDs differ: configOnly={:?} witnessOnly={:?}",
@@ -103,15 +106,21 @@ pub fn evaluate_match_policy_conformance(
         {
             covered_rule_ids.insert(actual_rule.to_owned());
         } else {
+            let normalized_actions = decision
+                .fields
+                .get("normalizedActions")
+                .cloned()
+                .unwrap_or(Value::Null);
             failures.push(format!(
-                "{}: expected rule={} decision={:?} reason={:?}; actual rule={} decision={:?} reason={:?}",
+                "{}: expected rule={} decision={:?} reason={:?}; actual rule={} decision={:?} reason={:?} normalizedActions={}",
                 case.name,
                 case.rule_id,
                 case.decision,
                 case.reason,
                 actual_rule,
                 decision.decision,
-                decision.reason_kind
+                decision.reason_kind,
+                normalized_actions,
             ));
         }
     }

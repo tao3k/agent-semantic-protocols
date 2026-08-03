@@ -16,7 +16,11 @@ use format::{
     write_range_header, write_u64, write_usize,
 };
 
-const MAGIC: &[u8; 16] = b"ASPEXACTMMAP0002";
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_exact_generation_identity.rs"]
+mod generation_identity_tests;
+
+const MAGIC: &[u8; 16] = b"ASPEXACTMMAPV1__";
 const HEADER_LEN: usize = 144;
 const OWNER_ENTRY_LEN: usize = 112;
 const SELECTOR_ENTRY_LEN: usize = 104;
@@ -43,6 +47,7 @@ const RELOCATION_COUNT_OFFSET: usize = 136;
 pub struct WorkspaceExactProjectionDataPlaneClient {
     pointer: WorkspaceGenerationPointerReader,
     mapped: MappedWorkspaceExactProjection,
+    owner_identity_journal: super::owner_identity_journal::RuntimeOwnerIdentityJournalReader,
 }
 
 #[derive(Debug)]
@@ -68,11 +73,41 @@ impl WorkspaceExactProjectionDataPlaneClient {
         }
     }
 
+    pub async fn owner_identity_is_current(&self, owner_path: &str) -> Result<bool, String> {
+        let Some(owner) = self.owner_snapshot(owner_path)? else {
+            return Ok(false);
+        };
+        let snapshot = self.pointer.read()?;
+        if !generation_identity_matches(
+            self.mapped.epoch,
+            &self.mapped.generation_digest,
+            snapshot.active_epoch,
+            &snapshot.generation_digest,
+        ) {
+            return Ok(false);
+        }
+        self.owner_identity_journal
+            .owner_is_current(
+                &snapshot.workspace_identity,
+                &snapshot.generation_digest,
+                owner_path,
+                &owner.content_digest,
+            )
+            .await
+    }
+
     pub async fn open(pointer_path: &Path) -> Result<Self, String> {
         let pointer = WorkspaceGenerationPointerReader::open(pointer_path).await?;
         let snapshot = pointer.read()?;
         let mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
-        Ok(Self { pointer, mapped })
+        let owner_identity_journal =
+            super::owner_identity_journal::RuntimeOwnerIdentityJournalReader::open(pointer_path)
+                .await?;
+        Ok(Self {
+            pointer,
+            mapped,
+            owner_identity_journal,
+        })
     }
 
     pub fn read_runtime_selector(
@@ -94,6 +129,31 @@ impl WorkspaceExactProjectionDataPlaneClient {
         self.mapped.contains_owner(owner)
     }
 
+    /// Resolve one owner directly from the immutable exact-generation index.
+    ///
+    /// This is the owner-search read lease: callers pay one hash lookup and
+    /// decode only the selected owner instead of rebuilding the complete
+    /// workspace memory backend for every CLI invocation.
+    pub fn owner_snapshot(
+        &self,
+        owner_path: &str,
+    ) -> Result<Option<WorkspaceOwnerSnapshot>, String> {
+        let Some((owner_index, owner)) = self.mapped.find_owner(owner_path)? else {
+            return Ok(None);
+        };
+        self.mapped.owner_snapshot(owner_index, &owner).map(Some)
+    }
+
+    #[must_use]
+    pub fn generation_digest(&self) -> &str {
+        &self.mapped.generation_digest
+    }
+
+    #[must_use]
+    pub fn root_digest(&self) -> &str {
+        &self.mapped.root_digest
+    }
+
     pub async fn refresh_if_changed(&mut self) -> Result<bool, String> {
         let snapshot = self.pointer.read()?;
         if self.mapped.epoch == snapshot.active_epoch {
@@ -102,6 +162,15 @@ impl WorkspaceExactProjectionDataPlaneClient {
         self.mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
         Ok(true)
     }
+}
+
+fn generation_identity_matches(
+    mapped_epoch: u64,
+    mapped_generation_digest: &str,
+    pointer_epoch: u64,
+    pointer_generation_digest: &str,
+) -> bool {
+    mapped_epoch == pointer_epoch && mapped_generation_digest == pointer_generation_digest
 }
 
 #[derive(Debug)]
@@ -121,8 +190,11 @@ struct MappedWorkspaceExactProjection {
 impl MappedWorkspaceExactProjection {
     async fn open(snapshot: &WorkspaceGenerationSnapshot) -> Result<Self, String> {
         let path = exact_projection_segment_path(Path::new(&snapshot.mmap_segment_path));
-        let file = std::fs::File::open(&path)
-            .map_err(|error| format!("open workspace exact projection segment: {error}"))?;
+        let file = tokio::fs::File::open(&path)
+            .await
+            .map_err(|error| format!("open workspace exact projection segment: {error}"))?
+            .into_std()
+            .await;
         let mapping = unsafe {
             // SAFETY: exact projection segments are immutable after atomic
             // publication and this value owns the mapping lifetime.
@@ -183,18 +255,23 @@ impl MappedWorkspaceExactProjection {
         if let Some(selector) = self.find_selector(projection_kind, structural_selector)? {
             return self.project_selector(projection_kind, selector);
         }
-        let relocated = self.find_relocated_selectors(projection_kind, structural_selector)?;
+        let relocated = self.find_relocated_selectors(structural_selector)?;
         if relocated.len() == 1 {
-            return self.project_selector(projection_kind, relocated[0].1);
+            let resolved_selector = &relocated[0];
+            if let Some(selector) = self.find_selector(projection_kind, resolved_selector)? {
+                return self.project_selector(projection_kind, selector);
+            }
+            return Ok(WorkspaceRuntimeSelectorRead::ProjectionMissing {
+                generation_digest: self.generation_digest.clone(),
+                root_digest: self.root_digest.clone(),
+                resolved_selector: resolved_selector.clone(),
+            });
         }
         if relocated.len() > 1 {
             return Ok(WorkspaceRuntimeSelectorRead::RelocationAmbiguous {
                 generation_digest: self.generation_digest.clone(),
                 root_digest: self.root_digest.clone(),
-                candidates: relocated
-                    .into_iter()
-                    .map(|(selector, _)| selector)
-                    .collect(),
+                candidates: relocated,
             });
         }
         let owner_path = structural_selector
@@ -393,13 +470,9 @@ impl MappedWorkspaceExactProjection {
         Ok(None)
     }
 
-    fn find_relocated_selectors(
-        &self,
-        projection_kind: &str,
-        selector: &str,
-    ) -> Result<Vec<(String, SelectorEntry)>, String> {
+    fn find_relocated_selectors(&self, selector: &str) -> Result<Vec<String>, String> {
         let requested_identity = relocation_identity(selector)?;
-        let hash = relocation_key_hash(projection_kind, requested_identity.as_str());
+        let hash = relocation_key_hash(requested_identity.as_str());
         let mut low = 0;
         let mut high = self.relocation_count;
         while low < high {
@@ -421,15 +494,13 @@ impl MappedWorkspaceExactProjection {
                         }
                         let candidate = self.selector_entry(relocation.selector_index)?;
                         let candidate_text = self.selector_text(&candidate)?;
-                        if self.selector_kind(&candidate)? == projection_kind
-                            && relocation_identity(candidate_text)? == requested_identity
-                        {
-                            matches.push((candidate_text.to_owned(), candidate));
+                        if relocation_identity(candidate_text)? == requested_identity {
+                            matches.push(candidate_text.to_owned());
                         }
                         index += 1;
                     }
-                    matches.sort_by(|left, right| left.0.cmp(&right.0));
-                    matches.dedup_by(|left, right| left.0 == right.0);
+                    matches.sort();
+                    matches.dedup();
                     return Ok(matches);
                 }
             }
@@ -639,10 +710,8 @@ fn relocation_identity(selector: &str) -> Result<String, String> {
     Ok(format!("{language_id}#{fragment}"))
 }
 
-fn relocation_key_hash(projection_kind: &str, identity: &str) -> [u8; 32] {
+fn relocation_key_hash(identity: &str) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
-    hasher.update(projection_kind.as_bytes());
-    hasher.update(&[0]);
     hasher.update(identity.as_bytes());
     *hasher.finalize().as_bytes()
 }

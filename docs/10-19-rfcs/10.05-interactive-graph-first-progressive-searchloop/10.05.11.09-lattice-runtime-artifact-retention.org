@@ -1,0 +1,211 @@
+#+title: Lattice-Owned Runtime Artifact Retention
+#+startup: overview
+
+* Status
+
+Draft relationship contract.
+
+This contract separates executable publication from content identity.  Lattice
+owns runtime binary refresh.  BLAKE3 identifies and verifies an artifact, but a
+content digest is not a runtime storage address and does not authorize retaining
+an executable indefinitely.
+
+* Problem
+
+The current installation path stages complete binaries below a digest-addressed
+=runtime/artifacts/blake3-256/<digest>/...= tree, publishes a =latest= entry, and
+then redirects stable runtime entries to that artifact.  Repeated refreshes can
+therefore accumulate complete historical binaries even though runtime consumers
+only need the currently admitted profile generation.
+
+This conflates three different identities:
+
+1. the logical runtime profile and binary name,
+2. the currently published executable for that profile, and
+3. the content digest recorded in verification receipts.
+
+The conflation creates an implicit historical fallback store.  It increases
+disk use, complicates admission, and lets stale binaries remain executable by
+path even after Lattice has published a newer generation.
+
+A bounded digest archive does not repair the model.  In particular, protecting
+the latest artifact plus two rollback generations still stores three executable
+copies per binary in the normal state.  It also grants historical artifacts an
+implicit fallback role outside Lattice publication authority.
+
+** Current counterevidence
+
+The live health check resolves every activated provider binary through
+=runtime/artifacts/blake3-256/<digest>/<binary>=.  The current retention prototype
+sets two rollback generations per binary.  Its focused test publishes four
+versions of each of two binaries, scans eight digest generations, and expects
+six to remain.  That test demonstrates bounded historical retention, not this
+contract's bounded Lattice publication model, and must be replaced rather than
+treated as acceptance evidence.
+
+* Runtime artifact roles
+
+** Stable profile slots
+
+Every executable belongs to exactly one declared runtime profile.  A profile
+slot has a stable logical path independent of the artifact digest.
+
+#+begin_example
+runtime/bin/asp
+runtime/bin/providers/<provider-id>/<binary-name>
+runtime/bin/tools/<tool-profile>/<binary-name>
+#+end_example
+
+The exact taxonomy is registry-owned.  An installer must not invent an
+unclassified binary path.
+
+** Lattice candidate
+
+Lattice may materialize one candidate per profile in a transaction-scoped
+staging location.  The candidate is not executable through the public runtime
+path before validation succeeds.
+
+** Current publication
+
+After validation, Lattice atomically replaces the profile's current publication
+and emits a receipt containing the logical profile, binary name, content digest,
+metadata identity, generation, and publication transaction.
+
+** Retired artifact
+
+The superseded executable is not a fallback.  Lattice removes it after the
+publication handoff.  If an operating-system lease prevents immediate cleanup,
+one =retired-pending-cleanup= artifact may remain.  While it remains, another
+refresh for that profile is denied.  Runtime selection must never resolve the
+retired artifact.
+
+* Required invariants
+
+For every runtime profile =p=:
+
+1. exactly one current executable is selectable while the profile is ready;
+2. at most one candidate exists during refresh;
+3. no historical executable is selected as a fallback;
+4. a quiescent profile stores exactly one executable;
+5. an active refresh stores at most current plus candidate;
+6. candidate and retired-pending-cleanup states are mutually exclusive;
+7. a pending retired cleanup blocks another refresh, preventing unbounded
+   accumulation;
+8. the BLAKE3 digest appears in receipts and admission checks, not in the stable
+   executable path;
+9. digest equality alone never grants publication authority;
+10. profile identity, catalog generation, validation, and Lattice transaction
+   authority are all required for publication.
+
+* Refresh transition
+
+#+begin_example
+Ready(current)
+  -> Staging(current, candidate)
+  -> Validated(current, candidate, receipt)
+  -> Published(candidate)
+  -> Ready(candidate)
+#+end_example
+
+Any failure before =Published= removes the candidate and preserves current.
+Any failure after the atomic publication returns a typed cleanup failure; it
+does not reactivate the superseded binary.  A refresh must not search historical
+digest directories for a binary that happens to start successfully.
+
+* Digest semantics
+
+BLAKE3 remains useful for:
+
+- byte identity in the Lattice publication receipt;
+- drift detection between validation and publication;
+- active-artifact Merkle roots;
+- catalog-generation identity;
+- independent audit and reproducibility checks.
+
+BLAKE3 must not determine:
+
+- how many executable copies are retained;
+- which executable is current;
+- whether an old executable is an authorized fallback;
+- the public runtime path;
+- profile classification.
+
+The digest therefore proves =what bytes were admitted=.  Lattice publication
+proves =which admitted bytes are current=.
+
+* Mathematical contract
+
+Let =C(p)= be the current executable, =N(p)= an optional candidate, and =R(p)=
+an optional retired artifact awaiting cleanup.  The storage measure is
+
+#+begin_src typst
+#let stored(candidate, retired) = {
+  1 + (if candidate { 1 } else { 0 }) + (if retired { 1 } else { 0 })
+}
+
+$ forall p:
+    "quiescent"(p) => stored(#false, #false) = 1 $
+
+$ forall p:
+    "refreshing"(p) => stored(#true, #false) <= 2 $
+
+$ forall p:
+    "retired-pending-cleanup"(p) => not "refresh-admitted"(p) $
+
+$ "digest"(a) = "receipt.content-digest" $
+$ "current-path"(p) != "path-by-digest"("digest"(a)) $
+#+end_src
+
+Candidate and retired states are mutually exclusive in the normal transition.
+If cleanup cannot complete, the profile stops before another candidate is
+admitted.  Consequently the store is bounded and cannot become an append-only
+digest archive.
+
+* Lean correspondence
+
+The executable model is owned by
+=packages/proofs/ASPProof/ASPLatticeRuntimeArtifactRetention.lean=.  It proves:
+
+- a quiescent profile contains one stored executable;
+- an ordinary refresh contains at most two;
+- every well-formed state contains at most two;
+- publication returns the profile to one;
+- an unverified candidate cannot be published;
+- executable selection returns only current;
+- append-only digest-addressed refresh grows storage and therefore does not
+  satisfy this relationship contract.
+- retaining current plus two rollback generations stores three executables and
+  violates the Lattice bound even though the historical set is finite.
+
+The append-only theorem is intentionally retained as a counterexample.  The
+proof must not replace it with an axiom asserting that digest-addressed storage
+is bounded.
+
+* Implementation consequences
+
+1. =ProtocolBinaryInstallPlan= targets a stable profile slot and a transient
+   Lattice staging slot, not a persistent digest root.
+2. Provider runtime reconciliation publishes stable provider-profile paths.
+3. Activation and active-artifact receipts reference those stable paths and
+   retain BLAKE3 identities as evidence.
+4. =latest= and digest-directory traversal are removed from runtime resolution.
+5. Cleanup is part of the publication receipt.  A successful install cannot
+   report completion while leaving an unbounded retired set.
+6. Development checkout binaries remain a distinct admitted mode; they are not
+   copied into a digest archive merely to obtain identity evidence.
+
+* Acceptance gates
+
+- Repeatedly refresh one profile with at least three distinct binaries.  At
+  quiescence exactly one executable for that profile remains.
+- Interrupt refresh before publication.  Current remains selectable and the
+  candidate is removed.
+- Interrupt cleanup after publication.  The new current remains selected, the
+  retired artifact is never selected, and another refresh is rejected until
+  cleanup completes.
+- Mutate a candidate after validation.  Digest/metadata admission rejects
+  publication.
+- Present a valid old digest without Lattice transaction authority.  Admission
+  rejects it.
+- Verify activation, active-artifact, and catalog receipts against the stable
+  profile path and the admitted content digest.

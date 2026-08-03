@@ -35,6 +35,69 @@ pub enum WorkspaceCanonicalMaterializationLoad {
     Incompatible { reason: String },
 }
 
+#[derive(Debug, Clone)]
+pub struct ValidatedWorkspaceCanonicalMaterialization(
+    std::sync::Arc<ValidatedWorkspaceCanonicalMaterializationInner>,
+);
+
+#[derive(Debug)]
+struct ValidatedWorkspaceCanonicalMaterializationInner {
+    materialization: WorkspaceCanonicalMaterialization,
+    index: std::sync::Arc<super::memory_backend::WorkspaceMemoryIndex>,
+    generation: std::sync::Arc<super::WorkspaceMemoryGeneration>,
+}
+
+impl ValidatedWorkspaceCanonicalMaterialization {
+    pub fn new(
+        materialization: WorkspaceCanonicalMaterialization,
+        workspace_identity: &str,
+    ) -> Result<Self, String> {
+        materialization.validate_persisted(workspace_identity)?;
+        let index = super::WorkspaceMemoryBackend::prepare_index(
+            &materialization.owners,
+            &materialization.relations,
+        );
+        let generation = std::sync::Arc::new(materialization.clone().into_generation(0)?);
+        Ok(Self(std::sync::Arc::new(
+            ValidatedWorkspaceCanonicalMaterializationInner {
+                materialization,
+                index,
+                generation,
+            },
+        )))
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        WorkspaceCanonicalMaterialization,
+        std::sync::Arc<super::memory_backend::WorkspaceMemoryIndex>,
+        std::sync::Arc<super::WorkspaceMemoryGeneration>,
+    ) {
+        match std::sync::Arc::try_unwrap(self.0) {
+            Ok(inner) => (inner.materialization, inner.index, inner.generation),
+            Err(inner) => (
+                inner.materialization.clone(),
+                std::sync::Arc::clone(&inner.index),
+                std::sync::Arc::clone(&inner.generation),
+            ),
+        }
+    }
+
+    pub fn as_materialization(&self) -> &WorkspaceCanonicalMaterialization {
+        &self.0.materialization
+    }
+}
+
+impl WorkspaceCanonicalMaterialization {
+    pub fn into_validated(
+        self,
+        workspace_identity: &str,
+    ) -> Result<ValidatedWorkspaceCanonicalMaterialization, String> {
+        ValidatedWorkspaceCanonicalMaterialization::new(self, workspace_identity)
+    }
+}
+
 impl WorkspaceCanonicalMaterialization {
     fn canonical_import_digest(
         import: &crate::ClientDbSourceIndexImport,
@@ -213,7 +276,7 @@ impl WorkspaceCanonicalMaterialization {
                 selector: proof.structural_selector().to_owned(),
                 byte_start,
                 byte_end,
-                derived_projections: Vec::new(),
+                derived_projections: selector.derived_projections.clone(),
             });
         }
         let mut owners = owners.into_values().collect::<Vec<_>>();

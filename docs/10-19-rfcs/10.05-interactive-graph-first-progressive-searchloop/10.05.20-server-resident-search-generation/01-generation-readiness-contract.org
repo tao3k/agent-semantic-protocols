@@ -1,0 +1,57 @@
+#+title: Runtime Server Workspace Generation Readiness Contract
+#+property: header-args :eval never-export
+
+* Status
+
+This document is normative for exact search/query admission at the Runtime
+Server boundary.
+
+* Distinct authorities
+
+=WorkspaceGenerationAdmissionReceipt= proves that the single writer accepted
+or completed a candidate-generation transition.  It owns candidate identity,
+attempt number, build state, and commit publication.
+
+=WorkspaceGenerationReadinessReceipt= proves that the resident read lane has
+already opened and validated the immutable generation selected for one
+workspace.  It owns only workspace identity, the active commit identity, and
+whether this request had to reconcile an unreadable locator.
+
+The two receipts MUST NOT be substituted for one another.
+
+* Readiness transition
+
+#+begin_example
+resident locator Ready
+  -> acquire existing generation lease
+  -> validate epoch + generation digest + source root digest
+  -> return readiness receipt
+
+resident locator Missing | RecoveryRequired
+  -> enter workspace-local single-writer admission
+  -> wait for one terminal committed generation
+  -> acquire and validate the published generation
+  -> return readiness receipt with reconciled=true
+#+end_example
+
+The Ready transition MUST NOT canonicalize the checkout, inspect Git, open a
+provider process, open Turso, rewrite a manifest, or enqueue a generation
+build.  It is an in-memory resident operation and is subject to the
+sub-millisecond p99 gate under concurrent multi-session load.
+
+* Publication generation
+
+The Runtime Server binary, provider batch reader, query-pack digest, parser
+identity digest, and projection schema are one publication generation.  A
+server MUST NOT publish =Healthy= when a registered provider cannot decode the
+current projection-batch v1 header.  Contract validation precedes daemon
+readiness and workspace restoration.
+
+* Query safety
+
+An exact query is read-only.  It may enter the data plane only after a valid
+readiness receipt exists for its workspace.  A selector absent from the active
+generation may resolve only through an explicit relocation identity contained
+in that generation; retrying, weakening the selector, or reading live source is
+not a valid recovery transition.
+

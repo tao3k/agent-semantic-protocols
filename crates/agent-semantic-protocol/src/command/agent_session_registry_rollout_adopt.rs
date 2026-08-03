@@ -4,7 +4,7 @@ use agent_semantic_client_db::{
 use agent_semantic_runtime::{CodexRolloutSessionIndex, codex_rollout_session_index};
 
 use super::agent_session_registry_validation::{
-    rollout_metadata_matches_managed_agent_profile, validate_recent_session_profile,
+    rollout_metadata_matches_host_agent_identity, validate_recent_session_profile,
 };
 use super::normalized_metadata_with_roles;
 
@@ -37,7 +37,7 @@ pub(super) fn adopt_reusable_rollout_session(
                 == Some(request.root_session_id)
                 && request.excluded_session_id != Some(metadata.session_id().as_str())
                 && metadata.session_id().as_str() != request.root_session_id
-                && rollout_metadata_matches_managed_agent_profile(
+                && rollout_metadata_matches_host_agent_identity(
                     request.name,
                     request.role,
                     metadata,

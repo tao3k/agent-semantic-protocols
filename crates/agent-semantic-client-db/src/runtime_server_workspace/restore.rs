@@ -21,7 +21,7 @@ pub async fn restore_active_turso_generation(
                 "active workspace generation materialization is unavailable: workspaceIdentity={workspace_identity}"
             )
         })?;
-    materialization.validate_persisted(workspace_identity)?;
+    let materialization = materialization.into_validated(workspace_identity)?;
     memory_registry
         .ensure_canonical_generation(request_id, workspace_identity, materialization)
         .await

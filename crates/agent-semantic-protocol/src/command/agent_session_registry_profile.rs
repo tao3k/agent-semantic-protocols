@@ -151,7 +151,7 @@ fn adopt_unique_root_attributed_rollout_session(
         .iter()
         .filter(|metadata| excluded_session_id != Some(metadata.session_id().as_str()))
         .filter(|metadata| {
-            super::agent_session_registry_validation::rollout_metadata_matches_managed_agent_profile(
+            super::agent_session_registry_validation::rollout_metadata_matches_host_agent_identity(
                 name, role, metadata,
             )
         })
@@ -184,7 +184,7 @@ fn adopt_unique_root_attributed_rollout_session(
         .iter()
         .filter(|metadata| excluded_session_id != Some(metadata.session_id().as_str()))
         .filter(|metadata| {
-            super::agent_session_registry_validation::rollout_metadata_matches_managed_agent_profile(
+            super::agent_session_registry_validation::rollout_metadata_matches_host_agent_identity(
                 name, role, metadata,
             )
         })

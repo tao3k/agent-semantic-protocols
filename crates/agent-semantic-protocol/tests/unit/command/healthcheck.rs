@@ -55,12 +55,35 @@ fn healthcheck_error_status_returns_nonzero_contract() {
 }
 
 #[test]
-fn healthcheck_schedules_workspace_generation_without_waiting_for_terminal_state() {
+fn healthcheck_reuses_resolved_context_before_repairing_generation_locator() {
     let source = include_str!("../../../src/command/healthcheck.rs");
+    let session_contract_start = source
+        .find("runtime_server_workspace_session_for_resolved_admission_async")
+        .expect("healthcheck must use the resolved admission session constructor");
+    let session_contract_end = (session_contract_start + 500).min(source.len());
+    let session_contract = &source[session_contract_start..session_contract_end];
+    let resolved_state = source
+        .find("ResolvedState::resolve(context.cwd())")
+        .expect("healthcheck must resolve workspace state once");
+    let workspace_timer = source
+        .find("let workspace_generation_started")
+        .expect("healthcheck must measure workspace generation latency");
 
-    assert!(source.contains("runtime_server_workspace_session_for_admission_async"));
-    assert!(source.contains("session.ensure_runtime_generation().await"));
+    assert!(source.contains("runtime_server_workspace_session_for_resolved_admission_async"));
+    assert!(
+        session_contract.contains("resolved_state.workspace.workspace_id.to_string()"),
+        "healthcheck session contract:\n{session_contract}"
+    );
+    assert!(session_contract.contains("&resolved_state.workspace.root"));
+    assert!(
+        resolved_state < workspace_timer,
+        "workspace state resolution must remain outside the measured hot path"
+    );
+    assert!(source.contains("session.repair_runtime_generation_locator().await"));
     assert!(source.contains("workspace_generation_started.elapsed().as_micros()"));
     assert!(source.contains("elapsedMicros={} error={}"));
+    assert!(!source.contains(
+        "runtime_server_workspace_session_for_admission_async(\n                        context.cwd()"
+    ));
     assert!(!source.contains("wait_terminal"));
 }

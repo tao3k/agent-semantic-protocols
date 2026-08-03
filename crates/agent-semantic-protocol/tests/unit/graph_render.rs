@@ -331,10 +331,11 @@ fn graph_render_cli_prefers_sibling_asp_graph_turbo_without_path_lookup() {
     let graph_turbo = bin_dir.join(format!("asp-graph-turbo{}", std::env::consts::EXE_SUFFIX));
     fs::write(
         &graph_turbo,
-        "#!/bin/sh\n\
-         printf '%s\n' \"$@\" > \"$ASP_GRAPH_TURBO_ARGS_OUT\"\n\
-         cat > \"$ASP_GRAPH_TURBO_STDIN_OUT\"\n\
-         printf '[graph-frontier] sibling=true\\n'\n",
+        r#"#!/bin/sh
+printf '%s\n' "$@" > "$ASP_GRAPH_TURBO_ARGS_OUT"
+cat > "$ASP_GRAPH_TURBO_STDIN_OUT"
+printf '%s\n' '{"schemaId":"agent.semantic-protocols.semantic-graph-turbo-result","schemaVersion":"1","protocolId":"agent.semantic-protocols.semantic-language","protocolVersion":"1","packetKind":"graph-turbo-result","profile":"owner-query","algorithm":"typed-ppr-diverse","seedIds":["query:sibling"],"rankedNodes":[{"id":"query:sibling","kind":"query","role":"term","value":"sibling","action":"lexical"}],"edges":[]}'
+"#,
     )
     .unwrap();
     make_executable(&graph_turbo);
@@ -368,11 +369,12 @@ fn graph_render_cli_prefers_sibling_asp_graph_turbo_without_path_lookup() {
     );
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
-        "[graph-frontier] sibling=true\n"
+        "[search-frontier] projection=ranked-frontier density=terse profile=owner-query algorithm=typed-ppr-diverse nodes=1\n\
+         I=query:sibling kind=query action=lexical value=sibling\n"
     );
     assert_eq!(
         fs::read_to_string(&args_path).unwrap(),
-        "rank\n-\n--format\ncompact\n"
+        "rank\n-\n--format\njson\n"
     );
     assert!(
         fs::read_to_string(&stdin_path)

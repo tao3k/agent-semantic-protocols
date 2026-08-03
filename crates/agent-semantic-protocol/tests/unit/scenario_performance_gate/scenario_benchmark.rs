@@ -134,6 +134,13 @@ fn asp_runtime_timeout_policy_cold_functional_path_stays_inside_scenario_gate() 
     super::runtime_gates::asp_runtime_timeout_policy_cold_functional_path_stays_inside_scenario_gate();
 }
 
+#[cfg(unix)]
+#[test]
+fn asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate() {
+    super::runtime_gates::asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate(
+    );
+}
+
 #[test]
 fn scenario_benchmark_duration_contract_rejects_zero_budget() {
     super::runtime_gates::scenario_benchmark_duration_contract_rejects_zero_budget();

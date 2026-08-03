@@ -166,6 +166,8 @@ pub struct RuntimeServerStatusSnapshot {
     pub artifact_catalog_digest: String,
     pub transport_contract_digest: String,
     pub workspace_entry_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_turbo_resident: Option<GraphTurboResidentStatus>,
     pub owner_epoch: u64,
 }
 
@@ -186,6 +188,7 @@ impl RuntimeServerStatusSnapshot {
             artifact_catalog_digest: endpoint.artifact_catalog_digest.clone(),
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             workspace_entry_count,
+            graph_turbo_resident: None,
             owner_epoch: endpoint.owner_epoch,
         }
     }
@@ -225,6 +228,7 @@ impl RuntimeServerStatusSnapshot {
             artifact_catalog_digest: self.artifact_catalog_digest.clone(),
             transport_contract_digest: self.transport_contract_digest.clone(),
             workspace_entry_count: self.workspace_entry_count,
+            graph_turbo_resident: self.graph_turbo_resident.clone(),
             reason: None,
         })
     }
@@ -242,7 +246,29 @@ pub struct RuntimeServerControlReceipt {
     pub artifact_catalog_digest: String,
     pub transport_contract_digest: String,
     pub workspace_entry_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_turbo_resident: Option<GraphTurboResidentStatus>,
     pub reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphTurboResidentStatus {
+    pub state: GraphTurboResidentState,
+    pub process_id: Option<u32>,
+    pub runtime_artifact: Option<String>,
+    pub execution_command_digest: Option<String>,
+    pub reason: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GraphTurboResidentState {
+    Unavailable,
+    Starting,
+    Healthy,
+    Draining,
+    Failed,
 }
 
 impl RuntimeServerControlReceipt {
@@ -261,6 +287,7 @@ impl RuntimeServerControlReceipt {
             artifact_catalog_digest: endpoint.artifact_catalog_digest.clone(),
             transport_contract_digest: endpoint.transport_contract_digest.clone(),
             workspace_entry_count,
+            graph_turbo_resident: None,
             reason: None,
         }
     }
@@ -293,6 +320,7 @@ impl RuntimeServerControlReceipt {
             artifact_catalog_digest,
             transport_contract_digest: runtime_server_transport_contract_digest(),
             workspace_entry_count: 0,
+            graph_turbo_resident: None,
             reason: Some(reason),
         }
     }

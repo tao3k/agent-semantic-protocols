@@ -1,0 +1,101 @@
+#+title: AgentSession Lifecycle Product Refinement
+#+property: RFC_ID ASP-10.05.25.08
+#+property: STATUS normative
+
+* Decision
+
+AgentSession lifecycle is a product of independent state machines.  It is not
+one flattened status enum and it is not derived from Runtime Server health,
+Host profile policy, or the phase of one dispatch attempt.
+
+The normative state is:
+
+#+begin_src text
+WorkspaceServer × SessionLifecycle × HostBinding × DispatchLifecycle
+#+end_src
+
+Each component has one authority and one transition vocabulary.  A transition
+in one component MUST NOT manufacture evidence owned by another component.
+
+* Workspace Server
+
+The workspace ASP Server owns durable registry execution, checkpointing, and
+recovery.  Restarting the process changes only the server epoch and transport
+state.  It does not archive an AgentSession, invalidate a fresh Host binding,
+complete a dispatch, or authorize replacement.
+
+* Session lifecycle
+
+The ASP-owned session phases are =declared=, =active=,
+=archive-intent-durable=, =archived=, and =retired=.  These phases describe the
+logical route and its lifecycle intent.  They do not claim that a Host child
+exists or that its canonical path has been released.
+
+* Host binding
+
+The Host-owned binding phases are =unobserved=, =unbound=, =fresh=, =stale=,
+=host-terminated=, and =path-released=.  A fresh binding is established only by
+a typed Host lifecycle receipt bound to the current session generation,
+child identity, and canonical target.
+
+Model, reasoning effort, sandbox, permissions, profile paths, and tool policy
+are not binding predicates.  They remain Host policy and are not represented
+in the ASP lifecycle product.
+
+A missing or expired observation changes =fresh= to =stale=.  It MUST NOT
+archive or delete the logical AgentSession.
+
+* Dispatch lifecycle
+
+The dispatch phases are =unobserved=, =idle=, =claimed=, =running=, =quarantined=,
+=completed=, and =rejected=.  Dispatch timeout or uncertain delivery enters
+=quarantined=.  Quarantine is neither negative Host evidence nor permission to
+archive, retarget, release a canonical path, or replace the AgentSession.
+
+Every dispatch identity is fenced by the session generation.  A receipt from
+an earlier generation cannot complete a dispatch in a later generation.
+
+=unobserved= is an evidence state, not an alias for =unbound= or =idle=.  An
+absent Host observation or missing rollout activity report cannot manufacture
+either of those positive lifecycle facts.
+
+* Archive and replacement
+
+Archive intent immediately revokes new durable dispatch authority, but it does
+not prove Host termination or canonical-path release.  Replacement is admitted
+only when:
+
+- the session is archived or retired;
+- a Host termination receipt has been indexed;
+- canonical-path release has been indexed;
+- the next generation is strictly greater than the current generation.
+
+Runtime process identity, transport failure, visibility, timeout, and profile
+drift are not replacement evidence.
+
+* Refinement obligations
+
+Rust refinement MUST preserve these projections independently:
+
+| Lean component | Rust responsibility |
+|-
+| WorkspaceServer | workspace Runtime Server supervisor and checkpoint |
+| SessionLifecycle | AgentSession registry lifecycle row |
+| HostBinding | typed Host lifecycle attestation and canonical target binding |
+| DispatchLifecycle | dispatch claim/execute/complete recovery record |
+
+The executable implementation MUST reject flattened states that claim any of
+the following:
+
+- server failure archived a session;
+- a Host acknowledgement established a delivered binding;
+- dispatch timeout proved target absence;
+- archive intent released the canonical path;
+- stale-generation receipt completed the current dispatch;
+- an ASP expected model authorized or rejected a Host binding.
+
+* Formal owner
+
+=ASPProof.AgentSessionLifecycleProduct= owns the product state and transition
+invariants.  =ASPProof.Audit.AgentSessionLifecycleProduct= owns concrete
+counterexamples for flattened lifecycle implementations.

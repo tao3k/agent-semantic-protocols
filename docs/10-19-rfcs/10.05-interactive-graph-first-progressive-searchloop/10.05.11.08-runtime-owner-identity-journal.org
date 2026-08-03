@@ -1,0 +1,117 @@
+#+title: Runtime owner identity journal
+
+* Status
+
+This module is normative for exact-query freshness in a mutable agent-coding
+workspace.  It refines the Runtime Server reconciliation and namespace modules;
+it does not introduce a second workspace identity or a provider-private cache.
+
+* Problem
+
+An immutable exact-projection generation is safe to read during publication of
+its successor, but a base-generation hit alone does not prove that the owner is
+still live.  Calling =EnsureRuntimeOwner= before every hit preserves freshness
+but couples the read plane to Server availability.  Reading and hashing the
+owner file on every query preserves correctness but fails the sub-millisecond
+read budget.
+
+* Contract
+
+Each admitted workspace owns one owner-identity journal under its canonical
+=ASP_STATE_HOME/runtime/server/workspaces= generation directory.
+
+The journal consists of an immutable, sorted identity segment and a stable,
+fixed-size mmap pointer.  The pointer inode is never replaced during normal
+publication.  Its payload is published through the shared odd/even seqlock
+contract and names one relative segment in the same canonical workspace
+directory.  A journal entry is keyed by normalized owner path and contains
+either the current BLAKE3 content digest or a tombstone.  The pointer advances
+only after the complete segment is durable and readable.  Readers that overlap
+publication observe either the previous complete epoch or the next complete
+epoch, never a partial payload.  The resident's decoded pointer lease is one
+atomic value containing both the seqlock generation and decoded snapshot.
+Competing readers may only replace it with a greater seqlock generation; a
+late decoder of an older generation cannot roll the shared lease backward.
+
+The Runtime Server is the single writer.  A mutation admission must publish the
+identity delta before it acknowledges the changed-path receipt and before it
+schedules semantic generation rebuilding.  Different workspaces publish on
+independent writer lanes.  Concurrent sessions for one workspace converge on
+the same mutation id and journal epoch.  The receipt also stores a canonical
+digest of the complete sorted delta.  Replaying the same mutation id with the
+same delta digest is idempotent; replaying it with a different or incomplete
+payload is a typed conflict and cannot advance the pointer.
+
+For a mediated editing tool, admission has two phases.  Before the tool is
+allowed to write, the hook publishes a =mutating= fence for every normalized
+owner path under the mutation id.  Exact queries treat that fence as stale.
+After the tool completes or fails, the hook asks the Runtime Server to observe
+the resulting owners and atomically replaces each fence with a present digest
+or tombstone.  Overlapping mutations of the same owner remain fenced until the
+latest admitted mutation completes; mutations of disjoint owners may proceed
+concurrently.  A post-write-only changed-path receipt is insufficient evidence
+for a fresh exact hit.
+
+The workspace resident opens the pointer and current segment once.  An exact
+query performs these steps:
+
+1. read the stable pointer epoch from the existing mmap;
+2. when the epoch changed, open and validate the newly named immutable segment
+   once, then replace the resident snapshot; an unchanged epoch performs no
+   file open or JSON decode;
+3. compare the base owner digest with the newest resident journal entry;
+4. require the mapped exact epoch and generation digest to equal the canonical
+   pointer snapshot used for the journal comparison; cross-generation evidence
+   is stale even when both artifacts are independently valid;
+5. return the mmap projection only when the entry is absent under a covered
+   base generation, or explicitly present with the same digest;
+6. return a typed missing/stale result immediately for a tombstone or mismatch;
+7. request owner semantic refresh only for the typed stale result, never as a
+   prerequisite for a proven-current hit.
+
+A same-base rebase is idempotent and must preserve accumulated deltas.  A new
+base generation starts an empty overlay only after its exact segment is
+published.  The canonical generation pointer is the commit record: generation
+and exact segments are synced and renamed first, the generation pointer is
+published second, and the journal rebase completes before the publish receipt
+is acknowledged.  If the server stops after the commit record but before the
+journal rebase, startup reconciliation completes that rebase from the canonical
+pointer before the workspace accepts queries.  The transient mismatch is
+fail-closed and can never authorize stale bytes.
+
+A resident reader that was opened before a mutation must observe
+the advanced journal epoch; retaining an old journal snapshot is not a valid
+interpretation of previous-generation readability.
+
+The journal is language-neutral.  Providers still own parsing and selector
+generation; they do not own workspace identity, file hashing, publication, or
+read-plane routing.
+
+* Failure and recovery
+
+A missing, malformed, wrong-workspace, or wrong-base journal is not equivalent
+to a current owner.  The query returns typed reconciliation-required evidence
+without waiting for a generation build.  Restart restores the last complete
+pointer and segment; it must not delete them or require =healthcheck= to make
+them readable.
+
+* Performance qualification
+
+The executable refinement must gate:
+
+- cache-hot journal lookup p99 below one millisecond;
+- unchanged-epoch lookup with zero file opens and zero segment decodes;
+- restart then exact-query without prior healthcheck;
+- concurrent readers observing only the old or new complete epoch;
+- concurrent pointer decoders never decreasing the resident lease generation;
+- zero provider process, control roundtrip, database open, manifest write, and
+  owner-file read for a proven-current hit;
+- changed and tombstoned owners never returning base-generation bytes.
+
+* Authority layers
+
+This Org module is normative.  Lean models atomic epoch publication, previous
+epoch readability, and the impossibility of a current verdict from an
+uncovered base.  Rust is the executable refinement.  Sandtable, large-repo,
+and real subagent receipts are empirical qualification.  Diagrams and rendered
+documents remain presentation only.

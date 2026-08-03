@@ -138,14 +138,21 @@ fn run_install_for_client(
         crate::command::protocol_binary::ProtocolBinaryReconciliationGuard::acquire(
             &runtime_state.protocol_home,
         )?;
-    let binary_install_plan =
-        ProtocolBinaryInstallPlan::capture(runtime_state.protocol_home.join("runtime/artifacts"))?;
+    let runtime_artifact_root = runtime_state.protocol_home.join("runtime/artifacts");
+    let binary_install_plan = ProtocolBinaryInstallPlan::capture(runtime_artifact_root.clone())?;
     timings.mark("runtime-state");
     let org_state_sync =
         crate::command::org_capture::require_materialized_org_state(&project_root)?;
     timings.mark("org-state");
     let binary_install = ensure_protocol_binary_installed(&binary_install_plan)?;
     timings.mark("binary");
+    let provider_binary_reconciliation =
+        crate::command::install_provider_runtime_reconcile::reconcile_registered_provider_runtime_binaries(
+            &runtime_state.runtime_bin_dir,
+            &runtime_artifact_root,
+            &runtime_state.provider_lock_dir,
+        )?;
+    timings.mark("provider-binaries");
     let activation_path = runtime_state.activation_path.clone();
     let activation_sync = load_or_refresh_default_activation(&activation_path, &project_root)?;
     let activation_status = activation_sync.status;
@@ -183,6 +190,13 @@ fn run_install_for_client(
             )
         })
         .collect::<Result<Vec<_>, String>>()?;
+    let provider_profiles_are_lattice_current = provider_artifacts.iter().all(|artifact| {
+        artifact
+            .materialized_path
+            .starts_with(&runtime_state.runtime_bin_dir)
+            && std::fs::symlink_metadata(&artifact.materialized_path)
+                .is_ok_and(|metadata| metadata.file_type().is_file())
+    });
     let client_config_digest =
         agent_semantic_content_identity::file_content_digest_v1(&client_config_path)?;
     provider_artifacts.push(agent_semantic_hook::ActiveAspArtifactInput {
@@ -247,6 +261,18 @@ fn run_install_for_client(
         &provider_artifacts,
     )?;
     timings.mark("active-artifact-receipt");
+    let legacy_artifact_cleanup = if provider_binary_reconciliation.missing_count == 0
+        && provider_profiles_are_lattice_current
+    {
+        Some(
+            crate::command::protocol_binary::prune_runtime_binary_artifacts(
+                &runtime_artifact_root,
+            )?,
+        )
+    } else {
+        None
+    };
+    timings.mark("legacy-artifact-cleanup");
     if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Global) {
         crate::command::runtime_server_supervisor::install_runtime_server_supervisor(
             &runtime_state.protocol_home,
@@ -280,7 +306,7 @@ fn run_install_for_client(
         user_config_status.as_str()
     );
     println!(
-        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic mode=updated",
+        "[{receipt_label}] client={client} activation={} activationRuntime=derived activationSync={}{} activeArtifactReceipt={} activeArtifactRoot={} activeArtifactByteReads={} activeArtifactBytesRead={} activeArtifactReceiptWrites={} agentConfig={} orgState={} orgStateSync={} orgSourceIndex={} config={}{}{}{}{} binary=asp binaryPath={} binaryInstall={} binaryArtifactDigest={} binarySwitch=atomic providerBinariesMissing={} legacyArtifactCleanup={} legacyArtifactGenerationsRemoved={} mode=updated",
         display_path(&project_root, &activation_path),
         activation_status,
         user_config_receipt,
@@ -301,6 +327,15 @@ fn run_install_for_client(
         binary_install.path.display(),
         binary_install.status,
         binary_install.artifact_digest,
+        provider_binary_reconciliation.missing_count,
+        if legacy_artifact_cleanup.is_some() {
+            "complete"
+        } else {
+            "deferred"
+        },
+        legacy_artifact_cleanup
+            .as_ref()
+            .map_or(0, |receipt| receipt.removed_generation_count),
     );
     Ok(())
 }

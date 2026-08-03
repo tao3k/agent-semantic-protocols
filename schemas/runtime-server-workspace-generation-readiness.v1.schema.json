@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent.semantic-protocols.runtime-server-workspace-generation-readiness.v1",
+  "title": "Runtime Server Workspace Generation Readiness Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "commit",
+    "reconciled"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-workspace-generation-readiness.v1"
+    },
+    "schemaVersion": { "const": "1" },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "commit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["activeEpoch", "generationDigest", "sourceRootDigest"],
+      "properties": {
+        "activeEpoch": { "type": "integer", "minimum": 1 },
+        "generationDigest": { "type": "string", "minLength": 1 },
+        "sourceRootDigest": { "type": "string", "minLength": 1 }
+      }
+    },
+    "reconciled": { "type": "boolean" }
+  }
+}

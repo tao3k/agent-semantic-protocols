@@ -1,0 +1,327 @@
+{"sourcePath": "ASPProof/SearchProjectionRenderInterface.lean",
+ "schemaVersion": "1",
+ "schemaId": "asp.lean-proof-audit.v1",
+ "proofPackage": "ASPProof",
+ "module": "ASPProof.SearchProjectionRenderInterface",
+ "leanVersion": "4.32.2",
+ "hasSorryAx": false,
+ "declarations":
+ [{"type":
+   "ASPProof.SearchProjectionRenderInterface.controlFormAdmitted\n      ASPProof.SearchProjectionRenderInterface.ControlForm.graphMutation =\n    false ∧\n  ASPProof.SearchProjectionRenderInterface.controlFormAdmitted\n      ASPProof.SearchProjectionRenderInterface.ControlForm.arbitraryCommand =\n    false",
+   "theoremFamily": "control-grammar-read-only",
+   "rfcClauseIds": ["ASP-RFC-SPRI-AUTHORITY", "ASP-RFC-SPRI-CONTROL"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.control_grammar_rejects_mutation_and_commands",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.gqlCoreClauseAdmitted\n      ASPProof.SearchProjectionRenderInterface.GQLClause.matchPattern =\n    true ∧\n  ASPProof.SearchProjectionRenderInterface.gqlCoreClauseAdmitted\n        ASPProof.SearchProjectionRenderInterface.GQLClause.boundedPath =\n      true ∧\n    ASPProof.SearchProjectionRenderInterface.gqlCoreClauseAdmitted\n          ASPProof.SearchProjectionRenderInterface.GQLClause.createGraph =\n        false ∧\n      ASPProof.SearchProjectionRenderInterface.gqlCoreClauseAdmitted\n            ASPProof.SearchProjectionRenderInterface.GQLClause.insertElement =\n          false ∧\n        ASPProof.SearchProjectionRenderInterface.gqlCoreClauseAdmitted\n              ASPProof.SearchProjectionRenderInterface.GQLClause.deleteElement =\n            false ∧\n          ASPProof.SearchProjectionRenderInterface.gqlCoreClauseAdmitted\n                ASPProof.SearchProjectionRenderInterface.GQLClause.setProperty =\n              false ∧\n            ASPProof.SearchProjectionRenderInterface.gqlCoreClauseAdmitted\n                  ASPProof.SearchProjectionRenderInterface.GQLClause.callProcedure =\n                false ∧\n              ASPProof.SearchProjectionRenderInterface.gqlCoreClauseAdmitted\n                  ASPProof.SearchProjectionRenderInterface.GQLClause.unboundedPath =\n                false",
+   "theoremFamily": "gql-core-read-only",
+   "rfcClauseIds": ["ASP-RFC-SPRI-GQL", "ASP-RFC-SPRI-READ-ONLY"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.gql_core_is_read_only_and_bounded",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.logicQueryFormAdmitted\n      ASPProof.SearchProjectionRenderInterface.LogicForm.ruleHead =\n    false ∧\n  ASPProof.SearchProjectionRenderInterface.logicQueryFormAdmitted\n        ASPProof.SearchProjectionRenderInterface.LogicForm.assertedFact =\n      false ∧\n    ASPProof.SearchProjectionRenderInterface.logicQueryFormAdmitted\n          ASPProof.SearchProjectionRenderInterface.LogicForm.recursiveRule =\n        false ∧\n      ASPProof.SearchProjectionRenderInterface.logicQueryFormAdmitted\n          ASPProof.SearchProjectionRenderInterface.LogicForm.hostExpression =\n        false",
+   "theoremFamily": "logic-query-closed",
+   "rfcClauseIds": ["ASP-RFC-SPRI-ASCENT", "ASP-RFC-SPRI-LOGIC"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.logic_query_cannot_define_rules_facts_or_host_code",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.relationABIWellFormed\n    ASPProof.SearchProjectionRenderInterface.gqlCandidateABI =\n  true",
+   "theoremFamily": "typed-relation-abi",
+   "rfcClauseIds": ["ASP-RFC-SPRI-GQL", "ASP-RFC-SPRI-RELATION-ABI"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.typed_relation_abi_is_well_formed",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.relationABICompatible ASPProof.SearchProjectionRenderInterface.gqlCandidateABI\n    ASPProof.SearchProjectionRenderInterface.staleGQLCandidateABI =\n  false",
+   "theoremFamily": "relation-abi-version-rejection",
+   "rfcClauseIds": ["ASP-RFC-SPRI-DRIFT", "ASP-RFC-SPRI-RELATION-ABI"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.relation_abi_version_drift_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.derivedPredicateAdmitted\n    ASPProof.SearchProjectionRenderInterface.trustedRuleset\n    ASPProof.SearchProjectionRenderInterface.DerivedPredicate.reachable =\n  true",
+   "theoremFamily": "registered-derived-predicate",
+   "rfcClauseIds": ["ASP-RFC-SPRI-ASCENT", "ASP-RFC-SPRI-RULESET"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.registered_derived_predicate_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.derivedPredicateAdmitted\n    ASPProof.SearchProjectionRenderInterface.trustedRuleset\n    ASPProof.SearchProjectionRenderInterface.DerivedPredicate.paretoDominance =\n  false",
+   "theoremFamily": "unregistered-derived-rejection",
+   "rfcClauseIds": ["ASP-RFC-SPRI-ASCENT", "ASP-RFC-SPRI-RULESET"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.unregistered_derived_predicate_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.ascentBaseFactAdmitted\n    ASPProof.SearchProjectionRenderInterface.graphTurboCandidate =\n  false",
+   "theoremFamily": "graph-turbo-nonauthority",
+   "rfcClauseIds": ["ASP-RFC-SPRI-AUTHORITY", "ASP-RFC-SPRI-TURBO"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.graph_turbo_score_cannot_mint_evidence_authority",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.progressiveProjectionAdmitted\n    ASPProof.SearchProjectionRenderInterface.exposureTenSelectionThreeBudget\n    ASPProof.SearchProjectionRenderInterface.exampleProjection =\n  true",
+   "theoremFamily": "frontier-exposure-budget",
+   "rfcClauseIds": ["ASP-RFC-SPRI-EXPOSURE", "ASP-RFC-SPRI-FRONTIER"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.progressive_frontier_exposes_ten_candidates",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.modelSelectionAdmitted\n    ASPProof.SearchProjectionRenderInterface.exposureTenSelectionThreeBudget\n    ASPProof.SearchProjectionRenderInterface.exampleProjection\n    ASPProof.SearchProjectionRenderInterface.selectThreeCandidates =\n  true",
+   "theoremFamily": "bounded-multi-selection",
+   "rfcClauseIds": ["ASP-RFC-SPRI-FRONTIER", "ASP-RFC-SPRI-SELECTION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.model_may_select_three_of_ten_candidates",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.modelSelectionAdmitted\n    ASPProof.SearchProjectionRenderInterface.exposureTenSelectionThreeBudget\n    ASPProof.SearchProjectionRenderInterface.exampleProjection\n    ASPProof.SearchProjectionRenderInterface.selectFourCandidates =\n  false",
+   "theoremFamily": "selection-budget-rejection",
+   "rfcClauseIds": ["ASP-RFC-SPRI-BOUND", "ASP-RFC-SPRI-SELECTION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.model_cannot_exceed_selection_budget",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.modelSelectionAdmitted\n    ASPProof.SearchProjectionRenderInterface.exposureTenSelectionThreeBudget\n    ASPProof.SearchProjectionRenderInterface.exampleProjection\n    ASPProof.SearchProjectionRenderInterface.selectInvisibleCandidate =\n  false",
+   "theoremFamily": "unexposed-selection-rejection",
+   "rfcClauseIds": ["ASP-RFC-SPRI-AUTHORITY", "ASP-RFC-SPRI-SELECTION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.model_cannot_select_an_unexposed_candidate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.witnessVisibleOnPage 10 0 10 = false",
+   "theoremFamily": "first-page-completeness-counterexample",
+   "rfcClauseIds": ["ASP-RFC-SPRI-COUNTEREXAMPLE", "ASP-RFC-SPRI-FRONTIER"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.bounded_first_page_does_not_imply_witness_visibility",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.witnessVisibleOnPage 10 1 10 = true",
+   "theoremFamily": "progressive-witness-recovery",
+   "rfcClauseIds": ["ASP-RFC-SPRI-CONTINUATION", "ASP-RFC-SPRI-PROGRESSIVE"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.fair_second_page_exposes_the_eleventh_witness",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.progressiveDisclosureAdvance\n    ASPProof.SearchProjectionRenderInterface.initialDisclosure\n    ASPProof.SearchProjectionRenderInterface.resumedDisclosure =\n  true",
+   "theoremFamily": "progressive-monotone-disclosure",
+   "rfcClauseIds": ["ASP-RFC-SPRI-CONTINUATION", "ASP-RFC-SPRI-PROGRESSIVE"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.progressive_resume_monotonically_reveals_and_decreases_remaining",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.progressiveDisclosureWellFormed\n    ASPProof.SearchProjectionRenderInterface.missingOmissionCertificateDisclosure =\n  false",
+   "theoremFamily": "omission-certificate-required",
+   "rfcClauseIds": ["ASP-RFC-SPRI-OMISSION", "ASP-RFC-SPRI-PROGRESSIVE"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.hidden_evidence_requires_an_omission_certificate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.continuationResumeAdmitted\n    ASPProof.SearchProjectionRenderInterface.initialDisclosure\n    ASPProof.SearchProjectionRenderInterface.staleContinuationDisclosure =\n  false",
+   "theoremFamily": "progressive-stale-continuation",
+   "rfcClauseIds": ["ASP-RFC-SPRI-CONTINUATION", "ASP-RFC-SPRI-PROGRESSIVE"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.stale_progressive_continuation_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.agentEncodingAdmitted\n    ASPProof.SearchProjectionRenderInterface.OutputEncoding.internalJsonReceipt =\n  false",
+   "theoremFamily": "json-not-agent-surface",
+   "rfcClauseIds": ["ASP-RFC-SPRI-JSON", "ASP-RFC-SPRI-POLYGLOT"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.internal_json_is_not_an_agent_encoding",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.encodedProjectionAdmitted\n    ASPProof.SearchProjectionRenderInterface.exampleProjection\n    ASPProof.SearchProjectionRenderInterface.exposureTenSelectionThreeBudget\n    ASPProof.SearchProjectionRenderInterface.canonicalEncoderV1\n    ASPProof.SearchProjectionRenderInterface.canonicalEncodedProjection =\n  true",
+   "theoremFamily": "bounded-polyglot-positive",
+   "rfcClauseIds": ["ASP-RFC-SPRI-BOUND", "ASP-RFC-SPRI-POLYGLOT"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.bounded_typed_polyglot_projection_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.encodedProjectionAdmitted\n    ASPProof.SearchProjectionRenderInterface.exampleProjection\n    ASPProof.SearchProjectionRenderInterface.exposureTenSelectionThreeBudget\n    ASPProof.SearchProjectionRenderInterface.canonicalEncoderV1\n    ASPProof.SearchProjectionRenderInterface.overTokenBudgetProjection =\n  false",
+   "theoremFamily": "projection-token-budget",
+   "rfcClauseIds": ["ASP-RFC-SPRI-BOUND", "ASP-RFC-SPRI-ENCODING"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.projection_over_token_budget_is_rejected",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.encodedProjectionAdmitted\n    ASPProof.SearchProjectionRenderInterface.exampleProjection\n    ASPProof.SearchProjectionRenderInterface.exposureTenSelectionThreeBudget\n    ASPProof.SearchProjectionRenderInterface.canonicalEncoderV1\n    ASPProof.SearchProjectionRenderInterface.truncatedProtectedProjection =\n  false",
+   "theoremFamily": "protected-identity-truncation",
+   "rfcClauseIds": ["ASP-RFC-SPRI-IDENTITY", "ASP-RFC-SPRI-TRUNCATION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.truncation_cannot_remove_protected_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.replacementAdmitted ASPProof.SearchProjectionRenderInterface.oldExampleOutcome\n    ASPProof.SearchProjectionRenderInterface.newExampleOutcome =\n  true",
+   "theoremFamily": "replacement-positive",
+   "rfcClauseIds": ["ASP-RFC-SPRI-COST", "ASP-RFC-SPRI-REFINEMENT"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.example_new_search_replacement_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.replacementAdmitted ASPProof.SearchProjectionRenderInterface.oldExampleOutcome\n    ASPProof.SearchProjectionRenderInterface.unsoundCheapOutcome =\n  false",
+   "theoremFamily": "cheap-unsound-replacement-rejection",
+   "rfcClauseIds": ["ASP-RFC-SPRI-REFINEMENT", "ASP-RFC-SPRI-SOUNDNESS"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.lower_cost_cannot_replace_semantic_equivalence",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (assumptions : ASPProof.SearchProjectionRenderInterface.ReplacementAssumptions)\n  (workload : List ASPProof.SearchProjectionRenderInterface.WorkloadCase)\n  (old new : ASPProof.SearchProjectionRenderInterface.SearchMachine),\n  ASPProof.SearchProjectionRenderInterface.machineReplacementQualified assumptions workload old new →\n    ASPProof.SearchProjectionRenderInterface.machineSemanticallyRefines old new",
+   "theoremFamily": "parametric-machine-refinement",
+   "rfcClauseIds": ["ASP-RFC-SPRI-REFINEMENT", "ASP-RFC-SPRI-WORKLOAD"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.machine_replacement_requires_semantic_refinement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (assumptions : ASPProof.SearchProjectionRenderInterface.ReplacementAssumptions)\n  (workload : List ASPProof.SearchProjectionRenderInterface.WorkloadCase)\n  (old new : ASPProof.SearchProjectionRenderInterface.SearchMachine),\n  ASPProof.SearchProjectionRenderInterface.machineReplacementQualified assumptions workload old new →\n    ASPProof.SearchProjectionRenderInterface.replacementAssumptionsAdmitted assumptions = true",
+   "theoremFamily": "replacement-assumption-admission",
+   "rfcClauseIds": ["ASP-RFC-SPRI-ASSUMPTIONS", "ASP-RFC-SPRI-REFINEMENT"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.machine_replacement_requires_declared_assumptions",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (assumptions : ASPProof.SearchProjectionRenderInterface.ReplacementAssumptions)\n  (workload : List ASPProof.SearchProjectionRenderInterface.WorkloadCase)\n  (old new : ASPProof.SearchProjectionRenderInterface.SearchMachine),\n  ASPProof.SearchProjectionRenderInterface.machineReplacementQualified assumptions workload old new →\n    ∀ (queryDigest snapshotDigest : String),\n      (old.run queryDigest snapshotDigest).evidenceDigest = (new.run queryDigest snapshotDigest).evidenceDigest",
+   "theoremFamily": "parametric-evidence-preservation",
+   "rfcClauseIds": ["ASP-RFC-SPRI-EVIDENCE", "ASP-RFC-SPRI-REFINEMENT"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.machine_replacement_preserves_evidence_digest",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.replacementAssumptionsAdmitted\n    ASPProof.SearchProjectionRenderInterface.unfairReplacementAssumptions =\n  false",
+   "theoremFamily": "fair-continuation-required",
+   "rfcClauseIds": ["ASP-RFC-SPRI-ASSUMPTIONS", "ASP-RFC-SPRI-CONTINUATION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.missing_fair_continuation_blocks_replacement_qualification",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.replacementCertificateAdmitted\n    ASPProof.SearchProjectionRenderInterface.qualifiedReplacementCertificate =\n  true",
+   "theoremFamily": "replacement-certificate-positive",
+   "rfcClauseIds": ["ASP-RFC-SPRI-CERTIFICATE", "ASP-RFC-SPRI-CUTOVER"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.complete_replacement_certificate_is_admitted",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.replacementCertificateAdmitted\n    ASPProof.SearchProjectionRenderInterface.runtimeDriftReplacementCertificate =\n  false",
+   "theoremFamily": "replacement-runtime-drift-rejection",
+   "rfcClauseIds": ["ASP-RFC-SPRI-CERTIFICATE", "ASP-RFC-SPRI-RUNTIME"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.runtime_digest_drift_blocks_replacement_certificate",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.replacementCertificateAdmitted\n    ASPProof.SearchProjectionRenderInterface.missingIndependentSliceCertificate =\n  false",
+   "theoremFamily": "independent-benchmark-slices-required",
+   "rfcClauseIds": ["ASP-RFC-SPRI-CERTIFICATE", "ASP-RFC-SPRI-EMPIRICAL"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.one_benchmark_slice_cannot_qualify_replacement",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.projectedTokenUpperBound 100 50 10 = 600",
+   "theoremFamily": "linear-projection-token-bound",
+   "rfcClauseIds": ["ASP-RFC-SPRI-BOUND", "ASP-RFC-SPRI-TOKEN"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.ten_candidate_projection_has_a_linear_token_bound",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.nextExpansionUpperBound 3 4 = 12",
+   "theoremFamily": "selected-branch-expansion-bound",
+   "rfcClauseIds": ["ASP-RFC-SPRI-GRAPH-COST", "ASP-RFC-SPRI-SELECTION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.three_selected_branches_bound_next_expansion",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "ASPProof.SearchProjectionRenderInterface.searchResultCacheIdentity =\n  ASPProof.SearchProjectionRenderInterface.searchResultCacheIdentity",
+   "theoremFamily": "search-cache-encoder-independence",
+   "rfcClauseIds": ["ASP-RFC-SPRI-ENCODING", "ASP-RFC-SPRI-SEARCH-CACHE"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.encoder_version_is_absent_from_search_result_cache_identity",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "(ASPProof.SearchProjectionRenderInterface.canonicalByteIdentityV1 ==\n    ASPProof.SearchProjectionRenderInterface.canonicalByteIdentityV2) =\n  false",
+   "theoremFamily": "encoder-byte-identity",
+   "rfcClauseIds": ["ASP-RFC-SPRI-BYTE-CACHE", "ASP-RFC-SPRI-ENCODING"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.different_encoder_versions_are_not_byte_compatible",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []},
+  {"type":
+   "∀ (encoding : ASPProof.SearchProjectionRenderInterface.OutputEncoding),\n  ASPProof.SearchProjectionRenderInterface.adapterAuthority encoding =\n    ASPProof.SearchProjectionRenderInterface.FactAuthority.candidate",
+   "theoremFamily": "adapter-nonauthority",
+   "rfcClauseIds": ["ASP-RFC-SPRI-AUTHORITY", "ASP-RFC-SPRI-VISUALIZATION"],
+   "name":
+   "ASPProof.SearchProjectionRenderInterface.compact_and_visualization_adapters_cannot_mint_authority",
+   "kind": "theorem",
+   "hasSorryAx": false,
+   "axioms": []}],
+ "declarationCount": 35,
+ "axiomInventory": [],
+ "axiomFreeDeclarationCount": 35,
+ "axiomDependentDeclarationCount": 0}

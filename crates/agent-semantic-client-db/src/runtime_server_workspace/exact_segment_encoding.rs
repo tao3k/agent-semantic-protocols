@@ -98,23 +98,18 @@ pub(crate) fn encode_exact_projection_segment(
                 })
         })
     });
-    let mut relocation_rows = selector_rows
-        .iter()
-        .enumerate()
-        .map(|(selector_index, row)| {
-            let selector = std::str::from_utf8(slice_from_range(&strings, row.1))
-                .map_err(|error| format!("workspace exact selector is not UTF-8: {error}"))?;
-            let projection_kind =
-                std::str::from_utf8(slice_from_range(&strings, row.2)).map_err(|error| {
-                    format!("workspace exact projection kind is not UTF-8: {error}")
-                })?;
-            let identity = relocation_identity(selector)?;
-            Ok((
-                relocation_key_hash(projection_kind, identity.as_str()),
-                selector_index,
-            ))
-        })
-        .collect::<Result<Vec<_>, String>>()?;
+    let mut relocation_rows = Vec::new();
+    for (selector_index, row) in selector_rows.iter().enumerate() {
+        let projection_kind = std::str::from_utf8(slice_from_range(&strings, row.2))
+            .map_err(|error| format!("workspace exact projection kind is not UTF-8: {error}"))?;
+        if projection_kind != "source" {
+            continue;
+        }
+        let selector = std::str::from_utf8(slice_from_range(&strings, row.1))
+            .map_err(|error| format!("workspace exact selector is not UTF-8: {error}"))?;
+        let identity = relocation_identity(selector)?;
+        relocation_rows.push((relocation_key_hash(identity.as_str()), selector_index));
+    }
     relocation_rows.sort_unstable();
     let string_table_offset = relocation_table_offset
         .checked_add(relocation_rows.len().saturating_mul(RELOCATION_ENTRY_LEN))

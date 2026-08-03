@@ -4,12 +4,18 @@
 
 mod cli;
 mod command;
+pub use command::graph_turbo_resident_process::{
+    GraphTurboResidentLaunchSpec, GraphTurboResidentProcess, admit_candidate_rank_receipt,
+};
+pub use command::search_router_graph_state;
 mod exact_projection_diagnostic;
 mod exact_projection_diagnostic_io;
 mod exact_projection_trace;
 mod resident_exact_projection;
 pub use agent_semantic_context_product as context_product_state;
 
+pub mod agent_session_lifecycle_projection;
+pub mod codex_multi_agent_v2_control_plane;
 pub mod exact_projection;
 pub mod graph;
 mod state_cli;

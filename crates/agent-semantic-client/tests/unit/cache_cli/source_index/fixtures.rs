@@ -285,6 +285,7 @@ if sys.argv[1] == "projection-batch-stdin":
                         "symbol": name,
                         "scopes": [],
                     }},
+                    "projections": [],
                 }})
         owners.append({{
             "ownerPath": owner["ownerPath"],

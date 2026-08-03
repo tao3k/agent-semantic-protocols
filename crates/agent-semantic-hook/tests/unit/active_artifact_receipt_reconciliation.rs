@@ -5,7 +5,10 @@ use super::{
     materialize_active_asp_artifact_receipt, rebind_active_asp_binary_receipt_if_present,
     reconcile_active_asp_artifact_receipt_if_present, verify_active_asp_artifact_receipt,
 };
-use agent_semantic_content_identity::active_artifact_merkle_v1::ActiveArtifactKindV1;
+use crate::registered_provider_binaries_v1;
+use agent_semantic_content_identity::active_artifact_merkle_v1::{
+    ActiveArtifactKindV1, ActiveAspArtifactReceiptV1,
+};
 
 fn fixture_root(label: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
@@ -204,6 +207,110 @@ fn reconciliation_preserves_globally_installed_provider_leaves_outside_activatio
         leaf.artifact_kind() == ActiveArtifactKindV1::ProviderBinary
             && leaf.logical_path() == "providers/rust/rs-harness"
     }));
+
+    std::fs::remove_dir_all(root).expect("remove fixture");
+}
+
+#[test]
+fn asp_binary_rebind_preserves_registered_missing_provider_identities() {
+    let root = fixture_root("registered-provider-recovery");
+    let binary = root.join("runtime/bin/asp");
+    let activation = root.join("hooks/state/activation.json");
+    std::fs::create_dir_all(binary.parent().expect("binary parent")).expect("create binary parent");
+    std::fs::create_dir_all(activation.parent().expect("activation parent"))
+        .expect("create activation parent");
+    std::fs::write(&binary, b"asp-v1").expect("write binary");
+
+    let registrations = registered_provider_binaries_v1();
+    let selected = ["gerbil-scheme", "python"]
+        .into_iter()
+        .map(|language_id| {
+            registrations
+                .iter()
+                .find(|registration| registration.language_id().as_str() == language_id)
+                .unwrap_or_else(|| panic!("registered language `{language_id}`"))
+        })
+        .collect::<Vec<_>>();
+    let providers = selected
+        .iter()
+        .map(|registration| {
+            serde_json::json!({
+                "languageId": registration.language_id().as_str(),
+                "providerId": registration.provider_id().as_str(),
+            })
+        })
+        .collect::<Vec<_>>();
+    std::fs::write(
+        &activation,
+        serde_json::to_vec(&serde_json::json!({ "providers": providers }))
+            .expect("encode activation"),
+    )
+    .expect("write activation");
+
+    let mut provider_paths = Vec::new();
+    let mut provider_inputs = Vec::new();
+    for registration in &selected {
+        let provider_path = root.join("runtime/bin").join(registration.binary());
+        std::fs::write(&provider_path, registration.provider_id().as_str())
+            .expect("write registered provider binary");
+        let provider_digest =
+            agent_semantic_content_identity::file_content_digest_v1(&provider_path)
+                .expect("provider digest");
+        provider_inputs.push(ActiveAspArtifactInput {
+            logical_path: format!(
+                "providers/{}/{}",
+                registration.language_id(),
+                registration.provider_id()
+            ),
+            artifact_kind: ActiveArtifactKindV1::ProviderBinary,
+            materialized_path: provider_path.clone(),
+            artifact_digest: provider_digest,
+        });
+        provider_paths.push(provider_path);
+    }
+    let binary_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&binary).expect("binary digest");
+    let materialized = materialize_active_asp_artifact_receipt(
+        &binary,
+        &binary_digest,
+        &activation,
+        &provider_inputs,
+    )
+    .expect("materialize registered provider receipt");
+    for provider_path in &provider_paths {
+        std::fs::remove_file(provider_path).expect("remove registered provider artifact");
+    }
+
+    std::fs::write(&binary, b"asp-v2").expect("update binary");
+    let changed_binary_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&binary).expect("binary digest");
+    assert_eq!(
+        rebind_active_asp_binary_receipt_if_present(&binary, &changed_binary_digest, &activation,)
+            .expect("rebind ASP while registered providers are missing"),
+        ActiveAspArtifactReconciliationV1::Updated
+    );
+    let receipt: ActiveAspArtifactReceiptV1 = serde_json::from_slice(
+        &std::fs::read(&materialized.receipt_path).expect("read rebound receipt"),
+    )
+    .expect("decode rebound receipt");
+    for registration in selected {
+        let logical_path = format!(
+            "providers/{}/{}",
+            registration.language_id(),
+            registration.provider_id()
+        );
+        assert!(
+            receipt
+                .leaves()
+                .iter()
+                .any(|leaf| leaf.logical_path() == logical_path),
+            "preserve `{logical_path}`"
+        );
+    }
+    assert!(
+        verify_active_asp_artifact_receipt(&activation, &[&binary]).is_err(),
+        "missing registered providers must remain fail-closed"
+    );
 
     std::fs::remove_dir_all(root).expect("remove fixture");
 }

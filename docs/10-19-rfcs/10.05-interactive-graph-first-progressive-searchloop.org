@@ -96,6 +96,46 @@ therefore report no commands or processes for unrelated providers; a missing
 runtime for the selected provider is a typed provider-local failure, not a
 reason to prepare a shared runtime such as Node.
 
+*** Provider execution gate and memory evidence
+
+Every external provider process started by an ASP language facade MUST run
+through the shared Provider Execution Gate.  The gate owns process-group
+creation, timeout and cancellation, bounded output capture, memory admission,
+termination, and the =provider-process-termination-receipt.v1= evidence.  A
+language provider MUST NOT implement a private substitute, and the CLI remains
+an adapter over this gate.
+
+The default provider memory ceiling is 2 GiB (=2147483648= bytes).  The ceiling
+applies to the combined resident memory of the complete provider process group,
+not only the direct child PID.  A configured provider profile MAY choose a
+lower ceiling.  Disabling the ceiling is test-only behavior and MUST NOT be
+inferred from a missing per-call override.  On platforms where an address-space
+rlimit is reliable, ASP SHOULD apply it before exec as an early barrier; ASP
+MUST also use parent-owned observation whenever that rlimit cannot establish
+the process-group resident-memory guarantee.
+
+When observed process-group resident memory exceeds the ceiling, ASP MUST
+terminate the complete process group, classify the result as
+=memory-limit-exceeded=, and return a typed provider-local failure.  The
+termination receipt MUST report =memoryLimitEnforced=true=,
+=memoryLimitExceeded=true=, and the applied =memoryLimitBytes=.  Observability
+MUST record the language identity, provider identity, command digest, applied
+ceiling, observed process-group resident bytes, observed process count, elapsed
+time, and termination action without recording provider stdin or source
+content.  A timeout, cancellation, signal, ordinary exit code, and memory-limit
+termination remain distinct outcomes.
+
+Provider invocations are not resident services.  Once the process-group leader
+for one search, query, check, or cache operation exits, ASP MUST terminate and
+reap every remaining descendant in that process group before returning the
+facade result.  A descendant that outlives the invocation is an orphan even
+when its RSS is below the memory ceiling.  The workspace ASP Server MAY retain
+the invocation lease as a crash-recovery backstop, but Server availability MUST
+NOT replace transport-owned descendant closure.  The termination receipt MUST
+state whether process-group isolation was enforced and whether descendant
+cleanup was required, so a successful provider leader cannot hide an orphan
+binary that ASP had to terminate.
+
 ** 10.05.10 Interactive SearchLoop
 
 Owns:

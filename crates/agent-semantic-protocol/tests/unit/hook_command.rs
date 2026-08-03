@@ -72,8 +72,6 @@ fn protocol_binary_capture_requires_the_real_asp_entrypoint() {
 #[test]
 fn protocol_binary_install_fields_are_contract_visible() {
     let install = protocol_binary::ProtocolBinaryInstall {
-        latest: std::path::PathBuf::from("/tmp/asp/runtime/artifacts/blake3-256/latest/asp"),
-        stable_entry: std::path::PathBuf::from("/tmp/asp/runtime/bin/asp"),
         path: std::path::PathBuf::from("asp"),
         status: "found",
         artifact_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -81,14 +79,6 @@ fn protocol_binary_install_fields_are_contract_visible() {
     };
 
     assert_eq!(install.path, std::path::PathBuf::from("asp"));
-    assert_eq!(
-        install.latest,
-        std::path::PathBuf::from("/tmp/asp/runtime/artifacts/blake3-256/latest/asp")
-    );
-    assert_eq!(
-        install.stable_entry,
-        std::path::PathBuf::from("/tmp/asp/runtime/bin/asp")
-    );
     assert_eq!(install.status, "found");
     assert_eq!(
         install.artifact_digest,

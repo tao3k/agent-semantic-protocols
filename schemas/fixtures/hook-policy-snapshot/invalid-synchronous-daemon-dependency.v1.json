@@ -1,0 +1,34 @@
+{
+  "schemaId": "agent.semantic-protocols.hook-policy-snapshot",
+  "schemaVersion": "1",
+  "kernelVersion": "hook-enforcement-kernel-v1",
+  "sourceDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "compilerDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "providerRegistryDigest": "blake3-256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "merkleRoot": "blake3-256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "languageProviders": [
+    {
+      "languageId": "rust",
+      "providerId": "rs-harness",
+      "extensions": [
+        ".rs"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "ruleId": "materialize-registered-source-read-action",
+      "priority": 100,
+      "decision": "deny",
+      "reasonKind": "direct-source-read"
+    }
+  ],
+  "fallbackPolicy": {
+    "sourceEffect": "deny",
+    "unknownSourceLikeEffect": "deny",
+    "provedNoSourceEffect": "allow"
+  },
+  "synchronousDependencies": [
+    "runtime-server"
+  ]
+}

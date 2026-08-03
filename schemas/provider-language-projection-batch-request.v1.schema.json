@@ -11,6 +11,8 @@
     "providerId",
     "workspaceIdentity",
     "generationRootDigest",
+    "parserIdentityDigest",
+    "queryPackDigest",
     "transport",
     "owners"
   ],
@@ -34,6 +36,14 @@
       "minLength": 1
     },
     "generationRootDigest": {
+      "type": "string",
+      "minLength": 32
+    },
+    "parserIdentityDigest": {
+      "type": "string",
+      "minLength": 32
+    },
+    "queryPackDigest": {
       "type": "string",
       "minLength": 32
     },

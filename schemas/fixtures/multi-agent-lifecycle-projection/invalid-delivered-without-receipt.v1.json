@@ -1,0 +1,61 @@
+{
+  "schemaId": "agent.semantic-protocols.codex-multi-agent-v2-control-plane-projection",
+  "schemaVersion": "1",
+  "materialization": {
+    "generation": 4,
+    "sourceDigest": "blake3-256:control-plane-example",
+    "evidenceRefs": ["codex-receipt://host-tree-4"],
+    "freshness": "current"
+  },
+  "workspaceServer": {
+    "workspaceIdentity": "workspace-example",
+    "health": "ready"
+  },
+  "rootSessionId": "root-session",
+  "agents": [
+    {
+      "rootSessionId": "root-session",
+      "parentSessionId": null,
+      "residentName": "asp-main",
+      "role": "main",
+      "configuredAgentType": null,
+      "lifecycle": {
+        "schemaId": "agent.semantic-protocols.agent-session-lifecycle-projection",
+        "schemaVersion": "1",
+        "workspaceServer": {
+          "workspaceIdentity": "workspace-example",
+          "health": "ready"
+        },
+        "session": {
+          "sessionId": "root-session",
+          "generation": 1,
+          "phase": "active"
+        },
+        "hostBinding": {
+          "generation": 1,
+          "phase": "fresh",
+          "childSessionId": "root-session",
+          "canonicalMessageTarget": "agent://root-session",
+          "terminationReceiptIndexed": false,
+          "pathReleaseReceiptIndexed": false
+        },
+        "dispatch": {
+          "generation": 1,
+          "phase": "idle"
+        },
+        "durableDispatchAuthorized": true
+      }
+    }
+  ],
+  "turns": [],
+  "delegations": [
+    {
+      "parentSessionId": "root-session",
+      "parentTurnId": null,
+      "childSessionId": "child-session",
+      "childGeneration": 1,
+      "phase": "delivered",
+      "deliveredReceiptRef": null
+    }
+  ]
+}

@@ -22,6 +22,7 @@ fn selector(selector_id: &str) -> ClientDbSourceIndexSelector {
         kind: Some(ClientDbSourceIndexSelectorKind::from(item_kind)),
         source: ClientDbSourceIndexSource::from("parser"),
         query_keys: vec![ClientDbSourceIndexQueryKey::from("target")],
+        derived_projections: Vec::new(),
         projection_record: crate::projection_fixture::projection_record(
             crate::projection_fixture::ProjectionFixtureInput {
                 language_id: "rust",

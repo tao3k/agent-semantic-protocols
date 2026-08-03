@@ -11,7 +11,6 @@ mod owner_items_language_harness;
 mod pipe_frontier;
 mod provider_ontology;
 mod reasoning;
-mod source_index;
 mod suggest;
 mod surface;
 

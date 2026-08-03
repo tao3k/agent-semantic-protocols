@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-workspace-generation-admission.v1.schema.json",
+  "title": "Runtime Server Workspace Generation Admission",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "candidateGeneration",
+    "policyOverlayDigest",
+    "state",
+    "accepted",
+    "attempt",
+    "commit",
+    "error"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-workspace-generation-admission.v1"
+    },
+    "schemaVersion": { "const": "1" },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "candidateGeneration": { "$ref": "https://schemas.agent-semantic-protocols.dev/repository-candidate-snapshot.v1.schema.json#/$defs/candidateGeneration" },
+    "policyOverlayDigest": { "type": "string", "minLength": 1 },
+    "state": { "enum": ["building", "ready", "failed"] },
+    "accepted": { "type": "boolean" },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "commit": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["activeEpoch", "generationDigest", "sourceRootDigest"],
+          "properties": {
+            "activeEpoch": { "type": "integer", "minimum": 1 },
+            "generationDigest": { "type": "string", "minLength": 1 },
+            "sourceRootDigest": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "error": { "type": ["string", "null"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "building" } } },
+      "then": {
+        "properties": {
+          "commit": { "type": "null" },
+          "error": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "const": "ready" } } },
+      "then": {
+        "properties": {
+          "commit": { "type": "object" },
+          "error": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "state": { "const": "failed" } } },
+      "then": {
+        "properties": {
+          "commit": { "type": "null" },
+          "error": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  ]
+}

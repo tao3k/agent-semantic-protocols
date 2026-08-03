@@ -7,17 +7,33 @@ use super::WorkspaceMemoryGeneration;
 #[derive(Debug)]
 pub(crate) struct WorkspaceMemoryBackend {
     generation: Arc<WorkspaceMemoryGeneration>,
+    index: Arc<WorkspaceMemoryIndex>,
+}
+
+#[derive(Debug)]
+pub(crate) struct WorkspaceMemoryIndex {
     selector_index: HashMap<String, (usize, usize)>,
     term_index: HashMap<String, Vec<usize>>,
     relation_index: HashMap<(String, String), Vec<usize>>,
 }
 
 impl WorkspaceMemoryBackend {
-    pub(crate) fn from_generation(generation: WorkspaceMemoryGeneration) -> Result<Self, String> {
-        generation.validate()?;
+    pub(crate) fn from_validated_generation(
+        generation: WorkspaceMemoryGeneration,
+    ) -> Result<Self, String> {
+        // The caller authenticates the complete generation before constructing the indexes.
+        // Both resident publication and durable segment restore use this same validated input.
+        let index = Self::prepare_index(&generation.owners, &generation.relations);
+        Self::from_validated_generation_with_index(Arc::new(generation), index)
+    }
+
+    pub(crate) fn prepare_index(
+        owners: &[super::WorkspaceOwnerSnapshot],
+        relations: &[agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation],
+    ) -> Arc<WorkspaceMemoryIndex> {
         let mut selector_index = HashMap::new();
         let mut term_index = HashMap::<String, Vec<usize>>::new();
-        for (owner_position, owner) in generation.owners.iter().enumerate() {
+        for (owner_position, owner) in owners.iter().enumerate() {
             let text = std::str::from_utf8(&owner.bytes).unwrap_or_default();
             for term in crate::source_index::source_query_keys(&owner.owner_path, text) {
                 term_index.entry(term).or_default().push(owner_position);
@@ -30,18 +46,24 @@ impl WorkspaceMemoryBackend {
             }
         }
         let mut relation_index = HashMap::<(String, String), Vec<usize>>::new();
-        for (relation_position, relation) in generation.relations.iter().enumerate() {
+        for (relation_position, relation) in relations.iter().enumerate() {
             relation_index
                 .entry((relation.from.kind.clone(), relation.from.id.clone()))
                 .or_default()
                 .push(relation_position);
         }
-        Ok(Self {
-            generation: Arc::new(generation),
+        Arc::new(WorkspaceMemoryIndex {
             selector_index,
             term_index,
             relation_index,
         })
+    }
+
+    pub(crate) fn from_validated_generation_with_index(
+        generation: Arc<WorkspaceMemoryGeneration>,
+        index: Arc<WorkspaceMemoryIndex>,
+    ) -> Result<Self, String> {
+        Ok(Self { generation, index })
     }
 
     pub(crate) fn generation(&self) -> &Arc<WorkspaceMemoryGeneration> {
@@ -49,7 +71,7 @@ impl WorkspaceMemoryBackend {
     }
 
     pub(crate) fn projection(self: &Arc<Self>, selector: &str) -> Option<WorkspaceProjectionLease> {
-        let (owner_position, selector_position) = *self.selector_index.get(selector)?;
+        let (owner_position, selector_position) = *self.index.selector_index.get(selector)?;
         Some(WorkspaceProjectionLease {
             backend: Arc::clone(self),
             owner_position,
@@ -67,6 +89,7 @@ impl WorkspaceMemoryBackend {
             && query.contains(['-', '_'])
         {
             return self
+                .index
                 .term_index
                 .get(&query.to_ascii_lowercase())
                 .into_iter()
@@ -77,7 +100,7 @@ impl WorkspaceMemoryBackend {
         }
         let mut scores = HashMap::<usize, usize>::new();
         for term in query_terms {
-            if let Some(positions) = self.term_index.get(&term) {
+            if let Some(positions) = self.index.term_index.get(&term) {
                 for &position in positions {
                     *scores.entry(position).or_default() += 1;
                 }
@@ -105,7 +128,8 @@ impl WorkspaceMemoryBackend {
     ) -> Vec<
         &agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
     > {
-        self.relation_index
+        self.index
+            .relation_index
             .get(&(endpoint_kind.to_owned(), endpoint_id.to_owned()))
             .into_iter()
             .flatten()

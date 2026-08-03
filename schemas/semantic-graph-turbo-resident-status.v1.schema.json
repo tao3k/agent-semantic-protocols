@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-graph-turbo-resident-status.v1.schema.json",
+  "title": "Semantic Graph Turbo Resident Status v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "state",
+    "processId",
+    "runtimeArtifact",
+    "executionCommandDigest",
+    "reason"
+  ],
+  "properties": {
+    "state": {
+      "enum": ["unavailable", "starting", "healthy", "draining", "failed"]
+    },
+    "processId": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "runtimeArtifact": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "executionCommandDigest": {
+      "type": ["string", "null"],
+      "pattern": "^blake3-256:[0-9a-f]{64}$"
+    },
+    "reason": {
+      "type": ["string", "null"],
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"state": {"const": "healthy"}},
+        "required": ["state"]
+      },
+      "then": {
+        "properties": {
+          "processId": {"type": "integer", "minimum": 1},
+          "runtimeArtifact": {"type": "string", "minLength": 1},
+          "executionCommandDigest": {
+            "type": "string",
+            "pattern": "^blake3-256:[0-9a-f]{64}$"
+          },
+          "reason": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"state": {"const": "unavailable"}},
+        "required": ["state"]
+      },
+      "then": {
+        "properties": {
+          "processId": {"type": "null"},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  ]
+}

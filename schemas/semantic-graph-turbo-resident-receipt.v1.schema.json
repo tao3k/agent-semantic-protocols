@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/semantic-graph-turbo-resident-receipt.v1.schema.json",
+  "title": "ASP multiplexed resident Graph Turbo receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "protocolId", "protocolVersion", "packetKind", "requestId", "status"],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.semantic-graph-turbo-resident-receipt"},
+    "schemaVersion": {"const": "1"},
+    "protocolId": {"const": "agent.semantic-protocols.semantic-language"},
+    "protocolVersion": {"const": "1"},
+    "packetKind": {"const": "graph-turbo-resident-receipt"},
+    "requestId": {"type": ["string", "null"]},
+    "status": {"enum": ["process-handshake-accepted", "rank-completed", "shutdown-accepted", "rejected"]},
+    "processIdentity": {"$ref": "#/$defs/processIdentity"},
+    "graphSessionIdentity": {"$ref": "#/$defs/graphSessionIdentity"},
+    "authority": {"const": "candidate"},
+    "accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["graphTurboInvocations", "semanticGraphHops", "executedGraphHops", "toolActions"],
+      "properties": {
+        "graphTurboInvocations": {"type": "integer", "minimum": 1},
+        "semanticGraphHops": {"const": 0},
+        "executedGraphHops": {"const": 0},
+        "toolActions": {"const": 0}
+      }
+    },
+    "result": {"type": "object"},
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {"type": "string", "minLength": 1},
+        "message": {"type": "string"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "process-handshake-accepted"}}, "required": ["status"]},
+      "then": {"required": ["processIdentity"]}
+    },
+    {
+      "if": {"properties": {"status": {"const": "rank-completed"}}, "required": ["status"]},
+      "then": {"required": ["graphSessionIdentity", "authority", "accounting", "result"]}
+    },
+    {
+      "if": {"properties": {"status": {"const": "rejected"}}, "required": ["status"]},
+      "then": {"required": ["failure"]}
+    }
+  ],
+  "$defs": {
+    "processIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["processId", "runtimeArtifactDigest", "executionCommandDigest"],
+      "properties": {
+        "processId": {"type": "integer", "minimum": 1},
+        "runtimeArtifactDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"},
+        "executionCommandDigest": {"type": "string", "pattern": "^blake3-256:[0-9a-f]{64}$"}
+      }
+    },
+    "graphSessionIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "nodeId", "snapshotDigest", "workspaceGenerationRootDigest", "routeId"],
+      "properties": {
+        "sessionId": {"type": "string", "minLength": 1},
+        "nodeId": {"type": "string", "minLength": 1},
+        "snapshotDigest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "workspaceGenerationRootDigest": {"type": "string", "minLength": 1},
+        "routeId": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

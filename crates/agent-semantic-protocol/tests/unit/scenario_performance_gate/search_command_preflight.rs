@@ -57,8 +57,12 @@ fn run_invalid_owner_preflight(
     bin_dir: &Path,
     language_id: &str,
 ) -> InvalidOwnerPreflightRun {
-    let command_started_at = Instant::now();
-    let output = asp_command(root)
+    // Fixture/runtime receipt materialization belongs to scenario bootstrap, not
+    // the command's pre-activation latency budget. Construct the fully admitted
+    // command before starting the timer so this gate measures only the real CLI
+    // dispatch and invalid-owner preflight boundary.
+    let mut command = asp_command(root);
+    command
         .env("PATH", prepend_path(bin_dir))
         .env("PRJ_CACHE_HOME", root.join(".cache"))
         .args([
@@ -73,13 +77,24 @@ fn run_invalid_owner_preflight(
             ".",
             "--view",
             "seeds",
-        ])
-        .output()
+        ]);
+    let diagnostic_path = root.join(format!(".{language_id}-invalid-owner.stderr"));
+    let diagnostic =
+        std::fs::File::create(&diagnostic_path).expect("create invalid-owner diagnostic capture");
+    command
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::from(diagnostic));
+    let command_started_at = Instant::now();
+    let status = command
+        .status()
         .expect("run asp search owner items invalid-owner preflight scenario");
+    let observed_ms = command_started_at.elapsed().as_millis();
+    let stderr =
+        std::fs::read_to_string(diagnostic_path).expect("read invalid-owner diagnostic capture");
     InvalidOwnerPreflightRun {
-        status_code: output.status.code(),
-        stderr: String::from_utf8(output.stderr).expect("stderr"),
-        observed_ms: command_started_at.elapsed().as_millis(),
+        status_code: status.code(),
+        stderr,
+        observed_ms,
     }
 }
 

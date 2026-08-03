@@ -185,6 +185,24 @@ impl AgentSessionRegistry {
         &self,
         request: AgentSessionDispatchClaimRequest<'_>,
     ) -> Result<AgentSessionDispatchClaimResult, String> {
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::ClaimDispatch {
+                project_id: request.project_id.to_owned(),
+                root_session_id: request.root_session_id.to_owned(),
+                name: request.name.to_owned(),
+                dispatch_identity: request.dispatch_identity.to_owned(),
+                command_digest: request.command_digest.to_owned(),
+                delivery_target_override: request.delivery_target_override.map(str::to_owned),
+                now: request.now,
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::DispatchClaimed {
+                    result,
+                } => Ok(result),
+                _ => Err("Runtime Server returned an unexpected dispatch claim result".to_owned()),
+            };
+        }
         block_on_agent_session_registry_async(
             crate::agent_session_registry::dispatch::turso_claim_dispatch(&self.db_path, request),
         )

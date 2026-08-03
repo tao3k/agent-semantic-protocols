@@ -89,8 +89,11 @@ struct ProviderStderrByteLimit(usize);
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 struct ProviderMemoryByteLimit(u64);
 
+/// Default resident-memory ceiling for one ASP provider process group.
+pub const DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
 /// Optional limits applied while running a provider process.
-#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ProviderProcessLimits {
     /// Maximum wall-clock runtime before timeout.
     timeout: Option<Duration>,
@@ -100,6 +103,12 @@ pub struct ProviderProcessLimits {
     max_stderr_bytes: Option<ProviderStderrByteLimit>,
     /// Maximum provider address-space bytes on supported platforms.
     memory_limit_bytes: Option<ProviderMemoryByteLimit>,
+}
+
+impl Default for ProviderProcessLimits {
+    fn default() -> Self {
+        Self::new(None, None, None, Some(DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES))
+    }
 }
 
 impl ProviderProcessLimits {
@@ -209,6 +218,10 @@ pub struct ProviderProcessReceipt {
     memory_limit_bytes: Option<u64>,
     /// Whether the current platform applied the memory ceiling.
     memory_limit_enforced: bool,
+    /// Whether ASP isolated and managed the provider as one process group.
+    process_group_isolation_enforced: bool,
+    /// Whether ASP terminated descendants left after the provider leader exited.
+    descendant_cleanup_required: bool,
     /// Whether the provider failed through timeout, signal, or non-zero exit.
     abnormal_termination: bool,
     /// Stable termination classification for client receipts and diagnostics.
@@ -293,6 +306,18 @@ impl ProviderProcessReceipt {
         self.memory_limit_exceeded
     }
 
+    /// Whether ASP isolated and managed the provider as one process group.
+    #[must_use]
+    pub const fn process_group_isolation_enforced(&self) -> bool {
+        self.process_group_isolation_enforced
+    }
+
+    /// Whether descendants remained after the one-shot provider leader exited.
+    #[must_use]
+    pub const fn descendant_cleanup_required(&self) -> bool {
+        self.descendant_cleanup_required
+    }
+
     /// Whether the provider terminated abnormally.
     #[must_use]
     pub const fn abnormal_termination(&self) -> bool {
@@ -334,6 +359,8 @@ pub(crate) struct ProviderProcessReceiptInput {
     pub(crate) exit_signal: Option<i32>,
     pub(crate) memory_limit_bytes: Option<u64>,
     pub(crate) memory_limit_enforced: bool,
+    pub(crate) process_group_isolation_enforced: bool,
+    pub(crate) descendant_cleanup_required: bool,
     pub(crate) abnormal_termination: bool,
     pub(crate) termination_reason: String,
 }
@@ -356,6 +383,8 @@ impl ProviderProcessReceipt {
             exit_signal: input.exit_signal,
             memory_limit_bytes: input.memory_limit_bytes,
             memory_limit_enforced: input.memory_limit_enforced,
+            process_group_isolation_enforced: input.process_group_isolation_enforced,
+            descendant_cleanup_required: input.descendant_cleanup_required,
             abnormal_termination: input.abnormal_termination,
             termination_reason: input.termination_reason,
         }

@@ -294,6 +294,46 @@ stable entry therefore changes the supervisor definition and forces an atomic
 service replacement. A healthy receipt from the previous digest is not a
 successful reconciliation.
 
+Supervisor replacement is ordered.  It first observes the running endpoint with
+a read-only =Status= request, then atomically publishes and loads the definition
+that pins the canonical artifact, and only then asks an older generation to
+drain.  A health probe MUST NOT drain the old generation before the replacement
+definition is loaded: doing so permits the still-old supervisor definition to
+restart the stale binary.  Reconciliation completes only after the endpoint
+receipt proves the canonical artifact digest and transport contract.
+
+Daemon bootstrap is Global and workspace-neutral.  It opens the catalog,
+registry, election, and Tokio control/data-plane listeners without requiring a
+Git candidate snapshot or an active workspace generation.  Workspace identity
+and candidate evidence enter only through the first typed workspace admission;
+one malformed or stale workspace receipt cannot prevent the Global daemon from
+publishing its endpoint.
+
+Exact-selector relocation is projection-independent.  The active generation
+first resolves the parser-minted canonical item identity (=languageId + kind +
+symbol + implementationOwner + traitOwner=) to zero, one, or many live
+selectors.  Only after a unique live selector is chosen may the reader resolve
+the requested projection.  A unique relocation is a successful exact read when
+that projection exists; the consumer MUST NOT reject it merely because the
+owner path changed.  When the item relocated but the projection is absent, the
+result is =projection-mode-not-in-active-generation= with the resolved selector,
+never =selector-not-in-active-generation=.  Ambiguous identity and genuinely
+retired identity remain distinct terminal states.  Query execution is read-only
+and cannot rebuild or publish a generation to repair either state.
+An explicit ASP workspace command therefore has a control-plane readiness edge
+before query dispatch.  The hook asks the Runtime Server to validate the
+published project-root locator and waits for a terminal =Ready= admission
+receipt.  A missing or incompatible locator forces a new single-flight writer
+attempt even when the candidate digest equals the last admitted candidate;
+returning a cached =Ready= receipt for an unreadable mmap is forbidden.  The
+writer restores the last canonical Turso materialization or builds and commits
+a new generation, then atomically publishes the locator.  Session-start and
+ordinary prompt admission remain non-terminal scheduling operations, so one
+cold workspace cannot block the Global daemon or unrelated workspaces.
+The projection-independent identity table is the only v1 exact-segment format;
+readers reject earlier projection-keyed mmap bytes and the workspace writer
+re-materializes them from the last canonical Turso generation before exposure.
+
 * Implementation calibration
 
 | Surface | Current evidence | Required state |
@@ -303,6 +343,7 @@ successful reconciliation.
 | Source-index rebuild | rebuilt owners with zero selectors | server transaction validates non-vacuous selector coverage |
 | Provider incremental owner | independent warm generation observed | delta commits into server staging generation |
 | Exact query | stale active root observed | server lease pins the published generation |
+| Exact relocation | projection-keyed relocation hides moved items | canonical item identity resolves before projection availability |
 | Native subagent dispatch | host follow-up is routable | registered name resolves to host-attested DeepLink |
 | ASP session | bootstrap/claim loop adds foreground rounds | verify native receipt; do not duplicate host routing |
 
@@ -317,6 +358,11 @@ The Lean model =ASPProof.RuntimeServerSearchGeneration= proves:
 - an offline writer cannot publish;
 - stopping the writer preserves a lease-bound read of the active generation;
 - a lease-bound query uses the active generation;
+- loading the canonical supervisor definition before drain makes the restarted
+  process canonical, while drain-before-load can restart the stale digest;
+- Global daemon bootstrap does not require a workspace identity;
+- canonical relocation is independent of projection availability;
+- a uniquely relocated item with an available projection is an exact hit;
 - one ready provider preserves partial SearchLoop availability;
 - declared server cost strictly dominates the CLI rebuild path.
 

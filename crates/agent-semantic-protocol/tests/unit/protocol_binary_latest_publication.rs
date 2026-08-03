@@ -1,6 +1,7 @@
 use super::{
     ProtocolBinaryInstallPlan, SEMANTIC_AGENT_PROTOCOL_BIN, ensure_protocol_binary_installed,
     install_protocol_binary_target, next_protocol_binary_publish_sequence,
+    prune_runtime_binary_artifacts,
 };
 use std::{
     env, fs,
@@ -25,9 +26,10 @@ fn fixture_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
 }
 
 use super::RuntimeBinaryIdentityV1;
+use agent_semantic_hook::registered_provider_binaries_v1;
 
 #[test]
-fn latest_aliases_and_multi_binary_switches_are_isolated() {
+fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     let root = fixture_root("latest-aliases");
     let runtime = root.join("runtime");
     let artifact_root = runtime.join("artifacts");
@@ -43,32 +45,24 @@ fn latest_aliases_and_multi_binary_switches_are_isolated() {
     };
 
     let installed =
-        ensure_protocol_binary_installed(&plan).expect("install immutable protocol binary");
-    let artifact = artifact_root
-        .join("blake3-256")
-        .join(&installed.artifact_digest)
-        .join(SEMANTIC_AGENT_PROTOCOL_BIN);
-
-    assert_eq!(
-        fs::read_link(&installed.latest).expect("read latest link"),
-        PathBuf::from("..")
-            .join(&installed.artifact_digest)
-            .join(SEMANTIC_AGENT_PROTOCOL_BIN)
+        ensure_protocol_binary_installed(&plan).expect("install Lattice protocol binary");
+    assert_eq!(installed.path, stable_entry);
+    assert!(
+        fs::symlink_metadata(&stable_entry)
+            .expect("inspect stable entry")
+            .file_type()
+            .is_file()
     );
     assert_eq!(
-        fs::read_link(&stable_entry).expect("read stable entry"),
-        PathBuf::from("../artifacts/blake3-256/latest").join(SEMANTIC_AGENT_PROTOCOL_BIN)
-    );
-    assert_eq!(
-        fs::canonicalize(&stable_entry).expect("resolve stable entry"),
-        fs::canonicalize(&artifact).expect("resolve immutable artifact")
+        fs::read(&stable_entry).expect("read stable entry"),
+        b"protocol-binary-v1"
     );
     assert_eq!(
         fs::canonicalize(&alias).expect("resolve alias"),
-        fs::canonicalize(&artifact).expect("resolve immutable artifact")
+        fs::canonicalize(&stable_entry).expect("resolve stable entry")
     );
 
-    let asp_latest_target = fs::read_link(&installed.latest).expect("read asp latest link");
+    let asp_digest = installed.artifact_digest.clone();
     let harness_name = "rs-harness";
     let harness_stable = runtime.join("bin").join(harness_name);
     let harness_source = fixture_source(&root, "source-rs-harness", b"rust-harness-v1");
@@ -81,22 +75,12 @@ fn latest_aliases_and_multi_binary_switches_are_isolated() {
         &harness_identity,
     )
     .expect("install immutable harness binary");
-    let harness_latest_target =
-        fs::read_link(&harness_install.latest).expect("read harness latest link");
+    assert_eq!(harness_install.path, harness_stable);
     assert_eq!(
-        harness_latest_target,
-        PathBuf::from("..")
-            .join(&harness_install.artifact_digest)
-            .join(harness_name)
+        fs::read(&harness_stable).expect("read harness stable entry"),
+        b"rust-harness-v1"
     );
-    assert_eq!(
-        fs::read_link(&harness_stable).expect("read harness stable entry"),
-        PathBuf::from("../artifacts/blake3-256/latest").join(harness_name)
-    );
-    assert_eq!(
-        fs::read_link(&installed.latest).expect("asp latest remains isolated"),
-        asp_latest_target
-    );
+    assert_eq!(installed.artifact_digest, asp_digest);
 
     let second_asp = fixture_source(&root, "source-asp-v2", b"protocol-binary-v2");
     let second_asp_install = install_protocol_binary_target(
@@ -106,14 +90,16 @@ fn latest_aliases_and_multi_binary_switches_are_isolated() {
         &RuntimeBinaryIdentityV1::asp_bootstrap(),
     )
     .expect("switch asp latest independently");
-    assert_ne!(
-        fs::read_link(&second_asp_install.latest).expect("read switched asp latest"),
-        asp_latest_target
+    assert_ne!(second_asp_install.artifact_digest, asp_digest);
+    assert_eq!(
+        fs::read(&stable_entry).expect("read switched ASP profile"),
+        b"protocol-binary-v2"
     );
     assert_eq!(
-        fs::read_link(&harness_install.latest).expect("harness latest remains isolated"),
-        harness_latest_target
+        fs::read(&harness_stable).expect("harness profile remains isolated"),
+        b"rust-harness-v1"
     );
+    assert!(!artifact_root.join("blake3-256").exists());
 
     fs::remove_dir_all(&root).expect("remove protocol binary fixture");
 }
@@ -138,7 +124,55 @@ fn runtime_publication_rejects_target_name_inference_and_path_shaped_identities(
 }
 
 #[test]
-fn loop_or_escape_fails_before_latest_switch() {
+fn registered_scheme_and_python_dangling_entries_are_atomically_republished() {
+    let registrations = registered_provider_binaries_v1();
+    for language_id in ["gerbil-scheme", "python"] {
+        let registration = registrations
+            .iter()
+            .find(|registration| registration.language_id().as_str() == language_id)
+            .unwrap_or_else(|| panic!("registered language `{language_id}`"));
+        let provider_id = registration.provider_id().as_str();
+        let root = fixture_root(provider_id);
+        let artifact_root = root.join("runtime/artifacts");
+        let target = root.join("runtime/bin").join(registration.binary());
+        std::fs::create_dir_all(target.parent().expect("runtime bin")).expect("create runtime bin");
+        std::os::unix::fs::symlink(
+            root.join("missing-provider-artifacts").join(provider_id),
+            &target,
+        )
+        .unwrap_or_else(|error| panic!("dangling runtime link for `{provider_id}`: {error}"));
+        let source = fixture_source(
+            &root,
+            &format!("source-{provider_id}"),
+            provider_id.as_bytes(),
+        );
+        let identity = RuntimeBinaryIdentityV1::from_registered_provider(registration.binary())
+            .unwrap_or_else(|error| panic!("registered identity for `{provider_id}`: {error}"));
+
+        let installed = install_protocol_binary_target(&source, &target, &artifact_root, &identity)
+            .unwrap_or_else(|error| panic!("publish `{language_id}` / `{provider_id}`: {error}"));
+        assert_eq!(installed.status, "updated", "{provider_id}");
+        assert_eq!(installed.path, target, "{provider_id}");
+        assert!(
+            fs::symlink_metadata(&target)
+                .expect("inspect republished provider")
+                .file_type()
+                .is_file(),
+            "{provider_id}"
+        );
+        assert_eq!(
+            fs::read(&target).expect("read republished provider"),
+            provider_id.as_bytes(),
+            "{provider_id}"
+        );
+        assert!(!artifact_root.join("blake3-256").exists());
+
+        fs::remove_dir_all(root).expect("remove protocol binary fixture");
+    }
+}
+
+#[test]
+fn loop_or_escape_fails_before_lattice_profile_switch() {
     let root = fixture_root("fail-closed");
     let runtime = root.join("runtime");
     let artifact_root = runtime.join("artifacts");
@@ -146,12 +180,7 @@ fn loop_or_escape_fails_before_latest_switch() {
     let identity = RuntimeBinaryIdentityV1::asp_bootstrap();
     let first = fixture_source(&root, "source-asp-v1", b"protocol-binary-v1");
     install_protocol_binary_target(&first, &stable_entry, &artifact_root, &identity)
-        .expect("install first immutable protocol binary");
-    let latest = artifact_root
-        .join("blake3-256")
-        .join("latest")
-        .join(SEMANTIC_AGENT_PROTOCOL_BIN);
-    let first_latest = fs::read_link(&latest).expect("read first latest link");
+        .expect("install first Lattice protocol binary");
 
     fs::remove_file(&stable_entry).expect("remove stable entry");
     let escaped = fixture_source(&root, "escaped-asp", b"escaped");
@@ -162,8 +191,8 @@ fn loop_or_escape_fails_before_latest_switch() {
             .expect_err("escaped stable entry must fail closed");
     assert!(escape_error.contains("escapes immutable artifact root"));
     assert_eq!(
-        fs::read_link(&latest).expect("latest remains after escape"),
-        first_latest
+        fs::read_link(&stable_entry).expect("escaped profile remains unchanged"),
+        escaped
     );
 
     fs::remove_file(&stable_entry).expect("remove escaped stable entry");
@@ -173,9 +202,53 @@ fn loop_or_escape_fails_before_latest_switch() {
             .expect_err("looping stable entry must fail closed");
     assert!(loop_error.contains("symlink chain loops"));
     assert_eq!(
-        fs::read_link(&latest).expect("latest remains after loop"),
-        first_latest
+        fs::read_link(&stable_entry).expect("looping profile remains unchanged"),
+        stable_entry
     );
+
+    fs::remove_dir_all(&root).expect("remove protocol binary fixture");
+}
+
+#[test]
+fn lattice_reconciliation_does_not_create_digest_history() {
+    let root = fixture_root("retention");
+    let runtime = root.join("runtime");
+    let artifact_root = runtime.join("artifacts");
+    let asp_target = runtime.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
+    let harness_name = "rs-harness";
+    let harness_target = runtime.join("bin").join(harness_name);
+    let asp_identity = RuntimeBinaryIdentityV1::asp_bootstrap();
+    let harness_identity =
+        RuntimeBinaryIdentityV1::from_registered_provider(harness_name).expect("harness identity");
+
+    for version in 0..4 {
+        let source = fixture_source(
+            &root,
+            &format!("source-asp-{version}"),
+            format!("protocol-binary-{version}").as_bytes(),
+        );
+        install_protocol_binary_target(&source, &asp_target, &artifact_root, &asp_identity)
+            .expect("publish ASP generation");
+        let source = fixture_source(
+            &root,
+            &format!("source-harness-{version}"),
+            format!("harness-binary-{version}").as_bytes(),
+        );
+        install_protocol_binary_target(&source, &harness_target, &artifact_root, &harness_identity)
+            .expect("publish harness generation");
+    }
+
+    let receipt = prune_runtime_binary_artifacts(&artifact_root).expect("prune artifact history");
+    assert_eq!(receipt.scanned_generation_count, 0);
+    assert_eq!(receipt.retained_generation_count, 0);
+    assert_eq!(receipt.removed_generation_count, 0);
+    assert_eq!(receipt.ignored_entry_count, 0);
+    assert_eq!(receipt.reclaimed_bytes, 0);
+    assert!(receipt.protected_digests.is_empty());
+    assert!(fs::canonicalize(&asp_target).is_ok());
+    assert!(fs::canonicalize(&harness_target).is_ok());
+    assert!(!artifact_root.join("blake3-256").exists());
+    assert!(artifact_root.join("retention-receipt.v1.json").is_file());
 
     fs::remove_dir_all(&root).expect("remove protocol binary fixture");
 }

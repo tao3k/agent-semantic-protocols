@@ -41,16 +41,10 @@ mod agent_session_registry_tool_event;
 #[path = "agent_session_registry_validation.rs"]
 mod agent_session_registry_validation;
 pub(crate) use agent_session_registry_validation::{
-    expected_model_for_session_profile, expected_reasoning_effort_for_session_profile,
-    rollout_metadata_matches_managed_agent_profile, validate_session_profile,
+    rollout_metadata_matches_host_agent_identity, validate_session_profile,
 };
 
 use agent_semantic_client_db::AgentSessionRegistry;
-use agent_semantic_config::codex_agent_projection::{
-    update_asp_codex_agent_source_and_symlink_projection,
-    update_asp_codex_agent_sources_and_symlink_projections, write_codex_dynamic_model,
-    write_codex_dynamic_model_for_session,
-};
 use agent_semantic_runtime::AgentSessionValidationReport as SessionValidationReport;
 use agent_session_registry_args::{
     SessionArgs, SessionCommand, agent_usage, session_guide, session_usage,
@@ -74,13 +68,6 @@ pub(crate) use agent_session_registry_tool_event::record_current_session_tool_ev
 pub(crate) fn run_agent_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("session") => run_agent_session_command(&args[1..]),
-        Some("config") if args.get(1).is_some_and(|arg| arg == "sync") => {
-            super::sync::run_agent_config_sync_command(&args[2..])
-        }
-        Some("config") => Err(
-            "usage: asp agent config sync\n\nReconcile ASP-owned global agent configuration projections."
-                .to_string(),
-        ),
         Some("help" | "--help" | "-h") | None => {
             println!("{}", agent_usage());
             Ok(())
@@ -171,27 +158,25 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         SessionCommand::Unarchive => {
             run_codex_session_wrapper(&registry, &args, "unarchive", false)
         }
-        SessionCommand::SwitchModel => switch_model(&args),
     }
 }
 
 fn ensure_agent_session_runtime_server(
-    started: tokio::time::Instant,
+    _started: tokio::time::Instant,
     project_root: &std::path::Path,
 ) -> Result<(), String> {
     let state = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?;
     state.ensure_minimal_layout()?;
     let healthy = super::runtime_server::block_on_agent_facing_runtime_server_client(
-        started,
+        tokio::time::Instant::now(),
         "agent-session",
         "runtime-server-healthcheck",
         async {
-            Ok(matches!(
-                super::runtime_server::healthcheck_runtime_server_at(&state.state_home).await,
-                Ok(receipt)
-                    if receipt.state
-                        == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
-            ))
+            Ok(
+                super::runtime_server::probe_healthy_runtime_server_at(&state.state_home)
+                    .await
+                    .unwrap_or(false),
+            )
         },
     )?;
     if healthy {
@@ -231,21 +216,6 @@ fn agent_platform_session_active() -> bool {
     .any(|name| env::var_os(name).is_some_and(|value| !value.is_empty()))
 }
 
-fn switch_model(args: &SessionArgs) -> Result<(), String> {
-    let model = args
-        .model
-        .as_deref()
-        .ok_or_else(|| "agent session switch-model requires --model".to_string())?;
-    let platform = active_platform()
-        .ok_or_else(|| "failed to detect active agent platform session".to_string())?;
-    match platform {
-        "codex" => switch_codex_model(model, args),
-        other => Err(format!(
-            "agent session switch-model does not support platform `{other}`"
-        )),
-    }
-}
-
 pub(crate) fn active_platform() -> Option<&'static str> {
     if env::var_os("CODEX_THREAD_ID").is_some() {
         return Some("codex");
@@ -258,67 +228,7 @@ pub(crate) fn active_platform() -> Option<&'static str> {
     None
 }
 
-fn switch_codex_model(model: &str, args: &SessionArgs) -> Result<(), String> {
-    let agents_config_path = asp_agents_config_path()?;
-    let mut updated_agent_configs = Vec::new();
-    let asp_agents_dir = agents_config_path
-        .parent()
-        .ok_or_else(|| format!("{} has no parent directory", agents_config_path.display()))?;
-    let codex_agents_dir = codex_home().join("agents");
-    let switch_scope = if let Some(name) = args.name.as_deref() {
-        let target = write_codex_dynamic_model_for_session(&agents_config_path, name, model)?;
-        update_asp_codex_agent_source_and_symlink_projection(
-            asp_agents_dir,
-            &codex_agents_dir,
-            &target,
-            model,
-            &mut updated_agent_configs,
-        )?;
-        format!("session:{}", target.session_name)
-    } else {
-        write_codex_dynamic_model(&agents_config_path, model)?;
-        update_asp_codex_agent_sources_and_symlink_projections(
-            asp_agents_dir,
-            &codex_agents_dir,
-            model,
-            &mut updated_agent_configs,
-        )?;
-        "all-codex-asp-agents".to_string()
-    };
-
-    if args.json {
-        println!(
-            "{}",
-            serde_json::json!({
-                "status": "switched",
-                "platform": "codex",
-                "scope": switch_scope,
-                "model": model,
-                "configPath": agents_config_path,
-                "updatedAgentConfigs": updated_agent_configs,
-                "semantics": "configuration-layer",
-                "mainSessionModel": "unchanged",
-                "childSessionModel": "configured expected model for the selected ASP-managed subagent child session",
-                "liveChildSwitch": "send a native message-agent follow-up to the existing child session; this command does not change the main session model or a running child turn",
-            })
-        );
-    } else {
-        println!(
-            "switched codex child-session config model for {switch_scope} to {model}; main session model unchanged; config={}; updatedAgentConfigs={}; running child sessions still require a native message-agent follow-up",
-            agents_config_path.display(),
-            updated_agent_configs.len()
-        );
-    }
-    Ok(())
-}
-
-fn asp_agents_config_path() -> Result<PathBuf, String> {
-    Ok(agent_semantic_runtime::state_core::resolve_state_home()?
-        .join("agents")
-        .join("config.toml"))
-}
-
-fn codex_home() -> PathBuf {
+pub(super) fn codex_home() -> PathBuf {
     env::var_os("CODEX_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))

@@ -107,6 +107,10 @@ fn resolve_supervisor_command(program: &std::ffi::OsStr) -> Result<std::path::Pa
 #[path = "../../tests/unit/command/runtime_server_supervisor_command.rs"]
 mod supervisor_command_contract_tests;
 
+#[cfg(test)]
+#[path = "../../tests/unit/command/runtime_server_supervisor_graph_turbo.rs"]
+mod supervisor_graph_turbo_environment_tests;
+
 use super::runtime_server_definition::atomic_write_if_changed;
 use super::runtime_server_service_catalog::runtime_server_service_catalog;
 #[cfg(target_os = "linux")]
@@ -131,10 +135,147 @@ pub(crate) async fn reconcile_healthy_runtime_server(
     super::runtime_server::await_healthy_runtime_server(protocol_home).await
 }
 
+fn configured_graph_turbo_python() -> Result<Option<PathBuf>, String> {
+    let state_home = std::env::var_os("ASP_STATE_HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .filter(|value| !value.is_empty())
+                .map(|home| PathBuf::from(home).join(".agent-semantic-protocols"))
+        })
+        .ok_or_else(|| {
+            "ASP_STATE_HOME or HOME is required to resolve Graph Turbo resident config".to_owned()
+        })?;
+    configured_graph_turbo_python_at_state_home(
+        &state_home,
+        std::env::var_os("ASP_GRAPH_TURBO_PYTHON").map(PathBuf::from),
+    )
+}
+
+fn configured_graph_turbo_python_at_state_home(
+    state_home: &Path,
+    configured: Option<PathBuf>,
+) -> Result<Option<PathBuf>, String> {
+    let config_path = state_home
+        .join("runtime")
+        .join("server")
+        .join("graph-turbo-resident-config.v1.json");
+    if let Some(configured) = configured {
+        let configured = validate_graph_turbo_python(configured)?;
+        let document = serde_json::json!({
+            "schemaId": "agent.semantic-protocols.semantic-graph-turbo-resident-config",
+            "schemaVersion": "1",
+            "pythonExecutionLocator": configured,
+        });
+        let parent = config_path
+            .parent()
+            .ok_or_else(|| "Graph Turbo resident config path has no parent".to_owned())?;
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+        let staged = config_path.with_extension(format!("json.stage-{}", std::process::id()));
+        std::fs::write(
+            &staged,
+            serde_json::to_vec_pretty(&document)
+                .map_err(|error| format!("encode Graph Turbo resident config: {error}"))?,
+        )
+        .map_err(|error| format!("failed to write {}: {error}", staged.display()))?;
+        std::fs::rename(&staged, &config_path).map_err(|error| {
+            format!(
+                "failed to publish Graph Turbo resident config {}: {error}",
+                config_path.display()
+            )
+        })?;
+        return Ok(Some(configured));
+    }
+    let document = match std::fs::read(&config_path) {
+        Ok(document) => document,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "failed to read Graph Turbo resident config {}: {error}",
+                config_path.display()
+            ));
+        }
+    };
+    let document: serde_json::Value = serde_json::from_slice(&document).map_err(|error| {
+        format!(
+            "failed to decode Graph Turbo resident config {}: {error}",
+            config_path.display()
+        )
+    })?;
+    if document.get("schemaId").and_then(serde_json::Value::as_str)
+        != Some("agent.semantic-protocols.semantic-graph-turbo-resident-config")
+        || document
+            .get("schemaVersion")
+            .and_then(serde_json::Value::as_str)
+            != Some("1")
+    {
+        return Err("Graph Turbo resident config schema mismatch".to_owned());
+    }
+    let configured = document
+        .get("pythonExecutionLocator")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| "Graph Turbo resident config locator is missing".to_owned())?;
+    validate_graph_turbo_python(configured).map(Some)
+}
+
+fn validate_graph_turbo_python(configured: PathBuf) -> Result<PathBuf, String> {
+    if !configured.is_absolute() {
+        return Err("ASP_GRAPH_TURBO_PYTHON must be an absolute path".to_owned());
+    }
+    configured
+        .canonicalize()
+        .map(|_| configured.clone())
+        .map_err(|error| {
+            format!(
+                "failed to resolve Graph Turbo Python artifact `{}`: {error}",
+                configured.display()
+            )
+        })
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn launchd_graph_turbo_environment(artifact: Option<&Path>) -> Result<String, String> {
+    let Some(artifact) = artifact else {
+        return Ok(String::new());
+    };
+    let artifact = artifact
+        .to_str()
+        .ok_or_else(|| "Graph Turbo Python artifact path must be UTF-8".to_owned())?;
+    let artifact = artifact
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    Ok(format!(
+        "    <key>ASP_GRAPH_TURBO_PYTHON</key>\n    <string>{artifact}</string>"
+    ))
+}
+
+#[cfg(any(test, target_os = "linux"))]
+fn systemd_graph_turbo_environment(artifact: Option<&Path>) -> Result<String, String> {
+    let Some(artifact) = artifact else {
+        return Ok(String::new());
+    };
+    let artifact = artifact
+        .to_str()
+        .ok_or_else(|| "Graph Turbo Python artifact path must be UTF-8".to_owned())?;
+    if artifact.contains(['\n', '\r']) {
+        return Err("Graph Turbo Python artifact path must not contain a newline".to_owned());
+    }
+    let artifact = artifact.replace('\\', "\\\\").replace('"', "\\\"");
+    Ok(format!("Environment=\"ASP_GRAPH_TURBO_PYTHON={artifact}\""))
+}
+
 async fn install(protocol_home: &Path) -> Result<(), String> {
     let runtime_artifact = canonical_supervisor_runtime_artifact(protocol_home).await?;
+    let graph_turbo_python = configured_graph_turbo_python()?;
+    let runtime_reconciliation =
+        super::runtime_server::healthcheck_runtime_server_at(protocol_home).await;
     let runtime_is_healthy = matches!(
-        super::runtime_server::healthcheck_runtime_server_at(protocol_home).await,
+        &runtime_reconciliation,
         Ok(receipt)
             if receipt.state
                 == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
@@ -151,8 +292,22 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
             "../../templates/server/dev.tao3k.agent-semantic-protocols.asp-runtime-server.plist"
         )
         .replace("@ASP_RUNTIME@", &runtime_artifact.to_string_lossy())
-        .replace("@ASP_STATE_HOME@", &protocol_home.to_string_lossy());
+        .replace("@ASP_STATE_HOME@", &protocol_home.to_string_lossy())
+        .replace(
+            "@ASP_GRAPH_TURBO_PYTHON_ENV@",
+            &launchd_graph_turbo_environment(graph_turbo_python.as_deref())?,
+        );
         let definition_changed = atomic_write_if_changed(&target, rendered.as_bytes()).await?;
+        if let Ok(receipt) = &runtime_reconciliation
+            && server_owned_restart_is_authoritative(definition_changed, receipt.state)
+        {
+            if receipt.state
+                != agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+            {
+                super::runtime_server::await_healthy_runtime_server(protocol_home).await?;
+            }
+            return Ok(());
+        }
         if super::runtime_server_artifact::runtime_server_supervisor_action(
             runtime_is_healthy,
             definition_changed,
@@ -160,6 +315,7 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
         {
             return Ok(());
         }
+        validate_supervisor_runtime_artifact(&runtime_artifact).await?;
         retire_legacy_launchd(&home).await?;
         reconcile_launchd(&target, &runtime_artifact, definition_changed).await
     }
@@ -171,8 +327,22 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
             .join(LINUX_SERVICE_NAME);
         let rendered = include_str!("../../templates/server/asp-runtime-server.service")
             .replace("@ASP_RUNTIME@", &runtime_artifact.to_string_lossy())
-            .replace("@ASP_STATE_HOME@", &protocol_home.to_string_lossy());
+            .replace("@ASP_STATE_HOME@", &protocol_home.to_string_lossy())
+            .replace(
+                "@ASP_GRAPH_TURBO_PYTHON_ENV@",
+                &systemd_graph_turbo_environment(graph_turbo_python.as_deref())?,
+        );
         let definition_changed = atomic_write_if_changed(&target, rendered.as_bytes()).await?;
+        if let Ok(receipt) = &runtime_reconciliation
+            && server_owned_restart_is_authoritative(definition_changed, receipt.state)
+        {
+            if receipt.state
+                != agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+            {
+                super::runtime_server::await_healthy_runtime_server(protocol_home).await?;
+            }
+            return Ok(());
+        }
         if super::runtime_server_artifact::runtime_server_supervisor_action(
             runtime_is_healthy,
             definition_changed,
@@ -180,6 +350,7 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
         {
             return Ok(());
         }
+        validate_supervisor_runtime_artifact(&runtime_artifact).await?;
         require_command_success(
             Command::new("systemctl")
                 .args(["--user", "daemon-reload"])
@@ -209,9 +380,22 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
     }
 }
 
+fn server_owned_restart_is_authoritative(
+    supervisor_definition_changed: bool,
+    state: agent_semantic_client_db::runtime_server_control::RuntimeServerState,
+) -> bool {
+    !supervisor_definition_changed
+        && matches!(
+            state,
+            agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+                | agent_semantic_client_db::runtime_server_control::RuntimeServerState::Starting
+                | agent_semantic_client_db::runtime_server_control::RuntimeServerState::Draining
+        )
+}
+
 async fn canonical_supervisor_runtime_artifact(protocol_home: &Path) -> Result<PathBuf, String> {
     let stable_entry = protocol_home.join("runtime").join("bin").join("asp");
-    let runtime_artifact = tokio::fs::canonicalize(&stable_entry)
+    let resolved = tokio::fs::canonicalize(&stable_entry)
         .await
         .map_err(|error| {
             format!(
@@ -219,8 +403,24 @@ async fn canonical_supervisor_runtime_artifact(protocol_home: &Path) -> Result<P
                 stable_entry.display()
             )
         })?;
+    let metadata = tokio::fs::metadata(&resolved).await.map_err(|error| {
+        format!(
+            "canonical ASP Runtime Server binary target is unavailable at {}: {error}",
+            resolved.display()
+        )
+    })?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "canonical ASP Runtime Server binary target is not a file: {}",
+            resolved.display()
+        ));
+    }
+    Ok(stable_entry)
+}
+
+async fn validate_supervisor_runtime_artifact(runtime_artifact: &Path) -> Result<(), String> {
     super::protocol_binary::canonical_protocol_binary_artifact_digest(&runtime_artifact).await?;
-    Ok(runtime_artifact)
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]

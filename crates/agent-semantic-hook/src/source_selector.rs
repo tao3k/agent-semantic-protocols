@@ -125,29 +125,36 @@ fn infer_agent_action_subject_kind(
         .chars()
         .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
     {
-        registry.providers.iter().any(|provider| {
-            let extension_matches =
-                agent_semantic_config::source_extension::source_extensions_support_file(
-                    &provider.source_extensions,
-                    std::path::Path::new(value),
-                );
-            let ignored = std::iter::empty::<&String>().any(|prefix| {
-                normalized == prefix
-                    || normalized
-                        .strip_prefix(prefix)
-                        .is_some_and(|suffix| suffix.starts_with('/'))
-            });
-            let root_matches = !normalized.contains('/')
-                || provider.package_roots.is_empty()
-                || provider.package_roots.iter().any(|root| {
-                    root == "."
-                        || normalized == root
+        crate::hook_policy_kernel::snapshot_supports_source_file(
+            &registry.project_root,
+            std::path::Path::new(value),
+        )
+        .map(|supported| is_project_path && supported)
+        .unwrap_or_else(|| {
+            registry.providers.iter().any(|provider| {
+                let extension_matches =
+                    agent_semantic_config::source_extension::source_extensions_support_file(
+                        &provider.source_extensions,
+                        std::path::Path::new(value),
+                    );
+                let ignored = std::iter::empty::<&String>().any(|prefix| {
+                    normalized == prefix
                         || normalized
-                            .strip_prefix(root)
+                            .strip_prefix(prefix)
                             .is_some_and(|suffix| suffix.starts_with('/'))
-                        || contains_path_component_sequence(&normalized, root)
                 });
-            extension_matches && !ignored && root_matches
+                let root_matches = !normalized.contains('/')
+                    || provider.package_roots.is_empty()
+                    || provider.package_roots.iter().any(|root| {
+                        root == "."
+                            || normalized == root
+                            || normalized
+                                .strip_prefix(root)
+                                .is_some_and(|suffix| suffix.starts_with('/'))
+                            || contains_path_component_sequence(&normalized, root)
+                    });
+                extension_matches && !ignored && root_matches
+            })
         })
     } else {
         !collect_source_selector_matches(registry, std::iter::once(value), |_| true).is_empty()

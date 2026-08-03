@@ -179,7 +179,6 @@ fn warm_fingerprint_gate_stays_millisecond_scale() {
 fn hook_refresh_has_no_sync_recursion_edge() {
     let hook_runtime = include_str!("../../src/command/hook_runtime.rs");
     let hook_recovery = include_str!("../../src/command/hook_runtime_config_recovery.rs");
-    let sync = include_str!("../../src/command/sync.rs");
 
     for forbidden in [
         "super::sync::",
@@ -191,8 +190,6 @@ fn hook_refresh_has_no_sync_recursion_edge() {
             "hook runtime reintroduced sync recursion edge `{forbidden}`"
         );
     }
-    assert!(!sync.contains("managed_hook_config"));
-    assert!(!sync.contains("hook_config_status"));
     for legacy in [
         "super::super::sync::",
         "`asp sync`",

@@ -1,0 +1,136 @@
+#+TITLE: 10.05.14.4 Daemon-independent Hook enforcement kernel
+#+OPTIONS: toc:2 num:nil
+
+* Status
+
+Proposed and executable.  This document refines the Hook matcher dispatch
+authority into a data-plane/control-plane split.  The data plane is the only
+authority allowed to return a pre-tool decision.
+
+* Problem
+
+The current Hook surface can load provider projection, matcher configuration,
+resident routing, and Runtime Server recovery during one host action.  This
+couples enforcement to four independently mutable identities:
+
+- the host action normalizer;
+- the managed matcher configuration;
+- the provider/language-extension projection;
+- the Runtime Server and resident-agent lifecycle.
+
+Observed failures include a managed configuration with eighteen rules but only
+nine conformance witnesses, a Hook runtime with four providers while the global
+catalog contains seven, a missing Runtime Server endpoint, and a correctly
+matched search action that cannot reach its resident recovery target.  A
+control-plane failure must never widen an enforcement decision or recursively
+enter bootstrap.
+
+* Decision
+
+** Pure enforcement kernel
+
+Every host adapter MUST normalize its input into one versioned =AgentActionV1=
+before rule selection.  Live pre-tool classification and conformance replay
+MUST invoke the same pure kernel:
+
+#+begin_src text
+HookEnvelope -> AgentActionV1 -> HookPolicySnapshotV1 -> HookDecisionV1
+#+end_src
+
+The synchronous kernel MUST NOT open a database, connect to a socket, invoke a
+provider process, reconcile a supervisor, inspect an agent session, or
+materialize managed configuration.
+
+** Compiled policy snapshot
+
+The control plane compiles matcher sources, provider registrations, language
+extensions, recovery routes, and fallback policy into
+=hook-policy-snapshot.v1=.  A snapshot is content addressed and carries the
+source, compiler, provider-registry, and Merkle digests that formed it.
+
+The active pointer is replaced atomically.  A reader observes either the
+complete previous snapshot or the complete next snapshot; it never observes a
+partially updated provider set or rule set.
+
+Provider language extensions are provider-owned input to compilation.  They
+are not a hard-coded ASP list and are not reconstructed by the host adapter.
+
+** Last-known-good and fallback
+
+If compilation or publication fails, the Hook continues with the last known
+good snapshot.  If no admitted snapshot exists, the embedded fallback kernel:
+
+- denies source read, search, execution, patch, or materialization effects;
+- denies unknown effects that carry a source-like subject;
+- allows only actions proved to have no source effect.
+
+The failure policy is bounded and local.  It emits a typed recovery receipt but
+does not synchronously bootstrap a resident or repair the Runtime Server.
+
+** Recovery is control plane
+
+A deny decision may include a recovery route such as =asp-explore= or
+=asp-testing=.  The host may resume that target after the decision is
+published.  Resident absence, model drift, message-target drift, or supervisor
+failure changes only recovery availability; it cannot change the decision.
+
+* Formal invariants
+
+1. *Control-plane independence*: identical snapshot and action produce the
+   same decision for healthy and unavailable daemons.
+2. *Replay equivalence*: Hook doctor and live pre-tool classification are the
+   same kernel invocation.
+3. *Atomic visibility*: an active snapshot is wholly old or wholly new.
+4. *Last-known-good monotonicity*: refresh failure cannot weaken a prior deny.
+5. *Provider completeness*: an admitted snapshot contains the exact provider
+   registry digest and every provider-owned language extension.
+6. *Unknown-source safety*: an unknown source-like action cannot be allowed.
+7. *Non-recursive recovery*: kernel evaluation never enters resident bootstrap
+   or Runtime Server reconcile.
+
+* Counterexample that invalidates the coupled design
+
+Let a registered TypeScript source action be denied when the provider catalog
+is complete.  If the Hook runtime projects only four of seven providers, the
+same =src/app.ts= subject is classified as unregistered and falls through to
+allow.  Therefore rule validity plus config fingerprint equality is
+insufficient; provider projection identity must be part of the same admitted
+snapshot.
+
+Likewise, if enforcement waits for a missing Runtime Server endpoint and the
+supervisor exceeds its boundary, no decision is produced.  Moving resident
+repair outside the kernel removes this liveness dependency without weakening
+the policy.
+
+* Performance contract
+
+- Warm pre-tool evaluation: p99 <= 5 ms.
+- Synchronous socket, DB, manifest write, provider process, and supervisor
+  counts: exactly zero.
+- Snapshot pointer read: one bounded local read or resident memory hit.
+- Background compilation and publication have separate budgets and never
+  consume the host-action deadline.
+
+* Migration
+
+1. Introduce the shared snapshot schema and Lean model.
+2. Wrap the existing classifier in a single =HookEnforcementKernel= used by
+   live classification and conformance replay.
+3. Compile the complete provider registry into the snapshot and require exact
+   registry-digest equality before publication.
+4. Publish snapshots atomically and retain the previous admitted generation.
+5. Remove config materialization, Runtime Server reconcile, and resident lookup
+   from the synchronous pre-tool path.
+6. Make Hook doctor replay the active snapshot and require complete case
+   coverage before publication.
+
+* Acceptance gates
+
+- All configured rule identifiers have one canonical conformance witness.
+- Read/action tests cover every registered provider extension.
+- Deleting the Runtime Server endpoint does not change decisions.
+- Resident absent, unroutable, or model-drift states do not change decisions.
+- A provider projection missing one registered extension is rejected before it
+  becomes active.
+- The installed binary, live Hook, and Hook doctor report the same snapshot
+  digest and the same decision for the same envelope.

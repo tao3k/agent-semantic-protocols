@@ -1,5 +1,5 @@
 use super::{
-    INCREMENTAL_OWNER_BUDGET, WorkspaceTreeSitterRequest, join_capture_projections,
+    TREE_SITTER_OWNER_BUDGET, WorkspaceTreeSitterRequest, join_capture_projections,
     provider_path_is_ignored, registered_source_path,
 };
 
@@ -126,8 +126,38 @@ fn route_source_has_no_legacy_snapshot_blob_or_fallback_path() {
 }
 
 #[test]
-fn cold_incremental_budget_limits_provider_subprocesses_to_one_owner() {
-    assert_eq!(INCREMENTAL_OWNER_BUDGET, 1);
+fn tree_sitter_query_owns_one_result_model_and_one_emission_path() {
+    let route = include_str!("../../../src/command/workspace_tree_sitter_query.rs");
+
+    for forbidden in [
+        "IncrementalTreeSitterState",
+        "IncrementalWorkspaceQueryResult",
+        "run_incremental_workspace_query",
+        "render_incremental_evidence",
+        "merge_tree_sitter_incremental_header",
+        "executionMode=incremental",
+        "\"mode\": \"incremental\"",
+    ] {
+        assert!(
+            !route.contains(forbidden),
+            "Tree-sitter query keeps a sibling incremental model or renderer `{forbidden}`"
+        );
+    }
+
+    assert!(route.contains("struct TreeSitterQueryState"));
+    assert!(route.contains("struct WorkspaceTreeSitterQueryResult"));
+    assert_eq!(
+        route.matches("render_tree_sitter_query_summary(").count(),
+        2
+    );
+    assert_eq!(route.matches("render_tree_sitter_query_next(").count(), 2);
+    assert_eq!(route.matches("[search-treesitter]").count(), 1);
+    assert_eq!(route.matches("\"execution\": {").count(), 1);
+}
+
+#[test]
+fn cold_tree_sitter_owner_budget_limits_provider_subprocesses_to_one_owner() {
+    assert_eq!(TREE_SITTER_OWNER_BUDGET, 1);
 }
 
 #[test]

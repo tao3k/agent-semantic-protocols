@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/semantic-search-engine-admission.v1.schema.json",
+  "title": "Semantic Search Engine Admission v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "requestedEngine", "selectedEngine",
+    "decision", "reason", "candidateArtifactIdentity"
+  ],
+  "properties": {
+    "schemaId": {"const": "agent.semantic-protocols.search-engine-admission.v1"},
+    "schemaVersion": {"const": "1"},
+    "requestedEngine": {"$ref": "#/$defs/engine"},
+    "selectedEngine": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/engine"}]},
+    "decision": {"enum": ["ready", "blocked"]},
+    "reason": {"oneOf": [{"type": "null"}, {"enum": ["candidate-artifact-identity-missing", "candidate-artifact-identity-invalid"]}]},
+    "candidateArtifactIdentity": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/artifactIdentity"}]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"const": "ready"}, "requestedEngine": {"const": "progressive-gql-logic"}}},
+      "then": {
+        "properties": {
+          "selectedEngine": {"const": "progressive-gql-logic"},
+          "reason": {"type": "null"},
+          "candidateArtifactIdentity": {"$ref": "#/$defs/artifactIdentity"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"decision": {"const": "blocked"}}},
+      "then": {"properties": {"selectedEngine": {"type": "null"}, "reason": {"type": "string"}}}
+    }
+  ],
+  "$defs": {
+    "engine": {"enum": ["legacy-graph-turbo", "progressive-gql-logic"]},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "artifactIdentity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["providerDigest", "runtimeDigest", "semanticContractDigest"],
+      "properties": {
+        "providerDigest": {"$ref": "#/$defs/digest"},
+        "runtimeDigest": {"$ref": "#/$defs/digest"},
+        "semanticContractDigest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

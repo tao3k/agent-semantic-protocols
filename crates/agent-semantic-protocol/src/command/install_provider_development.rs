@@ -1,9 +1,17 @@
 //! Development-checkout provider build delegation.
 
+use std::collections::BTreeMap;
 use std::env;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use agent_semantic_hook::ProviderDevelopmentArtifactDomain;
+use agent_semantic_provider_transport::{
+    OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode,
+    provider_process_limits_from_environment, run_provider_process,
+};
+
+const DEFAULT_DEVELOPMENT_PROVIDER_INSTALL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 pub(super) struct DevelopmentArtifactProvenance {
     pub source_snapshot_root: String,
@@ -94,27 +102,39 @@ pub(super) fn run_development_provider_installer(
         target,
         project_root,
     )?;
-    let status = agent_semantic_runtime::runtime_block_on_current_thread(async {
-        tokio::process::Command::new("direnv")
-            .args(&plan.args)
-            .current_dir(&plan.root)
-            .env("ASP_DEV_INSTALL_DELEGATED", "1")
-            .status()
-            .await
-    })?
+    let output = run_provider_process(ProviderProcessSpec {
+        program: "direnv".to_string(),
+        args: plan.args.clone(),
+        cwd: plan.root.clone(),
+        env: BTreeMap::from([("ASP_DEV_INSTALL_DELEGATED".to_string(), "1".to_string())]),
+        stdin: StdinMode::Inherit,
+        stdout: OutputMode::Tee,
+        stderr: OutputMode::Tee,
+        limits: development_provider_installer_limits()?,
+    })
     .map_err(|error| {
         format!(
-            "failed to start development provider installer at {}: {error}",
+            "development provider installer execution gate failed: language={language_id} devRoot={} error={error}",
             plan.root.display()
         )
     })?;
-    if !status.success() {
+    if !output.status.success() {
         return Err(format!(
             "development provider installer failed: language={language_id} devRoot={} status={status}",
-            plan.root.display()
+            plan.root.display(),
+            status = output.status
         ));
     }
     Ok(())
+}
+
+fn development_provider_installer_limits() -> Result<ProviderProcessLimits, String> {
+    let limits = provider_process_limits_from_environment()?;
+    Ok(if limits.timeout().is_some() {
+        limits
+    } else {
+        limits.with_timeout(Some(DEFAULT_DEVELOPMENT_PROVIDER_INSTALL_TIMEOUT))
+    })
 }
 
 pub(super) fn capture_development_artifact_provenance(

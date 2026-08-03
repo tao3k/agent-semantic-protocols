@@ -1,0 +1,554 @@
+#+TITLE: RFC 10.05.20.01.30 — ASP GQL Core and SciPy Resident Graph Turbo
+#+STATUS: Draft proof-bearing refinement
+#+OWNER: agent-semantic-protocols
+#+REFINES: 01.29-search-router-datalog-interactive-graph-state.org
+
+* Decision
+
+ASP adopts one interactive search architecture with four semantic layers and one
+non-authoritative algorithm plane:
+
+1. a typed S-expression Graph IR carries the model proposal and the protocol
+   envelope;
+2. the Rust Search Router FSM owns authority, tools, session, continuation,
+   budgets, admission, and exact verification;
+3. Ascent evaluates query-local, bounded, monotone Datalog closure over admitted
+   facts;
+4. the Evidence Graph owns asserted, derived, proved, rejected, and provenance
+   state, persisted through existing ASP storage boundaries;
+5. a resident Python Graph Server uses NumPy and SciPy to accelerate graph
+   algorithms and returns proposals only.
+
+The Python plane is not a fifth authority layer.  It cannot admit evidence,
+write graph state, alter continuation identity, or mint proof receipts.
+
+ASP does not adopt D2 as a protocol or projection dependency.  Mermaid, DOT,
+and future renderers are optional side channels over already admitted graph
+packets.  Rendering bytes never participate in graph, query, cache, or proof
+identity.
+
+* Four-layer responsibility boundary
+
+** Typed S-expression Graph IR
+
+The model emits one action from a closed typed grammar.  The envelope carries
+snapshot identity, continuation identity, budgets, parameters, requested
+evidence classes, and an optional read-only ASP GQL Core query.
+
+The grammar has no =eval=, file load, arbitrary procedure call, provider binary,
+or free-form capability field.  Unknown forms and unknown fields fail closed.
+Canonical encoding is required before hashing or cache lookup.
+
+** Rust Search Router FSM
+
+Rust owns:
+
+- action validation and capability admission;
+- tool invocation, cancellation, retry, and typed failure;
+- session and continuation identity;
+- semantic, execution, tool, and algorithm budgets;
+- Evidence Graph projection and snapshot binding;
+- Python Server lifecycle and request dispatch;
+- exact replay of proposed node, edge, and path identities;
+- conversion of verified observations into Ascent input relations; and
+- final Evidence Graph mutation.
+
+Rust does not maintain a second implementation of Graph Turbo algorithms.
+Exact verification checks membership, continuity, restrictors, hop count,
+snapshot identity, and provenance; it does not rerun the Python search.
+
+** Ascent bounded closure
+
+Ascent is an embedded Rust Datalog evaluator, not a database.  A closure run is:
+
+- query-local;
+- snapshot-scoped;
+- side-effect free;
+- bounded by rule firings and derived facts;
+- monotone in the first implementation, with stratified negation admitted only
+  by a later profile; and
+- restricted to a trusted rule registry.
+
+The model may select a registered ruleset and bind typed parameters.  It may not
+inject arbitrary Ascent rules.  Every derived fact records its rule id, source
+fact ids, ruleset digest, snapshot digest, and closure accounting.
+
+** Evidence Graph and Turso
+
+The Evidence Graph remains the domain model and authority.  Turso is an existing
+persistence and cache substrate; it is not a newly introduced graph database.
+
+Turso may persist:
+
+- canonical node, edge, fact, and provenance records;
+- snapshot and projection identities;
+- Python CSR projection manifests;
+- closure and algorithm receipts;
+- continuation-safe cache metadata; and
+- invalidation records.
+
+A Turso cache hit cannot promote a proposal, rewrite a semantic route, or prove
+freshness by itself.  Cache admission requires exact snapshot, graph schema,
+projection, algorithm implementation, parameters, deterministic seed, and
+budget-profile identity.
+
+* ASP GQL Core Profile v0.1
+
+ASP maintains a read-only subset of ISO/IEC 39075:2024.  It is a conformance
+profile, not a new dialect and not a claim of complete ISO GQL compliance.
+
+The initial profile admits:
+
+- =MATCH=, =WHERE=, =LET=, =RETURN=, =ORDER BY=, and =LIMIT=;
+- node, edge, and path variables;
+- labels, edge types, typed properties, and typed parameters;
+- directed and undirected patterns;
+- bounded path quantifiers;
+- =WALK=, =TRAIL=, =ACYCLIC=, and =SIMPLE= restrictors; and
+- =ANY SHORTEST=, =ALL SHORTEST=, and =SHORTEST k= selectors.
+
+It excludes graph DDL, graph mutation, transaction control, catalog mutation,
+procedures, user-defined functions, unrestricted subqueries, vendor extensions,
+and execution without an effective path bound.
+
+ASP-specific snapshot, authority, budget, continuation, provenance, and
+evidence controls stay outside the GQL text in the typed S-expression envelope.
+The compiler maps accepted syntax into one canonical Graph Pattern IR.  GQL
+matching reads asserted graph state; registered derived predicates may delegate
+to Ascent.
+
+An unbounded GQL quantifier is executable only when the Router supplies an
+effective =maxGraphHops=.  Otherwise admission returns a typed
+=unbounded-path= denial.
+
+* Resident Python Graph Server
+
+The ASP Server starts and supervises a long-lived Python Graph Server.  The
+initial deployment has three distinct identities:
+
+- =ServerProcess=: one physical Python process generation;
+- =GraphSession=: one workspace, snapshot, schema, and projection cache scope;
+- =AlgorithmCall=: one bounded algorithm request and terminal receipt.
+
+The Server handshake declares protocol version, Python, NumPy, and SciPy
+versions, supported algorithm profiles, determinism profile, resource limits,
+and implementation digest.  Readiness requires a live request/response probe;
+process presence alone is insufficient.
+
+The process handshake is not a semantic continuation handshake.  It binds the
+=ServerProcess= generation and implementation capabilities only.  Each
+=AlgorithmCall= carries its own =GraphSession= identity, including workspace,
+session, node, snapshot, workspace-generation root, projection, and route
+digests.  The Python process may retain immutable data for several graph
+sessions, but all mutable session state is partitioned by the complete
+=GraphSession= identity.
+
+An early draft of the resident v1 handshake bound one =sessionId=,
+=snapshotDigest=, and =workspaceGenerationRootDigest= to the process.  A
+black-box counterexample showed that a second valid session was rejected with
+=continuation-identity-mismatch=.  The draft had not been frozen or published,
+so ASP does not introduce a second protocol version to repair it.  Resident
+message and receipt v1 are directly refined: the handshake carries process
+identity only, and every rank call carries its own semantic identity.
+
+The default backend is SciPy.  There is no production Rust graph-algorithm
+fallback.  NetworkX may serve as a test oracle.  A future cuGraph backend is an
+optional Python capability and cannot become a required user dependency.
+
+The initial algorithm profiles are:
+
+- =local-path.v1=: multi-source and bidirectional traversal, bounded shortest
+  path, and constrained path;
+- =semantic-diffusion.v1=: typed-edge propagation and personalized PageRank;
+- =hierarchical-navigation.v1=: components, condensation, and progressive
+  community summaries;
+- =evidence-connector.v1=: bounded connecting subgraphs and path diversity; and
+- =counterexample.v1=: forbidden or obligation-violating paths.
+
+Python receives a query-conditioned immutable projection, never the mutable
+Evidence Graph.  Small projections may use a canonical edge list.  Large sparse
+projections use canonical integer ids and CSR arrays: =indptr=, =indices=,
+=edgeIds=, optional weights, and typed side tables.
+
+Python results have only =candidate=, =proposed=, =heuristic=, or =partial=
+status.  =asserted= and =proved= are not representable Python result states.
+
+* Accounting contract
+
+The Router records independent dimensions:
+
+- =toolActions=;
+- =semanticGraphHops=;
+- =executedGraphHops=;
+- =graphTurboInvocations=;
+- input, visited, and expanded nodes and edges;
+- algorithm iterations and candidate paths;
+- Ascent rule firings and derived facts;
+- wall time and peak memory; and
+- projected and returned bytes.
+
+A semantic or lexical tool action increments =toolActions= and does not by
+itself increment graph hops.  Python algorithm iterations never count as graph
+hops.  Only an admitted Evidence Path determines =semanticGraphHops=.
+
+For the same snapshot, continuation identity, and semantic route, a valid cache
+may reduce =executedGraphHops= and tool or algorithm realization cost.  It must
+preserve =semanticGraphHops=.  Server restart or Python cache loss may increase
+realization cost but cannot change the semantic certificate.
+
+* Formal route-cost and cache lattice
+
+Shortest-path selection is applied only after hard feasibility.  A route is not
+better merely because it has fewer graph hops when it exceeds a token, round,
+verification, or memory cap.  The Router retains a Pareto frontier over
+independent cost dimensions and applies a policy ordering only to feasible
+members of that frontier.
+
+Search-cache reuse and model-prefix-cache reuse are orthogonal.  A search cache
+may remove provider or graph execution without changing model-prefix work.  A
+model cache may remove prefix recomputation without proving that graph evidence
+is present or fresh.  Neither cache changes semantic graph hops.
+
+#+begin_src typst
+#let dims = 8
+
+$ C(r) = (h_s(r), h_e(r), a(r), l(r), t_i(r), t_o(r), s_m(r), m_m(r)) $
+
+$ "feasible"(r, B) := and.big_(i=1)^dims C_i(r) <= B_i $
+
+$ r_1 prec.eq r_2 := and.big_(i=1)^dims C_i(r_1) <= C_i(r_2) $
+
+$ r_1 prec r_2 := (r_1 prec.eq r_2) and
+  (or.big_(i=1)^dims C_i(r_1) < C_i(r_2)) $
+
+$ "cache-admit"("cold", "warm") :=
+  I("cold") = I("warm") and
+  h_s("cold") = h_s("warm") and
+  h_e("warm") <= h_e("cold") and
+  s_m("warm") <= s_m("cold") and
+  m_m("warm") <= m_m("cold") $
+
+$ A(R, F, B) = (D, T, n_r, n_d, d_c) $
+
+$ "ascent-admit"(A) :=
+  R in "trusted-rulesets" and
+  F subset.eq "admitted-facts" and
+  n_r <= B_r and n_d <= B_d and
+  D = "lfp"_R(F) and
+  "trace-valid"(T, R, F, D) and
+  d_c = H("canonical-order"(F, D)) $
+
+$ "mutates-evidence"(x) =>
+  exists delta: "graph-delta-admit"(delta) and x = delta."after" $
+#+end_src
+
+Here =h_s= is semantic graph hops, =h_e= is executed graph hops, =a= is
+tool actions, =l= is LLM interaction rounds, =t_i= and =t_o= are model input
+and output tokens, =s_m= is search-cache miss work, and =m_m= is model-prefix
+cache miss work.  =A= is one query-local Ascent run with trusted ruleset =R=,
+admitted facts =F=, budget =B=, least-fixed-point derived facts =D=,
+derivation trace =T=, actual rule firings =n_r=, actual derived-fact count
+=n_d=, and canonical order digest =d_c=.  Budget compliance is necessary but
+not sufficient: Rust replays =T=, checks that =D= is closed under =R=, and
+compares =d_c= with its own canonical encoding.
+
+* Shared Ascent closure candidate contract
+
+The language-neutral candidate contract is
+[[file:../../../../schemas/semantic-ascent-closure-candidate.v1.schema.json][semantic-ascent-closure-candidate.v1]].
+It is deliberately separate from the Python resident receipt.  The resident
+may propose graph candidates, while the Rust-owned Ascent evaluator emits a
+bounded closure candidate containing the exact graph-session identity,
+ruleset digest, admitted source facts, derived facts, derivation trace,
+budget, actual accounting, and proposed canonical fact-order digest.
+
+The schema fixes =authority= to =candidate=.  Schema validity does not admit
+the candidate and does not prove a fixed point.  Rust additionally verifies:
+
+- every trace step names a trusted rule and already admitted premises;
+- replay produces exactly the declared derived facts, without duplicates;
+- reported counts equal the replayed counts and remain within every bound;
+- no trusted rule remains applicable without its conclusion in the closure;
+- the graph-session identity equals the live Router identity; and
+- the canonical digest equals Rust's canonical encoding of source and derived
+  facts.
+
+Only a subsequently verified GraphDelta may change the Evidence Graph.  The
+candidate schema therefore remains stable across Ascent execution strategies
+and cannot become a second authority-bearing graph protocol.
+
+* Graph Turbo request and proposal boundary
+
+Every request binds:
+
+- query, workspace, snapshot, graph schema, and projection digests;
+- canonical seed node ids;
+- permitted verticals and edge types;
+- target predicates and GQL path semantics;
+- algorithm profile and canonical parameters;
+- deterministic seed when applicable; and
+- node, edge, iteration, wall-time, and memory budgets.
+
+Every response binds the same request identity and reports complete or typed
+partial status, candidate nodes, proposed paths, optional communities, optional
+counterexamples, accounting, implementation identity, and output digest.
+
+Rust rejects a response when any node or edge is absent from the bound snapshot,
+a path is discontinuous, a restrictor fails, a budget is exceeded without typed
+partial status, the implementation identity changed, or provenance is missing.
+
+* Stateful admission architecture
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> Proposed: typed Graph IR or Python candidate
+  Proposed --> Rejected: invalid identity / capability / budget
+  Proposed --> ExactVerification: candidate-only authority
+  ExactVerification --> Rejected: stale or invented node / edge
+  ExactVerification --> AscentReady: admitted live facts
+  AscentReady --> ClosureRunning: trusted ruleset + bounded request
+  ClosureRunning --> Partial: rule / fact / wall budget reached
+  ClosureRunning --> ClosureReceipt: fixed point within budget
+  Partial --> Rejected: no authorized continuation
+  Partial --> AscentReady: typed decreasing-budget continuation
+  ClosureReceipt --> DeltaValidation: grounded derivation receipt
+  DeltaValidation --> Rejected: digest / provenance / obligation mismatch
+  DeltaValidation --> EvidenceCommitted: admitted GraphDelta CAS
+  EvidenceCommitted --> FrontierReady: stable continuation identity
+  FrontierReady --> Proposed: next bounded router action
+  FrontierReady --> Closed: obligations resolved
+  Closed --> [*]
+  Rejected --> FrontierReady: typed counterevidence retained
+#+end_src
+
+Only =EvidenceCommitted= mutates authority-bearing graph state.  =Proposed=,
+=ExactVerification=, =ClosureRunning=, =Partial=, and =ClosureReceipt= are not
+authority states.  A process restart may move the Python capability from ready
+to unavailable, but it does not move an admitted graph session or continuation
+backward.
+
+* Turso projection cache
+
+The CSR projection cache key is the canonical tuple:
+
+#+begin_example
+workspaceDigest
++ snapshotDigest
++ graphSchemaDigest
++ projectionDigest
++ algorithmProfile
++ algorithmImplementationDigest
++ parameterDigest
++ deterministicSeed
++ budgetProfileDigest
+#+end_example
+
+Cached arrays and receipts are immutable.  Publication uses one writer-owned
+commit.  Readers never repair, materialize, or mutate a missing generation.
+Snapshot or schema change invalidates the projection.  Algorithm or parameter
+change invalidates the result while allowing reuse of a compatible immutable
+CSR projection.
+
+Continuation records store stable identities and digests, not mutable Python
+objects or an in-process SciPy graph.
+
+* Typed failures
+
+The protocol distinguishes at least:
+
+- =python-graph-server-unavailable=;
+- =python-graph-server-generation-stale=;
+- =unsupported-algorithm-profile=;
+- =projection-missing=;
+- =projection-stale=;
+- =unbounded-path=;
+- =algorithm-budget-exceeded= with typed partial continuation;
+- =algorithm-result-invalid=;
+- =closure-budget-exceeded= with typed partial derivation;
+- =ruleset-stale=; and
+- =cache-receipt-invalid=.
+
+No failure authorizes a raw-source, unbounded traversal, generic child, new graph
+database, or Rust graph-algorithm fallback.
+
+* Lean obligations
+
+The refinement must prove or exhibit counterexamples for:
+
+1. model and Python proposal states cannot represent admitted evidence
+   authority;
+2. tool and Graph Turbo calls preserve graph hops unless an explicit admitted
+   Evidence Path transition occurs;
+3. cached resume preserves semantic hop count while permitting lower execution
+   cost;
+4. continuation identity binds session, node, snapshot, and state digest;
+5. unknown or stale Python nodes and edges cannot enter the Evidence Graph;
+6. an unbounded GQL path is rejected without an effective Router bound;
+7. a valid Ascent receipt cites only admitted live facts and a live ruleset;
+8. closure budgets bound rule firings and derived facts independently from graph
+   hops;
+9. Turso cache identity changes when any semantic cache component changes; and
+10. renderer output cannot affect query, graph, cache, or proof identity;
+11. a process handshake cannot establish or replace semantic continuation
+    authority;
+12. two live graph sessions can share one process without sharing continuation
+    identity or mutable session state;
+13. a response is admissible only for the exact per-call graph-session
+    identity, independently of process reuse; and
+14. eviction or restart of one Python session cache cannot alter another
+    session's semantic route or receipt;
+15. resolving a Python artifact cannot authorize substitution of the configured
+    execution locator, even when both locators resolve to the same bytes; and
+16. process startup is independent of workspace-generation admission, while
+    every algorithm call remains bound to one admitted workspace generation.
+
+The Lean audit additionally requires the following implementation-refinement
+counterexamples discovered during this RFC:
+
+17. decoded hop accounting with =executedGraphHops > semanticGraphHops= is
+    rejected before construction;
+18. cached resume cannot substitute another session, snapshot, projection, or
+    route digest;
+19. equal aggregate cache work does not identify search-cache and model-cache
+    behavior;
+20. an Ascent receipt alone cannot mutate the Evidence Graph;
+21. a Python proposal alone cannot mutate the Evidence Graph;
+22. actual rule firings and actual derived facts are independently bounded;
+23. shortest-hop policy is applied only after token and round feasibility; and
+24. one resident process may serve distinct graph sessions without making
+    their continuation identities interchangeable.
+25. budget-only receipt validation can accept a non-fixed-point result that
+    omits an already derivable fact;
+26. a merely non-empty canonical-order digest does not establish canonical
+    order or deterministic replay;
+27. a scalar rule-firing count does not ground any premise, rule, or
+    conclusion; and
+28. verified Ascent admission therefore requires derivation replay,
+    fixed-point closure, and equality with a Rust-computed canonical digest.
+
+* Proof artifacts
+
+The refinement model is
+[[file:../../../../packages/proofs/ASPProof/GQLCoreSciPyResidentGraphTurbo.lean][ASPProof.GQLCoreSciPyResidentGraphTurbo]].
+Its kernel audit is
+[[file:../../../../packages/proofs/ASPProof/Audit/GQLCoreSciPyResidentGraphTurbo.lean][ASPProof.Audit.GQLCoreSciPyResidentGraphTurbo]].
+The generated receipts are:
+
+- [[file:../../../../packages/proofs/receipts/gql-core-scipy-resident-graph-turbo-audit-v1.json][gql-core-scipy-resident-graph-turbo-audit-v1.json]];
+- [[file:../../../../packages/proofs/receipts/gql-core-scipy-resident-graph-turbo-axle-v1.json][gql-core-scipy-resident-graph-turbo-axle-v1.json]].
+
+The audit covers thirty-one declarations.  All thirty-one are axiom-free and
+the receipt reports =hasSorryAx=false=.  The audit intentionally rejects
+=native_decide= theorem-local axioms; audited finite constructions use kernel
+=decide= or direct proofs.
+
+* Delivery order
+
+The renderer refinement is specified separately in
+[[file:01.31-typed-search-projection-render-interface.org][01.31 Typed Search Projection and Render Interface]].
+
+1. freeze this RFC and Lean counterexamples;
+2. freeze typed S-expression, ASP GQL Core, Graph Turbo, handshake, receipt, and
+   failure schemas with positive and negative fixtures;
+3. implement Rust Router accounting and proposal authority;
+4. introduce Ascent behind a bounded evaluator interface;
+5. implement the resident Python SciPy Server and lifecycle handshake;
+6. persist immutable projection manifests and receipts through Turso;
+7. connect verified proposals to Ascent and the Evidence Graph;
+8. expose progressive compact frontiers to ASP Explore; and
+9. add Mermaid and DOT renderers only as optional side channels.
+
+* Runtime publication and persistence ownership
+
+The ASP Runtime Server owns the Graph Turbo capability through the existing
+workspace data-plane.  It MUST NOT publish a second socket or bypass the
+workspace binding token.  A rank request is a typed =EvaluateGraphTurbo=
+operation whose outer envelope is still the Runtime Server workspace request.
+
+Before forwarding a rank request, Rust MUST compare the request
+=snapshotDigest= and =workspaceGenerationRootDigest= with the active resident
+workspace generation.  A mismatch is a stale-continuation failure and MUST be
+rejected before Python executes.  Python may return only candidate evidence;
+it cannot mint proved/asserted authority or advance semantic hop accounting.
+
+The daemon status receipt carries a typed =graphTurboResident= child status:
+=state=, =processId=, =runtimeArtifact=, =executionCommandDigest=, and =reason=.
+The status is capability-scoped.  A missing published Python artifact leaves
+the ASP daemon healthy while Graph Turbo is =unavailable=.  Handshake failure,
+child failure, and request timeout fail the capability and remain visible in
+the status receipt.  Authority forgery and contradictory runtime ownership
+remain fail-closed protocol errors.
+
+The configured runtime artifact MUST be an already installed Python
+interpreter/environment containing =asp_graph_turbo=.  Daemon request handling
+MUST NOT execute =uv=, =pip=, or another package manager.  The daemon owns one
+JSONL child, serializes transport access to it, and sends a typed shutdown
+before its own diagnostic lane drains.  That child multiplexes graph sessions;
+serialization of the JSONL transport MUST NOT collapse their identities.
+
+The daemon resolver accepts an absolute execution locator through
+=ASP_GRAPH_TURBO_PYTHON=.  It preserves that exact absolute locator for process
+launch and separately resolves the concrete artifact behind it for digest and
+freshness checks.  The resolved artifact path MUST NOT replace the execution
+locator: Python virtual environments may use a symlinked interpreter locator to
+select the environment even when its target bytes are shared with a base
+runtime.  Admission therefore binds both the configured execution locator and
+the resolved artifact digest.  An unset, non-absolute, or unresolvable value is
+reported as capability =unavailable=; it is never replaced by an implicit
+=python= lookup on =PATH=.
+
+An explicit =ASP_GRAPH_TURBO_PYTHON= value is also the publication input for
+the sole resident configuration contract.  After validation, the supervisor
+atomically publishes that locator as
+=runtime/server/graph-turbo-resident-config.v1.json=.  A later reconcile with
+no environment value MUST read this same v1 document and preserve the exact
+configured execution locator.  Unknown schema versions, malformed documents,
+and invalid locators fail closed; they MUST NOT trigger =PATH= discovery or a
+second resident contract.  This durable document owns process-launch
+configuration only.  It cannot establish, replace, or authorize the per-call
+GraphSession identity carried by =sessionId=, =nodeId=, =snapshotDigest=,
+=workspaceGenerationRootDigest=, and =routeId=.
+
+Starting the daemon-global Python process requires only process identity and a
+successful process handshake.  It MUST NOT call workspace-generation admission
+or require a Git candidate snapshot.  Workspace, snapshot, continuation, and
+generation identities enter only on a typed =EvaluateGraphTurbo= call.  That
+call is rejected before Python execution unless its outer Runtime Server lease
+and inner Graph Session identity name the same admitted generation.
+
+The ASP Runtime Server owns the resident Python Graph Turbo child.  The child
+is launched from a resolved installed Python runtime artifact; the lifecycle
+MUST NOT invoke =uv=, =pip=, or another package manager on the request path.
+The execution-command digest is part of the launch identity.  Multiple admitted
+graph sessions reuse one process across cold and warm rank calls until typed
+shutdown, replacement, or failure.  Warm state is keyed by complete graph
+session identity; neither a cache lookup nor a process-local object reference
+is continuation authority.
+
+Python owns SciPy computation and returns candidate-only receipts.  It does
+not open Turso.  Rust =agent-semantic-client-db= owns the Turso cache and MUST
+bind every row to source snapshot digest, workspace-generation root digest,
+profile, algorithm, seed digest, and parameter digest.  An exact identity may
+hit after a Rust cache restart; a stale snapshot or generation MUST miss.
+The persistence boundary rejects =asserted= and =proved= authority.
+
+Cross-process qualification emits
+=semantic-graph-turbo-runtime-receipt.v1.schema.json=.  The receipt binds the
+installed runtime artifact, execution-command digest, resident process id,
+cold and warm latency, separate hop accounting, candidate authority, exact
+Turso hit, stale-snapshot miss, and restart hit.
+
+* Acceptance gates
+
+- Lean closes all listed invariants without =sorry= or new undeclared axioms.
+- Schema fixtures reject model/Python authority promotion, unbounded execution,
+  stale generation, stale snapshot, and cache identity substitution.
+- Rust and Python agree on canonical request and receipt bytes.
+- A two-session interleaving fixture proves that one resident PID can serve two
+  distinct continuation identities and that cross-session substitution fails.
+- Cold, warm, cache-hit, cache-invalidated, and Python-restarted executions
+  preserve the same semantic route result.
+- Warm receipts report no Python process spawn or CSR rebuild.
+- Full runtime evidence names server generation, snapshot, projection, ruleset,
+  algorithm implementation, and output digests.
+- Complete repository gates pass or retain exact independently owned blockers.

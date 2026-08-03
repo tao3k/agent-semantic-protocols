@@ -2,6 +2,28 @@
 
 use std::path::Path;
 
+fn registered_provider_binary_exists(path: &Path) -> Result<bool, String> {
+    match std::fs::metadata(path) {
+        Ok(metadata) => Ok(metadata.is_file()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!(
+            "failed to inspect registered provider binary {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+fn registered_provider_binary_is_lattice_current(path: &Path) -> Result<bool, String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(metadata.file_type().is_file()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!(
+            "failed to inspect registered provider Lattice profile {}: {error}",
+            path.display()
+        )),
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct RegisteredProviderBinaryReconciliation {
     pub(super) registration_count: usize,
@@ -22,6 +44,20 @@ pub(super) fn reconcile_registered_provider_runtime_binaries(
     provider_lock_dir: &Path,
 ) -> Result<RegisteredProviderBinaryReconciliation, String> {
     let registrations = agent_semantic_hook::registered_provider_binaries_v1();
+    reconcile_registered_provider_runtime_binaries_from(
+        &registrations,
+        runtime_bin_dir,
+        artifact_root,
+        provider_lock_dir,
+    )
+}
+
+fn reconcile_registered_provider_runtime_binaries_from(
+    registrations: &[agent_semantic_hook::RegisteredProviderBinaryV1],
+    runtime_bin_dir: &Path,
+    artifact_root: &Path,
+    provider_lock_dir: &Path,
+) -> Result<RegisteredProviderBinaryReconciliation, String> {
     let binary_names = registrations
         .iter()
         .map(|registration| registration.binary().to_string())
@@ -54,20 +90,13 @@ pub(super) fn reconcile_registered_provider_runtime_binaries(
         .collect::<Vec<_>>();
     for binary_name in &binary_names {
         let target = runtime_bin_dir.join(binary_name);
-        match std::fs::symlink_metadata(&target) {
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                missing_count += 1;
-                continue;
-            }
-            Err(error) => {
-                return Err(format!(
-                    "failed to inspect registered provider binary {}: {error}",
-                    target.display()
-                ));
-            }
+        if !registered_provider_binary_exists(&target)? {
+            missing_count += 1;
+            continue;
         }
-        if registered_provider_receipt_covers_binary(&current_receipts, binary_name) {
+        if registered_provider_receipt_covers_binary(&current_receipts, binary_name)
+            && registered_provider_binary_is_lattice_current(&target)?
+        {
             reconciled_count += 1;
             continue;
         }
@@ -85,9 +114,9 @@ pub(super) fn reconcile_registered_provider_runtime_binaries(
             changed_count += 1;
         }
     }
-    for registration in &registrations {
+    for registration in registrations {
         let binary_path = runtime_bin_dir.join(registration.binary());
-        if std::fs::symlink_metadata(&binary_path).is_err() {
+        if !registered_provider_binary_exists(&binary_path)? {
             continue;
         }
         let lock_path =
@@ -163,3 +192,7 @@ pub(super) fn registered_provider_receipt_covers_binary(
             == Some(binary_name)
     })
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/install_provider_runtime_reconcile.rs"]
+mod install_provider_runtime_reconcile_tests;

@@ -67,6 +67,48 @@ async fn exact_source_projection_reconciles_unadmitted_owner_change_before_cache
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn concurrent_exact_reads_single_flight_unadmitted_owner_refresh() {
+    let root = temp_project_root("exact-selector-concurrent-read-side-freshness");
+    establish_rust_package(&root);
+    let owner = root.join("src/lib.rs");
+    tokio::fs::write(&owner, "pub fn alpha() -> u8 { 1 }\n")
+        .await
+        .expect("write first source");
+    let runtime = ExactQueryRuntime::start(&root).await;
+
+    runtime
+        .admit("alpha-concurrent-initial", vec!["src/lib.rs".to_owned()])
+        .await;
+    let first = run_exact_selector_query(&root, &runtime.state_home).await;
+    assert!(first.contains("{ 1 }"), "{first}");
+
+    tokio::fs::write(&owner, "pub fn alpha() -> u8 { 2 }\n")
+        .await
+        .expect("write unadmitted concurrent source change");
+    let started = tokio::time::Instant::now();
+    let mut readers = tokio::task::JoinSet::new();
+    for _ in 0..32 {
+        let root = root.clone();
+        let state_home = runtime.state_home.clone();
+        readers.spawn(async move { run_exact_selector_query(&root, &state_home).await });
+    }
+    while let Some(result) = readers.join_next().await {
+        let projection = result.expect("join concurrent exact reader");
+        assert!(projection.contains("{ 2 }"), "{projection}");
+        assert!(!projection.contains("{ 1 }"), "{projection}");
+        assert!(!projection.contains("selector-stale"), "{projection}");
+    }
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "32 concurrent exact reads exceeded the pressure gate: {elapsed:?}"
+    );
+
+    runtime.shutdown().await;
+    let _ = fs::remove_dir_all(root);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn exact_selector_changed_and_moved_owner_never_requires_sync() {
     prewarm_cli_artifact().await;
     let root = temp_project_root("exact-selector-live-owner");
@@ -143,28 +185,17 @@ async fn exact_selector_changed_and_moved_owner_never_requires_sync() {
             vec!["src/lib.rs".to_owned(), "src/moved.rs".to_owned()],
         )
         .await;
-    let (missing, missing_elapsed) = run_exact_selector_query_for(
+    let (relocated, relocated_elapsed) = run_exact_selector_query_for(
         &root,
         &runtime.state_home,
         "rust://src/lib.rs#item/function/live_owner",
     )
     .await;
-    assert!(missing.contains("state=selector-stale"), "{missing}");
+    assert!(relocated.contains("{ 2 }"), "{relocated}");
+    assert!(!relocated.contains("selector-stale"), "{relocated}");
     assert!(
-        missing.contains("reasonKind=selector-not-in-active-generation"),
-        "{missing}"
-    );
-    assert!(missing.contains("activeGenerationDigest="), "{missing}");
-    assert!(
-        missing.contains(
-            "next=asp rust search lexical --query 'live_owner' --query 'function live_owner'"
-        ),
-        "{missing}"
-    );
-    assert!(!missing.contains("No such file or directory"), "{missing}");
-    assert!(
-        missing_elapsed < std::time::Duration::from_millis(100),
-        "missing live-owner exact query exceeded 100ms: {missing_elapsed:?}"
+        relocated_elapsed < std::time::Duration::from_millis(100),
+        "relocated live-owner exact query exceeded 100ms: {relocated_elapsed:?}"
     );
 
     let (moved, moved_elapsed) = run_exact_selector_query_for(
@@ -179,11 +210,11 @@ async fn exact_selector_changed_and_moved_owner_never_requires_sync() {
         "moved live-owner exact query exceeded 100ms: {moved_elapsed:?}"
     );
     println!(
-        "[exact-live-owner-performance] cliArtifactPrewarmed=1 initialRuntimeGenerationCold=1 initialMicros={} itemMissingMicros={} changedMicros={} missingMicros={} movedMicros={} syncCount=0 wrapperByteAuthority=0",
+        "[exact-live-owner-performance] cliArtifactPrewarmed=1 initialRuntimeGenerationCold=1 initialMicros={} itemMissingMicros={} changedMicros={} relocatedMicros={} movedMicros={} syncCount=0 wrapperByteAuthority=0",
         initial_elapsed.as_micros(),
         item_missing_elapsed.as_micros(),
         changed_elapsed.as_micros(),
-        missing_elapsed.as_micros(),
+        relocated_elapsed.as_micros(),
         moved_elapsed.as_micros()
     );
 
@@ -316,6 +347,11 @@ impl ExactQueryRuntime {
                 Box::pin(build_exact_query_generation(workspace_identity, project_root))
             })
         };
+        let workspace_store = agent_semantic_client_db::runtime_server_workspace::prepare_runtime_server_workspace_store(
+            &state_home.join("runtime/server"),
+        )
+        .await
+        .expect("prepare exact-query Runtime Server workspace store");
         let server =
             agent_semantic_client_db::runtime_server::RuntimeServer::bind_with_artifact_catalog(
                 endpoint.clone(),
@@ -324,13 +360,14 @@ impl ExactQueryRuntime {
                         agent_semantic_client_db::runtime_server_runtime_base().join("workspaces"),
                     ),
                 ),
+                workspace_store,
                 Arc::new(artifact_catalog),
             )
             .await
             .expect("bind exact-query Runtime Server")
             .with_workspace_generation_builder_and_catalog(builder, catalog)
             .with_workspace_owner_projection_builder(Arc::new(
-                |_language_id, _project_root, owner| {
+                |_workspace_identity, _language_id, _project_root, owner| {
                     Box::pin(build_exact_query_owner_projection(owner))
                 },
             ));
@@ -499,6 +536,10 @@ async fn build_exact_query_generation(
 ) -> Result<agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild, String> {
     use sha2::Digest as _;
 
+    let candidate = agent_semantic_client_db::runtime_server_admission::discover_workspace_generation_candidate(
+        &project_root,
+    )
+    .await?;
     let mut owners = Vec::new();
     let mut import_hashes = Vec::new();
     let mut import_files = Vec::new();
@@ -529,6 +570,7 @@ async fn build_exact_query_generation(
             kind: Some("function".into()),
             source: source.clone().into(),
             query_keys: vec![item_name.into()],
+            derived_projections: Vec::new(),
             projection_record: exact_projection_record(
                 owner_path,
                 selector_id.as_str(),
@@ -604,6 +646,7 @@ async fn build_exact_query_generation(
         )?;
     Ok(
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuild::new(
+            candidate,
             agent_semantic_client_db::ClientDbSourceIndexRefreshRequest {
                 import,
                 file_count,

@@ -50,6 +50,15 @@ pub enum AgentSessionRegistryIpcOperation {
     ProjectIdForRootSessionId {
         root_session_id: String,
     },
+    ClaimDispatch {
+        project_id: String,
+        root_session_id: String,
+        name: String,
+        dispatch_identity: String,
+        command_digest: String,
+        delivery_target_override: Option<String>,
+        now: i64,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -100,6 +109,9 @@ pub enum AgentSessionRegistryIpcResult {
     Refreshed,
     ProjectId {
         project_id: Option<String>,
+    },
+    DispatchClaimed {
+        result: crate::agent_session_registry::AgentSessionDispatchClaimResult,
     },
 }
 

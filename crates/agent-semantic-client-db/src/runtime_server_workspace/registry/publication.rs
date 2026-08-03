@@ -36,6 +36,61 @@ impl RuntimeServerWorkspaceRegistry {
         })?
     }
 
+    pub async fn publish_owner_identity_delta(
+        &self,
+        source_mutation_id: impl Into<String>,
+        workspace_identity: &str,
+        project_root: &std::path::Path,
+        changed_paths: &[std::path::PathBuf],
+    ) -> Result<(), String> {
+        let source_mutation_id = source_mutation_id.into();
+        if source_mutation_id.trim().is_empty() {
+            return Err("runtime owner identity mutation id must be non-empty".to_owned());
+        }
+        let entry = self.entry(workspace_identity, project_root).await?;
+        let mut delta = Vec::with_capacity(changed_paths.len());
+        for changed_path in changed_paths {
+            let relative = changed_path.strip_prefix(project_root).map_err(|_| {
+                format!(
+                    "runtime owner identity path is outside project root: {}",
+                    changed_path.display()
+                )
+            })?;
+            let owner_path = relative.to_string_lossy().replace('\\', "/");
+            let content =
+                super::super::owner_content_identity::read(project_root, &owner_path).await?;
+            delta.push(match content {
+                Some(content) => super::super::owner_identity_journal::RuntimeOwnerIdentityEntry {
+                    owner_path,
+                    state: super::super::owner_identity_journal::RuntimeOwnerIdentityState::Present,
+                    content_digest: Some(content.digest),
+                    mutation_id: None,
+                },
+                None => super::super::owner_identity_journal::RuntimeOwnerIdentityEntry {
+                    owner_path,
+                    state: super::super::owner_identity_journal::RuntimeOwnerIdentityState::Missing,
+                    content_digest: None,
+                    mutation_id: None,
+                },
+            });
+        }
+        let (reply, receive) = oneshot::channel();
+        entry
+            .writer
+            .send(WorkspaceWriteCommand::PublishOwnerIdentityDelta {
+                target: entry.write_target(),
+                source_mutation_id,
+                workspace_identity: workspace_identity.to_owned(),
+                delta,
+                reply,
+            })
+            .await
+            .map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?;
+        receive
+            .await
+            .map_err(|_| "runtime workspace writer lane dropped identity receipt".to_owned())?
+    }
+
     pub async fn publish(
         &self,
         request_id: impl Into<String>,
@@ -150,61 +205,70 @@ impl RuntimeServerWorkspaceRegistry {
         &self,
         request_id: impl Into<String>,
         workspace_identity: impl Into<String>,
-        materialization: crate::runtime_server_workspace::WorkspaceCanonicalMaterialization,
+        materialization: crate::runtime_server_workspace::ValidatedWorkspaceCanonicalMaterialization,
     ) -> Result<WorkspaceRecoveryReceipt, String> {
-        const FOREGROUND_ACCEPTANCE_DEADLINE: std::time::Duration =
-            std::time::Duration::from_millis(100);
         let request_id = request_id.into();
         let workspace_identity = workspace_identity.into();
-        materialization.validate_persisted(&workspace_identity)?;
-        let entry = self
-            .entry(
-                &workspace_identity,
-                std::path::Path::new(&materialization.project_root),
-            )
-            .await?;
-        let (accepted, acceptance) = oneshot::channel();
+        let project_root = std::path::Path::new(&materialization.as_materialization().project_root);
+        if let Ok(Some(entry)) = self.ready_entry(&workspace_identity, project_root)
+            && let Some(active) = entry.current.borrow().clone()
+            && active.generation().workspace_identity
+                == materialization.as_materialization().workspace_identity
+            && active
+                .generation()
+                .source_snapshot
+                .has_same_content_identity(&materialization.as_materialization().source_snapshot)
+            && active.generation().provider_schema_digest
+                == materialization.as_materialization().provider_schema_digest
+            && active.generation().module_graph_digest
+                == materialization.as_materialization().import_digest
+            && active.generation().selector_set_digest
+                == materialization.as_materialization().selector_set_digest
+            && active.generation().workspace_source_scope_generation
+                == materialization
+                    .as_materialization()
+                    .workspace_source_scope_generation
+        {
+            let target_epoch = active.generation().active_epoch;
+            let receipt = crate::runtime_server_workspace::WorkspaceRecoveryReceipt {
+                schema_id: crate::runtime_server_workspace::WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID
+                    .to_owned(),
+                schema_version: "1".to_owned(),
+                request_id,
+                workspace_identity,
+                source: WorkspaceRecoverySource::MmapCheckpoint,
+                state: crate::runtime_server_workspace::WorkspaceGenerationState::Ready,
+                active_epoch: target_epoch.saturating_sub(1),
+                target_epoch,
+                generation_digest: active.generation().generation_digest.clone(),
+                source_root_digest: active.generation().source_snapshot.root_digest.clone(),
+                old_generation_readable: target_epoch > 1,
+                resident_publication_elapsed_micros: 0,
+                counters: crate::runtime_server_workspace::RuntimeDataPlaneCounters::default(),
+            };
+            receipt.validate()?;
+            return Ok(receipt);
+        }
+        let (materialization, prepared_index, prepared_generation) = materialization.into_parts();
+        let project_root = std::path::Path::new(&materialization.project_root);
+        let entry = self.entry(&workspace_identity, project_root).await?;
         let (reply, receive) = oneshot::channel();
-        let acceptance_deadline = tokio::time::Instant::now() + FOREGROUND_ACCEPTANCE_DEADLINE;
-        let send = entry
+        entry
             .writer
             .send(WorkspaceWriteCommand::EnsureCanonicalGeneration {
                 target: entry.write_target(),
                 request_id,
                 workspace_identity,
                 materialization,
-                accepted,
+                prepared_index,
+                prepared_generation,
                 reply,
-            });
-        match tokio::time::timeout_at(acceptance_deadline, send).await {
-            Ok(result) => {
-                result.map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?
-            }
-            Err(_) => {
-                return Err(format!(
-                    "runtime workspace writer lane exceeded its {} ms enqueue deadline",
-                    FOREGROUND_ACCEPTANCE_DEADLINE.as_millis()
-                ));
-            }
-        }
-        let _receive = receive;
-        Self::await_recovery_acceptance(acceptance, acceptance_deadline).await?;
-        _receive
+            })
+            .await
+            .map_err(|_| "runtime workspace writer lane is unavailable".to_owned())?;
+        receive
             .await
             .map_err(|_| "runtime workspace writer lane dropped its completion".to_owned())?
-    }
-
-    async fn await_recovery_acceptance(
-        acceptance: oneshot::Receiver<Result<WorkspaceRecoveryReceipt, String>>,
-        deadline: tokio::time::Instant,
-    ) -> Result<WorkspaceRecoveryReceipt, String> {
-        match tokio::time::timeout_at(deadline, acceptance).await {
-            Ok(receipt) => receipt
-                .map_err(|_| "runtime workspace writer lane dropped its acceptance".to_owned())?,
-            Err(_) => {
-                Err("runtime workspace writer lane exceeded its acceptance deadline".to_owned())
-            }
-        }
     }
 
     pub async fn restore_checkpoint(

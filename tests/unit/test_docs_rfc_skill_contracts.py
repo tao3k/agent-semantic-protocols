@@ -70,6 +70,15 @@ def test_tree_sitter_roadmap_records_closure_plan() -> None:
     assert missing_terms == []
 
 
+_ASP_SKILL_CONTRACT_PATH = _REPO_ROOT / "org/contracts/asp.skill.v1.org"
+_ACTIVE_DOC_PATHS = [
+    _ASP_SKILL_CONTRACT_PATH
+    if path.name == "asp.skill.v1.org"
+    else path
+    for path in _ACTIVE_DOC_PATHS
+]
+
+
 def test_root_skill_template_contract() -> None:
     root_skill = _ASP_SKILL_CONTRACT_PATH.read_text(encoding="utf-8")
 

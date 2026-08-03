@@ -1,0 +1,206 @@
+#+title: Polyglot Search Canonical AST and Semantic Refinement
+#+property: header-args:typst :lint typst-eval :runtime typst :format typst
+
+* Status
+
+This module extends
+[[file:01.33-polyglot-parser-conformance-executable-refinement.org][Polyglot Parser Conformance and Executable Refinement]] with a canonical AST,
+source/AST binding, and a deliberately small executable semantics.  It is a
+proof-side reference profile, not a complete ISO GQL implementation.
+
+* Semantic profile
+
+ASP GQL Core =0.1-one-hop= admits exactly:
+
+#+begin_src ebnf
+query          = "MATCH", node, outgoing-edge, node,
+                 where-equality?, "RETURN", return-binding,
+                 { ",", return-binding } ;
+node           = "(", variable, ":", label, ")" ;
+outgoing-edge  = "-[", ":", relation, "]->" ;
+where-equality = "WHERE", variable, ".", property, "=", typed-literal ;
+return-binding = variable, "AS", alias ;
+typed-literal  = string | integer | boolean ;
+#+end_src
+
+The profile has directed one-hop semantics only.  Endpoint variables and
+return aliases are unique.  =WHERE= and =RETURN= variables must be introduced
+by =MATCH=.  Mutation, procedures, undirected edges, variable-length paths,
+NULL, implicit coercion, functions, aggregation, ordering clauses, and comments
+are outside this version.
+
+ASP Logic Query Core =0.1-positive-conjunction= admits a finite conjunction of
+registered relation atoms:
+
+#+begin_src ebnf
+logic-query = "?-", atom, { ",", atom }, "." ;
+atom        = registered-predicate, "(", term, { ",", term }, ")" ;
+term        = variable | string | integer | boolean ;
+#+end_src
+
+Rule heads, recursion, negation, NULL, aggregation, and unregistered predicates
+are outside this executable profile.  Later profiles may add them only with a
+new semantic version and new proofs.
+
+* Canonical AST
+
+The executable owner is
+[[file:../../../../packages/proofs/src/asp_proofs/polyglot_search_semantics.py][asp_proofs.polyglot_search_semantics]].  It defines immutable AST nodes for:
+
+- node and directed edge patterns;
+- typed equality predicates;
+- return bindings;
+- positive Logic atoms and terms;
+- immutable property graphs and finite relations.
+
+Identifiers are NFC-preserving and case-sensitive.  String values are not
+case-folded.  Integers, strings, and Booleans are distinct scalar types.  A
+missing property makes equality false; =NULL= is rejected because three-valued
+logic has not been specified.
+
+* Exact source and AST binding
+
+For normalized source =s= and canonical AST =a=:
+
+#+begin_src typst
+#{
+  $ d_s = H(("source", "NFC"(s))) $
+  $ d_a = H("canonical-json"(a)) $
+  $ d_b = H((d_s, d_a, "profile-id")) $
+
+  $ "AdmitBinding"(s, a) arrow
+      d_s = d_s^"observed" and
+      d_a = d_a^"observed" and
+      d_b = d_b^"observed" $
+}
+#+end_src
+
+Whitespace variants may produce the same AST digest but MUST produce different
+source and binding digests.  A certificate therefore cannot silently replace
+the exact source with an AST-equivalent query.
+
+The execution binding additionally includes graph digest, relation-registry
+digest, multiplicity policy, and ordering policy.  The registry digest binds
+predicate names, column order, and canonical row content.
+
+* GQL evaluation
+
+For each canonically ordered edge =e=, the evaluator:
+
+1. checks the declared edge relation and direction;
+2. resolves source and target nodes;
+3. checks endpoint labels;
+4. applies typed equality without coercion;
+5. projects only declared aliases;
+6. retains the witness edge identity internally.
+
+Parallel matching edges use =bag-by-witness-edge= semantics.  Two parallel
+edges may therefore produce equal projected rows twice.  This is intentional;
+silently deduplicating them would lose path multiplicity before that semantic
+choice has been justified.
+
+Agent-visible rows are ordered by canonical row JSON.  Graph and registry
+digests sort nodes, edges, predicates, and rows canonically, so input container
+order does not affect a trace.
+
+* Logic evaluation
+
+Logic evaluation is a left-to-right finite relation join.  An uppercase term is
+a variable.  Repeated variables unify by exact scalar type and value.  Constant
+terms also require exact type and value.  The join preserves bag multiplicity,
+including distinct GQL witness edges that project to equal bindings.
+
+* Stateful execution and trace
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> SourceBound: exact normalized source received
+  SourceBound --> ParseRejected: malformed or unsupported grammar
+  SourceBound --> CanonicalAST: source and AST digests bound
+  CanonicalAST --> GraphRejected: graph ordering or endpoint contract invalid
+  CanonicalAST --> GQLEvaluation: immutable canonical graph admitted
+  GQLEvaluation --> TypedRows: one-hop bag rows with witness edges
+  TypedRows --> LogicRejected: relation absent, unregistered, or wrong arity
+  TypedRows --> LogicJoin: finite positive conjunction
+  LogicJoin --> SemanticTrace: canonical rows and registry digest
+  SemanticTrace --> TraceRejected: source, AST, graph, registry, or trace drift
+  SemanticTrace --> TraceAdmitted: before graph equals after graph
+  ParseRejected --> StatePreserved
+  GraphRejected --> StatePreserved
+  LogicRejected --> StatePreserved
+  TraceRejected --> StatePreserved
+  StatePreserved --> TypedFailure
+  TraceAdmitted --> [*]
+  TypedFailure --> [*]
+#+end_src
+
+The semantic trace binds source, AST, graph, registry, outputs, multiplicity,
+ordering, and its own canonical digest.  Evaluation is pure: graph digest before
+equals graph digest after.
+
+* Refinement equations
+
+Let =Eval_G= be one-hop GQL evaluation and =Join_L= the positive Logic join.
+
+#+begin_src typst
+#{
+  $ "Eval"_G(q, g) =
+      "sort"_"canonical"(
+        [ "project"(q, e) mid e in g."edges", "matches"(q, g, e) ]) $
+
+  $ "Join"_L(R_1, R_2) =
+      [ (r_1, r_2) mid r_1 in R_1, r_2 in R_2,
+        r_1."key" =_"typed" r_2."key" ] $
+
+  $ "TraceAdmitted"(t) arrow
+      t."graph-before" = t."graph-after" and
+      t."multiplicity" = "bag-by-witness-edge" and
+      t."ordering" = "canonical-row-json" $
+}
+#+end_src
+
+The reference graph is finite, so both list evaluations terminate.  Runtime
+providers still require explicit execution budgets; finiteness of the proof
+fixture is not a performance claim about arbitrary repositories.
+
+* Lean and AXLE mapping
+
+The abstract semantic owner is
+[[file:../../../../packages/proofs/ASPProof/PolyglotSearchSemanticRefinement.lean][ASPProof.PolyglotSearchSemanticRefinement]].  Its audit is
+[[file:../../../../packages/proofs/ASPProof/Audit/PolyglotSearchSemanticRefinement.lean][ASPProof.Audit.PolyglotSearchSemanticRefinement]].  Generated receipts are:
+
+- [[file:../../../../packages/proofs/receipts/polyglot-search-semantic-refinement-audit-v1.json][polyglot-search-semantic-refinement-audit-v1.json]];
+- [[file:../../../../packages/proofs/receipts/polyglot-search-semantic-refinement-axle-v1.json][polyglot-search-semantic-refinement-axle-v1.json]].
+
+The Lean module proves the reference one-hop relation, witness-edge bag
+multiplicity, typed equality, alias rejection, canonical-order admission,
+candidate-binding joins, source/AST binding, trace tamper rejection,
+determinism, and graph nonmutation.
+
+* Executable qualification
+
+The focused Python tests validate:
+
+- AST stability with exact-source digest distinction;
+- one-hop evaluation without two-hop leakage;
+- parallel-edge bag multiplicity;
+- typed =WHERE= equality without coercion;
+- alias-only projection and scope rejection;
+- conjunctive Logic binding and multiplicity;
+- deterministic results under reversed input containers;
+- read-only graph identity;
+- explicit NULL rejection;
+- tampered trace rejection.
+
+* Remaining proof boundary
+
+The Python interpreter and Lean model currently implement corresponding
+semantics, but the Python implementation is not extracted from Lean and its
+trace has not yet been replayed inside Lean from generated fixtures.  Therefore
+this module proves the abstract semantics and independently tests the executable
+semantics; it does not yet prove byte-for-byte implementation equivalence.
+
+The next closure step is a canonical semantic-trace fixture generated by the
+Python package, schema validation for that trace, and Lean replay of the same
+finite graph/query/row digests.  Only then can the executable refinement claim
+be upgraded from parallel conformance to artifact-bound refinement.

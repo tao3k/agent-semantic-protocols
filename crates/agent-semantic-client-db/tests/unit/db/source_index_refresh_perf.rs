@@ -698,6 +698,7 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
                 kind: Some("function".into()),
                 source: "pub fn source_index_perf_fixture() {}".to_string().into(),
                 query_keys: vec!["source_index_perf_fixture".to_string().into()],
+                derived_projections: Vec::new(),
                 projection_record: crate::projection_fixture::projection_record(
                     crate::projection_fixture::ProjectionFixtureInput {
                         language_id: "rust",
@@ -770,6 +771,7 @@ fn large_refresh_request(
             kind: Some("function".into()),
             source: source.clone().into(),
             query_keys: vec![symbol.into()],
+            derived_projections: Vec::new(),
             projection_record: crate::projection_fixture::projection_record(
                 crate::projection_fixture::ProjectionFixtureInput {
                     language_id: "rust",

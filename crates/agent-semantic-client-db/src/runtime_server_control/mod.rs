@@ -15,9 +15,9 @@ pub use endpoint::{
 };
 pub(crate) use frame::{read_runtime_server_requests, write_runtime_server_receipts};
 pub use model::{
-    RuntimeServerControlReceipt, RuntimeServerControlRequest, RuntimeServerEndpoint,
-    RuntimeServerOperation, RuntimeServerRequestReadError, RuntimeServerState,
-    runtime_server_transport_contract_digest,
+    GraphTurboResidentState, GraphTurboResidentStatus, RuntimeServerControlReceipt,
+    RuntimeServerControlRequest, RuntimeServerEndpoint, RuntimeServerOperation,
+    RuntimeServerRequestReadError, RuntimeServerState, runtime_server_transport_contract_digest,
 };
 pub use status_memory::{
     RuntimeServerStatusMemoryMetrics, prewarm_runtime_server_status_memory,

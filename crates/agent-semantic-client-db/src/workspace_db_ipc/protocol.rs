@@ -77,6 +77,76 @@ mod client;
 mod session;
 pub use client::{connect_runtime_server_workspace_session, read_source_index_via_runtime_server};
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(
+    tag = "action",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum RuntimeCacheControlRequest {
+    Status {
+        project_root: String,
+    },
+    RefreshSourceIndex {
+        project_root: String,
+        expected_generation: Option<String>,
+    },
+    RebuildSourceIndex {
+        project_root: String,
+        #[serde(deserialize_with = "deserialize_mutation_id")]
+        mutation_id: String,
+    },
+    Invalidate {
+        project_root: String,
+        #[serde(deserialize_with = "deserialize_mutation_id")]
+        mutation_id: String,
+        scope: RuntimeCacheInvalidationScope,
+    },
+}
+
+impl RuntimeCacheControlRequest {
+    #[must_use]
+    pub fn project_root(&self) -> &str {
+        match self {
+            Self::Status { project_root }
+            | Self::RefreshSourceIndex { project_root, .. }
+            | Self::RebuildSourceIndex { project_root, .. }
+            | Self::Invalidate { project_root, .. } => project_root,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeCacheInvalidationScope {
+    WorkspaceGeneration,
+    ProviderOwners,
+    SyntaxRows,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeCacheGenerationState {
+    Missing,
+    Ready,
+    Stale,
+    Rebuilding,
+    Invalidated,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeCacheControlReceipt {
+    pub action: String,
+    pub authority: String,
+    pub generation_state: RuntimeCacheGenerationState,
+    pub generation_digest: Option<String>,
+    pub database_opens_by_client: u64,
+    pub writer_queue_owner: String,
+    pub mutation_id: Option<String>,
+}
+
 /// Typed workspace operation accepted by the Runtime Server data-plane protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -87,6 +157,9 @@ pub use client::{connect_runtime_server_workspace_session, read_source_index_via
 pub enum WorkspaceDbIpcOperation {
     Health,
     Shutdown,
+    CacheControl {
+        request: RuntimeCacheControlRequest,
+    },
     ReadSourceIndex {
         request: WorkspaceDbSourceIndexLookupRequest,
     },
@@ -110,11 +183,16 @@ pub enum WorkspaceDbIpcOperation {
         project_root: String,
         #[serde(deserialize_with = "deserialize_changed_paths")]
         changed_paths: Vec<String>,
+        candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
     },
     EnsureRuntimeGeneration {
         project_root: String,
+        candidate: crate::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
     },
     RepairRuntimeGenerationLocator {
+        project_root: String,
+    },
+    ReadRuntimeGenerationDurability {
         project_root: String,
     },
     EvaluateHook {
@@ -122,9 +200,19 @@ pub enum WorkspaceDbIpcOperation {
         arguments: Vec<String>,
         input: String,
     },
+    EvaluateGraphTurbo {
+        project_root: String,
+        message: serde_json::Value,
+    },
     AgentSessionRegistry {
         project_root: String,
         operation: AgentSessionRegistryIpcOperation,
+    },
+    PublishCodexMultiAgentControlPlane {
+        projection: agent_semantic_context_product::codex_multi_agent_v2_control_plane::CodexMultiAgentV2ControlPlaneProjection,
+    },
+    ReadCodexMultiAgentControlPlane {
+        root_session_id: String,
     },
     WriteProviderIncrementalOwner {
         request: ProviderIncrementalOwnerWrite,
@@ -195,6 +283,9 @@ pub struct WorkspaceDbIpcRequest {
 pub enum WorkspaceDbIpcResult {
     Healthy,
     ShutdownAccepted,
+    CacheControl {
+        receipt: RuntimeCacheControlReceipt,
+    },
     SourceIndex {
         lookup: ClientDbSourceIndexLookupResult,
     },
@@ -235,6 +326,12 @@ pub enum WorkspaceDbIpcResult {
     RuntimeGenerationAdmission {
         receipt: crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt,
     },
+    RuntimeGenerationReadiness {
+        receipt: crate::runtime_server_admission::WorkspaceGenerationReadinessReceipt,
+    },
+    RuntimeGenerationDurability {
+        receipt: Option<crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt>,
+    },
     RuntimeGenerationMutationAdmission {
         receipt: crate::runtime_server_admission::WorkspaceGenerationMutationAdmissionReceipt,
     },
@@ -243,8 +340,19 @@ pub enum WorkspaceDbIpcResult {
         project_root: String,
         output: String,
     },
+    GraphTurboEvaluation {
+        workspace_identity: String,
+        project_root: String,
+        receipt: serde_json::Value,
+    },
     AgentSessionRegistry {
         result: AgentSessionRegistryIpcResult,
+    },
+    CodexMultiAgentControlPlanePublication {
+        receipt: crate::codex_multi_agent_control_plane_owner::CodexControlPlanePublicationReceipt,
+    },
+    CodexMultiAgentControlPlane {
+        projection: Option<agent_semantic_context_product::codex_multi_agent_v2_control_plane::CodexMultiAgentV2ControlPlaneProjection>,
     },
     RuntimeSelector {
         read: crate::runtime_server_workspace::WorkspaceRuntimeSelectorRead,
@@ -413,11 +521,16 @@ impl WorkspaceDbIpcSession {
             return Err("runtime generation admission requires a mutation id".to_owned());
         }
         let expected_mutation_id = mutation_id.clone();
+        let candidate = crate::runtime_server_admission::discover_workspace_generation_candidate(
+            std::path::Path::new(&project_root),
+        )
+        .await?;
         match self
             .call_operation(WorkspaceDbIpcOperation::AdmitRuntimeGeneration {
                 mutation_id,
                 project_root,
                 changed_paths,
+                candidate,
             })
             .await
         {
@@ -435,6 +548,29 @@ impl WorkspaceDbIpcSession {
                 Err("Runtime Server returned an unexpected generation admission result".to_owned())
             }
             Err(error) => Err(error),
+        }
+    }
+
+    pub async fn runtime_generation_durability(
+        &self,
+        project_root: impl Into<String>,
+    ) -> Result<Option<crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt>, String>
+    {
+        match self
+            .call_operation(WorkspaceDbIpcOperation::ReadRuntimeGenerationDurability {
+                project_root: project_root.into(),
+            })
+            .await?
+        {
+            WorkspaceDbIpcResult::RuntimeGenerationDurability { receipt } => {
+                if let Some(receipt) = &receipt {
+                    receipt.validate()?;
+                }
+                Ok(receipt)
+            }
+            _ => {
+                Err("Runtime Server returned an unexpected generation durability result".to_owned())
+            }
         }
     }
 

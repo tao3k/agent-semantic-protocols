@@ -1,4 +1,10 @@
-use std::{fs, path::Path, time::Instant};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::Path,
+    thread,
+    time::{Duration, Instant},
+};
 
 use serde::Deserialize;
 
@@ -322,4 +328,103 @@ pub(crate) fn asp_runtime_timeout_policy_cold_functional_path_stays_inside_scena
     assert_eq!(performance_gate["observed"]["nativeFinderProcessCount"], 0);
     assert_eq!(performance_gate["observed"]["timedOut"], false);
     assert_eq!(performance_gate["observed"]["cancellationRequired"], false);
+}
+
+#[cfg(unix)]
+pub(crate) fn asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate() {
+    use agent_semantic_provider_transport::{
+        OutputMode, ProviderProcessLimits, ProviderProcessSpec, StdinMode, run_provider_process,
+    };
+
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_provider_process_orphan_descendant_closure");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    let root = temp_project_root("scenario-provider-orphan-descendant-closure");
+    let pid_path = root.join("provider-child.pid");
+    let command = format!(
+        "sleep 30 & child=$!; printf '%s' \"$child\" > '{}'; printf orphan; exit 0",
+        pid_path.display()
+    );
+    let spec = ProviderProcessSpec {
+        program: "/bin/sh".to_string(),
+        args: vec!["-c".to_string(), command],
+        cwd: root.clone(),
+        env: BTreeMap::new(),
+        stdin: StdinMode::Closed,
+        stdout: OutputMode::Capture,
+        stderr: OutputMode::Capture,
+        limits: ProviderProcessLimits::default().with_timeout(Some(Duration::from_secs(2))),
+    };
+
+    let started_at = Instant::now();
+    let output = run_provider_process(spec).expect("run one-shot provider fixture");
+    let elapsed = started_at.elapsed();
+    let descendant_pid: i32 = fs::read_to_string(&pid_path)
+        .expect("read descendant pid")
+        .parse()
+        .expect("parse descendant pid");
+    let descendant_gone = (0..10).any(|_| {
+        if unsafe { libc::kill(descendant_pid, 0) } == -1 {
+            true
+        } else {
+            thread::sleep(Duration::from_millis(10));
+            false
+        }
+    });
+
+    assert!(output.status.success());
+    assert_eq!(output.stdout_lossy(), "orphan");
+    assert!(output.receipt.process_group_isolation_enforced());
+    assert!(output.receipt.descendant_cleanup_required());
+    assert!(
+        descendant_gone,
+        "one-shot provider descendant pid={descendant_pid} remained after facade completion"
+    );
+    assert!(
+        elapsed.as_millis() <= max_total_ms,
+        "provider orphan closure exceeded max_total={} observed={}ms receipt={:?}",
+        benchmark.max_total,
+        elapsed.as_millis(),
+        output.receipt
+    );
+
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-provider-process-orphan-descendant-closure",
+        "languageId": "rust",
+        "workspace": ".",
+        "command": ["agent_semantic_provider_transport::run_provider_process"],
+        "phase": "cold",
+        "expected": {
+            "targetTotal": benchmark.target_total,
+            "maxTotal": benchmark.max_total,
+            "regressionBudget": benchmark.regression_budget,
+            "maxProviderProcessCount": benchmark.max_provider_process_count,
+            "maxStdoutBytes": benchmark.max_stdout_bytes,
+            "requireProcessGroupIsolation": true,
+            "requireDescendantClosure": true,
+            "fallbackReason": "none"
+        },
+        "observed": {
+            "observedTotal": duration_literal(elapsed),
+            "providerProcessCount": 1,
+            "stdoutBytes": output.receipt.stdout_bytes(),
+            "processGroupIsolationEnforced": output.receipt.process_group_isolation_enforced(),
+            "descendantCleanupRequired": output.receipt.descendant_cleanup_required(),
+            "descendantGone": descendant_gone,
+            "memoryLimitEnforced": output.receipt.memory_limit_enforced(),
+            "memoryLimitBytes": output.receipt.memory_limit_bytes(),
+            "fallbackReason": "none"
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-provider-process-orphan-descendant-closure"]
+    });
+    assert_eq!(performance_gate["observed"]["descendantGone"], true);
+    let _ = fs::remove_dir_all(root);
 }

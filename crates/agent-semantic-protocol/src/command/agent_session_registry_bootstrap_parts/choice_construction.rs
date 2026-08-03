@@ -33,7 +33,7 @@ pub(super) fn reject_resident_child_bootstrap(
 
 pub(in crate::command::agent_session_registry) fn codex_spawn_agent_metadata_capability()
 -> &'static str {
-    let config_path = crate::command::sync::codex_home().join("config.toml");
+    let config_path = crate::command::agent_session_registry::codex_home().join("config.toml");
     let Ok(content) = std::fs::read_to_string(config_path) else {
         return "unknown";
     };

@@ -85,3 +85,63 @@ pub(crate) fn source_blobs_fixture<'a>(
         }),
     )
 }
+
+pub(crate) fn callable_skeleton_projection_fixture(
+    owner_path: &str,
+    structural_selector: &str,
+    symbol: &str,
+) -> agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
+    let digest = "0".repeat(64);
+    let root_selector = serde_json::json!({
+        "schemaId": "asp.exact-structural-selector.v1",
+        "schemaVersion": "1",
+        "languageId": "rust",
+        "ownerPath": owner_path,
+        "selector": structural_selector,
+        "generationIdentityDigest": digest,
+        "parserIdentityDigest": "1".repeat(64),
+        "queryPackDigest": "2".repeat(64),
+        "rootItemSelector": {
+            "schemaId": "asp.canonical-item-selector.v1",
+            "schemaVersion": "1",
+            "languageId": "rust",
+            "kind": "function",
+            "symbol": symbol,
+            "scopes": [],
+            "structuralSelector": structural_selector,
+        },
+        "segments": [],
+    });
+    let bytes = serde_json::to_vec(&serde_json::json!({
+        "schemaId": "agent.semantic-protocols.callable-skeleton-projection",
+        "schemaVersion": "1",
+        "projectionKind": "callable-skeleton",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "rootSelector": root_selector,
+        "rootNodeId": "callable:root",
+        "callable": {
+            "kind": "function",
+            "displayName": symbol,
+            "signature": symbol,
+        },
+        "nodes": [{
+            "nodeId": "callable:root",
+            "kind": "callable",
+            "label": symbol,
+            "order": 0,
+            "queryable": false,
+        }],
+        "relations": [],
+        "cost": {
+            "sourceBytes": 0,
+            "projectedBytes": 0,
+            "omittedBytes": 0,
+        },
+    }))
+    .expect("encode callable skeleton fixture");
+    agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
+        projection_kind: "callable-skeleton".to_owned(),
+        bytes,
+    }
+}

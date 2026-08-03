@@ -3,7 +3,8 @@
 use super::hook_runtime::active_codex_plugin_skill_path;
 use super::protocol_binary::protocol_binary_on_path;
 use agent_semantic_hook::{
-    RuntimeProfiles, RuntimeProviderHealthStatus, load_activation, runtime_profiles_for_runtime,
+    RuntimeProfiles, RuntimeProviderHealthStatus, load_or_sync_activation,
+    runtime_profiles_for_runtime,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -19,6 +20,8 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
     let options = HealthcheckOptions::parse(args)?;
     let layout = HealthcheckStateLayout::resolve(&options.project_root)?;
     let context = agent_semantic_client_core::ProjectContext::resolve(&options.project_root)?;
+    let resolved_state =
+        agent_semantic_client_core::state_core::ResolvedState::resolve(context.cwd())?;
     let project_state_paths = agent_semantic_runtime::project_state_paths(context.cwd())?;
     let activation_path = project_state_paths.activation_path;
     let (activation, activation_runtime) =
@@ -28,9 +31,12 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
         layout.state_home.join("runtime").join("bin").join("asp"),
     );
     let skill = check_skill(&options.project_root);
-    let (resident_result, workspace_generation_result, workspace_generation_elapsed_micros) =
-        super::runtime_server::block_on_runtime_server_client(async {
-            let resident_result = match super::runtime_server::healthcheck_runtime_server_at(
+    let (
+        resident_result,
+        workspace_generation_durability_result,
+        workspace_generation_elapsed_micros,
+    ) = super::runtime_server::block_on_runtime_server_client(async {
+        let resident_result = match super::runtime_server::healthcheck_runtime_server_at(
                 &layout.state_home,
             )
             .await
@@ -48,34 +54,42 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
                 .await
             }
             };
-            let workspace_generation_started = tokio::time::Instant::now();
-            let workspace_generation_result = match &resident_result {
+        let workspace_generation_started = tokio::time::Instant::now();
+        let workspace_generation_durability_result = match &resident_result {
                 Ok(_) => {
-                    match super::runtime_server::runtime_server_workspace_session_for_admission_async(
-                        context.cwd(),
+                    match super::runtime_server::runtime_server_workspace_session_for_resolved_admission_async(
+                        resolved_state.workspace.workspace_id.to_string(),
+                        &resolved_state.workspace.root,
                     )
                     .await
                     {
-                        Ok(session) => session.ensure_runtime_generation().await,
+                        Ok(session) => {
+                            session
+                                .runtime_generation_durability(
+                                    context.cwd().to_string_lossy().as_ref(),
+                                )
+                                .await
+                        }
                         Err(error) => Err(error),
                     }
                 }
-                Err(error) => Err(format!(
-                    "workspace generation admission requires a healthy Runtime Server: {error}"
-                )),
+                Err(error) => {
+                    Err(format!(
+                        "workspace generation admission requires a healthy Runtime Server: {error}"
+                    ))
+                }
             };
-            let workspace_generation_elapsed_micros =
-                u64::try_from(workspace_generation_started.elapsed().as_micros())
-                    .unwrap_or(u64::MAX);
-            (
-                resident_result,
-                workspace_generation_result,
-                workspace_generation_elapsed_micros,
-            )
-        })?;
+        let workspace_generation_elapsed_micros =
+            u64::try_from(workspace_generation_started.elapsed().as_micros()).unwrap_or(u64::MAX);
+        (
+            resident_result,
+            workspace_generation_durability_result,
+            workspace_generation_elapsed_micros,
+        )
+    })?;
     let resident = match &resident_result {
         Ok(receipt) => GlobalResidentRuntimeCheck {
-            status: format!("{:?}", receipt.state).to_lowercase(),
+            status: "ready".to_owned(),
             transport_contract_digest: Some(receipt.transport_contract_digest.clone()),
             runtime_binary_digest: Some(receipt.runtime_artifact_digest.clone()),
             workspace_entry_count: Some(receipt.workspace_entry_count),
@@ -89,20 +103,43 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
             error: Some(resident_error.clone()),
         },
     };
-    let workspace_generation = match &workspace_generation_result {
-        Ok(receipt) => WorkspaceGenerationHealthCheck {
-            status: format!("{:?}", receipt.state).to_lowercase(),
-            workspace_identity: Some(receipt.workspace_identity.clone()),
-            accepted: Some(receipt.accepted),
-            attempt: Some(receipt.attempt),
+    let workspace_generation = match &workspace_generation_durability_result {
+        Ok(Some(durability)) => WorkspaceGenerationHealthCheck {
+            status: match durability.state {
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady => {
+                    "resident-ready"
+                }
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::DurableReady => {
+                    "durable-ready"
+                }
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::Failed => "failed",
+            }
+            .to_owned(),
+            workspace_identity: Some(durability.workspace_identity.clone()),
+            generation_digest: Some(durability.generation_digest.clone()),
+            reconciled: None,
+            durability_state: Some(durability.state),
+            durability_failure: durability.failure.clone(),
             elapsed_micros: workspace_generation_elapsed_micros,
-            error: receipt.error.clone(),
+            error: durability.failure.clone(),
+        },
+        Ok(None) => WorkspaceGenerationHealthCheck {
+            status: "missing".to_owned(),
+            workspace_identity: Some(resolved_state.workspace.workspace_id.to_string()),
+            generation_digest: None,
+            reconciled: None,
+            durability_state: None,
+            durability_failure: None,
+            elapsed_micros: workspace_generation_elapsed_micros,
+            error: None,
         },
         Err(error) => WorkspaceGenerationHealthCheck {
             status: "error".to_owned(),
             workspace_identity: None,
-            accepted: None,
-            attempt: None,
+            generation_digest: None,
+            reconciled: None,
+            durability_state: None,
+            durability_failure: None,
             elapsed_micros: workspace_generation_elapsed_micros,
             error: Some(error.clone()),
         },
@@ -327,7 +364,7 @@ fn check_activation_and_runtime(
             },
         );
     }
-    match load_activation(path) {
+    match load_or_sync_activation(path, project_root) {
         Ok(runtime) => {
             let provider_count = runtime.providers.len();
             let profiles = runtime_profiles_for_runtime(project_root, &runtime);
@@ -594,8 +631,12 @@ struct GlobalResidentRuntimeCheck {
 struct WorkspaceGenerationHealthCheck {
     status: String,
     workspace_identity: Option<String>,
-    accepted: Option<bool>,
-    attempt: Option<u64>,
+    generation_digest: Option<String>,
+    reconciled: Option<bool>,
+    durability_state: Option<
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState,
+    >,
+    durability_failure: Option<String>,
     elapsed_micros: u64,
     error: Option<String>,
 }
@@ -715,20 +756,35 @@ fn print_compact(report: &HealthcheckReport<'_>) {
         resident.error.as_deref().unwrap_or("none"),
     );
     println!(
-        "|workspaceGeneration status={} workspaceIdentity={} accepted={} attempt={} elapsedMicros={} error={}",
+        "|workspaceGeneration status={} workspaceIdentity={} generationDigest={} reconciled={} durabilityState={} durabilityFailure={} elapsedMicros={} error={}",
         workspace_generation.status,
         workspace_generation
             .workspace_identity
             .as_deref()
             .unwrap_or("none"),
         workspace_generation
-            .accepted
+            .generation_digest
+            .as_deref()
+            .unwrap_or("none"),
+        workspace_generation
+            .reconciled
             .map(|value| value.to_string())
             .as_deref()
             .unwrap_or("none"),
         workspace_generation
-            .attempt
-            .map(|value| value.to_string())
+            .durability_state
+            .map(|state| match state {
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady => {
+                    "resident-ready"
+                }
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::DurableReady => {
+                    "durable-ready"
+                }
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::Failed => "failed",
+            })
+            .unwrap_or("none"),
+        workspace_generation
+            .durability_failure
             .as_deref()
             .unwrap_or("none"),
         workspace_generation.elapsed_micros,

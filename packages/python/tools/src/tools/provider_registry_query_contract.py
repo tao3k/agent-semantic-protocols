@@ -13,7 +13,7 @@ REQUIRED_QUERY_DESCRIPTOR_FIELDS = (
     "executionBackends",
     "renderProfiles",
     "unsupportedPatternBehavior",
-    "codeOutput",
+    "outputModes",
     "queryInputForms",
     "grammarId",
     "grammarProfileVersion",
@@ -94,7 +94,14 @@ def _value_errors(provider: str, method: Any, descriptor: dict[str, Any]) -> lis
 def _non_empty_array_errors(
     provider: str, method: Any, descriptor: dict[str, Any]
 ) -> list[str]:
-    fields = ("adapterModes", "sourceAuthorities", "executionBackends", "renderProfiles")
+    fields = (
+        "adapterModes",
+        "sourceAuthorities",
+        "executionBackends",
+        "renderProfiles",
+        "outputModes",
+        "queryInputForms",
+    )
     return [
         f"{provider}:{method}: {field} must be a non-empty array"
         for field in fields
@@ -110,9 +117,11 @@ def _query_backend_errors(
         errors.append(f"{provider}:{method}: executionBackends must include native-parser")
     if descriptor.get("unsupportedPatternBehavior") not in {"diagnostic", "reject", "ignore"}:
         errors.append(f"{provider}:{method}: unsupportedPatternBehavior is invalid")
-    code_output = descriptor.get("codeOutput")
-    if not isinstance(code_output, dict) or code_output.get("mode") != "pure-code":
-        errors.append(f"{provider}:{method}: codeOutput.mode must be pure-code")
+    if "codeOutput" in descriptor or "code" in descriptor.get("outputModes", []):
+        errors.append(
+            f"{provider}:{method}: legacy codeOutput is forbidden; "
+            "materialize source through an exact selector projection"
+        )
     return errors
 
 

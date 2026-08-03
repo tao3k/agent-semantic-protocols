@@ -1,6 +1,7 @@
 //! Runtime Server workspace data-plane protocol and transport.
 
 mod agent_session_registry;
+mod codex_control_plane;
 mod protocol;
 mod provider_owner;
 mod runtime_generation;

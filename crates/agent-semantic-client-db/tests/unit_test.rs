@@ -6,6 +6,8 @@ mod agent_session_interactive_loop;
 mod agent_session_lifecycle_p0;
 #[path = "unit/agent_session_runtime_proxy.rs"]
 mod agent_session_runtime_proxy;
+#[path = "unit/codex_multi_agent_control_plane_owner.rs"]
+mod codex_multi_agent_control_plane_owner;
 #[path = "unit/context_run_mvcc.rs"]
 mod context_run_mvcc;
 #[path = "unit/db.rs"]
@@ -20,6 +22,8 @@ mod db_engine_source_index;
 mod db_gerbil_dependency_index;
 #[path = "unit/env.rs"]
 mod env;
+#[path = "unit/graph_turbo_cache.rs"]
+mod graph_turbo_cache;
 #[path = "unit/db/live_source_index_memory.rs"]
 mod live_source_index_memory;
 #[path = "unit/db/project_scoped_turso_performance.rs"]
@@ -36,12 +40,16 @@ mod runtime_generation_admission_gate;
 mod runtime_server_admission_catalog;
 #[path = "unit/runtime_server_control.rs"]
 mod runtime_server_control;
+#[path = "unit/runtime_cache_control.rs"]
+mod runtime_cache_control;
 #[path = "unit/runtime_server_diagnostics.rs"]
 mod runtime_server_diagnostics;
 #[path = "unit/runtime_server_generation_admission.rs"]
 mod runtime_server_generation_admission;
 #[path = "unit/runtime_server_generation_restore.rs"]
 mod runtime_server_generation_restore;
+#[path = "unit/runtime_server_graph_turbo.rs"]
+mod runtime_server_graph_turbo;
 #[path = "unit/runtime_server_hook_evaluation.rs"]
 mod runtime_server_hook_evaluation;
 #[path = "unit/runtime_server_overlay_admission.rs"]

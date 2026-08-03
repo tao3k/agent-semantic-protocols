@@ -1,10 +1,10 @@
-use super::{install_protocol_binary_target, protocol_binary_artifact_digest};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use super::install_protocol_binary_target;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::RuntimeBinaryIdentityV1;
 
 #[test]
-fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
+fn installed_binary_is_a_lattice_current_profile_without_digest_history() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
@@ -36,50 +36,38 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
         &RuntimeBinaryIdentityV1::asp_bootstrap(),
     )
     .expect("install secondary protocol binary");
-    let source_digest = protocol_binary_artifact_digest(&source).expect("source identity");
-    let target_digest = protocol_binary_artifact_digest(&target).expect("target identity");
-    assert_eq!(source_digest, target_digest);
-    let first_artifact = std::fs::canonicalize(&target).expect("first artifact");
     assert_eq!(
-        first_artifact,
-        std::fs::canonicalize(&secondary_target).expect("secondary artifact")
+        std::fs::read(&target).expect("read target"),
+        b"asp artifact one"
+    );
+    assert_eq!(
+        std::fs::read(&secondary_target).expect("read secondary target"),
+        b"asp artifact one"
     );
     assert!(
-        first_artifact
-            .to_string_lossy()
-            .contains("/runtime/artifacts/blake3-256/"),
-        "{}",
-        first_artifact.display()
-    );
-
-    let mut samples = Vec::with_capacity(200);
-    for _ in 0..200 {
-        let started = Instant::now();
-        assert_eq!(
-            protocol_binary_artifact_digest(&target),
-            Some(target_digest.clone())
-        );
-        samples.push(started.elapsed());
-    }
-    samples.sort_unstable();
-    let p95 = samples[samples.len() * 95 / 100];
-    println!(
-        "[protocol-binary-identity-perf] samples={} p95Micros={} budgetMicros=1000",
-        samples.len(),
-        p95.as_micros()
+        std::fs::symlink_metadata(&target)
+            .expect("target metadata")
+            .file_type()
+            .is_file(),
+        "the Lattice current profile must be a regular file"
     );
     assert!(
-        p95 < std::time::Duration::from_millis(1),
-        "digest-addressed identity p95 exceeded 1ms: {p95:?}"
+        std::fs::symlink_metadata(&secondary_target)
+            .expect("secondary target metadata")
+            .file_type()
+            .is_file(),
+        "each Lattice profile slot must be a regular file"
+    );
+    assert!(
+        !artifact_root.join("blake3-256").exists(),
+        "install must not create digest-addressed runtime history"
     );
 
     std::fs::write(&source, b"asp artifact two with different bytes")
         .expect("replace source binary");
-    let changed_digest = protocol_binary_artifact_digest(&source).expect("changed source digest");
-    assert_ne!(changed_digest, target_digest);
     assert_eq!(
-        protocol_binary_artifact_digest(&target),
-        Some(target_digest)
+        std::fs::read(&target).expect("read unchanged target"),
+        b"asp artifact one"
     );
     install_protocol_binary_target(
         &source,
@@ -88,6 +76,15 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
         &RuntimeBinaryIdentityV1::asp_bootstrap(),
     )
     .expect("replace public target");
+    assert_eq!(
+        std::fs::read(&target).expect("read replaced target"),
+        b"asp artifact two with different bytes"
+    );
+    assert_eq!(
+        std::fs::read(&secondary_target).expect("read isolated secondary target"),
+        b"asp artifact one",
+        "publishing one Lattice profile must not mutate another profile slot"
+    );
     install_protocol_binary_target(
         &source,
         &secondary_target,
@@ -95,20 +92,11 @@ fn installed_binary_is_blake3_addressed_and_public_target_is_constant_time() {
         &RuntimeBinaryIdentityV1::asp_bootstrap(),
     )
     .expect("replace secondary public target");
-    let second_artifact = std::fs::canonicalize(&target).expect("second artifact");
     assert_eq!(
-        second_artifact,
-        std::fs::canonicalize(&secondary_target).expect("secondary replacement")
+        std::fs::read(&secondary_target).expect("read replaced secondary target"),
+        b"asp artifact two with different bytes"
     );
-    assert_ne!(first_artifact, second_artifact);
-    assert!(
-        first_artifact.is_file(),
-        "first artifact must remain immutable"
-    );
-    assert_eq!(
-        protocol_binary_artifact_digest(&target),
-        Some(changed_digest)
-    );
+    assert!(!artifact_root.join("blake3-256").exists());
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }
 
@@ -291,8 +279,8 @@ fn concurrent_publish_uses_per_attempt_stage_paths() {
     });
 
     assert_eq!(
-        super::protocol_binary_artifact_digest(&target),
-        super::protocol_binary_artifact_digest(&source)
+        std::fs::read(&target).expect("read installed target"),
+        std::fs::read(&source).expect("read source")
     );
     std::fs::remove_dir_all(root).expect("cleanup temp root");
 }

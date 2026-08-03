@@ -1,21 +1,41 @@
 use std::sync::Arc;
 
 use agent_semantic_client_db::runtime_server_admission::{
-    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionReceipt,
-    WorkspaceGenerationAdmissionState, WorkspaceGenerationMutationAdmissionReceipt,
     WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID,
-    WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID,
+    WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID, WorkspaceGenerationAdmission,
+    WorkspaceGenerationAdmissionReceipt, WorkspaceGenerationAdmissionState,
+    WorkspaceGenerationCandidateIdentity, WorkspaceGenerationMutationAdmissionReceipt,
 };
 use agent_semantic_client_db::runtime_server_admission_catalog::{
     RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
 };
 use tokio::sync::{Barrier, Mutex};
 
+fn candidate_identity() -> WorkspaceGenerationCandidateIdentity {
+    candidate_identity_for(
+        "blake3:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    )
+}
+
+fn candidate_identity_for(digest: &str) -> WorkspaceGenerationCandidateIdentity {
+    WorkspaceGenerationCandidateIdentity {
+        candidate_generation: agent_semantic_runtime::git::RepositoryCandidateGeneration {
+            algorithm: "blake3-worktree-state-v1".to_owned(),
+            digest: digest.to_owned(),
+            authorities: vec![agent_semantic_runtime::git::RepositoryCandidateAuthority::GitIndex],
+        },
+        policy_overlay_digest:
+            "blake3:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_owned(),
+    }
+}
+
 fn ready_receipt(workspace_identity: &str) -> WorkspaceGenerationAdmissionReceipt {
     WorkspaceGenerationAdmissionReceipt {
         schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
         workspace_identity: workspace_identity.to_owned(),
+        candidate_generation: candidate_identity().candidate_generation,
+        policy_overlay_digest: candidate_identity().policy_overlay_digest,
         state: WorkspaceGenerationAdmissionState::Ready,
         accepted: true,
         attempt: 1,
@@ -34,8 +54,8 @@ fn ready_receipt(workspace_identity: &str) -> WorkspaceGenerationAdmissionReceip
     }
 }
 
-fn committed_generation(
-) -> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+fn committed_generation()
+-> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
     agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
         active_epoch: 1,
         generation_digest:
@@ -110,7 +130,7 @@ async fn mutation_admission_rejects_non_normalized_paths_and_workspace_identity_
         })
         .await
         .expect("record parent workspace");
-    let admission = WorkspaceGenerationAdmission::new(Arc::new(|_, _, _| {
+    let admission = WorkspaceGenerationAdmission::new(Arc::new(|_, _, _, _| {
         Box::pin(async { panic!("invalid mutation admission must not start a generation build") })
     }))
     .with_catalog(catalog);
@@ -155,7 +175,7 @@ async fn concurrent_workspace_admission_is_single_flight() {
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_workspace_identity, _project_root, _build_mode| {
+        move |_workspace_identity, _project_root, _candidate, _build_mode| {
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
             Box::pin(async move {
@@ -174,7 +194,11 @@ async fn concurrent_workspace_admission_is_single_flight() {
         requests.spawn(async move {
             let started = tokio::time::Instant::now();
             let receipt = admission
-                .admit("workspace-single-flight", project_root)
+                .admit(
+                    "workspace-single-flight",
+                    project_root,
+                    candidate_identity(),
+                )
                 .await;
             (receipt, started.elapsed())
         });
@@ -215,7 +239,7 @@ async fn project_roots_have_independent_admission_flights() {
     let roots = Arc::new(Mutex::new(Vec::new()));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let roots = Arc::clone(&roots);
-        move |_workspace_identity, project_root, _build_mode| {
+        move |_workspace_identity, project_root, _candidate, _build_mode| {
             let roots = Arc::clone(&roots);
             Box::pin(async move {
                 roots.lock().await.push(project_root);
@@ -227,11 +251,19 @@ async fn project_roots_have_independent_admission_flights() {
     let second_root = std::env::temp_dir().join("asp-generation-admission-second-project");
 
     let first = admission
-        .admit("shared-repository-identity", first_root.clone())
+        .admit(
+            "shared-repository-identity",
+            first_root.clone(),
+            candidate_identity(),
+        )
         .await
         .expect("admit first project root");
     let second = admission
-        .admit("shared-repository-identity", second_root.clone())
+        .admit(
+            "shared-repository-identity",
+            second_root.clone(),
+            candidate_identity(),
+        )
         .await
         .expect("admit second project root");
     assert!(first.accepted);
@@ -291,7 +323,7 @@ async fn changed_paths_are_admitted_by_longest_resident_workspace_root() {
     let builds = Arc::new(Mutex::new(Vec::new()));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let builds = Arc::clone(&builds);
-        move |workspace_identity, project_root, _build_mode| {
+        move |workspace_identity, project_root, _candidate, _build_mode| {
             let builds = Arc::clone(&builds);
             Box::pin(async move {
                 builds.lock().await.push((workspace_identity, project_root));
@@ -356,7 +388,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_, _, _| {
+        move |_, _, _, _| {
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
             Box::pin(async move {
@@ -484,7 +516,7 @@ async fn multi_workspace_multi_session_admission_is_in_process_single_flight_and
         let peak_builds = Arc::clone(&peak_builds);
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_, _, _| {
+        move |_, _, _, _| {
             let active_builds = Arc::clone(&active_builds);
             let peak_builds = Arc::clone(&peak_builds);
             let build_count = Arc::clone(&build_count);
@@ -590,7 +622,7 @@ async fn ready_workspace_accepts_a_new_incremental_generation_attempt() {
     let build_count = Arc::new(Mutex::new(0_u32));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
-        move |_workspace_identity, _project_root, _build_mode| {
+        move |_workspace_identity, _project_root, _candidate, _build_mode| {
             let build_count = Arc::clone(&build_count);
             Box::pin(async move {
                 *build_count.lock().await += 1;
@@ -601,7 +633,11 @@ async fn ready_workspace_accepts_a_new_incremental_generation_attempt() {
     let project_root = std::env::temp_dir().join("asp-generation-readmission-project");
 
     let first = admission
-        .admit("workspace-readmission", project_root.clone())
+        .admit(
+            "workspace-readmission",
+            project_root.clone(),
+            candidate_identity(),
+        )
         .await
         .expect("admit initial generation");
     assert!(first.accepted);
@@ -612,7 +648,11 @@ async fn ready_workspace_accepts_a_new_incremental_generation_attempt() {
         .expect("initial generation ready");
 
     let second = admission
-        .admit("workspace-readmission", project_root.clone())
+        .admit(
+            "workspace-readmission",
+            project_root.clone(),
+            candidate_identity(),
+        )
         .await
         .expect("admit incremental generation");
     assert!(second.accepted);
@@ -629,12 +669,15 @@ async fn ready_workspace_accepts_a_new_incremental_generation_attempt() {
         .expect("drain incremental generation admission lane");
 }
 
+#[path = "runtime_server_generation_reconciliation.rs"]
+mod runtime_server_generation_reconciliation;
+
 #[tokio::test]
 async fn ensure_observes_ready_attempt_without_starting_another_build() {
     let build_count = Arc::new(Mutex::new(0_u32));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
-        move |_workspace_identity, _project_root, _build_mode| {
+        move |_workspace_identity, _project_root, _candidate, _build_mode| {
             let build_count = Arc::clone(&build_count);
             Box::pin(async move {
                 *build_count.lock().await += 1;
@@ -645,7 +688,11 @@ async fn ensure_observes_ready_attempt_without_starting_another_build() {
     let project_root = std::env::temp_dir().join("asp-generation-ensure-project");
 
     admission
-        .admit("workspace-ensure", project_root.clone())
+        .admit(
+            "workspace-ensure",
+            project_root.clone(),
+            candidate_identity(),
+        )
         .await
         .expect("admit generation");
     admission
@@ -653,7 +700,7 @@ async fn ensure_observes_ready_attempt_without_starting_another_build() {
         .await
         .expect("wait for admitted generation");
     let ready = admission
-        .ensure("workspace-ensure", &project_root)
+        .ensure("workspace-ensure", &project_root, candidate_identity())
         .await
         .expect("ensure admitted generation");
 
@@ -663,6 +710,9 @@ async fn ensure_observes_ready_attempt_without_starting_another_build() {
     admission.shutdown().await.expect("drain admission lane");
 }
 
+#[path = "runtime_server_generation_candidate_admission.rs"]
+mod runtime_server_generation_candidate_admission;
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn ensure_schedules_once_without_waiting_for_generation_build() {
     let build_count = Arc::new(Mutex::new(0_u32));
@@ -670,7 +720,7 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_workspace_identity, _project_root, _build_mode| {
+        move |_workspace_identity, _project_root, _candidate, _build_mode| {
             let build_count = Arc::clone(&build_count);
             let release = Arc::clone(&release);
             Box::pin(async move {
@@ -684,11 +734,19 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
 
     let started = tokio::time::Instant::now();
     let first = admission
-        .ensure("workspace-ensure-submit", &project_root)
+        .ensure(
+            "workspace-ensure-submit",
+            &project_root,
+            candidate_identity(),
+        )
         .await
         .expect("schedule generation");
     let second = admission
-        .ensure("workspace-ensure-submit", &project_root)
+        .ensure(
+            "workspace-ensure-submit",
+            &project_root,
+            candidate_identity(),
+        )
         .await
         .expect("observe scheduled generation");
     let submit_elapsed = started.elapsed();
@@ -713,54 +771,23 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
     admission.shutdown().await.expect("drain admission lane");
 }
 
-#[tokio::test]
-async fn locator_publication_does_not_run_the_generation_builder() {
-    use agent_semantic_client_db::runtime_server_admission_catalog::{
-        RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
-    };
-    use std::sync::atomic::{AtomicU64, Ordering};
+#[test]
+fn readiness_receipt_does_not_require_checkout_or_generation_builder() {
+    let receipt =
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationReadinessReceipt::new(
+            "workspace-ready",
+            committed_generation(),
+            false,
+        )
+        .expect("construct readiness from an already-open resident generation");
 
-    let fixture = tempfile::TempDir::new().expect("create locator repair fixture");
-    let project_root = fixture.path().join("checkout");
-    tokio::fs::create_dir_all(&project_root)
-        .await
-        .expect("create project root");
-    let catalog_path = fixture.path().join("workspace-admissions.v1.json");
-    let catalog = RuntimeWorkspaceAdmissionCatalog::load(catalog_path.clone())
-        .await
-        .expect("load catalog");
-    let build_count = Arc::new(AtomicU64::new(0));
-    let admission = WorkspaceGenerationAdmission::new(Arc::new({
-        let build_count = Arc::clone(&build_count);
-        move |_, _, _| {
-            let build_count = Arc::clone(&build_count);
-            Box::pin(async move {
-                build_count.fetch_add(1, Ordering::Relaxed);
-                Ok(committed_generation())
-            })
-        }
-    }))
-    .with_catalog(catalog);
-
-    let receipt = admission
-        .publish_resident_generation_locator("workspace-locator-repair", &project_root)
-        .await
-        .expect("publish locator without generation build");
-
-    assert_eq!(receipt.state, WorkspaceGenerationAdmissionState::Ready);
-    assert_eq!(build_count.load(Ordering::Relaxed), 0);
-    assert_eq!(
-        RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root)
-            .expect("resolve repaired locator"),
-        RuntimeWorkspaceAdmissionCatalogEntry {
-            workspace_identity: "workspace-locator-repair".to_owned(),
-            project_root,
-        }
-    );
+    assert_eq!(receipt.workspace_identity, "workspace-ready");
+    assert!(!receipt.reconciled);
+    receipt.validate().expect("validate readiness receipt");
 }
 
 #[tokio::test]
-async fn supervisor_restores_registered_workspaces_concurrently_within_budget() {
+async fn supervisor_fails_closed_for_registered_workspaces_without_git_candidates() {
     use agent_semantic_client_db::runtime_server_admission_catalog::{
         RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
     };
@@ -789,15 +816,23 @@ async fn supervisor_restores_registered_workspaces_concurrently_within_budget() 
     let active = Arc::new(AtomicU64::new(0));
     let maximum_active = Arc::new(AtomicU64::new(0));
     let build_count = Arc::new(AtomicU64::new(0));
+    let restore_only_build_count = Arc::new(AtomicU64::new(0));
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let active = Arc::clone(&active);
         let maximum_active = Arc::clone(&maximum_active);
         let build_count = Arc::clone(&build_count);
-        move |_, _, _| {
+        let restore_only_build_count = Arc::clone(&restore_only_build_count);
+        move |_, _, _, build_mode| {
             let active = Arc::clone(&active);
             let maximum_active = Arc::clone(&maximum_active);
             let build_count = Arc::clone(&build_count);
+            let restore_only_build_count = Arc::clone(&restore_only_build_count);
             Box::pin(async move {
+                if build_mode
+                    == agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationBuildMode::RestoreOnly
+                {
+                    restore_only_build_count.fetch_add(1, Ordering::SeqCst);
+                }
                 let current = active.fetch_add(1, Ordering::SeqCst) + 1;
                 maximum_active.fetch_max(current, Ordering::SeqCst);
                 tokio::time::sleep(std::time::Duration::from_millis(2)).await;
@@ -816,13 +851,17 @@ async fn supervisor_restores_registered_workspaces_concurrently_within_budget() 
         .expect("restore registered workspace generations");
     let elapsed = started.elapsed();
 
-    assert_eq!(report.ready.len(), WORKSPACE_COUNT as usize);
-    assert!(report.failed.is_empty());
-    assert_eq!(build_count.load(Ordering::SeqCst), WORKSPACE_COUNT);
-    assert!(
-        maximum_active.load(Ordering::SeqCst) > 1,
-        "supervisor restore serialized independent workspaces"
+    assert!(report.ready.is_empty(), "restore report: {report:#?}");
+    assert_eq!(
+        report.failed.len(),
+        WORKSPACE_COUNT as usize,
+        "restore report: {report:#?}"
     );
+    assert!(report.failed.iter().all(|failure| failure.error
+        == "workspace generation admission requires a Git candidate snapshot"));
+    assert_eq!(build_count.load(Ordering::SeqCst), 0);
+    assert_eq!(restore_only_build_count.load(Ordering::SeqCst), 0);
+    assert_eq!(maximum_active.load(Ordering::SeqCst), 0);
     assert!(
         elapsed < std::time::Duration::from_millis(50),
         "supervisor restore exceeded the 50ms multi-workspace gate: {elapsed:?}"
@@ -837,7 +876,7 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let build_count = Arc::clone(&build_count);
         let failed = Arc::clone(&failed);
-        move |_workspace_identity, _project_root, _build_mode| {
+        move |_workspace_identity, _project_root, _candidate, _build_mode| {
             let build_count = Arc::clone(&build_count);
             let failed = Arc::clone(&failed);
             Box::pin(async move {
@@ -850,7 +889,11 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
     let project_root = std::env::temp_dir().join("asp-generation-admission-failure");
 
     admission
-        .admit("workspace-sticky-failure", project_root.clone())
+        .admit(
+            "workspace-sticky-failure",
+            project_root.clone(),
+            candidate_identity(),
+        )
         .await
         .expect("schedule failed builder");
     failed.notified().await;
@@ -869,7 +912,11 @@ async fn failed_generation_build_retries_only_on_explicit_admission() {
     receipt.validate().expect("valid failure receipt");
 
     let retry = admission
-        .admit("workspace-sticky-failure", project_root)
+        .admit(
+            "workspace-sticky-failure",
+            project_root,
+            candidate_identity(),
+        )
         .await
         .expect("explicitly retry failed admission");
     assert_eq!(retry.state, WorkspaceGenerationAdmissionState::Building);
@@ -889,7 +936,7 @@ async fn shutdown_cancels_tracked_generation_builds() {
     let started = Arc::new(tokio::sync::Notify::new());
     let admission = WorkspaceGenerationAdmission::new(Arc::new({
         let started = Arc::clone(&started);
-        move |_workspace_identity, _project_root, _build_mode| {
+        move |_workspace_identity, _project_root, _candidate, _build_mode| {
             let started = Arc::clone(&started);
             Box::pin(async move {
                 started.notify_one();
@@ -907,6 +954,7 @@ async fn shutdown_cancels_tracked_generation_builds() {
         .admit(
             "workspace-shutdown",
             std::env::temp_dir().join("asp-generation-admission-shutdown"),
+            candidate_identity(),
         )
         .await
         .expect("schedule tracked builder");

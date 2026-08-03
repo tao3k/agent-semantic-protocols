@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use agent_semantic_client_db::runtime_server_admission::{
@@ -17,12 +17,18 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
     let peak_builds = Arc::new(AtomicUsize::new(0));
     let build_count = Arc::new(AtomicUsize::new(0));
     let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let candidate =
+        agent_semantic_client_db::runtime_server_admission::discover_workspace_generation_candidate(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")),
+        )
+        .await
+        .expect("discover one valid candidate before measuring resident admission");
     let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
         let active_builds = Arc::clone(&active_builds);
         let peak_builds = Arc::clone(&peak_builds);
         let build_count = Arc::clone(&build_count);
         let release = Arc::clone(&release);
-        move |_, _, _| {
+        move |_, _, _, _| {
             let active_builds = Arc::clone(&active_builds);
             let peak_builds = Arc::clone(&peak_builds);
             let build_count = Arc::clone(&build_count);
@@ -52,17 +58,13 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
     for workspace_index in 0..workspace_count {
         for _ in 0..calls_per_workspace {
             let admission = Arc::clone(&admission);
+            let candidate = candidate.clone();
             requests.spawn(async move {
                 let workspace_identity = format!("workspace-{workspace_index}");
                 let root = std::env::temp_dir().join(&workspace_identity);
                 let started = tokio::time::Instant::now();
                 let receipt = admission
-                    .admit_changed_paths(
-                        format!("mutation-{workspace_index}"),
-                        workspace_identity,
-                        root.clone(),
-                        vec![root.join("src/lib.rs")],
-                    )
+                    .admit(workspace_identity, root.clone(), candidate)
                     .await;
                 (workspace_index, receipt, started.elapsed())
             });
@@ -75,12 +77,7 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
         while let Some(joined) = requests.join_next().await {
             let (workspace_index, receipt, latency) = joined.expect("join admission request");
             let receipt = receipt.expect("admit workspace mutation");
-            accepted_per_workspace[workspace_index] += usize::from(
-                receipt
-                    .receipts
-                    .first()
-                    .is_some_and(|receipt| receipt.accepted),
-            );
+            accepted_per_workspace[workspace_index] += usize::from(receipt.accepted);
             latencies.push(latency);
         }
     })
@@ -121,18 +118,6 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_sub_millis
         .expect("workspace admission terminal receipt");
         assert_eq!(terminal.state, WorkspaceGenerationAdmissionState::Ready);
     }
-    let workspace_identity = "workspace-0";
-    let root = std::env::temp_dir().join(workspace_identity);
-    let identity_reuse_error = admission
-        .admit_changed_paths(
-            "mutation-0",
-            workspace_identity,
-            root.clone(),
-            vec![root.join("src/different.rs")],
-        )
-        .await
-        .expect_err("one mutation identity cannot name two changed-path sets");
-    assert!(identity_reuse_error.contains("different changed-path set"));
     tokio::time::timeout(Duration::from_millis(100), admission.shutdown())
         .await
         .expect("resident admission lanes must drain within 100ms")

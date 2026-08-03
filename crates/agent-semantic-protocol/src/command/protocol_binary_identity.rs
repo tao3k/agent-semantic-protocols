@@ -50,14 +50,7 @@ pub(crate) fn protocol_binary_artifact_path_digest(path: &Path) -> Option<String
 pub(crate) fn protocol_binary_digest_from_canonical_artifact_path(
     canonical: &Path,
 ) -> Option<String> {
-    let parent = canonical.parent()?;
-    let digest = parent.file_name()?.to_str()?;
-    let algorithm = parent.parent()?.file_name()?.to_str()?;
-    if algorithm == "blake3-256" && valid_blake3_digest(digest) {
-        Some(digest.to_string())
-    } else {
-        None
-    }
+    agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(canonical)
 }
 
 pub(crate) async fn canonical_protocol_binary_artifact_digest(
@@ -69,24 +62,20 @@ pub(crate) async fn canonical_protocol_binary_artifact_digest(
             path.display()
         )
     })?;
-    protocol_binary_digest_from_canonical_artifact_path(&canonical).ok_or_else(|| {
-        format!(
-            "ASP Runtime Server requires a canonical digest-addressed artifact: {}",
-            canonical.display()
-        )
-    })
-}
-
-pub(super) fn protocol_binary_artifact_digest(path: &Path) -> Option<String> {
-    if let Some(digest) = protocol_binary_artifact_path_digest(path) {
-        return Some(digest);
+    if let Some(digest) = protocol_binary_digest_from_canonical_artifact_path(&canonical) {
+        return Ok(digest);
     }
-    let bytes = fs::read(path).ok()?;
-    Some(
-        agent_semantic_content_identity::exact_selector_merkle::blake3_content_digest_v1(&bytes)
-            .as_str()
-            .to_string(),
-    )
+    let identity_path = canonical.clone();
+    tokio::task::spawn_blocking(move || {
+        agent_semantic_content_identity::file_content_digest_v1(&identity_path).map_err(|error| {
+            format!(
+                "failed to derive ASP runtime artifact identity from {}: {error}",
+                identity_path.display()
+            )
+        })
+    })
+    .await
+    .map_err(|error| format!("join ASP runtime artifact identity task: {error}"))?
 }
 
 fn valid_blake3_digest(digest: &str) -> bool {

@@ -149,7 +149,7 @@
       ],
       "properties": {
         "algorithm": {
-          "const": "blake3-path-set-v1"
+          "const": "blake3-worktree-state-v1"
         },
         "digest": {
           "type": "string",

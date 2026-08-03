@@ -7,7 +7,7 @@ pub(crate) use agent_session_registry::{
     ResidentChildIdentityProof, codex_transcript_resident_child_identity,
     current_registered_session, current_resident_child_identity_proof, current_root_session_id,
     has_current_agent_session, record_current_session_tool_event,
-    registered_resident_session_for_root, rollout_metadata_matches_managed_agent_profile,
+    registered_resident_session_for_root, rollout_metadata_matches_host_agent_identity,
     validate_session_profile,
 };
 mod ast_patch;
@@ -20,6 +20,7 @@ mod gerbil_check_cache;
 mod gerbil_deps;
 mod global_provider_catalog;
 mod graph;
+pub mod graph_turbo_resident_process;
 mod healthcheck;
 mod hook;
 mod hook_enforcement;
@@ -103,7 +104,6 @@ mod search_pipe_view;
 mod search_query_budget;
 mod search_suggest;
 mod source_access;
-mod sync;
 mod tree_sitter_query_diagnostics;
 mod workspace_tree_sitter_inventory;
 mod workspace_tree_sitter_query;
@@ -120,3 +120,4 @@ pub(in crate::command) use protocol_binary::{
 pub(in crate::command) use protocol_version::{
     protocol_version_line, run_protocol_version_command,
 };
+pub mod search_router_graph_state;

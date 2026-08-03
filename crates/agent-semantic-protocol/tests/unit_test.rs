@@ -10,6 +10,8 @@ mod agent_session_registry_resume_model_create_cli;
 #[path = "unit/command/build_profile.rs"]
 mod command_build_profile;
 
+#[path = "unit/agent_session_lifecycle_projection.rs"]
+mod agent_session_lifecycle_projection;
 #[path = "unit/ast_patch.rs"]
 mod ast_patch;
 #[path = "unit/client_hook_claude_smoke.rs"]
@@ -26,20 +28,28 @@ mod client_hook_config_runtime;
 mod client_hook_desktop_smoke;
 #[path = "unit/codex/mod.rs"]
 mod codex;
+#[path = "unit/codex_multi_agent_v2_control_plane.rs"]
+mod codex_multi_agent_v2_control_plane;
 #[path = "unit/codex_plugin_install.rs"]
 mod codex_plugin_install;
 #[path = "unit/command/agent_session_registry_render.rs"]
 mod command_agent_session_registry_render;
+#[path = "unit/command/ascent_search_router_graph_state.rs"]
+mod command_ascent_search_router_graph_state;
 #[path = "unit/command/dispatch_agent_session_policy.rs"]
 mod command_dispatch_agent_session_policy;
 #[path = "unit/command/gerbil_check_cache.rs"]
 mod command_gerbil_check_cache;
 #[path = "unit/command/global_provider_catalog.rs"]
 mod command_global_provider_catalog;
+#[path = "unit/command/graph_turbo_resident_runtime.rs"]
+mod command_graph_turbo_resident_runtime;
 #[path = "unit/command/search_pipe_evidence_projection.rs"]
 mod command_search_pipe_evidence_projection;
 #[path = "unit/command/search_pipe_projection.rs"]
 mod command_search_pipe_projection;
+#[path = "unit/command/search_router_graph_state.rs"]
+mod command_search_router_graph_state;
 #[path = "unit/context_product_state.rs"]
 mod context_product_state;
 #[path = "unit/document_owner_items_hot_path.rs"]
@@ -96,8 +106,6 @@ mod scenario_performance_gate;
 mod source_access_command;
 #[path = "unit/state_home_fixture.rs"]
 mod state_home_fixture;
-#[path = "unit/sync_command.rs"]
-mod sync_command;
 #[path = "unit/tree_sitter_query_diagnostics.rs"]
 mod tree_sitter_query_diagnostics;
 #[path = "unit/workspace_tree_sitter_query_diagnostics.rs"]

@@ -646,4 +646,117 @@ theorem expired_silent_feature_requires_causal_closure_erasure
       policy authorizedRenewal expired
   · rfl
 
+inductive CandidateSearchEngine where
+  | legacyGraphTurbo
+  | progressiveGqlLogic
+deriving DecidableEq, Repr
+
+structure CandidateArtifactIdentity where
+  providerDigestValid : Bool
+  runtimeDigestValid : Bool
+  semanticContractDigestValid : Bool
+deriving DecidableEq, Repr
+
+def CandidateArtifactIdentity.complete
+    (identity : CandidateArtifactIdentity) : Bool :=
+  identity.providerDigestValid &&
+  identity.runtimeDigestValid &&
+  identity.semanticContractDigestValid
+
+inductive CandidateAdmissionReason where
+  | missingCandidateArtifactIdentity
+  | invalidCandidateArtifactIdentity
+deriving DecidableEq, Repr
+
+inductive CandidateEngineAdmission where
+  | ready
+      (requested selected : CandidateSearchEngine)
+      (identity : Option CandidateArtifactIdentity)
+  | blocked
+      (requested : CandidateSearchEngine)
+      (reason : CandidateAdmissionReason)
+deriving DecidableEq, Repr
+
+def admitCandidateSearchEngine
+    (requested : CandidateSearchEngine)
+    (identity : Option CandidateArtifactIdentity) :
+    CandidateEngineAdmission :=
+  match requested with
+  | .legacyGraphTurbo =>
+      .ready .legacyGraphTurbo .legacyGraphTurbo none
+  | .progressiveGqlLogic =>
+      match identity with
+      | none =>
+          .blocked .progressiveGqlLogic
+            .missingCandidateArtifactIdentity
+      | some candidateIdentity =>
+          if candidateIdentity.complete then
+            .ready .progressiveGqlLogic .progressiveGqlLogic
+              (some candidateIdentity)
+          else
+            .blocked .progressiveGqlLogic
+              .invalidCandidateArtifactIdentity
+
+def SelectsCandidateEngine
+    (engine : CandidateSearchEngine) : CandidateEngineAdmission → Prop
+  | .ready _ selected _ => selected = engine
+  | .blocked _ _ => False
+
+theorem missing_progressive_identity_is_blocked :
+    admitCandidateSearchEngine .progressiveGqlLogic none =
+      .blocked .progressiveGqlLogic
+        .missingCandidateArtifactIdentity := by
+  rfl
+
+theorem invalid_progressive_identity_is_blocked
+    (identity : CandidateArtifactIdentity)
+    (incomplete : identity.complete = false) :
+    admitCandidateSearchEngine .progressiveGqlLogic (some identity) =
+      .blocked .progressiveGqlLogic
+        .invalidCandidateArtifactIdentity := by
+  change
+    (if identity.complete then
+      CandidateEngineAdmission.ready
+        .progressiveGqlLogic .progressiveGqlLogic (some identity)
+    else
+      CandidateEngineAdmission.blocked
+        .progressiveGqlLogic .invalidCandidateArtifactIdentity) =
+      CandidateEngineAdmission.blocked
+        .progressiveGqlLogic .invalidCandidateArtifactIdentity
+  rw [incomplete]
+  rfl
+
+theorem blocked_candidate_admission_selects_no_engine
+    (requested : CandidateSearchEngine)
+    (reason : CandidateAdmissionReason)
+    (engine : CandidateSearchEngine) :
+    ¬ SelectsCandidateEngine engine (.blocked requested reason) := by
+  intro contradiction
+  exact contradiction
+
+theorem progressive_identity_failure_cannot_fallback_to_legacy
+    (identity : Option CandidateArtifactIdentity)
+    (identityFailure :
+      identity = none ∨
+      ∃ candidateIdentity,
+        identity = some candidateIdentity ∧
+        candidateIdentity.complete = false) :
+    ¬ SelectsCandidateEngine .legacyGraphTurbo
+      (admitCandidateSearchEngine .progressiveGqlLogic identity) := by
+  rcases identityFailure with rfl | ⟨candidateIdentity, rfl, incomplete⟩
+  · intro contradiction
+    exact contradiction
+  · change
+      ¬ SelectsCandidateEngine .legacyGraphTurbo
+        (if candidateIdentity.complete then
+          CandidateEngineAdmission.ready
+            .progressiveGqlLogic .progressiveGqlLogic
+              (some candidateIdentity)
+        else
+          CandidateEngineAdmission.blocked
+            .progressiveGqlLogic .invalidCandidateArtifactIdentity)
+    rw [incomplete]
+    intro contradiction
+    exact contradiction
+
 end SearchRouteEvidenceGraphAdmission

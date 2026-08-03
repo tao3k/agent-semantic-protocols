@@ -207,22 +207,8 @@ pub(super) fn classify_session_start_bootstrap(
     } else {
         None
     };
-    let expected_model_for_native_start = if codex_native_event.is_some() {
-        crate::command::agent_session_registry::expected_model_for_session_profile(
-            asp_session_policy.resident_child_name(),
-            asp_session_policy.resident_agent_role(),
-        )?
-    } else {
-        None
-    };
-    let expected_reasoning_for_native_start = if codex_native_event.is_some() {
-        crate::command::agent_session_registry::expected_reasoning_effort_for_session_profile(
-            asp_session_policy.resident_child_name(),
-            asp_session_policy.resident_agent_role(),
-        )?
-    } else {
-        None
-    };
+    let expected_model_for_native_start: Option<String> = None;
+    let expected_reasoning_for_native_start: Option<String> = None;
     let observed_reasoning_for_native_start = codex_native_event
         .as_ref()
         .and_then(|native| native.reasoning_effort.clone())
@@ -246,7 +232,7 @@ pub(super) fn classify_session_start_bootstrap(
         native.kind == crate::codex::native_agent_transport::CodexNativeSubagentEventKind::Start
             && (native.agent_type == asp_session_policy.resident_agent_role()
                 || codex_native_rollout_metadata.as_ref().is_some_and(|metadata| {
-                    crate::command::agent_session_registry::rollout_metadata_matches_managed_agent_profile(
+                    crate::command::agent_session_registry::rollout_metadata_matches_host_agent_identity(
                         asp_session_policy.resident_child_name(),
                         asp_session_policy.resident_agent_role(),
                         metadata,

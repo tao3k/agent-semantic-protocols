@@ -1,0 +1,151 @@
+#+title: 01.36 Polyglot Search Empirical Qualification
+#+property: header-args:typst :lint typst-eval :runtime typst :format typst
+
+* Status
+
+This module defines the admission contract that must be satisfied before the
+progressive GQL/Logic search architecture may replace the legacy agent-facing
+search path.  The normative clause identifier is
+=ASP-RFC-10.05.01.36-QUALIFICATION=.
+
+The committed fixture is deterministic reference evidence, not a measurement
+of a production provider.  It validates the evaluator, schema, counterexamples,
+and Lean admission logic.  A production replacement decision remains blocked
+until the same contract is populated from representative real-project runs.
+
+* Why aggregate improvement is insufficient
+
+A lower total or mean token count can hide a required scenario that exceeds
+its token budget, loses evidence, mutates search state, misses a warm cache, or
+has catastrophic tail latency.  Replacement admission is therefore a
+conjunction of per-scenario hard gates and cross-scenario coverage and
+improvement gates.
+
+#+begin_src typst
+#{
+  $"ScenarioOK"(s) = "ResourceOK"(s) and "QualityOK"(s)
+    and "CacheOK"(s) and "ReadOnly"(s)$
+  $"Qualify"(S) = (forall s in S, "ScenarioOK"(s))
+    and "ColdWarmCoverage"(S) and "AggregateGain"(S)$
+  $sum_(s in S) T_c(s) < sum_(s in S) T_l(s)
+    quad "does not imply" quad forall s in S, "ScenarioOK"(s)$
+}
+#+end_src
+
+The final implication is intentionally false.  The Lean model provides a
+counterexample in which candidate total tokens improve while one scenario
+uses 80 percent of the legacy tokens and therefore violates the 70 percent
+per-scenario ceiling.
+
+* Qualification vector
+
+Each paired legacy/candidate observation records:
+
+- total agent-visible tokens;
+- graph hops;
+- interaction turns;
+- wall latency in microseconds;
+- cold or warm cache mode and observed cache hit;
+- evidence precision and recall in basis points;
+- closure and answer-quality scores in basis points;
+- state digest before and after the search;
+- result digest.
+
+Scenario identity binds the task, query, expected evidence, source snapshot,
+environment, reference trace, provider artifact, and runtime artifact.  A
+candidate result cannot be compared with a legacy result from a different
+task or environment merely because their human-readable labels match.
+
+* Hard gates
+
+The reference thresholds are:
+
+| Gate | Candidate limit |
+|-
+| Tokens | at most 70 percent of the paired legacy observation |
+| Graph hops | at most 75 percent |
+| Interaction turns | at most 75 percent |
+| Latency | no slower than the paired legacy observation |
+| Precision and recall | at most 200 basis points regression |
+| Closure and answer quality | at most 100 basis points regression |
+| Cold cache | candidate cache hit must be false in the reset environment |
+| Warm cache | candidate cache hit must be true |
+| State | before and after digests must be identical |
+
+Passing the aggregate gate never repairs a failed scenario gate.  The scenario
+set must include both cold and warm cases, every scenario must pass, and total
+tokens, graph hops, and interaction turns must each strictly improve.  Candidate
+p95 latency must not exceed legacy p95 latency.
+
+* Stateful admission protocol
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> IdentityBound
+  IdentityBound --> PairedRunsCollected: same task, source, environment, and expected evidence
+  PairedRunsCollected --> ScenarioEvaluated: compute resource, quality, cache, and read-only gates
+  ScenarioEvaluated --> Rejected: any required scenario fails
+  ScenarioEvaluated --> CoverageChecked: every scenario passes
+  CoverageChecked --> Rejected: cold or warm coverage missing
+  CoverageChecked --> AggregateEvaluated: both cache modes present
+  AggregateEvaluated --> Rejected: token, hop, turn, or p95 gate fails
+  AggregateEvaluated --> ArtifactBound: all aggregate gates pass
+  ArtifactBound --> Rejected: canonical payload digest mismatches
+  ArtifactBound --> Qualified: schema, digest, Lean, and AXLE agree
+  Qualified --> [*]
+  Rejected --> [*]
+#+end_src
+
+* Normative artifacts
+
+| Role | Artifact |
+|-
+| Schema | =schemas/semantic-polyglot-search-qualification.v1.schema.json= |
+| Evaluator | =packages/proofs/src/asp_proofs/polyglot_search_qualification.py= |
+| Reference fixture | =tests/fixtures/semantic_polyglot_search/qualification.valid.json= |
+| Python tests | =packages/proofs/tests/test_polyglot_search_qualification.py= |
+| Lean model | =packages/proofs/ASPProof/PolyglotSearchQualification.lean= |
+| Lean audit | =packages/proofs/ASPProof/Audit/PolyglotSearchQualification.lean= |
+| AXLE input | =packages/proofs/audit/polyglot-search-qualification-audit-v1.json= |
+| AXLE receipt | =packages/proofs/audit/polyglot-search-qualification-axle-receipt-v1.json= |
+
+* Lean findings
+
+The Lean model proves:
+
+1. the four-scenario reference qualification is admitted;
+2. qualification exposes an all-scenario gate;
+3. aggregate token improvement does not imply per-scenario admission;
+4. excessive recall regression is rejected even when the candidate is faster;
+5. mutation of search state is rejected;
+6. cold and warm cache coverage are both necessary.
+
+These are logical admission properties.  Lean does not prove that production
+measurements are honest, that token counting matches a specific model vendor,
+or that a selected project corpus represents future workloads.
+
+* Reproduction
+
+#+begin_src shell
+uv run --project packages/proofs python -m asp_proofs.polyglot_search_qualification --format json
+uv run --project packages/proofs pytest packages/proofs/tests/test_polyglot_search_qualification.py -q
+cd packages/proofs && lake build ASPProof.PolyglotSearchQualification ASPProof.Audit.PolyglotSearchQualification
+cd packages/proofs && lake env lean audit/PolyglotSearchQualificationAudit.lean
+cd packages/proofs && uv run python -m asp_proofs lean-audit audit/polyglot-search-qualification-audit-v1.json --require-family polyglot-search-qualification --require-rfc-clause ASP-RFC-10.05.01.36-QUALIFICATION --output audit/polyglot-search-qualification-axle-receipt-v1.json
+#+end_src
+
+* Production evidence still required
+
+Evidence availability and lifecycle admission are specified by
+[[file:01.37-polyglot-search-evidence-sufficiency.org][01.37 Polyglot Search Evidence Sufficiency]].
+
+The next phase must collect paired receipts from representative real projects
+and actual installed provider/runtime artifacts.  At minimum it must cover the
+GQL path, filter and alias, Logic join, parallel witness bag, cross-provider
+edge, stale continuation, and digest-drift scenarios.  Runs need fixed seeds,
+explicit cold-cache reset, warm-cache preconditions, repeated samples, and
+machine-verifiable failure receipts.
+
+Until those receipts satisfy this contract, the reference fixture demonstrates
+that the qualification mechanism is coherent; it does not authorize removal
+of the legacy search implementation.

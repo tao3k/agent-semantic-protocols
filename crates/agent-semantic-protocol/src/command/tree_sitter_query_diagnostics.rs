@@ -1,19 +1,3 @@
-pub(crate) fn render_search_summary(
-    language_id: &str,
-    total_captures: usize,
-    retained_captures: usize,
-) -> String {
-    let status = if total_captures == 0 {
-        "no-matches"
-    } else {
-        "matches"
-    };
-    format!(
-        "[search-treesitter] status={status} language={language_id} matches={total_captures} retained={retained_captures} truncated={}",
-        total_captures > retained_captures
-    )
-}
-
 pub(crate) fn render_search_miss_guidance(language_id: &str) -> Vec<String> {
     let identifier_hint = if language_id == "rust" {
         "hint: a value compared with an identifier capture must be a valid Rust identifier; use `_` rather than `-` inside an identifier."

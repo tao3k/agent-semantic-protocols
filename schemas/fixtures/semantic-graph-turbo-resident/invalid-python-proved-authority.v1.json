@@ -1,0 +1,24 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-graph-turbo-resident-receipt",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "packetKind": "graph-turbo-resident-receipt",
+  "requestId": "rank:forged-authority",
+  "status": "rank-completed",
+  "graphSessionIdentity": {
+    "sessionId": "session-a",
+    "nodeId": "router-a",
+    "snapshotDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "workspaceGenerationRootDigest": "generation-a",
+    "routeId": "route-a"
+  },
+  "authority": "proved",
+  "accounting": {
+    "graphTurboInvocations": 1,
+    "semanticGraphHops": 0,
+    "executedGraphHops": 0,
+    "toolActions": 0
+  },
+  "result": {"ranked": []}
+}

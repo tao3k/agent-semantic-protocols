@@ -300,35 +300,58 @@ pub fn rebind_active_asp_binary_receipt_if_present(
             receipt_path.display()
         )
     })?;
-    let additional_artifacts = previous_receipt
-        .leaves()
-        .iter()
-        .filter(|leaf| {
-            !matches!(
-                leaf.artifact_kind(),
-                ActiveArtifactKindV1::AspBinary | ActiveArtifactKindV1::Activation
-            )
-        })
-        .map(|leaf| ActiveAspArtifactInput {
-            logical_path: leaf.logical_path().to_string(),
-            artifact_kind: leaf.artifact_kind(),
-            materialized_path: PathBuf::from(leaf.materialized_path()),
-            artifact_digest: leaf.artifact_digest().as_str().to_string(),
-        })
-        .collect::<Vec<_>>();
-    let materialization = materialize_active_asp_artifact_receipt(
-        binary_path,
-        binary_digest,
-        activation_path,
-        &additional_artifacts,
-    )?;
-    let closure_updated =
-        reconcile_active_asp_artifact_receipt_from_materialized_set(activation_path)?;
-    if materialization.receipt_writes == 0 && !closure_updated {
-        Ok(ActiveAspArtifactReconciliationV1::Current)
-    } else {
-        Ok(ActiveAspArtifactReconciliationV1::Updated)
+    let binary_path = canonical_regular_file(binary_path, "ASP binary")?;
+    let activation_path = canonical_regular_file(activation_path, "activation")?;
+    let binary_metadata = fs::metadata(&binary_path)
+        .map_err(|error| format!("failed to inspect {}: {error}", binary_path.display()))?;
+    let activation_metadata = fs::metadata(&activation_path)
+        .map_err(|error| format!("failed to inspect {}: {error}", activation_path.display()))?;
+    let activation_bytes = fs::read(&activation_path)
+        .map_err(|error| format!("failed to read {}: {error}", activation_path.display()))?;
+    let binary_digest = parse_content_digest_v1(binary_digest)
+        .map_err(|_| format!("invalid BLAKE3 ASP binary digest: {binary_digest}"))?;
+    let mut leaves = vec![
+        ActiveArtifactLeafV1::new(
+            "runtime/asp",
+            utf8_path(&binary_path, "ASP binary")?,
+            ActiveArtifactKindV1::AspBinary,
+            binary_digest,
+            binary_metadata.len(),
+            modified_unix_nanos(&binary_metadata)?,
+            change_time_unix_nanos(&binary_metadata),
+        )?,
+        ActiveArtifactLeafV1::new(
+            "state/activation.json",
+            utf8_path(&activation_path, "activation")?,
+            ActiveArtifactKindV1::Activation,
+            blake3_content_digest_v1(&activation_bytes),
+            activation_bytes.len() as u64,
+            modified_unix_nanos(&activation_metadata)?,
+            change_time_unix_nanos(&activation_metadata),
+        )?,
+    ];
+    leaves.extend(
+        previous_receipt
+            .leaves()
+            .iter()
+            .filter(|leaf| {
+                !matches!(
+                    leaf.artifact_kind(),
+                    ActiveArtifactKindV1::AspBinary | ActiveArtifactKindV1::Activation
+                )
+            })
+            .cloned(),
+    );
+    let receipt = ActiveAspArtifactReceiptV1::build(ACTIVE_ASP_ARTIFACT_SET_ID, leaves)
+        .map_err(|error| format!("failed to build active ASP artifact receipt: {error:?}"))?;
+    verify_activation_provider_artifact_coverage(&activation_path, &receipt)?;
+    if receipt == previous_receipt {
+        return Ok(ActiveAspArtifactReconciliationV1::Current);
     }
+    let bytes = serde_json::to_vec_pretty(&receipt)
+        .map_err(|error| format!("failed to encode active ASP artifact receipt: {error}"))?;
+    atomic_write_compare_exchange(&receipt_path, &bytes, Some(&receipt_bytes))?;
+    Ok(ActiveAspArtifactReconciliationV1::Updated)
 }
 
 #[cfg(test)]

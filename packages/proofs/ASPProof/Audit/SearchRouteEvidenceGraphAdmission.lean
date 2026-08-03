@@ -157,7 +157,23 @@ def targets : List Target :=
       rfcClauseIds := [
         "ASP-RFC-10.05-EGA-SUNSET",
         "ASP-RFC-10.05-EGA-DELETION"
-      ] }
+      ] },
+    { name :=
+        ``SearchRouteEvidenceGraphAdmission.missing_progressive_identity_is_blocked
+      theoremFamily := "candidate-engine-admission"
+      rfcClauseIds := ["ASP-RFC-10.05-EGA-CANDIDATE-ADMISSION"] },
+    { name :=
+        ``SearchRouteEvidenceGraphAdmission.invalid_progressive_identity_is_blocked
+      theoremFamily := "candidate-engine-admission"
+      rfcClauseIds := ["ASP-RFC-10.05-EGA-CANDIDATE-ADMISSION"] },
+    { name :=
+        ``SearchRouteEvidenceGraphAdmission.blocked_candidate_admission_selects_no_engine
+      theoremFamily := "candidate-engine-fail-closed"
+      rfcClauseIds := ["ASP-RFC-10.05-EGA-CANDIDATE-ADMISSION"] },
+    { name :=
+        ``SearchRouteEvidenceGraphAdmission.progressive_identity_failure_cannot_fallback_to_legacy
+      theoremFamily := "candidate-engine-no-fallback"
+      rfcClauseIds := ["ASP-RFC-10.05-EGA-CANDIDATE-ADMISSION"] }
   ]
 
 def auditJson : Elab.Term.TermElabM Json :=

@@ -236,6 +236,11 @@ pub enum WorkspaceRuntimeSelectorRead {
         resolved_selector: String,
         bytes: Vec<u8>,
     },
+    ProjectionMissing {
+        generation_digest: String,
+        root_digest: String,
+        resolved_selector: String,
+    },
     OwnerForRepair {
         generation_digest: String,
         root_digest: String,
@@ -535,6 +540,7 @@ pub struct WorkspaceRecoveryReceipt {
     pub generation_digest: String,
     pub source_root_digest: String,
     pub old_generation_readable: bool,
+    pub resident_publication_elapsed_micros: u64,
     pub counters: RuntimeDataPlaneCounters,
 }
 

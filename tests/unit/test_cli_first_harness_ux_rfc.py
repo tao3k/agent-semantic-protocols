@@ -21,8 +21,6 @@ def test_cli_first_rfc_is_module_index() -> None:
     text = _RFC_PATH.read_text(encoding="utf-8")
 
     required_terms = [
-        "This file is the stable RFC 005 entry point.",
-        "split into focused Org modules under =docs/10-19-rfcs/10.05-cli-first-harness-ux/=",
         "Tests read this file plus the module directory explicitly",
         '10.05-cli-first-harness-ux/10.05.10-search-query-surface.org',
         '10.05-cli-first-harness-ux/10.05.40-daemon-guide-hooks.org',
@@ -142,7 +140,7 @@ def test_cli_first_rfc_defines_agent_facing_guide_acceptance() -> None:
         "inlineSubguides=false",
         "search-prime      output=handles/profiles/frontier code=false json=false",
         "syntax-locate     command=\"query --treesitter-query <pattern>\"",
-        "syntax-code       command=\"query --selector <exact> --treesitter-query <pattern> --code\" output=pure-code",
+        "syntax-code       command=\"query --selector <exact> --treesitter-query <pattern> --projection source\" output=pure-code",
         "hook-recovery     output=markdown-prompt runNext=owner-items detectedBinaries=runtime-profile",
         "debug-surfaces    json,receipts,cachePaths,artifactIds hiddenFromDefault=true",
         "retired-routes    agent-prefixed-guide,search-wrapper-hook-query,ts-query,syntax-query rejectedFromGuides=true",

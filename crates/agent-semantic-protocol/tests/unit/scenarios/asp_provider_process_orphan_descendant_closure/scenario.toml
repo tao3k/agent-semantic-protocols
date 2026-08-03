@@ -1,0 +1,18 @@
+id = "asp-provider-process-orphan-descendant-closure"
+title = "ASP closes one-shot provider descendants before facade return"
+policy_ids = [
+  "RUST-AGENT-ASP-FUNCTIONAL-SUBCOMMAND-RUNTIME-TIMEOUT-POLICY-001",
+  "RUST-AGENT-ASP-PERF-SUBCOMMAND-SEARCH-OWNER-001",
+]
+agent_goal = "Keep search and query providers one-shot: a successful provider leader must not leave a Scheme, Python, or other registered-provider binary running in the background."
+reference_repositories = ["tao3k/agent-semantic-protocols"]
+reference_patterns = [
+  "ProviderProcessReceipt::descendant_cleanup_required",
+  "processGroupIsolationEnforced=true",
+  "descendantCleanupRequired=true",
+]
+inputs = "inputs"
+expected = "expected"
+harness = "libtest"
+test = "asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate"
+snapshot = "asp_provider_process_orphan_descendant_closure_stays_inside_scenario_gate"

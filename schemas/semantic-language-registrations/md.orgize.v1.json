@@ -1,7 +1,7 @@
 {
-  "binary": "orgize",
+    "binary": "asp",
   "displayName": "Markdown Document Provider",
-  "execution": "external-process",
+    "execution": "embedded",
   "languageId": "md",
   "methodDescriptors": [
     {

@@ -57,6 +57,13 @@ fn generation_fixture(
             kind: Some("function".into()),
             source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
             query_keys: vec![ClientDbSourceIndexQueryKey::from("materialized")],
+            derived_projections: vec![
+                crate::projection_fixture::callable_skeleton_projection_fixture(
+                    owner_path,
+                    selector,
+                    "materialized",
+                ),
+            ],
             projection_record: crate::projection_fixture::projection_record(
                 crate::projection_fixture::ProjectionFixtureInput {
                     language_id: "rust",
@@ -218,6 +225,10 @@ fn turso_generation_materialization_is_reusable_and_drift_is_fail_closed() {
     assert_eq!(active.workspace_generation.owner_count, 1);
     assert_eq!(active.root_depth, [1, 0]);
     assert_eq!(active.owners.len(), 1);
+    assert_eq!(
+        active.owners[0].selectors[0].derived_projections[0].projection_kind,
+        "callable-skeleton"
+    );
     assert_eq!(
         active.project_root,
         std::fs::canonicalize(&project_root)

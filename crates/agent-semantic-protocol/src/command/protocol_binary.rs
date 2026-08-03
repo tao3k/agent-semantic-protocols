@@ -2,15 +2,18 @@
 
 #[path = "protocol_binary_identity.rs"]
 mod protocol_binary_identity;
+#[path = "protocol_binary_retention.rs"]
+mod protocol_binary_retention;
 
+pub(crate) use protocol_binary_retention::prune_runtime_binary_artifacts;
+
+use protocol_binary_identity::is_digest_addressed_protocol_binary;
 #[cfg(test)]
 pub(crate) use protocol_binary_identity::protocol_binary_digest_from_canonical_artifact_path;
 pub(crate) use protocol_binary_identity::{
     canonical_protocol_binary_artifact_digest, protocol_binary_artifact_path_digest,
 };
-use protocol_binary_identity::{
-    is_digest_addressed_protocol_binary, protocol_binary_artifact_digest,
-};
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -61,8 +64,6 @@ pub(crate) struct ProtocolBinaryInstall {
     pub(crate) path: PathBuf,
     pub(crate) status: &'static str,
     pub(crate) artifact_digest: String,
-    pub(crate) latest: PathBuf,
-    pub(crate) stable_entry: PathBuf,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -233,9 +234,14 @@ pub(crate) fn ensure_protocol_binary_installed(
 fn install_protocol_binary_alias(
     alias: &Path,
     canonical_target: &Path,
-    artifact_root: &Path,
+    _artifact_root: &Path,
 ) -> Result<(), String> {
-    let expected = resolve_protocol_binary_artifact_entry(canonical_target, artifact_root)?;
+    let expected = fs::canonicalize(canonical_target).map_err(|error| {
+        format!(
+            "failed to resolve current Lattice profile {}: {error}",
+            canonical_target.display()
+        )
+    })?;
     if protocol_binary_symlink_chain_loops(alias) {
         return Err(format!(
             "refusing to repair looping protocol binary alias {}",
@@ -245,8 +251,7 @@ fn install_protocol_binary_alias(
     if fs::read_link(alias)
         .ok()
         .is_some_and(|target| target == canonical_target)
-        && resolve_protocol_binary_artifact_entry(alias, artifact_root)
-            .is_ok_and(|identity| identity == expected)
+        && fs::canonicalize(alias).is_ok_and(|identity| identity == expected)
     {
         return Ok(());
     }
@@ -260,7 +265,8 @@ fn install_protocol_binary_alias(
             .map_err(|error| format!("failed to remove stale {}: {error}", temp.display()))?;
     }
     stage_active_protocol_entry(canonical_target, &temp)?;
-    let staged = resolve_protocol_binary_artifact_entry(&temp, artifact_root)?;
+    let staged = fs::canonicalize(&temp)
+        .map_err(|error| format!("failed to resolve staged alias {}: {error}", temp.display()))?;
     if staged != expected {
         let _ = fs::remove_file(&temp);
         return Err(format!(
@@ -271,7 +277,12 @@ fn install_protocol_binary_alias(
         ));
     }
     atomic_replace_protocol_entry(&temp, alias)?;
-    let installed = resolve_protocol_binary_artifact_entry(alias, artifact_root)?;
+    let installed = fs::canonicalize(alias).map_err(|error| {
+        format!(
+            "failed to resolve installed alias {}: {error}",
+            alias.display()
+        )
+    })?;
     if installed != expected {
         return Err(format!(
             "protocol binary alias {} resolves to {}, expected {}",
@@ -290,7 +301,12 @@ pub(super) fn ensure_runtime_protocol_binary_alias(
     let runtime_root = protocol_home.join("runtime");
     let artifact_root = runtime_root.join("artifacts");
     let canonical_target = runtime_root.join("bin").join(SEMANTIC_AGENT_PROTOCOL_BIN);
-    let expected = resolve_protocol_binary_artifact_entry(&canonical_target, &artifact_root)?;
+    let expected = fs::canonicalize(&canonical_target).map_err(|error| {
+        format!(
+            "failed to resolve current ASP runtime binary {}: {error}",
+            canonical_target.display()
+        )
+    })?;
 
     match fs::symlink_metadata(alias) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -301,7 +317,12 @@ pub(super) fn ensure_runtime_protocol_binary_alias(
             ));
         }
         Ok(metadata) if metadata.file_type().is_symlink() => {
-            resolve_protocol_binary_artifact_entry(alias, &artifact_root)?;
+            fs::canonicalize(alias).map_err(|error| {
+                format!(
+                    "failed to resolve ASP runtime PATH entry {}: {error}",
+                    alias.display()
+                )
+            })?;
         }
         Ok(_) => {
             return Err(format!(
@@ -312,7 +333,12 @@ pub(super) fn ensure_runtime_protocol_binary_alias(
     }
 
     install_protocol_binary_alias(alias, &canonical_target, &artifact_root)?;
-    let installed = resolve_protocol_binary_artifact_entry(alias, &artifact_root)?;
+    let installed = fs::canonicalize(alias).map_err(|error| {
+        format!(
+            "failed to resolve installed ASP runtime PATH entry {}: {error}",
+            alias.display()
+        )
+    })?;
     if installed != expected {
         return Err(format!(
             "ASP runtime PATH entry {} resolves to {}, expected {}",
@@ -529,207 +555,68 @@ pub(crate) fn install_protocol_binary_target(
             binary_name.to_string_lossy()
         ));
     }
-    let path = target.to_path_buf();
-    let artifact_digest = protocol_binary_artifact_digest(source).ok_or_else(|| {
-        format!(
-            "failed to derive BLAKE3 protocol artifact digest for {}",
-            source.display()
-        )
-    })?;
-    let artifact =
-        digest_addressed_protocol_binary_path(artifact_root, &artifact_digest, binary_name)?;
-    stage_digest_addressed_protocol_binary(source, &artifact)?;
-    let latest =
-        publish_latest_protocol_binary(artifact_root, &artifact_digest, binary_name, &artifact)?;
-    let stable_entry = target.to_path_buf();
-    let status = install_protocol_binary_from_artifact(target, &latest, &artifact, artifact_root)?;
-    Ok(ProtocolBinaryInstall {
-        path,
-        status,
-        artifact_digest,
-        latest,
-        stable_entry,
-    })
-}
-
-fn install_protocol_binary_from_artifact(
-    target: &Path,
-    latest: &Path,
-    artifact: &Path,
-    artifact_root: &Path,
-) -> Result<&'static str, String> {
-    let expected = resolve_protocol_binary_artifact_entry(artifact, artifact_root)?;
-    let published = resolve_protocol_binary_artifact_entry(latest, artifact_root)?;
-    if published != expected {
-        return Err(format!(
-            "latest protocol binary {} resolves to {}, expected {}",
-            latest.display(),
-            published.display(),
-            expected.display()
-        ));
-    }
-    if protocol_binary_symlink_chain_loops(target) {
-        return Err(format!(
-            "refusing to repair looping protocol binary entry {}",
-            target.display()
-        ));
-    }
-    let status = if fs::symlink_metadata(target).is_ok() {
-        "updated"
-    } else {
-        "installed"
-    };
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    }
-    let canonical_target = stable_protocol_binary_link_target(target, artifact_root, latest)?;
-    if fs::read_link(target)
-        .ok()
-        .is_some_and(|link| link == canonical_target)
-        && resolve_protocol_binary_artifact_entry(target, artifact_root)
-            .is_ok_and(|identity| identity == expected)
-    {
-        return Ok("already-present");
-    }
-    let temp = temporary_protocol_binary_path(target);
-    if fs::symlink_metadata(&temp).is_ok() {
-        fs::remove_file(&temp)
-            .map_err(|error| format!("failed to remove stale {}: {error}", temp.display()))?;
-    }
-    stage_active_protocol_entry(&canonical_target, &temp)?;
-    let staged = resolve_protocol_binary_artifact_entry(&temp, artifact_root)?;
-    if staged != expected {
-        let _ = fs::remove_file(&temp);
-        return Err(format!(
-            "staged stable protocol entry {} resolves to {}, expected {}",
-            temp.display(),
-            staged.display(),
-            expected.display()
-        ));
-    }
-    atomic_replace_protocol_entry(&temp, target)?;
-    let installed = resolve_protocol_binary_artifact_entry(target, artifact_root)?;
-    if installed != expected {
-        return Err(format!(
-            "stable protocol entry {} resolves to {}, expected {}",
-            target.display(),
-            installed.display(),
-            expected.display()
-        ));
-    }
-    Ok(status)
-}
-
-fn digest_addressed_protocol_binary_path(
-    artifact_root: &Path,
-    digest: &str,
-    binary_name: &std::ffi::OsStr,
-) -> Result<PathBuf, String> {
-    if digest.len() != 64
-        || !digest
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Err(format!("invalid BLAKE3 protocol artifact digest: {digest}"));
-    }
-    Ok(artifact_root
-        .join("blake3-256")
-        .join(digest)
-        .join(binary_name))
-}
-
-fn publish_latest_protocol_binary(
-    artifact_root: &Path,
-    digest: &str,
-    binary_name: &std::ffi::OsStr,
-    artifact: &Path,
-) -> Result<PathBuf, String> {
-    let expected = resolve_protocol_binary_artifact_entry(artifact, artifact_root)?;
-    let algorithm_root = artifact_root.join("blake3-256");
-    let latest_root = algorithm_root.join("latest");
-    match fs::symlink_metadata(&latest_root) {
-        Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
-        Ok(_) => {
-            return Err(format!(
-                "per-binary latest root must be a real directory: {}",
-                latest_root.display()
-            ));
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            fs::create_dir_all(&latest_root)
-                .map_err(|error| format!("failed to create {}: {error}", latest_root.display()))?;
-        }
-        Err(error) => {
-            return Err(format!(
-                "failed to inspect per-binary latest root {}: {error}",
-                latest_root.display()
-            ));
-        }
-    }
-    let latest = latest_root.join(binary_name);
-    if protocol_binary_symlink_chain_loops(&latest) {
-        return Err(format!(
-            "refusing to replace looping latest protocol artifact link {}",
-            latest.display()
-        ));
-    }
-    if fs::read_link(&latest)
-        .ok()
-        .is_some_and(|target| target == Path::new("..").join(digest).join(binary_name))
-        && resolve_protocol_binary_artifact_entry(&latest, artifact_root)
-            .is_ok_and(|identity| identity == expected)
-    {
-        return Ok(latest);
-    }
-    let staged = temporary_protocol_binary_path(&latest);
-    if fs::symlink_metadata(&staged).is_ok() {
-        fs::remove_file(&staged)
-            .map_err(|error| format!("failed to remove stale {}: {error}", staged.display()))?;
-    }
-    let versioned_target = Path::new("..").join(digest).join(binary_name);
-    stage_active_protocol_entry(&versioned_target, &staged)?;
-    let staged_identity = resolve_protocol_binary_artifact_entry(&staged, artifact_root)?;
-    if staged_identity != expected {
-        let _ = fs::remove_file(&staged);
-        return Err(format!(
-            "staged latest protocol artifact {} resolves to {}, expected {}",
-            staged.display(),
-            staged_identity.display(),
-            expected.display()
-        ));
-    }
-    atomic_replace_protocol_entry(&staged, &latest)?;
-    let installed = resolve_protocol_binary_artifact_entry(&latest, artifact_root)?;
-    if installed != expected {
-        return Err(format!(
-            "latest protocol artifact {} resolves to {}, expected {}",
-            latest.display(),
-            installed.display(),
-            expected.display()
-        ));
-    }
-    Ok(latest)
-}
-
-fn stable_protocol_binary_link_target(
-    target: &Path,
-    artifact_root: &Path,
-    latest_artifact: &Path,
-) -> Result<PathBuf, String> {
-    let conventional_bin = artifact_root
-        .parent()
-        .map(|runtime_root| runtime_root.join("bin"));
-    if conventional_bin.as_deref() == target.parent() {
-        let binary_name = latest_artifact.file_name().ok_or_else(|| {
+    let artifact_digest =
+        agent_semantic_content_identity::file_content_digest_v1(source).map_err(|error| {
             format!(
-                "latest protocol artifact has no binary name: {}",
-                latest_artifact.display()
+                "failed to derive BLAKE3 protocol artifact digest for {}: {error}",
+                source.display()
             )
         })?;
-        return Ok(PathBuf::from("../artifacts/blake3-256/latest").join(binary_name));
-    }
-    Ok(latest_artifact.to_path_buf())
+    let target_is_current = fs::symlink_metadata(target)
+        .ok()
+        .filter(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
+        .and_then(|_| agent_semantic_content_identity::file_content_digest_v1(target).ok())
+        .is_some_and(|current_digest| current_digest == artifact_digest);
+    let status = if target_is_current {
+        "already-present"
+    } else {
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
+        }
+        let candidate = temporary_protocol_binary_path(target);
+        if fs::symlink_metadata(&candidate).is_ok() {
+            fs::remove_file(&candidate).map_err(|error| {
+                format!("failed to remove stale {}: {error}", candidate.display())
+            })?;
+        }
+        fs::copy(source, &candidate).map_err(|error| {
+            format!(
+                "failed to stage Lattice runtime profile {}: {error}",
+                candidate.display()
+            )
+        })?;
+        let permissions = fs::metadata(source)
+            .map_err(|error| format!("failed to inspect {}: {error}", source.display()))?
+            .permissions();
+        fs::set_permissions(&candidate, permissions)
+            .map_err(|error| format!("failed to chmod {}: {error}", candidate.display()))?;
+        let candidate_digest = agent_semantic_content_identity::file_content_digest_v1(&candidate)
+            .map_err(|error| {
+                format!(
+                    "failed to derive staged Lattice runtime profile digest for {}: {error}",
+                    candidate.display()
+                )
+            })?;
+        if candidate_digest != artifact_digest {
+            let _ = fs::remove_file(&candidate);
+            return Err(format!(
+                "Lattice runtime profile digest drift: expected={artifact_digest} actual={candidate_digest}"
+            ));
+        }
+        let status = if fs::symlink_metadata(target).is_ok() {
+            "updated"
+        } else {
+            "installed"
+        };
+        atomic_replace_protocol_entry(&candidate, target)?;
+        status
+    };
+    Ok(ProtocolBinaryInstall {
+        path: target.to_path_buf(),
+        status,
+        artifact_digest,
+    })
 }
 
 fn resolve_protocol_binary_artifact_entry(
@@ -769,6 +656,16 @@ fn validate_protocol_entry_for_repair(entry: &Path, artifact_root: &Path) -> Res
         return Ok(());
     };
     if metadata.file_type().is_symlink() {
+        match fs::metadata(entry) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                return Err(format!(
+                    "failed to inspect protocol binary entry {}: {error}",
+                    entry.display()
+                ));
+            }
+        }
         resolve_protocol_binary_artifact_entry(entry, artifact_root)?;
         return Ok(());
     }
@@ -784,48 +681,6 @@ fn validate_protocol_entry_for_repair(entry: &Path, artifact_root: &Path) -> Res
 #[cfg(all(test, unix))]
 #[path = "../../tests/unit/protocol_binary_latest_publication.rs"]
 mod protocol_binary_latest_publication_tests;
-
-fn stage_digest_addressed_protocol_binary(source: &Path, artifact: &Path) -> Result<(), String> {
-    if artifact.is_file() {
-        return Ok(());
-    }
-    let parent = artifact
-        .parent()
-        .ok_or_else(|| format!("protocol artifact has no parent: {}", artifact.display()))?;
-    fs::create_dir_all(parent)
-        .map_err(|error| format!("failed to create {}: {error}", parent.display()))?;
-    let staged = artifact.with_extension(format!(
-        "stage-{}-{}",
-        process::id(),
-        next_protocol_binary_publish_sequence()
-    ));
-    if staged.exists() {
-        fs::remove_file(&staged)
-            .map_err(|error| format!("failed to remove stale {}: {error}", staged.display()))?;
-    }
-    fs::copy(source, &staged).map_err(|error| {
-        format!(
-            "failed to stage {SEMANTIC_AGENT_PROTOCOL_BIN} artifact at {}: {error}",
-            staged.display()
-        )
-    })?;
-    let permissions = fs::metadata(source)
-        .map_err(|error| format!("failed to inspect {}: {error}", source.display()))?
-        .permissions();
-    fs::set_permissions(&staged, permissions)
-        .map_err(|error| format!("failed to chmod {}: {error}", staged.display()))?;
-    match fs::rename(&staged, artifact) {
-        Ok(()) => Ok(()),
-        Err(_) if artifact.is_file() => {
-            let _ = fs::remove_file(&staged);
-            Ok(())
-        }
-        Err(error) => Err(format!(
-            "failed to publish versioned protocol artifact {}: {error}",
-            artifact.display()
-        )),
-    }
-}
 
 #[cfg(unix)]
 fn stage_active_protocol_entry(artifact: &Path, staged_entry: &Path) -> Result<(), String> {

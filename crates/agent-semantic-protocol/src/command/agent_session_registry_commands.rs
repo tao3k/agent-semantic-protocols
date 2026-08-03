@@ -282,41 +282,75 @@ pub(super) fn smoke_session(
 }
 
 fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
-    let now = agent_session_unix_timestamp()?;
-    let temp_root = std::env::temp_dir().join(format!(
-        "asp-agent-session-smoke-{}-{now}",
-        std::process::id()
-    ));
+    let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
+    let temp_root = std::env::temp_dir().join("asp-agent-session-smoke");
+    let _ = std::fs::remove_dir_all(&temp_root);
     let home = temp_root.join("home");
     let codex_home = home.join(".codex");
-    let state_home = temp_root.join("asp-state");
     let workspace = temp_root.join("workspace");
-    std::fs::create_dir_all(workspace.join(".git"))
-        .map_err(|error| format!("create smoke Git workspace: {error}"))?;
+    std::fs::create_dir_all(&workspace)
+        .map_err(|error| format!("create smoke workspace: {error}"))?;
+    let git_dir = workspace.join(".git");
+    std::fs::create_dir_all(git_dir.join("refs/heads"))
+        .map_err(|error| format!("create smoke Git refs: {error}"))?;
+    std::fs::create_dir_all(git_dir.join("objects"))
+        .map_err(|error| format!("create smoke Git objects: {error}"))?;
+    std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n")
+        .map_err(|error| format!("write smoke Git HEAD: {error}"))?;
+    std::fs::write(
+        git_dir.join("config"),
+        "[core]\nrepositoryformatversion = 0\nbare = false\n",
+    )
+    .map_err(|error| format!("write smoke Git config: {error}"))?;
     std::fs::write(
         workspace.join("Cargo.toml"),
         "[package]\nname = \"asp-agent-session-smoke\"\nversion = \"0.0.0\"\n",
     )
     .map_err(|error| format!("write smoke Cargo project anchor: {error}"))?;
-    let owner_fixture = workspace.join(
-        "crates/agent-semantic-protocol/src/command/agent_session_registry_message_target.rs",
-    );
+    let owner_fixture = workspace.join("src/lib.rs");
     if let Some(parent) = owner_fixture.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("create smoke owner fixture parent: {error}"))?;
     }
     std::fs::write(&owner_fixture, "pub fn message_target_snapshot() {}\n")
         .map_err(|error| format!("write smoke owner fixture: {error}"))?;
-    let root_session_id = "asp-smoke-root-session";
-    let child_session_id = "asp-smoke-invalid-child";
-    let catalog_path = std::env::current_dir()
-        .map_err(|error| format!("resolve smoke catalog workspace: {error}"))?
-        .join("agents/config.toml");
-    publish_smoke_codex_agent_projection(&catalog_path, &state_home, &codex_home)?;
+    let git_add = std::process::Command::new("git")
+        .current_dir(&workspace)
+        .args(["add", "--", "Cargo.toml", "src/lib.rs"])
+        .output()
+        .map_err(|error| format!("stage smoke workspace candidates: {error}"))?;
+    if !git_add.status.success() {
+        return Err(format!(
+            "failed to stage smoke workspace candidates: {}",
+            command_output_text(&git_add)
+        ));
+    }
+    let root_session_id = "019f34b9-8000-7000-8000-000000000001";
+    let child_session_id = "019f34b9-8000-7001-8000-000000000002";
     write_smoke_codex_rollout_fixture(&codex_home, &workspace, root_session_id, child_session_id)?;
-    materialize_smoke_rust_provider(&workspace, &state_home)?;
     let asp_bin = std::env::current_exe()
         .map_err(|error| format!("resolve current asp executable for smoke: {error}"))?;
+    let mut workspace_admission = None;
+    for _ in 0..8 {
+        let output = std::process::Command::new(&asp_bin)
+            .current_dir(&workspace)
+            .env("HOME", &home)
+            .env("CODEX_HOME", &codex_home)
+            .env("ASP_STATE_HOME", &state_home)
+            .arg("healthcheck")
+            .output()
+            .map_err(|error| format!("run smoke workspace admission: {error}"))?;
+        let ready = command_output_text(&output).contains("|workspaceGeneration status=ready");
+        workspace_admission = Some(output);
+        if ready {
+            break;
+        }
+    }
+    let workspace_admission = workspace_admission
+        .ok_or_else(|| "smoke workspace admission produced no receipt".to_string())?;
+    let workspace_admission_output = command_output_text(&workspace_admission);
+    let workspace_admission_ok =
+        workspace_admission_output.contains("|workspaceGeneration status=ready");
     let register = std::process::Command::new(&asp_bin)
         .current_dir(&workspace)
         .env("HOME", &home)
@@ -340,9 +374,10 @@ fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
         .output()
         .map_err(|error| format!("run smoke register: {error}"))?;
     let register_output = command_output_text(&register);
-    let denied = if register.status.success() {
-        Some(
-            std::process::Command::new(&asp_bin)
+    let mut denied = None;
+    if register.status.success() {
+        for _ in 0..8 {
+            let output = std::process::Command::new(&asp_bin)
                 .current_dir(&workspace)
                 .env("HOME", &home)
                 .env("CODEX_HOME", &codex_home)
@@ -352,7 +387,7 @@ fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
                     "rust",
                     "search",
                     "owner",
-                    "crates/agent-semantic-protocol/src/command/agent_session_registry_message_target.rs",
+                    "src/lib.rs",
                     "items",
                     "--query",
                     "message_target_snapshot",
@@ -362,129 +397,76 @@ fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
                     "seeds",
                 ])
                 .output()
-                .map_err(|error| format!("run smoke denied search: {error}"))?,
-        )
-    } else {
-        None
-    };
+                .map_err(|error| format!("run smoke denied search: {error}"))?;
+            let output_text = command_output_text(&output);
+            let search_completed =
+                output.status.success() && output_text.contains("[search-owner]");
+            let generation_cold =
+                output_text.contains("reasonKind=active-workspace-generation-required");
+            denied = Some(output);
+            if search_completed || !generation_cold {
+                break;
+            }
+            let _ = std::process::Command::new(&asp_bin)
+                .current_dir(&workspace)
+                .env("HOME", &home)
+                .env("CODEX_HOME", &codex_home)
+                .env("ASP_STATE_HOME", &state_home)
+                .arg("healthcheck")
+                .output()
+                .map_err(|error| format!("refresh smoke workspace admission: {error}"))?;
+        }
+    }
     let denied_output = denied.as_ref().map(command_output_text).unwrap_or_default();
-    let invalid_child_bootstrap_ok = register.status.success()
+    let cleanup = std::process::Command::new(&asp_bin)
+        .current_dir(&workspace)
+        .env("HOME", &home)
+        .env("CODEX_HOME", &codex_home)
+        .env("ASP_STATE_HOME", &state_home)
+        .args([
+            "agent",
+            "session",
+            "close",
+            "--name",
+            "asp-explore",
+            "--root-session-id",
+            root_session_id,
+        ])
+        .output()
+        .map_err(|error| format!("run smoke session cleanup: {error}"))?;
+    let cleanup_output = command_output_text(&cleanup);
+    let invalid_child_bootstrap_ok = workspace_admission_ok
+        && register.status.success()
         && denied
             .as_ref()
             .is_some_and(|output| output.status.success())
         && denied_output.contains("[search-owner]")
-        && !denied_output.contains("reuse");
+        && !denied_output.contains("reuse")
+        && cleanup.status.success();
     let report = serde_json::json!({
         "action": "agent-session-smoke",
         "scenario": "invalid-child-bootstrap",
         "success": invalid_child_bootstrap_ok,
+        "workspaceAdmissionOk": workspace_admission_ok,
         "registerOk": register.status.success(),
         "deniedSearchRejected": denied.as_ref().is_some_and(|output| !output.status.success()),
         "invalidChildBootstrapOk": invalid_child_bootstrap_ok,
-        "tempStateRoot": state_home.display().to_string(),
+        "stateHome": state_home.display().to_string(),
+        "cleanupOk": cleanup.status.success(),
         "blockers": if invalid_child_bootstrap_ok {
             Vec::<String>::new()
         } else {
             vec![format!(
-                "registerOutput={} deniedOutput={}",
+                "workspaceAdmissionOutput={} registerOutput={} deniedOutput={} cleanupOutput={}",
+                compact_smoke_output(&workspace_admission_output),
                 compact_smoke_output(&register_output),
-                compact_smoke_output(&denied_output)
+                compact_smoke_output(&denied_output),
+                compact_smoke_output(&cleanup_output)
             )]
         },
     });
     let _ = std::fs::remove_dir_all(&temp_root);
     Ok(report)
-}
-
-fn materialize_smoke_rust_provider(
-    workspace: &std::path::Path,
-    smoke_state_home: &std::path::Path,
-) -> Result<(), String> {
-    let selection = agent_semantic_hook::provider_command_selections(workspace)?
-        .into_iter()
-        .find(|selection| selection.language_id().as_str() == "rust")
-        .ok_or_else(|| {
-            "agent session smoke requires a receipt-validated Rust provider in the caller State Home"
-                .to_string()
-        })?;
-    let [source] = selection.provider_command_prefix() else {
-        return Err(
-            "agent session smoke requires a direct receipt-validated Rust provider command"
-                .to_string(),
-        );
-    };
-    let source = std::path::Path::new(source);
-    let installed = smoke_state_home
-        .join("runtime/bin")
-        .join(selection.binary());
-    std::fs::create_dir_all(
-        installed
-            .parent()
-            .ok_or_else(|| "smoke provider install path has no parent".to_string())?,
-    )
-    .map_err(|error| format!("create smoke provider runtime bin: {error}"))?;
-    std::fs::copy(source, &installed).map_err(|error| {
-        format!(
-            "copy receipt-validated smoke provider {} to {}: {error}",
-            source.display(),
-            installed.display()
-        )
-    })?;
-    let permissions = std::fs::metadata(source)
-        .map_err(|error| format!("read smoke provider permissions: {error}"))?
-        .permissions();
-    std::fs::set_permissions(&installed, permissions)
-        .map_err(|error| format!("preserve smoke provider permissions: {error}"))?;
-
-    let content_digest = agent_semantic_content_identity::file_content_digest_v1(&installed)
-        .map_err(|error| format!("digest smoke provider content: {error}"))?;
-    let metadata_digest =
-        agent_semantic_content_identity::file_artifact_metadata_digest_v1(&installed)
-            .map_err(|error| format!("digest smoke provider metadata: {error}"))?;
-    let manifest = agent_semantic_hook::builtin_provider_manifests()
-        .into_iter()
-        .find(|manifest| manifest.language_id().as_str() == "rust")
-        .ok_or_else(|| "registered Rust provider manifest is missing".to_string())?;
-    let lock_dir = agent_semantic_runtime::provider_receipt_dir(&smoke_state_home);
-    std::fs::create_dir_all(&lock_dir)
-        .map_err(|error| format!("create smoke provider lock registry: {error}"))?;
-    std::fs::write(
-        lock_dir.join("rust.lock.toml"),
-        format!(
-            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{}\"\ninstalledEntrypointMetadataDigest = \"{}\"\n",
-            manifest.provider_id(),
-            installed.display(),
-            content_digest,
-            metadata_digest,
-        ),
-    )
-    .map_err(|error| format!("write smoke provider install receipt: {error}"))
-}
-
-fn publish_smoke_codex_agent_projection(
-    catalog_path: &std::path::Path,
-    state_home: &std::path::Path,
-    codex_home: &std::path::Path,
-) -> Result<(), String> {
-    let state_agents_dir = state_home.join("agents");
-    agent_semantic_config::subagent_manager::publish_subagent_catalog(
-        catalog_path,
-        &state_agents_dir,
-        state_home,
-    )?;
-    let loaded = agent_semantic_config::subagent_manager::load_subagent_catalog(catalog_path)?;
-    let projection = agent_semantic_config::subagent_manager::compile_subagent_projection(
-        &loaded,
-        "asp_explorer",
-        "codex",
-        state_home,
-    )?;
-    let agents_dir = codex_home.join("agents");
-    std::fs::create_dir_all(&agents_dir)
-        .map_err(|error| format!("create smoke codex agents dir: {error}"))?;
-    std::fs::write(agents_dir.join(&projection.projection), projection.content)
-        .map_err(|error| format!("publish smoke codex agent projection: {error}"))?;
-    Ok(())
 }
 
 fn write_smoke_codex_rollout_fixture(

@@ -127,6 +127,25 @@ async fn resident_writer_replaces_a_corrupt_pointer_with_one_complete_generation
             .as_ref(),
         b"pub fn recovered() {}\n"
     );
+    let exact_open_started = std::time::Instant::now();
+    let exact_state = WorkspaceExactProjectionDataPlaneClient::open_state(&pointer)
+        .await
+        .expect("open recovered exact generation");
+    let WorkspaceExactProjectionDataPlaneOpen::Ready(exact_client) = exact_state else {
+        panic!("resident writer must publish one compact exact generation");
+    };
+    let owner = exact_client
+        .owner_snapshot("src/lib.rs")
+        .expect("lookup compact owner")
+        .expect("compact owner is present");
+    assert_eq!(owner.bytes, b"pub fn recovered() {}\n");
+    assert!(!exact_client.generation_digest().is_empty());
+    assert!(!exact_client.root_digest().is_empty());
+    assert!(
+        exact_open_started.elapsed() <= std::time::Duration::from_millis(5),
+        "compact owner open and lookup exceeded 5ms: {:?}",
+        exact_open_started.elapsed()
+    );
     let counters = registry.data_plane_counters();
     assert_eq!(counters.database_opens, 0);
     assert_eq!(counters.provider_spawns, 0);
@@ -163,7 +182,7 @@ async fn obsolete_exact_segment_format_requires_typed_rebuild() {
     let mut bytes = tokio::fs::read(&exact_path)
         .await
         .expect("read exact segment");
-    bytes[..16].copy_from_slice(b"ASPEXACTMMAP0001");
+    bytes[..16].copy_from_slice(b"ASPEXACTMMAP0002");
     tokio::fs::write(&exact_path, bytes)
         .await
         .expect("write obsolete exact segment identity");

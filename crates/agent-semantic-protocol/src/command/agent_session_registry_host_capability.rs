@@ -233,20 +233,8 @@ pub(super) fn observe_host_ack(
         root_session_id: Some(root_session_id.as_str().into()),
         name: Some(resident_name.into()),
     })?;
-    let expected_model =
-        super::agent_session_registry_validation::expected_model_for_session_profile(
-            record
-                .as_ref()
-                .map_or(resident_name, |session| session.name.as_str()),
-            record.as_ref().map_or("", |session| session.role.as_str()),
-        )?;
-    let expected_reasoning_effort =
-        super::agent_session_registry_validation::expected_reasoning_effort_for_session_profile(
-            record
-                .as_ref()
-                .map_or(resident_name, |session| session.name.as_str()),
-            record.as_ref().map_or("", |session| session.role.as_str()),
-        )?;
+    let expected_model: Option<String> = None;
+    let expected_reasoning_effort: Option<String> = None;
     let platform =
         crate::command::agent_session_registry::active_platform().unwrap_or("{platform}");
     let host_requirement =

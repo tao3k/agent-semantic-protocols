@@ -211,6 +211,14 @@ fn lifecycle_admission_ensures_once_without_submitting_a_mutation_delta() {
 }
 
 #[test]
+fn explicit_asp_commands_require_terminal_generation_repair_before_dispatch() {
+    let source = include_str!("../../src/command/hook_runtime.rs");
+
+    assert!(source.contains("hook_runtime_generation_admission::ensure_ready"));
+    assert!(source.contains("explicit_asp_workspace"));
+}
+
+#[test]
 fn non_admission_events_do_not_call_runtime_server() {
     let observation = observe(
         &["--event".to_owned(), "post-tool".to_owned()],

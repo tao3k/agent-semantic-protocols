@@ -40,6 +40,47 @@ package anchor. Cold restore MUST NOT reinterpret that valid set as a rebuild
 request; language/provider eligibility is already bound by the catalog and the
 materialization evidence.
 
+** Restore mode is not rebuild authority
+
+Daemon catalog restoration MUST submit =RestoreOnly=.  This mode may validate
+and publish a current canonical materialization, but it MUST NOT invoke source
+collection, a language provider, checkout hashing, or a source-index rebuild.
+A missing, incompatible, or candidate-mismatched materialization therefore
+produces a scope-local terminal =failed= receipt.  It does not silently upgrade
+restoration into =RestoreOrBuild=.
+
+=RestoreOrBuild= is reserved for an explicit workspace-generation admission.
+=RebuildAfterMutation= is reserved for an authenticated mutation successor.
+The three modes are distinct authorities, not optimization hints:
+
+#+begin_src typst
+#table(
+  columns: (auto, 1fr, 1fr),
+  [Mode], [May publish committed materialization], [May run source builder],
+  [RestoreOnly], [yes], [no],
+  [RestoreOrBuild], [yes], [yes, after explicit admission],
+  [RebuildAfterMutation], [no stale restore], [yes, for the admitted successor],
+)
+#+end_src
+
+Independent =RestoreOnly= attempts MAY fan out because they are bounded by
+durable materialization validation.  They MUST NOT become concurrent full
+workspace rebuilds.  This distinction preserves Tokio control-plane
+responsiveness: accepting or observing one workspace cannot be starved behind
+CPU-bound rebuild fallback from unrelated catalog entries.
+
+** Observed runtime counterexample
+
+On 2026-08-03 an installed Runtime Server with eleven catalog entries allowed
+startup restore to fall through into concurrent source builds.  One admission
+request closed without a frame after =41,471,254us= and the daemon reached a
+=4.7GiB= physical-footprint peak.  After the earlier read-side digest fix, a
+later installed probe returned =ready= but still spent =2,474,600us= in
+=workspaceGeneration=.  The latter is a correctness success and a performance
+failure: it exceeds the strict one-second agent-facing wall gate.  Neither
+receipt authorizes calling the restore/rebuild boundary closed until a freshly
+built installed binary containing =RestoreOnly= passes the same probe.
+
 * Atomic mutation reconciliation
 
 One successful post-tool event submits exactly one typed

@@ -5,6 +5,15 @@ abbrev Generation := Nat
 abbrev Revision := Nat
 abbrev Digest := Nat
 abbrev ProviderId := Nat
+abbrev ItemIdentity := Nat
+abbrev ProjectionKind := Nat
+abbrev Selector := Nat
+
+inductive LocatorState where
+  | ready
+  | missing
+  | recoveryRequired
+deriving DecidableEq, Repr
 
 structure ServerState where
   workspace : WorkspaceId
@@ -28,7 +37,18 @@ structure QueryCost where
   exposedTokens : Nat
 deriving DecidableEq, Repr
 
+structure SupervisorState where
+  loadedDigest : Digest
+  runningDigest : Digest
+deriving DecidableEq, Repr
+
 def CliMayWriteGeneration : Prop := False
+
+def QueryMayEnter (locator : LocatorState) : Prop :=
+  locator = .ready
+
+def reconcileLocator (_locator : LocatorState) : LocatorState :=
+  .ready
 
 def CanQuery (state : ServerState) (lease : GenerationLease) : Prop :=
   state.readerOnline = true ∧
@@ -68,6 +88,48 @@ def SearchLoopAvailable
 def stopWriter (state : ServerState) : ServerState :=
   { state with writerOnline := false }
 
+def loadSupervisorDefinition
+    (state : SupervisorState)
+    (canonical : Digest) : SupervisorState :=
+  { state with loadedDigest := canonical }
+
+def drainAndRestart (state : SupervisorState) : SupervisorState :=
+  { state with runningDigest := state.loadedDigest }
+
+def orderedSupervisorReconcile
+    (state : SupervisorState)
+    (canonical : Digest) : SupervisorState :=
+  drainAndRestart (loadSupervisorDefinition state canonical)
+
+def daemonBootstrap (catalogReady : Bool) (_workspace : Option WorkspaceId) : Bool :=
+  catalogReady
+
+def resolveRelocation
+    (identityIndex : ItemIdentity → List Selector)
+    (identity : ItemIdentity) : List Selector :=
+  identityIndex identity
+
+def resolveRelocationForProjection
+    (identityIndex : ItemIdentity → List Selector)
+    (identity : ItemIdentity)
+    (_projection : ProjectionKind) : List Selector :=
+  resolveRelocation identityIndex identity
+
+def resolveProjection
+    (projectionIndex : Selector → ProjectionKind → Option Nat)
+    (selector : Selector)
+    (projection : ProjectionKind) : Option Nat :=
+  projectionIndex selector projection
+
+def resolveExact
+    (identityIndex : ItemIdentity → List Selector)
+    (projectionIndex : Selector → ProjectionKind → Option Nat)
+    (identity : ItemIdentity)
+    (projection : ProjectionKind) : Option Nat :=
+  match resolveRelocation identityIndex identity with
+  | [selector] => resolveProjection projectionIndex selector projection
+  | _ => none
+
 def Dominates (left right : QueryCost) : Prop :=
   left.graphHops ≤ right.graphHops ∧
   left.agentRounds ≤ right.agentRounds ∧
@@ -85,6 +147,17 @@ def cliRebuildCost : QueryCost :=
 theorem cli_has_no_generation_write_authority : ¬ CliMayWriteGeneration := by
   intro impossible
   exact impossible
+
+theorem unreadable_locator_cannot_enter_query
+    (locator : LocatorState)
+    (hUnreadable : locator ≠ .ready) :
+    ¬ QueryMayEnter locator := by
+  exact hUnreadable
+
+theorem control_plane_reconciliation_precedes_query
+    (locator : LocatorState) :
+    QueryMayEnter (reconcileLocator locator) := by
+  rfl
 
 theorem staged_generation_is_not_queryable
     (state : ServerState)
@@ -196,6 +269,42 @@ theorem writer_failure_preserves_active_query
         revision := state.revision
       } := by
   exact ⟨hReader, rfl, rfl, Nat.le_refl state.revision⟩
+
+theorem supervisor_definition_before_drain_runs_canonical
+    (state : SupervisorState)
+    (canonical : Digest) :
+    (orderedSupervisorReconcile state canonical).runningDigest = canonical := by
+  rfl
+
+theorem drain_before_definition_can_restart_stale
+    (state : SupervisorState)
+    (canonical : Digest)
+    (stale : state.loadedDigest ≠ canonical) :
+    (drainAndRestart state).runningDigest ≠ canonical := by
+  simpa [drainAndRestart] using stale
+
+theorem global_daemon_bootstrap_requires_no_workspace :
+    daemonBootstrap true none = true := by
+  rfl
+
+theorem relocation_is_projection_independent
+    (identityIndex : ItemIdentity → List Selector)
+    (identity : ItemIdentity)
+    (left right : ProjectionKind) :
+    resolveRelocationForProjection identityIndex identity left =
+      resolveRelocationForProjection identityIndex identity right := by
+  rfl
+
+theorem unique_relocation_with_projection_is_exact_hit
+    (identityIndex : ItemIdentity → List Selector)
+    (projectionIndex : Selector → ProjectionKind → Option Nat)
+    (identity : ItemIdentity)
+    (projection : ProjectionKind)
+    (selector bytes : Nat)
+    (hIdentity : identityIndex identity = [selector])
+    (hProjection : projectionIndex selector projection = some bytes) :
+    resolveExact identityIndex projectionIndex identity projection = some bytes := by
+  simp [resolveExact, resolveRelocation, resolveProjection, hIdentity, hProjection]
 
 theorem server_warm_cost_dominates_cli_rebuild :
     Dominates serverWarmCost cliRebuildCost := by

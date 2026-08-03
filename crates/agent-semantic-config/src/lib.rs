@@ -2,11 +2,10 @@
 
 //! Unified project identity, configuration, and local state layout for ASP.
 
-pub mod codex_agent_projection;
+pub mod agent_route_registry;
 mod codex_plugin_config;
 mod hook_client_config;
 pub mod runtime_dev;
-pub mod subagent_manager;
 
 pub use codex_plugin_config::codex_config_plugin_enabled;
 

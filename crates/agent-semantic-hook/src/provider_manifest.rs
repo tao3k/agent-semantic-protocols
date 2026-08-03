@@ -163,7 +163,10 @@ fn capture_asp_binary_selection(
         return asp_binary_selection_from_active_receipt(&binary, activation_path);
     }
     let content_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&binary)?.to_string();
+        match agent_semantic_content_identity::blake3_digest_from_canonical_artifact_path(&binary) {
+            Some(digest) => digest,
+            None => agent_semantic_content_identity::file_content_digest_v1(&binary)?.to_string(),
+        };
     let artifact_metadata_digest =
         agent_semantic_content_identity::file_artifact_metadata_digest_v1(&binary)?.to_string();
     RuntimeBinarySelectionV1::new(
@@ -395,6 +398,11 @@ pub fn provider_command_selections_for_scope(
         .map_err(|error| format!("failed to resolve ASP project state paths: {error}"))?;
     let mut providers = Vec::new();
     for manifest in provider_manifests() {
+        if crate::provider_registry::registered_provider_kind(manifest.language_id.as_str())?
+            == crate::provider_registry::RegisteredProviderKind::Document
+        {
+            continue;
+        }
         if !scope.selects(&manifest.language_id, &manifest.provider_id) {
             continue;
         }
@@ -402,8 +410,13 @@ pub fn provider_command_selections_for_scope(
         else {
             continue;
         };
-        let Some(resolved_command) =
-            provider_command_prefix(&manifest, provider_config, &state_paths.runtime_bin_dir)?
+        let required = !matches!(scope, ProviderCommandSelectionScopeV1::CompleteGeneration);
+        let Some(resolved_command) = provider_command_prefix(
+            &manifest,
+            provider_config,
+            &state_paths.runtime_bin_dir,
+            required,
+        )?
         else {
             continue;
         };
@@ -573,6 +586,7 @@ fn provider_command_prefix(
     manifest: &ProviderManifest,
     config: &ProjectProviderConfig,
     managed_bin_dir: &Path,
+    required: bool,
 ) -> Result<Option<ResolvedProviderCommand>, String> {
     let configured_binary = config.binary.as_deref().unwrap_or(&manifest.binary);
     let configured_path = Path::new(configured_binary);
@@ -595,7 +609,7 @@ fn provider_command_prefix(
     })?;
     let resolution = resolve_executable_with_status(provider_binary);
     let Some(path) = resolution.path else {
-        if config.enabled == Some(true) || config.binary.is_some() {
+        if required {
             return Err(format!(
                 "provider `{}` language `{}` binary `{configured_binary}` is not executable: {}",
                 manifest.provider_id,

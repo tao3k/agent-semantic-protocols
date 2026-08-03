@@ -304,6 +304,7 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
                     query_keys: vec![ClientDbSourceIndexQueryKey::from(
                         "source_index_scope_payload_proof_fixture",
                     )],
+                    derived_projections: Vec::new(),
                     projection_record: crate::projection_fixture::projection_record(
                         crate::projection_fixture::ProjectionFixtureInput {
                             language_id: "rust",
@@ -946,6 +947,7 @@ fn rust_selector_fixture(
         kind: Some("function".into()),
         source: ClientDbSourceIndexSource::from(CLIENT_DB_SOURCE_INDEX_PROVIDER_ID),
         query_keys: vec![symbol.into()],
+        derived_projections: Vec::new(),
         projection_record: crate::projection_fixture::projection_record(
             crate::projection_fixture::ProjectionFixtureInput {
                 language_id: "rust",

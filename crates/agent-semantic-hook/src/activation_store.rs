@@ -4,8 +4,8 @@ use crate::protocol_activation::protocol_activation_manifest::{HookActivation, H
 use crate::protocol_activation::protocol_activation_runtime::parse_activation;
 use crate::provider_manifest::{
     DefaultActivationSelections, ProviderCommandSelection, ProviderCommandSelectionScopeV1,
-    build_default_activation_from_selections, default_activation_selections,
-    default_activation_selections_for_scope, provider_manifests,
+    build_default_activation_from_selections, default_activation_selections_for_scope,
+    provider_manifests,
 };
 use agent_semantic_runtime::project_activation_path;
 use std::{
@@ -134,14 +134,14 @@ pub fn load_or_refresh_default_activation(
     project_root: &Path,
 ) -> Result<DefaultActivationSync, String> {
     let started = std::time::Instant::now();
-    let current_selections = default_activation_selections(project_root)?;
+    let current_selections = default_activation_selections_for_scope(
+        project_root,
+        &ProviderCommandSelectionScopeV1::CompleteGeneration,
+        None,
+    )?;
     emit_activation_timing("provider-selections", started);
     let reusable_started = std::time::Instant::now();
-    let assessment = assess_activation(
-        activation_path,
-        project_root,
-        current_selections.providers(),
-    )?;
+    let assessment = assess_activation(activation_path, project_root, &current_selections)?;
     if let Some(activation) = assessment.activation {
         emit_activation_timing("reusable-activation", reusable_started);
         return Ok(DefaultActivationSync {
@@ -214,7 +214,7 @@ fn emit_activation_timing(step: &str, started: std::time::Instant) {
 fn assess_activation(
     activation_path: &Path,
     project_root: &Path,
-    current_selections: &[ProviderCommandSelection],
+    current_selections: &DefaultActivationSelections,
 ) -> Result<ActivationAssessment, String> {
     let mut gates = ActivationAdmissionGates::default();
     let contents = match fs::read_to_string(activation_path) {
@@ -238,9 +238,10 @@ fn assess_activation(
             ));
         }
     };
-    let current_exe = std::env::current_exe()
-        .map_err(|error| format!("failed to resolve current ASP executable: {error}"))?;
-    if crate::verify_active_asp_artifact_receipt(activation_path, &[&current_exe]).is_err() {
+    let current_runtime_binary = Path::new(current_selections.graph_turbo().binary());
+    if crate::verify_active_asp_artifact_receipt(activation_path, &[current_runtime_binary])
+        .is_err()
+    {
         return Ok(ActivationAssessment {
             activation: None,
             receipt: ActivationAdmissionReceipt::rebuild(
@@ -279,7 +280,9 @@ fn assess_activation(
         });
     }
     gates.project_identity_matches = true;
-    if !activation_matches_provider_command_selections(&activation, current_selections) {
+    if !activation_matches_provider_command_selections(&activation, current_selections.providers())
+        || !activation_matches_graph_turbo_selection(&activation, current_selections.graph_turbo())
+    {
         return Ok(ActivationAssessment {
             activation: None,
             receipt: ActivationAdmissionReceipt::rebuild(
@@ -297,6 +300,21 @@ fn assess_activation(
         activation: Some(activation),
         receipt: ActivationAdmissionReceipt::reuse(gates),
     })
+}
+
+fn activation_matches_graph_turbo_selection(
+    activation: &HookActivation,
+    current_selection: &crate::provider_manifest::RuntimeBinarySelectionV1,
+) -> bool {
+    activation
+        .rankers
+        .iter()
+        .find(|ranker| ranker.ranker_id == "asp-graph-turbo")
+        .is_some_and(|ranker| {
+            ranker.binary == current_selection.binary()
+                && ranker.content_digest == current_selection.content_digest()
+                && ranker.artifact_metadata_digest == current_selection.artifact_metadata_digest()
+        })
 }
 
 fn activation_matches_provider_command_selections(

@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/agent-session-lifecycle-projection.v1.schema.json",
+  "title": "Agent Session Lifecycle Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceServer",
+    "session",
+    "hostBinding",
+    "dispatch",
+    "durableDispatchAuthorized"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.agent-session-lifecycle-projection"
+    },
+    "schemaVersion": { "const": "1" },
+    "workspaceServer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspaceIdentity", "health"],
+      "properties": {
+        "workspaceIdentity": { "type": "string", "minLength": 1 },
+        "health": {
+          "enum": ["unobserved", "ready", "repairing", "unavailable"]
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "generation", "phase"],
+      "properties": {
+        "sessionId": { "type": ["string", "null"], "minLength": 1 },
+        "generation": { "type": ["integer", "null"], "minimum": 0 },
+        "phase": {
+          "enum": [
+            "unobserved",
+            "declared",
+            "active",
+            "archive-intent-durable",
+            "archived",
+            "retired"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "phase": { "const": "unobserved" } },
+            "required": ["phase"]
+          },
+          "then": {
+            "properties": {
+              "sessionId": { "type": "null" },
+              "generation": { "type": "null" }
+            }
+          },
+          "else": {
+            "properties": {
+              "sessionId": { "type": "string", "minLength": 1 },
+              "generation": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      ]
+    },
+    "hostBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation",
+        "phase",
+        "terminationReceiptIndexed",
+        "pathReleaseReceiptIndexed"
+      ],
+      "properties": {
+        "generation": { "type": ["integer", "null"], "minimum": 0 },
+        "phase": {
+          "enum": [
+            "unobserved",
+            "unbound",
+            "fresh",
+            "stale",
+            "host-terminated",
+            "path-released"
+          ]
+        },
+        "childSessionId": { "type": ["string", "null"] },
+        "canonicalMessageTarget": { "type": ["string", "null"] },
+        "terminationReceiptIndexed": { "type": "boolean" },
+        "pathReleaseReceiptIndexed": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "phase": { "const": "path-released" } } },
+          "then": {
+            "properties": {
+              "terminationReceiptIndexed": { "const": true },
+              "pathReleaseReceiptIndexed": { "const": true }
+            }
+          }
+        }
+      ]
+    },
+    "dispatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation", "phase"],
+      "properties": {
+        "generation": { "type": ["integer", "null"], "minimum": 0 },
+        "phase": {
+          "enum": [
+            "unobserved",
+            "idle",
+            "claimed",
+            "running",
+            "quarantined",
+            "completed",
+            "rejected"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "not": {
+              "properties": { "phase": { "const": "unobserved" } },
+              "required": ["phase"]
+            }
+          },
+          "then": {
+            "properties": {
+              "generation": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      ]
+    },
+    "durableDispatchAuthorized": { "type": "boolean" }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/semantic-graph-turbo-resident-config.v1.schema.json",
+  "title": "Semantic Graph Turbo Resident Config v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "pythonExecutionLocator"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.semantic-graph-turbo-resident-config"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "pythonExecutionLocator": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

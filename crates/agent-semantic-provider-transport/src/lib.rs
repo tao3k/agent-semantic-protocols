@@ -7,15 +7,16 @@ mod capture;
 mod process_contract;
 pub mod projection_batch;
 pub use projection_batch::{
-    ProviderProjectedItem, ProviderProjectedOwner, ProviderProjectionBatchError,
-    ProviderProjectionBatchRequest, ProviderProjectionBatchResponse, ProviderProjectionOwner,
-    run_provider_projection_batch,
+    ProviderDerivedProjection, ProviderProjectedItem, ProviderProjectedOwner,
+    ProviderProjectionBatchError, ProviderProjectionBatchRequest, ProviderProjectionBatchResponse,
+    ProviderProjectionOwner, run_provider_projection_batch,
 };
 mod transport;
 
 pub use process_contract::{
-    OutputFraming, OutputMode, ProviderProcessError, ProviderProcessFraming, ProviderProcessLimits,
-    ProviderProcessReceipt, ProviderProcessSpec, StdinMode,
+    DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, OutputFraming, OutputMode, ProviderProcessError,
+    ProviderProcessFraming, ProviderProcessLimits, ProviderProcessReceipt, ProviderProcessSpec,
+    StdinMode,
 };
 pub use transport::{
     ProviderProcessOutput, provider_process_limits_from_environment, run_provider_process,

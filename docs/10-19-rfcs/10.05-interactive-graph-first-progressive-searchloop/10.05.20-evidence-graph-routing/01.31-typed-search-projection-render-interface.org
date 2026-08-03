@@ -1,0 +1,465 @@
+#+title: 01.31 Typed S-expression Agent Search Interface
+#+startup: overview
+
+* Supersession
+
+The S-expression-only input and output grammar below is retained as design
+history and MUST NOT be implemented as the agent search language.  The
+normative replacement is
+[[file:01.32-polyglot-search-replacement-evidence.org][Typed Polyglot Search and Replacement Evidence]].  S-expressions may encode
+control metadata internally, while ASP GQL Core and ASP Logic Query Core retain
+separate concrete grammars, parsers, and typed ASTs.
+
+* Status
+
+This module defines the single agent-facing interface for the interactive
+SearchLoop.  It replaces the legacy graph-frontier renderer, compact-output
+command family, and JSON-first proposal with a closed typed S-expression
+language compiled into ASP GQL Core and trusted Ascent relations.
+
+* Decision
+
+The agent interface is:
+
+#+begin_example
+search(TypedSearchSExpr) -> TypedSearchYieldSExpr
+#+end_example
+
+The same interface starts, resumes, chooses, and inspects a search.  These are
+typed constructors inside one grammar, not CLI subcommands.
+
+#+begin_example
+Agent typed S-expression
+  -> closed grammar parser and type checker
+  -> canonical Graph Pattern IR
+  -> GQL base-relation matching
+  -> admitted base facts
+  -> trusted Ascent derived relations
+  -> Graph Router admission and selection
+  -> typed S-expression yield
+#+end_example
+
+JSON is not an agent search language and is not the canonical CLI output.  It
+may remain behind the interface for Runtime Server IPC, persistence, schema
+fixtures, and audit receipts.  Human text, Mermaid, DOT, and internal JSON are
+terminal adapters over the typed result.
+
+* Single input grammar
+
+The root constructor is =search/v1=.  A new search declares a goal, an optional
+read-only GQL pattern, registered derived predicates, evidence requirements,
+and hard budgets:
+
+#+begin_src lisp
+(search/v1
+  (goal
+    (configuration-owner ?symbol ?owner))
+
+  (gql
+    (match
+      (node ?symbol (kind callable))
+      (edge ?symbol ?owner (relation configured-by))
+      (node ?owner (kind configuration))))
+
+  (derive
+    (reachable ?symbol ?owner)
+    (shortest-path ?symbol ?owner))
+
+  (require
+    (authority observed derived)
+    (fresh snapshot)
+    (provenance complete))
+
+  (budget
+    (graph-hops 4)
+    (tool-actions 3)
+    (agent-rounds 1)
+    (projected-tokens 600)))
+#+end_src
+
+Continuation uses the same root:
+
+#+begin_src lisp
+(search/v1
+  (resume @continuation:7)
+  (choose @action:inspect-owner))
+#+end_src
+
+Exact inspection also uses the same root:
+
+#+begin_src lisp
+(search/v1
+  (resume @continuation:7)
+  (inspect @evidence:configuration-owner))
+#+end_src
+
+The grammar admits only =goal=, =gql=, =derive=, =require=, =budget=,
+=resume=, =choose=, and =inspect= forms.  It has no agent-authored =rule=,
+=fact=, =assert=, =prove=, =graph-delta=, or arbitrary command form.
+
+* GQL and Ascent boundary
+
+ASP GQL Core owns read-only matching over admitted graph state:
+
+- typed node and edge patterns;
+- property restrictors;
+- variable binding;
+- bounded path patterns;
+- base-relation joins; and
+- canonical projection into Graph Pattern IR.
+
+Ascent owns registered derived predicates:
+
+- bounded reachability and transitive closure;
+- shortest-path candidate relations;
+- obligation propagation;
+- dominance and Pareto relations;
+- derived provenance relations; and
+- fixed-point closure under independent rule, fact, and graph-hop budgets.
+
+The agent requests a derived predicate but cannot provide its rules.  Rust
+selects a registered trusted ruleset bound to the live workspace generation.
+Graph Turbo and SciPy may propose candidate nodes or paths that become inputs
+only after exact verification.  They cannot mint Ascent source facts or
+Evidence Graph authority.
+
+* Closed output grammar
+
+The output is one of four constructors:
+
+#+begin_example
+complete/v1 | choice/v1 | partial/v1 | failure/v1
+#+end_example
+
+There is no generic success object whose fields can be combined into an
+invalid state.
+
+** Complete
+
+#+begin_src lisp
+(complete/v1
+  (bindings
+    (?symbol @node:runtime-generation)
+    (?owner @node:runtime-server-writer))
+
+  (evidence
+    (@fact:17
+      (relation configured-by)
+      (subject @node:runtime-generation)
+      (object @node:runtime-server-writer)
+      (authority observed)
+      (fresh @snapshot:42)
+      (provenance @source:selector-91))
+
+    (@fact:23
+      (relation reachable)
+      (subject @node:runtime-generation)
+      (object @node:publication)
+      (authority derived)
+      (derivation @ascent-proof:8)))
+
+  (closure
+    (all-obligations-resolved)
+    (state @graph-state:19)))
+#+end_src
+
+** Choice
+
+#+begin_src lisp
+(choice/v1
+  (bindings
+    (?owner @node:runtime-server-writer))
+
+  (evidence
+    (@fact:17
+      (relation configured-by)
+      (authority observed)
+      (provenance @source:selector-91)))
+
+  (question relation-ambiguity)
+  (options
+    (@action:inspect-publication
+      (kind inspect)
+      (target @node:publication)
+      (cost (graph-hops 1) (agent-rounds 0)))
+    (@action:inspect-recovery-tests
+      (kind inspect-tests)
+      (target @owner:runtime-recovery)))
+
+  (obligations
+    (resolved @obligation:owner)
+    (remaining @obligation:publication))
+
+  (budget
+    (remaining (graph-hops 2) (agent-rounds 1)))
+
+  (omitted
+    (count 12)
+    (reason dominated))
+
+  (resume @continuation:8))
+#+end_src
+
+** Partial
+
+#+begin_src lisp
+(partial/v1
+  (reason graph-hop-budget)
+  (checkpoint @graph-state:19)
+  (remaining-obligations @obligation:publication)
+  (resume @continuation:8))
+#+end_src
+
+** Failure
+
+#+begin_src lisp
+(failure/v1
+  (code stale-snapshot)
+  (expected @snapshot:42)
+  (observed @snapshot:43)
+  (repair refresh-continuation))
+#+end_src
+
+* Default agent projection
+
+The default yield contains only:
+
+- typed bindings;
+- admitted evidence references and authority;
+- provenance or derivation references;
+- one selected next action, or a bounded semantic choice when model judgment
+  is required;
+- resolved and remaining obligations;
+- remaining graph-hop and agent-round budgets;
+- typed omission counts and reasons; and
+- one opaque continuation.
+
+It does not contain a complete graph, raw source bodies, provider stdout,
+unbounded candidate lists, full Ascent traces, renderer metadata, shell command
+strings, or model-cache telemetry.  An =inspect= form retrieves one exact
+evidence or derivation projection when needed.
+
+* Internal loop and yield boundary
+
+SearchLoop executes deterministic, admitted, low-risk transitions internally.
+It yields to the agent only when:
+
+1. all obligations are resolved;
+2. a semantic choice requires model judgment;
+3. a hard search or agent-round budget is reached; or
+4. a typed failure prevents further execution.
+
+Provider boundaries, language facades, cache reads, GQL matches, and trusted
+Ascent derivations do not by themselves require another agent round.
+
+* Progressive disclosure contract
+
+SearchLoop never places the complete committed evidence universe into the
+default agent context.  Each yield exposes one bounded evidence slice chosen
+for the current unresolved obligation.  Hidden evidence is represented by an
+omission certificate, not silently dropped.
+
+For one committed semantic result =U=, yield =k= contains visible evidence
+=V_k= and omitted evidence commitment =O_k=.  A valid resume preserves result
+identity, monotonically increases visible evidence, and strictly decreases the
+remaining committed evidence when it performs an inspection:
+
+#+begin_src typst
+$ V_k subset.eq V_(k+1) subset.eq U $
+$ |O_(k+1)| < |O_k| $
+$ V_k union O_k = U $
+$ "result-id"_(k+1) = "result-id"_k $
+#+end_src
+
+The omission certificate binds the committed evidence count, omitted-set
+digest, omission reason, current obligation, continuation identity, and the
+bounded action that can reveal the next slice.  It is not a claim that omitted
+evidence is irrelevant forever; it proves only that the current projection is
+complete for the current decision boundary.
+
+A progressive yield therefore contains:
+
+- the smallest evidence slice needed for the current goal or choice;
+- a typed statement of what remains unresolved;
+- the number and digest of committed-but-hidden evidence items;
+- one bounded next inspection or semantic choice; and
+- a continuation bound to the same semantic result and disclosure state.
+
+Full graph, full candidate, and full derivation projections require an explicit
+=inspect= request and their own larger budget.  They are never an automatic
+fallback after a no-hit, ambiguity, or partial result.
+
+* Typed projection and encoding
+
+The semantic projection interface is:
+
+#+begin_example
+project(
+  admittedResult,
+  agentProjectionProfile,
+  projectionBudget
+) -> TypedSearchYieldSExpr
+#+end_example
+
+Canonical encoding is:
+
+#+begin_example
+encodeCanonicalSExpr(TypedSearchYieldSExpr) -> CanonicalSExprBytes
+#+end_example
+
+The projector cannot select a route, invoke a provider, derive a fact, resume a
+continuation, or admit a GraphDelta.  The encoder cannot change constructors,
+references, authority, obligations, budgets, or continuation identity.
+
+Internal adapters may consume the same typed value:
+
+#+begin_example
+TypedSearchYieldSExpr -> internal JSON receipt
+TypedSearchYieldSExpr -> human explanation
+TypedSearchYieldSExpr -> Mermaid
+TypedSearchYieldSExpr -> DOT
+#+end_example
+
+None of these adapters is part of the agent protocol.
+
+* Mathematical boundary
+
+#+begin_src typst
+$ X = "parse-and-typecheck"(S) $
+$ G = "compile-gql"(X) $
+$ F_0 = "admit-base-facts"(G) $
+$ F_star = "lfp"_R(F_0) $
+$ Y = "route-and-project"(X, F_star, B) $
+$ E = "encode-canonical-sexpr"(Y) $
+
+$ R in "trusted-rulesets" $
+$ "agent-authored-rules"(X) = emptyset $
+$ |Y_a| <= 1 $
+$ |Y| <= B_p $
+$ |E| <= B_e $
+
+$ "after-state"(Y) = "after-state"(F_star) $
+$ "selected-action"(E) = "selected-action"(Y) $
+#+end_src
+
+Here =S= is the agent S-expression, =X= is the typed expression, =G= is the
+canonical GQL plan, =F_0= is admitted base evidence, =R= is the trusted Ascent
+ruleset, =F_star= is its verified fixed point, =Y= is the typed yield, and =E=
+is the canonical S-expression encoding.
+
+* Cache boundary
+
+Search-result cache identity binds semantic query, graph snapshot, trusted
+ruleset, evidence requirements, and continuation state.  It excludes encoded
+S-expression bytes.
+
+Projection identity additionally binds the typed output grammar and projection
+profile.  Canonical byte identity additionally binds the S-expression encoder
+version and exact bytes.
+
+Stable canonical S-expression bytes may improve model prefix-cache hits, but a
+prefix-cache hit never proves that search evidence, snapshot, ruleset, or
+continuation remains valid.  Model-cache telemetry stays outside the agent
+yield because adding it would destabilize the prefix it attempts to measure.
+
+* Stateful architecture
+
+#+begin_src mermaid
+stateDiagram-v2
+  [*] --> Parsed: search/v1 received
+  Parsed --> Rejected: unknown or ill-typed form
+  Parsed --> GQLCompiled: closed typed expression
+  GQLCompiled --> BaseFacts: read-only bounded match
+  BaseFacts --> Rejected: stale or unauthorized evidence
+  BaseFacts --> AscentClosure: trusted registered predicates
+  AscentClosure --> Rejected: rule / fact / hop budget failure
+  AscentClosure --> RouterAdmission: verified fixed point
+  RouterAdmission --> Complete: all obligations resolved
+  RouterAdmission --> Choice: semantic judgment required
+  RouterAdmission --> Partial: hard budget reached
+  RouterAdmission --> Failure: typed execution failure
+  Complete --> CanonicalSExpr
+  Choice --> CanonicalSExpr
+  Partial --> CanonicalSExpr
+  Failure --> CanonicalSExpr
+  CanonicalSExpr --> [*]
+  Rejected --> Failure
+#+end_src
+
+Only admission before =RouterAdmission= can change semantic graph state.
+Projection and canonical encoding are terminal non-authoritative transitions.
+
+* Rust refinement boundary
+
+- =search_pipe_graph_turbo.rs= returns candidate work to exact verification;
+- =search_pipe_projection.rs= becomes the typed S-expression projector;
+- =search_pipe_render.rs= is replaced by canonical S-expression encoding plus
+  optional terminal adapters;
+- GQL compilation produces canonical Graph Pattern IR rather than rendered
+  commands;
+- Ascent accepts only registered predicates and trusted rulesets; and
+- the old graph-render and ingest paths remain compatibility adapters outside
+  the agent interface.
+
+The public surface remains one stdin-capable or host-native =search= operation.
+
+* Lean obligations
+
+The refinement must prove:
+
+1. the agent grammar cannot represent an Ascent rule, asserted fact, proved
+   fact, or GraphDelta;
+2. GQL matching is read-only over admitted base facts;
+3. every derived fact cites a trusted ruleset and grounded derivation;
+4. candidate Graph Turbo facts cannot become Ascent source facts without exact
+   verification;
+5. canonical encoding cannot change graph state or selected action;
+6. the default agent yield contains at most one selected action;
+7. projection and encoding respect independent hard bounds;
+8. omission, failure, obligation, and continuation metadata cannot be silently
+   truncated;
+9. internal JSON, human text, Mermaid, and DOT cannot mint authority;
+10. encoder identity is absent from search-result cache identity; and
+11. canonical byte identity includes typed grammar, encoder version, and exact
+    S-expression bytes.
+12. the first progressive yield can expose a strict subset of committed
+    evidence without losing semantic result identity;
+13. resume monotonically reveals evidence and strictly decreases the committed
+    omitted set for an inspection step;
+14. hidden evidence requires a typed omission certificate; and
+15. a stale continuation cannot resume another progressive disclosure state.
+
+* Proof artifacts
+
+The Lean refinement is
+[[file:../../../../packages/proofs/ASPProof/SearchProjectionRenderInterface.lean][ASPProof.SearchProjectionRenderInterface]].
+Its kernel audit is
+[[file:../../../../packages/proofs/ASPProof/Audit/SearchProjectionRenderInterface.lean][ASPProof.Audit.SearchProjectionRenderInterface]].
+The generated receipts are:
+
+- [[file:../../../../packages/proofs/receipts/search-projection-render-interface-audit-v1.json][search-projection-render-interface-audit-v1.json]]; and
+- [[file:../../../../packages/proofs/receipts/search-projection-render-interface-axle-v1.json][search-projection-render-interface-axle-v1.json]].
+
+The audit covers twenty declarations.  All twenty are axiom-free,
+=hasSorryAx=false=, and admitted by AXLE without an axiom allowlist.
+
+* Validation matrix
+
+- positive and negative typed S-expression parser fixtures;
+- rejection of unknown forms and agent-authored rules;
+- GQL variable-type and bounded-path validation;
+- trusted Ascent predicate resolution and untrusted-ruleset rejection;
+- complete, choice, partial, and failure canonical encodings;
+- canonical byte determinism and token bounds;
+- host-native AST and canonical S-expression semantic equivalence;
+- internal JSON verified only as a non-agent receipt adapter;
+- within-budget fixed-point acceptance and over-budget rejection; and
+- Lean build, kernel audit, AXLE admission, and Org/Typst lint.
+
+* Completion criterion
+
+The refactor is complete only when the agent sends and receives the closed
+typed S-expression grammar, no JSON or format flag is required on the agent
+path, no projection or encoder performs route selection or provider execution,
+and GQL plus Ascent produce the same admitted semantic result for host-native
+and canonical S-expression consumers.

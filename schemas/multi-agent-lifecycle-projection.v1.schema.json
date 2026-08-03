@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/multi-agent-lifecycle-projection.v1.schema.json",
+  "title": "Codex Multi-Agent V2 Downstream Control Plane Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "materialization",
+    "workspaceServer",
+    "rootSessionId",
+    "agents",
+    "turns",
+    "delegations"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.codex-multi-agent-v2-control-plane-projection"
+    },
+    "schemaVersion": { "const": "1" },
+    "materialization": { "$ref": "#/$defs/materialization" },
+    "workspaceServer": {
+      "$ref": "agent-session-lifecycle-projection.v1.schema.json#/properties/workspaceServer"
+    },
+    "rootSessionId": { "type": "string", "minLength": 1 },
+    "agents": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/agentNode" }
+    },
+    "turns": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/turnNode" }
+    },
+    "delegations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/delegationEdge" }
+    }
+  },
+  "$defs": {
+    "materialization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation", "sourceDigest", "evidenceRefs", "freshness"],
+      "properties": {
+        "generation": { "type": "integer", "minimum": 0 },
+        "sourceDigest": { "type": ["string", "null"], "minLength": 1 },
+        "evidenceRefs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "freshness": { "enum": ["unobserved", "current", "stale"] }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "freshness": { "enum": ["current", "stale"] } },
+            "required": ["freshness"]
+          },
+          "then": {
+            "properties": { "sourceDigest": { "type": "string", "minLength": 1 } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "freshness": { "const": "current" } },
+            "required": ["freshness"]
+          },
+          "then": {
+            "properties": { "evidenceRefs": { "minItems": 1 } }
+          }
+        }
+      ]
+    },
+    "agentNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootSessionId",
+        "parentSessionId",
+        "residentName",
+        "role",
+        "lifecycle"
+      ],
+      "properties": {
+        "rootSessionId": { "type": "string", "minLength": 1 },
+        "parentSessionId": { "type": ["string", "null"], "minLength": 1 },
+        "residentName": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "configuredAgentType": { "type": ["string", "null"], "minLength": 1 },
+        "lifecycle": {
+          "$ref": "agent-session-lifecycle-projection.v1.schema.json"
+        }
+      }
+    },
+    "turnNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["turnId", "sessionId", "generation", "phase"],
+      "properties": {
+        "turnId": { "type": "string", "minLength": 1 },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "generation": { "type": ["integer", "null"], "minimum": 0 },
+        "phase": {
+          "enum": [
+            "unobserved",
+            "idle",
+            "queued",
+            "running",
+            "waiting",
+            "completed",
+            "failed",
+            "interrupted",
+            "quarantined"
+          ]
+        }
+      }
+    },
+    "delegationEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parentSessionId",
+        "parentTurnId",
+        "childSessionId",
+        "childGeneration",
+        "phase",
+        "deliveredReceiptRef"
+      ],
+      "properties": {
+        "parentSessionId": { "type": "string", "minLength": 1 },
+        "parentTurnId": { "type": ["string", "null"], "minLength": 1 },
+        "childSessionId": { "type": "string", "minLength": 1 },
+        "childGeneration": { "type": "integer", "minimum": 0 },
+        "phase": {
+          "enum": [
+            "unobserved",
+            "intent-durable",
+            "dispatched",
+            "delivered",
+            "quarantined",
+            "rejected",
+            "completed"
+          ]
+        },
+        "deliveredReceiptRef": { "type": ["string", "null"], "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "phase": { "enum": ["delivered", "completed"] }
+            },
+            "required": ["phase"]
+          },
+          "then": {
+            "properties": {
+              "deliveredReceiptRef": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

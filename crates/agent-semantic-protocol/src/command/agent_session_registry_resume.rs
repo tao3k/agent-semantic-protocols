@@ -125,16 +125,7 @@ pub(super) fn resume_session(
             )
         })
         .transpose()?;
-    let configured_required_model =
-        super::agent_session_registry_validation::expected_model_for_session_profile(
-            resolved_name,
-            role,
-        )?;
-    let required_model = validation
-        .as_ref()
-        .and_then(|validation| validation.expected_model())
-        .or(configured_required_model.as_deref())
-        .unwrap_or("");
+    let required_model = "";
     let actual_model = validation
         .as_ref()
         .and_then(|validation| validation.actual_model())

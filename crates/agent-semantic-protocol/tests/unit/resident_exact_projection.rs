@@ -39,7 +39,7 @@ fn existing_item_without_requested_projection_is_not_a_kind_mismatch() {
 }
 
 #[test]
-fn relocated_projection_is_not_an_exact_selector_hit() {
+fn uniquely_relocated_projection_is_an_exact_selector_hit() {
     let requested = "rust://src/lib.rs#item/function/target";
     let resolved = "rust://src/moved.rs#item/function/target";
     let resolution = resolve(
@@ -52,11 +52,30 @@ fn relocated_projection_is_not_an_exact_selector_hit() {
         requested,
     )
     .expect("resolve relocated resident projection");
-    let ResidentExactProjection::Miss(miss) = resolution else {
-        panic!("relocated selector must not be an exact hit");
+    let ResidentExactProjection::Hit(bytes) = resolution else {
+        panic!("unique relocated selector must remain an exact hit");
     };
-    assert_eq!(miss.state, "selector-stale");
-    assert_eq!(miss.reason_kind, "selector-not-in-active-generation");
+    assert_eq!(bytes, b"fn target() {}\n");
+}
+
+#[test]
+fn relocated_item_with_missing_projection_is_not_selector_stale() {
+    let requested = "rust://src/lib.rs#item/function/target";
+    let resolved = "rust://src/moved.rs#item/function/target";
+    let resolution = resolve(
+        WorkspaceRuntimeSelectorRead::ProjectionMissing {
+            generation_digest: "generation".to_owned(),
+            root_digest: "root".to_owned(),
+            resolved_selector: resolved.to_owned(),
+        },
+        requested,
+    )
+    .expect("resolve missing relocated projection");
+    let ResidentExactProjection::Miss(miss) = resolution else {
+        panic!("missing projection must remain a typed miss");
+    };
+    assert_eq!(miss.state, "source-unavailable");
+    assert_eq!(miss.reason_kind, "projection-mode-not-in-active-generation");
     assert_eq!(miss.candidates, [resolved]);
 }
 

@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use agent_semantic_client_db::runtime_server_workspace::{
-    WorkspaceOwnerSnapshot, WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
+    WorkspaceDerivedProjectionSnapshot, WorkspaceOwnerSnapshot, WorkspaceRuntimeSelectorRead,
+    WorkspaceSelectorSnapshot,
 };
 
 pub(super) fn run_resident_exact_query(
@@ -80,10 +81,12 @@ async fn resident_exact_projection(
         .map(|(owner_path, _)| owner_path)
         .ok_or_else(|| "exact structural selector omitted owner path".to_owned())?;
     let session =
-        super::runtime_server::runtime_server_workspace_session_async(project_root).await?;
+        super::runtime_server::runtime_server_workspace_session_for_admission_async(project_root)
+            .await?;
     session
         .ensure_runtime_owner(language_id, owner_path)
-        .await?;
+        .await?
+        .validate()?;
     let client =
         super::runtime_server::runtime_server_workspace_exact_projection_client_async(project_root)
             .await?;
@@ -91,24 +94,13 @@ async fn resident_exact_projection(
 }
 
 pub(super) async fn build_resident_owner_projection(
+    workspace_identity: &str,
     language_id: &str,
     project_root: &Path,
     owner_path: &str,
     owner: WorkspaceOwnerSnapshot,
 ) -> Result<WorkspaceOwnerSnapshot, String> {
-    let activation_path = super::provider_activation::provider_activation_path(project_root);
-    let runtime = agent_semantic_hook::registered_language_runtime(
-        project_root,
-        language_id,
-        &activation_path,
-    )?;
-    let provider = runtime
-        .providers
-        .iter()
-        .find(|provider| provider.language_id == language_id)
-        .ok_or_else(|| format!("no activated provider for language {language_id}"))?;
-    let profiles = agent_semantic_hook::runtime_profiles_for_runtime(project_root, &runtime);
-    let resolved = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?;
+    let provider = super::global_provider_catalog::runtime_projection_provider(language_id)?;
     let command_binding = agent_semantic_hook::registered_provider_projection_command_binding_v1(
         language_id,
         provider.provider_id.as_str(),
@@ -119,13 +111,14 @@ pub(super) async fn build_resident_owner_projection(
             language_id, provider.provider_id
         )
     })?;
-    let invocation =
-        super::provider_process::provider_invocation_with_profile(&profiles, provider, &[])?;
+    let invocation = provider.argv_prefix.clone();
     let projection_request = agent_semantic_provider_transport::ProviderProjectionBatchRequest {
         language_id: language_id.to_owned(),
         provider_id: provider.provider_id.as_str().to_owned(),
-        workspace_identity: resolved.workspace.workspace_id.to_string(),
+        workspace_identity: workspace_identity.to_owned(),
         generation_root_digest: owner.content_digest.clone(),
+        parser_identity_digest: provider.exact_parser_identity_digest.clone(),
+        query_pack_digest: provider.exact_query_pack_identity_digest.clone(),
         base_generation_root_digest: None,
         owners: vec![agent_semantic_provider_transport::ProviderProjectionOwner {
             owner_path: owner_path.to_owned(),
@@ -151,13 +144,29 @@ pub(super) async fn build_resident_owner_projection(
     let selectors = projected_owner
         .items
         .into_iter()
-        .map(|projection| WorkspaceSelectorSnapshot {
-            selector: projection.selector,
-            byte_start: projection.source_byte_start,
-            byte_end: projection.source_byte_end,
-            derived_projections: Vec::new(),
+        .map(|projection| {
+            let derived_projections = projection
+                .projections
+                .into_iter()
+                .map(|derived| {
+                    serde_json::to_vec(&derived.payload)
+                        .map(|bytes| WorkspaceDerivedProjectionSnapshot {
+                            projection_kind: derived.projection_kind,
+                            bytes,
+                        })
+                        .map_err(|error| {
+                            format!("encode provider derived projection payload: {error}")
+                        })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            Ok(WorkspaceSelectorSnapshot {
+                selector: projection.selector,
+                byte_start: projection.source_byte_start,
+                byte_end: projection.source_byte_end,
+                derived_projections,
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, String>>()?;
     Ok(WorkspaceOwnerSnapshot {
         owner_path: owner.owner_path,
         content_digest: owner.content_digest,

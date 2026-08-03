@@ -395,7 +395,7 @@ fn start_fixture_resident(
         .arg(workspace)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::inherit())
         .spawn()
         .expect("start fixture workspace resident");
     let stdout = child.stdout.take().expect("fixture resident stdout");

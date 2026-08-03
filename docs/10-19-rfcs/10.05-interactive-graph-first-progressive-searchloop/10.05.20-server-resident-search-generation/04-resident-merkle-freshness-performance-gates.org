@@ -110,6 +110,51 @@ freshness plus generation open remains subject to the exact-query performance
 gate; a changed owner may use the bounded resident publication lane, but old
 bytes must never be returned while that publication is pending.
 
+Owner-local discovery is subject to the same proof.  =search owner ... items=
+must ensure the requested owner through the WorkspaceResident writer lane
+before opening its immutable mmap generation; otherwise it can recommend a
+selector that is stale at the moment it is minted.  The CLI performs no local
+provider execution, scan, or write.  Session lookup, owner ensure, and immutable
+generation open are separate phases with separate monotonic budgets and an
+explicit control-roundtrip receipt.
+
+* Core readiness is independent of optional resident providers
+
+Publishing the ServerProcess endpoint commits the core control plane to accept
+requests.  The Tokio accept loop MUST therefore start before Graph Turbo or any
+language/provider subprocess completes its handshake.  Optional resident
+providers initialize in server-owned Tokio tasks and expose an explicit
+=starting=, =healthy=, =failed=, or =unavailable= state through the server
+receipt.  Their startup MUST NOT delay core health, workspace admission, exact
+projection, shutdown, or supervisor artifact reconciliation.
+
+The owner projection builder resolves parser identity, query-pack identity, and
+the managed provider argv from the validated Global provider catalog loaded
+once by the ServerProcess.  Query-time activation loading, runtime-profile
+resolution, provider binary discovery, and catalog disk reads are forbidden.
+The WorkspaceResident passes its admitted workspace identity into the builder;
+the builder MUST NOT canonicalize or resolve the workspace identity again.
+The catalog generation is part of daemon admission; advancing it requires
+supervisor reconciliation rather than silently mixing provider identities in
+one ServerProcess generation.
+
+A request that reaches an optional provider while it is =starting= returns a
+typed provider-readiness result; it must not wait on provider construction or
+fall through to an unmanaged executable.  Shutdown first closes new provider
+work, joins the initialization task, and then drains any process that became
+live.  This ordering prevents both orphan provider processes and a published
+endpoint with no active accept loop.
+
+When the canonical runtime artifact advances while the platform supervisor
+definition is unchanged, the Hook MUST reconcile through the authenticated
+Runtime Server control plane.  The old daemon publishes =draining= and exits;
+launchd/systemd restarts =$ASP_STATE_HOME/runtime/bin/asp=.  The platform
+definition pins this stable entry and MUST NOT canonicalize it to the current
+digest-addressed target; artifact identity remains receipt-validated.  A sandboxed client MUST
+NOT invoke =launchctl kickstart=, =systemctl restart=, or manipulate a PID for
+this ordinary artifact transition.  Platform supervisor mutation is reserved
+for an absent service or a changed service definition.
+
 * Independent performance gates
 
 Each phase owns a fresh monotonic clock.  One absolute deadline must not be
@@ -123,6 +168,7 @@ shared across setup, enqueue, acceptance, and completion.
 | warm exact read p95 | 100 ms | resident read regression |
 | background materialization | measured, no foreground blocking | worker receipt required |
 | atomic publication | 250 ms | publication regression |
+| core server readiness after endpoint publication | 100 ms | optional provider startup blocked the accept loop |
 
 Background materialization may exceed foreground budgets, but it must emit a
 terminal receipt and remain cancellable or supersedable by a newer observation.

@@ -321,16 +321,23 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         &payload,
         &mut decision,
     );
+    let explicit_asp_workspace = requests_explicit_asp_workspace(&payload);
     let runtime_generation_admission = hook_runtime_generation_admission::observe(
         args,
         workspace_mutated,
         mutation_id,
         changed_paths,
-        requests_explicit_asp_workspace(&payload),
+        explicit_asp_workspace,
         |mutation_id, changed_paths| {
             hook_runtime_generation_admission::request(&project_root, mutation_id, changed_paths)
         },
-        || hook_runtime_generation_admission::ensure(&project_root),
+        || {
+            if explicit_asp_workspace {
+                hook_runtime_generation_admission::ensure_ready(&project_root)
+            } else {
+                hook_runtime_generation_admission::ensure(&project_root)
+            }
+        },
     );
     if let Some(auto_refresh) = hook_config_auto_refresh {
         annotate_hook_config_repair(

@@ -16,15 +16,16 @@ use tracing::{Instrument, debug, info_span, warn};
 use crate::byte_text;
 use crate::capture::LimitedRead;
 use crate::process_contract::{
-    ProviderProcessError, ProviderProcessFraming, ProviderProcessLimits, ProviderProcessReceipt,
-    ProviderProcessSpec, StdinMode,
+    DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES, ProviderProcessError, ProviderProcessFraming,
+    ProviderProcessLimits, ProviderProcessReceipt, ProviderProcessSpec, StdinMode,
 };
 
 const EXECUTABLE_BUSY_SPAWN_RETRIES: usize = 5;
 const EXECUTABLE_BUSY_SPAWN_RETRY_DELAY: Duration = Duration::from_millis(10);
+const PROVIDER_MEMORY_OBSERVATION_GRACE: Duration = Duration::from_millis(250);
+const PROVIDER_MEMORY_OBSERVATION_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const ASP_PROVIDER_TIMEOUT_MS_ENV: &str = "ASP_PROVIDER_TIMEOUT_MS";
 const ASP_PROVIDER_MEMORY_LIMIT_BYTES_ENV: &str = "ASP_PROVIDER_MEMORY_LIMIT_BYTES";
-const DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// Resolve the optional facade timeout contract into provider process limits.
 pub fn provider_process_limits_from_environment() -> Result<ProviderProcessLimits, String> {
@@ -49,7 +50,12 @@ pub fn provider_process_limits_from_environment() -> Result<ProviderProcessLimit
                     "{ASP_PROVIDER_MEMORY_LIMIT_BYTES_ENV} must be an integer number of bytes: {error}"
                 )
             })?;
-            (bytes > 0).then_some(bytes)
+            if bytes == 0 {
+                return Err(format!(
+                    "{ASP_PROVIDER_MEMORY_LIMIT_BYTES_ENV} must be greater than zero"
+                ));
+            }
+            Some(bytes)
         }
         _ => Some(DEFAULT_PROVIDER_MEMORY_LIMIT_BYTES),
     };
@@ -131,6 +137,7 @@ struct ProviderProcessAdmissionPermit {
 
 struct ProviderChild {
     child: Child,
+    process_group_id: Option<i32>,
 }
 
 impl std::ops::Deref for ProviderChild {
@@ -149,7 +156,7 @@ impl std::ops::DerefMut for ProviderChild {
 
 impl Drop for ProviderChild {
     fn drop(&mut self) {
-        kill_provider_process_group(&self.child);
+        kill_provider_process_group(self.process_group_id);
         let _ = self.child.start_kill();
     }
 }
@@ -313,7 +320,13 @@ async fn spawn_provider_process(
     for attempt in 0..=EXECUTABLE_BUSY_SPAWN_RETRIES {
         let mut command = provider_command(spec, stdin_mode);
         match command.spawn() {
-            Ok(child) => return Ok(ProviderChild { child }),
+            Ok(child) => {
+                let process_group_id = provider_process_group_id(&child);
+                return Ok(ProviderChild {
+                    child,
+                    process_group_id,
+                });
+            }
             Err(source) => {
                 if source.kind() == ErrorKind::ExecutableFileBusy
                     && attempt < EXECUTABLE_BUSY_SPAWN_RETRIES
@@ -416,6 +429,11 @@ async fn collect_provider_output(
         stderr: stderr_task,
     } = tasks;
     let child_pid = child.id();
+    debug!(
+        child_pid,
+        memory_limit_bytes = limits.memory_limit_bytes(),
+        "provider memory gate armed"
+    );
 
     let status = if let Some(timeout) = limits.timeout() {
         tokio::select! {
@@ -441,21 +459,27 @@ async fn collect_provider_output(
                 return Err(ProviderProcessError::Timeout {
                     timeout,
                     receipt: Box::new(provider_process_receipt(
-                        start, admission_wait, None, stdout, stderr, true, false, limits,
+                        start, admission_wait, None, stdout, stderr, true, false, false, limits,
                     )),
                 });
                 }
             }
-            _ = provider_memory_limit_exceeded(child_pid, limits.memory_limit_bytes()) => {
+            observation = provider_memory_limit_exceeded(child_pid, limits.memory_limit_bytes()) => {
                 let limit_bytes = limits.memory_limit_bytes().expect("memory monitor requires limit");
-                warn!(limit_bytes, "provider process exceeded memory limit; requesting kill");
+                warn!(
+                    limit_bytes,
+                    observed_resident_bytes = observation.resident_bytes,
+                    observed_process_count = observation.process_count,
+                    termination_action = "kill-process-group",
+                    "provider process exceeded memory limit; requesting kill"
+                );
                 terminate_provider_process(&mut child).await;
                 let _ = join_transport_task(stdin_task, "stdin").await;
                 let (stdout, stderr) = join_readers_after_timeout(stdout_task, stderr_task).await;
                 return Err(ProviderProcessError::MemoryLimit {
                     limit_bytes,
                     receipt: Box::new(provider_process_receipt(
-                        start, admission_wait, None, stdout, stderr, false, true, limits,
+                        start, admission_wait, None, stdout, stderr, false, true, false, limits,
                     )),
                 });
             }
@@ -466,20 +490,40 @@ async fn collect_provider_output(
             result = child.wait() => {
                 result.map_err(|source| ProviderProcessError::Wait { source })?
             }
-            _ = provider_memory_limit_exceeded(child_pid, limits.memory_limit_bytes()) => {
+            observation = provider_memory_limit_exceeded(child_pid, limits.memory_limit_bytes()) => {
                 let limit_bytes = limits.memory_limit_bytes().expect("memory monitor requires limit");
+                warn!(
+                    limit_bytes,
+                    observed_resident_bytes = observation.resident_bytes,
+                    observed_process_count = observation.process_count,
+                    termination_action = "kill-process-group",
+                    "provider process exceeded memory limit; requesting kill"
+                );
                 terminate_provider_process(&mut child).await;
                 let _ = join_transport_task(stdin_task, "stdin").await;
                 let (stdout, stderr) = join_readers_after_timeout(stdout_task, stderr_task).await;
                 return Err(ProviderProcessError::MemoryLimit {
                     limit_bytes,
                     receipt: Box::new(provider_process_receipt(
-                        start, admission_wait, None, stdout, stderr, false, true, limits,
+                        start, admission_wait, None, stdout, stderr, false, true, false, limits,
                     )),
                 });
             }
         }
     };
+
+    // Provider invocations are not resident. Once the leader exits, any
+    // remaining descendant belongs to this invocation and must be terminated
+    // before inherited output pipes can keep collection alive indefinitely.
+    let descendant_cleanup_required = kill_provider_process_group(child.process_group_id);
+    if descendant_cleanup_required {
+        warn!(
+            process_group_id = child.process_group_id,
+            termination_action = "kill-process-group",
+            descendant_cleanup_required = true,
+            "one-shot provider leader exited with live descendants; terminated orphan process group"
+        );
+    }
 
     debug!(
         status = ?status.code(),
@@ -497,31 +541,45 @@ async fn collect_provider_output(
         stderr,
         false,
         false,
+        descendant_cleanup_required,
         limits,
     ))
 }
 
-async fn terminate_provider_process(child: &mut Child) {
-    kill_provider_process_group(child);
+async fn terminate_provider_process(child: &mut ProviderChild) {
+    kill_provider_process_group(child.process_group_id);
     let _ = child.start_kill();
     let _ = child.wait().await;
 }
 
 #[cfg(unix)]
-fn kill_provider_process_group(child: &Child) {
-    let Some(pid) = child.id() else {
-        return;
-    };
-    let Ok(process_group_id) = i32::try_from(pid) else {
-        return;
-    };
-    unsafe {
-        libc::kill(-process_group_id, libc::SIGKILL);
-    }
+fn provider_process_group_id(child: &Child) -> Option<i32> {
+    child.id().and_then(|pid| i32::try_from(pid).ok())
 }
 
 #[cfg(not(unix))]
-fn kill_provider_process_group(_child: &Child) {}
+fn provider_process_group_id(_child: &Child) -> Option<i32> {
+    None
+}
+
+#[cfg(unix)]
+fn kill_provider_process_group(process_group_id: Option<i32>) -> bool {
+    let Some(process_group_id) = process_group_id else {
+        return false;
+    };
+    let group_exists = unsafe { libc::kill(-process_group_id, 0) == 0 };
+    if group_exists {
+        unsafe {
+            libc::kill(-process_group_id, libc::SIGKILL);
+        }
+    }
+    group_exists
+}
+
+#[cfg(not(unix))]
+fn kill_provider_process_group(_process_group_id: Option<i32>) -> bool {
+    false
+}
 
 fn provider_process_output(
     start: Instant,
@@ -531,6 +589,7 @@ fn provider_process_output(
     stderr: LimitedRead,
     timed_out: bool,
     memory_limit_exceeded: bool,
+    descendant_cleanup_required: bool,
     limits: ProviderProcessLimits,
 ) -> ProviderProcessOutput {
     let receipt = provider_process_receipt(
@@ -541,6 +600,7 @@ fn provider_process_output(
         stderr.clone(),
         timed_out,
         memory_limit_exceeded,
+        descendant_cleanup_required,
         limits,
     );
     ProviderProcessOutput {
@@ -559,6 +619,7 @@ fn provider_process_receipt(
     stderr: LimitedRead,
     timed_out: bool,
     memory_limit_exceeded: bool,
+    descendant_cleanup_required: bool,
     limits: ProviderProcessLimits,
 ) -> ProviderProcessReceipt {
     let exit_signal = provider_exit_signal(status.as_ref());
@@ -595,28 +656,74 @@ fn provider_process_receipt(
         exit_signal,
         memory_limit_bytes: limits.memory_limit_bytes(),
         memory_limit_enforced,
+        process_group_isolation_enforced: cfg!(unix),
+        descendant_cleanup_required,
         abnormal_termination: timed_out || memory_limit_exceeded || !status_success,
         termination_reason: termination_reason.to_string(),
     })
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ProviderMemoryObservation {
+    resident_bytes: u64,
+    process_count: usize,
+}
+
 #[cfg(target_os = "macos")]
-async fn provider_memory_limit_exceeded(pid: Option<u32>, limit: Option<u64>) {
+async fn provider_memory_limit_exceeded(
+    pid: Option<u32>,
+    limit: Option<u64>,
+) -> ProviderMemoryObservation {
     let (Some(pid), Some(limit)) = (pid, limit) else {
-        std::future::pending::<()>().await;
-        return;
+        return std::future::pending::<ProviderMemoryObservation>().await;
     };
+    tokio::time::sleep(PROVIDER_MEMORY_OBSERVATION_GRACE).await;
     loop {
-        tokio::time::sleep(Duration::from_millis(25)).await;
-        if macos_resident_bytes(pid).is_some_and(|resident| resident > limit) {
-            return;
+        if let Some(observation) = macos_process_group_memory(pid)
+            && observation.resident_bytes > limit
+        {
+            return observation;
         }
+        tokio::time::sleep(PROVIDER_MEMORY_OBSERVATION_POLL_INTERVAL).await;
     }
 }
 
 #[cfg(not(target_os = "macos"))]
-async fn provider_memory_limit_exceeded(_pid: Option<u32>, _limit: Option<u64>) {
-    std::future::pending::<()>().await;
+async fn provider_memory_limit_exceeded(
+    _pid: Option<u32>,
+    _limit: Option<u64>,
+) -> ProviderMemoryObservation {
+    std::future::pending::<ProviderMemoryObservation>().await
+}
+
+#[cfg(target_os = "macos")]
+fn macos_process_group_memory(process_group_id: u32) -> Option<ProviderMemoryObservation> {
+    unsafe extern "C" {
+        fn proc_listallpids(buffer: *mut libc::c_void, buffersize: i32) -> i32;
+    }
+    let pid_count = unsafe { proc_listallpids(std::ptr::null_mut(), 0) };
+    let capacity = usize::try_from(pid_count).ok()?.saturating_add(64);
+    let mut pids = vec![0_i32; capacity];
+    let buffer_bytes = i32::try_from(pids.len().checked_mul(std::mem::size_of::<i32>())?).ok()?;
+    let listed = unsafe { proc_listallpids(pids.as_mut_ptr().cast(), buffer_bytes) };
+    let listed = usize::try_from(listed).ok()?.min(pids.len());
+    let process_group_id = i32::try_from(process_group_id).ok()?;
+    let mut resident_bytes = 0_u64;
+    let mut process_count = 0_usize;
+    for pid in pids.into_iter().take(listed).filter(|pid| *pid > 0) {
+        if unsafe { libc::getpgid(pid) } != process_group_id {
+            continue;
+        }
+        let Some(process_resident_bytes) = macos_resident_bytes(pid as u32) else {
+            continue;
+        };
+        resident_bytes = resident_bytes.saturating_add(process_resident_bytes);
+        process_count += 1;
+    }
+    (process_count > 0).then_some(ProviderMemoryObservation {
+        resident_bytes,
+        process_count,
+    })
 }
 
 #[cfg(target_os = "macos")]

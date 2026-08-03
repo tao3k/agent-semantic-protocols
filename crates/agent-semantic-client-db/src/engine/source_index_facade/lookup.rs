@@ -215,7 +215,7 @@ impl ClientDbEngineReadSession {
         let cache_shard_index =
             std::hash::Hasher::finish(&cache_hasher) as usize % self.source_index_query_cache.len();
         if let Some(result) = self.source_index_query_cache[cache_shard_index]
-            .lock()
+            .read()
             .get(&cache_key)
             .cloned()
         {
@@ -239,7 +239,7 @@ impl ClientDbEngineReadSession {
                 | ClientDbSourceIndexLookupState::Miss
                 | ClientDbSourceIndexLookupState::EmptyIndex
         ) {
-            let mut shard = self.source_index_query_cache[cache_shard_index].lock();
+            let mut shard = self.source_index_query_cache[cache_shard_index].write();
             if shard.len() >= 64 {
                 shard.clear();
             }

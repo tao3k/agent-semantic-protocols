@@ -70,6 +70,17 @@ pub(super) struct SessionStatusReport {
     #[serde(rename = "multiAgentChildState")]
     pub(super) multi_agent_child_state: String,
     #[serde(
+        rename = "lifecycleProjection",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) lifecycle_projection:
+        Option<crate::agent_session_lifecycle_projection::AgentSessionLifecycleProjection>,
+    #[serde(
+        rename = "lifecycleProjectionError",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) lifecycle_projection_error: Option<String>,
+    #[serde(
         rename = "messageTargetStatus",
         skip_serializing_if = "Option::is_none"
     )]

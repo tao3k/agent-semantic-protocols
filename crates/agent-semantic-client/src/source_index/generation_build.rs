@@ -66,6 +66,7 @@ impl SourceIndexRefreshContext {
                 index_root: request.index_root,
                 files: &projected_files,
                 project_resolutions: request.project_resolutions,
+                candidate: request.candidate,
                 registry: request.registry,
                 provider_registry: request.provider_registry,
             },
@@ -128,6 +129,7 @@ impl SourceIndexRefreshContext {
             self.db_path.clone(),
             refresh_request,
             materialization,
+            request.candidate.clone(),
             trace_started,
         ))
     }
@@ -137,6 +139,7 @@ pub(super) struct SourceIndexGenerationRefresh<'a> {
     pub(super) index_root: &'a Path,
     pub(super) files: &'a [SourceIndexScopeFile],
     pub(super) project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
+    pub(super) candidate: &'a agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity,
     pub(super) registry: &'a ProviderRegistryEvidence,
     pub(super) provider_registry: &'a agent_semantic_client_core::ProviderRegistrySnapshot,
 }

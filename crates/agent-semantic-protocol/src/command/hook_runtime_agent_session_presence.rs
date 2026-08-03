@@ -18,7 +18,7 @@ pub(super) fn rehydrate_trusted_resident_hook_session(
             .root_session_id()
             .map(|session_id| session_id.as_str())
             != Some(root_session_id)
-        || !crate::command::rollout_metadata_matches_managed_agent_profile(
+        || !crate::command::rollout_metadata_matches_host_agent_identity(
             resident_child_name,
             resident_agent_role,
             &rollout,

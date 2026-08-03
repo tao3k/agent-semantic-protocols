@@ -30,6 +30,8 @@ pub struct ProviderProjectionBatchRequest {
     pub provider_id: String,
     pub workspace_identity: String,
     pub generation_root_digest: String,
+    pub parser_identity_digest: String,
+    pub query_pack_digest: String,
     pub base_generation_root_digest: Option<String>,
     pub owners: Vec<ProviderProjectionOwner>,
 }
@@ -67,6 +69,14 @@ pub struct ProviderProjectedItem {
     pub source_byte_start: usize,
     pub source_byte_end: usize,
     pub identity: ProviderProjectedItemIdentity,
+    pub projections: Vec<ProviderDerivedProjection>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderDerivedProjection {
+    pub projection_kind: String,
+    pub payload: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -98,6 +108,8 @@ struct ProjectionBatchHeader {
     workspace_identity: String,
     transport: String,
     generation_root_digest: String,
+    parser_identity_digest: String,
+    query_pack_digest: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     base_generation_root_digest: Option<String>,
     owners: Vec<ProjectionBatchOwnerHeader>,
@@ -133,6 +145,8 @@ impl ProviderProjectionBatchRequest {
             workspace_identity: self.workspace_identity.clone(),
             transport: PROJECTION_BATCH_TRANSPORT.to_string(),
             generation_root_digest: self.generation_root_digest.clone(),
+            parser_identity_digest: self.parser_identity_digest.clone(),
+            query_pack_digest: self.query_pack_digest.clone(),
             base_generation_root_digest: self.base_generation_root_digest.clone(),
             owners: self
                 .owners
@@ -169,6 +183,8 @@ impl ProviderProjectionBatchRequest {
         require_text("providerId", &self.provider_id)?;
         require_text("workspaceIdentity", &self.workspace_identity)?;
         require_text("generationRootDigest", &self.generation_root_digest)?;
+        require_text("parserIdentityDigest", &self.parser_identity_digest)?;
+        require_text("queryPackDigest", &self.query_pack_digest)?;
         if let Some(base_digest) = self.base_generation_root_digest.as_deref() {
             require_text("baseGenerationRootDigest", base_digest)?;
         }

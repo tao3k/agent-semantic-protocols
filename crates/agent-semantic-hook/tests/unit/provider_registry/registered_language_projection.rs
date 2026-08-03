@@ -27,4 +27,16 @@ fn registered_provider_kind_owns_projection_capability_without_language_lists() 
         .count();
     assert!(programming_provider_count > 0);
     assert!(document_provider_count > 0);
+    assert_eq!(
+        crate::registered_provider_kind("rust").expect("registered Rust provider kind"),
+        crate::RegisteredProviderKind::ProgrammingLanguage,
+    );
+    assert_eq!(
+        crate::registered_provider_kind("org").expect("registered Org provider kind"),
+        crate::RegisteredProviderKind::Document,
+    );
+    assert_eq!(
+        crate::registered_provider_kind("md").expect("registered Markdown provider kind"),
+        crate::RegisteredProviderKind::Document,
+    );
 }

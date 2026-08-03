@@ -15,23 +15,10 @@ use crate::engine::{
 
 use super::bootstrap::dedupe_turso_agent_sessions_by_session_id;
 
-static AGENT_SESSION_REGISTRY_RUNTIME: std::sync::LazyLock<
-    Result<tokio::runtime::Runtime, String>,
-> = std::sync::LazyLock::new(|| {
-    tokio::runtime::Runtime::new()
-        .map_err(|error| format!("failed to build shared agent session Turso runtime: {error}"))
-});
-
 pub(in crate::agent_session_registry) fn block_on_agent_session_registry_async<T>(
     future: impl std::future::Future<Output = Result<T, String>>,
 ) -> Result<T, String> {
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        return tokio::task::block_in_place(move || handle.block_on(future));
-    }
-    match &*AGENT_SESSION_REGISTRY_RUNTIME {
-        Ok(runtime) => runtime.block_on(future),
-        Err(error) => Err(error.clone()),
-    }
+    crate::engine::facade::block_on_db_engine_borrowed(future)
 }
 
 pub(in crate::agent_session_registry) async fn connect_turso_agent_session_registry(

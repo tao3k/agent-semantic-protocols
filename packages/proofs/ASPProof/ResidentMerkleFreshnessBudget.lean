@@ -132,6 +132,7 @@ theorem failed_admission_is_retryable :
 inductive ExactProjectionKind where
   | source
   | callableSkeleton
+  | ownerItems
   deriving DecidableEq, Repr
 
 structure ExactOwnerReadEvidence where
@@ -171,5 +172,113 @@ theorem stale_cached_hit_cannot_be_returned
     (hStale : evidence.liveContentDigest ≠ evidence.publishedContentDigest) :
     ¬ exactProjectionAllowed kind evidence := by
   simpa [exactProjectionAllowed, ownerFresh] using hStale
+
+inductive OptionalProviderState where
+  | unavailable
+  | starting
+  | healthy
+  | draining
+  | failed
+  deriving DecidableEq, Repr
+
+structure ServerStartupState where
+  endpointPublished : Bool
+  acceptLoopRunning : Bool
+  providerState : OptionalProviderState
+  deriving DecidableEq, Repr
+
+inductive ServerStartupEvent where
+  | publishEndpoint
+  | startAcceptLoop
+  | providerTransition (state : OptionalProviderState)
+  deriving DecidableEq, Repr
+
+def startupStep
+    (state : ServerStartupState)
+    (event : ServerStartupEvent) : ServerStartupState :=
+  match event with
+  | .publishEndpoint => { state with endpointPublished := true }
+  | .startAcceptLoop =>
+      { state with acceptLoopRunning := state.endpointPublished }
+  | .providerTransition providerState => { state with providerState }
+
+def coreReady (state : ServerStartupState) : Prop :=
+  state.endpointPublished = true ∧ state.acceptLoopRunning = true
+
+theorem optional_provider_transition_preserves_core_readiness
+    (state : ServerStartupState)
+    (providerState : OptionalProviderState)
+    (hReady : coreReady state) :
+    coreReady (startupStep state (.providerTransition providerState)) := by
+  simpa [startupStep, coreReady] using hReady
+
+theorem published_endpoint_without_accept_loop_is_not_ready
+    (providerState : OptionalProviderState) :
+    ¬ coreReady {
+      endpointPublished := true
+      acceptLoopRunning := false
+      providerState := providerState
+    } := by
+  simp [coreReady]
+
+structure CoreReadinessTiming where
+  endpointPublishedMicros : Nat
+  acceptLoopRunningMicros : Nat
+  providerReadyMicros : Nat
+  deriving DecidableEq, Repr
+
+def coreReadinessWithinBudget (budgetMicros : Nat) (timing : CoreReadinessTiming) : Prop :=
+  timing.acceptLoopRunningMicros - timing.endpointPublishedMicros ≤ budgetMicros
+
+theorem optional_provider_timing_cannot_change_core_budget_verdict
+    (budgetMicros : Nat)
+    (timing : CoreReadinessTiming)
+    (providerReadyMicros : Nat) :
+    coreReadinessWithinBudget budgetMicros
+      { timing with providerReadyMicros := providerReadyMicros } ↔
+      coreReadinessWithinBudget budgetMicros timing := by
+  rfl
+
+inductive SupervisorDefinitionState where
+  | unchanged
+  | changed
+  | absent
+  deriving DecidableEq, Repr
+
+inductive RestartAuthority where
+  | serverControlPlane
+  | platformSupervisor
+  deriving DecidableEq, Repr
+
+def restartAuthority : SupervisorDefinitionState → RestartAuthority
+  | .unchanged => .serverControlPlane
+  | .changed => .platformSupervisor
+  | .absent => .platformSupervisor
+
+theorem unchanged_definition_restart_is_server_owned :
+    restartAuthority .unchanged = .serverControlPlane := by
+  rfl
+
+theorem platform_restart_requires_definition_change_or_absence
+    (definition : SupervisorDefinitionState)
+    (h : restartAuthority definition = .platformSupervisor) :
+    definition = .changed ∨ definition = .absent := by
+  cases definition <;> simp [restartAuthority] at h ⊢
+
+structure StableRuntimeBinding where
+  stableEntryIdentity : Nat
+  artifactDigest : Nat
+  deriving DecidableEq, Repr
+
+def supervisorDefinitionIdentity (binding : StableRuntimeBinding) : Nat :=
+  binding.stableEntryIdentity
+
+theorem atomic_artifact_switch_preserves_supervisor_definition
+    (binding : StableRuntimeBinding)
+    (nextArtifactDigest : Nat) :
+    supervisorDefinitionIdentity
+        { binding with artifactDigest := nextArtifactDigest } =
+      supervisorDefinitionIdentity binding := by
+  rfl
 
 end ASPProof.ResidentMerkleFreshnessBudget

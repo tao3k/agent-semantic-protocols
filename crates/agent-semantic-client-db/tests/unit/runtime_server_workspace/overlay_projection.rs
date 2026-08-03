@@ -115,6 +115,22 @@ async fn process_cold_exact_projection_relocates_by_canonical_item_identity() {
         }
         read => panic!("moved selector must resolve from the active generation: {read:?}"),
     }
+
+    match client
+        .read_runtime_selector(
+            "callable-skeleton",
+            "rust://src/old_owner.rs#item/function/run",
+        )
+        .expect("resolve moved item before projection availability")
+    {
+        WorkspaceRuntimeSelectorRead::ProjectionMissing {
+            resolved_selector, ..
+        } => assert_eq!(
+            resolved_selector,
+            "rust://src/new_owner.rs#item/function/run"
+        ),
+        read => panic!("missing projection must retain the relocated item identity: {read:?}"),
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -256,6 +272,7 @@ async fn warm_canonical_relocation_is_sub_250_microseconds_at_p99() {
         .expect("open relocation index");
     let stale = "rust://src/previous.rs#item/function/target";
     let mut samples = Vec::with_capacity(SAMPLE_COUNT);
+    let mut missing_projection_samples = Vec::with_capacity(SAMPLE_COUNT);
     for _ in 0..SAMPLE_COUNT {
         let started = Instant::now();
         let read = client
@@ -266,15 +283,122 @@ async fn warm_canonical_relocation_is_sub_250_microseconds_at_p99() {
             WorkspaceRuntimeSelectorRead::Projection { .. }
         ));
         samples.push(started.elapsed().as_nanos());
+
+        let started = Instant::now();
+        let read = client
+            .read_runtime_selector("callable-skeleton", stale)
+            .expect("relocate selector before missing projection classification");
+        assert!(matches!(
+            read,
+            WorkspaceRuntimeSelectorRead::ProjectionMissing { .. }
+        ));
+        missing_projection_samples.push(started.elapsed().as_nanos());
     }
     samples.sort_unstable();
+    missing_projection_samples.sort_unstable();
     let p99 = samples[(SAMPLE_COUNT * 99).div_ceil(100) - 1];
+    let missing_projection_p99 = missing_projection_samples[(SAMPLE_COUNT * 99).div_ceil(100) - 1];
     eprintln!(
-        "[workspace-exact-relocation-performance] unrelatedSelectors={UNRELATED_SELECTOR_COUNT} samples={SAMPLE_COUNT} p99Nanos={p99} budgetNanos={P99_BUDGET_NANOS} subprocesses=0 dbOpens=0 sourceFilesRead=0"
+        "[workspace-exact-relocation-performance] unrelatedSelectors={UNRELATED_SELECTOR_COUNT} samples={SAMPLE_COUNT} sourceP99Nanos={p99} missingProjectionP99Nanos={missing_projection_p99} budgetNanos={P99_BUDGET_NANOS} subprocesses=0 dbOpens=0 sourceFilesRead=0"
     );
     assert!(
         p99 < P99_BUDGET_NANOS,
         "canonical relocation p99 exceeded 250 microseconds: p99Nanos={p99}"
+    );
+    assert!(
+        missing_projection_p99 < P99_BUDGET_NANOS,
+        "projection-independent relocation p99 exceeded 250 microseconds: p99Nanos={missing_projection_p99}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn concurrent_multi_workspace_relocation_is_lock_free_and_generation_stable() {
+    let _performance = crate::test_support::performance_lock();
+    const WORKSPACE_COUNT: usize = 4;
+    const READERS_PER_WORKSPACE: usize = 4;
+    const READS_PER_READER: usize = 2_048;
+    const TOTAL_BUDGET_MILLIS: u128 = 1_000;
+
+    let temporary = tempdir().expect("temporary runtime root");
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    let mut clients = Vec::with_capacity(WORKSPACE_COUNT);
+    for workspace_index in 0..WORKSPACE_COUNT {
+        let workspace_identity = format!("workspace-relocation-pressure-{workspace_index}");
+        let live = owner(
+            "src/current.rs",
+            "rust://src/current.rs#item/function/target",
+            b"fn target() { relocated(); }",
+        );
+        registry
+            .publish(
+                format!("relocation-pressure-{workspace_index}"),
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceRecoverySource::TursoGeneration,
+                generation(&workspace_identity, 1, live),
+            )
+            .await
+            .expect("publish pressure generation");
+        let pointer = resident_pointer(temporary.path(), &workspace_identity);
+        clients.push(std::sync::Arc::new(
+            WorkspaceExactProjectionDataPlaneClient::open(&pointer)
+                .await
+                .expect("open pressure exact index"),
+        ));
+    }
+
+    let started = Instant::now();
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(
+        WORKSPACE_COUNT * READERS_PER_WORKSPACE,
+    ));
+    let mut readers = tokio::task::JoinSet::new();
+    for client in clients {
+        for _ in 0..READERS_PER_WORKSPACE {
+            let client = std::sync::Arc::clone(&client);
+            let barrier = std::sync::Arc::clone(&barrier);
+            readers.spawn(async move {
+                barrier.wait().await;
+                let mut generation_digest = None;
+                for iteration in 0..READS_PER_READER {
+                    let projection_kind = if iteration % 2 == 0 {
+                        "source"
+                    } else {
+                        "callable-skeleton"
+                    };
+                    let read = client
+                        .read_runtime_selector(
+                            projection_kind,
+                            "rust://src/previous.rs#item/function/target",
+                        )
+                        .expect("concurrent relocated read");
+                    let observed = match read {
+                        WorkspaceRuntimeSelectorRead::Projection {
+                            generation_digest, ..
+                        }
+                        | WorkspaceRuntimeSelectorRead::ProjectionMissing {
+                            generation_digest,
+                            ..
+                        } => generation_digest,
+                        read => panic!("concurrent relocation returned unstable state: {read:?}"),
+                    };
+                    match generation_digest.as_ref() {
+                        Some(expected) => assert_eq!(expected, &observed),
+                        None => generation_digest = Some(observed),
+                    }
+                }
+            });
+        }
+    }
+    while let Some(result) = readers.join_next().await {
+        result.expect("concurrent relocation reader task");
+    }
+    let elapsed_millis = started.elapsed().as_millis();
+    eprintln!(
+        "[workspace-exact-relocation-concurrency] workspaces={WORKSPACE_COUNT} readersPerWorkspace={READERS_PER_WORKSPACE} readsPerReader={READS_PER_READER} totalReads={} elapsedMillis={elapsed_millis} budgetMillis={TOTAL_BUDGET_MILLIS} generationChanges=0 lockRetries=0 dbOpens=0 subprocesses=0",
+        WORKSPACE_COUNT * READERS_PER_WORKSPACE * READS_PER_READER
+    );
+    assert!(
+        elapsed_millis < TOTAL_BUDGET_MILLIS,
+        "concurrent multi-workspace relocation exceeded budget: elapsedMillis={elapsed_millis}"
     );
 }
 

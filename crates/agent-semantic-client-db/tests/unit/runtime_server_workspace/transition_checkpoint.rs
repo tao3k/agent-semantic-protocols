@@ -369,7 +369,7 @@ async fn checkpoint_restore_loads_once_then_serves_the_memory_backend() {
         ),
     );
     let (snapshot, _) = publisher
-        .publish(&source, false)
+        .publish(source.into(), false)
         .await
         .expect("publish checkpoint");
     let pointer = WorkspaceGenerationPointerReader::open(publisher.pointer_path())
@@ -410,7 +410,7 @@ async fn generation_pointer_never_exposes_a_torn_epoch_during_publication() {
     );
     publisher
         .publish(
-            &generation(
+            generation(
                 "workspace-a",
                 1,
                 owner(
@@ -418,7 +418,8 @@ async fn generation_pointer_never_exposes_a_torn_epoch_during_publication() {
                     "rust://src/lib.rs#item/function/run",
                     b"fn run() {}",
                 ),
-            ),
+            )
+            .into(),
             false,
         )
         .await
@@ -432,7 +433,7 @@ async fn generation_pointer_never_exposes_a_torn_epoch_during_publication() {
             for epoch in 2..=32 {
                 publisher
                     .publish(
-                        &generation(
+                        generation(
                             "workspace-a",
                             epoch,
                             owner(
@@ -440,7 +441,8 @@ async fn generation_pointer_never_exposes_a_torn_epoch_during_publication() {
                                 "rust://src/lib.rs#item/function/run",
                                 format!("fn run() {{ epoch_{epoch}() }}").as_bytes(),
                             ),
-                        ),
+                        )
+                        .into(),
                         true,
                     )
                     .await
@@ -480,7 +482,7 @@ async fn a_truncated_next_checkpoint_never_replaces_the_readable_generation() {
         ),
     );
     let (snapshot, _) = publisher
-        .publish(&source, false)
+        .publish(source.into(), false)
         .await
         .expect("publish checkpoint");
     let registry =

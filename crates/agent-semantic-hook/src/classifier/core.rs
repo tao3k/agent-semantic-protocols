@@ -62,13 +62,14 @@ pub fn classify_hook_with_config(request: HookClassificationRequest<'_>) -> Hook
     let decision = with_prompt_scope_fields(decision, request.payload);
     let decision =
         with_agent_org_artifact_recovery(decision, request.config, &request.registry.project_root);
-    with_hook_match_receipt(decision, request.payload, &actions)
+    with_hook_match_receipt(decision, request.payload, &actions, request.registry)
 }
 
 fn with_hook_match_receipt(
     mut decision: HookDecision,
     payload: &Value,
     actions: &[ToolAction],
+    registry: &HookRuntime,
 ) -> HookDecision {
     let mut payload_keys = payload
         .as_object()
@@ -101,6 +102,22 @@ fn with_hook_match_receipt(
         "normalizedActions".to_string(),
         Value::Array(normalized_actions),
     );
+    if let Some(snapshot) =
+        crate::hook_policy_kernel::active_policy_snapshot(&registry.project_root)
+    {
+        decision.fields.insert(
+            "hookPolicySnapshotDigest".to_string(),
+            Value::String(snapshot.generation_digest.clone()),
+        );
+        decision.fields.insert(
+            "hookPolicyKernelVersion".to_string(),
+            Value::String(snapshot.kernel_version.to_string()),
+        );
+        decision.fields.insert(
+            "hookPolicySynchronousDependencies".to_string(),
+            Value::Array(Vec::new()),
+        );
+    }
     decision
 }
 

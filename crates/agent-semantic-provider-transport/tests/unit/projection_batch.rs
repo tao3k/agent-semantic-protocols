@@ -11,6 +11,8 @@ fn request() -> ProviderProjectionBatchRequest {
         provider_id: "rs-harness".to_string(),
         workspace_identity: "workspace-projection-fixture".to_string(),
         generation_root_digest: "generation-a".to_string(),
+        parser_identity_digest: "parser-a".to_string(),
+        query_pack_digest: "query-pack-a".to_string(),
         base_generation_root_digest: Some("generation-base".to_string()),
         owners: vec![ProviderProjectionOwner {
             owner_path: "src/lib.rs".to_string(),
@@ -65,6 +67,7 @@ fn response_validation_rejects_generation_or_owner_drift() {
                     symbol: "exact".to_string(),
                     scopes: Vec::new(),
                 },
+                projections: Vec::new(),
             }],
             relations: Vec::new(),
         }],

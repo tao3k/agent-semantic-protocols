@@ -3,13 +3,14 @@ use super::model::{
     WORKSPACE_GENERATION_SCHEMA_ID, WorkspaceGenerationSnapshot, WorkspaceGenerationState,
     WorkspaceMemoryGeneration,
 };
-use super::pointer::WorkspaceGenerationPointerWriter;
+use super::pointer::{WorkspaceGenerationPointerReader, WorkspaceGenerationPointerWriter};
 use memmap2::{Mmap, MmapOptions};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::fs;
+use tokio::io::AsyncWriteExt;
 
 const SEGMENT_MAGIC: &[u8; 16] =
     agent_semantic_content_identity::workspace_memory_generation_segment::WORKSPACE_MEMORY_GENERATION_SEGMENT_MAGIC;
@@ -27,16 +28,22 @@ impl MappedWorkspaceGeneration {
             .await
             .map_err(|error| format!("open workspace generation segment: {error}"))?;
         let file = file.into_std().await;
-        let mapping = unsafe {
-            // SAFETY: the mapped file is immutable after atomic publication and
-            // the mapping lifetime is owned by this value.
-            MmapOptions::new()
-                .map(&file)
-                .map_err(|error| format!("map workspace generation segment: {error}"))?
-        };
-        let generation = decode_segment(&mapping)?;
-        let backend = Arc::new(WorkspaceMemoryBackend::from_generation(generation)?);
-        Ok(Self { mapping, backend })
+        tokio::task::spawn_blocking(move || {
+            let mapping = unsafe {
+                // SAFETY: the mapped file is immutable after atomic publication and
+                // the mapping lifetime is owned by this value.
+                MmapOptions::new()
+                    .map(&file)
+                    .map_err(|error| format!("map workspace generation segment: {error}"))?
+            };
+            let generation = decode_segment(&mapping)?;
+            let backend = Arc::new(WorkspaceMemoryBackend::from_validated_generation(
+                generation,
+            )?);
+            Ok(Self { mapping, backend })
+        })
+        .await
+        .map_err(|error| format!("map workspace generation task failed: {error}"))?
     }
 
     pub(crate) fn backend(&self) -> Arc<WorkspaceMemoryBackend> {
@@ -48,28 +55,111 @@ impl MappedWorkspaceGeneration {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WorkspaceGenerationPublisher {
     directory: PathBuf,
+    pointer_path: PathBuf,
+    state: tokio::sync::OnceCell<WorkspaceGenerationPublisherState>,
+}
+
+#[derive(Debug)]
+struct WorkspaceGenerationPublisherState {
     pointer: WorkspaceGenerationPointerWriter,
+    owner_identity_journal: super::owner_identity_journal::RuntimeOwnerIdentityJournalPublisher,
 }
 
 impl WorkspaceGenerationPublisher {
-    pub async fn new(directory: PathBuf) -> Result<Self, String> {
-        fs::create_dir_all(&directory)
+    pub(super) async fn publish_owner_identity_delta(
+        &self,
+        workspace_identity: &str,
+        base_generation_digest: &str,
+        source_mutation_id: &str,
+        delta: Vec<super::owner_identity_journal::RuntimeOwnerIdentityEntry>,
+    ) -> Result<(), String> {
+        self.state()
+            .await?
+            .owner_identity_journal
+            .publish_delta(
+                workspace_identity,
+                base_generation_digest,
+                source_mutation_id,
+                delta,
+            )
             .await
-            .map_err(|error| format!("create workspace generation directory: {error}"))?;
-        let pointer = WorkspaceGenerationPointerWriter::open(&directory).await?;
-        Ok(Self { directory, pointer })
+    }
+
+    pub async fn new(directory: PathBuf) -> Result<Self, String> {
+        let pointer_path = directory.join("active-generation.pointer");
+        Ok(Self {
+            directory,
+            pointer_path,
+            state: tokio::sync::OnceCell::new(),
+        })
+    }
+
+    async fn state(&self) -> Result<&WorkspaceGenerationPublisherState, String> {
+        self.state
+            .get_or_try_init(|| async {
+                fs::create_dir_all(&self.directory)
+                    .await
+                    .map_err(|error| format!("create workspace generation directory: {error}"))?;
+                let pointer = WorkspaceGenerationPointerWriter::open(&self.directory).await?;
+                let owner_identity_journal =
+                    super::owner_identity_journal::RuntimeOwnerIdentityJournalPublisher::open(
+                        self.directory.clone(),
+                    )
+                    .await?;
+                let pointer_reader = WorkspaceGenerationPointerReader::open(pointer.path()).await?;
+                let active = tokio::task::spawn_blocking(move || pointer_reader.read_optional())
+                    .await
+                    .map_err(|error| {
+                        format!("read workspace generation pointer task failed: {error}")
+                    })??;
+                if let Some(active) = active {
+                    active.validate()?;
+                    owner_identity_journal
+                        .rebase(&active.workspace_identity, &active.generation_digest)
+                        .await?;
+                }
+                Ok(WorkspaceGenerationPublisherState {
+                    pointer,
+                    owner_identity_journal,
+                })
+            })
+            .await
     }
 
     pub async fn publish(
         &self,
-        generation: &WorkspaceMemoryGeneration,
+        generation: std::sync::Arc<WorkspaceMemoryGeneration>,
         previous_epoch_readable: bool,
     ) -> Result<(WorkspaceGenerationSnapshot, MappedWorkspaceGeneration), String> {
-        generation.validate()?;
-        let segment = encode_segment(generation)?;
+        let state = self.state().await?;
+        let (generation, segment, exact_segment, durable_commit_digest) =
+            tokio::task::spawn_blocking(move || {
+                generation.validate()?;
+                let segment = encode_segment(&generation)?;
+                let exact_segment =
+                    super::exact_segment::encode_exact_projection_segment(&generation)?;
+                let segment_digest =
+                    agent_semantic_content_identity::ArtifactHash::blake3(&segment).value;
+                let exact_segment_digest =
+                    agent_semantic_content_identity::ArtifactHash::blake3(&exact_segment).value;
+                let durable_commit_binding = format!(
+                    "{}\u{1f}{}\u{1f}{}",
+                    generation.generation_digest, segment_digest, exact_segment_digest
+                );
+                let durable_commit_digest = format!(
+                    "blake3-256:{}",
+                    agent_semantic_content_identity::ArtifactHash::blake3(
+                        durable_commit_binding.as_bytes(),
+                    )
+                    .value,
+                );
+                Ok::<_, String>((generation, segment, exact_segment, durable_commit_digest))
+            })
+            .await
+            .map_err(|error| format!("workspace generation encoder task failed: {error}"))??;
         let final_path = self
             .directory
             .join(format!("generation-{}.mmap", generation.active_epoch));
@@ -81,33 +171,25 @@ impl WorkspaceGenerationPublisher {
             ".generation-{}.exact.pending",
             generation.active_epoch
         ));
-        let exact_segment = super::exact_segment::encode_exact_projection_segment(generation)?;
-        let segment_digest = agent_semantic_content_identity::ArtifactHash::blake3(&segment).value;
-        let exact_segment_digest =
-            agent_semantic_content_identity::ArtifactHash::blake3(&exact_segment).value;
-        let durable_commit_binding = format!(
-            "{}\u{1f}{}\u{1f}{}",
-            generation.generation_digest, segment_digest, exact_segment_digest
-        );
-        let durable_commit_digest = format!(
-            "blake3-256:{}",
-            agent_semantic_content_identity::ArtifactHash::blake3(
-                durable_commit_binding.as_bytes()
-            )
-            .value
-        );
-        fs::write(&temporary_path, segment)
-            .await
-            .map_err(|error| format!("write workspace generation segment: {error}"))?;
-        fs::write(&exact_temporary_path, exact_segment)
-            .await
-            .map_err(|error| format!("write workspace exact projection segment: {error}"))?;
+        write_durable_pending(&temporary_path, &segment, "workspace generation").await?;
+        write_durable_pending(
+            &exact_temporary_path,
+            &exact_segment,
+            "workspace exact projection",
+        )
+        .await?;
         fs::rename(&temporary_path, &final_path)
             .await
             .map_err(|error| format!("publish workspace generation segment: {error}"))?;
         fs::rename(&exact_temporary_path, &exact_path)
             .await
             .map_err(|error| format!("publish workspace exact projection segment: {error}"))?;
+        fs::File::open(&self.directory)
+            .await
+            .map_err(|error| format!("open workspace generation directory: {error}"))?
+            .sync_all()
+            .await
+            .map_err(|error| format!("sync workspace generation directory: {error}"))?;
         let mapped = MappedWorkspaceGeneration::open(&final_path).await?;
         let qualified_digest = |digest: &str| {
             if digest.starts_with("blake3-256:") {
@@ -146,13 +228,33 @@ impl WorkspaceGenerationPublisher {
             previous_epoch_readable,
         };
         snapshot.validate()?;
-        self.pointer.publish(&snapshot).await?;
+        state.pointer.publish(&snapshot).await?;
+        state
+            .owner_identity_journal
+            .rebase(&snapshot.workspace_identity, &snapshot.generation_digest)
+            .await?;
         Ok((snapshot, mapped))
     }
 
     pub fn pointer_path(&self) -> &Path {
-        self.pointer.path()
+        &self.pointer_path
     }
+}
+
+async fn write_durable_pending(path: &Path, bytes: &[u8], context: &str) -> Result<(), String> {
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(path)
+        .await
+        .map_err(|error| format!("open {context} pending segment: {error}"))?;
+    file.write_all(bytes)
+        .await
+        .map_err(|error| format!("write {context} pending segment: {error}"))?;
+    file.sync_all()
+        .await
+        .map_err(|error| format!("sync {context} pending segment: {error}"))
 }
 
 fn encode_segment(generation: &WorkspaceMemoryGeneration) -> Result<Vec<u8>, String> {

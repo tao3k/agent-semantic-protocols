@@ -334,6 +334,38 @@ pub fn registered_provider_id_v1(language_id: &str) -> Option<String> {
         .map(|language| language.provider_id.clone())
 }
 
+/// Registry-owned execution class derived from the provider manifest contract.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisteredProviderKind {
+    ProgrammingLanguage,
+    Document,
+}
+
+/// Return the execution class declared by the registered provider manifest.
+///
+/// Programming-language providers own package/project resolution and may be
+/// installed independently. Document providers are compiled into the ASP
+/// runtime and must never enter the external language-provider installer.
+pub fn registered_provider_kind(language_id: &str) -> Result<RegisteredProviderKind, String> {
+    let manifests = language_provider_manifests();
+    let manifest = manifests
+        .iter()
+        .find(|manifest| manifest.language_id().as_str() == language_id)
+        .ok_or_else(|| format!("no registered provider for language `{language_id}`"))?;
+    match (
+        manifest.project_resolution().is_some(),
+        manifest.document_resolution().is_some(),
+    ) {
+        (true, false) => Ok(RegisteredProviderKind::ProgrammingLanguage),
+        (false, true) => Ok(RegisteredProviderKind::Document),
+        _ => Err(format!(
+            "registered provider kind is ambiguous: languageId={} providerId={}",
+            manifest.language_id(),
+            manifest.provider_id(),
+        )),
+    }
+}
+
 fn resolve_route_invocation(
     language: &LanguageRegistration,
     method: &str,
@@ -741,6 +773,16 @@ impl RegisteredProviderBinaryV1 {
 
 #[must_use]
 pub fn registered_provider_binaries_v1() -> Vec<RegisteredProviderBinaryV1> {
+    all_registered_provider_binaries_v1()
+        .into_iter()
+        .filter(|registration| {
+            registered_provider_kind(registration.language_id().as_str())
+                == Ok(RegisteredProviderKind::ProgrammingLanguage)
+        })
+        .collect()
+}
+
+fn all_registered_provider_binaries_v1() -> Vec<RegisteredProviderBinaryV1> {
     schema_registry()
         .languages
         .iter()

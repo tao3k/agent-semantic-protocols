@@ -96,11 +96,21 @@ async fn project_provider(
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
+    let parser_identity_digest = derive_parser_identity_digest_v1(
+        &ProjectionPacketProviderIdV1::from(provider.provider_id.as_str()),
+        &ProjectionPacketExecutionCommandDigestV1::from(provider.execution_command_digest.as_str()),
+        &ProjectionPacketSemanticRegistryDigestV1::from(provider.manifest_digest.as_str()),
+    );
+    let query_pack_json = serde_json::to_vec(&provider.query_pack_descriptor)
+        .map_err(|error| format!("encode provider query-pack identity: {error}"))?;
+    let query_pack_digest = derive_query_pack_identity_digest_v1(&query_pack_json);
     let request = ProviderProjectionBatchRequest {
         language_id: provider.language_id.as_str().to_owned(),
         provider_id: provider.provider_id.as_str().to_owned(),
         workspace_identity: workspace_identity.to_owned(),
         generation_root_digest: tree.root_digest().as_str().to_owned(),
+        parser_identity_digest: parser_identity_digest.as_str().to_owned(),
+        query_pack_digest: query_pack_digest.as_str().to_owned(),
         base_generation_root_digest: None,
         owners,
     };
@@ -118,14 +128,6 @@ async fn project_provider(
         .into_iter()
         .map(|owner| (owner.owner_path.clone(), owner))
         .collect::<BTreeMap<_, _>>();
-    let parser_identity_digest = derive_parser_identity_digest_v1(
-        &ProjectionPacketProviderIdV1::from(provider.provider_id.as_str()),
-        &ProjectionPacketExecutionCommandDigestV1::from(provider.execution_command_digest.as_str()),
-        &ProjectionPacketSemanticRegistryDigestV1::from(provider.manifest_digest.as_str()),
-    );
-    let query_pack_json = serde_json::to_vec(&provider.query_pack_descriptor)
-        .map_err(|error| format!("encode provider query-pack identity: {error}"))?;
-    let query_pack_digest = derive_query_pack_identity_digest_v1(&query_pack_json);
     for index in owner_indexes {
         let file = &mut files[index];
         let owner_path = relative_owner_path(project_root, &file.path);
@@ -214,6 +216,22 @@ fn selector_receipts(
                 source: ClientDbSourceIndexSource::from(provider.provider_id.as_str()),
                 query_keys,
                 projection_record: record,
+                derived_projections: item
+                    .projections
+                    .iter()
+                    .map(|projection| {
+                        serde_json::to_vec(&projection.payload)
+                            .map(|bytes| {
+                                agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
+                                    projection_kind: projection.projection_kind.clone(),
+                                    bytes,
+                                }
+                            })
+                            .map_err(|error| {
+                                format!("encode provider derived projection payload: {error}")
+                            })
+                    })
+                    .collect::<Result<Vec<_>, String>>()?,
             })
         })
         .collect()

@@ -196,7 +196,7 @@ pub struct ClientDbEngineReadSession {
         >,
     >,
     pub(super) source_index_query_cache: std::sync::Arc<
-        [parking_lot::Mutex<
+        [parking_lot::RwLock<
             std::collections::HashMap<
                 ClientDbEngineSourceIndexQueryCacheKey,
                 crate::ClientDbSourceIndexLookupResult,
@@ -214,6 +214,32 @@ pub(super) struct ClientDbEngineSourceIndexQueryCacheKey {
     pub(super) limit: u32,
 }
 
+static DB_ENGINE_RUNTIME: std::sync::OnceLock<Result<tokio::runtime::Runtime, String>> =
+    std::sync::OnceLock::new();
+
+fn db_engine_runtime() -> Result<&'static tokio::runtime::Runtime, String> {
+    match DB_ENGINE_RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("asp-client-db")
+            .enable_all()
+            .build()
+            .map_err(|error| format!("failed to build DB Engine async runtime: {error}"))
+    }) {
+        Ok(runtime) => Ok(runtime),
+        Err(error) => Err(error.clone()),
+    }
+}
+
+pub(crate) fn block_on_db_engine_borrowed<T>(
+    future: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        return tokio::task::block_in_place(move || handle.block_on(future));
+    }
+    db_engine_runtime()?.block_on(future)
+}
+
 /// DB Engine write session over the active Turso adapter.
 pub struct ClientDbEngineWriteSession {
     pub(super) turso_db_path: PathBuf,
@@ -227,25 +253,9 @@ where
     // Turso databases and connection lanes are process-scoped. Keep their async
     // driver alive for the same lifetime instead of pooling them across runtimes
     // that are destroyed after each synchronous facade call.
-    static DB_ENGINE_RUNTIME: std::sync::OnceLock<Result<tokio::runtime::Runtime, String>> =
-        std::sync::OnceLock::new();
-
-    std::thread::spawn(move || {
-        let runtime = DB_ENGINE_RUNTIME.get_or_init(|| {
-            tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(2)
-                .thread_name("asp-client-db")
-                .enable_all()
-                .build()
-                .map_err(|error| format!("failed to build DB Engine async runtime: {error}"))
-        });
-        match runtime {
-            Ok(runtime) => runtime.block_on(future),
-            Err(error) => Err(error.clone()),
-        }
-    })
-    .join()
-    .map_err(|_| "DB Engine async runtime thread panicked".to_string())?
+    std::thread::spawn(move || db_engine_runtime()?.block_on(future))
+        .join()
+        .map_err(|_| "DB Engine async runtime thread panicked".to_string())?
 }
 
 /// DB Engine receipt for projecting a source-index import into Turso read models.
@@ -333,7 +343,7 @@ impl ClientDbEngine {
             turso_connection: std::sync::Arc::new(turso_connection),
             source_index_scope_cache: std::sync::Arc::new(tokio::sync::RwLock::new(None)),
             source_index_query_cache: (0..16)
-                .map(|_| parking_lot::Mutex::new(std::collections::HashMap::new()))
+                .map(|_| parking_lot::RwLock::new(std::collections::HashMap::new()))
                 .collect::<Vec<_>>()
                 .into(),
         }))

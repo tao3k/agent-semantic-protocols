@@ -56,7 +56,7 @@ impl ClientHookConfig {
         &self,
         runtime: &mut HookRuntime,
     ) -> Result<(), String> {
-        self.validate_language_provider_projection(runtime)?;
+        self.publish_policy_snapshot(runtime)?;
         for provider in &mut runtime.providers {
             let projected = self
                 .language_providers
@@ -69,6 +69,15 @@ impl ClientHookConfig {
             provider.source_extensions = projected.source_extensions.clone();
         }
         Ok(())
+    }
+
+    pub(crate) fn publish_policy_snapshot(&self, runtime: &HookRuntime) -> Result<String, String> {
+        self.validate_language_provider_projection(runtime)?;
+        let snapshot = crate::hook_policy_kernel::publish_language_provider_snapshot(
+            &runtime.project_root,
+            &self.language_providers,
+        )?;
+        Ok(snapshot.generation_digest.clone())
     }
 
     /// Return the agent-facing session message templates.

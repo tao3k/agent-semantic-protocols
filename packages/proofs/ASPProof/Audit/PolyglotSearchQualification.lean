@@ -1,0 +1,12 @@
+import ASPProof.PolyglotSearchQualification
+
+namespace ASPProof.Audit.PolyglotSearchQualification
+
+#print axioms ASPProof.PolyglotSearchQualification.reference_qualification_is_admitted
+#print axioms ASPProof.PolyglotSearchQualification.qualification_exposes_every_scenario_gate
+#print axioms ASPProof.PolyglotSearchQualification.aggregate_token_improvement_does_not_imply_scenario_admission
+#print axioms ASPProof.PolyglotSearchQualification.quality_regression_is_rejected
+#print axioms ASPProof.PolyglotSearchQualification.state_mutation_is_rejected
+#print axioms ASPProof.PolyglotSearchQualification.cold_and_warm_coverage_are_both_required
+
+end ASPProof.Audit.PolyglotSearchQualification

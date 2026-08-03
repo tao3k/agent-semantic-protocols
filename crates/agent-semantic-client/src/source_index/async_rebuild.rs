@@ -34,6 +34,7 @@ pub async fn prepare_runtime_server_workspace_generation_with_registry_async(
             index_root: &project_root,
             files: &collection.files,
             project_resolutions: &collection.project_resolutions,
+            candidate: &collection.candidate,
             registry: &registry,
             provider_registry: &snapshot,
         })

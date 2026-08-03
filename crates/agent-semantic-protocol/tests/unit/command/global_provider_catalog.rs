@@ -356,5 +356,26 @@ fn catalog_readiness_fails_closed_for_invalid_or_drifted_entries() {
     );
     std::fs::remove_dir_all(&runtime_bin).expect("remove provider bytes after catalog publication");
 
+    let mut projection_lookup_nanos = Vec::with_capacity(1_024);
+    for _ in 0..1_024 {
+        let started = std::time::Instant::now();
+        let provider = catalog::runtime_projection_provider("rust")
+            .expect("resolve the load-once Rust projection provider");
+        projection_lookup_nanos.push(started.elapsed().as_nanos());
+        assert_eq!(provider.language_id, "rust");
+        assert_eq!(provider.argv_prefix.len(), 1);
+        assert!(!provider.exact_parser_identity_digest.is_empty());
+        assert!(!provider.exact_query_pack_identity_digest.is_empty());
+    }
+    projection_lookup_nanos.sort_unstable();
+    let p99 = projection_lookup_nanos[projection_lookup_nanos.len() * 99 / 100];
+    assert!(
+        p99 < 250_000,
+        "load-once runtime projection catalog lookup exceeded 250us p99: {p99}ns"
+    );
+    println!(
+        "[global-provider-projection-catalog] samples=1024 p99Nanos={p99} diskReads=0 binaryReads=0 activationLoads=0"
+    );
+
     std::fs::remove_dir_all(root).expect("remove catalog contract root");
 }

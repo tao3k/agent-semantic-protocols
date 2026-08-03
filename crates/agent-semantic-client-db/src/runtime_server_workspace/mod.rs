@@ -1,13 +1,16 @@
 mod canonical_materialization;
 mod client;
+mod durability;
 mod exact_segment;
 mod lease;
 mod memory_backend;
 mod model;
+mod owner_content_identity;
 mod owner_freshness;
+mod owner_identity_journal;
 pub use canonical_materialization::{
-    WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID, WorkspaceCanonicalMaterialization,
-    WorkspaceCanonicalMaterializationLoad,
+    ValidatedWorkspaceCanonicalMaterialization, WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID,
+    WorkspaceCanonicalMaterialization, WorkspaceCanonicalMaterializationLoad,
 };
 pub(crate) use memory_backend::WorkspaceMemoryBackend;
 pub(crate) use model::{
@@ -28,6 +31,10 @@ mod selector_overlay;
 mod store;
 
 pub use client::{WorkspaceGenerationDataPlaneClient, WorkspaceGenerationDataPlaneOpen};
+pub use durability::{
+    WORKSPACE_GENERATION_DURABILITY_RECEIPT_SCHEMA_ID, WorkspaceGenerationDurabilityReceipt,
+    WorkspaceGenerationDurabilityState,
+};
 pub use exact_segment::{
     WorkspaceExactProjectionDataPlaneClient, WorkspaceExactProjectionDataPlaneOpen,
 };
@@ -47,9 +54,10 @@ pub use registry::{PublishedWorkspaceGenerationState, RuntimeServerWorkspaceRegi
 pub use restore::restore_active_turso_generation;
 pub use scope_path::{workspace_generation_directory, workspace_generation_pointer_path};
 pub use segment::{MappedWorkspaceGeneration, WorkspaceGenerationPublisher};
-pub use store::prepare_runtime_server_workspace_store;
+pub use store::{RuntimeServerWorkspaceStore, prepare_runtime_server_workspace_store};
 mod retirement;
 pub use retirement::{
     RESIDENT_WORKSPACE_RETIREMENT_RECEIPT_SCHEMA_ID, ResidentWorkspaceRetirementReason,
     ResidentWorkspaceRetirementReceipt,
 };
+mod atomic_snapshot_pointer;

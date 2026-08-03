@@ -1,0 +1,11 @@
+{
+  "schemaId": "agent.semantic-protocols.semantic-graph-turbo-resident-message",
+  "schemaVersion": "1",
+  "protocolId": "agent.semantic-protocols.semantic-language",
+  "protocolVersion": "1",
+  "messageKind": "process-handshake",
+  "requestId": "handshake:forged-semantic-owner",
+  "runtimeArtifactDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "executionCommandDigest": "blake3-256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "sessionId": "semantic-session-must-not-be-owned-by-process-handshake"
+}

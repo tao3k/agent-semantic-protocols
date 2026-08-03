@@ -127,6 +127,22 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
+            "kind",
+            "request"
+          ],
+          "properties": {
+            "kind": {
+              "const": "cache-control"
+            },
+            "request": {
+              "$ref": "#/$defs/cacheControlRequest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
             "kind"
           ],
           "properties": {
@@ -540,6 +556,54 @@
         }
       ]
     },
+    "cacheControlRequest": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action", "projectRoot"],
+          "properties": {
+            "action": { "const": "status" },
+            "projectRoot": { "$ref": "#/$defs/identity" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action", "projectRoot"],
+          "properties": {
+            "action": { "const": "refresh-source-index" },
+            "projectRoot": { "$ref": "#/$defs/identity" },
+            "expectedGeneration": {
+              "type": ["string", "null"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action", "projectRoot", "mutationId"],
+          "properties": {
+            "action": { "const": "rebuild-source-index" },
+            "projectRoot": { "$ref": "#/$defs/identity" },
+            "mutationId": { "$ref": "#/$defs/identity" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action", "projectRoot", "mutationId", "scope"],
+          "properties": {
+            "action": { "const": "invalidate" },
+            "projectRoot": { "$ref": "#/$defs/identity" },
+            "mutationId": { "$ref": "#/$defs/identity" },
+            "scope": {
+              "enum": ["workspace-generation", "provider-owners", "syntax-rows"]
+            }
+          }
+        }
+      ]
+    },
     "response": {
       "type": "object",
       "additionalProperties": false,
@@ -579,6 +643,22 @@
     },
     "result": {
       "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "state",
+            "receipt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "cache-control"
+            },
+            "receipt": {
+              "$ref": "#/$defs/cacheControlReceipt"
+            }
+          }
+        },
         {
           "type": "object",
           "required": [
@@ -859,6 +939,35 @@
           }
         }
       ]
+    },
+    "cacheControlReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "authority",
+        "generationState",
+        "generationDigest",
+        "databaseOpensByClient",
+        "writerQueueOwner"
+      ],
+      "properties": {
+        "action": {
+          "enum": ["status", "refresh-source-index", "rebuild-source-index", "invalidate"]
+        },
+        "authority": { "const": "runtime-server" },
+        "generationState": {
+          "enum": ["missing", "ready", "stale", "rebuilding", "invalidated"]
+        },
+        "generationDigest": {
+          "type": ["string", "null"]
+        },
+        "databaseOpensByClient": { "const": 0 },
+        "writerQueueOwner": { "const": "runtime-server" },
+        "mutationId": {
+          "type": ["string", "null"]
+        }
+      }
     }
   }
 }

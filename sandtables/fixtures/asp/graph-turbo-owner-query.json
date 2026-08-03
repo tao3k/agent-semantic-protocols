@@ -5,6 +5,20 @@
   "protocolVersion": "1",
   "packetKind": "graph-turbo-request",
   "surface": "search-pipe",
+  "sourceSnapshot": {
+    "schemaId": "asp.source-snapshot.v1",
+    "algorithm": "blake3-merkle-v1",
+    "rootDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sourceKind": "derived-overlay",
+    "leafCount": 6,
+    "providerDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "workspaceGeneration": {
+    "rootDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "rootDepth": 0,
+    "leafCount": 6,
+    "ownerCount": 1
+  },
   "queryTerms": [
     "parser"
   ],
