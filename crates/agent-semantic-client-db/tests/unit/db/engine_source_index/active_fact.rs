@@ -29,6 +29,7 @@ async fn db_engine_source_index_lookup_reads_canonical_snapshot() {
             mtime_ms: 44,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/canonical_snapshot.rs".to_string(),
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
@@ -92,6 +93,7 @@ async fn db_engine_source_index_lookup_request_stays_within_project_resolution()
             mtime_ms: 1,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/scope_a.rs".to_string(),
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
@@ -113,6 +115,7 @@ async fn db_engine_source_index_lookup_request_stays_within_project_resolution()
             mtime_ms: 2,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/scope_b.rs".to_string(),
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),

@@ -55,9 +55,9 @@ pub(super) fn decision_changed_paths(decision: &agent_semantic_hook::HookDecisio
     changed_paths
 }
 
-pub(super) fn decision_mutation_id(decision: &agent_semantic_hook::HookDecision) -> Option<String> {
-    let session_id = decision.fields.get("sessionId")?.as_str()?.trim();
-    let tool_use_id = decision.fields.get("toolUseId")?.as_str()?.trim();
+pub(super) fn payload_mutation_id(payload: &serde_json::Value) -> Option<String> {
+    let session_id = payload.get("session_id")?.as_str()?.trim();
+    let tool_use_id = payload.get("tool_use_id")?.as_str()?.trim();
     if session_id.is_empty() || tool_use_id.is_empty() {
         return None;
     }
@@ -131,6 +131,10 @@ pub(crate) fn ensure(project_root: &Path) -> Result<serde_json::Value, String> {
             .map_err(|error| format!("failed to encode runtime generation ensure: {error}"))
     })?
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/hook_runtime_generation_admission.rs"]
+mod tests;
 
 pub(super) fn observe(
     args: &[String],

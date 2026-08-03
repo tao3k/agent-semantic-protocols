@@ -11,7 +11,8 @@ use std::{
 };
 use tokio::fs;
 
-const SEGMENT_MAGIC: &[u8; 16] = b"ASPWSGENERATION1";
+const SEGMENT_MAGIC: &[u8; 16] =
+    agent_semantic_content_identity::workspace_memory_generation_segment::WORKSPACE_MEMORY_GENERATION_SEGMENT_MAGIC;
 const SEGMENT_HEADER_LEN: usize = 64;
 
 #[derive(Debug)]
@@ -170,8 +171,10 @@ fn encode_segment(generation: &WorkspaceMemoryGeneration) -> Result<Vec<u8>, Str
 }
 
 fn decode_segment(mapping: &[u8]) -> Result<WorkspaceMemoryGeneration, String> {
-    if mapping.len() < SEGMENT_HEADER_LEN || &mapping[..16] != SEGMENT_MAGIC {
-        return Err("workspace generation segment header is invalid".to_owned());
+    if mapping.len() < SEGMENT_HEADER_LEN
+        || !agent_semantic_content_identity::workspace_memory_generation_segment::has_current_workspace_memory_generation_contract(mapping)
+    {
+        return Err("workspace generation segment contract is stale or invalid".to_owned());
     }
     let epoch = u64::from_le_bytes(
         mapping[16..24]

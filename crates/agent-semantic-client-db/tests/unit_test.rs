@@ -30,6 +30,8 @@ mod projection_fixture;
 mod provider_incremental_probe_batch;
 #[path = "unit/provider_treesitter_read.rs"]
 mod provider_treesitter_read;
+#[path = "unit/runtime_generation_admission_gate.rs"]
+mod runtime_generation_admission_gate;
 #[path = "unit/runtime_server_admission_catalog.rs"]
 mod runtime_server_admission_catalog;
 #[path = "unit/runtime_server_control.rs"]

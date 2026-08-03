@@ -115,9 +115,7 @@ impl ProviderRelationMemorySearch {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>();
-        if generation.generation_digest
-            != format!("blake3-256:{expected_generation_digest}")
-        {
+        if generation.generation_digest != format!("blake3-256:{expected_generation_digest}") {
             return Err(ProviderRelationMemoryError::InvalidGeneration(
                 "provider relation generation identity mismatch".to_owned(),
             ));

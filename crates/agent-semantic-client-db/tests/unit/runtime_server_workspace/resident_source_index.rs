@@ -29,6 +29,7 @@ fn generation() -> WorkspaceMemoryGeneration {
             .to_string(),
     );
     WorkspaceMemoryGeneration::try_from_build(WorkspaceGenerationBuild {
+        relations: Vec::new(),
         workspace_identity: "workspace-a".to_owned(),
         project_root: project_root().display().to_string(),
         active_epoch: 1,

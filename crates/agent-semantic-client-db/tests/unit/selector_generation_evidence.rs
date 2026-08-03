@@ -51,6 +51,7 @@ fn selector_generation_hash(selectors: Vec<ClientDbSourceIndexSelector>) -> Stri
     let bytes = b"pub fn target() {}\n".to_vec();
     std::fs::write(root.join("src/lib.rs"), &bytes).unwrap();
     let files = [ClientDbSourceIndexScopeFile {
+        relations: Vec::new(),
         path: PathBuf::from("src/lib.rs"),
         language_id: "rust".into(),
         provider_id: "rust-lang-project-harness".into(),

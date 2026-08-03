@@ -283,7 +283,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         hook_runtime_generation_admission::decision_mutates_workspace(&classified_decision);
     let changed_paths =
         hook_runtime_generation_admission::decision_changed_paths(&classified_decision);
-    let mutation_id = hook_runtime_generation_admission::decision_mutation_id(&classified_decision);
+    let mutation_id = hook_runtime_generation_admission::payload_mutation_id(&payload);
     let mut decision = if let Some(read_only_decision) = classify_read_only_resident_receipt(
         &project_root,
         client,

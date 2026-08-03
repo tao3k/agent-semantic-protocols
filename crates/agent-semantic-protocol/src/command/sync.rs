@@ -114,249 +114,76 @@ fn publish_workspace_agent_configs(
     if !workspace_source_dir.is_dir() {
         return Ok(0);
     }
-    let mut published = 0usize;
-    for entry in fs::read_dir(workspace_source_dir).map_err(|error| {
+    let state_root = state_source_dir.parent().ok_or_else(|| {
         format!(
-            "failed to read workspace agent configs {}: {error}",
-            workspace_source_dir.display()
+            "global agent config directory has no state root: {}",
+            state_source_dir.display()
         )
-    })? {
-        let entry = entry.map_err(|error| {
-            format!(
-                "failed to read entry in {}: {error}",
-                workspace_source_dir.display()
-            )
-        })?;
-        let source = entry.path();
-        if !source.is_file() {
-            continue;
-        }
-        let Some(file_name) = source.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        let managed_profile = file_name.ends_with("_codex.toml")
-            || file_name.ends_with("_claude.toml")
-            || file_name.ends_with("_claude.md");
-        if !managed_profile {
-            continue;
-        }
-        let bytes = fs::read(&source)
-            .map_err(|error| format!("failed to read {}: {error}", source.display()))?;
-        if file_name.ends_with(".toml") {
-            let text = std::str::from_utf8(&bytes).map_err(|error| {
-                format!("agent profile is not UTF-8 {}: {error}", source.display())
-            })?;
-            toml::from_str::<toml::Value>(text)
-                .map_err(|error| format!("failed to parse {}: {error}", source.display()))?;
-        }
-        fs::create_dir_all(state_source_dir).map_err(|error| {
-            format!(
-                "failed to create global agent config directory {}: {error}",
-                state_source_dir.display()
-            )
-        })?;
-        let target = state_source_dir.join(file_name);
-        let target_matches = fs::read(&target)
-            .map(|existing| existing == bytes)
-            .unwrap_or(false);
-        if !target_matches {
-            match fs::symlink_metadata(&target) {
-                Ok(metadata) if metadata.file_type().is_symlink() => {
-                    fs::remove_file(&target).map_err(|error| {
-                        format!("failed to replace symlink {}: {error}", target.display())
-                    })?;
-                }
-                Ok(metadata) if metadata.is_dir() => {
-                    return Err(format!(
-                        "cannot publish agent profile over directory {}",
-                        target.display()
-                    ));
-                }
-                Ok(_) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => {
-                    return Err(format!("failed to inspect {}: {error}", target.display()));
-                }
-            }
-            fs::write(&target, &bytes)
-                .map_err(|error| format!("failed to publish {}: {error}", target.display()))?;
-        }
-        published += 1;
-    }
-    Ok(published)
+    })?;
+    let publication = agent_semantic_config::subagent_manager::publish_subagent_catalog(
+        &workspace_source_dir.join("config.toml"),
+        state_source_dir,
+        state_root,
+    )?;
+    Ok(publication.projections.len())
 }
 
 fn load_codex_agent_registry(
     source_dir: &Path,
 ) -> Result<BTreeMap<String, CodexAgentRegistryEntry>, String> {
     let config_path = source_dir.join("config.toml");
-    let config = match fs::read_to_string(&config_path) {
-        Ok(source) => toml::from_str::<toml::Value>(&source)
-            .map_err(|error| format!("failed to parse {}: {error}", config_path.display()))?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            toml::Value::Table(toml::Table::new())
-        }
-        Err(error) => {
-            return Err(format!("failed to read {}: {error}", config_path.display()));
-        }
-    };
+    if !config_path.is_file() {
+        return Ok(BTreeMap::new());
+    }
+    let loaded = agent_semantic_config::subagent_manager::load_subagent_catalog(&config_path)?;
     let mut registry: BTreeMap<String, CodexAgentRegistryEntry> = BTreeMap::new();
-    for (agent_id, value) in config
-        .get("agents")
-        .and_then(toml::Value::as_table)
-        .into_iter()
-        .flatten()
-    {
-        let Some(agent) = value.as_table() else {
+    for (agent_id, agent) in &loaded.catalog.agents {
+        let Some(codex) = agent.platforms.get("codex") else {
             continue;
         };
-        let profile = required_agent_config_string(agent, agent_id, "profile", &config_path)?;
-        if !profile.ends_with("_codex.toml") {
-            continue;
-        }
-        let host_agent_name = agent
-            .get("host_agent_name")
-            .and_then(toml::Value::as_str)
-            .unwrap_or(agent_id);
-        if host_agent_name.is_empty()
-            || !host_agent_name
-                .chars()
-                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
-        {
-            return Err(format!(
-                "invalid Codex host_agent_name `{host_agent_name}` in {}",
-                config_path.display()
-            ));
-        }
-        let projection = required_agent_config_string(agent, agent_id, "projection", &config_path)?;
-        if !projection.ends_with(".toml") || Path::new(projection).components().count() != 1 {
-            return Err(format!(
-                "invalid Codex projection `{projection}` for agent `{agent_id}` in {}",
-                config_path.display()
-            ));
-        }
-        let profile_path = source_dir.join(profile);
+        let profile_path = source_dir.join(&codex.profile);
         if !profile_path.is_file() {
             return Err(format!(
                 "Codex profile for agent `{agent_id}` does not exist: {}",
                 profile_path.display()
             ));
         }
-        if registry.contains_key(host_agent_name) {
+        if registry.contains_key(&codex.host_agent_name) {
             return Err(format!(
-                "duplicate Codex host_agent_name `{host_agent_name}` in {}",
-                config_path.display()
-            ));
-        }
-        if registry.values().any(|entry| entry.profile == profile) {
-            return Err(format!(
-                "duplicate Codex profile `{profile}` in {}",
+                "duplicate Codex host_agent_name `{}` in {}",
+                codex.host_agent_name,
                 config_path.display()
             ));
         }
         if registry
             .values()
-            .any(|entry| entry.projection == projection)
+            .any(|entry| entry.profile == codex.profile)
         {
             return Err(format!(
-                "duplicate Codex projection `{projection}` in {}",
+                "duplicate Codex profile `{}` in {}",
+                codex.profile,
+                config_path.display()
+            ));
+        }
+        if registry
+            .values()
+            .any(|entry| entry.projection == codex.projection)
+        {
+            return Err(format!(
+                "duplicate Codex projection `{}` in {}",
+                codex.projection,
                 config_path.display()
             ));
         }
         registry.insert(
-            host_agent_name.to_owned(),
+            codex.host_agent_name.clone(),
             CodexAgentRegistryEntry {
-                profile: profile.to_owned(),
-                projection: projection.to_owned(),
+                profile: codex.profile.clone(),
+                projection: codex.projection.clone(),
             },
         );
     }
-    discover_unregistered_codex_agent_profiles(source_dir, &mut registry)?;
     Ok(registry)
-}
-
-fn discover_unregistered_codex_agent_profiles(
-    source_dir: &Path,
-    registry: &mut BTreeMap<String, CodexAgentRegistryEntry>,
-) -> Result<(), String> {
-    if !source_dir.is_dir() {
-        return Ok(());
-    }
-    for entry in fs::read_dir(source_dir)
-        .map_err(|error| format!("failed to read {}: {error}", source_dir.display()))?
-    {
-        let entry = entry.map_err(|error| {
-            format!("failed to read entry in {}: {error}", source_dir.display())
-        })?;
-        let path = entry.path();
-        let Some(profile) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        let Some(stem) = profile.strip_suffix("_codex.toml") else {
-            continue;
-        };
-        if registry.values().any(|entry| entry.profile == profile) {
-            continue;
-        }
-        let source = fs::read_to_string(&path)
-            .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-        let profile_value: toml::Value = toml::from_str(&source)
-            .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
-        let host_agent_name = profile_value
-            .get("name")
-            .and_then(toml::Value::as_str)
-            .filter(|name| !name.trim().is_empty())
-            .ok_or_else(|| format!("Codex profile lacks string name: {}", path.display()))?;
-        if !host_agent_name
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
-        {
-            return Err(format!(
-                "invalid Codex profile name `{host_agent_name}` in {}",
-                path.display()
-            ));
-        }
-        let projection = format!("{stem}.toml");
-        if registry.contains_key(host_agent_name) {
-            return Err(format!(
-                "Codex profile `{profile}` duplicates host agent `{host_agent_name}`"
-            ));
-        }
-        if registry
-            .values()
-            .any(|entry| entry.projection == projection)
-        {
-            return Err(format!(
-                "Codex profile `{profile}` duplicates projection `{projection}`"
-            ));
-        }
-        registry.insert(
-            host_agent_name.to_string(),
-            CodexAgentRegistryEntry {
-                profile: profile.to_string(),
-                projection,
-            },
-        );
-    }
-    Ok(())
-}
-
-fn required_agent_config_string<'a>(
-    agent: &'a toml::Table,
-    agent_id: &str,
-    field: &str,
-    config_path: &Path,
-) -> Result<&'a str, String> {
-    agent
-        .get(field)
-        .and_then(toml::Value::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            format!(
-                "agent `{agent_id}` is missing string `{field}` in {}",
-                config_path.display()
-            )
-        })
 }
 
 fn sync_codex_agent_registry(

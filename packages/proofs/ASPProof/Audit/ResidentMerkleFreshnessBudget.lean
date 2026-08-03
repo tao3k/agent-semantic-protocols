@@ -9,5 +9,9 @@ open ASPProof.ResidentMerkleFreshnessBudget
 #check phase_gates_are_conjunctive
 #check queued_requires_resident_acceptance
 #check workspace_resident_owner_is_server
+#check failed_admission_is_retryable
+#check cached_hit_without_owner_freshness_is_insufficient
+#check every_exact_projection_requires_owner_freshness
+#check stale_cached_hit_cannot_be_returned
 
 end ASPProof.Audit.ResidentMerkleFreshnessBudget

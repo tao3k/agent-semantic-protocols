@@ -40,6 +40,7 @@ fn generation(
     );
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            relations: Vec::new(),
             workspace_identity: workspace_identity.to_owned(),
             project_root: project_root.display().to_string(),
             active_epoch: epoch,

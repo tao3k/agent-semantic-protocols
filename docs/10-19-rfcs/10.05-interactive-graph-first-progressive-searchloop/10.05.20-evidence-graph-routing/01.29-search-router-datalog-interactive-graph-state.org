@@ -1,0 +1,339 @@
+#+TITLE: Search Router, Datalog, and Interactive Graph State
+#+STATUS: Draft
+#+OPTIONS: toc:2
+
+* Intent
+
+This RFC defines the next SearchLoop increment after the four-layer graph
+reasoning pilot.  It keeps the Evidence Graph as the domain model, removes graph
+rendering syntax from the protocol path, and makes each search step a typed
+state transition:
+
+#+begin_example
+intent + session graph + capabilities
+  -> Search Router action
+  -> parser/provider-owned tool observation
+  -> GraphDelta admission
+  -> incremental Datalog derivation
+  -> next proof-relevant frontier hop or typed closure
+#+end_example
+
+The model never receives the complete graph and never mutates graph state.  It
+receives one bounded choice pane, proposes one action or an independent branch,
+and consumes the next bounded pane after the runtime commits the resulting
+delta.
+
+* Problem statement
+
+ASP already has substantial syntax-owned search capability: lexical search,
+native language providers, item and kind queries, owner queries, exact
+selectors, continuation identity, and generation-aware replay.  Those
+capabilities do not by themselves establish semantic reasoning continuity.
+
+The missing contract is the transition between a tool result and the next
+interactive graph state.  In particular, the protocol must not depend on:
+
+- a model remembering earlier prose;
+- a full graph serialization in the prompt;
+- projection syntax as semantic authority;
+- an untyped synthesis step that invents edges or silently drops negative
+  evidence;
+- a continuation token that pages output without preserving the proof-relevant
+  frontier.
+
+* One typed graph with three strata
+
+The SearchLoop owns one logical typed graph.  Implementations may persist its
+records in existing ASP stores; this RFC does not require a new graph database.
+
+The graph has three disjoint strata whose nodes may be connected by typed
+edges:
+
+1. capability/router facts describe tools, providers, verticals,
+   preconditions, route rank, and authorized fallback;
+2. evidence facts describe source identities, symbols, relations, tool
+   observations, rejections, runtime observations, and provenance;
+3. session/reasoning facts describe goals, hypotheses, obligations, frontier,
+   visited nodes, branch receipts, budgets, and current location.
+
+An implementation must not promote a session hypothesis to evidence merely
+because both are represented in the same graph.
+
+* Search Router contract
+
+The Search Router consumes the current session-state digest, the active goal,
+open obligations, the local frontier, capability facts, prior route receipts,
+and remaining budget.  It emits a typed action rather than an unrestricted
+shell command.
+
+Initial action kinds are:
+
+- lexical search;
+- native syntax search;
+- semantic provider search;
+- dependency search;
+- exact-selector materialization;
+- runtime probe;
+- delegate independent branch;
+- resume at a known proof-relevant frontier;
+- stop with closure;
+- stop with a counterexample.
+
+The router may use a model to propose an action.  Admission remains
+deterministic.  The runtime rejects an action when its capability or vertical
+is unavailable, its anchor precondition is unsatisfied, it repeats an
+equivalent completed invocation without an explicit replay reason, its
+generation is stale, or it violates the decreasing-budget rule.
+
+Fallback remains a router transition.  It must be explicitly authorized, have
+lower rank than the failed primary route, preserve required guarantees, retain
+the primary failure as evidence, and decrease the applicable budget.
+
+* Vertical capability registry
+
+A vertical is a typed reasoning domain, not a display label.  The initial
+registry vocabulary is extensible and includes:
+
+#+begin_example
+syntax symbol dependency configuration runtime tests policy proof semantic
+#+end_example
+
+Each tool capability declares accepted input identities, emitted observation
+kinds, supported verticals, generation requirements, and whether its result is
+parser-owned, provider-owned, or runtime-observed.
+
+For example, a native Python item query may emit parser-owned module, class,
+function, import, and owner facts.  A semantic provider may emit candidate
+relations, but those relations remain provider observations until graph
+admission.  A runtime probe emits observations about effective configuration;
+it does not rewrite source ownership.
+
+* Tool-observation contract
+
+Every tool execution returns a typed observation with at least:
+
+#+begin_example
+invocationId
+toolId
+providerId
+authority
+vertical
+workspaceGeneration
+queryIdentity
+anchors
+facts
+edges
+rejections
+noHit
+provenance
+#+end_example
+
+The authority domain does not contain a model authority.  A model may propose
+a query, hypothesis, or route; it cannot emit an admitted source fact or edge.
+
+A no-hit result is a valid observation when invocation identity, generation,
+and provenance are complete.  It is not represented as missing output.
+
+Lexical, native, semantic, and runtime tools may use different internal packet
+formats.  Provider adapters must normalize those packets into this shared
+observation contract before graph admission.
+
+* GraphDelta state model
+
+A GraphDelta is the only operation that mutates interactive graph state.  It
+contains:
+
+#+begin_example
+beforeStateDigest
+beforeGeneration
+routerAction
+toolObservation
+nodesAdded
+factsAdded
+edgesAdded
+evidenceAccepted
+evidenceRejected
+obligationsOpened
+obligationsDischarged
+frontierAdded
+frontierRemoved
+visitedAdded
+branchReceipts
+remainingBudget
+afterGeneration
+afterStateDigest
+#+end_example
+
+Admission requires:
+
+- the before digest and generation match the live session state;
+- the observation generation matches the searched workspace generation;
+- the action is authorized for the observation vertical;
+- every admitted fact or edge is present in the normalized observation or in
+  a deterministic derivation receipt;
+- every edge endpoint resolves before or within the same delta;
+- provenance is complete for positive, negative, and no-hit observations;
+- after-generation is newer and the budget decreases;
+- discharged obligations have explicit supporting or rejecting evidence;
+- branch receipts share the merge base or carry an explicit rebase receipt.
+
+Rejected deltas are retained as typed counterevidence when they reveal stale
+identity, invented relations, missing provenance, unauthorized fallback, or an
+invalid merge.
+
+* Datalog facts and derivations
+
+Datalog is the deterministic derivation kernel over admitted graph facts.  It
+does not replace the Search Router, native providers, or semantic tool
+selection.
+
+Extensional facts come from admitted observations and session transitions.
+Intensional facts come from a versioned ruleset.  Example relations include:
+
+#+begin_src prolog
+declares(Config, Model, Provenance).
+loads(Registry, Config, Provenance).
+resolves_to(Session, Model, Provenance).
+visited(Session, Node).
+frontier(Session, Node, Reason).
+obligation(Session, Claim).
+
+effective_model_owner(Model, Registry) :-
+  declares(Config, Model, _),
+  loads(Registry, Config, _),
+  resolves_to(_, Model, _).
+#+end_src
+
+Each derived fact carries a derivation receipt containing the ruleset digest,
+input fact identities, graph generation, and result identity.  Derived facts
+never erase their supporting observations.
+
+The Datalog engine may derive candidate frontier nodes, reachability, policy
+violations, contradictions, and obligation closure.  The router decides which
+open candidate is worth exploring next.
+
+* Session memory, continuation identity, and bounded hops
+
+SearchLoop memory is graph state, not transcript text.  Resume reuses the
+existing continuation identity contract; this RFC does not introduce a jump or
+hop token.  The continuation identity binds at least:
+
+#+begin_example
+session
+current proof-relevant node
+graph generation
+state digest
+route context digest
+#+end_example
+
+A valid resume restores only the local proof-relevant neighborhood, open
+obligations, relevant evidence, branch receipts, and currently authorized
+router choices.  It does not replay the prose path used to reach the node.
+
+A resume is rejected when the session differs, the node is not live in the
+referenced generation, the state digest is stale, or the route context cannot
+be reconstructed.  A recovery operation may produce a new continuation
+identity under the existing recovery-lease rules, but it must preserve the
+failed stale resume as evidence.
+
+Graph movement continues to use the existing Hop/Hops vocabulary and proof
+objects.  In particular, implementations refine =EvidencePath.hopCount=,
+=PathWithinHopBudget=, =HopCompleteBetween=, =maxGraphHops=, and
+=localHopLimit= rather than defining another Hop structure.  A resume at a
+different frontier node accounts for the corresponding semantic and executed
+graph hops even though prior transcript tokens are not replayed.  Presentation
+compression never changes semantic hop count.
+
+Cache identities remain separate:
+
+- lexical cache: source-index generation plus lexical query identity;
+- native cache: source digest plus provider and structural query identity;
+- semantic cache: capability generation plus tool invocation identity;
+- Datalog cache: fact generation plus ruleset digest;
+- choice-pane cache: session-state digest plus current node and goal identity.
+
+* Agent and subagent boundary
+
+The parent gives each subagent one bounded branch obligation, local choice
+pane, merge-base generation, and budget.  The subagent returns action receipts
+and candidate deltas, not source dumps or an authoritative prose conclusion.
+
+Fan-in admits observations by identity and provenance, applies deterministic
+Datalog derivations, records contradictions, and derives the next frontier.
+The parent model may choose among unresolved branches but cannot manufacture a
+merge fact.
+
+* Lean mapping and invariants
+
+Lean formalization should refine the existing Search Router, bounded-frontier,
+fallback-governance, replay, and layered lifecycle results.  It should prove
+state-transition safety rather than model search quality.
+
+Required invariants are:
+
+1. observation authority excludes the model;
+2. an admitted edge is grounded in known or same-delta nodes and provenance;
+3. graph generation advances monotonically;
+4. accepted transitions decrease the applicable budget;
+5. stale continuation identity cannot resume a session;
+6. semantic and executed graph hops respect the existing hop budget;
+7. unauthorized capability/vertical pairs cannot execute;
+8. unresolved required obligations prevent closure;
+9. Datalog derivations reference a live ruleset and admitted source facts;
+10. subagent merge cannot invent or silently rewrite observations;
+11. projection or rendering syntax is absent from admission authority.
+
+The proof must include positive constructions and counterexamples for invented
+edges, stale generation, non-decreasing budget, missing provenance,
+unauthorized verticals, unresolved closure, invalid Datalog sources, stale
+continuations, and hop-budget overflow.
+
+* Projection boundary
+
+No graph rendering syntax or diagram format is part of this contract.  Any
+separate visualization facility is outside SearchLoop and cannot participate
+in action admission, delta admission, Datalog derivation, node identity, cache
+identity, or closure.
+
+The model-facing choice pane is a bounded typed answer set.  Its serialization
+is an adapter concern and must not become graph authority.
+
+* Delivery order
+
+Implementation follows the repository search-protocol workflow:
+
+#+begin_example
+RFC
+  -> shared tool-observation and graph-step schemas
+  -> provider normalization across language adapters
+  -> Rust Search Router and session-state implementation
+  -> Datalog derivation adapter
+  -> Lean refinement and counterexamples
+  -> sandtable and schema validation
+  -> representative real-project receipts
+#+end_example
+
+The first executable increment should normalize one existing lexical packet
+and one native provider result into a GraphDelta, persist the new session
+generation, and resume through validated continuation identity while retaining
+the existing hop accounting.  Semantic-provider and
+multi-agent fan-in coverage follows only after that vertical slice closes.
+
+* Open gaps and replay criteria
+
+- identify the canonical shared JSON schema owner rather than adding a
+  provider-private packet;
+- bind Native Python results to the common observation normalizer;
+- define the smallest Datalog engine boundary without introducing a new graph
+  database;
+- publish parser-owned selectors for session frontier and visited state, then
+  bind them to the existing continuation identity;
+- connect existing Lean Search Router declarations to the new transition
+  model;
+- capture a real-project receipt containing command count, graph generations,
+  choice-pane size, admitted and rejected deltas, jumps, latency, and closure
+  reason.
+
+Completion requires replaying the same observations and ruleset into the same
+after-state digest.  A successful isolated query, rendering, Lean theorem, or
+schema validation is not sufficient closure by itself.

@@ -6,6 +6,11 @@ pub mod byte_text;
 mod capture;
 mod process_contract;
 pub mod projection_batch;
+pub use projection_batch::{
+    ProviderProjectedItem, ProviderProjectedOwner, ProviderProjectionBatchError,
+    ProviderProjectionBatchRequest, ProviderProjectionBatchResponse, ProviderProjectionOwner,
+    run_provider_projection_batch,
+};
 mod transport;
 
 pub use process_contract::{

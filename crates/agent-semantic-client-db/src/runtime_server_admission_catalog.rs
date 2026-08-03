@@ -104,7 +104,8 @@ struct RuntimeWorkspaceAdmissionCatalogDocument {
 #[derive(Clone, Debug)]
 pub struct RuntimeWorkspaceAdmissionCatalog {
     path: PathBuf,
-    entries: Arc<Mutex<BTreeSet<RuntimeWorkspaceAdmissionCatalogEntry>>>,
+    entries: tokio::sync::watch::Sender<Arc<BTreeSet<RuntimeWorkspaceAdmissionCatalogEntry>>>,
+    writer: Arc<Mutex<()>>,
 }
 
 impl RuntimeWorkspaceAdmissionCatalog {
@@ -119,14 +120,16 @@ impl RuntimeWorkspaceAdmissionCatalog {
                 ));
             }
         };
+        let (entries, _) = tokio::sync::watch::channel(Arc::new(entries));
         Ok(Self {
             path,
-            entries: Arc::new(Mutex::new(entries)),
+            entries,
+            writer: Arc::new(Mutex::new(())),
         })
     }
 
-    pub async fn entries(&self) -> Vec<RuntimeWorkspaceAdmissionCatalogEntry> {
-        self.entries.lock().await.iter().cloned().collect()
+    pub fn snapshot(&self) -> Arc<BTreeSet<RuntimeWorkspaceAdmissionCatalogEntry>> {
+        Arc::clone(&self.entries.borrow())
     }
 
     pub async fn record(
@@ -134,7 +137,8 @@ impl RuntimeWorkspaceAdmissionCatalog {
         entry: RuntimeWorkspaceAdmissionCatalogEntry,
     ) -> Result<bool, String> {
         entry.validate()?;
-        let mut entries = self.entries.lock().await;
+        let _writer = self.writer.lock().await;
+        let mut entries = self.entries.borrow().as_ref().clone();
         if let Some(existing) = entries.iter().find(|existing| {
             existing.project_root == entry.project_root
                 && existing.workspace_identity != entry.workspace_identity
@@ -157,7 +161,6 @@ impl RuntimeWorkspaceAdmissionCatalog {
                 entry.project_root.display()
             ));
         }
-        let inserted_entry = entry.clone();
         if !entries.insert(entry) {
             match tokio::fs::metadata(&self.path).await {
                 Ok(metadata) if metadata.is_file() && metadata.len() > 0 => return Ok(false),
@@ -168,9 +171,9 @@ impl RuntimeWorkspaceAdmissionCatalog {
             }
         }
         if let Err(error) = publish_catalog(&self.path, &entries).await {
-            entries.remove(&inserted_entry);
             return Err(error);
         }
+        self.entries.send_replace(Arc::new(entries));
         Ok(true)
     }
 

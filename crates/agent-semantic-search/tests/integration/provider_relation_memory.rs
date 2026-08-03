@@ -45,6 +45,25 @@ fn attached_relation_fixture_resolves_from_memory() {
 }
 
 #[test]
+fn hot_relation_lookup_is_sub_millisecond_without_runtime_io() {
+    let (bytes, generation_digest, artifact_digest) = fixture();
+    let search =
+        ProviderRelationMemorySearch::attach_owned(bytes, generation_digest, artifact_digest)
+            .expect("attach relation fixture");
+
+    for _ in 0..256 {
+        let started = std::time::Instant::now();
+        let relations = search.relations_from("item", "item:caller");
+        let elapsed = started.elapsed();
+        assert_eq!(relations.len(), 1);
+        assert!(
+            elapsed < std::time::Duration::from_millis(1),
+            "resident relation lookup exceeded the sub-millisecond gate: {elapsed:?}"
+        );
+    }
+}
+
+#[test]
 fn attached_relation_fixture_rejects_digest_drift() {
     let (bytes, generation_digest, _) = fixture();
     let error = ProviderRelationMemorySearch::attach_owned(bytes, generation_digest, [0; 32])

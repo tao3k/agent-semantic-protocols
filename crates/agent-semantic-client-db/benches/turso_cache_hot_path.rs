@@ -67,6 +67,8 @@ fn turso_cache_hot_path(c: &mut Criterion) {
             ),
             projection_mode,
             source,
+            source_byte_start: 0,
+            source_byte_end: source.len() as u64,
             normalized_parser_facts: br#"{"kind":"fn","name":"warm_symbol"}"#,
             projection: source,
         },

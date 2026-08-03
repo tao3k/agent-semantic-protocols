@@ -43,7 +43,7 @@ pub use model::{
     WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
 };
 pub use pointer::WorkspaceGenerationPointerReader;
-pub use registry::RuntimeServerWorkspaceRegistry;
+pub use registry::{PublishedWorkspaceGenerationState, RuntimeServerWorkspaceRegistry};
 pub use restore::restore_active_turso_generation;
 pub use scope_path::{workspace_generation_directory, workspace_generation_pointer_path};
 pub use segment::{MappedWorkspaceGeneration, WorkspaceGenerationPublisher};

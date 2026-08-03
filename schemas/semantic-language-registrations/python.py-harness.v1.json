@@ -1,0 +1,405 @@
+{
+  "binary": "py-harness",
+  "displayName": "Python Harness",
+  "execution": "external-process",
+  "languageId": "python",
+  "methodDescriptors": [
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "py-harness",
+          "search",
+          "dependency-topology",
+          "--json",
+          "--workspace",
+          "{workspace}"
+        ]
+      },
+      "method": "search/dependency-topology",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-dependency-topology"
+      ],
+      "packetSchemas": [
+        "semantic-dependency-topology.v1"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": false,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "dependency-topology"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "py-harness",
+          "search",
+          "prime",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/prime",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-search-packet.v1"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "prime"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "py-harness",
+          "search",
+          "owner",
+          "{owner}",
+          "items",
+          "--query",
+          "{query}",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/owner",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-search-packet.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "owner"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "py-harness",
+          "search",
+          "lexical",
+          "{query}",
+          "owner",
+          "tests",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/lexical",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-search-packet.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "lexical"
+    },
+    {
+      "codeOutput": {
+        "mode": "pure-code",
+        "multiMatch": "deny",
+        "requires": [
+          "exact-selector"
+        ]
+      },
+      "command": "query",
+      "invocation": {
+        "argv": [
+          "py-harness",
+          "query",
+          "--selector",
+          "{owner}",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "query/exact-selector",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-query-packet"
+      ],
+      "packetSchemas": [
+        "semantic-query-packet.v1",
+        "semantic-read-packet.v1"
+      ],
+      "queryInputForms": [
+        "selector"
+      ],
+      "supportsCompact": true,
+      "supportsJson": true
+    },
+    {
+      "acceptsStdin": true,
+      "command": "query",
+      "invocation": {
+        "argv": [
+          "py-harness",
+          "query",
+          "--asp-exact-request-stdin"
+        ]
+      },
+      "method": "query/exact-selector-native-v1",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.provider-native-exact-projection"
+      ],
+      "packetSchemas": [
+        "provider-native-exact-request.v1",
+        "provider-native-exact-response.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": false,
+      "supportsJson": true,
+      "supportsPackageScope": false,
+      "view": "exact-selector"
+    },
+    {
+      "acceptsStdin": true,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "py-harness",
+          "search",
+          "semantic-facts",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ],
+        "stdinMode": "pipe-candidates"
+      },
+      "method": "search/semantic-facts",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-fact-graph"
+      ],
+      "packetSchemas": [
+        "semantic-fact-graph.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "semantic-facts"
+    },
+    {
+      "command": "check",
+      "invocation": {
+        "argv": [
+          "py-harness",
+          "check",
+          "--changed",
+          "{workspace}"
+        ]
+      },
+      "method": "check/changed",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-verification-receipt"
+      ],
+      "supportsCompact": true,
+      "supportsJson": true
+    },
+    {
+      "command": "guide",
+      "invocation": {
+        "argv": [
+          "py-harness",
+          "guide",
+          "{workspace}"
+        ]
+      },
+      "method": "guide",
+      "supportsCompact": true,
+      "supportsJson": false
+    },
+    {
+      "acceptsStdin": true,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "py-harness",
+          "search",
+          "ingest",
+          "owner",
+          "tests",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ],
+        "stdinMode": "pipe-candidates"
+      },
+      "method": "search/ingest",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "ingest"
+    }
+  ],
+  "methods": [
+    "search/dependency-topology",
+    "search/prime",
+    "search/owner",
+    "search/lexical",
+    "search/ingest",
+    "search/semantic-facts",
+    "query/exact-selector",
+    "query/exact-selector-native-v1",
+    "check/changed",
+    "guide"
+  ],
+  "namespace": "agent.semantic-protocols.languages.python.py-harness",
+  "providerId": "py-harness",
+  "queryPackDescriptor": {
+    "descriptorId": "python.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "python",
+    "recipes": [
+      {
+        "clauses": [
+          {
+            "intentAxes": [
+              "concurrency"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "terms": [
+              "asyncio",
+              "task",
+              "scheduling"
+            ]
+          }
+        ],
+        "recipeId": "python-asyncio-runtime",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "asyncio",
+            "task",
+            "scheduling"
+          ]
+        }
+      },
+      {
+        "clauses": [
+          {
+            "intentAxes": [
+              "resource-lifecycle"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "terms": [
+              "contextmanager",
+              "resource",
+              "lifecycle"
+            ]
+          }
+        ],
+        "recipeId": "python-context-lifecycle",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "contextmanager",
+            "resource",
+            "lifecycle"
+          ]
+        }
+      },
+      {
+        "clauses": [
+          {
+            "intentAxes": [
+              "collection",
+              "stream"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "terms": [
+              "queue",
+              "async-generator",
+              "backpressure"
+            ]
+          }
+        ],
+        "recipeId": "python-stream-backpressure",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "queue",
+            "async-generator",
+            "backpressure"
+          ]
+        }
+      }
+    ],
+    "semanticFactsDescriptorId": "python.semantic-facts",
+    "termRoleOverrides": []
+  },
+  "schemas": [
+    {
+      "path": "schemas/semantic-search-packet.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-search-packet",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-query-packet.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-query-packet",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-read-packet.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-read-packet",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/software-criterion-catalog.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.software-criterion-catalog",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/software-criterion-extension-report.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.software-criterion-extension-report",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-fact-graph.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-fact-graph",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-fact-ontology.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
+      "schemaVersion": "1"
+    }
+  ]
+}

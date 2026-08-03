@@ -55,6 +55,7 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
             mtime_ms: 11,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_active_turso.rs".to_string(),
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
@@ -105,6 +106,7 @@ async fn db_engine_source_index_import_uses_canonical_snapshot_without_fts_contr
             mtime_ms: 11,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_active_turso.rs".to_string(),
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
@@ -180,6 +182,7 @@ async fn db_engine_source_index_selector_payload_proof_roundtrips_to_lookup_cand
             mtime_ms: 17,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_payload_proof.rs".to_string(),
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),
@@ -283,6 +286,7 @@ async fn db_engine_source_index_scope_selector_receipt_roundtrips_to_lookup_cand
             registry_fingerprint: "scope-payload-proof-registry".to_string(),
             extra_scope_dirs: Vec::new(),
             files: vec![ClientDbSourceIndexScopeFile {
+                relations: Vec::new(),
                 path: source_path,
                 language_id: LanguageId::from("rust"),
                 provider_id: ProviderId::from("rs-harness"),
@@ -406,6 +410,7 @@ async fn db_engine_source_index_lookup_deduplicates_same_owner_across_generation
                 mtime_ms,
             }],
             files: vec![ClientDbSourceIndexImportFile {
+                relations: Vec::new(),
                 relative_path: "src/source_index_dedup.rs".to_string(),
                 language_id: rust_language_id.clone(),
                 provider_id: ProviderId::from("rs-harness"),
@@ -490,6 +495,7 @@ async fn db_engine_source_index_import_does_not_populate_turso_fts_search_docume
             mtime_ms: 44,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_fts.rs".to_string(),
             language_id: rust_language_id.clone(),
             provider_id: ProviderId::from("rs-harness"),
@@ -571,6 +577,7 @@ async fn db_engine_source_index_concurrent_inspect_and_lookup_survives_turso_fil
             mtime_ms: 33,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_concurrent.rs".to_string(),
             language_id: rust_language_id.clone(),
             provider_id: ProviderId::from("rs-harness"),
@@ -664,6 +671,7 @@ async fn db_engine_source_index_lookup_succeeds_without_client_dir_write_permiss
             mtime_ms: 44,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_read_only.rs".to_string(),
             language_id: rust_language_id.clone(),
             provider_id: ProviderId::from("rs-harness"),
@@ -753,6 +761,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
             mtime_ms: 1,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/source_index_pressure.rs".to_string(),
             language_id: rust_language_id.clone(),
             provider_id: ProviderId::from("rs-harness"),
@@ -810,6 +819,7 @@ async fn db_engine_source_index_refresh_lookup_pressure_never_exposes_busy_or_lo
                     mtime_ms: round + 2,
                 }],
                 files: vec![ClientDbSourceIndexImportFile {
+                    relations: Vec::new(),
                     relative_path: "src/source_index_pressure.rs".to_string(),
                     language_id: writer_language_id.clone(),
                     provider_id: ProviderId::from("rs-harness"),

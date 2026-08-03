@@ -11,6 +11,16 @@ fn codex_agent_projection_is_symlink_and_does_not_truncate_source() {
     let asp_agents = temp.path().join("asp-agents");
     let codex_agents = temp.path().join("codex-agents");
     fs::create_dir_all(&asp_agents).expect("create asp agents");
+    fs::write(
+        asp_agents.join("config.toml"),
+        r#"
+[agents.asp_explorer]
+session_name = "asp-explore"
+profile = "asp-explorer_codex.toml"
+projection = "asp-explorer.toml"
+"#,
+    )
+    .expect("write dynamic agent registry");
     let source = asp_agents.join("asp-explorer_codex.toml");
     fs::write(
         &source,
@@ -44,6 +54,16 @@ fn codex_agent_projection_adds_read_only_sandbox_when_missing() {
     let asp_agents = temp.path().join("asp-agents");
     let codex_agents = temp.path().join("codex-agents");
     fs::create_dir_all(&asp_agents).expect("create asp agents");
+    fs::write(
+        asp_agents.join("config.toml"),
+        r#"
+[agents.asp_explorer]
+session_name = "asp-explore"
+profile = "asp-explorer_codex.toml"
+projection = "asp-explorer.toml"
+"#,
+    )
+    .expect("write dynamic agent registry");
     let source = asp_agents.join("asp-explorer_codex.toml");
     fs::write(
         &source,
@@ -75,6 +95,16 @@ fn codex_agent_projection_removes_asp_only_session_lifetime() {
     let asp_agents = temp.path().join("asp-agents");
     let codex_agents = temp.path().join("codex-agents");
     fs::create_dir_all(&asp_agents).expect("create asp agents");
+    fs::write(
+        asp_agents.join("config.toml"),
+        r#"
+[agents.asp_explorer]
+session_name = "asp-explore"
+profile = "asp-explorer_codex.toml"
+projection = "asp-explorer.toml"
+"#,
+    )
+    .expect("write dynamic agent registry");
     let source = asp_agents.join("asp-explorer_codex.toml");
     fs::write(
         &source,

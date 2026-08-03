@@ -33,6 +33,7 @@ fn merkle_import(
         files: files
             .iter()
             .map(|(path, _, symbol)| ClientDbSourceIndexImportFile {
+                relations: Vec::new(),
                 relative_path: (*path).to_string(),
                 language_id: LanguageId::from("rust"),
                 provider_id: ProviderId::from("rs-harness"),

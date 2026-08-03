@@ -1,7 +1,7 @@
-use super::{RuntimeServerWorkspaceRegistry, WorkspaceRecoveryReceipt, oneshot};
+use super::{oneshot, RuntimeServerWorkspaceRegistry, WorkspaceRecoveryReceipt};
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 
 fn progress_receipt() -> WorkspaceRecoveryReceipt {
@@ -14,6 +14,10 @@ fn progress_receipt() -> WorkspaceRecoveryReceipt {
         state: crate::runtime_server_workspace::WorkspaceGenerationState::PublishingNext,
         active_epoch: 1,
         target_epoch: 2,
+        generation_digest:
+            "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        source_root_digest:
+            "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
         old_generation_readable: true,
         counters: crate::runtime_server_workspace::RuntimeDataPlaneCounters::default(),
     }
@@ -42,10 +46,11 @@ async fn immediate_writer_acceptance_returns_reserved_progress() {
 #[tokio::test]
 async fn acceptance_timeout_does_not_cancel_enqueued_writer_work() {
     let (send, receive) = oneshot::channel();
+    let (release, wait_for_release) = oneshot::channel();
     let completed = Arc::new(AtomicBool::new(false));
     let writer_completed = Arc::clone(&completed);
     let writer = tokio::spawn(async move {
-        tokio::task::yield_now().await;
+        let _ = wait_for_release.await;
         writer_completed.store(true, Ordering::Release);
         let _ = send.send(Ok(progress_receipt()));
     });
@@ -58,6 +63,7 @@ async fn acceptance_timeout_does_not_cancel_enqueued_writer_work() {
     .expect_err("zero acceptance deadline must fail closed");
 
     assert!(error.contains("acceptance deadline"));
+    let _ = release.send(());
     writer.await.expect("writer task completed");
     assert!(completed.load(Ordering::Acquire));
 }

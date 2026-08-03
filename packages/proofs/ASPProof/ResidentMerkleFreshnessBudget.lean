@@ -115,4 +115,61 @@ theorem queued_requires_resident_acceptance
     ownership = .residentAccepted := by
   cases ownership <;> simp [survivesClientExit] at h ⊢
 
+inductive AdmissionState where
+  | building
+  | ready
+  | failed
+  deriving DecidableEq, Repr
+
+def ensureState : AdmissionState → AdmissionState
+  | .failed => .building
+  | state => state
+
+theorem failed_admission_is_retryable :
+    ensureState .failed = .building := by
+  rfl
+
+inductive ExactProjectionKind where
+  | source
+  | callableSkeleton
+  deriving DecidableEq, Repr
+
+structure ExactOwnerReadEvidence where
+  cachedHit : Bool
+  liveContentDigest : Nat
+  publishedContentDigest : Nat
+  deriving DecidableEq, Repr
+
+def ownerFresh (evidence : ExactOwnerReadEvidence) : Prop :=
+  evidence.liveContentDigest = evidence.publishedContentDigest
+
+def exactProjectionAllowed
+    (_kind : ExactProjectionKind)
+    (evidence : ExactOwnerReadEvidence) : Prop :=
+  ownerFresh evidence
+
+theorem cached_hit_without_owner_freshness_is_insufficient :
+    ∃ evidence : ExactOwnerReadEvidence,
+      evidence.cachedHit = true ∧ ¬ ownerFresh evidence := by
+  refine ⟨
+    { cachedHit := true, liveContentDigest := 2, publishedContentDigest := 1 },
+    rfl,
+    ?_
+  ⟩
+  simp [ownerFresh]
+
+theorem every_exact_projection_requires_owner_freshness
+    (kind : ExactProjectionKind)
+    (evidence : ExactOwnerReadEvidence)
+    (h : exactProjectionAllowed kind evidence) :
+    ownerFresh evidence := by
+  exact h
+
+theorem stale_cached_hit_cannot_be_returned
+    (kind : ExactProjectionKind)
+    (evidence : ExactOwnerReadEvidence)
+    (hStale : evidence.liveContentDigest ≠ evidence.publishedContentDigest) :
+    ¬ exactProjectionAllowed kind evidence := by
+  simpa [exactProjectionAllowed, ownerFresh] using hStale
+
 end ASPProof.ResidentMerkleFreshnessBudget

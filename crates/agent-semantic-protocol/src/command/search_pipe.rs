@@ -44,6 +44,7 @@ use agent_semantic_search::search_command_preflight::{
 };
 
 pub(super) struct FastSearchContext<'a> {
+    pub(super) started: tokio::time::Instant,
     pub(super) language_id: &'a str,
     pub(super) project_root: &'a Path,
     pub(super) locator_root: &'a Path,
@@ -72,6 +73,7 @@ pub(super) fn fast_search_requires_source_index_snapshot(args: &[String]) -> boo
 }
 
 pub(super) struct IncrementalOwnerSearchContext<'a> {
+    pub(super) started: tokio::time::Instant,
     pub(super) language_id: &'a str,
     pub(super) project_root: &'a Path,
     pub(super) locator_root: &'a Path,
@@ -93,6 +95,7 @@ pub(super) fn run_asp_incremental_owner_search_command(
     run_search_owner_items_query_command(
         args,
         SearchOwnerItemsContext {
+            started: context.started,
             language_id: context.language_id,
             project_root: context.project_root,
             locator_root: context.locator_root,
@@ -150,6 +153,7 @@ pub(super) fn run_asp_fast_search_command(
         return run_search_owner_items_query_command(
             args,
             SearchOwnerItemsContext {
+                started: context.started,
                 language_id: context.language_id,
                 project_root: context.project_root,
                 locator_root: context.locator_root,
@@ -340,6 +344,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         Some(&pipe_args.seed_query),
         &acquisition.candidates,
         context.provider_context,
+        context.source_index_client,
     )?;
     let source_trace = source_trace_with_provider_facts(
         &acquisition.source_trace,
@@ -668,6 +673,7 @@ fn run_search_ingest_command(
         None,
         &candidates,
         context.provider_context,
+        context.source_index_client,
     )?;
     let generation =
         agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1::admit(
@@ -775,6 +781,7 @@ fn run_search_lexical_command(
         Some(&pipe_args.query),
         &acquisition.candidates,
         context.provider_context,
+        context.source_index_client,
     )?;
     let source_label = acquisition
         .candidate_sources

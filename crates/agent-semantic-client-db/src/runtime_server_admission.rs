@@ -38,8 +38,9 @@ impl WorkspaceGenerationBuild {
     }
 }
 
-pub type WorkspaceGenerationBuildFuture =
-    Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>>;
+pub type WorkspaceGenerationBuildFuture = Pin<
+    Box<dyn Future<Output = Result<WorkspaceGenerationCommitReceipt, String>> + Send + 'static>,
+>;
 pub type WorkspaceGenerationBuilder = Arc<
     dyn Fn(String, PathBuf, WorkspaceGenerationBuildMode) -> WorkspaceGenerationBuildFuture
         + Send
@@ -81,7 +82,41 @@ pub struct WorkspaceGenerationAdmissionReceipt {
     pub state: WorkspaceGenerationAdmissionState,
     pub accepted: bool,
     pub attempt: u64,
+    pub commit: Option<WorkspaceGenerationCommitReceipt>,
     pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceGenerationCommitReceipt {
+    pub active_epoch: u64,
+    pub generation_digest: String,
+    pub source_root_digest: String,
+}
+
+impl WorkspaceGenerationCommitReceipt {
+    pub fn from_recovery(
+        recovery: &crate::runtime_server_workspace::WorkspaceRecoveryReceipt,
+    ) -> Result<Self, String> {
+        recovery.validate()?;
+        let receipt = Self {
+            active_epoch: recovery.target_epoch,
+            generation_digest: recovery.generation_digest.clone(),
+            source_root_digest: recovery.source_root_digest.clone(),
+        };
+        receipt.validate()?;
+        Ok(receipt)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.active_epoch == 0
+            || self.generation_digest.trim().is_empty()
+            || self.source_root_digest.trim().is_empty()
+        {
+            return Err("workspace generation commit receipt is incomplete".to_owned());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -100,10 +135,10 @@ impl WorkspaceGenerationAdmissionReceipt {
         if self.workspace_identity.trim().is_empty() || self.attempt == 0 {
             return Err("workspace generation admission receipt identity is incomplete".to_owned());
         }
-        match (&self.state, &self.error) {
-            (WorkspaceGenerationAdmissionState::Building, None)
-            | (WorkspaceGenerationAdmissionState::Ready, None)
-            | (WorkspaceGenerationAdmissionState::Failed, Some(_)) => Ok(()),
+        match (&self.state, &self.commit, &self.error) {
+            (WorkspaceGenerationAdmissionState::Building, None, None)
+            | (WorkspaceGenerationAdmissionState::Failed, None, Some(_)) => Ok(()),
+            (WorkspaceGenerationAdmissionState::Ready, Some(commit), None) => commit.validate(),
             _ => Err("workspace generation admission receipt state is inconsistent".to_owned()),
         }
     }
@@ -119,17 +154,24 @@ pub struct WorkspaceGenerationAdmission {
 
 struct PendingWorkspaceMutation {
     mutation_id: String,
+    changed_paths: Arc<std::collections::BTreeSet<PathBuf>>,
     attempt: u64,
+}
+
+#[derive(Clone)]
+struct WorkspaceMutationIdentity {
+    mutation_id: String,
+    changed_paths: Arc<std::collections::BTreeSet<PathBuf>>,
 }
 
 #[derive(Default)]
 struct WorkspaceMutationLane {
-    active_mutation_id: Option<String>,
     pending: VecDeque<PendingWorkspaceMutation>,
 }
 
 struct AdmissionEntry {
     receipt: watch::Sender<WorkspaceGenerationAdmissionReceipt>,
+    active_mutation: watch::Sender<Option<WorkspaceMutationIdentity>>,
     building: AtomicBool,
     attempt: AtomicU64,
     transition: tokio::sync::Mutex<()>,
@@ -140,19 +182,18 @@ struct AdmissionEntry {
 impl AdmissionEntry {
     fn new(
         receipt: WorkspaceGenerationAdmissionReceipt,
-        active_mutation_id: Option<String>,
+        active_mutation: Option<WorkspaceMutationIdentity>,
     ) -> Self {
         let attempt = receipt.attempt;
         let (sender, _) = watch::channel(receipt);
+        let (active_mutation, _) = watch::channel(active_mutation);
         Self {
             receipt: sender,
+            active_mutation,
             building: AtomicBool::new(true),
             attempt: AtomicU64::new(attempt),
             transition: tokio::sync::Mutex::new(()),
-            mutations: tokio::sync::Mutex::new(WorkspaceMutationLane {
-                active_mutation_id,
-                pending: VecDeque::new(),
-            }),
+            mutations: tokio::sync::Mutex::new(WorkspaceMutationLane::default()),
             task: parking_lot::Mutex::new(None),
         }
     }
@@ -224,6 +265,7 @@ impl WorkspaceGenerationAdmission {
             state: WorkspaceGenerationAdmissionState::Building,
             accepted: true,
             attempt: 1,
+            commit: None,
             error: None,
         };
         receipt.validate()?;
@@ -270,6 +312,7 @@ impl WorkspaceGenerationAdmission {
             state: WorkspaceGenerationAdmissionState::Building,
             accepted: true,
             attempt,
+            commit: None,
             error: None,
         };
         receipt.validate()?;
@@ -303,7 +346,8 @@ impl WorkspaceGenerationAdmission {
                     match builder(workspace_identity.clone(), project_root.clone(), build_mode)
                         .await
                     {
-                        Ok(()) => WorkspaceGenerationAdmissionReceipt {
+                        Ok(commit) => WorkspaceGenerationAdmissionReceipt {
+                            commit: Some(commit),
                             schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
                             schema_version: "1".to_owned(),
                             workspace_identity: workspace_identity.clone(),
@@ -319,13 +363,19 @@ impl WorkspaceGenerationAdmission {
                             state: WorkspaceGenerationAdmissionState::Failed,
                             accepted: false,
                             attempt,
+                            commit: None,
                             error: Some(error),
                         },
                     };
                 let transition = completed_entry.transition.lock().await;
                 let mut mutations = completed_entry.mutations.lock().await;
                 if let Some(next) = mutations.pending.pop_front() {
-                    mutations.active_mutation_id = Some(next.mutation_id);
+                    completed_entry
+                        .active_mutation
+                        .send_replace(Some(WorkspaceMutationIdentity {
+                            mutation_id: next.mutation_id,
+                            changed_paths: next.changed_paths,
+                        }));
                     attempt = next.attempt;
                     build_mode = WorkspaceGenerationBuildMode::RebuildAfterMutation;
                     completed_entry
@@ -337,6 +387,7 @@ impl WorkspaceGenerationAdmission {
                             state: WorkspaceGenerationAdmissionState::Building,
                             accepted: false,
                             attempt,
+                            commit: None,
                             error: None,
                         });
                     drop(mutations);
@@ -344,7 +395,6 @@ impl WorkspaceGenerationAdmission {
                     changes.notify_waiters();
                     continue;
                 }
-                mutations.active_mutation_id = None;
                 completed_entry.receipt.send_replace(completed);
                 completed_entry.building.store(false, Ordering::Release);
                 drop(mutations);
@@ -360,9 +410,9 @@ impl WorkspaceGenerationAdmission {
         let Some(catalog) = &self.catalog else {
             return Ok(WorkspaceGenerationRestoreReport::default());
         };
-        let entries = catalog.entries().await;
+        let entries = catalog.snapshot();
         let mut tasks = tokio::task::JoinSet::new();
-        for entry in entries {
+        for entry in entries.iter().cloned() {
             let admission = self.clone();
             tasks.spawn(async move {
                 let receipt = admission
@@ -429,8 +479,10 @@ impl WorkspaceGenerationAdmission {
                 .await?;
         }
         match self.status(workspace_identity, project_root).await {
-            Some(receipt) => Ok(receipt),
-            None => {
+            Some(receipt) if receipt.state != WorkspaceGenerationAdmissionState::Failed => {
+                Ok(receipt)
+            }
+            Some(_) | None => {
                 self.admit(workspace_identity.to_owned(), project_root.to_path_buf())
                     .await
             }
@@ -444,6 +496,7 @@ impl WorkspaceGenerationAdmission {
         &self,
         workspace_identity: &str,
         project_root: &std::path::Path,
+        commit: WorkspaceGenerationCommitReceipt,
     ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
         if workspace_identity.trim().is_empty() {
             return Err("workspace generation admission identity must be non-empty".to_owned());
@@ -475,6 +528,7 @@ impl WorkspaceGenerationAdmission {
             state: WorkspaceGenerationAdmissionState::Ready,
             accepted: false,
             attempt,
+            commit: Some(commit),
             error: None,
         };
         receipt.validate()?;

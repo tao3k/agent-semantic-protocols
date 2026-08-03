@@ -9,8 +9,10 @@ use crate::protocol::{
 use crate::protocol_activation::protocol_activation_manifest::ProviderManifest;
 
 // The embedded registry is the admission authority for provider-native routes.
-const SCHEMA_REGISTRY_JSON: &str =
-    include_str!("../../../schemas/semantic-language-registry.providers.v1.json");
+const SCHEMA_REGISTRY_JSON: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/semantic-language-registry.providers.resolved.v1.json"
+));
 
 pub fn semantic_registry_digest() -> String {
     let digest = <sha2::Sha256 as sha2::Digest>::digest(SCHEMA_REGISTRY_JSON.as_bytes());
@@ -273,6 +275,29 @@ pub struct ProviderDevelopmentRegistrationV1 {
     pub binary: String,
     pub development:
         crate::protocol_activation::protocol_activation_manifest::ProviderDevelopmentDescriptor,
+}
+
+pub fn registered_provider_projection_command_binding_v1(
+    language_id: &str,
+    provider_id: &str,
+) -> Result<Option<String>, String> {
+    let manifests = language_provider_manifests();
+    let Some(manifest) = manifests
+        .iter()
+        .find(|manifest| manifest.language_id.as_str() == language_id)
+    else {
+        return Ok(None);
+    };
+    if manifest.provider_id.as_str() != provider_id {
+        return Err(format!(
+            "ProviderRegistry provider drift for language `{language_id}`: expected {}, got {provider_id}",
+            manifest.provider_id
+        ));
+    }
+    Ok(manifest
+        .language_projection
+        .as_ref()
+        .map(|descriptor| descriptor.command_binding().to_owned()))
 }
 
 pub fn registered_provider_method_invocation_v1(

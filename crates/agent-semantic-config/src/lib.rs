@@ -6,6 +6,7 @@ pub mod codex_agent_projection;
 mod codex_plugin_config;
 mod hook_client_config;
 pub mod runtime_dev;
+pub mod subagent_manager;
 
 pub use codex_plugin_config::codex_config_plugin_enabled;
 

@@ -1,6 +1,5 @@
 //! Public refresh API for the DB Engine source index.
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -8,12 +7,10 @@ use agent_semantic_client_core::{
     ClientCacheFileHash, LanguageId, ProjectContext, ProviderId, ProviderRegistryEvidence,
     ProviderRegistrySnapshot,
 };
-use agent_semantic_client_db::{ClientDbEngine, source_index_file_hashes};
-use agent_semantic_runtime::{collect_runtime_source_index_files, runtime_source_index_context};
+use agent_semantic_client_db::source_index_file_hashes;
 use sha2::{Digest as _, Sha256};
 
 use super::collect::collect_source_index_files;
-use super::config::SOURCE_INDEX_FILE_LIMIT;
 use super::model::SourceIndexScopeFile;
 use super::provider_envelope::{
     ProviderSourceEnvelopeLookupRequestV1,
@@ -532,58 +529,47 @@ pub(crate) fn current_source_index_snapshot_with_registry(
     materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
 }
 
-/// Capture the current content-authoritative snapshot for an ASP-managed
-/// runtime source checkout using the same identity inputs as its source index.
-pub(crate) fn current_runtime_source_index_snapshot(
+/// Resolve a source-index snapshot from the shared provider registry scope.
+///
+/// Language facades always resolve through the registered language provider.
+/// Only a fully unscoped request may use the workspace-global snapshot.
+pub(crate) fn current_source_index_snapshot_for_scope(
     project_root: &Path,
     checkout_root: &Path,
-    language_id: &LanguageId,
-    provider_id: &ProviderId,
+    language_id: Option<&LanguageId>,
+    requested_provider_id: Option<&ProviderId>,
 ) -> Result<CurrentSourceIndexSnapshot, String> {
-    let db_engine = ClientDbEngine::resolve(project_root)?;
-    let runtime_context = runtime_source_index_context(
-        (
-            checkout_root,
-            db_engine.client_dir(),
-            language_id.as_str(),
-            provider_id.as_str(),
-        )
-            .into(),
-    )?;
-    let files = collect_runtime_source_index_files(
-        (
-            runtime_context.checkout_root.as_path(),
-            language_id.as_str(),
-            provider_id.as_str(),
-            SOURCE_INDEX_FILE_LIMIT,
-        )
-            .into(),
-    )?
-    .into_iter()
-    .map(|file| SourceIndexScopeFile {
-        relations: Vec::new(),
-        path: file.path,
-        language_id: LanguageId::from(file.language_id),
-        provider_id: ProviderId::from(file.provider_id),
-        projection_coverage:
-            agent_semantic_client_db::ClientDbSourceIndexProjectionCoverage::NotDeclared,
-        selector_receipts: Vec::new(),
-    })
-    .collect::<Vec<_>>();
-    if files.is_empty() {
-        return Err(format!(
-            "runtime source snapshot found no source files in {} for language {}",
-            runtime_context.checkout_root.display(),
-            language_id
-        ));
+    match (language_id, requested_provider_id) {
+        (Some(language_id), requested_provider_id) => {
+            let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
+            let provider = provider_registry
+                .provider_for_language(language_id)
+                .ok_or_else(|| format!("provider is missing for language {language_id}"))?;
+            if let Some(requested_provider_id) = requested_provider_id
+                && requested_provider_id != &provider.provider_id
+            {
+                return Err(format!(
+                    "provider {requested_provider_id} is not registered for language {language_id}; registered provider is {}",
+                    provider.provider_id
+                ));
+            }
+            let project_context = ProjectContext::resolve(checkout_root)?;
+            super::provider_envelope::ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
+                ProviderSourceEnvelopeLookupRequestV1 {
+                    project_root: checkout_root,
+                    artifact_root: project_context.state_layout().artifacts_dir(),
+                    language_id,
+                    provider_id: &provider.provider_id,
+                    provider_registry: &provider_registry,
+                },
+            )
+        }
+        (None, Some(_)) => Err(
+            "--index-owner requires a language-scoped `asp <language> cache source-index lookup` request"
+                .to_string(),
+        ),
+        (None, None) => current_source_index_snapshot(checkout_root),
     }
-    let registry = ProviderRegistryEvidence {
-        fingerprint: runtime_context.registry_fingerprint,
-        scope_dirs: BTreeSet::new(),
-    };
-    let (_, workspace_snapshot, source_snapshot, source_blobs) =
-        source_index_snapshot_from_files(&runtime_context.checkout_root, &files, &registry)?;
-    materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
 }
 
 pub(super) fn source_index_trace(stage: &str, started: Instant) {

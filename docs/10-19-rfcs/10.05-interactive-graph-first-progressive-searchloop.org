@@ -86,6 +86,16 @@ Owns terminology, state-machine invariants, safety boundaries, and the
 relationship among interaction, graph navigation, progressive disclosure, and
 proof receipts.
 
+Language-scoped search, query, check, and cache operations MUST preserve lazy
+provider admission.  A language facade resolves through the registered provider
+registry to exactly one provider identity; absence of an explicit index-owner
+argument MUST NOT widen that operation to complete-generation or global
+source-index resolution.  Only an explicitly unscoped operation may request a
+complete generation.  Runtime evidence for a language-scoped operation MUST
+therefore report no commands or processes for unrelated providers; a missing
+runtime for the selected provider is a typed provider-local failure, not a
+reason to prepare a shared runtime such as Node.
+
 ** 10.05.10 Interactive SearchLoop
 
 Owns:
@@ -484,3 +494,26 @@ interactive architecture
   -> Typst mathematical presentation
   -> modular JSON audit
 #+end_example
+
+** Provider Register is a bounded reference index
+
+The shared Provider Register MUST NOT inline every language's method inventory,
+method descriptors, query pack, and schema inventory.  Its durable root is a
+bounded index whose entries contain only =languageId=, =providerId=, and a
+descriptor =$ref=.  The referenced registration descriptor is owned by the
+language provider and carries that provider's complete registration contract.
+
+Reference resolution is a packaging boundary, not a runtime checkout read.
+The build MUST resolve every referenced descriptor, verify that its
+=languageId= and =providerId= match the index entry, and bundle the resolved
+registry into the ASP artifact.  Runtime dispatch, method lookup, and catalog
+identity continue to consume that resolved registry.  Registry and provider
+descriptor digests therefore cover resolved descriptor content; hashing only
+the reference path is invalid.
+
+Resolution MUST fail closed for a missing reference, an absolute or
+parent-traversing path, identity drift, duplicate references, duplicate
+languages, or method-inventory drift.  Registering another language adds one
+bounded index reference plus its provider-owned descriptor.  It MUST NOT add a
+language-specific branch to the CLI or a hard-coded language list to the Rust
+loader.

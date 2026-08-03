@@ -255,8 +255,9 @@ impl WorkspaceGenerationLease {
         &self,
         endpoint_kind: &str,
         endpoint_id: &str,
-    ) -> Vec<&agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>
-    {
+    ) -> Vec<
+        &agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+    > {
         self.backend.relations_from(endpoint_kind, endpoint_id)
     }
 

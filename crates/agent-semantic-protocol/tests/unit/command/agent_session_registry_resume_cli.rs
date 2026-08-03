@@ -1,6 +1,5 @@
 use std::env;
 use std::fs;
-use std::path::Path;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -12,28 +11,28 @@ fn agent_session_resume_reports_missing_message_target_until_native_target_is_re
     let child_session_id = "019f3db5-0000-7000-8000-000000000002";
     let binary = env!("CARGO_BIN_EXE_asp");
 
-    let register = Command::new(binary)
-        .env("CODEX_HOME", &codex_home)
-        .args([
-            "agent",
-            "session",
-            "register",
-            "--state-root",
-            path_str(&state_root),
-            "--name",
-            "resume-test",
-            "--child-session-id",
-            child_session_id,
-            "--root-session-id",
-            root_session_id,
-            "--roles",
-            "subagent,search",
-            "--model",
-            "gpt-5.4-mini",
-            "--active",
-        ])
-        .output()
-        .expect("register test session");
+    let register = run_with_supervisor_retry(|| {
+        Command::new(binary)
+            .env("CODEX_HOME", &codex_home)
+            .args([
+                "agent",
+                "session",
+                "register",
+                "--name",
+                "resume-test",
+                "--child-session-id",
+                child_session_id,
+                "--root-session-id",
+                root_session_id,
+                "--roles",
+                "subagent,search",
+                "--model",
+                "gpt-5.4-mini",
+                "--active",
+            ])
+            .output()
+            .expect("register test session")
+    });
     assert_success("register", &register);
 
     let resume = Command::new(binary)
@@ -42,8 +41,6 @@ fn agent_session_resume_reports_missing_message_target_until_native_target_is_re
             "agent",
             "session",
             "resume",
-            "--state-root",
-            path_str(&state_root),
             "--name",
             "resume-test",
             "--root-session-id",
@@ -90,14 +87,16 @@ fn agent_session_resume_rejects_manually_registered_message_target_as_live() {
     let message_target_id = "native-message-agent-target-012";
     let binary = env!("CARGO_BIN_EXE_asp");
 
+    let _runtime_server = start_runtime_server_fixture(binary);
+
     let register = Command::new(binary)
+        .env("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/usr/bin/true")
+        .env("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/true")
         .env("CODEX_HOME", &codex_home)
         .args([
             "agent",
             "session",
             "register",
-            "--state-root",
-            path_str(&state_root),
             "--name",
             "resume-target-test",
             "--child-session-id",
@@ -122,8 +121,6 @@ fn agent_session_resume_rejects_manually_registered_message_target_as_live() {
             "agent",
             "session",
             "resume",
-            "--state-root",
-            path_str(&state_root),
             "--name",
             "resume-target-test",
             "--root-session-id",
@@ -158,8 +155,6 @@ fn agent_session_resume_rejects_manually_registered_message_target_as_live() {
             "agent",
             "session",
             "resume",
-            "--state-root",
-            path_str(&state_root),
             "--name",
             "resume-target-test",
             "--root-session-id",
@@ -180,8 +175,6 @@ fn agent_session_resume_rejects_manually_registered_message_target_as_live() {
             "agent",
             "session",
             "status",
-            "--state-root",
-            path_str(&state_root),
             "--name",
             "resume-target-test",
             "--root-session-id",
@@ -221,8 +214,6 @@ fn agent_session_resume_missing_session_checks_rollout_history_before_create() {
             "agent",
             "session",
             "resume",
-            "--state-root",
-            path_str(&state_root),
             "--name",
             "resume-test",
             "--root-session-id",
@@ -261,6 +252,7 @@ fn agent_session_resume_missing_session_checks_rollout_history_before_create() {
 
 #[test]
 fn agent_session_resume_archived_same_root_is_rejected_as_historical() {
+    let test_started = std::time::Instant::now();
     let state_root = temp_state_root("asp-resume-archived-same-root");
     let codex_home = temp_state_root("asp-resume-archived-same-root-codex-home");
     let agents_dir = state_root.join("agents");
@@ -279,70 +271,115 @@ fn agent_session_resume_archived_same_root_is_rejected_as_historical() {
         root_session_id,
         "gpt-5.4-mini",
     );
-    let binary = env!("CARGO_BIN_EXE_asp");
+    let binary = asp_test_binary();
+    let _runtime_server = start_runtime_server_fixture(&binary);
+    eprintln!(
+        "archived-resume runtime-ready: {:?}",
+        test_started.elapsed()
+    );
 
-    let register = Command::new(binary)
-        .env("ASP_STATE_HOME", &state_root)
-        .env("CODEX_HOME", &codex_home)
-        .args([
-            "agent",
-            "session",
-            "register",
-            "--state-root",
-            path_str(&state_root),
-            "--name",
-            "asp-explore",
-            "--child-session-id",
-            child_session_id,
-            "--message-target-id",
-            message_target_id,
-            "--root-session-id",
-            root_session_id,
-            "--roles",
-            "subagent,search",
-            "--model",
-            "gpt-5.4-mini",
-            "--active",
-        ])
-        .output()
-        .expect("register archived same-root resident");
+    let register = run_with_supervisor_retry(|| {
+        Command::new(&binary)
+            .env("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/usr/bin/true")
+            .env("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/true")
+            .env("CODEX_HOME", &codex_home)
+            .args([
+                "agent",
+                "session",
+                "register",
+                "--name",
+                "asp-explore",
+                "--child-session-id",
+                child_session_id,
+                "--message-target-id",
+                message_target_id,
+                "--root-session-id",
+                root_session_id,
+                "--roles",
+                "subagent,search",
+                "--model",
+                "gpt-5.4-mini",
+                "--active",
+            ])
+            .output()
+            .expect("register archived same-root resident")
+    });
+    eprintln!(
+        "archived-resume register-returned: {:?}",
+        test_started.elapsed()
+    );
     assert_success("register", &register);
 
-    let close = Command::new(binary)
-        .env("ASP_STATE_HOME", &state_root)
+    let status = Command::new(&binary)
+        .env("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/usr/bin/true")
+        .env("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/true")
         .env("CODEX_HOME", &codex_home)
         .args([
             "agent",
             "session",
-            "close",
-            "--state-root",
-            path_str(&state_root),
+            "status",
             "--name",
             "asp-explore",
             "--root-session-id",
             root_session_id,
         ])
         .output()
-        .expect("archive same-root resident");
+        .expect("status archived same-root resident before close");
+    eprintln!(
+        "archived-resume status-returned: {:?}",
+        test_started.elapsed()
+    );
+    assert_success("status-before-close", &status);
+
+    let close = run_with_supervisor_retry(|| {
+        let mut command = Command::new(&binary);
+        command
+            .env("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/usr/bin/true")
+            .env("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/true")
+            .env("CODEX_HOME", &codex_home)
+            .args([
+                "agent",
+                "session",
+                "close",
+                "--name",
+                "asp-explore",
+                "--root-session-id",
+                root_session_id,
+            ]);
+        output_with_deadline(
+            &mut command,
+            "archive same-root resident",
+            std::time::Duration::from_millis(1_000),
+        )
+    });
+    eprintln!(
+        "archived-resume close-returned: {:?}",
+        test_started.elapsed()
+    );
     assert_success("close", &close);
     fs::remove_dir_all(codex_home.join("sessions")).expect("remove rollout before resume");
 
-    let resume = Command::new(binary)
-        .env("ASP_STATE_HOME", &state_root)
-        .env("CODEX_HOME", &codex_home)
-        .args([
-            "agent",
-            "session",
-            "resume",
-            "--state-root",
-            path_str(&state_root),
-            "--name",
-            "asp-explore",
-            "--root-session-id",
-            root_session_id,
-        ])
-        .output()
-        .expect("resume archived same-root resident");
+    let resume = run_with_supervisor_retry(|| {
+        Command::new(&binary)
+            .env("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/usr/bin/true")
+            .env("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/true")
+            .env("CODEX_HOME", &codex_home)
+            .args([
+                "agent",
+                "session",
+                "resume",
+                "--name",
+                "asp-explore",
+                "--root-session-id",
+                root_session_id,
+            ])
+            .output()
+            .expect("resume archived same-root resident")
+    });
+    eprintln!(
+        "archived-resume resume-returned: {:?}",
+        test_started.elapsed()
+    );
     assert!(!resume.status.success(), "resume unexpectedly succeeded");
     let stderr = String::from_utf8_lossy(&resume.stderr);
     assert!(
@@ -383,8 +420,6 @@ fn agent_session_resume_reports_required_model_alignment_for_asp_explore() {
             "agent",
             "session",
             "register",
-            "--state-root",
-            path_str(&state_root),
             "--name",
             "asp-explore",
             "--child-session-id",
@@ -406,8 +441,6 @@ fn agent_session_resume_reports_required_model_alignment_for_asp_explore() {
             "agent",
             "session",
             "resume",
-            "--state-root",
-            path_str(&state_root),
             "--name",
             "asp-explore",
             "--root-session-id",
@@ -442,8 +475,6 @@ fn agent_session_resume_reports_required_model_alignment_for_asp_explore() {
             "agent",
             "session",
             "status",
-            "--state-root",
-            path_str(&state_root),
             "--name",
             "asp-explore",
             "--root-session-id",
@@ -507,11 +538,6 @@ fn write_codex_rollout_fixture(
     .expect("write codex rollout fixture");
 }
 
-fn path_str(path: &Path) -> &str {
-    path.to_str()
-        .expect("temporary test path should be valid UTF-8")
-}
-
 fn assert_success(label: &str, output: &std::process::Output) {
     if output.status.success() {
         return;
@@ -522,4 +548,163 @@ fn assert_success(label: &str, output: &std::process::Output) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn output_with_deadline(
+    command: &mut Command,
+    label: &str,
+    deadline: std::time::Duration,
+) -> std::process::Output {
+    command
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command
+        .spawn()
+        .unwrap_or_else(|error| panic!("failed to start {label}: {error}"));
+    let started = std::time::Instant::now();
+    loop {
+        if child
+            .try_wait()
+            .unwrap_or_else(|error| panic!("failed to observe {label}: {error}"))
+            .is_some()
+        {
+            return child
+                .wait_with_output()
+                .unwrap_or_else(|error| panic!("failed to collect {label}: {error}"));
+        }
+        if started.elapsed() >= deadline {
+            let _ = child.kill();
+            let output = child
+                .wait_with_output()
+                .unwrap_or_else(|error| panic!("failed to collect timed-out {label}: {error}"));
+            panic!(
+                "{label} exceeded {deadline:?}; global expiry refresh must remain outside the close hot path\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+fn asp_test_binary() -> String {
+    let binary =
+        env::var("ASP_TEST_ASP_BINARY").unwrap_or_else(|_| env!("CARGO_BIN_EXE_asp").to_owned());
+    let path = std::path::Path::new(&binary);
+    assert!(
+        path.is_absolute(),
+        "ASP_TEST_ASP_BINARY must be an absolute path: {}",
+        path.display()
+    );
+    let metadata = fs::metadata(path).unwrap_or_else(|error| {
+        panic!(
+            "ASP_TEST_ASP_BINARY must name an existing executable {}: {error}",
+            path.display()
+        )
+    });
+    assert!(
+        metadata.is_file(),
+        "ASP_TEST_ASP_BINARY must name a file: {}",
+        path.display()
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert!(
+            metadata.permissions().mode() & 0o111 != 0,
+            "ASP_TEST_ASP_BINARY must be executable: {}",
+            path.display()
+        );
+    }
+    binary
+}
+
+struct RuntimeServerGuard {
+    child: Option<std::process::Child>,
+}
+
+impl Drop for RuntimeServerGuard {
+    fn drop(&mut self) {
+        if let Some(child) = self.child.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+fn start_runtime_server_fixture(binary: &str) -> RuntimeServerGuard {
+    if runtime_server_fixture_is_healthy(binary) {
+        return RuntimeServerGuard { child: None };
+    }
+    let mut guard = RuntimeServerGuard {
+        child: Some(
+            Command::new(binary)
+                .env("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/usr/bin/true")
+                .env("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/true")
+                .args(["server", "daemon"])
+                .spawn()
+                .expect("start isolated Runtime Server fixture"),
+        ),
+    };
+    for _ in 0..200 {
+        if let Some(status) = guard
+            .child
+            .as_mut()
+            .expect("fixture owns the Runtime Server child")
+            .try_wait()
+            .expect("observe isolated Runtime Server fixture")
+        {
+            panic!("isolated Runtime Server fixture exited early: {status}");
+        }
+        if runtime_server_fixture_is_healthy(binary) {
+            return guard;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    panic!("isolated Runtime Server fixture did not become healthy within 2 seconds");
+}
+
+fn runtime_server_fixture_is_healthy(binary: &str) -> bool {
+    let status = Command::new(binary)
+        .env("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/usr/bin/true")
+        .env("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/true")
+        .args(["server", "status"])
+        .output()
+        .expect("probe isolated Runtime Server fixture");
+    status.status.success()
+        && serde_json::from_slice::<serde_json::Value>(&status.stdout)
+            .ok()
+            .is_some_and(|receipt| {
+                receipt.get("schemaId").and_then(serde_json::Value::as_str)
+                    == Some("agent.semantic-protocols.runtime-server-control-receipt.v1")
+                    && receipt
+                        .get("schemaVersion")
+                        .and_then(serde_json::Value::as_str)
+                        == Some("1")
+                    && receipt.get("state").and_then(serde_json::Value::as_str) == Some("healthy")
+            })
+}
+
+fn run_with_supervisor_retry(
+    mut run: impl FnMut() -> std::process::Output,
+) -> std::process::Output {
+    let first = run();
+    if first.status.success() {
+        return first;
+    }
+    let should_retry = serde_json::from_slice::<serde_json::Value>(&first.stderr)
+        .ok()
+        .is_some_and(|failure| {
+            failure.get("schemaId").and_then(serde_json::Value::as_str)
+                == Some("agent.semantic-protocols.runtime-server-supervisor-wall-failure")
+                && failure
+                    .get("retryAfterMs")
+                    .and_then(serde_json::Value::as_u64)
+                    == Some(250)
+        });
+    if !should_retry {
+        return first;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    run()
 }

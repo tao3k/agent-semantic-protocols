@@ -277,6 +277,27 @@ mod dynamic_projection_tests {
     use super::*;
 
     #[test]
+    fn model_placeholder_is_rendered_before_toml_parse() {
+        let root = tempfile::tempdir().expect("temporary projection root");
+        let profile_path = root.path().join("asp-explorer_codex.toml");
+        fs::write(
+            &profile_path,
+            "name = \"asp_explorer\"\nmodel = {{MODEL_TOML}}\n",
+        )
+        .expect("write templated agent profile");
+
+        update_agent_model_file(&profile_path, "gpt-5.6-luna").expect("render model placeholder");
+
+        let rendered = fs::read_to_string(&profile_path).expect("read rendered agent profile");
+        let value = toml::from_str::<toml::Value>(&rendered).expect("parse rendered agent profile");
+        assert_eq!(
+            value.get("model").and_then(toml::Value::as_str),
+            Some("gpt-5.6-luna")
+        );
+        assert!(!rendered.contains("MODEL_TOML"));
+    }
+
+    #[test]
     fn configured_agents_drive_projection_and_orphan_profiles_stay_hidden() {
         let root = tempfile::tempdir().expect("temporary projection root");
         let asp_agents_dir = root.path().join("state/agents");
@@ -419,44 +440,37 @@ fn reject_path_component(value: &str, field: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn update_agent_model_file(path: &Path, model: &str) -> Result<(), String> {
-    let text = fs::read_to_string(path)
-        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
-    let mut value = toml::from_str::<toml::Value>(&text)
-        .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+pub fn render_codex_agent_profile(
+    template: &str,
+    model: &str,
+    state_root: &Path,
+) -> Result<String, String> {
+    let rendered_text = template.replace("{{MODEL_TOML}}", "\"\"");
+    let mut value = toml::from_str::<toml::Value>(&rendered_text)
+        .map_err(|error| format!("failed to parse Codex agent template: {error}"))?;
     let table = value
         .as_table_mut()
-        .ok_or_else(|| format!("{} must contain a TOML table", path.display()))?;
+        .ok_or_else(|| "Codex agent template must contain a TOML table".to_string())?;
     table.insert("model".to_string(), toml::Value::String(model.to_string()));
     table
         .entry("sandbox_mode".to_string())
         .or_insert_with(|| toml::Value::String("read-only".to_string()));
     if table.get("sandbox_mode").and_then(toml::Value::as_str) == Some("workspace-write") {
-        let state_root = path
-            .parent()
-            .and_then(Path::parent)
-            .ok_or_else(|| format!("{} has no protocol state root", path.display()))?
-            .to_string_lossy()
-            .into_owned();
+        let state_root = state_root.to_string_lossy().into_owned();
         let sandbox = table
             .entry("sandbox_workspace_write".to_string())
             .or_insert_with(|| toml::Value::Table(Default::default()))
             .as_table_mut()
             .ok_or_else(|| {
-                format!(
-                    "{}.sandbox_workspace_write must be a TOML table",
-                    path.display()
-                )
+                "Codex agent template sandbox_workspace_write must be a TOML table".to_string()
             })?;
         let writable_roots = sandbox
             .entry("writable_roots".to_string())
             .or_insert_with(|| toml::Value::Array(Vec::new()))
             .as_array_mut()
             .ok_or_else(|| {
-                format!(
-                    "{}.sandbox_workspace_write.writable_roots must be an array",
-                    path.display()
-                )
+                "Codex agent template sandbox_workspace_write.writable_roots must be an array"
+                    .to_string()
             })?;
         if !writable_roots
             .iter()
@@ -466,7 +480,25 @@ fn update_agent_model_file(path: &Path, model: &str) -> Result<(), String> {
         }
     }
     table.remove("session_lifetime");
-    write_toml_value(path, &value)
+    let mut rendered = toml::to_string_pretty(&value)
+        .map_err(|error| format!("failed to serialize Codex agent template: {error}"))?;
+    if !rendered.ends_with('\n') {
+        rendered.push('\n');
+    }
+    Ok(rendered)
+}
+
+fn update_agent_model_file(path: &Path, model: &str) -> Result<(), String> {
+    let text = fs::read_to_string(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let state_root = path
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| format!("{} has no protocol state root", path.display()))?;
+    let rendered = render_codex_agent_profile(&text, model, state_root)
+        .map_err(|error| format!("failed to render {}: {error}", path.display()))?;
+    fs::write(path, rendered)
+        .map_err(|error| format!("failed to write {}: {error}", path.display()))
 }
 
 fn write_toml_value(path: &Path, value: &toml::Value) -> Result<(), String> {

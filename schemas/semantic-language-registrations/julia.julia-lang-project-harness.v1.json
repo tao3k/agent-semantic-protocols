@@ -1,0 +1,381 @@
+{
+  "binary": "asp-julia-harness",
+  "displayName": "Julia Harness",
+  "execution": "external-process",
+  "languageId": "julia",
+  "methodDescriptors": [
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-julia-harness",
+          "search",
+          "dependency-topology",
+          "--json",
+          "--workspace",
+          "{workspace}"
+        ]
+      },
+      "method": "search/dependency-topology",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-dependency-topology"
+      ],
+      "packetSchemas": [
+        "semantic-dependency-topology.v1"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": false,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "dependency-topology"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-julia-harness",
+          "search",
+          "prime",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/prime",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-search-packet.v1"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "prime"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-julia-harness",
+          "search",
+          "owner",
+          "{owner}",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/owner",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-search-packet.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "owner"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-julia-harness",
+          "search",
+          "lexical",
+          "{query}",
+          "owner",
+          "tests",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "search/lexical",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-search-packet.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "lexical"
+    },
+    {
+      "acceptsStdin": false,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-julia-harness",
+          "query",
+          "--selector",
+          "{owner}",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ]
+      },
+      "method": "query/exact-selector",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "packetSchemas": [
+        "semantic-query-packet.v1"
+      ],
+      "queryInputForms": [
+        "selector"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "query"
+    },
+    {
+      "acceptsStdin": true,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-julia-harness",
+          "search",
+          "semantic-facts",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ],
+        "stdinMode": "pipe-candidates"
+      },
+      "method": "search/semantic-facts",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-fact-graph"
+      ],
+      "packetSchemas": [
+        "semantic-fact-graph.v1"
+      ],
+      "requiresQuery": true,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "semantic-facts"
+    },
+    {
+      "command": "check",
+      "invocation": {
+        "argv": [
+          "asp-julia-harness",
+          "check",
+          "--changed",
+          "{workspace}"
+        ]
+      },
+      "method": "check/changed",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-verification-receipt"
+      ],
+      "supportsCompact": true,
+      "supportsJson": true
+    },
+    {
+      "command": "guide",
+      "invocation": {
+        "argv": [
+          "asp-julia-harness",
+          "guide",
+          "{workspace}"
+        ]
+      },
+      "method": "guide",
+      "supportsCompact": true,
+      "supportsJson": false
+    },
+    {
+      "acceptsStdin": true,
+      "command": "search",
+      "invocation": {
+        "argv": [
+          "asp-julia-harness",
+          "search",
+          "ingest",
+          "owner",
+          "tests",
+          "--workspace",
+          "{workspace}",
+          "--view",
+          "seeds"
+        ],
+        "stdinMode": "pipe-candidates"
+      },
+      "method": "search/ingest",
+      "outputSchemaIds": [
+        "agent.semantic-protocols.semantic-search-packet"
+      ],
+      "requiresQuery": false,
+      "supportsCompact": true,
+      "supportsJson": true,
+      "supportsPackageScope": true,
+      "view": "ingest"
+    }
+  ],
+  "methods": [
+    "search/dependency-topology",
+    "search/prime",
+    "search/owner",
+    "search/lexical",
+    "search/ingest",
+    "query/exact-selector",
+    "search/semantic-facts",
+    "check/changed",
+    "guide"
+  ],
+  "namespace": "agent.semantic-protocols.languages.julia.julia-lang-project-harness",
+  "providerId": "julia-lang-project-harness",
+  "queryPackDescriptor": {
+    "descriptorId": "julia.query-pack",
+    "descriptorVersion": "1",
+    "languageId": "julia",
+    "recipes": [
+      {
+        "clauses": [
+          {
+            "intentAxes": [
+              "concurrency"
+            ],
+            "roles": [
+              "symbol",
+              "concept"
+            ],
+            "terms": [
+              "Task",
+              "schedule",
+              "concurrency"
+            ]
+          }
+        ],
+        "recipeId": "julia-task-runtime",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "Task",
+            "schedule",
+            "concurrency"
+          ]
+        }
+      },
+      {
+        "clauses": [
+          {
+            "intentAxes": [
+              "collection",
+              "stream"
+            ],
+            "roles": [
+              "symbol",
+              "concept"
+            ],
+            "terms": [
+              "Channel",
+              "stream",
+              "backpressure"
+            ]
+          }
+        ],
+        "recipeId": "julia-channel-stream",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "Channel",
+            "stream",
+            "backpressure"
+          ]
+        }
+      },
+      {
+        "clauses": [
+          {
+            "intentAxes": [
+              "resource-lifecycle"
+            ],
+            "roles": [
+              "concept"
+            ],
+            "terms": [
+              "open",
+              "do",
+              "lifecycle"
+            ]
+          }
+        ],
+        "recipeId": "julia-resource-lifecycle",
+        "trigger": {
+          "match": "any",
+          "terms": [
+            "open",
+            "do",
+            "lifecycle"
+          ]
+        }
+      }
+    ],
+    "semanticFactsDescriptorId": "julia.semantic-facts",
+    "termRoleOverrides": [
+      {
+        "caseSensitive": true,
+        "role": "symbol",
+        "term": "Task"
+      },
+      {
+        "caseSensitive": true,
+        "role": "symbol",
+        "term": "Channel"
+      }
+    ]
+  },
+  "schemas": [
+    {
+      "path": "schemas/semantic-search-packet.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-search-packet",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-query-packet.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-query-packet",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/software-criterion-catalog.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.software-criterion-catalog",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/software-criterion-extension-report.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.software-criterion-extension-report",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-fact-graph.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-fact-graph",
+      "schemaVersion": "1"
+    },
+    {
+      "path": "schemas/semantic-fact-ontology.v1.schema.json",
+      "schemaId": "agent.semantic-protocols.semantic-fact-ontology",
+      "schemaVersion": "1"
+    }
+  ]
+}

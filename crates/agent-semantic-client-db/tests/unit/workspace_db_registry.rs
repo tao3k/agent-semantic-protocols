@@ -238,6 +238,7 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
         blake3::hash(b"resident-provider").to_hex().to_string(),
     );
     let import = agent_semantic_client_db::ClientDbSourceIndexImport {
+        relations: Vec::new(),
         generation_id: agent_semantic_client_core::CacheGenerationId::from("resident-cold-restore"),
         project_root: project_root.clone(),
         schema_id: agent_semantic_client_core::SemanticSchemaId::from(

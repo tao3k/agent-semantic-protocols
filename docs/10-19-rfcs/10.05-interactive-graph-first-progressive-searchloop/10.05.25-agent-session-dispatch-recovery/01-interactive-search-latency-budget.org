@@ -92,6 +92,38 @@ It stopped a Rust exact callable-skeleton request after 1,035,628 microseconds
 with =budget-exceeded=, =no-reply=, and exit code 124. This is a successful gate
 execution recording a failed ASP performance admission.
 
+The search-surface failure is checked independently at
+=packages/proofs/receipts/agent-facing-search-wall-search-budget-observed-v1.json=.
+A narrow parser-owned Rust owner search produced no reply before the hard
+boundary and was terminated after 1,013,280 microseconds. A fast query receipt
+cannot discharge this failed search admission: =query= and =search= are
+separate agent-facing surfaces, and every invocation must satisfy the gate.
+
+The Runtime implementation MUST carry one absolute foreground deadline from
+facade entry through every activation, admission, resident-open, provider, and
+serialization stage. A nested stage receives only the remaining budget; it
+MUST NOT restart the one-second clock. The runtime profile uses three strict
+stages: less than 800 ms for awaited runtime execution, less than 100 ms for
+constructing and serializing a typed terminal reply, and less than 100 ms for
+supervisor termination, cleanup, and caller-visible I/O. An awaited operation
+is therefore cancelled before the 800 ms runtime boundary, while the process
+supervisor enforces its own 900 ms boundary. The strict per-stage inequalities
+leave scheduling slack below the externally observed hard gate of 1,000 ms.
+A runtime timeout and its supervising process timeout MUST NOT share the same
+boundary; otherwise the supervisor can kill the process before the typed
+failure becomes observable.
+The typed runtime failure is owned by
+=schemas/agent-facing-search-wall-failure.v1.schema.json=. The schema rejects
+any purported failure reply observed at or beyond 1,000,000 microseconds, so a
+late timeout message cannot be misreported as successful deadline handling.
+
+Wall admission is necessary but not sufficient. Successful evidence also
+requires an exact current generation and the requested projection. Therefore
+overall admission is the conjunction of wall admission and semantic freshness.
+A fast stale result fails semantic admission, while a correct result observed at
+or after the wall boundary fails wall admission. Neither dimension may be used
+as a fallback for the other.
+
 * Foreground/background state machine
 
 #+begin_src mermaid

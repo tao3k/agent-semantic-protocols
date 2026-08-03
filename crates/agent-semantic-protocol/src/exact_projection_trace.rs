@@ -1,8 +1,6 @@
-use std::time::Instant;
-
 const TRACE_ENV: &str = "ASP_EXACT_QUERY_TRACE";
 
-pub(crate) fn stage(stage: &str, started: Instant) {
+pub(crate) fn stage(stage: &str, started: tokio::time::Instant) {
     if enabled() {
         eprintln!(
             "[exact-query-trace] stage={stage} elapsedMicros={}",

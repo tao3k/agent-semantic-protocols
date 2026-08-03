@@ -10,7 +10,7 @@ pub use api::current_live_provider_source_index_snapshot_with_registry;
 mod projection;
 mod provider_envelope;
 
-pub(crate) use api::current_runtime_source_index_snapshot;
+pub(crate) use api::current_source_index_snapshot_for_scope;
 pub(crate) use api::current_source_index_snapshot_with_registry;
 #[cfg(test)]
 pub(crate) use api::materialized_current_source_index_snapshot;

@@ -30,6 +30,7 @@ fn generation_fixture(
     let selector = "rust://src/materialized.rs#item/function/materialized";
     let source = b"pub fn materialized() {}\n";
     let import = ClientDbSourceIndexImport {
+        relations: Vec::new(),
         generation_id: CacheGenerationId::from("materialized-generation"),
         project_root: project_root.to_path_buf(),
         schema_id: SemanticSchemaId::from(CLIENT_DB_SOURCE_INDEX_SCHEMA_ID),

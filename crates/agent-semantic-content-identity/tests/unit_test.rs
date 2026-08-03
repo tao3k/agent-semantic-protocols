@@ -14,5 +14,7 @@ mod provider_projection_relation;
 mod structural_selector;
 #[path = "unit/workspace_generation_evidence.rs"]
 mod workspace_generation_evidence;
+#[path = "unit/workspace_memory_generation_segment.rs"]
+mod workspace_memory_generation_segment;
 #[path = "unit/workspace_merkle_v1_contract.rs"]
 mod workspace_merkle_v1_contract;

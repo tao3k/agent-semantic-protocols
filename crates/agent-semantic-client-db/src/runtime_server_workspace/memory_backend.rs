@@ -102,8 +102,9 @@ impl WorkspaceMemoryBackend {
         &self,
         endpoint_kind: &str,
         endpoint_id: &str,
-    ) -> Vec<&agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>
-    {
+    ) -> Vec<
+        &agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+    > {
         self.relation_index
             .get(&(endpoint_kind.to_owned(), endpoint_id.to_owned()))
             .into_iter()

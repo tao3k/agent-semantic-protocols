@@ -134,6 +134,18 @@ edge records the generation identity that admitted it; a reader may use an
 edge only when its generation equals the pinned selector generation. Cross
 workspace relation reads and mixtures of two generation epochs fail closed.
 
+* Generation Segment Contract Admission
+
+The resident data plane MUST reject a mapped generation before payload
+deserialization when its binary segment contract does not match the current
+MemoryBackend generation contract.  A field-level JSON decode failure is not a
+compatibility mechanism and MUST NOT be repaired with defaults.
+
+The rejected pointer is typed as =RecoveryRequired=.  The workspace supervisor
+owns rebuilding the complete generation and atomically switching the pointer;
+search/query remain fail-closed until that switch.  No query process may delete,
+rewrite, or synchronously rebuild a segment.
+
 * Async Hook Activation Recovery
 
 PreToolUse is a bounded read-only decision path.  It MUST NOT synchronously

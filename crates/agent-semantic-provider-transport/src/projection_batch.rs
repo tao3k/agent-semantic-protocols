@@ -51,7 +51,9 @@ pub struct ProviderProjectedOwner {
     pub owner_path: String,
     pub source_leaf_digest: String,
     pub items: Vec<ProviderProjectedItem>,
-    pub relations: Vec<agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation>,
+    pub relations: Vec<
+        agent_semantic_content_identity::provider_projection_relation::ProviderProjectedRelation,
+    >,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]

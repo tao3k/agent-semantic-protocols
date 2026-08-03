@@ -8,7 +8,6 @@ use agent_semantic_hook::runtime_profiles_for_runtime;
 use agent_semantic_runtime::project_state_paths;
 use std::env;
 use std::path::Path;
-use std::time::Instant;
 
 use super::client_backend_worker::run_client_backend_on_worker;
 use super::gerbil_check_cache::try_replay_gerbil_check_cache;
@@ -52,7 +51,7 @@ macro_rules! restore_env_var {
     };
 }
 
-fn exact_query_trace(stage: &str, started: Instant) {
+fn exact_query_trace(stage: &str, started: tokio::time::Instant) {
     if env::var_os("ASP_EXACT_QUERY_TRACE").is_some() {
         eprintln!(
             "[exact-query-trace] stage={stage} elapsedMicros={}",
@@ -61,8 +60,12 @@ fn exact_query_trace(stage: &str, started: Instant) {
     }
 }
 
-pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result<(), String> {
-    let exact_query_started = Instant::now();
+pub(crate) fn run_language_command(
+    language_id: &str,
+    args: &[String],
+    process_started: tokio::time::Instant,
+) -> Result<(), String> {
+    let exact_query_started = process_started;
     fn uses_client_backend(args: &[String]) -> bool {
         (args.first().is_some_and(|command| command == "search")
             && args.get(1).is_none_or(|subcommand| subcommand != "guide"))
@@ -187,6 +190,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         return super::search_pipe::run_asp_incremental_owner_search_command(
             &command_args,
             super::search_pipe::IncrementalOwnerSearchContext {
+                started: exact_query_started,
                 language_id,
                 project_root: &invocation_root,
                 locator_root: &invocation_root,
@@ -351,7 +355,14 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         let current_generation_client =
             super::search_pipe::fast_search_requires_source_index_snapshot(&provider_args)
                 .then(|| {
-                    super::runtime_server::runtime_server_workspace_generation_client(&project_root)
+                    super::runtime_server::block_on_agent_facing_runtime_server_client(
+                        exact_query_started,
+                        "search",
+                        "graph-turbo-generation-open",
+                        super::runtime_server::runtime_server_workspace_generation_client_async(
+                            &project_root,
+                        ),
+                    )
                 })
                 .transpose()?;
         let current_snapshot = current_generation_client
@@ -371,6 +382,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
             return run_asp_fast_search_command(
                 &provider_args,
                 FastSearchContext {
+                    started: exact_query_started,
                     language_id,
                     project_root: &project_root,
                     locator_root: search_locator_root,
@@ -387,6 +399,7 @@ pub(crate) fn run_language_command(language_id: &str, args: &[String]) -> Result
         return run_asp_fast_search_command(
             &provider_args,
             FastSearchContext {
+                started: exact_query_started,
                 language_id,
                 project_root: &project_root,
                 locator_root: search_locator_root,

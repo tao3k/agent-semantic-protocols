@@ -1,0 +1,158 @@
+#+TITLE: RFC 10.05.128 — Query-conditioned four-layer graph reasoning experiment
+#+OPTIONS: toc:2 num:t
+
+* Status
+
+Experimental.  This RFC defines a proof pilot; it does not claim that the
+current Graph Turbo provider emits the required packet or that a GQL/Datalog
+runtime is already integrated.
+
+This experiment refines:
+
+- [[file:00.30-certified-sparse-evidence-graph-projection.org][Certified sparse evidence-graph projection]];
+- [[file:01.09-searchroute-evidence-graph-shortest-path-frontier-completeness.org][Evidence-graph shortest-path frontier completeness]].
+
+The executable Lean pilot is
+[[file:../../../../packages/proofs/ASPProof/SearchRouteFourLayerGraphReasoning.lean][SearchRouteFourLayerGraphReasoning.lean]].
+
+* Decision
+
+A diagram syntax is not graph-search authority.  D2, canonical edge list,
+DOT, Mermaid, and JSON are projections of evidence; none of them alone proves
+that a selected route is present, connected, allowed, minimal, or complete.
+
+The experiment separates four independently bound layers:
+
+1. *Canonical typed graph*: parser/evidence-owned nodes, edges, relations, and
+   graph digest.
+2. *Executable query receipt*: a GQL-, Datalog-, or equivalent engine binds
+   the graph digest, query digest, selected path, rejected branches, and an
+   executable decision.
+3. *Query-conditioned reasoning packet*: only the selected path and bounded
+   supporting frontier are disclosed to the model, with an explicit syntax
+   tag such as =d2= or =edge-list=.
+4. *Lean certificate*: the graph, query execution, packet, and proof receipt
+   identities agree and every fail-closed obligation is discharged.
+
+Lean validates a finite receipt.  It does not replace provider execution,
+candidate generation, GQL/Datalog conformance, or independent runtime replay.
+
+* Four-layer model
+
+** Canonical graph
+
+Each edge binds a stable edge identity, typed source, typed target, and
+relation.  A graph binds the ordered edge material to a graph digest.  The
+pilot uses natural-number identities so that the logical boundary is visible;
+the executable protocol must refine them to canonical selectors and content
+digests.
+
+** Executable query
+
+A query plan binds:
+
+- source and target identities;
+- allowed relation kinds;
+- explicitly excluded edge identities;
+- a query digest.
+
+An execution receipt is valid only when:
+
+- graph and query digests match the active inputs;
+- the engine reports an executable decision;
+- the selected path is continuous from source to target;
+- every selected edge belongs to the canonical graph;
+- every selected relation is allowed;
+- no excluded edge is selected.
+
+The pilot intentionally does not prove shortest-path minimality over an
+uncommitted candidate universe.  That obligation remains owned by the
+existing frontier-completeness and committed-universe RFCs.
+
+** Query-conditioned packet
+
+The packet binds the execution digest and repeats the exact selected path.
+Every selected edge must occur in the disclosed edge set, and disclosure must
+stay within the declared edge budget.  The syntax tag is descriptive: changing
+=d2= to =edge-list= cannot create graph or execution authority.
+
+** Lean receipt
+
+The proof receipt binds graph, query, execution, and packet digests.  An
+=accepted=true= field is necessary but not sufficient; acceptance is admitted
+only as part of the conjunction of all four layer predicates.
+
+* Normative experimental clauses
+
+** ASP-RFC-10.05-QC4-GRAPH-AUTHORITY
+
+The canonical typed graph MUST remain authoritative over every model-facing
+serialization.  A projection MUST NOT invent nodes, edges, selectors, or
+relations.
+
+** ASP-RFC-10.05-QC4-EXECUTION-BINDING
+
+The executable query receipt MUST bind the active graph and query digests.
+Path connectivity, graph membership, relation admission, and excluded-branch
+rejection MUST be checked before model synthesis.
+
+** ASP-RFC-10.05-QC4-SELECTIVE-DISCLOSURE
+
+The reasoning packet MUST reproduce the selected executable path exactly,
+cover every selected edge, and remain within its explicit disclosure budget.
+A full graph dump is not an admissible substitute when it exceeds that budget.
+
+** ASP-RFC-10.05-QC4-PROOF-BINDING
+
+The Lean receipt MUST bind all prior-layer digests.  A green Lean build over
+different graph, query, execution, or packet material MUST fail closed.
+
+** ASP-RFC-10.05-QC4-SYNTAX-NONAUTHORITY
+
+The =projectionSyntax= field MAY select D2, canonical edge list, DOT, Mermaid,
+or typed JSON.  It MUST NOT be used as evidence that query execution or Lean
+validation occurred.
+
+* Counterexamples required by the pilot
+
+The Lean module MUST reject:
+
+1. a continuous route that enters an explicitly excluded exact-query branch;
+2. a packet that replaces the executed canonical path with a model-invented
+   edge;
+3. a full-graph disclosure whose edge count exceeds the query packet budget;
+4. an otherwise plausible execution receipt bound to a stale graph digest.
+
+These counterexamples distinguish proof-carrying query-conditioned reasoning
+from serialization-only evaluation.
+
+* Experiment matrix
+
+The first runtime experiment SHOULD reuse manufactured graph fixtures D1, D2,
+and D3 while keeping graph fixture and projection syntax as separate axes.
+
+Queries SHOULD include:
+
+- exact owner path;
+- dependency API usage;
+- multi-target reachability or closure;
+- policy violation with a negative constraint;
+- global architecture synthesis over hierarchical summaries.
+
+For each query, compare full D2, full canonical edge list, and the four-layer
+query-conditioned packet.  Record exact-selector precision and recall,
+terminal accuracy, rejected-decoy recall, proof admission, token count, model
+rounds, provider calls, and wall latency.
+
+* Non-claims
+
+This pilot does not establish:
+
+- completeness of provider candidate generation;
+- conformance of a concrete GQL, Cypher, or Datalog engine;
+- correspondence between the Lean natural-number graph and runtime canonical
+  selector bytes;
+- independent replay of the executable query;
+- current Graph Turbo provider edge integrity.
+
+Each item requires a later executable refinement receipt.

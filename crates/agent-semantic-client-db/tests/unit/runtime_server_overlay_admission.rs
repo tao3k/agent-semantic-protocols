@@ -44,6 +44,7 @@ fn generation_with_selectors(
     );
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            relations: Vec::new(),
             workspace_identity: workspace_identity.to_owned(),
             project_root: project_root.display().to_string(),
             active_epoch: epoch,
@@ -93,6 +94,7 @@ fn canonical_materialization_binds_snapshot_import_and_complete_owner_count() {
                 mtime_ms: 1,
             }],
             files: vec![agent_semantic_client_db::ClientDbSourceIndexImportFile {
+                relations: Vec::new(),
                 relative_path: "src/lib.rs".to_owned(),
                 language_id: "rust".into(),
                 provider_id: "rs-harness".into(),
@@ -512,6 +514,7 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
     let workspace_identity = "workspace-concurrent-cold-restore";
     let source = b"pub fn restored() {}\n";
     let import = agent_semantic_client_db::ClientDbSourceIndexImport {
+        relations: Vec::new(),
         generation_id: agent_semantic_client_core::CacheGenerationId::from(
             "concurrent-cold-restore",
         ),

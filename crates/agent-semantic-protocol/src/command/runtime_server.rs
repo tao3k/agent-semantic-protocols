@@ -38,6 +38,106 @@ where
         .map(|runtime| runtime.block_on(future))
 }
 
+pub(super) fn block_on_agent_facing_runtime_server_client<F, T>(
+    started: tokio::time::Instant,
+    surface: &'static str,
+    stage: &'static str,
+    future: F,
+) -> Result<T, String>
+where
+    F: std::future::Future<Output = Result<T, String>>,
+{
+    agent_facing_runtime_wait_remaining(started.elapsed(), surface, stage)?;
+    let deadline = started + AGENT_FACING_EXECUTION_BUDGET;
+    let runtime =
+        agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()?;
+    match runtime.block_on(async move { tokio::time::timeout_at(deadline, future).await }) {
+        Ok(result) => result,
+        Err(_) => Err(agent_facing_wall_budget_error(
+            surface,
+            stage,
+            started.elapsed(),
+        )),
+    }
+}
+
+const AGENT_FACING_EXECUTION_BUDGET: std::time::Duration = std::time::Duration::from_millis(800);
+pub(super) const RUNTIME_SERVER_SUPERVISOR_BOUNDARY: std::time::Duration =
+    std::time::Duration::from_millis(900);
+
+fn runtime_server_supervisor_boundary_error(
+    surface: &'static str,
+    stage: &'static str,
+    elapsed: std::time::Duration,
+) -> String {
+    serde_json::json!({
+        "schemaId": "agent.semantic-protocols.runtime-server-supervisor-wall-failure",
+        "schemaVersion": "1",
+        "state": "unavailable",
+        "surface": surface,
+        "stage": stage,
+        "reasonKind": "runtime-server-supervisor-boundary-exceeded",
+        "boundaryMicros": RUNTIME_SERVER_SUPERVISOR_BOUNDARY.as_micros(),
+        "elapsedMicros": elapsed.as_micros(),
+        "retryAfterMs": 250,
+    })
+    .to_string()
+}
+
+pub(super) fn block_on_runtime_server_supervisor_client<F, T>(
+    surface: &'static str,
+    stage: &'static str,
+    future: F,
+) -> Result<T, String>
+where
+    F: std::future::Future<Output = Result<T, String>>,
+{
+    let started = std::time::Instant::now();
+    let runtime =
+        agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()?;
+    match runtime.block_on(async move {
+        tokio::time::timeout(RUNTIME_SERVER_SUPERVISOR_BOUNDARY, future).await
+    }) {
+        Ok(result) => result,
+        Err(_) => Err(runtime_server_supervisor_boundary_error(
+            surface,
+            stage,
+            started.elapsed(),
+        )),
+    }
+}
+
+pub(super) fn agent_facing_runtime_wait_remaining(
+    elapsed: std::time::Duration,
+    surface: &'static str,
+    stage: &'static str,
+) -> Result<std::time::Duration, String> {
+    AGENT_FACING_EXECUTION_BUDGET
+        .checked_sub(elapsed)
+        .filter(|remaining| !remaining.is_zero())
+        .ok_or_else(|| agent_facing_wall_budget_error(surface, stage, elapsed))
+}
+
+fn agent_facing_wall_budget_error(
+    surface: &'static str,
+    stage: &'static str,
+    elapsed: std::time::Duration,
+) -> String {
+    serde_json::json!({
+        "schemaId": "agent.semantic-protocols.agent-facing-search-wall-failure",
+        "schemaVersion": "1",
+        "surface": surface,
+        "state": "unavailable",
+        "reasonKind": "agent-facing-search-wall-budget-exceeded",
+        "stage": stage,
+        "budgetMicros": 1_000_000,
+        "executionBudgetMicros": 800_000,
+        "elapsedMicros": elapsed.as_micros(),
+        "retryAfterMs": 250
+    })
+    .to_string()
+}
+
 pub(super) fn runtime_server_workspace_session(
     project_root: &Path,
 ) -> Result<agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession, String> {
@@ -198,17 +298,6 @@ pub(super) async fn runtime_server_workspace_exact_projection_client_async(
     }
 }
 
-pub(super) fn runtime_server_workspace_generation_client(
-    project_root: &Path,
-) -> Result<
-    agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
-    String,
-> {
-    block_on_runtime_server_client(runtime_server_workspace_generation_client_async(
-        project_root,
-    ))?
-}
-
 pub(super) fn runtime_server_current_source_index_snapshot_from_client(
     client: &agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
 ) -> Result<agent_semantic_client::source_index::CurrentSourceIndexSnapshot, String> {
@@ -344,7 +433,7 @@ pub(super) async fn await_healthy_runtime_server(
     state_home: &Path,
 ) -> Result<RuntimeServerControlReceipt, String> {
     let started = tokio::time::Instant::now();
-    let deadline = started + std::time::Duration::from_secs(2);
+    let deadline = started + RUNTIME_SERVER_SUPERVISOR_BOUNDARY;
     loop {
         let observation = match healthcheck_runtime_server_at(state_home).await {
             Ok(receipt)

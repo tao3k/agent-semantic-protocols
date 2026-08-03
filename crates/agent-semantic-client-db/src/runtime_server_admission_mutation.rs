@@ -140,8 +140,25 @@ impl WorkspaceGenerationAdmission {
             return Err("workspace mutation admission requires changed paths".to_owned());
         }
 
+        self.admit_normalized_changed_paths(
+            mutation_id,
+            origin_workspace_identity,
+            project_root,
+            changed_paths,
+        )
+        .await
+    }
+
+    async fn admit_normalized_changed_paths(
+        &self,
+        mutation_id: String,
+        origin_workspace_identity: String,
+        project_root: PathBuf,
+        changed_paths: std::collections::BTreeSet<PathBuf>,
+    ) -> Result<WorkspaceGenerationMutationAdmissionReceipt, String> {
+        let changed_paths = Arc::new(changed_paths);
         let mut catalog_entries = match &self.catalog {
-            Some(catalog) => catalog.entries().await,
+            Some(catalog) => catalog.snapshot().iter().cloned().collect(),
             None => Vec::new(),
         };
         if let Some(existing) = catalog_entries.iter().find(|entry| {
@@ -168,7 +185,7 @@ impl WorkspaceGenerationAdmission {
         }
 
         let mut affected = std::collections::BTreeMap::<String, PathBuf>::new();
-        for changed_path in &changed_paths {
+        for changed_path in changed_paths.iter() {
             let matched = catalog_entries
                 .iter()
                 .filter(|entry| changed_path.starts_with(&entry.project_root))
@@ -198,17 +215,28 @@ impl WorkspaceGenerationAdmission {
                 .pop_first()
                 .expect("single affected workspace must exist");
             vec![
-                self.admit_mutation(mutation_id.clone(), workspace_identity, workspace_root)
-                    .await?,
+                self.admit_mutation(
+                    mutation_id.clone(),
+                    workspace_identity,
+                    workspace_root,
+                    Arc::clone(&changed_paths),
+                )
+                .await?,
             ]
         } else {
             let mut tasks = tokio::task::JoinSet::new();
             for (workspace_identity, workspace_root) in affected {
                 let admission = self.clone();
                 let mutation_id = mutation_id.clone();
+                let changed_paths = Arc::clone(&changed_paths);
                 tasks.spawn(async move {
                     admission
-                        .admit_mutation(mutation_id, workspace_identity, workspace_root)
+                        .admit_mutation(
+                            mutation_id,
+                            workspace_identity,
+                            workspace_root,
+                            changed_paths,
+                        )
                         .await
                 });
             }
@@ -238,6 +266,7 @@ impl WorkspaceGenerationAdmission {
         mutation_id: String,
         workspace_identity: String,
         project_root: PathBuf,
+        changed_paths: Arc<std::collections::BTreeSet<PathBuf>>,
     ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
         let key = WorkspaceGenerationAdmissionKey {
             workspace_identity: workspace_identity.clone(),
@@ -261,12 +290,16 @@ impl WorkspaceGenerationAdmission {
             state: WorkspaceGenerationAdmissionState::Building,
             accepted: true,
             attempt: 1,
+            commit: None,
             error: None,
         };
         receipt.validate()?;
         let candidate = Arc::new(AdmissionEntry::new(
             receipt.clone(),
-            Some(mutation_id.clone()),
+            Some(super::WorkspaceMutationIdentity {
+                mutation_id: mutation_id.clone(),
+                changed_paths: Arc::clone(&changed_paths),
+            }),
         ));
         let (entry, inserted) = match self.entries.entry(key) {
             dashmap::mapref::entry::Entry::Occupied(existing) => {
@@ -288,9 +321,27 @@ impl WorkspaceGenerationAdmission {
             return Ok(receipt);
         }
 
+        if let Some(active) = entry.active_mutation.borrow().as_ref()
+            && active.mutation_id == mutation_id
+        {
+            if active.changed_paths.as_ref() != changed_paths.as_ref() {
+                return Err(format!(
+                    "workspace mutation identity was reused with a different changed-path set: mutationId={mutation_id}"
+                ));
+            }
+            return Ok(entry.observed());
+        }
+
         let transition = entry.transition.lock().await;
         let mut mutations = entry.mutations.lock().await;
-        if mutations.active_mutation_id.as_deref() == Some(mutation_id.as_str()) {
+        if let Some(active) = entry.active_mutation.borrow().as_ref()
+            && active.mutation_id == mutation_id
+        {
+            if active.changed_paths.as_ref() != changed_paths.as_ref() {
+                return Err(format!(
+                    "workspace mutation identity was reused with a different changed-path set: mutationId={mutation_id}"
+                ));
+            }
             return Ok(entry.observed());
         }
         if let Some(pending) = mutations
@@ -298,6 +349,11 @@ impl WorkspaceGenerationAdmission {
             .iter()
             .find(|pending| pending.mutation_id == mutation_id)
         {
+            if pending.changed_paths.as_ref() != changed_paths.as_ref() {
+                return Err(format!(
+                    "workspace mutation identity was reused with a different changed-path set: mutationId={mutation_id}"
+                ));
+            }
             let mut observed = entry.observed();
             observed.attempt = pending.attempt;
             return Ok(observed);
@@ -306,6 +362,7 @@ impl WorkspaceGenerationAdmission {
             let attempt = entry.attempt.fetch_add(1, Ordering::AcqRel) + 1;
             mutations.pending.push_back(PendingWorkspaceMutation {
                 mutation_id,
+                changed_paths,
                 attempt,
             });
             let queued = WorkspaceGenerationAdmissionReceipt {
@@ -315,6 +372,7 @@ impl WorkspaceGenerationAdmission {
                 state: WorkspaceGenerationAdmissionState::Building,
                 accepted: true,
                 attempt,
+                commit: None,
                 error: None,
             };
             queued.validate()?;
@@ -323,7 +381,12 @@ impl WorkspaceGenerationAdmission {
 
         entry.building.store(true, Ordering::Release);
         let attempt = entry.attempt.fetch_add(1, Ordering::AcqRel) + 1;
-        mutations.active_mutation_id = Some(mutation_id);
+        entry
+            .active_mutation
+            .send_replace(Some(super::WorkspaceMutationIdentity {
+                mutation_id,
+                changed_paths,
+            }));
         let accepted = WorkspaceGenerationAdmissionReceipt {
             schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),
@@ -331,6 +394,7 @@ impl WorkspaceGenerationAdmission {
             state: WorkspaceGenerationAdmissionState::Building,
             accepted: true,
             attempt,
+            commit: None,
             error: None,
         };
         accepted.validate()?;

@@ -810,6 +810,7 @@ fn source_index_import_assembly_uses_turso_ready_contract_rows() {
     std::fs::write(&lib, source).expect("write source");
     let selector = "rust://src/lib.rs#item/function/turso_source_index_fixture";
     let scope_file = ClientDbSourceIndexScopeFile {
+        relations: Vec::new(),
         path: lib.clone(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
@@ -903,6 +904,7 @@ fn source_index_refresh_request_remains_db_engine_owned() {
             mtime_ms: 42,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/lib.rs".to_string(),
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),

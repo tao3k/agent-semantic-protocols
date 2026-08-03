@@ -92,6 +92,7 @@ async fn db_engine_source_index_refresh_rebuilds_noncanonical_snapshot_schema() 
             mtime_ms: 55,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/canonical_schema.rs".to_string(),
             language_id: LanguageId::from("rust"),
             provider_id: ProviderId::from("rs-harness"),

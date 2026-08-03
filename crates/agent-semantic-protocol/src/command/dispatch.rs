@@ -25,7 +25,14 @@ use super::run_protocol_version_command;
 use super::runtime_server::run_runtime_server_command;
 use super::source_access::run_source_access_command;
 
-pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> {
+pub(crate) fn run_protocol_command(args: Vec<String>) -> Result<(), String> {
+    run_protocol_command_started(args, tokio::time::Instant::now())
+}
+
+pub(crate) fn run_protocol_command_started(
+    mut args: Vec<String>,
+    process_started: tokio::time::Instant,
+) -> Result<(), String> {
     normalize_agent_session_command_args(&mut args)?;
     if super::cli_help::print_help_if_requested(&args)? {
         return Ok(());
@@ -54,7 +61,9 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
         Some("search") => run_root_language_facade("search", &args[1..]),
         Some("query") => {
             match super::provider_selector::root_structural_selector_language(&args[1..])? {
-                Some(language_id) => run_language_command(&language_id, &args[1..]),
+                Some(language_id) => {
+                    run_language_command(&language_id, &args[1..], process_started)
+                }
                 None => run_root_language_facade("query", &args[1..]),
             }
         }
@@ -79,7 +88,7 @@ pub(crate) fn run_protocol_command(mut args: Vec<String>) -> Result<(), String> 
         Some(document_id) if document_provider::is_document_language(document_id) => {
             document_provider::run_language_command(document_id, &args[1..])
         }
-        Some(language_id) => run_language_command(language_id, &args[1..]),
+        Some(language_id) => run_language_command(language_id, &args[1..], process_started),
         _ => Err(usage()),
     }
 }

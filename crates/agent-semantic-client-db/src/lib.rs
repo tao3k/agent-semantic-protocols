@@ -32,7 +32,7 @@ pub mod workspace_project_resolution;
 pub use runtime_server_control::{
     RuntimeServerControlReceipt, RuntimeServerEndpoint, RuntimeServerOperation,
     acquire_runtime_server_election, call_runtime_server, prepare_runtime_server_endpoint,
-    runtime_server_endpoint_path, runtime_server_runtime_base,
+    read_runtime_server_endpoint, runtime_server_endpoint_path, runtime_server_runtime_base,
 };
 pub use turso_mvcc_keyset::{
     TursoMvccEventId, TursoMvccPageCursor, TursoMvccPageLimit, TursoMvccPartitionKey,

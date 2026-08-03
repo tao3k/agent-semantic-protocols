@@ -33,6 +33,12 @@ pub enum AgentSessionRegistryIpcOperation {
         status: String,
         now: i64,
     },
+    SetArchivedStatus {
+        project_id: String,
+        session_id: String,
+        archived: bool,
+        now: i64,
+    },
     SessionIsRetired {
         project_id: String,
         session_id: String,

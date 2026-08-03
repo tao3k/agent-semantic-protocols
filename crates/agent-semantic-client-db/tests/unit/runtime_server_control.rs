@@ -561,21 +561,9 @@ async fn concurrent_tokio_shutdown_drains_the_runtime_server_once() {
     assert_eq!(draining.state, RuntimeServerState::Draining);
 }
 
-#[test]
-fn hook_generation_admission_is_non_blocking_and_single_flight() {
+#[tokio::test(flavor = "multi_thread")]
+async fn hook_generation_admission_is_non_blocking_and_single_flight() {
     let _performance = crate::test_support::performance_lock();
-    let worker_count = std::thread::available_parallelism()
-        .map(std::num::NonZeroUsize::get)
-        .unwrap_or(1);
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(worker_count)
-        .enable_all()
-        .build()
-        .expect("build adaptive hook admission runtime")
-        .block_on(hook_generation_admission_is_non_blocking_and_single_flight_async());
-}
-
-async fn hook_generation_admission_is_non_blocking_and_single_flight_async() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
     let project_root = runtime_dir.path().join("project");
     tokio::fs::create_dir_all(&project_root)
@@ -719,29 +707,28 @@ async fn hook_generation_admission_is_non_blocking_and_single_flight_async() {
         agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationMutationSubmissionState::Coalesced
     ));
 
-    let ensure = tokio::spawn({
-        let session = Arc::clone(&session);
-        async move { session.ensure_runtime_generation().await }
-    });
-    tokio::task::yield_now().await;
-    assert!(
-        !ensure.is_finished(),
-        "typed ensure must wait for the admitted generation's terminal receipt"
-    );
-    source_build_release.add_permits(3);
-    let ensured = ensure
+    let ensure_started = tokio::time::Instant::now();
+    let ensured = session
+        .ensure_runtime_generation()
         .await
-        .expect("join ensured generation")
-        .expect("read ensured generation receipt");
+        .expect("read non-blocking generation admission receipt");
+    let ensure_latency = ensure_started.elapsed();
     assert_eq!(
         ensured.state,
-        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Failed
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
     );
-    assert_eq!(ensured.attempt, 3);
-    assert_eq!(
-        ensured.error.as_deref(),
-        Some("fixture stops before source publication")
+    assert!(
+        ensure_latency < Duration::from_millis(1),
+        "typed ensure must return the resident admission state without waiting for generation publication: {ensure_latency:?}"
     );
+    source_build_release.add_permits(3);
+    tokio::time::timeout(Duration::from_millis(100), async {
+        while *source_build_count.lock().await < 3 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("the resident writer lane must start all queued generation attempts within 100ms");
     shutdown.shutdown();
     assert_eq!(
         server.await.expect("join Runtime Server").expect("serve"),

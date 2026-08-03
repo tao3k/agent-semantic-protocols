@@ -195,11 +195,16 @@ impl ProtocolBinaryInstallPlan {
                 "semantic hook setup must run through `{SEMANTIC_AGENT_PROTOCOL_BIN}` so generated hooks can resolve the same binary on PATH"
             ));
         }
-        let managed_path_aliases =
-            managed_protocol_binary_path_aliases(&artifact_root, &target, &path_dirs())?;
+        // The runtime target owns publication; an explicit install target is only a managed alias.
+        let canonical_target = resolve_protocol_binary_install_target(None, &artifact_root)?;
+        let mut managed_path_aliases =
+            managed_protocol_binary_path_aliases(&artifact_root, &canonical_target, &path_dirs())?;
+        if target != canonical_target && !managed_path_aliases.contains(&target) {
+            managed_path_aliases.push(target);
+        }
         Ok(Self {
             current_exe,
-            target,
+            target: canonical_target,
             artifact_root,
             managed_path_aliases,
             binary_identity: RuntimeBinaryIdentityV1::asp_bootstrap(),

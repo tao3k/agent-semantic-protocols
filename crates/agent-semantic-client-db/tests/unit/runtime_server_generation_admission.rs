@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use agent_semantic_client_db::runtime_server_admission::{
+    WorkspaceGenerationAdmission, WorkspaceGenerationAdmissionReceipt,
+    WorkspaceGenerationAdmissionState, WorkspaceGenerationMutationAdmissionReceipt,
     WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID,
-    WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID, WorkspaceGenerationAdmission,
-    WorkspaceGenerationAdmissionReceipt, WorkspaceGenerationAdmissionState,
-    WorkspaceGenerationMutationAdmissionReceipt,
+    WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID,
 };
 use agent_semantic_client_db::runtime_server_admission_catalog::{
     RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
@@ -19,8 +19,43 @@ fn ready_receipt(workspace_identity: &str) -> WorkspaceGenerationAdmissionReceip
         state: WorkspaceGenerationAdmissionState::Ready,
         accepted: true,
         attempt: 1,
+        commit: Some(
+            agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+                active_epoch: 1,
+                generation_digest:
+                    "blake3-256:1111111111111111111111111111111111111111111111111111111111111111"
+                        .to_owned(),
+                source_root_digest:
+                    "blake3-256:2222222222222222222222222222222222222222222222222222222222222222"
+                        .to_owned(),
+            },
+        ),
         error: None,
     }
+}
+
+fn committed_generation(
+) -> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+    agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+        active_epoch: 1,
+        generation_digest:
+            "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        source_root_digest:
+            "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
+    }
+}
+
+#[test]
+fn ready_admission_requires_generation_commit_evidence() {
+    let mut missing = ready_receipt("workspace-ready-commit");
+    missing.commit = None;
+    assert_eq!(
+        missing.validate().unwrap_err(),
+        "workspace generation admission receipt state is inconsistent"
+    );
+
+    let committed = ready_receipt("workspace-ready-commit");
+    committed.validate().expect("committed Ready receipt");
 }
 
 #[test]
@@ -112,7 +147,7 @@ fn cold_restore_publishes_committed_generation_without_live_checkout_probe() {
     assert!(!source.contains("if materialization.project_resolutions.is_empty()"));
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread")]
 async fn concurrent_workspace_admission_is_single_flight() {
     const REQUEST_COUNT: usize = 256;
     let build_count = Arc::new(Mutex::new(0_u32));
@@ -126,7 +161,7 @@ async fn concurrent_workspace_admission_is_single_flight() {
             Box::pin(async move {
                 *build_count.lock().await += 1;
                 release.wait().await;
-                Ok(())
+                Ok(committed_generation())
             })
         }
     }));
@@ -184,7 +219,7 @@ async fn project_roots_have_independent_admission_flights() {
             let roots = Arc::clone(&roots);
             Box::pin(async move {
                 roots.lock().await.push(project_root);
-                Ok(())
+                Ok(committed_generation())
             })
         }
     }));
@@ -260,7 +295,7 @@ async fn changed_paths_are_admitted_by_longest_resident_workspace_root() {
             let builds = Arc::clone(&builds);
             Box::pin(async move {
                 builds.lock().await.push((workspace_identity, project_root));
-                Ok(())
+                Ok(committed_generation())
             })
         }
     }))
@@ -331,7 +366,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
                     .await
                     .map_err(|_| "mutation queue release closed".to_owned())?
                     .forget();
-                Ok(())
+                Ok(committed_generation())
             })
         }
     }));
@@ -379,7 +414,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
             "mutation-2",
             "workspace-mutation-queue",
             root.clone(),
-            vec![changed_path],
+            vec![changed_path.clone()],
         )
         .await
         .expect("observe queued mutation");
@@ -387,7 +422,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     assert!(!duplicate.receipts[0].accepted);
 
     release.add_permits(1);
-    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+    tokio::time::timeout(std::time::Duration::from_millis(100), async {
         while build_count.load(std::sync::atomic::Ordering::Relaxed) < 2 {
             tokio::task::yield_now().await;
         }
@@ -395,7 +430,7 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     .await
     .expect("successor generation attempt must start");
     release.add_permits(1);
-    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+    tokio::time::timeout(std::time::Duration::from_millis(100), async {
         while build_count.load(std::sync::atomic::Ordering::Relaxed) < 3 {
             tokio::task::yield_now().await;
         }
@@ -403,18 +438,151 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     .await
     .expect("second successor generation attempt must start");
     release.add_permits(1);
-    let terminal = admission
-        .wait_terminal("workspace-mutation-queue", &root)
-        .await
-        .expect("queued successor must reach terminal state");
+    let terminal = tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        admission.wait_terminal("workspace-mutation-queue", &root),
+    )
+    .await
+    .expect("queued successor must reach terminal state within 100ms")
+    .expect("queued successor must produce a terminal receipt");
     assert_eq!(terminal.state, WorkspaceGenerationAdmissionState::Ready);
     assert_eq!(terminal.attempt, 3);
     assert_eq!(build_count.load(std::sync::atomic::Ordering::Relaxed), 3);
 
-    admission
-        .shutdown()
+    let completed_duplicate = admission
+        .admit_changed_paths(
+            "mutation-3",
+            "workspace-mutation-queue",
+            root.clone(),
+            vec![changed_path],
+        )
         .await
+        .expect("coalesce duplicate of the completed mutation");
+    assert_eq!(completed_duplicate.receipts[0].attempt, 3);
+    assert!(!completed_duplicate.receipts[0].accepted);
+    assert_eq!(build_count.load(std::sync::atomic::Ordering::Relaxed), 3);
+
+    tokio::time::timeout(std::time::Duration::from_millis(100), admission.shutdown())
+        .await
+        .expect("queued mutation generation lane must drain within 100ms")
         .expect("drain queued mutation generation lane");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn multi_workspace_multi_session_admission_is_in_process_single_flight_and_sub_millisecond() {
+    let machine_parallelism = std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(2);
+    let workspace_count = machine_parallelism.clamp(2, 8);
+    let calls_per_workspace = machine_parallelism.saturating_mul(16).max(32);
+    let active_builds = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let peak_builds = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let build_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let release = Arc::new(tokio::sync::Semaphore::new(0));
+    let admission = Arc::new(WorkspaceGenerationAdmission::new(Arc::new({
+        let active_builds = Arc::clone(&active_builds);
+        let peak_builds = Arc::clone(&peak_builds);
+        let build_count = Arc::clone(&build_count);
+        let release = Arc::clone(&release);
+        move |_, _, _| {
+            let active_builds = Arc::clone(&active_builds);
+            let peak_builds = Arc::clone(&peak_builds);
+            let build_count = Arc::clone(&build_count);
+            let release = Arc::clone(&release);
+            Box::pin(async move {
+                build_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let active = active_builds.fetch_add(1, std::sync::atomic::Ordering::AcqRel) + 1;
+                peak_builds.fetch_max(active, std::sync::atomic::Ordering::AcqRel);
+                release
+                    .acquire_owned()
+                    .await
+                    .map_err(|_| "in-process admission release closed".to_owned())?
+                    .forget();
+                active_builds.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
+                Ok(committed_generation())
+            })
+        }
+    })));
+
+    let mut requests = tokio::task::JoinSet::new();
+    for workspace_index in 0..workspace_count {
+        for _ in 0..calls_per_workspace {
+            let admission = Arc::clone(&admission);
+            requests.spawn(async move {
+                let workspace_identity = format!("workspace-{workspace_index}");
+                let root = std::env::temp_dir().join(&workspace_identity);
+                let started = tokio::time::Instant::now();
+                let receipt = admission
+                    .admit_changed_paths(
+                        format!("mutation-{workspace_index}"),
+                        workspace_identity,
+                        root.clone(),
+                        vec![root.join("src/lib.rs")],
+                    )
+                    .await;
+                (workspace_index, receipt, started.elapsed())
+            });
+        }
+    }
+
+    let mut accepted_per_workspace = vec![0_usize; workspace_count];
+    let mut latencies = Vec::with_capacity(workspace_count * calls_per_workspace);
+    while let Some(joined) = requests.join_next().await {
+        let (workspace_index, receipt, latency) = joined.expect("join in-process admission");
+        let receipt = receipt.expect("admit in-process workspace mutation");
+        accepted_per_workspace[workspace_index] += usize::from(
+            receipt
+                .receipts
+                .first()
+                .is_some_and(|receipt| receipt.accepted),
+        );
+        latencies.push(latency);
+    }
+    assert!(accepted_per_workspace.iter().all(|accepted| *accepted == 1));
+    latencies.sort_unstable();
+    let p99 = latencies[(latencies.len() * 99 / 100).min(latencies.len() - 1)];
+    eprintln!(
+        "in-process-generation-admission workspaceCount={workspace_count} callsPerWorkspace={calls_per_workspace} p99Micros={}",
+        p99.as_micros()
+    );
+    assert!(
+        p99 < std::time::Duration::from_millis(1),
+        "resident in-process admission p99 must remain sub-millisecond: {p99:?}"
+    );
+
+    tokio::time::timeout(std::time::Duration::from_millis(100), async {
+        while active_builds.load(std::sync::atomic::Ordering::Acquire) < workspace_count {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("different workspaces must enter independent writer lanes within 100ms");
+    assert_eq!(
+        peak_builds.load(std::sync::atomic::Ordering::Acquire),
+        workspace_count
+    );
+    assert_eq!(
+        build_count.load(std::sync::atomic::Ordering::Acquire),
+        workspace_count
+    );
+
+    release.add_permits(workspace_count);
+    for workspace_index in 0..workspace_count {
+        let workspace_identity = format!("workspace-{workspace_index}");
+        let root = std::env::temp_dir().join(&workspace_identity);
+        let terminal = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            admission.wait_terminal(&workspace_identity, &root),
+        )
+        .await
+        .expect("workspace admission must reach terminal state within 100ms")
+        .expect("workspace admission reaches terminal state");
+        assert_eq!(terminal.state, WorkspaceGenerationAdmissionState::Ready);
+    }
+    tokio::time::timeout(std::time::Duration::from_millis(100), admission.shutdown())
+        .await
+        .expect("in-process workspace generation lanes must drain within 100ms")
+        .expect("drain in-process workspace generation lanes");
 }
 
 #[tokio::test]
@@ -426,7 +594,7 @@ async fn ready_workspace_accepts_a_new_incremental_generation_attempt() {
             let build_count = Arc::clone(&build_count);
             Box::pin(async move {
                 *build_count.lock().await += 1;
-                Ok(())
+                Ok(committed_generation())
             })
         }
     }));
@@ -470,7 +638,7 @@ async fn ensure_observes_ready_attempt_without_starting_another_build() {
             let build_count = Arc::clone(&build_count);
             Box::pin(async move {
                 *build_count.lock().await += 1;
-                Ok(())
+                Ok(committed_generation())
             })
         }
     }));
@@ -508,7 +676,7 @@ async fn ensure_schedules_once_without_waiting_for_generation_build() {
             Box::pin(async move {
                 *build_count.lock().await += 1;
                 release.wait().await;
-                Ok(())
+                Ok(committed_generation())
             })
         }
     }));
@@ -568,7 +736,7 @@ async fn locator_publication_does_not_run_the_generation_builder() {
             let build_count = Arc::clone(&build_count);
             Box::pin(async move {
                 build_count.fetch_add(1, Ordering::Relaxed);
-                Ok(())
+                Ok(committed_generation())
             })
         }
     }))
@@ -635,7 +803,7 @@ async fn supervisor_restores_registered_workspaces_concurrently_within_budget() 
                 tokio::time::sleep(std::time::Duration::from_millis(2)).await;
                 active.fetch_sub(1, Ordering::SeqCst);
                 build_count.fetch_add(1, Ordering::SeqCst);
-                Ok(())
+                Ok(committed_generation())
             })
         }
     }))
@@ -725,7 +893,13 @@ async fn shutdown_cancels_tracked_generation_builds() {
             let started = Arc::clone(&started);
             Box::pin(async move {
                 started.notify_one();
-                std::future::pending::<Result<(), String>>().await
+                std::future::pending::<
+                    Result<
+                        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt,
+                        String,
+                    >,
+                >()
+                .await
             })
         }
     }));

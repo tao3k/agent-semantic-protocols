@@ -1,28 +1,18 @@
 //! Provider-owned semantic fact enrichment for ASP search pipe graph requests.
 
-use std::env;
 use std::path::Path;
-use std::path::PathBuf;
-use std::time::Duration;
 
 use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
-use agent_semantic_provider_transport::ProviderProcessLimits;
 use serde_json::Value;
 
-use super::provider_process::{
-    provider_invocation_with_profile, run_provider_command_with_stdin_limits,
-};
 use super::search_pipe_model::Candidate;
 
 const PROVIDER_GRAPH_FACT_CANDIDATE_LIMIT: usize = 12;
-const PROVIDER_GRAPH_FACT_TIMEOUT_MS: u64 = 100;
-const PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Default)]
 pub(super) struct ProviderGraphFacts {
     pub(super) nodes: Vec<Value>,
     pub(super) edges: Vec<Value>,
-    pub(super) candidate_annotations: Vec<Value>,
     pub(super) input_candidates: usize,
     pub(super) fact_candidates: usize,
     pub(super) truncated_candidates: usize,
@@ -55,6 +45,9 @@ pub(super) fn collect_provider_graph_facts(
     query: Option<&str>,
     candidates: &[Candidate],
     context: Option<&ProviderGraphFactsContext<'_>>,
+    source_index_client: Option<
+        &agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDataPlaneClient,
+    >,
 ) -> Result<ProviderGraphFacts, String> {
     let Some(context) = context else {
         return Ok(ProviderGraphFacts::default());
@@ -77,46 +70,50 @@ pub(super) fn collect_provider_graph_facts(
     let fact_candidates = provider_fact_candidates(candidates);
     let input_candidates = candidates.len();
     let truncated_candidates = input_candidates.saturating_sub(fact_candidates.len());
-    let semantic_fact_limits = ProviderProcessLimits::new(
-        Some(provider_graph_fact_timeout()),
-        Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
-        Some(PROVIDER_GRAPH_FACT_OUTPUT_LIMIT_BYTES),
-        Some(1024 * 1024 * 1024),
-    );
-    let args = vec![
-        "search".to_string(),
-        "semantic-facts".to_string(),
-        query.to_string(),
-        "--json".to_string(),
-    ];
-    let invocation = provider_invocation_with_profile(context.profiles, context.provider, &args)?;
-    let output = match run_provider_command_with_stdin_limits(
-        language_id,
-        context.provider,
-        &invocation,
-        project_root,
-        candidate_stdin(project_root, &fact_candidates),
-        semantic_fact_limits,
-    ) {
-        Ok(output) => output,
-        Err(_) => {
-            return Ok(ProviderGraphFacts {
-                input_candidates,
-                fact_candidates: fact_candidates.len(),
-                truncated_candidates,
-                ..provider_graph_facts_intent_receipt(&intent)
-            });
+    let source_index_client = source_index_client.ok_or_else(|| {
+        format!(
+            "resident provider relation generation is required: language={language_id} workspace={}",
+            project_root.display()
+        )
+    })?;
+    let lease = source_index_client.lease();
+    let mut relations = Vec::new();
+    for candidate in &fact_candidates {
+        if let Some(selector) = candidate.selector.as_deref() {
+            relations.extend(lease.relations_from("item", selector).into_iter().cloned());
         }
-    };
-    if !output.status.success() {
-        return Ok(ProviderGraphFacts {
-            input_candidates,
-            fact_candidates: fact_candidates.len(),
-            truncated_candidates,
-            ..provider_graph_facts_intent_receipt(&intent)
-        });
+        relations.extend(
+            lease
+                .relations_from("owner", &candidate.path)
+                .into_iter()
+                .cloned(),
+        );
     }
-    let mut facts = provider_graph_facts_from_stdout(output.stdout.as_ref())?;
+    relations.sort();
+    relations.dedup();
+    let mut nodes = std::collections::BTreeMap::new();
+    let mut edges = Vec::with_capacity(relations.len());
+    for relation in relations {
+        nodes.insert(
+            (relation.from.kind.clone(), relation.from.id.clone()),
+            serde_json::to_value(&relation.from)
+                .map_err(|error| format!("encode provider relation source node: {error}"))?,
+        );
+        nodes.insert(
+            (relation.to.kind.clone(), relation.to.id.clone()),
+            serde_json::to_value(&relation.to)
+                .map_err(|error| format!("encode provider relation target node: {error}"))?,
+        );
+        edges.push(
+            serde_json::to_value(&relation)
+                .map_err(|error| format!("encode provider relation edge: {error}"))?,
+        );
+    }
+    let mut facts = ProviderGraphFacts {
+        nodes: nodes.into_values().collect(),
+        edges,
+        ..ProviderGraphFacts::default()
+    };
     facts.input_candidates = input_candidates;
     facts.fact_candidates = fact_candidates.len();
     facts.truncated_candidates = truncated_candidates;
@@ -127,15 +124,6 @@ pub(super) fn collect_provider_graph_facts(
     Ok(facts)
 }
 
-fn provider_graph_fact_timeout() -> Duration {
-    env::var("ASP_PROVIDER_GRAPH_FACT_TIMEOUT_MS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .map(Duration::from_millis)
-        .unwrap_or_else(|| Duration::from_millis(PROVIDER_GRAPH_FACT_TIMEOUT_MS))
-}
-
 fn provider_fact_candidates(candidates: &[Candidate]) -> Vec<Candidate> {
     let mut seen = std::collections::BTreeSet::new();
     candidates
@@ -144,55 +132,6 @@ fn provider_fact_candidates(candidates: &[Candidate]) -> Vec<Candidate> {
         .take(PROVIDER_GRAPH_FACT_CANDIDATE_LIMIT)
         .cloned()
         .collect()
-}
-
-fn provider_graph_facts_from_stdout(stdout: &[u8]) -> Result<ProviderGraphFacts, String> {
-    let Some(envelope) = agent_semantic_search::provider_facts_envelope_from_stdout(stdout) else {
-        return Ok(ProviderGraphFacts::default());
-    };
-    Ok(ProviderGraphFacts {
-        nodes: envelope.nodes,
-        edges: envelope.edges,
-        candidate_annotations: envelope.candidate_annotations,
-        ..ProviderGraphFacts::default()
-    })
-}
-
-fn candidate_stdin(project_root: &Path, candidates: &[Candidate]) -> Vec<u8> {
-    let mut stdin = String::new();
-    for candidate in candidates {
-        stdin.push_str(&candidate_path_for_provider(project_root, &candidate.path));
-        stdin.push(':');
-        stdin.push_str(&candidate.line.to_string());
-        stdin.push_str(":1:");
-        stdin.push_str(&candidate.text.replace('\n', " "));
-        stdin.push('\n');
-    }
-    stdin.into_bytes()
-}
-
-fn candidate_path_for_provider(project_root: &Path, path: &str) -> String {
-    let path = Path::new(path);
-    if path.is_absolute() {
-        return path
-            .strip_prefix(project_root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .to_string();
-    }
-    if project_root.join(path).exists() {
-        return path.to_string_lossy().to_string();
-    }
-    let Ok(cwd) = std::env::current_dir() else {
-        return path.to_string_lossy().to_string();
-    };
-    let cwd_relative = cwd.join(path);
-    if cwd_relative.exists()
-        && let Ok(provider_relative) = cwd_relative.strip_prefix(project_root)
-    {
-        return provider_relative.to_string_lossy().to_string();
-    }
-    PathBuf::from(path).to_string_lossy().to_string()
 }
 
 pub(super) fn query_requests_semantic_facts(

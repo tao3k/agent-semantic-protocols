@@ -149,20 +149,13 @@ pub(crate) fn run_cache(
         }
         [subcommand, action, rest @ ..] if subcommand == "source-index" && action == "lookup" => {
             let spec = parse_source_index_lookup_args(project_root, rest)?;
-            let source_snapshot = if let Some(index_owner) = spec.index_owner.as_deref() {
-                let language_id = facade_language_id.ok_or_else(|| {
-                    "--index-owner requires a language-scoped `asp <language> cache source-index lookup` request"
-                        .to_string()
-                })?;
-                crate::source_index::current_runtime_source_index_snapshot(
-                    project_root,
-                    &spec.index_root,
-                    language_id,
-                    &ProviderId::from(index_owner),
-                )?
-            } else {
-                crate::source_index::current_source_index_snapshot(&spec.index_root)?
-            };
+            let requested_provider_id = spec.index_owner.as_deref().map(ProviderId::from);
+            let source_snapshot = crate::source_index::current_source_index_snapshot_for_scope(
+                project_root,
+                &spec.index_root,
+                facade_language_id,
+                requested_provider_id.as_ref(),
+            )?;
             let result = lookup_source_index_in_cache(SourceIndexLookupRequest {
                 cache_project_root: project_root,
                 indexed_project_root: &spec.index_root,

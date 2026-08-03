@@ -28,6 +28,19 @@ inline next actions, exact locators, and explicit omission/avoidance facts.
 
 ** Provider-scoped incremental generation projection
 
+A language-scoped source-index lookup MUST derive its index owner from the
+registered provider for the requested =languageId= when no explicit
+=index-owner= is supplied.  It MUST NOT fall back to the global source-index
+snapshot or request complete-generation admission.  The admitted generation
+and its receipt MUST remain bound to that =languageId=, =providerId=, and
+=providerWorkspaceIdentityDigest=; =providerProcessCount= and provider command
+receipts MUST exclude every unrelated provider.
+
+The lookup MUST consume the registered provider source envelope or its admitted
+generation snapshot.  A resident transport path such as =live/client= is not a
+provider workspace contract and MUST NOT be scanned as a substitute source
+checkout.
+
 Search projection consumes
 =agent.semantic-protocols.incremental-search-generation.v1=.  The receipt binds
 one provider-workspace generation, the requested search operation, its
@@ -90,6 +103,12 @@ next owner cursor so another invocation cannot resume a different query or
 generation accidentally.
 
 ** Project-resolution projection
+
+Project resolution initiated by a language-scoped search or cache operation is
+provider-local.  Missing provider-specific runtime dependencies fail with a
+typed receipt for that provider.  They MUST NOT cause eager resolution or
+runtime preparation for other registered providers.  Complete registry
+resolution remains an explicit unscoped control-plane operation.
 
 Project, package, target, dependency, and source-scope facts are projections of
 the Level 0

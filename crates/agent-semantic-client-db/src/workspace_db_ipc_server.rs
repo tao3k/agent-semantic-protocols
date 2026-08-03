@@ -479,6 +479,18 @@ async fn run_agent_session_registry_operation(
             } => Ok(IpcResult::Changed {
                 changed: registry.update_session_status(project_id, session_id, status, now)?,
             }),
+            Operation::SetArchivedStatus {
+                project_id,
+                session_id,
+                archived,
+                now,
+            } => Ok(IpcResult::Changed {
+                changed: if archived {
+                    registry.archive_session(project_id, session_id, now)?
+                } else {
+                    registry.unarchive_session(project_id, session_id, now)?
+                },
+            }),
             Operation::SessionIsRetired {
                 project_id,
                 session_id,
@@ -667,30 +679,14 @@ pub async fn serve_runtime_server_workspace_stream(
                     match generation_admission {
                         Some(admission) => {
                             let project_root = std::path::PathBuf::from(project_root);
-                            let ensured = match admission
-                        .ensure(&request.workspace_identity, &project_root)
-                        .await
-                    {
-                        Ok(receipt)
-                            if receipt.state
-                                == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Building =>
-                        {
-                            bounded_runtime_generation_wait(
-                                std::time::Duration::from_secs(30),
-                                admission.wait_terminal(
-                                    &request.workspace_identity,
-                                    &project_root,
-                                ),
-                                format!(
-                                    "workspace generation admission timed out: workspaceIdentity={} projectRoot={}",
-                                    request.workspace_identity,
-                                    project_root.display()
-                                ),
-                            )
-                            .await
-                        }
-                        other => other,
-                    };
+                            // Admission is the foreground contract.  A Building
+                            // receipt proves the WorkspaceResident accepted the
+                            // work; Merkle materialization remains server-owned
+                            // background execution and must not hold this IPC
+                            // request until terminal publication.
+                            let ensured = admission
+                                .ensure(&request.workspace_identity, &project_root)
+                                .await;
                             match ensured {
                                 Ok(receipt) => {
                                     WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }
@@ -712,28 +708,43 @@ pub async fn serve_runtime_server_workspace_stream(
                     match generation_admission {
                         Some(admission) => {
                             let project_root = std::path::PathBuf::from(project_root);
-                            let repair = async {
-                                if !memory_registry
-                                    .published_generation_is_ready(
-                                        &request.workspace_identity,
-                                        &project_root,
-                                    )
-                                    .await?
-                                {
-                                    return Err(format!(
-                                        "resident workspace generation is unavailable: workspaceIdentity={} projectRoot={}",
-                                        request.workspace_identity,
-                                        project_root.display()
-                                    ));
+                            let repair = match memory_registry
+                                .published_generation_state(
+                                    &request.workspace_identity,
+                                    &project_root,
+                                )
+                                .await?
+                            {
+                                crate::runtime_server_workspace::PublishedWorkspaceGenerationState::Ready => {
+                                    admission
+                .publish_resident_generation_locator(
+                    &request.workspace_identity,
+                    &project_root,
+                    {
+                        let generation = memory_registry
+                            .lease(&request.workspace_identity, &project_root)?;
+                        let commit = crate::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+                            active_epoch: generation.epoch(),
+                            generation_digest: generation.runtime_generation_digest(),
+                            source_root_digest: generation
+                                .generation()
+                                .source_snapshot
+                                .root_digest
+                                .clone(),
+                        };
+                        commit.validate()?;
+                        commit
+                    },
+                )
+                                        .await
                                 }
-                                admission
-                                    .publish_resident_generation_locator(
-                                        &request.workspace_identity,
-                                        &project_root,
-                                    )
-                                    .await
-                            }
-                            .await;
+                                crate::runtime_server_workspace::PublishedWorkspaceGenerationState::Missing
+                                | crate::runtime_server_workspace::PublishedWorkspaceGenerationState::RecoveryRequired { .. } => {
+                                    admission
+                                        .ensure(&request.workspace_identity, &project_root)
+                                        .await
+                                }
+                            };
                             match repair {
                                 Ok(receipt) => {
                                     WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }
@@ -943,6 +954,22 @@ async fn ensure_runtime_owner_freshness(
         .await
 }
 
+#[cfg(test)]
+#[cfg(test)]
+#[tokio::test]
+async fn bounded_runtime_generation_wait_rejects_expired_budget() {
+    let error = bounded_runtime_generation_wait(
+        std::time::Duration::ZERO,
+        std::future::pending::<Result<(), String>>(),
+        "runtime generation foreground wait expired".to_owned(),
+    )
+    .await
+    .expect_err("an expired foreground budget must fail closed");
+
+    assert_eq!(error, "runtime generation foreground wait expired");
+}
+
+#[cfg(test)]
 async fn bounded_runtime_generation_wait<T>(
     timeout: std::time::Duration,
     wait: impl std::future::Future<Output = Result<T, String>>,
@@ -953,9 +980,5 @@ async fn bounded_runtime_generation_wait<T>(
         Err(_) => Err(timeout_error),
     }
 }
-
-#[cfg(test)]
-#[path = "../tests/unit/workspace_db_ipc_server_bounded_wait.rs"]
-mod bounded_runtime_generation_wait_tests;
 
 use crate::workspace_db_ipc::transport::{read_frame, read_optional_frame, write_frame};

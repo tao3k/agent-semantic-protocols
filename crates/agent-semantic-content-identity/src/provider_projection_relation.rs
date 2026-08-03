@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PROVIDER_RELATION_GENERATION_SCHEMA_ID: &str =
-    "asp.provider-relation-generation.v1";
+pub const PROVIDER_RELATION_GENERATION_SCHEMA_ID: &str = "asp.provider-relation-generation.v1";
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -49,9 +48,7 @@ pub struct ProviderRelationGeneration {
 
 impl ProviderRelationGeneration {
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema_id != PROVIDER_RELATION_GENERATION_SCHEMA_ID
-            || self.schema_version != "1"
-        {
+        if self.schema_id != PROVIDER_RELATION_GENERATION_SCHEMA_ID || self.schema_version != "1" {
             return Err("provider relation generation schema identity mismatch".to_owned());
         }
         let digest = self

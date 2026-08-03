@@ -532,6 +532,8 @@ pub struct WorkspaceRecoveryReceipt {
     pub state: WorkspaceGenerationState,
     pub active_epoch: u64,
     pub target_epoch: u64,
+    pub generation_digest: String,
+    pub source_root_digest: String,
     pub old_generation_readable: bool,
     pub counters: RuntimeDataPlaneCounters,
 }
@@ -546,6 +548,9 @@ impl WorkspaceRecoveryReceipt {
         }
         if self.target_epoch == 0 || self.target_epoch <= self.active_epoch {
             return Err("workspace recovery target epoch must advance".to_owned());
+        }
+        if self.generation_digest.trim().is_empty() || self.source_root_digest.trim().is_empty() {
+            return Err("workspace recovery receipt generation identity is incomplete".to_owned());
         }
         Ok(())
     }

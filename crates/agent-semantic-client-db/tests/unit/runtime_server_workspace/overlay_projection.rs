@@ -66,6 +66,7 @@ fn generation_with_owners(
     );
     WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            relations: Vec::new(),
             workspace_identity: workspace_identity.to_owned(),
             project_root: project_root(workspace_identity).display().to_string(),
             active_epoch: epoch,
@@ -677,6 +678,7 @@ async fn process_cold_owner_identity_is_independent_of_unrelated_selector_volume
     );
     let published = WorkspaceMemoryGeneration::try_from_build(
         agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationBuild {
+            relations: Vec::new(),
             workspace_identity: "workspace-owner-identity-performance".to_owned(),
             project_root: project_root("workspace-owner-identity-performance")
                 .display()

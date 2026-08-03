@@ -187,8 +187,11 @@ impl RuntimeServerWorkspaceRegistry {
                 ));
             }
         }
-        drop(receive);
-        Self::await_recovery_acceptance(acceptance, acceptance_deadline).await
+        let _receive = receive;
+        Self::await_recovery_acceptance(acceptance, acceptance_deadline).await?;
+        _receive
+            .await
+            .map_err(|_| "runtime workspace writer lane dropped its completion".to_owned())?
     }
 
     async fn await_recovery_acceptance(

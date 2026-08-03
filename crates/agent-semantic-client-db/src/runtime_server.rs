@@ -377,7 +377,7 @@ impl RuntimeServer {
                                 &materialization,
                                 provider_catalog_generation.as_deref(),
                             ) {
-                                memory_registry
+                                let published = memory_registry
                                     .ensure_canonical_generation(
                                         format!(
                                             "daemon-admission-restore-{workspace_identity}-{}-{}",
@@ -388,7 +388,7 @@ impl RuntimeServer {
                                         materialization,
                                     )
                                     .await?;
-                                return Ok(());
+                                return crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(&published);
                             }
                         }
                         crate::runtime_server_workspace::WorkspaceCanonicalMaterializationLoad::Ready(_)
@@ -418,7 +418,7 @@ impl RuntimeServer {
                             durable.source_snapshot, committed_materialization.source_snapshot
                         ));
                     }
-                    memory_registry
+                    let published = memory_registry
                         .ensure_canonical_generation(
                             format!(
                                 "daemon-admission-build-{workspace_identity}-{}-{}",
@@ -429,7 +429,7 @@ impl RuntimeServer {
                             committed_materialization,
                         )
                         .await?;
-                    Ok(())
+                    crate::runtime_server_admission::WorkspaceGenerationCommitReceipt::from_recovery(&published)
                 })
                     as crate::runtime_server_admission::WorkspaceGenerationBuildFuture
             },

@@ -1,6 +1,111 @@
 use std::path::{Path, PathBuf};
 
-use tokio::process::Command;
+const SUPERVISOR_COMMAND_BOUNDARY: std::time::Duration = std::time::Duration::from_millis(900);
+
+fn supervisor_command_boundary_error(elapsed: std::time::Duration) -> String {
+    serde_json::json!({
+        "schemaId": "agent.semantic-protocols.runtime-server-supervisor-wall-failure",
+        "schemaVersion": "1",
+        "state": "unavailable",
+        "surface": "runtime-server-supervisor",
+        "stage": "runtime-server-reconcile",
+        "reasonKind": "runtime-server-supervisor-boundary-exceeded",
+        "boundaryMicros": SUPERVISOR_COMMAND_BOUNDARY.as_micros(),
+        "elapsedMicros": elapsed.as_micros(),
+        "retryAfterMs": 250,
+    })
+    .to_string()
+}
+
+#[derive(Debug)]
+enum SupervisorCommandError {
+    Configuration(String),
+    Io(std::io::Error),
+    Timeout(std::time::Duration),
+}
+
+fn supervisor_command_error(error: SupervisorCommandError, action: &str) -> String {
+    match error {
+        SupervisorCommandError::Configuration(error) => {
+            format!("failed to {action}: {error}")
+        }
+        SupervisorCommandError::Io(error) => format!("failed to {action}: {error}"),
+        SupervisorCommandError::Timeout(elapsed) => supervisor_command_boundary_error(elapsed),
+    }
+}
+
+struct Command {
+    program: Result<std::path::PathBuf, String>,
+    args: Vec<std::ffi::OsString>,
+}
+
+impl Command {
+    fn new(program: impl AsRef<std::ffi::OsStr>) -> Self {
+        Self {
+            program: resolve_supervisor_command(program.as_ref()),
+            args: Vec::new(),
+        }
+    }
+
+    fn args<I, S>(&mut self, args: I) -> &mut Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<std::ffi::OsStr>,
+    {
+        self.args
+            .extend(args.into_iter().map(|arg| arg.as_ref().to_os_string()));
+        self
+    }
+
+    async fn output(&mut self) -> Result<std::process::Output, SupervisorCommandError> {
+        let program = self
+            .program
+            .as_ref()
+            .map_err(|error| SupervisorCommandError::Configuration(error.clone()))?;
+        let mut command = tokio::process::Command::new(program);
+        command.args(&self.args).kill_on_drop(true);
+        let started = std::time::Instant::now();
+        match tokio::time::timeout(SUPERVISOR_COMMAND_BOUNDARY, command.output()).await {
+            Ok(output) => output.map_err(SupervisorCommandError::Io),
+            Err(_) => Err(SupervisorCommandError::Timeout(started.elapsed())),
+        }
+    }
+}
+
+fn resolve_supervisor_command(program: &std::ffi::OsStr) -> Result<std::path::PathBuf, String> {
+    let program = program
+        .to_str()
+        .ok_or_else(|| "runtime supervisor command must be valid UTF-8".to_owned())?;
+    let (override_key, default_path) = match program {
+        "launchctl" | "/bin/launchctl" => ("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/bin/launchctl"),
+        "systemctl" | "/usr/bin/systemctl" => {
+            ("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/systemctl")
+        }
+        _ => {
+            let path = std::path::PathBuf::from(program);
+            if path.is_absolute() {
+                return Ok(path);
+            }
+            return Err(format!(
+                "runtime supervisor command must be launchctl, systemctl, or an absolute path: {program}"
+            ));
+        }
+    };
+    let path = std::env::var_os(override_key)
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(default_path));
+    if !path.is_absolute() {
+        return Err(format!(
+            "{override_key} must name an absolute command path: {}",
+            path.display()
+        ));
+    }
+    Ok(path)
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/command/runtime_server_supervisor_command.rs"]
+mod supervisor_command_contract_tests;
 
 use super::runtime_server_definition::atomic_write_if_changed;
 use super::runtime_server_service_catalog::runtime_server_service_catalog;
@@ -56,7 +161,7 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
             return Ok(());
         }
         retire_legacy_launchd(&home).await?;
-        reconcile_launchd(&target, definition_changed).await
+        reconcile_launchd(&target, &runtime_artifact, definition_changed).await
     }
     #[cfg(target_os = "linux")]
     {
@@ -127,7 +232,10 @@ async fn retire_legacy_launchd(home: &Path) -> Result<(), String> {
             .output()
             .await
             .map_err(|error| {
-                format!("failed to inspect retired ASP launchd service {label}: {error}")
+                supervisor_command_error(
+                    error,
+                    &format!("inspect retired ASP launchd service {label}"),
+                )
             })?
             .status
             .success();
@@ -183,20 +291,30 @@ fn launchd_reconcile_plan(present: bool, definition_changed: bool) -> LaunchdRec
 }
 
 #[cfg(target_os = "macos")]
-async fn reconcile_launchd(plist: &Path, definition_changed: bool) -> Result<(), String> {
+async fn reconcile_launchd(
+    plist: &Path,
+    runtime_artifact: &Path,
+    definition_changed: bool,
+) -> Result<(), String> {
     let service = format!(
         "gui/{}/{}",
         unsafe { libc::getuid() },
         runtime_server_service_catalog().active_macos_label
     );
-    let present = Command::new("/bin/launchctl")
+    let inspection = Command::new("/bin/launchctl")
         .args(["print", &service])
         .output()
         .await
-        .map_err(|error| format!("failed to inspect ASP Runtime Server launchd service: {error}"))?
-        .status
-        .success();
-    let plan = launchd_reconcile_plan(present, definition_changed);
+        .map_err(|error| {
+            supervisor_command_error(error, "inspect ASP Runtime Server launchd service")
+        })?;
+    let present = inspection.status.success();
+    let loaded_definition_matches =
+        present && launchd_loaded_program_matches(&inspection.stdout, runtime_artifact);
+    let plan = launchd_reconcile_plan(
+        present,
+        definition_changed || (present && !loaded_definition_matches),
+    );
     match plan {
         LaunchdReconcilePlan::Kickstart => {}
         LaunchdReconcilePlan::Bootstrap => {
@@ -230,6 +348,18 @@ async fn reconcile_launchd(plist: &Path, definition_changed: bool) -> Result<(),
 }
 
 #[cfg(target_os = "macos")]
+fn launchd_loaded_program_matches(output: &[u8], runtime_artifact: &Path) -> bool {
+    let Ok(output) = std::str::from_utf8(output) else {
+        return false;
+    };
+    output.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("program = ")
+            .map(std::path::Path::new)
+    }) == Some(runtime_artifact)
+}
+
+#[cfg(target_os = "macos")]
 async fn bootstrap_launchd(plist: &Path) -> Result<(), String> {
     require_command_success(
         Command::new("/bin/launchctl")
@@ -245,10 +375,10 @@ async fn bootstrap_launchd(plist: &Path) -> Result<(), String> {
 }
 
 fn require_command_success(
-    output: Result<std::process::Output, std::io::Error>,
+    output: Result<std::process::Output, SupervisorCommandError>,
     action: &str,
 ) -> Result<(), String> {
-    let output = output.map_err(|error| format!("failed to {action}: {error}"))?;
+    let output = output.map_err(|error| supervisor_command_error(error, action))?;
     if output.status.success() {
         return Ok(());
     }

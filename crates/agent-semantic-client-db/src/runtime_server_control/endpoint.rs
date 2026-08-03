@@ -31,6 +31,35 @@ pub fn runtime_server_endpoint_path(state_home: &Path) -> PathBuf {
         .join("endpoint.v1.json")
 }
 
+pub fn read_runtime_server_endpoint(
+    state_home: &Path,
+) -> Result<Option<RuntimeServerEndpoint>, String> {
+    let endpoint_path = runtime_server_endpoint_path(state_home);
+    let bytes = match std::fs::read(&endpoint_path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "failed to read Runtime Server endpoint {}: {error}",
+                endpoint_path.display()
+            ));
+        }
+    };
+    let endpoint: RuntimeServerEndpoint = serde_json::from_slice(&bytes).map_err(|error| {
+        format!(
+            "failed to decode Runtime Server endpoint {}: {error}",
+            endpoint_path.display()
+        )
+    })?;
+    endpoint.validate().map_err(|error| {
+        format!(
+            "invalid Runtime Server endpoint {}: {error}",
+            endpoint_path.display()
+        )
+    })?;
+    Ok(Some(endpoint))
+}
+
 pub async fn publish_runtime_server_endpoint(
     endpoint_path: &Path,
     endpoint: &RuntimeServerEndpoint,

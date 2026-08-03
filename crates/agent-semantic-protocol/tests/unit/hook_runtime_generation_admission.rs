@@ -6,7 +6,7 @@ use agent_semantic_hook::{
 };
 
 use super::{
-    decision_changed_paths, decision_mutation_id, hook_event_requires_generation_admission, observe,
+    decision_changed_paths, hook_event_requires_generation_admission, observe, payload_mutation_id,
 };
 
 fn decision_with_fields(fields: BTreeMap<String, serde_json::Value>) -> HookDecision {
@@ -64,15 +64,14 @@ fn changed_paths_are_extracted_from_typed_normalized_actions() {
 }
 
 #[test]
-fn mutation_identity_is_derived_from_typed_session_and_tool_use_fields() {
-    let fields = serde_json::from_value::<BTreeMap<String, serde_json::Value>>(serde_json::json!({
-        "sessionId": "session-root",
-        "toolUseId": "tool-use-1"
-    }))
-    .expect("typed hook identity fields");
+fn mutation_identity_is_derived_from_the_typed_hook_payload() {
+    let payload = serde_json::json!({
+        "session_id": "session-root",
+        "tool_use_id": "tool-use-1"
+    });
 
     assert_eq!(
-        decision_mutation_id(&decision_with_fields(fields)).as_deref(),
+        payload_mutation_id(&payload).as_deref(),
         Some("session-root/tool-use-1")
     );
 }

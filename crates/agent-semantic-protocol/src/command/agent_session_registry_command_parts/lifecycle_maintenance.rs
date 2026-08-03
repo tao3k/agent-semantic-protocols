@@ -14,7 +14,6 @@ pub(in crate::command::agent_session_registry) fn close_session(
     args: &SessionArgs,
 ) -> Result<(), String> {
     let project_id = current_project_session_scope_id(registry)?;
-    registry.refresh_expired_sessions()?;
     let record = lifecycle_target_session(registry, args, &project_id)?;
     let now = agent_session_unix_timestamp()?;
     let archived = registry.archive_session(&project_id, &*record.session_id, now)?;

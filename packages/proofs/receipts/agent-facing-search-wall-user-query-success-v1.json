@@ -1,0 +1,13 @@
+{
+  "budgetMicros": 1000000,
+  "budgetStatus": "within-budget",
+  "commandDigest": "sha256:2de0988d4353d27a79d71cd398142ec40d14ad73ec8e0c86de33d7a410ede819",
+  "exitCode": 0,
+  "languageId": "rust",
+  "replyKind": "evidence",
+  "schemaId": "agent.semantic-protocols.agent-facing-search-wall-receipt",
+  "schemaVersion": "1",
+  "surface": "query",
+  "timingScope": "agent-facing-end-to-end",
+  "wallTimeMicros": 420326
+}

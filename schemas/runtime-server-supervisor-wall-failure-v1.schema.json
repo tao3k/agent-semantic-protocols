@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-semantic-protocols.dev/schemas/runtime-server-supervisor-wall-failure-v1.schema.json",
+  "title": "Runtime Server Supervisor Wall Failure v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "surface",
+    "stage",
+    "reasonKind",
+    "boundaryMicros",
+    "elapsedMicros",
+    "retryAfterMs"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-supervisor-wall-failure"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "state": {
+      "const": "unavailable"
+    },
+    "surface": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "const": "runtime-server-reconcile"
+    },
+    "reasonKind": {
+      "const": "runtime-server-supervisor-boundary-exceeded"
+    },
+    "boundaryMicros": {
+      "const": 900000
+    },
+    "elapsedMicros": {
+      "type": "integer",
+      "minimum": 900000
+    },
+    "retryAfterMs": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

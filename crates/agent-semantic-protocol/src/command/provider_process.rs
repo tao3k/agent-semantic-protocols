@@ -2,7 +2,6 @@ use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 use agent_semantic_provider_transport::{
     OutputMode, ProviderProcessLimits, ProviderProcessOutput, ProviderProcessSpec, StdinMode,
     provider_process_limits_from_environment, run_provider_process as run_transport_process,
-    run_provider_process_async as run_transport_process_async,
 };
 use agent_semantic_runtime::project_state_paths;
 use std::collections::BTreeMap;
@@ -116,30 +115,6 @@ pub(super) fn run_provider_command_with_stdin(
     )
 }
 
-pub(super) async fn run_provider_command_with_stdin_async(
-    language_id: &str,
-    provider: &ActivatedProvider,
-    invocation: &[String],
-    project_root: &Path,
-    stdin: Vec<u8>,
-) -> Result<ProviderProcessOutput, String> {
-    let limits = default_provider_process_limits()?;
-    let (program, forwarded) = invocation
-        .split_first()
-        .ok_or_else(|| format!("language `{language_id}` has an empty provider command"))?;
-    run_provider_process_with_stdin_async(ProviderProcessRun {
-        language_id,
-        provider_id: provider.provider_id.as_str(),
-        execution_command_digest: &provider.execution_command_digest,
-        program,
-        forwarded,
-        project_root,
-        limits,
-        stdin: StdinMode::bytes(stdin),
-    })
-    .await
-}
-
 pub(super) fn run_provider_command_with_stdin_limits(
     language_id: &str,
     provider: &ActivatedProvider,
@@ -226,15 +201,6 @@ fn run_provider_process_with_stdin(
 ) -> Result<ProviderProcessOutput, String> {
     let (spec, language_id, provider_id) = provider_process_spec(request)?;
     run_transport_process(spec).map_err(|error| {
-        format!("failed to run provider `{provider_id}` for language `{language_id}`: {error}")
-    })
-}
-
-async fn run_provider_process_with_stdin_async(
-    request: ProviderProcessRun<'_>,
-) -> Result<ProviderProcessOutput, String> {
-    let (spec, language_id, provider_id) = provider_process_spec(request)?;
-    run_transport_process_async(spec).await.map_err(|error| {
         format!("failed to run provider `{provider_id}` for language `{language_id}`: {error}")
     })
 }

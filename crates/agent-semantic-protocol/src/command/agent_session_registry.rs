@@ -107,18 +107,25 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
 
     let project_root =
         env::current_dir().map_err(|error| format!("failed to read current directory: {error}"))?;
-    let projection_only = matches!(
-        &args.command,
-        SessionCommand::Bootstrap | SessionCommand::Show | SessionCommand::Status
-    );
-    let registry = if projection_only {
-        AgentSessionRegistry::open_existing_project_read_only(&project_root)?.ok_or_else(|| {
+    let state_home = std::env::var_os("ASP_STATE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(std::path::PathBuf::from)
+                .map(|home| home.join(".agent-semantic-protocols"))
+        })
+        .ok_or_else(|| "ASP_STATE_HOME cannot be resolved for runtime repair".to_owned())?;
+    let plan = super::protocol_binary::ProtocolBinaryInstallPlan::capture(
+        state_home.join("runtime/artifacts"),
+    )?;
+    super::protocol_binary::ensure_protocol_binary_installed(&plan)?;
+    let started = std::time::Instant::now();
+    ensure_agent_session_runtime_server(started.into(), &project_root)?;
+    let registry = AgentSessionRegistry::open_runtime_project_proxy(&project_root)?
+        .ok_or_else(|| {
             "registryStatus=missing registryWriteStatus=not-attempted; Runtime Server registry projection is unavailable"
                 .to_string()
-        })?
-    } else {
-        AgentSessionRegistry::open_or_create_project(&project_root)?
-    };
+        })?;
 
     match args.command {
         SessionCommand::Bootstrap => {
@@ -166,6 +173,39 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         }
         SessionCommand::SwitchModel => switch_model(&args),
     }
+}
+
+fn ensure_agent_session_runtime_server(
+    started: tokio::time::Instant,
+    project_root: &std::path::Path,
+) -> Result<(), String> {
+    let state = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?;
+    state.ensure_minimal_layout()?;
+    let healthy = super::runtime_server::block_on_agent_facing_runtime_server_client(
+        started,
+        "agent-session",
+        "runtime-server-healthcheck",
+        async {
+            Ok(matches!(
+                super::runtime_server::healthcheck_runtime_server_at(&state.state_home).await,
+                Ok(receipt)
+                    if receipt.state
+                        == agent_semantic_client_db::runtime_server_control::RuntimeServerState::Healthy
+            ))
+        },
+    )?;
+    if healthy {
+        return Ok(());
+    }
+    super::runtime_server::block_on_runtime_server_supervisor_client(
+        "agent-session",
+        "runtime-server-reconcile",
+        async {
+            super::runtime_server_supervisor::reconcile_healthy_runtime_server(&state.state_home)
+                .await
+                .map(|_| ())
+        },
+    )
 }
 
 fn should_render_resume_status(args: &SessionArgs) -> bool {

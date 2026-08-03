@@ -50,7 +50,6 @@ mod provider_exact_args;
 mod provider_execution;
 mod provider_fast_path;
 mod provider_fast_search;
-mod provider_native_exact;
 mod provider_owner_native;
 mod provider_process;
 mod provider_resident_exact;
@@ -59,6 +58,9 @@ mod provider_selector;
 mod provider_usage;
 mod root_language_facade;
 mod runtime_server;
+#[cfg(test)]
+#[path = "../../tests/unit/command/runtime_server_agent_facing_wall_budget.rs"]
+mod runtime_server_agent_facing_wall_budget;
 pub(crate) use runtime_server::runtime_server_hook_evaluation_client;
 mod runtime_server_artifact;
 mod runtime_server_definition;
@@ -107,7 +109,7 @@ mod workspace_tree_sitter_inventory;
 mod workspace_tree_sitter_query;
 mod workspace_tree_sitter_query_trace;
 
-pub(crate) use dispatch::run_protocol_command;
+pub(crate) use dispatch::{run_protocol_command, run_protocol_command_started};
 pub(in crate::command) use hook_enforcement::codex_enforcement_report;
 pub(crate) use hook_runtime::run_protocol_hook_with_input;
 pub(in crate::command) use hook_runtime_context::payload_indicates_subagent_context;

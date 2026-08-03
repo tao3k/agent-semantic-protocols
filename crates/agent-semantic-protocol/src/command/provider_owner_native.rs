@@ -8,10 +8,7 @@ use agent_semantic_client_db::{
 use agent_semantic_hook::{ActivatedProvider, RuntimeProfiles};
 use serde::Deserialize;
 
-use super::provider_process::{
-    provider_invocation_with_profile, run_provider_command_with_stdin,
-    run_provider_command_with_stdin_async,
-};
+use super::provider_process::{provider_invocation_with_profile, run_provider_command_with_stdin};
 
 pub(super) struct ProviderOwnerNativeTransportContext<'a> {
     pub(super) language_id: &'a str,
@@ -73,22 +70,6 @@ pub(super) fn run_provider_owner_native(
         context.project_root,
         prepared.stdin,
     )?;
-    finish_provider_owner_native(output, prepared.expected)
-}
-
-pub(super) async fn run_provider_owner_native_async(
-    context: ProviderOwnerNativeTransportContext<'_>,
-    request: ProviderOwnerNativeRequest<'_>,
-) -> Result<Vec<ProviderSelectorProjection>, String> {
-    let prepared = prepare_provider_owner_native(&context, &request)?;
-    let output = run_provider_command_with_stdin_async(
-        context.language_id,
-        context.provider,
-        &prepared.invocation,
-        context.project_root,
-        prepared.stdin,
-    )
-    .await?;
     finish_provider_owner_native(output, prepared.expected)
 }
 

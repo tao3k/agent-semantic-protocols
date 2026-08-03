@@ -23,15 +23,7 @@ const AGENT_SESSION_EXPIRED_REFRESH_LOCK_STALE_AFTER: Duration = Duration::from_
 static AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS: AtomicBool = AtomicBool::new(false);
 
 fn runtime_server_endpoint_is_published(state_home: &Path) -> Result<bool, String> {
-    let endpoint_path = crate::runtime_server_endpoint_path(state_home);
-    match fs::metadata(&endpoint_path) {
-        Ok(_) => Ok(true),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(format!(
-            "failed to inspect Runtime Server endpoint {}: {error}",
-            endpoint_path.display()
-        )),
-    }
+    Ok(crate::read_runtime_server_endpoint(state_home)?.is_some())
 }
 
 struct ExpiredRefreshLock {
@@ -140,17 +132,15 @@ impl AgentSessionRegistry {
             return Ok(proxy);
         }
         let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home);
-        if runtime_server_endpoint_is_published(&state.state_home)? {
-            return Err(format!(
-                "project registry create/open is forbidden while Runtime Server endpoint is published: endpoint={} runtimeOwnerProcess={}",
-                endpoint_path.display(),
-                AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
-            ));
-        }
-        Self::open_or_create_state_root(Self::state_root_for_resolved_state(&state))
+        Err(format!(
+            "project registry create/open requires Runtime Server typed IPC; direct-open is forbidden: endpoint={} endpointPublished={} runtimeOwnerProcess={}",
+            endpoint_path.display(),
+            runtime_server_endpoint_is_published(&state.state_home)?,
+            AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
+        ))
     }
 
-    pub fn open_existing_project_read_only(
+    pub fn open_runtime_project_proxy(
         project_root: impl AsRef<Path>,
     ) -> Result<Option<Self>, String> {
         let project_root = project_root.as_ref();
@@ -166,7 +156,7 @@ impl AgentSessionRegistry {
                 AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
             ));
         }
-        Self::open_existing_state_root_read_only(Self::state_root_for_resolved_state(&state))
+        Ok(None)
     }
 
     pub fn open_existing_project(project_root: impl AsRef<Path>) -> Result<Option<Self>, String> {
@@ -176,14 +166,12 @@ impl AgentSessionRegistry {
             return Ok(Some(proxy));
         }
         let endpoint_path = crate::runtime_server_endpoint_path(&state.state_home);
-        if runtime_server_endpoint_is_published(&state.state_home)? {
-            return Err(format!(
-                "project registry direct-open is forbidden while Runtime Server endpoint is published: endpoint={} runtimeOwnerProcess={}",
-                endpoint_path.display(),
-                AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
-            ));
-        }
-        Self::open_existing_state_root(Self::state_root_for_resolved_state(&state))
+        Err(format!(
+            "project registry read requires Runtime Server typed IPC; direct-open is forbidden: endpoint={} endpointPublished={} runtimeOwnerProcess={}",
+            endpoint_path.display(),
+            runtime_server_endpoint_is_published(&state.state_home)?,
+            AGENT_SESSION_REGISTRY_RUNTIME_OWNER_PROCESS.load(Ordering::Acquire)
+        ))
     }
 
     #[track_caller]

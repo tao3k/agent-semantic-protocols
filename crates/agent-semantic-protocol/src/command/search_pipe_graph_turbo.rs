@@ -534,12 +534,7 @@ fn graph_turbo_source_trace(source_trace: &[SearchPipeSourceTrace]) -> Value {
 }
 
 fn append_provider_fact_nodes(nodes: &mut Vec<Value>, provider_facts: &ProviderGraphFacts) {
-    nodes.extend(agent_semantic_search::compact_provider_fact_nodes(
-        &provider_facts.nodes,
-    ));
-    nodes.extend(agent_semantic_search::provider_candidate_annotation_nodes(
-        &provider_facts.candidate_annotations,
-    ));
+    nodes.extend(provider_facts.nodes.iter().cloned());
 }
 
 pub(super) fn dependency_action_targets_from_graph(packet: &Value) -> Vec<String> {

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-facing-search-wall-failure.v1.schema.json",
+  "title": "Agent-facing search wall failure v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "surface",
+    "state",
+    "reasonKind",
+    "stage",
+    "budgetMicros",
+    "executionBudgetMicros",
+    "elapsedMicros",
+    "retryAfterMs"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.agent-facing-search-wall-failure"
+    },
+    "schemaVersion": { "const": "1" },
+    "surface": { "enum": ["query", "search"] },
+    "state": { "const": "unavailable" },
+    "reasonKind": {
+      "const": "agent-facing-search-wall-budget-exceeded"
+    },
+    "stage": { "type": "string", "minLength": 1 },
+    "budgetMicros": { "const": 1000000 },
+    "executionBudgetMicros": { "const": 800000 },
+    "elapsedMicros": { "type": "integer", "minimum": 0 },
+    "retryAfterMs": { "type": "integer", "minimum": 0 }
+  }
+}

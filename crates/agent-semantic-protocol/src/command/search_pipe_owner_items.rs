@@ -10,6 +10,7 @@ use agent_semantic_client::language_owner_items_workspace_root;
 use agent_semantic_content_identity::CanonicalItemSelector;
 
 pub(super) struct SearchOwnerItemsContext<'a> {
+    pub(super) started: tokio::time::Instant,
     pub(super) language_id: &'a str,
     pub(super) project_root: &'a Path,
     pub(super) locator_root: &'a Path,
@@ -32,9 +33,12 @@ pub(super) fn run_search_owner_items_query_command(
         search_owner_items_workspace(args).as_deref(),
     );
     let owner_path = normalized_owner_key(&project_root, &owner_query_args.owner)?;
-    let client = super::runtime_server::block_on_runtime_server_client(
+    let client = super::runtime_server::block_on_agent_facing_runtime_server_client(
+        context.started,
+        "search",
+        "resident-workspace-generation-open",
         super::runtime_server::runtime_server_workspace_generation_client_async(&project_root),
-    )??;
+    )?;
     // Search is a pure resident read. Provider execution and owner freshness
     // reconciliation belong to the Runtime Server writer lane and must never
     // be triggered by an agent query.

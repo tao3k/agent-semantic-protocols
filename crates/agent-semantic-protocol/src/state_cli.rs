@@ -10,10 +10,14 @@ use agent_semantic_client_db::ClientDbEngine;
 
 /// Run the `asp` binary with pre-dispatch for State Core commands.
 pub fn run_binary_from_env() -> Result<(), String> {
+    run_binary_from_env_started(tokio::time::Instant::now())
+}
+
+fn run_binary_from_env_started(process_started: tokio::time::Instant) -> Result<(), String> {
     if let Some(result) = run_state_command_from_env() {
         return result;
     }
-    crate::run_cli_from_env()
+    crate::cli::run_cli_from_env_started(process_started)
 }
 
 fn run_state_command_from_env() -> Option<Result<(), String>> {

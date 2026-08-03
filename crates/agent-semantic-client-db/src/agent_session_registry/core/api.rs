@@ -294,6 +294,21 @@ impl AgentSessionRegistry {
     ) -> Result<bool, String> {
         let project_id = project_id.into();
         let session_id = session_id.into();
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SetArchivedStatus {
+                project_id: project_id.as_str().to_owned(),
+                session_id: session_id.as_str().to_owned(),
+                archived: true,
+                now,
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Changed { changed } => {
+                    Ok(changed)
+                }
+                _ => Err("Runtime Server returned an unexpected session archive result".to_owned()),
+            };
+        }
         block_on_agent_session_registry_async(turso_set_archived_status(
             &self.db_path,
             project_id.as_str(),
@@ -313,6 +328,23 @@ impl AgentSessionRegistry {
     ) -> Result<bool, String> {
         let project_id = project_id.into();
         let session_id = session_id.into();
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::SetArchivedStatus {
+                project_id: project_id.as_str().to_owned(),
+                session_id: session_id.as_str().to_owned(),
+                archived: false,
+                now,
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Changed { changed } => {
+                    Ok(changed)
+                }
+                _ => {
+                    Err("Runtime Server returned an unexpected session unarchive result".to_owned())
+                }
+            };
+        }
         block_on_agent_session_registry_async(turso_set_archived_status(
             &self.db_path,
             project_id.as_str(),

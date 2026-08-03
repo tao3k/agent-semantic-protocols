@@ -83,6 +83,33 @@ It must not translate a stale-generation miss into an empty successful result.
 Foreground query execution must not perform a full workspace scan, provider
 reindex, or Merkle rebuild.
 
+* Read-side owner freshness is mandatory
+
+Mutation admission is an accelerator and durability edge, not the sole
+freshness authority.  A client, nested tool surface, editor, filesystem watcher,
+or recovered AgentSession may change an owner without producing an observable
+post-tool event.  Therefore every exact selector projection MUST prove that the
+requested owner's live content digest equals the digest represented by the
+generation or resident overlay before returning either a hit or a miss.
+
+The exact-query order is:
+
+1. derive the normalized owner path and language identity from the parser-owned
+   structural selector;
+2. ask the workspace-keyed WorkspaceResident to ensure that one owner;
+3. treat equal content identity as a warm no-op;
+4. incrementally publish changed owner bytes and selectors when identity differs;
+5. only then open the current immutable generation and resolve the projection.
+
+A cached hit without this proof is stale evidence.  Read-side freshness MUST
+apply to =source=, =callable-skeleton=, and future exact projections uniformly;
+it must not be conditional on =OwnerForRepair= or any cache-miss state.  The
+foreground path may stat and hash only the requested owner and may use the
+resident's fingerprint cache.  It MUST NOT scan the workspace.  Warm owner
+freshness plus generation open remains subject to the exact-query performance
+gate; a changed owner may use the bounded resident publication lane, but old
+bytes must never be returned while that publication is pending.
+
 * Independent performance gates
 
 Each phase owns a fresh monotonic clock.  One absolute deadline must not be
@@ -99,6 +126,9 @@ shared across setup, enqueue, acceptance, and completion.
 
 Background materialization may exceed foreground budgets, but it must emit a
 terminal receipt and remain cancellable or supersedable by a newer observation.
+A failed attempt remains evidence and increments the next attempt number; it
+must not permanently poison the WorkspaceResident.  A later =ensure= starts a
+new server-owned attempt while preserving the previous failure receipt.
 
 * Performance receipt
 

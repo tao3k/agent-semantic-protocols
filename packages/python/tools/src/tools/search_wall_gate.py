@@ -65,6 +65,42 @@ def validate_asp_command(argv: Sequence[str], language_id: str, surface: str) ->
         raise ValueError("command language/surface does not match receipt identity")
 
 
+AGENT_FACING_RUNTIME_EXECUTION_BUDGET_MICROS: Final = 800_000
+AGENT_FACING_SUPERVISOR_BUDGET_MICROS: Final = 900_000
+
+
+def _is_typed_wall_failure(stderr: bytes, *, surface: str) -> bool:
+    for line in reversed(stderr.decode("utf-8", errors="replace").splitlines()):
+        candidate = line.strip()
+        if not candidate.startswith("{"):
+            continue
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        return (
+            payload.get("schemaId")
+            == "agent.semantic-protocols.agent-facing-search-wall-failure"
+            and payload.get("schemaVersion") == "1"
+            and payload.get("surface") == surface
+            and payload.get("state") == "unavailable"
+            and payload.get("reasonKind")
+            == "agent-facing-search-wall-budget-exceeded"
+            and payload.get("budgetMicros") == AGENT_FACING_WALL_BUDGET_MICROS
+            and payload.get("executionBudgetMicros")
+            == AGENT_FACING_RUNTIME_EXECUTION_BUDGET_MICROS
+            and type(payload.get("elapsedMicros")) is int
+            and payload["elapsedMicros"] >= 0
+            and isinstance(payload.get("stage"), str)
+            and bool(payload["stage"].strip())
+            and type(payload.get("retryAfterMs")) is int
+            and payload["retryAfterMs"] >= 0
+        )
+    return False
+
+
 def run_gate(argv: Sequence[str], language_id: str, surface: str) -> int:
     validate_asp_command(argv, language_id, surface)
     started = time.perf_counter_ns()
@@ -76,21 +112,23 @@ def run_gate(argv: Sequence[str], language_id: str, surface: str) -> int:
     )
     timed_out = False
     try:
-        stdout, _stderr = process.communicate(
-            timeout=AGENT_FACING_WALL_BUDGET_MICROS / 1_000_000
+        stdout, stderr = process.communicate(
+            timeout=AGENT_FACING_SUPERVISOR_BUDGET_MICROS / 1_000_000
         )
     except subprocess.TimeoutExpired:
         timed_out = True
         os.killpg(process.pid, signal.SIGTERM)
         try:
-            stdout, _stderr = process.communicate(timeout=0.1)
+            stdout, stderr = process.communicate(timeout=0.1)
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
-            stdout, _stderr = process.communicate()
+            stdout, stderr = process.communicate()
     wall_time_micros = (time.perf_counter_ns() - started) // 1_000
     exit_code = 124 if timed_out else process.returncode
     if timed_out:
         reply_kind = "no-reply"
+    elif exit_code != 0 and _is_typed_wall_failure(stderr, surface=surface):
+        reply_kind = "unavailable"
     elif exit_code != 0:
         reply_kind = "failure"
     elif stdout:

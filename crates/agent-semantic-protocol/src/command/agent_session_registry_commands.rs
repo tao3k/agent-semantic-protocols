@@ -309,7 +309,10 @@ fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
         .map_err(|error| format!("write smoke owner fixture: {error}"))?;
     let root_session_id = "asp-smoke-root-session";
     let child_session_id = "asp-smoke-invalid-child";
-    write_smoke_codex_agent_fixture(&codex_home)?;
+    let catalog_path = std::env::current_dir()
+        .map_err(|error| format!("resolve smoke catalog workspace: {error}"))?
+        .join("agents/config.toml");
+    publish_smoke_codex_agent_projection(&catalog_path, &state_home, &codex_home)?;
     write_smoke_codex_rollout_fixture(&codex_home, &workspace, root_session_id, child_session_id)?;
     materialize_smoke_rust_provider(&workspace, &state_home)?;
     let asp_bin = std::env::current_exe()
@@ -458,22 +461,29 @@ fn materialize_smoke_rust_provider(
     .map_err(|error| format!("write smoke provider install receipt: {error}"))
 }
 
-fn write_smoke_codex_agent_fixture(codex_home: &std::path::Path) -> Result<(), String> {
+fn publish_smoke_codex_agent_projection(
+    catalog_path: &std::path::Path,
+    state_home: &std::path::Path,
+    codex_home: &std::path::Path,
+) -> Result<(), String> {
+    let state_agents_dir = state_home.join("agents");
+    agent_semantic_config::subagent_manager::publish_subagent_catalog(
+        catalog_path,
+        &state_agents_dir,
+        state_home,
+    )?;
+    let loaded = agent_semantic_config::subagent_manager::load_subagent_catalog(catalog_path)?;
+    let projection = agent_semantic_config::subagent_manager::compile_subagent_projection(
+        &loaded,
+        "asp_explorer",
+        "codex",
+        state_home,
+    )?;
     let agents_dir = codex_home.join("agents");
     std::fs::create_dir_all(&agents_dir)
         .map_err(|error| format!("create smoke codex agents dir: {error}"))?;
-    std::fs::write(
-        agents_dir.join("asp-explorer.toml"),
-        r#"name = "asp_explorer"
-description = "ASP reasoning and evidence exploration lane."
-nickname_candidates = ["ASP Explore", "ASP Reasoning"]
-model = "gpt-5.4-mini"
-model_reasoning_effort = "low"
-sandbox_mode = "read-only"
-developer_instructions = "ASP smoke fixture."
-"#,
-    )
-    .map_err(|error| format!("write smoke codex agent fixture: {error}"))?;
+    std::fs::write(agents_dir.join(&projection.projection), projection.content)
+        .map_err(|error| format!("publish smoke codex agent projection: {error}"))?;
     Ok(())
 }
 

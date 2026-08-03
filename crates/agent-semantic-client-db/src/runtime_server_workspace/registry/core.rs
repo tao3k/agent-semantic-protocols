@@ -126,7 +126,7 @@ pub(super) enum WorkspaceWriteCommand {
 
 #[derive(Debug)]
 pub struct RuntimeServerWorkspaceRegistry {
-    root: PathBuf,
+    pub(crate) root: PathBuf,
     entries: RwLock<HashMap<String, Arc<WorkspaceResident>>>,
     pub(crate) owner_admissions:
         tokio::sync::Mutex<HashMap<(String, String), Arc<tokio::sync::Mutex<()>>>>,
@@ -189,34 +189,6 @@ impl RuntimeServerWorkspaceRegistry {
 
     pub fn data_plane_counters(&self) -> RuntimeDataPlaneCounters {
         self.counters.snapshot()
-    }
-
-    pub async fn published_generation_is_ready(
-        &self,
-        workspace_identity: &str,
-        project_root: &std::path::Path,
-    ) -> Result<bool, String> {
-        let pointer_path = crate::runtime_server_workspace::workspace_generation_pointer_path(
-            &self.root,
-            workspace_identity,
-            project_root,
-        )?;
-        match crate::runtime_server_workspace::WorkspaceGenerationDataPlaneClient::open_state(
-            &pointer_path,
-        )
-        .await?
-        {
-            crate::runtime_server_workspace::WorkspaceGenerationDataPlaneOpen::Ready(client) => {
-                client.lease().generation().validate()?;
-                Ok(true)
-            }
-            crate::runtime_server_workspace::WorkspaceGenerationDataPlaneOpen::Missing => Ok(false),
-            crate::runtime_server_workspace::WorkspaceGenerationDataPlaneOpen::RecoveryRequired {
-                reason,
-            } => Err(format!(
-                "published workspace generation requires reconciliation: workspaceIdentity={workspace_identity} reason={reason}"
-            )),
-        }
     }
 
     pub fn lease(
@@ -732,6 +704,22 @@ async fn workspace_writer_lane(
                 let active_epoch = active
                     .as_ref()
                     .map_or(0, |backend| backend.generation().active_epoch);
+                let acceptance = WorkspaceRecoveryReceipt {
+                    schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
+                    schema_version: "1".to_owned(),
+                    request_id: request_id.clone(),
+                    workspace_identity: workspace_identity.clone(),
+                    source: WorkspaceRecoverySource::TursoGeneration,
+                    state: WorkspaceGenerationState::PublishingNext,
+                    active_epoch,
+                    target_epoch: active_epoch.saturating_add(1),
+                    generation_digest: materialization.workspace_generation.root_digest.clone(),
+                    source_root_digest: materialization.source_snapshot.root_digest.clone(),
+                    old_generation_readable: active.is_some(),
+                    counters: RuntimeDataPlaneCounters::default(),
+                };
+                let acceptance = acceptance.validate().map(|()| acceptance);
+                let _ = accepted.send(acceptance);
                 let generation = materialization.into_generation(active_epoch);
                 let result = match generation {
                     Ok(generation)
@@ -756,6 +744,8 @@ async fn workspace_writer_lane(
                                     state: WorkspaceGenerationState::Ready,
                                     active_epoch: previous_epoch,
                                     target_epoch,
+                                    generation_digest: generation.generation_digest.clone(),
+                                    source_root_digest: generation.source_snapshot.root_digest.clone(),
                                     old_generation_readable: previous_epoch != 0,
                                     counters: RuntimeDataPlaneCounters::default(),
                                 }
@@ -769,7 +759,6 @@ async fn workspace_writer_lane(
                             receipt.validate()?;
                             Ok(receipt)
                         });
-                        let _ = accepted.send(result.clone());
                         result
                     }
                     Ok(generation) => {
@@ -782,12 +771,13 @@ async fn workspace_writer_lane(
                             state: WorkspaceGenerationState::PublishingNext,
                             active_epoch,
                             target_epoch: generation.active_epoch,
+                            generation_digest: generation.generation_digest.clone(),
+                            source_root_digest: generation.source_snapshot.root_digest.clone(),
                             old_generation_readable: active.is_some(),
                             counters: RuntimeDataPlaneCounters::default(),
                         };
                         match progress.validate() {
                             Ok(()) => {
-                                let _ = accepted.send(Ok(progress));
                                 let result = publish_generation(
                                     &current,
                                     publisher.as_ref(),
@@ -806,13 +796,11 @@ async fn workspace_writer_lane(
                                 result
                             }
                             Err(error) => {
-                                let _ = accepted.send(Err(error.clone()));
                                 Err(error)
                             }
                         }
                     }
                     Err(error) => {
-                        let _ = accepted.send(Err(error.clone()));
                         Err(error)
                     }
                 }
@@ -919,6 +907,8 @@ async fn publish_generation(
 ) -> Result<WorkspaceRecoveryReceipt, String> {
     let target_epoch = generation.active_epoch;
     let workspace_identity = generation.workspace_identity.clone();
+    let generation_digest = generation.generation_digest.clone();
+    let source_root_digest = generation.source_snapshot.root_digest.clone();
     let (_, mapped) = publisher.publish(&generation, active_epoch != 0).await?;
     counters.filesystem_reads.fetch_add(1, Ordering::Relaxed);
     counters.filesystem_writes.fetch_add(1, Ordering::Relaxed);
@@ -932,6 +922,8 @@ async fn publish_generation(
         state: WorkspaceGenerationState::Ready,
         active_epoch,
         target_epoch,
+        generation_digest,
+        source_root_digest,
         old_generation_readable: active_epoch != 0,
         counters: RuntimeDataPlaneCounters {
             filesystem_reads: 1,
@@ -966,6 +958,8 @@ async fn restore_checkpoint(
             "workspace checkpoint epoch must advance: activeEpoch={active_epoch} targetEpoch={target_epoch}"
         ));
     }
+    let generation_digest = backend.generation().generation_digest.clone();
+    let source_root_digest = backend.generation().source_snapshot.root_digest.clone();
     current.send_replace(Some(backend));
     let receipt = WorkspaceRecoveryReceipt {
         schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
@@ -976,6 +970,8 @@ async fn restore_checkpoint(
         state: WorkspaceGenerationState::Ready,
         active_epoch,
         target_epoch,
+        generation_digest,
+        source_root_digest,
         old_generation_readable: active_epoch != 0,
         counters: RuntimeDataPlaneCounters {
             filesystem_reads: 1,

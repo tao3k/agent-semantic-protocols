@@ -102,6 +102,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
             mtime_ms: 1,
         }],
         files: vec![ClientDbSourceIndexImportFile {
+            relations: Vec::new(),
             relative_path: "src/lib.rs".to_string(),
             language_id: rust_language_id.clone(),
             provider_id: ProviderId::from("rs-harness"),
@@ -408,6 +409,7 @@ fn code_search_merkle_memory_warm_path_is_a_strong_gate() {
         dirty_paths_digest: None,
     };
     let source_index_import = ClientDbSourceIndexImport {
+        relations: Vec::new(),
         generation_id: client_db_source_index_generation_id_for_snapshot(&source_snapshot),
         project_root: project_root.clone(),
         schema_id: CLIENT_DB_SOURCE_INDEX_SCHEMA_ID.into(),

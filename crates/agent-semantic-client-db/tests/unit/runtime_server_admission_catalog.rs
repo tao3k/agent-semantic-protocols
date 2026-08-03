@@ -1,8 +1,8 @@
 use agent_semantic_client_db::runtime_server_admission_catalog::{
     RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
 };
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 static FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -12,6 +12,17 @@ fn fixture_root() -> std::path::PathBuf {
         std::process::id(),
         FIXTURE_ID.fetch_add(1, Ordering::Relaxed)
     ))
+}
+
+fn committed_generation(
+) -> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+    agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+        active_epoch: 1,
+        generation_digest:
+            "blake3-256:1111111111111111111111111111111111111111111111111111111111111111".to_owned(),
+        source_root_digest:
+            "blake3-256:2222222222222222222222222222222222222222222222222222222222222222".to_owned(),
+    }
 }
 
 #[tokio::test]
@@ -29,7 +40,10 @@ async fn catalog_persists_unique_workspace_source_scopes_atomically() {
     assert!(!catalog.record(entry.clone()).await.unwrap());
 
     let restored = RuntimeWorkspaceAdmissionCatalog::load(path).await.unwrap();
-    assert_eq!(restored.entries().await, vec![entry]);
+    assert_eq!(
+        restored.snapshot().iter().cloned().collect::<Vec<_>>(),
+        vec![entry]
+    );
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
 
@@ -39,15 +53,13 @@ async fn catalog_rejects_relative_project_roots() {
     let catalog = RuntimeWorkspaceAdmissionCatalog::load(root.join("catalog.json"))
         .await
         .unwrap();
-    assert!(
-        catalog
-            .record(RuntimeWorkspaceAdmissionCatalogEntry {
-                workspace_identity: "workspace-a".to_owned(),
-                project_root: "relative".into(),
-            })
-            .await
-            .is_err()
-    );
+    assert!(catalog
+        .record(RuntimeWorkspaceAdmissionCatalogEntry {
+            workspace_identity: "workspace-a".to_owned(),
+            project_root: "relative".into(),
+        })
+        .await
+        .is_err());
 }
 
 #[tokio::test]
@@ -114,15 +126,13 @@ async fn catalog_rejects_two_workspace_identities_for_one_canonical_root() {
         })
         .await
         .unwrap();
-    assert!(
-        catalog
-            .record(RuntimeWorkspaceAdmissionCatalogEntry {
-                workspace_identity: "workspace-second".to_owned(),
-                project_root,
-            })
-            .await
-            .is_err()
-    );
+    assert!(catalog
+        .record(RuntimeWorkspaceAdmissionCatalogEntry {
+            workspace_identity: "workspace-second".to_owned(),
+            project_root,
+        })
+        .await
+        .is_err());
     tokio::fs::remove_dir_all(root).await.unwrap();
 }
 
@@ -219,7 +229,7 @@ async fn daemon_restore_replays_each_catalog_scope_once() {
                     let builds = Arc::clone(&builds);
                     Box::pin(async move {
                         builds.fetch_add(1, Ordering::Relaxed);
-                        Ok(())
+                        Ok(committed_generation())
                     })
                 }
             }),
@@ -262,7 +272,7 @@ async fn typed_ipc_admission_publishes_an_initial_missing_locator() {
                     let builds = Arc::clone(&builds);
                     Box::pin(async move {
                         builds.fetch_add(1, Ordering::Relaxed);
-                        Ok(())
+                        Ok(committed_generation())
                     })
                 }
             }),
@@ -329,7 +339,7 @@ async fn daemon_restore_isolates_failed_workspace_scopes() {
                     if workspace_identity == "workspace-failed" {
                         Err("fixture canonical generation missing".to_owned())
                     } else {
-                        Ok(())
+                        Ok(committed_generation())
                     }
                 })
             }),

@@ -34,6 +34,39 @@ async fn exact_selector_code_reads_modified_source_without_stale_index() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn exact_source_projection_reconciles_unadmitted_owner_change_before_cached_hit() {
+    let root = temp_project_root("exact-selector-read-side-freshness");
+    establish_rust_package(&root);
+    let owner = root.join("src/lib.rs");
+    fs::write(&owner, "pub fn alpha() {\n    let value = 1;\n}\n").expect("write first source");
+    let runtime = ExactQueryRuntime::start(&root).await;
+
+    runtime
+        .admit("alpha-initial", vec!["src/lib.rs".to_owned()])
+        .await;
+    let first = run_exact_selector_query(&root, &runtime.state_home).await;
+    assert!(first.contains("let value = 1;"), "{first}");
+
+    fs::write(&owner, "pub fn alpha() {\n    let value = 2;\n}\n")
+        .expect("write unadmitted source change");
+    let started = std::time::Instant::now();
+    let second = run_exact_selector_query(&root, &runtime.state_home).await;
+    let elapsed = started.elapsed();
+    assert!(second.contains("let value = 2;"), "{second}");
+    assert!(
+        !second.contains("let value = 1;"),
+        "exact source projection returned a stale cached hit: {second}"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_millis(100),
+        "read-side owner freshness exceeded 100ms: {elapsed:?}"
+    );
+
+    runtime.shutdown().await;
+    let _ = fs::remove_dir_all(root);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn exact_selector_changed_and_moved_owner_never_requires_sync() {
     prewarm_cli_artifact().await;
     let root = temp_project_root("exact-selector-live-owner");
@@ -342,10 +375,22 @@ impl ExactQueryRuntime {
             .find(|receipt| receipt.workspace_identity == self.workspace_identity)
             .expect("mutation receipt includes exact-query workspace")
             .attempt;
-        let receipt = session
-            .ensure_runtime_generation()
-            .await
-            .expect("finish exact-query fixture generation");
+        let receipt = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let receipt = session
+                    .ensure_runtime_generation()
+                    .await
+                    .expect("finish exact-query fixture generation");
+                if receipt.state
+                    != agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
+                {
+                    break receipt;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .expect("exact-query fixture generation reached terminal state");
         assert_eq!(
             receipt.state,
             agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Ready,
@@ -378,18 +423,69 @@ async fn build_exact_query_owner_projection(
             owner.owner_path
         ));
     };
+    let structural_selector = format!("rust://{}#item/function/{item_name}", owner.owner_path);
+    let exact_selector = || {
+        serde_json::json!({
+            "schemaId": "asp.exact-structural-selector.v1",
+            "schemaVersion": "1",
+            "languageId": "rust",
+            "ownerPath": owner.owner_path,
+            "selector": structural_selector,
+            "generationIdentityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "parserIdentityDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "queryPackDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "rootItemSelector": {
+                "schemaId": "asp.canonical-item-selector.v1",
+                "schemaVersion": "1",
+                "languageId": "rust",
+                "kind": "function",
+                "symbol": item_name,
+                "scopes": [],
+                "structuralSelector": structural_selector
+            },
+            "segments": []
+        })
+    };
+    let projection = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.callable-skeleton-projection",
+        "schemaVersion": "1",
+        "projectionKind": "callable-skeleton",
+        "languageId": "rust",
+        "providerId": "rs-harness",
+        "rootSelector": exact_selector(),
+        "rootNodeId": "callable:root",
+        "callable": {
+            "kind": "function",
+            "displayName": item_name,
+            "signature": format!("fn {item_name}()")
+        },
+        "nodes": [{
+            "nodeId": "callable:root",
+            "kind": "callable",
+            "label": item_name,
+            "order": 0,
+            "queryable": true,
+            "exactSelector": exact_selector(),
+            "languageFacts": {}
+        }],
+        "relations": [],
+        "cost": {
+            "sourceBytes": owner.bytes.len(),
+            "projectedBytes": owner.bytes.len(),
+            "omittedBytes": 0
+        },
+        "languageFacts": {}
+    });
     owner.selectors = vec![
         agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot {
-            selector: format!(
-                "rust://{}#item/function/{item_name}",
-                owner.owner_path
-            ),
+            selector: structural_selector,
             byte_start: 0,
             byte_end: owner.bytes.len(),
             derived_projections: vec![
                 agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
                     projection_kind: "callable-skeleton".to_owned(),
-                    bytes: format!("fn {item_name}(...)" ).into_bytes(),
+                    bytes: serde_json::to_vec(&projection)
+                        .map_err(|error| format!("serialize callable skeleton fixture: {error}"))?,
                 },
             ],
         },

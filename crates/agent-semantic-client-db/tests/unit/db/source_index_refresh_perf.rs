@@ -428,6 +428,7 @@ fn source_index_hash_reuse_ignores_scope_dir_mtime() {
     std::fs::write(&source_path, "pub fn source_index_perf_fixture() {}\n")
         .expect("write source fixture");
     let files = vec![agent_semantic_client_db::ClientDbSourceIndexScopeFile {
+        relations: Vec::new(),
         path: source_path.clone(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
@@ -501,6 +502,7 @@ fn source_index_dirty_git_path_forces_content_hash_despite_metadata_collision() 
         ],
     );
     let files = vec![agent_semantic_client_db::ClientDbSourceIndexScopeFile {
+        relations: Vec::new(),
         path: source_path.clone(),
         language_id: LanguageId::from("rust"),
         provider_id: ProviderId::from("rs-harness"),
@@ -669,6 +671,7 @@ fn refresh_request(project_root: &Path) -> ClientDbSourceIndexRefreshRequest {
         file_count: 1,
         source_snapshot: crate::snapshot_fixture::source_snapshot_evidence(),
         import: ClientDbSourceIndexImport {
+            relations: Vec::new(),
             generation_id: CacheGenerationId::from("snapshot-bound-source-index-perf"),
             project_root: project_root.to_path_buf(),
             schema_id: "agent-semantic-client-db.source-index".to_string().into(),
@@ -786,6 +789,7 @@ fn large_refresh_request(
         file_count: owner_count,
         source_snapshot: crate::snapshot_fixture::source_snapshot_evidence(),
         import: ClientDbSourceIndexImport {
+            relations: Vec::new(),
             generation_id: CacheGenerationId::from("snapshot-bound-source-index-large"),
             project_root: project_root.to_path_buf(),
             schema_id: "agent-semantic-client-db.source-index".to_string().into(),

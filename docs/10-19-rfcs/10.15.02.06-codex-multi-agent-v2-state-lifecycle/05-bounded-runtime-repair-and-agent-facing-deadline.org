@@ -1,0 +1,150 @@
+#+title: Bounded Runtime Repair and Agent-Facing Deadline
+#+startup: overview
+
+* Status
+
+This module refines the ASP Agent Session lifecycle with an executable timing
+contract.  It does not change Codex Multi-Agent v2.  It proves the obligations
+ASP must satisfy while driving the downstream host lifecycle.
+
+The canonical 800/100/100 search-wall staging contract is owned by
+=10.05-interactive-graph-first-progressive-searchloop/10.05.25-agent-session-dispatch-recovery/01-interactive-search-latency-budget.org=
+and =packages/proofs/ASPProof/ASPAgentFacingSearchWallBudget.lean=.  This module
+adds the Agent Session lifecycle refinement; it must not redefine runtime 800 ms
+as the supervisor 900 ms boundary.
+
+The corresponding Lean owner is
+=packages/proofs/ASPProof/ASPAgentLifeSessionRuntimeRepairDeadline.lean=.
+The modular audit owner is
+=packages/proofs/ASPProof/Audit/ASPAgentLifeSessionRuntimeRepairDeadline.lean=.
+The single-resident archive and path-release obligations remain owned by
+=04-single-resident-archive-release.org= and
+=ASPAgentLifeSessionSingleResident.lean=.
+
+* Defect found by executable evidence
+
+The initial model incorrectly merged the awaited-runtime budget with the
+process-supervisor boundary.  Executable evidence exposed two distinct typed
+contracts: runtime failures report =executionBudgetMicros=800000=, while the
+supervisor owns the later 900 ms boundary.  Treating 800 ms as stale-binary
+evidence was therefore invalid; candidate identity requires an independent
+digest and generation proof.
+
+The corrected model has three strict stages: 800 ms for awaited runtime work,
+100 ms for supervisor reconciliation and failure classification, and 100 ms for
+typed reply/cleanup.  A runtime boundary test that admits 899 ms is stale even
+though 899 ms remains valid at the supervisor layer.
+
+* Three timing domains
+
+#+begin_src typst
+#let wall = 1000
+#let reply = 100
+#let supervisor-reserve = 100
+#let supervisor = wall - reply
+#let runtime = supervisor - supervisor-reserve
+
+$ B_(wall) = 1000 "ms", quad B_(reply) = 100 "ms" $
+$ B_(supervisor) = B_(wall) - B_(reply) = 900 "ms" $
+$ B_(runtime) = B_(supervisor) - 100 "ms" = 800 "ms" $
+
+$ "RuntimeAccept"(t) iff 0 <= t and t < B_(runtime) $
+$ "SupervisorAccept"(t) iff 0 <= t and t < B_(supervisor) $
+
+$ "ColdPrepare" ; "AwaitRuntime" ; "SupervisorClassify" ; "Reply" $
+
+Cold preparation publishes the canonical binary and supervisor definition.
+It is measured separately and must not consume the warm acceptance slice.
+AwaitRuntime is admitted by the strict 800 ms execution boundary.  Supervisor
+reconciliation and classification must finish before 900 ms.
+#+end_src
+
+The phases have different owners:
+
+- =ColdPrepare= is durable CAS publication and supervisor materialization.
+- =AwaitRuntime= is the already-published Runtime Server readiness path.
+- =SupervisorClassify= owns bounded reconciliation and typed failure mapping.
+- =Reply= serializes either the success receipt or a typed unavailable receipt.
+
+Resetting the warm timer after canonical binary preparation is valid only when
+the preparation result is durable and content-addressed.  Resetting it around a
+non-durable side effect would hide repeated work and is forbidden.
+
+* Stateful lifecycle
+
+#+begin_src mermaid
+stateDiagram-v2
+    [*] --> Unprepared
+    Unprepared --> Preparing: canonical artifact absent
+    Preparing --> Prepared: durable CAS publication receipt
+    Preparing --> RepairFailed: preparation deadline or typed failure
+    Prepared --> AwaitingRuntime: agent-facing request
+    AwaitingRuntime --> Ready: runtime accepted before 800 ms
+    AwaitingRuntime --> Supervising: runtime unavailable at 800 ms
+    Supervising --> Ready: repair accepted before 900 ms
+    Supervising --> RepairFailed: internal command deadline at 900 ms
+    Ready --> Replying: intent-indexed success receipt
+    RepairFailed --> Replying: typed repair failure receipt
+    Unavailable --> Replying: typed wall-budget receipt
+    Replying --> [*]: reply completes inside 1000 ms wall budget
+#+end_src
+
+No state may transition from =Preparing=, =AwaitingRuntime=, or =Supervising= directly to an
+unbounded host subprocess.  Every subprocess wait must own an internal deadline
+and a typed timeout result.  A caller-level async timeout is insufficient unless
+the inner operation is cancellation-safe and yields control.
+
+* Mathematical obligations
+
+#+begin_src typst
+#let bounded(op, d) = op.cancellation-safe and op.duration <= d
+
+$ "CallerTimeout"(900) not implies "Bounded"(op, 900) $
+$ "CancellationSafe"(op) and "InternalDeadline"(op, 900)
+  implies "BoundedRepair"(op, 900) $
+
+$ "ArchiveAccepted"(r) not implies "PathReleased"(r) $
+$ "ReplacementAllowed"(r)
+  iff "Archived"(r) and "Terminated"(r)
+  and "RegistryRetired"(r) and "PathReleased"(r) $
+#+end_src
+
+The first implication is intentionally negative: an outer timeout cannot prove
+bounded completion for an inner blocking or non-cancellation-safe operation.
+The second line is the repair obligation.  The final two lines import the
+single-resident theorem: repair must never create a second resident merely
+because the old resident is stale or model-mismatched.
+
+* Rust refinement boundary
+
+The Rust implementation refines this module only when all of the following are
+true:
+
+1. =AGENT_FACING_EXECUTION_BUDGET= is exactly 800 ms.
+2. awaited runtime accepts 799 ms and rejects exactly 800 ms; supervisor repair
+   accepts 899 ms and rejects exactly 900 ms.
+3. canonical binary preparation completes before the warm timer starts and
+   leaves a durable CAS receipt.
+4. every =launchctl= or =systemctl= wait has an internal deadline and maps
+   timeout to a typed repair failure.
+5. retry reuses the same stable repair intent; it does not create a second
+   resident or infer path release from archive visibility.
+
+Passing a unit test for the arithmetic proves only obligations 1 and 2.  Runtime
+integration evidence is required for obligations 3 and 4.  The existing
+single-resident AXLE audit remains responsible for obligation 5.
+
+* Verification commands
+
+Run these commands from =packages/proofs=:
+
+#+begin_src sh
+lake build ASPProof.ASPAgentLifeSessionRuntimeRepairDeadline
+lake env lean ASPProof/Audit/ASPAgentLifeSessionRuntimeRepairDeadline.lean
+#+end_src
+
+The upstream AXLE CLI exposes per-declaration =check= and =verify-proof=
+commands, but no repository-wide =audit= subcommand.  Therefore this RFC does
+not claim an AXLE JSON audit receipt until the package-owned audit runner has
+executed this module.  A direct Lean build is proof evidence, not a substitute
+for that receipt.

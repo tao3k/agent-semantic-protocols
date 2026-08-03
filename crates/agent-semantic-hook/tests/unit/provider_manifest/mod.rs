@@ -45,3 +45,4 @@ fn make_executable(path: &std::path::Path) {
 #[cfg(not(unix))]
 fn make_executable(_path: &std::path::Path) {}
 mod registered_language_canonical_identity;
+mod registered_language_descriptor_references;
