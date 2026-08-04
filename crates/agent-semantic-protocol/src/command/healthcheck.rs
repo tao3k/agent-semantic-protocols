@@ -87,6 +87,12 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
             workspace_generation_elapsed_micros,
         )
     })?;
+    let workspace_cache_control_result = workspace_generation::read_cache_control_status(
+        matches!(workspace_generation_durability_result, Ok(None)) && resident_result.is_ok(),
+        resolved_state.workspace.workspace_id.to_string(),
+        &resolved_state.workspace.root,
+        context.cwd(),
+    )?;
     let resident = match &resident_result {
         Ok(receipt) => GlobalResidentRuntimeCheck {
             status: "ready".to_owned(),
@@ -123,15 +129,53 @@ pub(super) fn run_healthcheck_command(args: &[String]) -> Result<(), String> {
             elapsed_micros: workspace_generation_elapsed_micros,
             error: durability.failure.clone(),
         },
-        Ok(None) => WorkspaceGenerationHealthCheck {
-            status: "missing".to_owned(),
-            workspace_identity: Some(resolved_state.workspace.workspace_id.to_string()),
-            generation_digest: None,
-            reconciled: None,
-            durability_state: None,
-            durability_failure: None,
-            elapsed_micros: workspace_generation_elapsed_micros,
-            error: None,
+        Ok(None) => match &workspace_cache_control_result {
+            Some(Ok(agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcResult::CacheControl {
+                receipt,
+            })) if receipt.generation_state
+                == agent_semantic_client_db::workspace_db_ipc::RuntimeCacheGenerationState::Ready =>
+            {
+                WorkspaceGenerationHealthCheck {
+                    status: "resident-ready".to_owned(),
+                    workspace_identity: Some(resolved_state.workspace.workspace_id.to_string()),
+                    generation_digest: receipt.generation_digest.clone(),
+                    reconciled: None,
+                    durability_state: Some(
+                        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady,
+                    ),
+                    durability_failure: None,
+                    elapsed_micros: workspace_generation_elapsed_micros,
+                    error: None,
+                }
+            }
+            Some(Ok(agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcResult::CacheControl {
+                receipt,
+            })) if receipt.generation_state
+                == agent_semantic_client_db::workspace_db_ipc::RuntimeCacheGenerationState::Stale =>
+            {
+                WorkspaceGenerationHealthCheck {
+                    status: "failed".to_owned(),
+                    workspace_identity: Some(resolved_state.workspace.workspace_id.to_string()),
+                    generation_digest: receipt.generation_digest.clone(),
+                    reconciled: None,
+                    durability_state: Some(
+                        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::Failed,
+                    ),
+                    durability_failure: receipt.failure.clone(),
+                    elapsed_micros: workspace_generation_elapsed_micros,
+                    error: receipt.failure.clone(),
+                }
+            }
+            _ => WorkspaceGenerationHealthCheck {
+                status: "missing".to_owned(),
+                workspace_identity: Some(resolved_state.workspace.workspace_id.to_string()),
+                generation_digest: None,
+                reconciled: None,
+                durability_state: None,
+                durability_failure: None,
+                elapsed_micros: workspace_generation_elapsed_micros,
+                error: None,
+            },
         },
         Err(error) => WorkspaceGenerationHealthCheck {
             status: "error".to_owned(),
@@ -626,20 +670,10 @@ struct GlobalResidentRuntimeCheck {
     error: Option<String>,
 }
 
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WorkspaceGenerationHealthCheck {
-    status: String,
-    workspace_identity: Option<String>,
-    generation_digest: Option<String>,
-    reconciled: Option<bool>,
-    durability_state: Option<
-        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState,
-    >,
-    durability_failure: Option<String>,
-    elapsed_micros: u64,
-    error: Option<String>,
-}
+#[path = "healthcheck_workspace_generation.rs"]
+mod workspace_generation;
+
+use workspace_generation::WorkspaceGenerationHealthCheck;
 
 struct HealthcheckStateLayout {
     project_root: PathBuf,

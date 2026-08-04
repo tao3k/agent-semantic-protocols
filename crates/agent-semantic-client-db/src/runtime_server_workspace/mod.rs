@@ -26,6 +26,7 @@ mod resident_overlay;
 mod resident_ready;
 mod restore;
 mod scope_path;
+mod search_generation_authority;
 mod segment;
 mod selector_overlay;
 mod store;
@@ -53,6 +54,10 @@ pub use pointer::WorkspaceGenerationPointerReader;
 pub use registry::{PublishedWorkspaceGenerationState, RuntimeServerWorkspaceRegistry};
 pub use restore::restore_active_turso_generation;
 pub use scope_path::{workspace_generation_directory, workspace_generation_pointer_path};
+pub use search_generation_authority::{
+    WorkspaceSearchGenerationAuthority, WorkspaceSearchGenerationAuthorityOpenReceipt,
+    WorkspaceSearchGenerationAuthorityPointerClient,
+};
 pub use segment::{MappedWorkspaceGeneration, WorkspaceGenerationPublisher};
 pub use store::{RuntimeServerWorkspaceStore, prepare_runtime_server_workspace_store};
 mod retirement;

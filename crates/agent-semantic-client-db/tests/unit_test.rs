@@ -1,5 +1,7 @@
 #![deny(dead_code)]
 
+#[path = "unit/agent_session_dispatch_ipc.rs"]
+mod agent_session_dispatch_ipc;
 #[path = "unit/agent_session_interactive_loop.rs"]
 mod agent_session_interactive_loop;
 #[path = "unit/agent_session_lifecycle_p0.rs"]
@@ -34,14 +36,14 @@ mod projection_fixture;
 mod provider_incremental_probe_batch;
 #[path = "unit/provider_treesitter_read.rs"]
 mod provider_treesitter_read;
+#[path = "unit/runtime_cache_control.rs"]
+mod runtime_cache_control;
 #[path = "unit/runtime_generation_admission_gate.rs"]
 mod runtime_generation_admission_gate;
 #[path = "unit/runtime_server_admission_catalog.rs"]
 mod runtime_server_admission_catalog;
 #[path = "unit/runtime_server_control.rs"]
 mod runtime_server_control;
-#[path = "unit/runtime_cache_control.rs"]
-mod runtime_cache_control;
 #[path = "unit/runtime_server_diagnostics.rs"]
 mod runtime_server_diagnostics;
 #[path = "unit/runtime_server_generation_admission.rs"]
@@ -52,6 +54,8 @@ mod runtime_server_generation_restore;
 mod runtime_server_graph_turbo;
 #[path = "unit/runtime_server_hook_evaluation.rs"]
 mod runtime_server_hook_evaluation;
+#[path = "unit/runtime_server_opentelemetry_test.rs"]
+mod runtime_server_opentelemetry_test;
 #[path = "unit/runtime_server_overlay_admission.rs"]
 mod runtime_server_overlay_admission;
 #[path = "unit/runtime_server_runtime.rs"]

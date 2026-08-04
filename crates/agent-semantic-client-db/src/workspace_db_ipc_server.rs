@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use tokio::io::BufStream;
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::workspace_db_ipc::{
@@ -230,12 +231,13 @@ async fn dispatch_workspace_db_session_operation(
         | WorkspaceDbIpcOperation::EnsureRuntimeGeneration { .. }
         | WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator { .. }
         | WorkspaceDbIpcOperation::ReadRuntimeGenerationDurability { .. }
+        | WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { .. }
         | WorkspaceDbIpcOperation::EvaluateHook { .. }
         | WorkspaceDbIpcOperation::EvaluateGraphTurbo { .. } => Err(
             "canonical generation admission is only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
-        WorkspaceDbIpcOperation::PublishCodexMultiAgentControlPlane { .. }
+        WorkspaceDbIpcOperation::RefreshCodexMultiAgentControlPlane { .. }
         | WorkspaceDbIpcOperation::ReadCodexMultiAgentControlPlane { .. } => Err(
             "Codex multi-agent control-plane operations are only accepted by the Runtime Server data plane"
                 .to_owned(),
@@ -405,17 +407,26 @@ mod generation;
 #[path = "workspace_db_ipc_server_graph_turbo.rs"]
 mod graph_turbo;
 
+#[path = "workspace_db_ipc_server_cache_control.rs"]
+mod cache_control;
+#[path = "workspace_db_ipc_server_codex_control_plane.rs"]
+mod codex_control_plane;
+#[path = "workspace_db_ipc_server_generation_repair.rs"]
+mod generation_repair;
+
 /// Serve workspace-scoped data-plane requests through the single Runtime Server.
 ///
 /// Unlike the removed per-workspace owner transport, the endpoint authenticates
 /// the daemon while each request carries the workspace identity used to select
 /// the server-resident registry entry.
 pub async fn serve_runtime_server_workspace_stream(
-    stream: &mut UnixStream,
+    stream: UnixStream,
     endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
     registry: &WorkspaceDbRegistry,
     memory_registry: &crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
-    generation_admission: Option<&crate::runtime_server_admission::WorkspaceGenerationAdmission>,
+    generation_admission: Option<
+        &std::sync::Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
+    >,
     owner_projection_builder: Option<
         &crate::runtime_server_workspace::WorkspaceOwnerProjectionBuilder,
     >,
@@ -427,9 +438,10 @@ pub async fn serve_runtime_server_workspace_stream(
     >,
     mut drain: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), String> {
+    let mut stream = BufStream::new(stream);
     loop {
         let request = tokio::select! {
-            request = read_optional_frame::<WorkspaceDbIpcRequest>(&mut *stream) => request?,
+            request = read_optional_frame::<WorkspaceDbIpcRequest>(&mut stream) => request?,
             changed = drain.changed() => {
                 let _ = changed;
                 return Ok(());
@@ -482,6 +494,17 @@ pub async fn serve_runtime_server_workspace_stream(
             }
         } else {
             match request.operation {
+                WorkspaceDbIpcOperation::CacheControl {
+                    request: cache_request,
+                } => {
+                    cache_control::evaluate(
+                        memory_registry,
+                        generation_admission.map(std::sync::Arc::as_ref),
+                        &request.workspace_identity,
+                        cache_request,
+                    )
+                    .await
+                }
                 WorkspaceDbIpcOperation::ReadRuntimeSelector {
                     project_root,
                     projection_kind,
@@ -546,7 +569,7 @@ pub async fn serve_runtime_server_workspace_stream(
                 } => {
                     generation::admit_mutation(
                         memory_registry,
-                        generation_admission,
+                        generation_admission.map(std::sync::Arc::as_ref),
                         &request.workspace_identity,
                         mutation_id,
                         project_root,
@@ -622,7 +645,7 @@ pub async fn serve_runtime_server_workspace_stream(
                                                         "runtime-generation-locator-repair-{}",
                                                         request.request_id
                                                     ),
-                                                    request.workspace_identity.clone(),
+                    request.workspace_identity.clone(),
                                                     &project_root,
                                                 )
                                                 .await?;
@@ -642,40 +665,24 @@ pub async fn serve_runtime_server_workspace_stream(
                                 }
                                 crate::runtime_server_workspace::PublishedWorkspaceGenerationState::Missing
                                 | crate::runtime_server_workspace::PublishedWorkspaceGenerationState::RecoveryRequired { .. } => {
-                                    let candidate = crate::runtime_server_admission::discover_workspace_generation_candidate(
-                                        &project_root,
-                                    )
-                                    .await?;
-                                    let admitted = admission
-                                        .admit(
-                                            request.workspace_identity.clone(),
-                                            project_root.clone(),
-                                            candidate,
-                                        )
-                                        .await?;
-                                    let terminal = if admitted.state
-                                        == crate::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
-                                    {
-                                        admission
-                                            .wait_terminal(
-                                                &request.workspace_identity,
-                                                &project_root,
-                                            )
-                                            .await
-                                    } else {
-                                        Ok(admitted)
-                                    }?;
-                                    let commit = terminal.commit.ok_or_else(|| {
-                                        terminal.error.unwrap_or_else(|| {
-                                            "workspace generation reconciliation completed without a commit"
-                                                .to_owned()
-                                        })
-                                    })?;
-                                    crate::runtime_server_admission::WorkspaceGenerationReadinessReceipt::new(
+                let queued = generation_repair::enqueue(
+                    std::sync::Arc::clone(admission),
                                         request.workspace_identity.clone(),
-                                        commit,
-                                        true,
-                                    )
+                    project_root .clone(),
+                                    )?;
+                                    return Err(if queued {
+                                        format!(
+                                            "workspace generation repair queued in Runtime Server background: workspaceIdentity={} projectRoot={}",
+                                            request.workspace_identity,
+                                            project_root.display()
+                                        )
+                                    } else {
+                                        format!(
+                                            "workspace generation repair is already queued: workspaceIdentity={} projectRoot={}",
+                                            request.workspace_identity,
+                                            project_root.display()
+                                        )
+                                    });
                                 }
                             }
                             }
@@ -719,42 +726,26 @@ pub async fn serve_runtime_server_workspace_stream(
                     agent_session::evaluate(agent_session_registry_owner, project_root, operation)
                         .await
                 }
-                WorkspaceDbIpcOperation::PublishCodexMultiAgentControlPlane { projection } => {
-                    if projection.workspace_server.workspace_identity != request.workspace_identity
-                    {
-                        WorkspaceDbIpcResult::Failed {
-                            code: "runtime-server-codex-control-plane-workspace-mismatch"
-                                .to_owned(),
-                            message: format!(
-                                "Codex control-plane workspace identity must match the Runtime Server request: request={} projection={}",
-                                request.workspace_identity,
-                                projection.workspace_server.workspace_identity
-                            ),
-                        }
-                    } else {
-                        match codex_multi_agent_control_plane_owner
-                            .publish(projection)
-                            .await
-                        {
-                            Ok(receipt) => {
-                                WorkspaceDbIpcResult::CodexMultiAgentControlPlanePublication {
-                                    receipt,
-                                }
-                            }
-                            Err(message) => WorkspaceDbIpcResult::Failed {
-                                code: "runtime-server-codex-control-plane-publication-failed"
-                                    .to_owned(),
-                                message,
-                            },
-                        }
-                    }
+                WorkspaceDbIpcOperation::RefreshCodexMultiAgentControlPlane {
+                    project_id,
+                    root_session_id,
+                } => {
+                    codex_control_plane::refresh(
+                        &request.workspace_identity,
+                        agent_session_registry_owner,
+                        codex_multi_agent_control_plane_owner,
+                        project_id,
+                        root_session_id,
+                    )
+                    .await
                 }
                 WorkspaceDbIpcOperation::ReadCodexMultiAgentControlPlane { root_session_id } => {
-                    let projection = codex_multi_agent_control_plane_owner
-                        .read(&request.workspace_identity, &root_session_id)
-                        .await
-                        .map(|projection| projection.as_ref().clone());
-                    WorkspaceDbIpcResult::CodexMultiAgentControlPlane { projection }
+                    codex_control_plane::read(
+                        &request.workspace_identity,
+                        codex_multi_agent_control_plane_owner,
+                        root_session_id,
+                    )
+                    .await
                 }
                 WorkspaceDbIpcOperation::EvaluateHook {
                     project_root,
@@ -821,6 +812,21 @@ pub async fn serve_runtime_server_workspace_stream(
                         Ok(lookup) => WorkspaceDbIpcResult::SourceIndex { lookup },
                         Err(message) => WorkspaceDbIpcResult::Failed {
                             code: "runtime-server-source-index-read-failed".to_owned(),
+                            message,
+                        },
+                    }
+                }
+                WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority { project_root } => {
+                    match memory_registry.search_generation_authority_open_receipt(
+                        &request.workspace_identity,
+                        Path::new(&project_root),
+                    ) {
+                        Ok(receipt) => {
+                            WorkspaceDbIpcResult::RuntimeSearchGenerationAuthority { receipt }
+                        }
+                        Err(message) => WorkspaceDbIpcResult::Failed {
+                            code: "runtime-server-search-generation-authority-read-failed"
+                                .to_owned(),
                             message,
                         },
                     }
@@ -898,7 +904,7 @@ pub async fn serve_runtime_server_workspace_stream(
             }
         };
         write_frame(
-            &mut *stream,
+            &mut stream,
             &WorkspaceDbIpcResponse {
                 schema_id: WORKSPACE_DB_OWNER_RESPONSE_SCHEMA_ID.to_owned(),
                 schema_version: WORKSPACE_DB_OWNER_SCHEMA_VERSION.to_owned(),

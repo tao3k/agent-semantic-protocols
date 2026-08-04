@@ -171,6 +171,7 @@ fn ensure_agent_session_runtime_server(
         tokio::time::Instant::now(),
         "agent-session",
         "runtime-server-healthcheck",
+        project_root,
         async {
             Ok(
                 super::runtime_server::probe_healthy_runtime_server_at(&state.state_home)

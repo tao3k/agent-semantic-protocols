@@ -1,12 +1,17 @@
 //! Resident Runtime Server generation reuse regressions.
 
+use agent_semantic_client_db::WorkspaceDbRegistry;
+use agent_semantic_client_db::runtime_server::{RuntimeServer, RuntimeServerExit};
 use agent_semantic_client_db::runtime_server_workspace::{
     RuntimeServerWorkspaceRegistry, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
     WorkspaceRecoverySource, WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorRead,
-    WorkspaceSelectorSnapshot,
+    WorkspaceSearchGenerationAuthority, WorkspaceSelectorSnapshot,
 };
+use agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession;
 use std::sync::Arc;
 use tempfile::tempdir;
+
+use super::runtime_server_control::fixture_endpoint;
 
 fn owner(path: &str, selector: &str, bytes: &[u8]) -> WorkspaceOwnerSnapshot {
     WorkspaceOwnerSnapshot {
@@ -28,8 +33,19 @@ fn generation(
     epoch: u64,
     owner: WorkspaceOwnerSnapshot,
 ) -> WorkspaceMemoryGeneration {
+    generation_with_owners(workspace_identity, project_root, epoch, vec![owner])
+}
+
+fn generation_with_owners(
+    workspace_identity: &str,
+    project_root: &std::path::Path,
+    epoch: u64,
+    owners: Vec<WorkspaceOwnerSnapshot>,
+) -> WorkspaceMemoryGeneration {
     let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_hashes(
-        [(owner.owner_path.clone(), owner.content_digest.clone())],
+        owners
+            .iter()
+            .map(|owner| (owner.owner_path.clone(), owner.content_digest.clone())),
     );
     let source_snapshot = workspace_snapshot.evidence(
         agent_semantic_content_identity::SourceSnapshotKind::Filesystem,
@@ -51,10 +67,64 @@ fn generation(
                 blake3::hash(b"resident-ready-fixture-module-graph").to_hex()
             ),
             project_resolutions: Vec::new(),
-            owners: vec![owner],
+            owners,
         },
     )
     .expect("typed resident ready generation")
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn search_generation_authority_wire_size_is_constant_in_owner_count() {
+    let temporary = tempdir().expect("temporary runtime root");
+    let project_root = temporary.path().join("authority-wire-size");
+    let registry = RuntimeServerWorkspaceRegistry::new(temporary.path().join("runtime"))
+        .expect("resident registry");
+    let owners = (0..512)
+        .map(|index| {
+            let path = format!("src/generated-{index}.rs");
+            let selector = format!("rust://{path}#item/function/generated_{index}");
+            owner(&path, &selector, b"fn generated() {}")
+        })
+        .collect();
+    registry
+        .publish(
+            "authority-wire-size",
+            WorkspaceRecoverySource::TursoGeneration,
+            generation_with_owners("workspace-authority-wire-size", &project_root, 1, owners),
+        )
+        .await
+        .expect("publish large resident generation");
+    let lease = registry
+        .lease("workspace-authority-wire-size", &project_root)
+        .expect("large generation lease");
+    let authority = WorkspaceSearchGenerationAuthority::from_lease(&lease);
+    let wire = serde_json::to_vec(&authority).expect("encode compact authority");
+    assert!(
+        wire.len() < 2_048,
+        "search generation authority must remain O(1) and below 2KiB: bytes={}",
+        wire.len()
+    );
+    assert!(
+        !wire
+            .windows(b"src/generated-511.rs".len())
+            .any(|window| window == b"src/generated-511.rs"),
+        "search generation authority leaked workspace leaf paths"
+    );
+    let receipt = registry
+        .search_generation_authority_open_receipt("workspace-authority-wire-size", &project_root)
+        .expect("open shared authority pointer");
+    let receipt_wire = serde_json::to_vec(&receipt).expect("encode authority open receipt");
+    assert!(
+        receipt_wire.len() < 2_560,
+        "authority open receipt must remain O(1) and below 2.5KiB: bytes={}",
+        receipt_wire.len()
+    );
+    assert!(
+        !receipt_wire
+            .windows(b"src/generated-511.rs".len())
+            .any(|window| window == b"src/generated-511.rs"),
+        "authority open receipt leaked workspace leaf paths"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -235,4 +305,173 @@ async fn runtime_shutdown_drains_every_workspace_writer_lane() {
         .await
         .expect_err("shutdown writer lane must reject new work");
     assert!(error.contains("writer lane is unavailable"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn concurrent_sessions_reuse_one_resident_search_generation_authority() {
+    let temporary = tempdir().expect("temporary Runtime Server root");
+    let project_root = temporary.path().join("resident-search-authority");
+    tokio::fs::create_dir_all(&project_root)
+        .await
+        .expect("create search authority project root");
+    let endpoint = fixture_endpoint(&temporary, 41).await;
+    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
+        .await
+        .expect("bind Runtime Server");
+    let registry = Arc::clone(server.workspace_registry());
+    registry
+        .publish(
+            "resident-search-authority",
+            WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                "workspace-search-authority",
+                &project_root,
+                1,
+                owner(
+                    "src/lib.rs",
+                    "rust://src/lib.rs#item/function/search_authority",
+                    b"fn search_authority() {}",
+                ),
+            ),
+        )
+        .await
+        .expect("publish resident search generation");
+    let shutdown = server.shutdown_handle();
+    let server = tokio::spawn(server.serve());
+
+    let ready = Arc::new(tokio::sync::Barrier::new(64));
+    let mut readers = Vec::with_capacity(64);
+    for _ in 0..64 {
+        let endpoint = endpoint.clone();
+        let project_root = project_root.clone();
+        let ready = Arc::clone(&ready);
+        readers.push(tokio::spawn(async move {
+            let session = WorkspaceDbIpcSession::for_runtime_server(
+                &endpoint,
+                "workspace-search-authority".to_owned(),
+                project_root.clone(),
+            );
+            let cold_started = tokio::time::Instant::now();
+            session
+                .runtime_search_generation_authority()
+                .await
+                .expect("prewarm resident search generation authority");
+            let cold_latency = cold_started.elapsed();
+            ready.wait().await;
+            let mut latencies = Vec::with_capacity(32);
+            for _ in 0..32 {
+                let started = tokio::time::Instant::now();
+                let authority = session
+                    .runtime_search_generation_authority()
+                    .await
+                    .expect("read resident search generation authority");
+                latencies.push(started.elapsed());
+                assert_eq!(authority.workspace_identity, "workspace-search-authority");
+                assert_eq!(authority.project_root, project_root.display().to_string());
+                assert_eq!(
+                    authority.source_snapshot.root_digest,
+                    authority.workspace_generation.root_digest
+                );
+            }
+            (cold_latency, latencies)
+        }));
+    }
+    let mut cold_latencies = Vec::with_capacity(64);
+    let mut latencies = Vec::with_capacity(64 * 32);
+    for reader in readers {
+        let (cold_latency, warm_latencies) = reader.await.expect("join authority reader");
+        cold_latencies.push(cold_latency);
+        latencies.extend(warm_latencies);
+    }
+    cold_latencies.sort_unstable();
+    latencies.sort_unstable();
+    let cold_p99 = cold_latencies[cold_latencies.len() * 99 / 100];
+    let concurrent_p99 = latencies[latencies.len() * 99 / 100];
+    assert!(
+        cold_p99 < std::time::Duration::from_millis(50),
+        "resident search generation authority cold p99 exceeded 50ms: {cold_p99:?}"
+    );
+    assert!(
+        concurrent_p99 < std::time::Duration::from_millis(1),
+        "resident search generation authority concurrent p99 exceeded 1ms: {concurrent_p99:?}"
+    );
+    let warm_session = WorkspaceDbIpcSession::for_runtime_server(
+        &endpoint,
+        "workspace-search-authority".to_owned(),
+        project_root.clone(),
+    );
+    let initial_authority = warm_session
+        .runtime_search_generation_authority()
+        .await
+        .expect("prewarm sequential authority lane");
+    assert_eq!(initial_authority.active_epoch, 1);
+    registry
+        .publish(
+            "resident-search-authority-epoch-2",
+            WorkspaceRecoverySource::TursoGeneration,
+            generation(
+                "workspace-search-authority",
+                &project_root,
+                2,
+                owner(
+                    "src/lib.rs",
+                    "rust://src/lib.rs#item/function/search_authority",
+                    b"fn search_authority() { epoch_2() }",
+                ),
+            ),
+        )
+        .await
+        .expect("publish next resident search generation");
+    assert_eq!(
+        warm_session
+            .runtime_search_generation_authority()
+            .await
+            .expect("observe next generation through stable pointer")
+            .active_epoch,
+        2,
+        "mapped authority pointer must observe publication without reopening IPC"
+    );
+    let hot_counter_baseline = registry.data_plane_counters();
+    let mut service_latencies = Vec::with_capacity(1_000);
+    for _ in 0..1_000 {
+        let started = tokio::time::Instant::now();
+        warm_session
+            .runtime_search_generation_authority()
+            .await
+            .expect("read sequential resident search generation authority");
+        service_latencies.push(started.elapsed());
+    }
+    service_latencies.sort_unstable();
+    let service_p50 = service_latencies[service_latencies.len() * 50 / 100];
+    let service_p95 = service_latencies[service_latencies.len() * 95 / 100];
+    let service_p99 = service_latencies[service_latencies.len() * 99 / 100];
+    let service_max = service_latencies[service_latencies.len() - 1];
+    eprintln!(
+        "resident-search-authority sessions=64 requests={} coldP99Micros={} concurrentP99Micros={} serviceP50Micros={} serviceP95Micros={} serviceP99Micros={} serviceMaxMicros={} workspaceCount={} counters={:?}",
+        latencies.len(),
+        cold_p99.as_micros(),
+        concurrent_p99.as_micros(),
+        service_p50.as_micros(),
+        service_p95.as_micros(),
+        service_p99.as_micros(),
+        service_max.as_micros(),
+        registry.workspace_count(),
+        registry.data_plane_counters(),
+    );
+    assert!(
+        service_p99 < std::time::Duration::from_millis(1),
+        "resident search generation authority service p99 exceeded 1ms: {service_p99:?}"
+    );
+    registry
+        .data_plane_counters()
+        .delta_since(&hot_counter_baseline)
+        .validate_zero_io()
+        .expect("warm authority pointer reads must perform zero runtime data-plane I/O");
+    assert_eq!(registry.workspace_count(), 1);
+
+    shutdown.shutdown();
+    assert_eq!(
+        server.await.expect("join Runtime Server").expect("serve"),
+        RuntimeServerExit::ShutdownRequested
+    );
 }

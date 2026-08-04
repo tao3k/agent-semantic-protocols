@@ -52,3 +52,14 @@ pub fn read_source_index_via_runtime_server(
         session.read_source_index(&request).await
     })
 }
+
+/// Execute one cache-control request through the resident Runtime Server.
+pub fn cache_control_via_runtime_server(
+    request: super::RuntimeCacheControlRequest,
+) -> Result<super::RuntimeCacheControlReceipt, String> {
+    let project_root = PathBuf::from(request.project_root());
+    crate::engine::facade::block_on_db_engine_async(async move {
+        let session = connect_runtime_server_workspace_session(&project_root).await?;
+        session.cache_control(request).await
+    })
+}

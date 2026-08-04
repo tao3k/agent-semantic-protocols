@@ -1,18 +1,46 @@
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::runtime_server::RuntimeServerEvent;
 
 const DIAGNOSTIC_SCHEMA_ID: &str = "agent.semantic-protocols.runtime-server-diagnostic";
+const DIAGNOSTIC_JOURNAL_SCHEMA_ID: &str =
+    "agent.semantic-protocols.runtime-server-diagnostic-journal";
+const DIAGNOSTIC_JOURNAL_CAPACITY: usize = 64;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeServerDiagnosticReceipt<'a> {
     schema_id: &'static str,
     schema_version: &'static str,
+    sequence: u64,
     event: &'a RuntimeServerEvent,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeServerDiagnosticJournalReceipt<'a> {
+    schema_id: &'static str,
+    schema_version: &'static str,
+    events: &'a std::collections::VecDeque<RuntimeServerDiagnosticJournalEntry>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeServerDiagnosticJournalEntry {
+    sequence: u64,
+    observed_unix_millis: u64,
+    event: serde_json::Value,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeServerDiagnosticJournalSnapshot {
+    schema_id: String,
+    schema_version: String,
+    events: std::collections::VecDeque<RuntimeServerDiagnosticJournalEntry>,
 }
 
 /// Owns the bounded latest-event diagnostic lane for one Runtime Server.
@@ -32,10 +60,17 @@ impl RuntimeServerDiagnostics {
                 )
             })?;
         }
+        let journal_path = receipt_path.with_file_name("runtime-server-diagnostic-journal.v1.json");
+        let (initial_sequence, initial_journal) = load_journal(&journal_path).await?;
         let (sender, mut receiver) = mpsc::unbounded_channel();
         let task = tokio::spawn(async move {
+            let mut sequence = initial_sequence;
+            let mut journal = initial_journal;
             while let Some(event) = receiver.recv().await {
-                write_latest_event(&receipt_path, &event).await?;
+                sequence = sequence.saturating_add(1);
+                write_latest_event(&receipt_path, sequence, &event).await?;
+                append_journal_event(&mut journal, sequence, event)?;
+                write_journal(&journal_path, &journal).await?;
             }
             Ok(())
         });
@@ -49,10 +84,124 @@ impl RuntimeServerDiagnostics {
     }
 }
 
-async fn write_latest_event(path: &Path, event: &RuntimeServerEvent) -> Result<(), String> {
+fn append_journal_event(
+    journal: &mut std::collections::VecDeque<RuntimeServerDiagnosticJournalEntry>,
+    sequence: u64,
+    event: RuntimeServerEvent,
+) -> Result<(), String> {
+    if journal.len() == DIAGNOSTIC_JOURNAL_CAPACITY {
+        journal.pop_front();
+    }
+    journal.push_back(RuntimeServerDiagnosticJournalEntry {
+        sequence,
+        observed_unix_millis: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .try_into()
+            .unwrap_or(u64::MAX),
+        event: serde_json::to_value(event).map_err(|error| {
+            format!("failed to encode Runtime Server diagnostic event: {error}")
+        })?,
+    });
+    Ok(())
+}
+
+async fn load_journal(
+    path: &Path,
+) -> Result<
+    (
+        u64,
+        std::collections::VecDeque<RuntimeServerDiagnosticJournalEntry>,
+    ),
+    String,
+> {
+    let bytes = match tokio::fs::read(path).await {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((
+                0,
+                std::collections::VecDeque::with_capacity(DIAGNOSTIC_JOURNAL_CAPACITY),
+            ));
+        }
+        Err(error) => {
+            return Err(format!(
+                "failed to read Runtime Server diagnostic journal {}: {error}",
+                path.display()
+            ));
+        }
+    };
+    let snapshot: RuntimeServerDiagnosticJournalSnapshot =
+        serde_json::from_slice(&bytes).map_err(|error| {
+            format!(
+                "failed to decode Runtime Server diagnostic journal {}: {error}",
+                path.display()
+            )
+        })?;
+    if snapshot.schema_id != DIAGNOSTIC_JOURNAL_SCHEMA_ID || snapshot.schema_version != "1" {
+        return Err(format!(
+            "unsupported Runtime Server diagnostic journal contract at {}: schemaId={} schemaVersion={}",
+            path.display(),
+            snapshot.schema_id,
+            snapshot.schema_version
+        ));
+    }
+    if snapshot.events.len() > DIAGNOSTIC_JOURNAL_CAPACITY {
+        return Err(format!(
+            "Runtime Server diagnostic journal at {} exceeds capacity {}",
+            path.display(),
+            DIAGNOSTIC_JOURNAL_CAPACITY
+        ));
+    }
+    let mut previous_sequence = 0_u64;
+    for entry in &snapshot.events {
+        if entry.sequence <= previous_sequence {
+            return Err(format!(
+                "Runtime Server diagnostic journal at {} has non-increasing sequence {} after {}",
+                path.display(),
+                entry.sequence,
+                previous_sequence
+            ));
+        }
+        previous_sequence = entry.sequence;
+    }
+    Ok((previous_sequence, snapshot.events))
+}
+
+async fn write_journal(
+    path: &Path,
+    events: &std::collections::VecDeque<RuntimeServerDiagnosticJournalEntry>,
+) -> Result<(), String> {
+    let bytes = serde_json::to_vec(&RuntimeServerDiagnosticJournalReceipt {
+        schema_id: DIAGNOSTIC_JOURNAL_SCHEMA_ID,
+        schema_version: "1",
+        events,
+    })
+    .map_err(|error| format!("failed to encode Runtime Server diagnostic journal: {error}"))?;
+    let temporary = path.with_extension("json.tmp");
+    tokio::fs::write(&temporary, bytes).await.map_err(|error| {
+        format!(
+            "failed to write Runtime Server diagnostic journal {}: {error}",
+            temporary.display()
+        )
+    })?;
+    tokio::fs::rename(&temporary, path).await.map_err(|error| {
+        format!(
+            "failed to publish Runtime Server diagnostic journal {}: {error}",
+            path.display()
+        )
+    })
+}
+
+async fn write_latest_event(
+    path: &Path,
+    sequence: u64,
+    event: &RuntimeServerEvent,
+) -> Result<(), String> {
     let bytes = serde_json::to_vec(&RuntimeServerDiagnosticReceipt {
         schema_id: DIAGNOSTIC_SCHEMA_ID,
         schema_version: "1",
+        sequence,
         event,
     })
     .map_err(|error| format!("failed to encode Runtime Server diagnostic receipt: {error}"))?;

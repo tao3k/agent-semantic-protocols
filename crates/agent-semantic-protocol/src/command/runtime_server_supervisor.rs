@@ -153,7 +153,7 @@ fn configured_graph_turbo_python() -> Result<Option<PathBuf>, String> {
     )
 }
 
-fn configured_graph_turbo_python_at_state_home(
+pub(super) fn configured_graph_turbo_python_at_state_home(
     state_home: &Path,
     configured: Option<PathBuf>,
 ) -> Result<Option<PathBuf>, String> {
@@ -331,7 +331,7 @@ async fn install(protocol_home: &Path) -> Result<(), String> {
             .replace(
                 "@ASP_GRAPH_TURBO_PYTHON_ENV@",
                 &systemd_graph_turbo_environment(graph_turbo_python.as_deref())?,
-        );
+            );
         let definition_changed = atomic_write_if_changed(&target, rendered.as_bytes()).await?;
         if let Ok(receipt) = &runtime_reconciliation
             && server_owned_restart_is_authoritative(definition_changed, receipt.state)

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.dev/schemas/runtime-server-performance-query-receipt.v1.schema.json",
+  "title": "Runtime Server Performance Query Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "workspaceIdentity",
+    "surface",
+    "stage",
+    "budgetFailureCount"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-performance-query-receipt"
+    },
+    "schemaVersion": { "const": "1" },
+    "workspaceIdentity": { "type": "string", "minLength": 1 },
+    "surface": { "type": "string", "minLength": 1 },
+    "stage": { "type": "string", "minLength": 1 },
+    "budgetFailureCount": { "type": "integer", "minimum": 0 }
+  }
+}

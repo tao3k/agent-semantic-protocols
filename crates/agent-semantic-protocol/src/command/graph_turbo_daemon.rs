@@ -44,10 +44,7 @@ enum GraphTurboActorCommand {
 }
 
 type GraphTurboStartup = Pin<
-    Box<
-        dyn Future<Output = Result<(GraphTurboResidentProcess, PathBuf, String), String>>
-            + Send,
-    >,
+    Box<dyn Future<Output = Result<(GraphTurboResidentProcess, PathBuf, String), String>> + Send>,
 >;
 
 impl GraphTurboDaemon {
@@ -57,21 +54,44 @@ impl GraphTurboDaemon {
             None,
             "graph-turbo-runtime-artifact-not-configured",
         ));
-        let Some(configured) = std::env::var_os(PYTHON_ENV) else {
-            return Self {
-                status,
-                commands: None,
-                shutdown: None,
-                actor: None,
-            };
+        let configured_path = match std::env::var_os(PYTHON_ENV) {
+            Some(configured) => PathBuf::from(configured),
+            None => {
+            match crate::command::runtime_server_supervisor::configured_graph_turbo_python_at_state_home(
+                    state_home, None,
+                ) {
+                    Ok(Some(configured)) => configured,
+                    Ok(None) => {
+                        return Self {
+                            status,
+                            commands: None,
+                            shutdown: None,
+                            actor: None,
+                        };
+                    }
+                    Err(error) => {
+                        status.update(resident_status(
+                            GraphTurboResidentState::Unavailable,
+                            None,
+                            &error,
+                        ));
+                        return Self {
+                            status,
+                            commands: None,
+                            shutdown: None,
+                            actor: None,
+                        };
+                    }
+                }
+            }
         };
-        let configured_path = PathBuf::from(&configured);
         status.update(resident_status(
             GraphTurboResidentState::Starting,
             Some(configured_path.display().to_string()),
             "",
         ));
         let state_home = state_home.to_path_buf();
+        let configured = configured_path.clone().into_os_string();
         let startup = Box::pin(async move { start_resident(configured, &state_home).await });
         Self::start_configured(status, configured_path, startup)
     }

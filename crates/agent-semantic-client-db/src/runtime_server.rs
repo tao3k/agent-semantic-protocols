@@ -644,12 +644,10 @@ impl RuntimeServer {
         } = self;
         let (_lifecycle_state, lifecycle) =
             watch::channel(crate::runtime_server_control::RuntimeServerState::Healthy);
-        let mut restore_task = generation_admission
-            .clone()
-            .map(|admission| tokio::spawn(async move { admission.restore_registered().await }));
         // Socket liveness is Global; generation readiness is workspace-keyed.
-        // Catalog restoration therefore runs in the background and cannot hold
-        // the daemon in Starting behind one slow or incompatible workspace.
+        // Registered durable generations are restored on demand by the typed
+        // workspace admission path. Daemon startup must not materialize every
+        // catalog entry into resident memory.
         let (slot_count, loaded_entry_count) = registry.workspace_entry_counts();
         status_memory.publish(
             crate::runtime_server_control::RuntimeServerState::Healthy,
@@ -681,7 +679,7 @@ impl RuntimeServer {
                     ));
                 }
                 connection = data_listener.accept() => {
-                    let (mut stream, _) = connection.map_err(|error| {
+                    let (stream, _) = connection.map_err(|error| {
                         format!("failed to accept Runtime Server data-plane request: {error}")
                     })?;
                     let endpoint = endpoint.clone();
@@ -697,11 +695,11 @@ impl RuntimeServer {
                     let connection_drain = drain_receiver.clone();
                     connections.spawn(async move {
                         crate::workspace_db_ipc_server::serve_runtime_server_workspace_stream(
-                            &mut stream,
+                            stream,
                             &endpoint,
                             &registry,
                             &memory_registry,
-                            generation_admission.as_deref(),
+                            generation_admission.as_ref(),
                             owner_projection_builder.as_ref(),
                             hook_evaluation_builder.as_ref(),
                             graph_turbo_evaluation_builder.as_ref(),
@@ -741,51 +739,6 @@ impl RuntimeServer {
                             );
                         }
                         None => break RuntimeServerExit::ListenerClosed,
-                    }
-                }
-                restored = async {
-                    match restore_task.as_mut() {
-                        Some(task) => Some(task.await),
-                        None => std::future::pending().await,
-                    }
-                }, if restore_task.is_some() => {
-                    restore_task = None;
-                    let report = match restored.expect("restore task branch requires a task") {
-                        Ok(Ok(report)) => report,
-                        Ok(Err(error)) => {
-                            publish_event(
-                                events.as_ref(),
-                                RuntimeServerEvent::ConnectionRejected(format!(
-                                    "workspace generation restore is unavailable: {error}"
-                                )),
-                            );
-                            continue;
-                        }
-                        Err(error) => {
-                            publish_event(
-                                events.as_ref(),
-                                RuntimeServerEvent::ConnectionRejected(format!(
-                                    "workspace generation restore task failed: {error}"
-                                )),
-                            );
-                            continue;
-                        }
-                    };
-                    let (slot_count, loaded_entry_count) = registry.workspace_entry_counts();
-                    status_memory.publish(
-                        crate::runtime_server_control::RuntimeServerState::Healthy,
-                        slot_count
-                            .max(loaded_entry_count)
-                            .max(*workspace_count.borrow()),
-                    )?;
-                    for receipt in report.failed {
-                        publish_event(
-                            events.as_ref(),
-                            RuntimeServerEvent::WorkspaceGenerationRestoreFailed {
-                                workspace_identity: receipt.workspace_identity,
-                                error: receipt.error,
-                            },
-                        );
                     }
                 }
                 changed = workspace_count.changed() => {

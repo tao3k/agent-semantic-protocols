@@ -23,11 +23,17 @@ fs2 = { workspace = true }
 fs4 = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 parking_lot.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
 turso.workspace = true
 agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }
 blake3.workspace = true
 which = { workspace = true }
 dashmap = "6.2.1"
+
+[[test]]
+name = "runtime_server_opentelemetry_test"
+path = "tests/performance/runtime_server_opentelemetry_harness.rs"
 
 [[bench]]
 name = "turso_cache_hot_path"

@@ -39,6 +39,12 @@ agent-semantic-artifacts = { path = "crates/agent-semantic-artifacts" }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 parking_lot = "0.12.5"
+opentelemetry = { version = "0.32", features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", features = [
+    "trace",
+    "rt-tokio",
+    "experimental_trace_batch_span_processor_with_async_runtime",
+] }
 
 blake3 = "1"
 bytes = "1"

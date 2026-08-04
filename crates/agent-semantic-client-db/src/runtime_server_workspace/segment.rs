@@ -66,6 +66,7 @@ pub struct WorkspaceGenerationPublisher {
 struct WorkspaceGenerationPublisherState {
     pointer: WorkspaceGenerationPointerWriter,
     owner_identity_journal: super::owner_identity_journal::RuntimeOwnerIdentityJournalPublisher,
+    active_snapshot: tokio::sync::Mutex<Option<WorkspaceGenerationSnapshot>>,
 }
 
 impl WorkspaceGenerationPublisher {
@@ -115,7 +116,7 @@ impl WorkspaceGenerationPublisher {
                     .map_err(|error| {
                         format!("read workspace generation pointer task failed: {error}")
                     })??;
-                if let Some(active) = active {
+                if let Some(active) = &active {
                     active.validate()?;
                     owner_identity_journal
                         .rebase(&active.workspace_identity, &active.generation_digest)
@@ -124,6 +125,7 @@ impl WorkspaceGenerationPublisher {
                 Ok(WorkspaceGenerationPublisherState {
                     pointer,
                     owner_identity_journal,
+                    active_snapshot: tokio::sync::Mutex::new(active),
                 })
             })
             .await
@@ -133,8 +135,19 @@ impl WorkspaceGenerationPublisher {
         &self,
         generation: std::sync::Arc<WorkspaceMemoryGeneration>,
         previous_epoch_readable: bool,
-    ) -> Result<(WorkspaceGenerationSnapshot, MappedWorkspaceGeneration), String> {
+    ) -> Result<WorkspaceGenerationSnapshot, String> {
         let state = self.state().await?;
+        // Publication is a single-writer transition. Besides preventing pointer races, this
+        // lock lets retention distinguish the currently readable generation from abandoned
+        // or superseded segment files without guessing from epoch numbers.
+        let mut active_snapshot = state.active_snapshot.lock().await;
+        prune_obsolete_generation_segments(
+            &self.directory,
+            active_snapshot
+                .as_ref()
+                .map(|snapshot| Path::new(&snapshot.mmap_segment_path)),
+        )
+        .await?;
         let (generation, segment, exact_segment, durable_commit_digest) =
             tokio::task::spawn_blocking(move || {
                 generation.validate()?;
@@ -190,7 +203,6 @@ impl WorkspaceGenerationPublisher {
             .sync_all()
             .await
             .map_err(|error| format!("sync workspace generation directory: {error}"))?;
-        let mapped = MappedWorkspaceGeneration::open(&final_path).await?;
         let qualified_digest = |digest: &str| {
             if digest.starts_with("blake3-256:") {
                 digest.to_owned()
@@ -206,6 +218,9 @@ impl WorkspaceGenerationPublisher {
             active_epoch: generation.active_epoch,
             generation_digest: generation.generation_digest.clone(),
             root_depth: generation.root_depth,
+            source_kind: generation.source_snapshot.source_kind,
+            leaf_count: generation.workspace_generation.leaf_count,
+            owner_count: generation.workspace_generation.owner_count,
             provider_schema_digest: generation.provider_schema_digest.clone(),
             source_root_digest: qualified_digest(&generation.source_snapshot.root_digest),
             base_root_digest: generation
@@ -233,12 +248,51 @@ impl WorkspaceGenerationPublisher {
             .owner_identity_journal
             .rebase(&snapshot.workspace_identity, &snapshot.generation_digest)
             .await?;
-        Ok((snapshot, mapped))
+        *active_snapshot = Some(snapshot.clone());
+        Ok(snapshot)
     }
 
     pub fn pointer_path(&self) -> &Path {
         &self.pointer_path
     }
+}
+
+async fn prune_obsolete_generation_segments(
+    directory: &Path,
+    readable_generation_path: Option<&Path>,
+) -> Result<(), String> {
+    let readable_exact_path =
+        readable_generation_path.map(super::exact_segment::exact_projection_segment_path);
+    let mut entries = fs::read_dir(directory)
+        .await
+        .map_err(|error| format!("inspect workspace generation retention: {error}"))?;
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|error| format!("read workspace generation retention entry: {error}"))?
+    {
+        let path = entry.path();
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !file_name.starts_with("generation-") || !file_name.ends_with(".mmap") {
+            continue;
+        }
+        if readable_generation_path.is_some_and(|readable| path == readable)
+            || readable_exact_path
+                .as_ref()
+                .is_some_and(|readable| path == *readable)
+        {
+            continue;
+        }
+        fs::remove_file(&path).await.map_err(|error| {
+            format!(
+                "remove superseded workspace generation segment `{}`: {error}",
+                path.display()
+            )
+        })?;
+    }
+    Ok(())
 }
 
 async fn write_durable_pending(path: &Path, bytes: &[u8], context: &str) -> Result<(), String> {

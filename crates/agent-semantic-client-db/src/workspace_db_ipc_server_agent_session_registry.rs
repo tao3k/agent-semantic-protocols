@@ -14,6 +14,26 @@ pub(super) async fn run_operation(
             requested_db_path.display()
         ));
     }
+    let operation = match operation {
+        crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::Query {
+            project_id,
+            root_session_id,
+            name,
+        } => {
+            return Ok(
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::Sessions {
+                    sessions: registry
+                        .query_sessions_local(
+                            project_id,
+                            root_session_id.map(Into::into),
+                            name.map(Into::into),
+                        )
+                        .await?,
+                },
+            );
+        }
+        operation => operation,
+    };
     tokio::task::spawn_blocking(move || {
         use crate::workspace_db_ipc::{
             AgentSessionRegistryIpcOperation as Operation,
@@ -70,16 +90,10 @@ pub(super) async fn run_operation(
                 Ok(IpcResult::Registered { session })
             }
             Operation::Query {
-                project_id,
-                root_session_id,
-                name,
-            } => Ok(IpcResult::Sessions {
-                sessions: registry.query_sessions(
-                    project_id,
-                    root_session_id.map(Into::into),
-                    name.map(Into::into),
-                )?,
-            }),
+                project_id: _,
+                root_session_id: _,
+                name: _,
+            } => Err("agent-session query must use the async Runtime Server owner lane".to_owned()),
             Operation::SessionById {
                 project_id,
                 session_id,
@@ -146,6 +160,27 @@ pub(super) async fn run_operation(
                         dispatch_identity: &dispatch_identity,
                         command_digest: &command_digest,
                         delivery_target_override: delivery_target_override.as_deref(),
+                        now,
+                    },
+                )?,
+            }),
+            Operation::CompleteDispatch {
+                project_id,
+                root_session_id,
+                name,
+                dispatch_identity,
+                command_digest,
+                evidence_ref,
+                now,
+            } => Ok(IpcResult::DispatchCompleted {
+                lease: registry.complete_dispatch(
+                    crate::agent_session_registry::AgentSessionDispatchCompleteRequest {
+                        project_id: &project_id,
+                        root_session_id: &root_session_id,
+                        name: &name,
+                        dispatch_identity: &dispatch_identity,
+                        command_digest: &command_digest,
+                        evidence_ref: &evidence_ref,
                         now,
                     },
                 )?,

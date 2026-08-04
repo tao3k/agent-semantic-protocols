@@ -35,16 +35,10 @@ pub enum WorkspaceCanonicalMaterializationLoad {
     Incompatible { reason: String },
 }
 
-#[derive(Debug, Clone)]
-pub struct ValidatedWorkspaceCanonicalMaterialization(
-    std::sync::Arc<ValidatedWorkspaceCanonicalMaterializationInner>,
-);
-
 #[derive(Debug)]
-struct ValidatedWorkspaceCanonicalMaterializationInner {
+pub struct ValidatedWorkspaceCanonicalMaterialization {
     materialization: WorkspaceCanonicalMaterialization,
     index: std::sync::Arc<super::memory_backend::WorkspaceMemoryIndex>,
-    generation: std::sync::Arc<super::WorkspaceMemoryGeneration>,
 }
 
 impl ValidatedWorkspaceCanonicalMaterialization {
@@ -53,18 +47,89 @@ impl ValidatedWorkspaceCanonicalMaterialization {
         workspace_identity: &str,
     ) -> Result<Self, String> {
         materialization.validate_persisted(workspace_identity)?;
+        let prepare_index_started = std::time::Instant::now();
         let index = super::WorkspaceMemoryBackend::prepare_index(
             &materialization.owners,
             &materialization.relations,
         );
-        let generation = std::sync::Arc::new(materialization.clone().into_generation(0)?);
-        Ok(Self(std::sync::Arc::new(
-            ValidatedWorkspaceCanonicalMaterializationInner {
-                materialization,
-                index,
-                generation,
-            },
-        )))
+        let prepare_index_elapsed_micros = prepare_index_started
+            .elapsed()
+            .as_micros()
+            .min(u128::from(u64::MAX)) as u64;
+        let observation_started = std::time::Instant::now();
+        let owner_count = materialization.owners.len() as u64;
+        let selector_count = materialization
+            .owners
+            .iter()
+            .map(|owner| owner.selectors.len() as u64)
+            .sum();
+        let relation_count = materialization.relations.len() as u64;
+        let source_bytes = materialization
+            .owners
+            .iter()
+            .map(|owner| owner.bytes.len() as u64)
+            .sum();
+        let projection_bytes = materialization
+            .owners
+            .iter()
+            .flat_map(|owner| &owner.selectors)
+            .flat_map(|selector| &selector.derived_projections)
+            .map(|projection| projection.bytes.len() as u64)
+            .sum();
+        let observation_budget_micros = 800_000;
+        let mut prepare_index_observation =
+            crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+                "workspace-canonical-materialization",
+                "prepare-index",
+                prepare_index_elapsed_micros,
+                observation_budget_micros,
+                if prepare_index_elapsed_micros < observation_budget_micros {
+                    "within-budget"
+                } else {
+                    "budget-exceeded"
+                },
+            )
+            .with_materialization_metrics(
+                owner_count,
+                selector_count,
+                relation_count,
+                source_bytes,
+                projection_bytes,
+            );
+        prepare_index_observation.workspace_identity =
+            Some(materialization.workspace_identity.to_string());
+        let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(
+            prepare_index_observation,
+        );
+        let observation_elapsed_micros = observation_started
+            .elapsed()
+            .as_micros()
+            .min(u128::from(u64::MAX)) as u64;
+        let mut observation =
+            crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+                "workspace-canonical-materialization",
+                "payload-accounting",
+                observation_elapsed_micros,
+                observation_budget_micros,
+                if observation_elapsed_micros < observation_budget_micros {
+                    "within-budget"
+                } else {
+                    "budget-exceeded"
+                },
+            )
+            .with_materialization_metrics(
+                owner_count,
+                selector_count,
+                relation_count,
+                source_bytes,
+                projection_bytes,
+            );
+        observation.workspace_identity = Some(materialization.workspace_identity.to_string());
+        let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
+        Ok(Self {
+            materialization,
+            index,
+        })
     }
 
     pub(crate) fn into_parts(
@@ -72,20 +137,12 @@ impl ValidatedWorkspaceCanonicalMaterialization {
     ) -> (
         WorkspaceCanonicalMaterialization,
         std::sync::Arc<super::memory_backend::WorkspaceMemoryIndex>,
-        std::sync::Arc<super::WorkspaceMemoryGeneration>,
     ) {
-        match std::sync::Arc::try_unwrap(self.0) {
-            Ok(inner) => (inner.materialization, inner.index, inner.generation),
-            Err(inner) => (
-                inner.materialization.clone(),
-                std::sync::Arc::clone(&inner.index),
-                std::sync::Arc::clone(&inner.generation),
-            ),
-        }
+        (self.materialization, self.index)
     }
 
     pub fn as_materialization(&self) -> &WorkspaceCanonicalMaterialization {
-        &self.0.materialization
+        &self.materialization
     }
 }
 

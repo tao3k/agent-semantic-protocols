@@ -130,7 +130,6 @@ pub(super) enum WorkspaceWriteCommand {
         workspace_identity: String,
         materialization: WorkspaceCanonicalMaterialization,
         prepared_index: Arc<super::super::memory_backend::WorkspaceMemoryIndex>,
-        prepared_generation: Arc<WorkspaceMemoryGeneration>,
         reply: oneshot::Sender<Result<WorkspaceRecoveryReceipt, String>>,
     },
     RestoreCheckpoint {
@@ -750,7 +749,6 @@ async fn workspace_writer_lane(
                 workspace_identity,
                 materialization,
                 prepared_index,
-                prepared_generation,
                 reply,
             } => {
                 let resident_publication_started = tokio::time::Instant::now();
@@ -765,12 +763,30 @@ async fn workspace_writer_lane(
                 let active_epoch = active
                     .as_ref()
                     .map_or(0, |backend| backend.generation().active_epoch);
-                let target_epoch = active_epoch.saturating_add(1);
-                let generation = if prepared_generation.active_epoch == target_epoch {
-                    Ok(prepared_generation)
-                } else {
-                    materialization.into_generation(active_epoch).map(Arc::new)
-                };
+                let generation_build_started = tokio::time::Instant::now();
+                let generation = materialization.into_generation(active_epoch).map(Arc::new);
+                let generation_build_elapsed_micros = generation_build_started
+                    .elapsed()
+                    .as_micros()
+                    .min(u128::from(u64::MAX))
+                    as u64;
+                let generation_build_budget_micros = 800_000;
+                let mut generation_build_observation =
+                    crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+                        "workspace-canonical-materialization",
+                        "generation-build",
+                        generation_build_elapsed_micros,
+                        generation_build_budget_micros,
+                        if generation_build_elapsed_micros < generation_build_budget_micros {
+                            "within-budget"
+                        } else {
+                            "budget-exceeded"
+                        },
+                    );
+                generation_build_observation.workspace_identity = Some(workspace_identity.clone());
+                let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(
+                    generation_build_observation,
+                );
                 let result = match generation {
                     Ok(generation)
                         if active.as_ref().is_some_and(|backend| {
@@ -895,10 +911,8 @@ async fn workspace_writer_lane(
                                 tokio::task::yield_now().await;
 
                                 match publisher.publish(generation, active_epoch != 0).await {
-                                    Ok((_, mapped)) => {
-                                        counters.filesystem_reads.fetch_add(1, Ordering::Relaxed);
+                                    Ok(_) => {
                                         counters.filesystem_writes.fetch_add(1, Ordering::Relaxed);
-                                        current.send_replace(Some(mapped.backend()));
                                         durability.send_replace(Some(
                                             crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt::new(
                                                 workspace_identity,

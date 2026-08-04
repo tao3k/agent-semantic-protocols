@@ -1,0 +1,43 @@
+#+title: Non-cancellable cold generation admission
+#+property: schemaVersion 1
+
+* Problem
+
+An agent-facing exact query owns an 800ms foreground budget.  Cold workspace
+candidate discovery may exceed that budget.  If discovery and admission live
+only inside the request future, timeout cancellation leaves the Runtime Server
+with workspace state =missing=.  Repeated queries then repeat the same cold
+work and can never reach a warm generation.
+
+* Contract
+
+The Runtime Server must establish a durable background repair task before the
+foreground repair request can be cancelled.  Foreground timeout may end the
+client wait, but it must not cancel candidate discovery, generation admission,
+materialization, or publication.
+
+The first request may return a typed =generation-building= response.  A later
+request reads either the published generation or a typed terminal failure.
+It must not restart equivalent work while the same workspace repair is queued.
+
+* Ownership
+
+The Runtime Server owns the detached task.  The CLI and language provider do
+not spawn background work.  The task captures an =Arc= to generation admission
+and the stable workspace identity/project root, never a request-scoped borrow.
+
+Candidate discovery failure and admission failure must become server-observable
+terminal evidence.  Client disconnect is not a failure transition.
+
+* Performance gate
+
+Cold repair acknowledgement must complete within the agent-facing budget.
+The expensive discovery/materialization path executes after acknowledgement.
+Warm exact reads retain their existing performance gate.
+
+* Safety
+
+- At most one equivalent repair is active per workspace identity/project root.
+- Timeout after queued admission cannot return the workspace to =missing=.
+- A queued repair never authorizes reads before publication.
+- Publication continues to use the canonical generation admission owner.

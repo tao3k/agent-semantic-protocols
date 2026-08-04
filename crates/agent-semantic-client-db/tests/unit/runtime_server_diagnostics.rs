@@ -30,3 +30,107 @@ async fn latest_event_receipt_is_bounded_and_atomically_replaced() {
     assert_eq!(receipt["event"]["detail"], "second");
     assert!(!path.with_extension("json.tmp").exists());
 }
+
+#[tokio::test]
+async fn diagnostic_journal_retains_the_latest_64_events() {
+    let root = tempfile::tempdir().expect("create diagnostic journal fixture");
+    let latest_path = root.path().join("runtime-server-diagnostic.v1.json");
+    let journal_path = root
+        .path()
+        .join("runtime-server-diagnostic-journal.v1.json");
+    let (sender, diagnostics) = RuntimeServerDiagnostics::start(latest_path)
+        .await
+        .expect("start diagnostics");
+    for sequence in 1..=65 {
+        sender
+            .send(RuntimeServerEvent::ConnectionRejected(format!(
+                "event-{sequence}"
+            )))
+            .expect("send journal event");
+    }
+    drop(sender);
+    diagnostics.join().await.expect("join diagnostics");
+
+    let receipt: serde_json::Value = serde_json::from_slice(
+        &tokio::fs::read(&journal_path)
+            .await
+            .expect("read diagnostic journal"),
+    )
+    .expect("decode diagnostic journal");
+    let events = receipt["events"].as_array().expect("journal events array");
+    assert_eq!(
+        receipt["schemaId"],
+        "agent.semantic-protocols.runtime-server-diagnostic-journal"
+    );
+    assert_eq!(events.len(), 64);
+    assert_eq!(events.first().expect("first event")["sequence"], 2);
+    assert_eq!(events.last().expect("last event")["sequence"], 65);
+    assert_eq!(
+        events.first().expect("first event")["event"]["detail"],
+        "event-2"
+    );
+    assert_eq!(
+        events.last().expect("last event")["event"]["detail"],
+        "event-65"
+    );
+    assert!(!journal_path.with_extension("json.tmp").exists());
+}
+
+#[tokio::test]
+async fn diagnostic_journal_continues_across_runtime_restarts() {
+    let root = tempfile::tempdir().expect("create restart diagnostic fixture");
+    let latest_path = root.path().join("runtime-server-diagnostic.v1.json");
+    for detail in ["before-restart-1", "before-restart-2"] {
+        let (sender, diagnostics) = RuntimeServerDiagnostics::start(latest_path.clone())
+            .await
+            .expect("start diagnostics before restart");
+        sender
+            .send(RuntimeServerEvent::ConnectionRejected(detail.to_owned()))
+            .expect("send diagnostic before restart");
+        drop(sender);
+        diagnostics.join().await.expect("join diagnostics");
+    }
+
+    let journal_path = root
+        .path()
+        .join("runtime-server-diagnostic-journal.v1.json");
+    let receipt: serde_json::Value = serde_json::from_slice(
+        &tokio::fs::read(&journal_path)
+            .await
+            .expect("read restart diagnostic journal"),
+    )
+    .expect("decode restart diagnostic journal");
+    let events = receipt["events"].as_array().expect("journal events array");
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0]["sequence"], 1);
+    assert_eq!(events[1]["sequence"], 2);
+    assert_eq!(events[0]["event"]["detail"], "before-restart-1");
+    assert_eq!(events[1]["event"]["detail"], "before-restart-2");
+}
+
+#[tokio::test]
+async fn diagnostic_journal_accepts_more_than_its_bound_and_publishes_only_the_latest_event() {
+    let root = tempfile::tempdir().expect("create bounded diagnostic fixture");
+    let path = root.path().join("runtime-server-diagnostic.v1.json");
+    let (sender, diagnostics) = RuntimeServerDiagnostics::start(path.clone())
+        .await
+        .expect("start bounded diagnostics");
+
+    for sequence in 1..=65 {
+        sender
+            .send(RuntimeServerEvent::ConnectionRejected(format!(
+                "event-{sequence}"
+            )))
+            .expect("send bounded diagnostic event");
+    }
+    drop(sender);
+    diagnostics.join().await.expect("join bounded diagnostics");
+
+    let receipt: serde_json::Value =
+        serde_json::from_slice(&tokio::fs::read(&path).await.expect("read latest receipt"))
+            .expect("decode latest receipt");
+    assert_eq!(receipt["sequence"], 65);
+    assert_eq!(receipt["event"]["kind"], "connection-rejected");
+    assert_eq!(receipt["event"]["detail"], "event-65");
+    assert!(!path.with_extension("json.tmp").exists());
+}

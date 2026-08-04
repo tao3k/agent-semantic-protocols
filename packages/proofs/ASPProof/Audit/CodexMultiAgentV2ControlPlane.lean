@@ -1,4 +1,5 @@
 import ASPProof.CodexMultiAgentV2ControlPlane
+import ASPProof.CodexMultiAgentV2RegistryMaterialization
 
 namespace ASPProof.Audit.CodexMultiAgentV2ControlPlane
 

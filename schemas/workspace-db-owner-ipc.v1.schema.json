@@ -601,6 +601,40 @@
               "enum": ["workspace-generation", "provider-owners", "syntax-rows"]
             }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "projectRoot",
+            "mutationId",
+            "changedPaths",
+            "removedPaths",
+            "fallbackPolicy"
+          ],
+          "properties": {
+            "action": { "const": "apply-owner-delta" },
+            "projectRoot": { "$ref": "#/$defs/identity" },
+            "mutationId": { "$ref": "#/$defs/identity" },
+            "changedPaths": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/identity" },
+              "uniqueItems": true
+            },
+            "removedPaths": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/identity" },
+              "uniqueItems": true
+            },
+            "fallbackPolicy": {
+              "enum": ["fail-closed", "full-generation"]
+            }
+          },
+          "anyOf": [
+            { "properties": { "changedPaths": { "minItems": 1 } } },
+            { "properties": { "removedPaths": { "minItems": 1 } } }
+          ]
         }
       ]
     },
@@ -964,6 +998,10 @@
         },
         "databaseOpensByClient": { "const": 0 },
         "writerQueueOwner": { "const": "runtime-server" },
+        "failure": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
         "mutationId": {
           "type": ["string", "null"]
         }

@@ -368,7 +368,7 @@ async fn checkpoint_restore_loads_once_then_serves_the_memory_backend() {
             b"fn run() {}",
         ),
     );
-    let (snapshot, _) = publisher
+    let snapshot = publisher
         .publish(source.into(), false)
         .await
         .expect("publish checkpoint");
@@ -464,6 +464,26 @@ async fn generation_pointer_never_exposes_a_torn_epoch_during_publication() {
             .active_epoch,
         32
     );
+    let mut retained_segments = Vec::new();
+    let mut entries = tokio::fs::read_dir(temporary.path().join("published"))
+        .await
+        .expect("read published generation directory");
+    while let Some(entry) = entries.next_entry().await.expect("read generation entry") {
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        if file_name.starts_with("generation-") && file_name.ends_with(".mmap") {
+            retained_segments.push(file_name);
+        }
+    }
+    retained_segments.sort();
+    assert_eq!(
+        retained_segments,
+        [
+            "generation-31.exact.mmap",
+            "generation-31.mmap",
+            "generation-32.exact.mmap",
+            "generation-32.mmap",
+        ]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -481,7 +501,7 @@ async fn a_truncated_next_checkpoint_never_replaces_the_readable_generation() {
             b"fn run() {}",
         ),
     );
-    let (snapshot, _) = publisher
+    let snapshot = publisher
         .publish(source.into(), false)
         .await
         .expect("publish checkpoint");

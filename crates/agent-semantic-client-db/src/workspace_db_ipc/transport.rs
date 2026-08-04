@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
 
 use super::protocol::{
@@ -52,7 +52,7 @@ pub async fn call_workspace_db_owner(
 }
 
 pub(crate) async fn read_frame<T: for<'de> Deserialize<'de>>(
-    stream: &mut UnixStream,
+    stream: &mut (impl AsyncRead + Unpin),
 ) -> Result<T, String> {
     read_optional_frame(stream)
         .await?
@@ -60,7 +60,7 @@ pub(crate) async fn read_frame<T: for<'de> Deserialize<'de>>(
 }
 
 pub(crate) async fn read_optional_frame<T: for<'de> Deserialize<'de>>(
-    stream: &mut UnixStream,
+    stream: &mut (impl AsyncRead + Unpin),
 ) -> Result<Option<T>, String> {
     let first_header = match stream.read_u32().await {
         Ok(header) => header,
@@ -103,7 +103,7 @@ pub(crate) async fn read_optional_frame<T: for<'de> Deserialize<'de>>(
 }
 
 pub(crate) async fn write_frame<T: Serialize>(
-    stream: &mut UnixStream,
+    stream: &mut (impl AsyncWrite + Unpin),
     value: &T,
 ) -> Result<(), String> {
     let body = serde_json::to_vec(value)
@@ -114,6 +114,10 @@ pub(crate) async fn write_frame<T: Serialize>(
         stream.write_u32(0).await.map_err(|error| {
             format!("failed to write Runtime Server data frame length: {error}")
         })?;
+        stream
+            .flush()
+            .await
+            .map_err(|error| format!("failed to flush Runtime Server data frame: {error}"))?;
         return Ok(());
     }
     let chunk_count = body.len().div_ceil(MAX_FRAME_BYTES);
@@ -131,5 +135,9 @@ pub(crate) async fn write_frame<T: Serialize>(
             .await
             .map_err(|error| format!("failed to write Runtime Server data frame: {error}"))?;
     }
+    stream
+        .flush()
+        .await
+        .map_err(|error| format!("failed to flush Runtime Server data frame: {error}"))?;
     Ok(())
 }

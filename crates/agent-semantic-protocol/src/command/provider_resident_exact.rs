@@ -16,6 +16,7 @@ pub(super) fn run_resident_exact_query(
         started,
         "query",
         "resident-exact-generation-open",
+        project_root,
         async move {
             let read = resident_exact_projection(language_id, project_root, &exact).await?;
             crate::exact_projection_trace::stage("mmap-generation-open", started);

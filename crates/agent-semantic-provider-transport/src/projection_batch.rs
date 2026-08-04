@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,31 @@ pub const PROJECTION_BATCH_REQUEST_SCHEMA_ID: &str =
 pub const PROJECTION_BATCH_RESPONSE_SCHEMA_ID: &str =
     "asp.provider-language-projection-batch-response.v1";
 pub const PROJECTION_BATCH_TRANSPORT: &str = "framed-stdin-v1";
+/// Maximum owners admitted to one short-lived provider projection process.
+pub const MAX_PROVIDER_PROJECTION_BATCH_OWNERS: usize = 32;
+/// Maximum aggregate source bytes admitted to one provider projection process.
+pub const MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES: usize = 4 * 1024 * 1024;
+
+/// Plans ordered provider-process batches without splitting an individual owner.
+pub fn provider_projection_batch_ranges(owner_sizes: &[usize]) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut start = 0;
+    while start < owner_sizes.len() {
+        let mut end = start;
+        let mut source_bytes = 0usize;
+        while end < owner_sizes.len() && end - start < MAX_PROVIDER_PROJECTION_BATCH_OWNERS {
+            let next_source_bytes = source_bytes.saturating_add(owner_sizes[end]);
+            if end > start && next_source_bytes > MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES {
+                break;
+            }
+            source_bytes = next_source_bytes;
+            end += 1;
+        }
+        ranges.push(start..end);
+        start = end;
+    }
+    ranges
+}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ProviderProjectionOwner {

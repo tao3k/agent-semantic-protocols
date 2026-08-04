@@ -261,6 +261,33 @@ impl WorkspaceGenerationAdmission {
         Ok(receipt)
     }
 
+    /// Rebuild the canonical server-owned cache generation under an exact-once mutation ID.
+    pub async fn admit_cache_rebuild(
+        &self,
+        mutation_id: impl Into<String>,
+        workspace_identity: impl Into<String>,
+        project_root: PathBuf,
+    ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
+        let mutation_id = mutation_id.into();
+        if mutation_id.trim().is_empty() {
+            return Err("workspace cache rebuild mutation id must be non-empty".to_owned());
+        }
+        let workspace_identity = workspace_identity.into();
+        if workspace_identity.trim().is_empty() {
+            return Err("workspace cache rebuild identity must be non-empty".to_owned());
+        }
+        if !project_root.is_absolute() {
+            return Err("workspace cache rebuild root must be absolute".to_owned());
+        }
+        self.admit_mutation(
+            mutation_id,
+            workspace_identity,
+            project_root,
+            Arc::new(std::collections::BTreeSet::new()),
+        )
+        .await
+    }
+
     async fn admit_mutation(
         &self,
         mutation_id: String,

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.dev/schemas/runtime-server-performance-observation.v1.schema.json",
+  "title": "Runtime Server Performance Observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "surface",
+    "stage",
+    "elapsedMicros",
+    "budgetMicros",
+    "budgetStatus"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.runtime-server-performance-observation"
+    },
+    "schemaVersion": { "const": "1" },
+    "surface": { "type": "string", "minLength": 1 },
+    "stage": { "type": "string", "minLength": 1 },
+    "workspaceIdentity": { "type": ["string", "null"], "minLength": 1 },
+    "languageId": { "type": ["string", "null"], "minLength": 1 },
+    "generationDigest": { "type": ["string", "null"], "minLength": 1 },
+    "runtimeArtifactDigest": { "type": ["string", "null"], "minLength": 1 },
+    "transportContractDigest": { "type": ["string", "null"], "minLength": 1 },
+    "elapsedMicros": { "type": "integer", "minimum": 0 },
+    "budgetMicros": { "type": "integer", "minimum": 1 },
+    "budgetStatus": { "type": "string", "minLength": 1 },
+    "failureReason": { "type": ["string", "null"], "minLength": 1 },
+    "retryAfterMs": { "type": ["integer", "null"], "minimum": 0 }
+  }
+}

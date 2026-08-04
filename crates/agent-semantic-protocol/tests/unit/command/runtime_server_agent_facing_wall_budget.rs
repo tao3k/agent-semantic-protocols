@@ -9,6 +9,7 @@ fn execution_slice_keeps_supervisor_and_reply_reserves() {
         std::time::Duration::from_millis(799),
         "search",
         "resident-workspace-generation-open",
+        std::path::Path::new("."),
     )
     .expect("799 ms is inside the awaited runtime execution slice");
 
@@ -21,12 +22,13 @@ fn execution_boundary_returns_schema_owned_failure() {
         std::time::Duration::from_millis(800),
         "agent-session",
         "runtime-server-reconcile",
+        std::path::Path::new("."),
     )
     .expect_err("800 ms is the strict awaited runtime boundary");
 
     assert!(failure.contains("agent.semantic-protocols.agent-facing-search-wall-failure"));
     assert!(failure.contains("agent-facing-search-wall-budget-exceeded"));
-    assert!(failure.contains("\"executionBudgetMicros\":800000"));
+    assert!(failure.contains("\"budgetMicros\":800000"));
 }
 
 #[test]

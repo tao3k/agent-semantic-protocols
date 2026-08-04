@@ -40,6 +40,39 @@ requests MUST enter the same RuntimeServer data-plane admission and writer queue
 both return one typed receipt containing the admitted generation identity and cache
 provenance.  Neither command owns an alternate CLI-side lifecycle.
 
+When RuntimeServer admission =Failed= is projected as =Stale=, the typed cache-control
+receipt MUST carry non-empty failure provenance owned by RuntimeServer.  Client code
+MUST NOT generate, synthesize, or overwrite that provenance.
+
+The v1 cache authority is the resident RuntimeServer, not the CLI process.  The server
+owns both the active in-memory generation lease and the durable canonical generation.
+Healthcheck MUST project these two server-owned states as one coherent cache view: an
+active Ready lease MUST NOT be reported as Missing merely because no durability
+transition receipt is present.
+
+One state home MUST have exactly one resident RuntimeServer.  The daemon MUST hold a
+stable Unix singleton socket for its complete lifetime in addition to the existing
+election guard and transport sockets.  Endpoint JSON is discovery metadata and MUST
+NOT be treated as the lock.  A later launcher that cannot bind the singleton socket
+MUST adopt or connect to the resident owner and exit without starting another server.
+It MUST NOT unlink a live singleton socket.  Stale socket recovery is permitted only
+while holding the election guard and after a kernel connection probe proves that no
+listener owns the socket.
+
+=status= remains read-only.  =source-index refresh= is the warm recovery operation: it
+MUST re-admit a compatible durable canonical generation as an active lease without a
+cold rebuild.  Only incompatible cache identity, absent canonical materialization, or
+explicit =rebuild-source-index= permits cold construction.
+
+Incremental cache work is internal to the resident server.  Changed and removed owner
+sets are coalesced by the existing writer queue under one stable =mutationId=, applied
+to syntax, source-index, EvidenceGraph, and query projections, and then published as
+one atomic generation.  Tree-sitter remains one public query surface; incremental is
+an internal execution strategy and MUST NOT become a sibling public result or trace.
+When an incremental delta cannot preserve cache identity or atomic publication, the
+server MUST fail closed or perform an explicit full-generation fallback and expose
+that fallback in its typed receipt.
+
 The sole v1 cache-control action set is =status=, =refresh-source-index=,
 =rebuild-source-index=, and explicitly scoped =invalidate=.  =status= is read-only.
 Every mutating action carries a stable =mutationId= and is serialized by the resident

@@ -8,6 +8,7 @@ pub use agent_session_registry::{
     AgentSessionModelObservationRef, AgentSessionModelObservationSource,
 };
 pub mod artifact_pointer_store;
+mod codex_multi_agent_control_plane_materializer;
 pub mod codex_multi_agent_control_plane_owner;
 pub mod context_run_mvcc;
 mod dependency_index;
@@ -21,6 +22,7 @@ mod runtime_server_agent_control_plane;
 pub mod runtime_server_control;
 pub mod runtime_server_diagnostics;
 pub mod runtime_server_observability;
+pub mod runtime_server_opentelemetry;
 pub mod runtime_server_runtime;
 pub mod runtime_server_workspace;
 mod source_index;

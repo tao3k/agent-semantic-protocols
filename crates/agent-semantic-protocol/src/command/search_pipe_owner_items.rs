@@ -37,12 +37,14 @@ pub(super) fn run_search_owner_items_query_command(
         tokio::time::Instant::now(),
         "search",
         "resident-owner-freshness-session",
+        &project_root,
         super::runtime_server::runtime_server_workspace_session_for_admission_async(&project_root),
     )?;
     let freshness = super::runtime_server::block_on_agent_facing_runtime_server_client(
         tokio::time::Instant::now(),
         "search",
         "resident-owner-freshness-ensure",
+        &project_root,
         session.ensure_runtime_owner(context.language_id, &owner_path),
     )?;
     freshness.validate()?;
@@ -50,6 +52,7 @@ pub(super) fn run_search_owner_items_query_command(
         tokio::time::Instant::now(),
         "search",
         "resident-exact-generation-open",
+        &project_root,
         super::runtime_server::runtime_server_workspace_exact_projection_client_async(
             &project_root,
         ),

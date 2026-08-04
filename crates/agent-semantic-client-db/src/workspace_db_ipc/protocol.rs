@@ -13,9 +13,11 @@ use crate::{
 };
 use agent_semantic_client_core::LanguageId;
 use std::path::{Path, PathBuf};
+use tokio::io::BufStream;
 use tokio::net::UnixStream;
 
 use super::transport::{read_frame, write_frame};
+use super::validation::{deserialize_changed_paths, deserialize_mutation_id};
 
 pub use crate::workspace_db_endpoint::{
     WorkspaceDbOwnerEndpoint, bind_workspace_db_owner, prepare_workspace_db_owner_endpoint,
@@ -32,50 +34,14 @@ fn workspace_db_ipc_read_lane_capacity() -> usize {
     crate::runtime_concurrency::RuntimeConcurrencyPlan::current().reader_limit()
 }
 
-fn deserialize_changed_paths<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let paths = Vec::<String>::deserialize(deserializer)?;
-    if paths.is_empty() {
-        return Err(serde::de::Error::custom(
-            "changedPaths must contain at least one normalized path",
-        ));
-    }
-    let mut unique = std::collections::BTreeSet::new();
-    for path in &paths {
-        if path.trim().is_empty() {
-            return Err(serde::de::Error::custom(
-                "changedPaths must not contain empty paths",
-            ));
-        }
-        if !unique.insert(path) {
-            return Err(serde::de::Error::custom(
-                "changedPaths must not contain duplicate paths",
-            ));
-        }
-    }
-    Ok(paths)
-}
-
-fn deserialize_mutation_id<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let mutation_id = String::deserialize(deserializer)?;
-    if mutation_id.trim().is_empty() {
-        return Err(serde::de::Error::custom(
-            "mutationId must be non-empty text",
-        ));
-    }
-    Ok(mutation_id)
-}
-
 #[path = "client.rs"]
 mod client;
 #[path = "session.rs"]
 mod session;
-pub use client::{connect_runtime_server_workspace_session, read_source_index_via_runtime_server};
+pub use client::{
+    cache_control_via_runtime_server, connect_runtime_server_workspace_session,
+    read_source_index_via_runtime_server,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -115,6 +81,16 @@ impl RuntimeCacheControlRequest {
             | Self::Invalidate { project_root, .. } => project_root,
         }
     }
+
+    #[must_use]
+    pub fn mutation_id(&self) -> Option<&str> {
+        match self {
+            Self::RebuildSourceIndex { mutation_id, .. } | Self::Invalidate { mutation_id, .. } => {
+                Some(mutation_id)
+            }
+            Self::Status { .. } | Self::RefreshSourceIndex { .. } => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -145,6 +121,8 @@ pub struct RuntimeCacheControlReceipt {
     pub database_opens_by_client: u64,
     pub writer_queue_owner: String,
     pub mutation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<String>,
 }
 
 /// Typed workspace operation accepted by the Runtime Server data-plane protocol.
@@ -162,6 +140,9 @@ pub enum WorkspaceDbIpcOperation {
     },
     ReadSourceIndex {
         request: WorkspaceDbSourceIndexLookupRequest,
+    },
+    ReadRuntimeSearchGenerationAuthority {
+        project_root: String,
     },
     ReadRuntimeSelector {
         project_root: String,
@@ -208,8 +189,9 @@ pub enum WorkspaceDbIpcOperation {
         project_root: String,
         operation: AgentSessionRegistryIpcOperation,
     },
-    PublishCodexMultiAgentControlPlane {
-        projection: agent_semantic_context_product::codex_multi_agent_v2_control_plane::CodexMultiAgentV2ControlPlaneProjection,
+    RefreshCodexMultiAgentControlPlane {
+        project_id: String,
+        root_session_id: String,
     },
     ReadCodexMultiAgentControlPlane {
         root_session_id: String,
@@ -280,6 +262,7 @@ pub struct WorkspaceDbIpcRequest {
 /// Typed workspace result returned by the Runtime Server data plane.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "kebab-case")]
+// Temporary diff anchor for parser-unavailable contract inspection.
 pub enum WorkspaceDbIpcResult {
     Healthy,
     ShutdownAccepted,
@@ -288,6 +271,10 @@ pub enum WorkspaceDbIpcResult {
     },
     SourceIndex {
         lookup: ClientDbSourceIndexLookupResult,
+    },
+    RuntimeSearchGenerationAuthority {
+        receipt:
+            crate::runtime_server_workspace::WorkspaceSearchGenerationAuthorityOpenReceipt,
     },
     SourceIndexGeneration {
         receipt: crate::ClientDbSourceIndexRefreshReport,
@@ -421,9 +408,12 @@ struct WorkspaceDbSessionBinding {
 pub(super) struct WorkspaceDbIpcSessionState {
     client_id: u64,
     next_request_id: std::sync::atomic::AtomicU64,
-    lanes: Vec<tokio::sync::Mutex<Option<UnixStream>>>,
+    lanes: Vec<tokio::sync::Mutex<Option<BufStream<UnixStream>>>>,
     pub(super) runtime_generation_mutations:
         std::sync::Arc<super::runtime_generation::MutationWorkspaceLane>,
+    pub(super) search_generation_authority: tokio::sync::OnceCell<
+        crate::runtime_server_workspace::WorkspaceSearchGenerationAuthorityPointerClient,
+    >,
 }
 
 impl Clone for WorkspaceDbIpcSession {
@@ -462,6 +452,7 @@ impl WorkspaceDbIpcSession {
                     .map(|_| tokio::sync::Mutex::new(None))
                     .collect(),
                 runtime_generation_mutations,
+                search_generation_authority: tokio::sync::OnceCell::new(),
             }),
         }
     }
@@ -497,6 +488,7 @@ impl WorkspaceDbIpcSession {
                     .map(|_| tokio::sync::Mutex::new(None))
                     .collect(),
                 runtime_generation_mutations,
+                search_generation_authority: tokio::sync::OnceCell::new(),
             }),
         }
     }
@@ -594,26 +586,32 @@ impl WorkspaceDbIpcSession {
             operation,
         };
         let first_lane = sequence as usize % self.shared.lanes.len();
-        let mut available_lane = None;
+        let mut connected_lane = None;
+        let mut empty_lane = None;
         for offset in 0..self.shared.lanes.len() {
             let lane_index = (first_lane + offset) % self.shared.lanes.len();
             if let Ok(lane) = self.shared.lanes[lane_index].try_lock() {
-                available_lane = Some(lane);
-                break;
+                if lane.is_some() {
+                    connected_lane = Some(lane);
+                    break;
+                }
+                if empty_lane.is_none() {
+                    empty_lane = Some(lane);
+                }
             }
         }
-        let mut lane = match available_lane {
+        let mut lane = match connected_lane.or(empty_lane) {
             Some(lane) => lane,
             None => self.shared.lanes[first_lane].lock().await,
         };
         if lane.is_none() {
-            *lane = Some(
+            *lane = Some(BufStream::new(
                 UnixStream::connect(&self.endpoint.socket_path)
                     .await
                     .map_err(|error| {
                         format!("failed to connect workspace owner endpoint: {error}")
                     })?,
-            );
+            ));
         }
         let response: WorkspaceDbIpcResponse = match lane.as_mut() {
             Some(stream) => {

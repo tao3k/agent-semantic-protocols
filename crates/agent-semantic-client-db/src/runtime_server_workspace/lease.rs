@@ -13,7 +13,8 @@ pub(crate) struct WorkspaceResidentActivity {
     accepting: std::sync::atomic::AtomicBool,
     in_flight_requests: std::sync::atomic::AtomicUsize,
     live_leases: std::sync::atomic::AtomicUsize,
-    last_activity: std::sync::Mutex<std::time::Instant>,
+    activity_origin: tokio::time::Instant,
+    last_activity_micros: std::sync::atomic::AtomicI64,
 }
 
 impl WorkspaceResidentActivity {
@@ -22,16 +23,20 @@ impl WorkspaceResidentActivity {
             accepting: std::sync::atomic::AtomicBool::new(true),
             in_flight_requests: std::sync::atomic::AtomicUsize::new(0),
             live_leases: std::sync::atomic::AtomicUsize::new(0),
-            last_activity: std::sync::Mutex::new(std::time::Instant::now()),
+            activity_origin: tokio::time::Instant::now(),
+            last_activity_micros: std::sync::atomic::AtomicI64::new(0),
         }
     }
 
     fn touch(&self) {
-        let mut last_activity = self
-            .last_activity
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *last_activity = std::time::Instant::now();
+        self.last_activity_micros.store(
+            self.activity_elapsed_micros(),
+            std::sync::atomic::Ordering::Release,
+        );
+    }
+
+    fn activity_elapsed_micros(&self) -> i64 {
+        i64::try_from(self.activity_origin.elapsed().as_micros()).unwrap_or(i64::MAX)
     }
 
     pub(crate) fn begin_request(self: &Arc<Self>) -> Result<WorkspaceResidentRequestGuard, String> {
@@ -85,11 +90,14 @@ impl WorkspaceResidentActivity {
     ) -> bool {
         use std::sync::atomic::Ordering;
 
-        let idle_elapsed = self
-            .last_activity
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .elapsed();
+        let last_activity_micros = self.last_activity_micros.load(Ordering::Acquire);
+        let idle_elapsed = std::time::Duration::from_micros(
+            u64::try_from(
+                self.activity_elapsed_micros()
+                    .saturating_sub(last_activity_micros),
+            )
+            .unwrap_or(0),
+        );
         if workspace_path_exists && idle_elapsed < idle_timeout {
             return false;
         }
@@ -123,13 +131,11 @@ impl WorkspaceResidentActivity {
 
     #[cfg(test)]
     pub(crate) fn set_idle_for_test(&self, idle_for: std::time::Duration) {
-        let mut last_activity = self
-            .last_activity
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *last_activity = std::time::Instant::now()
-            .checked_sub(idle_for)
-            .expect("test idle duration must fit in Instant");
+        let idle_micros = i64::try_from(idle_for.as_micros()).unwrap_or(i64::MAX);
+        self.last_activity_micros.store(
+            self.activity_elapsed_micros().saturating_sub(idle_micros),
+            std::sync::atomic::Ordering::Release,
+        );
     }
 
     pub(crate) fn counts(&self) -> (usize, usize) {

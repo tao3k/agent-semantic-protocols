@@ -113,6 +113,30 @@ impl AgentSessionRegistry {
         ))
     }
 
+    /// Query the registry through its local async owner path.
+    ///
+    /// Runtime Server handlers must use this entry point instead of
+    /// `query_sessions`: the public synchronous adapter may proxy back through
+    /// the Runtime Server and would otherwise recursively enter the same IPC
+    /// owner while it is materializing a control-plane snapshot.
+    pub(crate) async fn query_sessions_local(
+        &self,
+        project_id: impl Into<AgentSessionProjectId>,
+        root_session_id: Option<AgentSessionRootSessionId>,
+        name: Option<AgentSessionResidentName>,
+    ) -> Result<Vec<AgentSessionRecord>, String> {
+        let project_id = project_id.into();
+        turso_query_sessions(
+            &self.db_path,
+            project_id.as_str(),
+            root_session_id
+                .as_ref()
+                .map(AgentSessionRootSessionId::as_str),
+            name.as_ref().map(AgentSessionResidentName::as_str),
+        )
+        .await
+    }
+
     /// Return one registered session by its concrete session id.
     pub fn session_by_id(
         &self,
@@ -213,6 +237,26 @@ impl AgentSessionRegistry {
         &self,
         request: AgentSessionDispatchCompleteRequest<'_>,
     ) -> Result<AgentSessionDispatchLeaseRecord, String> {
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::CompleteDispatch {
+                project_id: request.project_id.to_owned(),
+                root_session_id: request.root_session_id.to_owned(),
+                name: request.name.to_owned(),
+                dispatch_identity: request.dispatch_identity.to_owned(),
+                command_digest: request.command_digest.to_owned(),
+                evidence_ref: request.evidence_ref.to_owned(),
+                now: request.now,
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::DispatchCompleted {
+                    lease,
+                } => Ok(lease),
+                _ => Err(
+                    "Runtime Server returned an unexpected dispatch completion result".to_owned(),
+                ),
+            };
+        }
         block_on_agent_session_registry_async(
             crate::agent_session_registry::dispatch::turso_complete_dispatch(
                 &self.db_path,

@@ -281,4 +281,110 @@ theorem atomic_artifact_switch_preserves_supervisor_definition
       supervisorDefinitionIdentity binding := by
   rfl
 
+inductive ReadLaneDecision where
+  | reuseConnected
+  | openEmpty
+  | wait
+  deriving DecidableEq, Repr
+
+structure ReadLaneAvailability where
+  selectedLaneConnected : Bool
+  anyConnectedAvailable : Bool
+  anyEmptyAvailable : Bool
+  deriving DecidableEq, Repr
+
+def legacyRoundRobinLaneDecision (availability : ReadLaneAvailability) : ReadLaneDecision :=
+  if availability.selectedLaneConnected then
+    .reuseConnected
+  else if availability.anyEmptyAvailable then
+    .openEmpty
+  else
+    .wait
+
+def connectedFirstLaneDecision (availability : ReadLaneAvailability) : ReadLaneDecision :=
+  if availability.anyConnectedAvailable then
+    .reuseConnected
+  else if availability.anyEmptyAvailable then
+    .openEmpty
+  else
+    .wait
+
+theorem connected_first_never_opens_when_connected_available
+    (availability : ReadLaneAvailability)
+    (hConnected : availability.anyConnectedAvailable = true) :
+    connectedFirstLaneDecision availability = .reuseConnected := by
+  simp [connectedFirstLaneDecision, hConnected]
+
+theorem connected_first_opens_only_under_connection_pressure
+    (availability : ReadLaneAvailability)
+    (hOpen : connectedFirstLaneDecision availability = .openEmpty) :
+    availability.anyConnectedAvailable = false ∧
+      availability.anyEmptyAvailable = true := by
+  cases hConnected : availability.anyConnectedAvailable <;>
+    cases hEmpty : availability.anyEmptyAvailable <;>
+    simp [connectedFirstLaneDecision, hConnected, hEmpty] at hOpen ⊢
+
+example :
+    legacyRoundRobinLaneDecision {
+      selectedLaneConnected := false
+      anyConnectedAvailable := true
+      anyEmptyAvailable := true
+    } = .openEmpty := by
+  rfl
+
+example :
+    connectedFirstLaneDecision {
+      selectedLaneConnected := false
+      anyConnectedAvailable := true
+      anyEmptyAvailable := true
+    } = .reuseConnected := by
+  rfl
+
+inductive ActivityBookkeeping where
+  | blockingMutexClock
+  | atomicMonotonicClock
+  deriving DecidableEq, Repr
+
+def mayBlockReadHotPath : ActivityBookkeeping → Bool
+  | .blockingMutexClock => true
+  | .atomicMonotonicClock => false
+
+theorem atomic_monotonic_activity_does_not_block_read_hot_path :
+    mayBlockReadHotPath .atomicMonotonicClock = false := by
+  rfl
+
+inductive SearchAuthorityTransport where
+  | unixSocket
+  | sharedGenerationPointer
+  deriving DecidableEq, Repr
+
+def warmSchedulerRoundTrips : SearchAuthorityTransport → Nat
+  | .unixSocket => 1
+  | .sharedGenerationPointer => 0
+
+theorem shared_generation_pointer_has_no_warm_scheduler_roundtrip :
+    warmSchedulerRoundTrips .sharedGenerationPointer = 0 := by
+  rfl
+
+structure SearchAuthorityPointerEvidence where
+  sourceRoot : Nat
+  workspaceRoot : Nat
+  sourceLeafCount : Nat
+  workspaceLeafCount : Nat
+  ownerCount : Nat
+  deriving DecidableEq, Repr
+
+def completeSearchAuthorityPointer
+    (evidence : SearchAuthorityPointerEvidence) : Prop :=
+  evidence.sourceRoot = evidence.workspaceRoot ∧
+    evidence.sourceLeafCount = evidence.workspaceLeafCount ∧
+    evidence.ownerCount ≤ evidence.workspaceLeafCount
+
+theorem complete_pointer_refines_authority_binding
+    (evidence : SearchAuthorityPointerEvidence)
+    (hComplete : completeSearchAuthorityPointer evidence) :
+    evidence.sourceRoot = evidence.workspaceRoot ∧
+      evidence.sourceLeafCount = evidence.workspaceLeafCount := by
+  exact ⟨hComplete.1, hComplete.2.1⟩
+
 end ASPProof.ResidentMerkleFreshnessBudget

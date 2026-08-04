@@ -23,7 +23,7 @@ use agent_semantic_content_identity::{
 };
 use agent_semantic_provider_transport::projection_batch::{
     ProviderProjectedOwner, ProviderProjectionBatchRequest, ProviderProjectionOwner,
-    run_provider_projection_batch,
+    provider_projection_batch_ranges, run_provider_projection_batch,
 };
 
 pub(super) async fn project_generation(
@@ -79,23 +79,6 @@ async fn project_provider(
     if owner_indexes.is_empty() {
         return Ok(());
     }
-    let owners = owner_indexes
-        .iter()
-        .map(|index| {
-            let owner_path = relative_owner_path(project_root, &files[*index].path);
-            let source = source_blobs
-                .get(&ClientDbSourceIndexPath::new(&owner_path))
-                .ok_or_else(|| format!("projection source bytes are missing: {owner_path}"))?;
-            let source_leaf_digest = tree.source_blob_digest(&owner_path).ok_or_else(|| {
-                format!("projection owner is absent from Merkle tree: {owner_path}")
-            })?;
-            Ok(ProviderProjectionOwner {
-                owner_path,
-                source_leaf_digest: source_leaf_digest.as_str().to_owned(),
-                source_bytes: source.to_vec(),
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
     let parser_identity_digest = derive_parser_identity_digest_v1(
         &ProjectionPacketProviderIdV1::from(provider.provider_id.as_str()),
         &ProjectionPacketExecutionCommandDigestV1::from(provider.execution_command_digest.as_str()),
@@ -104,49 +87,79 @@ async fn project_provider(
     let query_pack_json = serde_json::to_vec(&provider.query_pack_descriptor)
         .map_err(|error| format!("encode provider query-pack identity: {error}"))?;
     let query_pack_digest = derive_query_pack_identity_digest_v1(&query_pack_json);
-    let request = ProviderProjectionBatchRequest {
-        language_id: provider.language_id.as_str().to_owned(),
-        provider_id: provider.provider_id.as_str().to_owned(),
-        workspace_identity: workspace_identity.to_owned(),
-        generation_root_digest: tree.root_digest().as_str().to_owned(),
-        parser_identity_digest: parser_identity_digest.as_str().to_owned(),
-        query_pack_digest: query_pack_digest.as_str().to_owned(),
-        base_generation_root_digest: None,
-        owners,
-    };
     let command = provider_command_argv(provider)?;
-    let response = run_provider_projection_batch(
-        &command,
-        descriptor.command_binding(),
-        project_root,
-        &request,
-    )
-    .await
-    .map_err(|error| error.to_string())?;
-    let response_by_owner = response
-        .owners
-        .into_iter()
-        .map(|owner| (owner.owner_path.clone(), owner))
-        .collect::<BTreeMap<_, _>>();
-    for index in owner_indexes {
-        let file = &mut files[index];
-        let owner_path = relative_owner_path(project_root, &file.path);
-        let projected_owner = response_by_owner
-            .get(&owner_path)
-            .ok_or_else(|| format!("projection response omitted admitted owner: {owner_path}"))?;
-        let source = source_blobs
-            .get(&ClientDbSourceIndexPath::new(&owner_path))
-            .ok_or_else(|| format!("projection source bytes are missing: {owner_path}"))?;
-        file.selector_receipts = selector_receipts(
-            provider,
-            tree,
-            source,
-            projected_owner,
-            &parser_identity_digest,
-            &query_pack_digest,
-        )?;
-        file.relations = projected_owner.relations.clone();
-        file.projection_coverage = ClientDbSourceIndexProjectionCoverage::Complete;
+    let owner_sizes = owner_indexes
+        .iter()
+        .map(|index| {
+            let owner_path = relative_owner_path(project_root, &files[*index].path);
+            source_blobs
+                .get(&ClientDbSourceIndexPath::new(&owner_path))
+                .map(|source| source.len())
+                .ok_or_else(|| format!("projection source bytes are missing: {owner_path}"))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    for range in provider_projection_batch_ranges(&owner_sizes) {
+        let batch_indexes = &owner_indexes[range];
+        let owners = batch_indexes
+            .iter()
+            .map(|index| {
+                let owner_path = relative_owner_path(project_root, &files[*index].path);
+                let source = source_blobs
+                    .get(&ClientDbSourceIndexPath::new(&owner_path))
+                    .ok_or_else(|| format!("projection source bytes are missing: {owner_path}"))?;
+                let source_leaf_digest = tree.source_blob_digest(&owner_path).ok_or_else(|| {
+                    format!("projection owner is absent from Merkle tree: {owner_path}")
+                })?;
+                Ok(ProviderProjectionOwner {
+                    owner_path,
+                    source_leaf_digest: source_leaf_digest.as_str().to_owned(),
+                    source_bytes: source.to_vec(),
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
+        let request = ProviderProjectionBatchRequest {
+            language_id: provider.language_id.as_str().to_owned(),
+            provider_id: provider.provider_id.as_str().to_owned(),
+            workspace_identity: workspace_identity.to_owned(),
+            generation_root_digest: tree.root_digest().as_str().to_owned(),
+            parser_identity_digest: parser_identity_digest.as_str().to_owned(),
+            query_pack_digest: query_pack_digest.as_str().to_owned(),
+            base_generation_root_digest: None,
+            owners,
+        };
+        let response = run_provider_projection_batch(
+            &command,
+            descriptor.command_binding(),
+            project_root,
+            &request,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+        let response_by_owner = response
+            .owners
+            .into_iter()
+            .map(|owner| (owner.owner_path.clone(), owner))
+            .collect::<BTreeMap<_, _>>();
+        for index in batch_indexes {
+            let file = &mut files[*index];
+            let owner_path = relative_owner_path(project_root, &file.path);
+            let projected_owner = response_by_owner.get(&owner_path).ok_or_else(|| {
+                format!("projection response omitted admitted owner: {owner_path}")
+            })?;
+            let source = source_blobs
+                .get(&ClientDbSourceIndexPath::new(&owner_path))
+                .ok_or_else(|| format!("projection source bytes are missing: {owner_path}"))?;
+            file.selector_receipts = selector_receipts(
+                provider,
+                tree,
+                source,
+                projected_owner,
+                &parser_identity_digest,
+                &query_pack_digest,
+            )?;
+            file.relations = projected_owner.relations.clone();
+            file.projection_coverage = ClientDbSourceIndexProjectionCoverage::Complete;
+        }
     }
     Ok(())
 }

@@ -85,11 +85,8 @@ async fn optional_resident_startup_cannot_block_core_readiness() {
     });
 
     let construction_started = Instant::now();
-    let mut daemon = GraphTurboDaemon::start_configured(
-        status,
-        PathBuf::from("/fixture/graph-turbo"),
-        startup,
-    );
+    let mut daemon =
+        GraphTurboDaemon::start_configured(status, PathBuf::from("/fixture/graph-turbo"), startup);
     assert!(
         construction_started.elapsed() < Duration::from_millis(25),
         "Graph Turbo actor construction blocked core readiness"
@@ -106,7 +103,10 @@ async fn optional_resident_startup_cannot_block_core_readiness() {
     )
     .await
     .expect_err("starting provider must reject without waiting for its handshake");
-    assert!(error.contains("state=starting"), "unexpected error: {error}");
+    assert!(
+        error.contains("state=starting"),
+        "unexpected error: {error}"
+    );
     assert!(
         rejection_started.elapsed() < Duration::from_millis(10),
         "starting provider readiness check exceeded the foreground gate"

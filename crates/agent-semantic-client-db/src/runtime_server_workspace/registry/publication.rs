@@ -249,7 +249,7 @@ impl RuntimeServerWorkspaceRegistry {
             receipt.validate()?;
             return Ok(receipt);
         }
-        let (materialization, prepared_index, prepared_generation) = materialization.into_parts();
+        let (materialization, prepared_index) = materialization.into_parts();
         let project_root = std::path::Path::new(&materialization.project_root);
         let entry = self.entry(&workspace_identity, project_root).await?;
         let (reply, receive) = oneshot::channel();
@@ -261,7 +261,6 @@ impl RuntimeServerWorkspaceRegistry {
                 workspace_identity,
                 materialization,
                 prepared_index,
-                prepared_generation,
                 reply,
             })
             .await

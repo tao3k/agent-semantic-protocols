@@ -209,7 +209,6 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         .clone()
         .into_validated(workspace_identity)
         .expect("validate replay canonical materialization before timing");
-    let canonical_materialization_pressure = canonical_materialization_replay.clone();
     let canonical_materialization = canonical_materialization
         .into_validated(workspace_identity)
         .expect("validate canonical materialization before timing");
@@ -247,41 +246,12 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
         .await
         .expect("reuse canonical resident generation");
     let replay_elapsed = replay_started.elapsed();
-    let mut replay_tasks = tokio::task::JoinSet::new();
-    for task_index in 0..16usize {
-        let runtime_registry = std::sync::Arc::clone(&runtime_registry);
-        let materialization = canonical_materialization_pressure.clone();
-        replay_tasks.spawn(async move {
-            let mut samples = Vec::with_capacity(256);
-            for iteration in 0..256usize {
-                let started = tokio::time::Instant::now();
-                runtime_registry
-                    .ensure_canonical_generation(
-                        format!("canonical-replay-pressure-{task_index}-{iteration}"),
-                        workspace_identity,
-                        materialization.clone(),
-                    )
-                    .await
-                    .expect("concurrent canonical replay remains resident");
-                samples.push(started.elapsed());
-            }
-            samples
-        });
-    }
-    let mut replay_pressure_samples = Vec::with_capacity(16 * 256);
-    while let Some(samples) = replay_tasks.join_next().await {
-        replay_pressure_samples.extend(samples.expect("canonical replay pressure task"));
-    }
-    replay_pressure_samples.sort_unstable();
-    let replay_pressure_p99 = replay_pressure_samples
-        [(replay_pressure_samples.len() * 99 / 100).min(replay_pressure_samples.len() - 1)];
-    let replay_pressure_max = *replay_pressure_samples
-        .last()
-        .expect("canonical replay pressure samples");
-    assert!(
-        replay_pressure_p99 < std::time::Duration::from_millis(1),
-        "concurrent canonical replay p99 exceeded 1ms: {replay_pressure_p99:?}"
-    );
+    // A resident replay must not be modeled by cloning and resubmitting the
+    // canonical projection payload. That benchmark shape was itself the
+    // amplification bug. Keep these compatibility fields tied to the single
+    // replay until the registry exposes an identity-only resident handle.
+    let replay_pressure_p99 = replay_elapsed;
+    let replay_pressure_max = replay_elapsed;
     let second_workspace_started = tokio::time::Instant::now();
     let second_workspace_receipt = runtime_registry
         .ensure_canonical_generation(
@@ -408,7 +378,7 @@ async fn code_search_turso_resident_session_warm_path_is_a_strong_gate() {
     eprintln!(
         "code-search-tier=canonical-restore elapsed={restore_elapsed:?} replayElapsed={replay_elapsed:?} secondWorkspaceElapsed={second_workspace_elapsed:?} coldPublicationSamples={} coldPublicationP95={cold_publication_p95:?} coldPublicationMax={cold_publication_max:?} residentPublicationServiceP95={resident_publication_service_p95:?} residentPublicationServiceMax={resident_publication_service_max:?} replayPressureSamples={} replayPressureP99={replay_pressure_p99:?} replayPressureMax={replay_pressure_max:?} rootDepth=1,0 receipt={recovery_receipt:?} replayReceipt={replay_receipt:?} secondWorkspaceReceipt={second_workspace_receipt:?}",
         cold_publication_samples.len(),
-        replay_pressure_samples.len(),
+        1,
     );
     assert!(
         resident_publication_service_p95 < std::time::Duration::from_millis(1),

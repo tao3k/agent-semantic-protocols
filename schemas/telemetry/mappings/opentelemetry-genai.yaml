@@ -1,0 +1,21 @@
+schema_url: https://opentelemetry.io/schemas/gen-ai/1.42.0
+mappings:
+  - asp: asp.surface
+    otel: gen_ai.operation.name
+    policy: contextual
+    note: Only agent, retrieval, and tool operations map to GenAI operations.
+  - asp: asp.stage
+    otel: gen_ai.tool.name
+    policy: contextual
+    note: Only parser-owned tool execution stages map to tool names.
+  - asp: asp.performance.elapsed
+    otel: gen_ai.client.operation.duration
+    policy: metric-projection
+    unit_conversion: us-to-s
+unmapped_authoritative_attributes:
+  - asp.workspace.identity
+  - asp.generation.digest
+  - asp.runtime.artifact.digest
+  - asp.runtime.transport_contract.digest
+  - asp.performance.budget
+  - asp.performance.budget.status

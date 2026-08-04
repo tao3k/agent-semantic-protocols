@@ -11,7 +11,6 @@ pub const RUNTIME_SERVER_SHUTDOWN_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-shutdown-receipt.v1";
 pub const WORKSPACE_RUNTIME_SELECTOR_OVERLAY_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-selector-overlay-receipt.v1";
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkspaceGenerationState {
@@ -477,6 +476,9 @@ pub struct WorkspaceGenerationSnapshot {
     pub active_epoch: u64,
     pub generation_digest: String,
     pub root_depth: [u8; 2],
+    pub source_kind: agent_semantic_content_identity::SourceSnapshotKind,
+    pub leaf_count: u64,
+    pub owner_count: u64,
     pub provider_schema_digest: String,
     pub source_root_digest: String,
     pub base_root_digest: Option<String>,
@@ -504,6 +506,9 @@ impl WorkspaceGenerationSnapshot {
         }
         if self.state != WorkspaceGenerationState::Ready || self.root_depth != [1, 0] {
             return Err("workspace generation snapshot is not publishable".to_owned());
+        }
+        if self.owner_count > self.leaf_count {
+            return Err("workspace generation snapshot owner count exceeds leaf count".to_owned());
         }
         validate_digest("generationDigest", &self.generation_digest)?;
         validate_digest("providerSchemaDigest", &self.provider_schema_digest)?;

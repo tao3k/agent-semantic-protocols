@@ -564,13 +564,14 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
         }],
         Vec::new(),
     )
-    .expect("build canonical cold-restore materialization")
-    .into_validated(workspace_identity)
-    .expect("validate canonical cold-restore materialization");
+    .expect("build canonical cold-restore materialization");
     let mut restores = tokio::task::JoinSet::new();
     for request in 0..64 {
         let registry = std::sync::Arc::clone(&registry);
-        let materialization = materialization.clone();
+        let materialization = materialization
+            .clone()
+            .into_validated(workspace_identity)
+            .expect("validate per-request canonical cold-restore materialization");
         restores.spawn(async move {
             registry
                 .ensure_canonical_generation(

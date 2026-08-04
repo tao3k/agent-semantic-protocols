@@ -75,12 +75,18 @@ pub(super) async fn publish_generation(
     let workspace_identity = generation.workspace_identity.clone();
     let generation_digest = generation.generation_digest.clone();
     let source_root_digest = generation.source_snapshot.root_digest.clone();
-    let (_, mapped) = publisher
-        .publish(Arc::new(generation), active_epoch != 0)
-        .await?;
-    counters.filesystem_reads.fetch_add(1, Ordering::Relaxed);
+    let generation = Arc::new(generation);
+    let prepared_index =
+        WorkspaceMemoryBackend::prepare_index(&generation.owners, &generation.relations);
+    let backend = Arc::new(
+        WorkspaceMemoryBackend::from_validated_generation_with_index(
+            Arc::clone(&generation),
+            prepared_index,
+        )?,
+    );
+    publisher.publish(generation, active_epoch != 0).await?;
     counters.filesystem_writes.fetch_add(1, Ordering::Relaxed);
-    current.send_replace(Some(mapped.backend()));
+    current.send_replace(Some(backend));
     let receipt = WorkspaceRecoveryReceipt {
         schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
         schema_version: "1".to_owned(),
@@ -95,7 +101,6 @@ pub(super) async fn publish_generation(
         old_generation_readable: active_epoch != 0,
         resident_publication_elapsed_micros: 0,
         counters: RuntimeDataPlaneCounters {
-            filesystem_reads: 1,
             filesystem_writes: 1,
             ..RuntimeDataPlaneCounters::default()
         },

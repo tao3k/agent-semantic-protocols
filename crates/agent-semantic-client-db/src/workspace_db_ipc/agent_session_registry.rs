@@ -59,6 +59,15 @@ pub enum AgentSessionRegistryIpcOperation {
         delivery_target_override: Option<String>,
         now: i64,
     },
+    CompleteDispatch {
+        project_id: String,
+        root_session_id: String,
+        name: String,
+        dispatch_identity: String,
+        command_digest: String,
+        evidence_ref: String,
+        now: i64,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -112,6 +121,9 @@ pub enum AgentSessionRegistryIpcResult {
     },
     DispatchClaimed {
         result: crate::agent_session_registry::AgentSessionDispatchClaimResult,
+    },
+    DispatchCompleted {
+        lease: crate::agent_session_registry::AgentSessionDispatchLeaseRecord,
     },
 }
 

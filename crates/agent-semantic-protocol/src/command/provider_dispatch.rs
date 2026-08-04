@@ -341,19 +341,10 @@ pub(crate) fn run_language_command(
                 ranker_binary.display()
             ));
         }
-        let ranker_content_digest =
-            agent_semantic_content_identity::file_content_digest_v1(&ranker_binary)?.to_string();
-        let ranker_metadata_digest =
-            agent_semantic_content_identity::file_artifact_metadata_digest_v1(&ranker_binary)?
-                .to_string();
-        if ranker.content_digest != ranker_content_digest
-            || ranker.artifact_metadata_digest != ranker_metadata_digest
-        {
-            return Err(
-                "ranker-unavailable reasonKind=ranker-artifact-digest-drift rankerId=asp-graph-turbo"
-                    .to_string(),
-            );
-        }
+        // `registered_language_runtime` already admitted this selection from
+        // the immutable Active ASP Artifact Receipt. Search must not re-hash
+        // the executable; canonical identity equality binds the built-in
+        // ranker to the currently running ASP artifact.
         exact_query_trace("ranker-admitted", exact_query_started);
         let current_generation_client =
             super::search_pipe::fast_search_requires_source_index_snapshot(&provider_args)
@@ -362,6 +353,7 @@ pub(crate) fn run_language_command(
                         exact_query_started,
                         "search",
                         "graph-turbo-generation-open",
+                        &project_root,
                         super::runtime_server::runtime_server_workspace_generation_client_async(
                             &project_root,
                         ),

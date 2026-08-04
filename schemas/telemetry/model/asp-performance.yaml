@@ -1,0 +1,83 @@
+groups:
+  - id: registry.asp.performance
+    type: attribute_group
+    stability: development
+    brief: ASP search and Runtime Server performance-gate attributes.
+    attributes:
+      - id: asp.surface
+        type:
+          members:
+            - id: query
+              value: query
+            - id: search
+              value: search
+            - id: runtime_server
+              value: runtime-server
+            - id: graph_turbo
+              value: graph-turbo
+        brief: Public or resident surface that owns the measured operation.
+        requirement_level: required
+      - id: asp.stage
+        type: string
+        brief: Stable parser or Runtime Server stage identity.
+        requirement_level: required
+      - id: asp.workspace.identity
+        type: string
+        brief: Canonical workspace identity admitted by the Runtime Server.
+        requirement_level: recommended
+      - id: asp.language.id
+        type: string
+        brief: Registered provider language identity.
+        requirement_level: recommended
+      - id: asp.generation.digest
+        type: string
+        brief: Active immutable workspace-generation digest.
+        requirement_level: recommended
+      - id: asp.runtime.artifact.digest
+        type: string
+        brief: Canonical ASP Runtime Server artifact digest.
+        requirement_level: recommended
+      - id: asp.runtime.transport_contract.digest
+        type: string
+        brief: Runtime Server transport-contract digest.
+        requirement_level: recommended
+      - id: asp.performance.elapsed
+        type: int
+        unit: us
+        brief: Monotonic elapsed duration for the measured stage.
+        requirement_level: required
+      - id: asp.performance.budget
+        type: int
+        unit: us
+        brief: Budget owned by the same measured stage.
+        requirement_level: required
+      - id: asp.performance.budget.status
+        type:
+          members:
+            - id: within_budget
+              value: within-budget
+            - id: budget_exceeded
+              value: budget-exceeded
+        brief: Verdict produced by comparing elapsed and budget durations.
+        requirement_level: required
+      - id: asp.failure.reason
+        type: string
+        brief: Stable low-cardinality typed failure reason.
+        requirement_level:
+          conditionally_required: when the span status is error
+      - id: asp.retry_after
+        type: int
+        unit: ms
+        brief: Minimum recommended retry interval.
+        requirement_level: opt_in
+
+  - id: span.asp.performance.stage
+    type: span
+    span_kind: internal
+    stability: development
+    brief: One measured ASP search, graph, or resident-runtime stage.
+    note: >
+      Span names use `asp {asp.surface} {asp.stage}`. A budget failure is an
+      error span and is persisted even when the invoking CLI exits.
+    extends: registry.asp.performance
+

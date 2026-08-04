@@ -1,0 +1,8 @@
+import ASPProof.NoncancellableColdGenerationAdmission
+
+open ASPProof.NoncancellableColdGenerationAdmission
+
+#check timeoutCannotCancelQueuedRepair
+#check timeoutAfterAdmissionIsNotMissing
+#check queuedRepairPublishesReady
+#check timeoutDoesNotAuthorizeUnpublishedRead

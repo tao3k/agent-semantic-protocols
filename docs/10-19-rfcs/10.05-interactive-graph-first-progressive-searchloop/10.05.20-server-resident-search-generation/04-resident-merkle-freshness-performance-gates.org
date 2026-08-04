@@ -118,6 +118,35 @@ provider execution, scan, or write.  Session lookup, owner ensure, and immutable
 generation open are separate phases with separate monotonic budgets and an
 explicit control-roundtrip receipt.
 
+* Adaptive resident read lanes
+
+Each =WorkspaceDbIpcSession= owns an adaptively bounded read-lane pool.  Request
+dispatch MUST reuse an available connected lane before opening an empty lane.
+An empty lane may be opened only when every connected lane observed by that
+request is busy; once the configured capacity is occupied, the request waits
+for a lane.  The adaptive capacity is derived from runtime and machine
+pressure policy rather than a client-visible fixed number.
+
+Request sequence numbers may provide a fair scan origin, but MUST NOT cause
+round-robin cold connection establishment.  A serial session therefore opens
+one connection and reuses it.  Concurrent sessions may expand independently
+up to their adaptive capacities while sharing one workspace generation.  The
+performance qualification MUST separate first-connect latency, concurrent
+multi-session latency, and already-connected service latency; the service gate
+MUST NOT be diluted by lazy lane initialization.
+
+The search-generation authority response is O(1) in workspace size.  It carries
+the active epoch, generation digest, source-snapshot evidence, and workspace-
+generation evidence.  It MUST NOT carry =WorkspaceSnapshot= leaves, owner
+bytes, selector indexes, or overlay base leaves.  Those remain resident; typed
+=ReadSourceIndex= and exact projection operations return only requested data.
+
+Workspace activity bookkeeping is part of the read hot path and therefore MUST
+be lock-free.  Request and generation-lease enter/exit update a monotonic Tokio
+time offset through atomics; they MUST NOT contend on a blocking mutex or write
+an activity file.  Retirement compares the same monotonic origin with the last
+published activity offset.
+
 * Core readiness is independent of optional resident providers
 
 Publishing the ServerProcess endpoint commits the core control plane to accept
@@ -165,7 +194,7 @@ shared across setup, enqueue, acceptance, and completion.
 | watcher coalescing | 50 ms | observation backlog |
 | writer enqueue | 100 ms | resident writer saturation |
 | writer acceptance | 100 ms | foreground admission unavailable |
-| warm exact read p95 | 100 ms | resident read regression |
+| warm search authority read p99 | < 1 ms | shared-pointer data-plane regression |
 | background materialization | measured, no foreground blocking | worker receipt required |
 | atomic publication | 250 ms | publication regression |
 | core server readiness after endpoint publication | 100 ms | optional provider startup blocked the accept loop |
@@ -191,6 +220,96 @@ The shared receipt schema records:
 Receipts are evidence for performance gates.  A digest alone is never evidence
 that latency or runtime conformance passed.
 
+* OpenTelemetry performance evidence
+
+Performance receipts are also OpenTelemetry observations.  A budget failure
+MUST NOT exist only as CLI stdout or stderr: the Runtime Server persists the
+corresponding span through its Turso telemetry writer lane so that regressions
+remain queryable after the invoking process exits.
+
+The Runtime Server owns one bounded Tokio telemetry ingress and one batched
+exporter.  Foreground =search= and =query= paths enqueue an immutable event and
+never open Turso, bootstrap telemetry schema, begin a transaction, wait for an
+export, or retry a database lock.  Queue saturation increments a resident
+dropped-observation counter and remains visible in health/status evidence; it
+does not extend the foreground latency budget.
+
+Every performance span records at least:
+
+- OpenTelemetry =trace_id=, =span_id=, span name, start time, end time, and
+  status;
+- runtime artifact, transport contract, workspace, generation, language, and
+  command identities when available;
+- =surface=, =stage=, =phase=, =elapsed_micros=, =budget_micros=, and
+  =budget_status=;
+- the typed failure reason and retry guidance when the span exceeds a gate.
+
+The Turso exporter stores normalized indexed columns for the stable query axes
+and the canonical OpenTelemetry attribute map for lossless export.  It uses the
+Runtime Server's single telemetry writer lane and MVCC transaction policy.
+Different workspaces may emit concurrently; no workspace query owns or waits
+on the telemetry transaction.
+
+The CLI failure JSON and the persisted span are two projections of one typed
+event.  Budget constants MUST come from the same contract value; a renderer may
+not independently hard-code =budgetMicros=.  The v1 query surface MUST support
+Turso aggregation by workspace, surface, stage, budget verdict, runtime digest,
+and time interval, including count and p50/p95/p99 latency.
+
+* Query-time artifact and generation admission
+
+Provider and ranker executable content identity is established exactly once by
+install/publication and carried by the immutable Active ASP Artifact Receipt.
+A =search= or =query= consumer may validate the typed receipt binding and the
+canonical executable identity, but MUST NOT hash executable bytes or recompute
+artifact metadata.  Content or metadata reads of the ASP/provider executable
+on an agent-facing path are a performance-contract violation.
+
+Memory mapping a generation file is not by itself Memory Search.  The Runtime
+Server MUST load and validate one immutable generation per admitted workspace,
+construct its selector, term, and relation indexes once, and retain that
+backend behind the workspace resident entry.  A CLI process MUST NOT decode the
+complete generation or rebuild those indexes for each request.  The durable
+generation segment therefore contains either a zero-copy index directory with
+validated offsets or a representation the Runtime Server materializes once;
+agent-facing consumers receive only compact query/projection results.  Exact
+projection remains a separate immutable segment and does not require the full
+search generation.
+
+The generation-open performance receipt distinguishes =pointer-read=,
+=segment-map=, =segment-decode=, =index-materialize=, and =resident-lease=.
+Only =resident-lease= belongs on a warm foreground request.  The other phases
+are admission/publication work and cannot consume the agent-facing deadline.
+
+The resident data plane returns
+=agent.semantic-protocols.runtime-server-search-generation-authority= v1 to
+search composition.  It binds workspace identity and canonical project root to
+the source snapshot and validated workspace-generation evidence already held
+by the resident lease.  It MUST NOT contain the complete workspace snapshot,
+owner bytes, or serialized selector, term, or relation indexes.  Candidate
+lookup uses the resident =ReadSourceIndex= operation; Graph Turbo evaluation
+uses the resident =EvaluateGraphTurbo= operation.  A CLI that opens or decodes
+the complete generation mmap after receiving this authority violates the
+contract.
+
+The cold authority admission returns a distinct
+=agent.semantic-protocols.runtime-server-search-generation-authority-open-receipt=
+v1.  It binds the compact authority to the resident scope's stable
+=active-generation.pointer=.  A session maps that fixed-size seqlock pointer
+once and caches its typed reader.  Every warm authority read consults that
+shared pointer directly; it performs no Unix socket round trip, provider spawn,
+Turso open, filesystem read, canonicalization, activation load, or schema
+bootstrap.  Publication writes only constant-size source kind, leaf count,
+owner count, digests, epoch, and root-depth evidence into the pointer.  A
+generation change is observed through the pointer's monotonic publication
+sequence without remapping the complete generation.
+
+Unix IPC remains authoritative for cold workspace admission, mutation, complex
+lookup, and graph evaluation.  It is not a warm identity transport.  This
+separation is required because scheduler and socket tail latency cannot satisfy
+the sub-millisecond p99 gate under multi-session pressure even when framing and
+connection reuse are optimized.
+
 * Required tests
 
 - delayed workspace-entry initialization cannot consume writer acceptance
@@ -201,3 +320,25 @@ that latency or runtime conformance passed.
 - unchanged owners are reused under incremental Merkle materialization;
 - cold repair terminates and a repeated warm query stays within its budget;
 - watcher retirement releases all workspace-owned tasks and paths.
+- an exceeded search/query gate is retrievable from Turso by trace and stage;
+- 1,000 concurrent observations do not block foreground query completion and
+  are either persisted or accounted for by the dropped-observation counter;
+- telemetry schema/bootstrap and database opens are zero on the foreground
+  query path;
+- the CLI receipt and persisted OpenTelemetry span use the same budget value;
+- exporter shutdown drains accepted events without deadlocking the Tokio
+  Runtime Server lifecycle.
+- agent-facing ranker admission performs zero executable byte reads and zero
+  artifact metadata recomputations;
+- 1,000 warm searches over one workspace reuse one resident generation and one
+  set of search indexes; generation decode and index materialization counts
+  remain exactly one;
+- concurrent warm searches across multiple sessions share the workspace
+  resident lease without a global lock, while different workspaces progress
+  independently.
+- 64 sessions performing at least 2,000 concurrent warm authority reads keep
+  p99 below 1 ms; a separate 1,000-read sequential run keeps p99 below 1 ms.
+- warm authority reads have a zero delta for every runtime data-plane I/O
+  counter, including control socket round trips.
+- pointer wire size remains constant when owner count grows, and the pointer
+  contains no owner path or source bytes.

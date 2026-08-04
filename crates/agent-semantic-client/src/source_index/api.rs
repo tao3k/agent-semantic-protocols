@@ -529,49 +529,6 @@ pub(crate) fn current_source_index_snapshot_with_registry(
     materialized_current_source_index_snapshot(workspace_snapshot, source_snapshot, source_blobs)
 }
 
-/// Resolve a source-index snapshot from the shared provider registry scope.
-///
-/// Language facades always resolve through the registered language provider.
-/// Only a fully unscoped request may use the workspace-global snapshot.
-pub(crate) fn current_source_index_snapshot_for_scope(
-    project_root: &Path,
-    checkout_root: &Path,
-    language_id: Option<&LanguageId>,
-    requested_provider_id: Option<&ProviderId>,
-) -> Result<CurrentSourceIndexSnapshot, String> {
-    match (language_id, requested_provider_id) {
-        (Some(language_id), requested_provider_id) => {
-            let provider_registry = ProviderRegistrySnapshot::load(project_root)?;
-            let provider = provider_registry
-                .provider_for_language(language_id)
-                .ok_or_else(|| format!("provider is missing for language {language_id}"))?;
-            if let Some(requested_provider_id) = requested_provider_id
-                && requested_provider_id != &provider.provider_id
-            {
-                return Err(format!(
-                    "provider {requested_provider_id} is not registered for language {language_id}; registered provider is {}",
-                    provider.provider_id
-                ));
-            }
-            let project_context = ProjectContext::resolve(checkout_root)?;
-            super::provider_envelope::ensure_provider_source_index_snapshot_at_artifact_root_with_registry(
-                ProviderSourceEnvelopeLookupRequestV1 {
-                    project_root: checkout_root,
-                    artifact_root: project_context.state_layout().artifacts_dir(),
-                    language_id,
-                    provider_id: &provider.provider_id,
-                    provider_registry: &provider_registry,
-                },
-            )
-        }
-        (None, Some(_)) => Err(
-            "--index-owner requires a language-scoped `asp <language> cache source-index lookup` request"
-                .to_string(),
-        ),
-        (None, None) => current_source_index_snapshot(checkout_root),
-    }
-}
-
 pub(super) fn source_index_trace(stage: &str, started: Instant) {
     if std::env::var_os("ASP_SOURCE_INDEX_TRACE").is_some() {
         eprintln!(

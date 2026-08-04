@@ -1,0 +1,8 @@
+import ASPProof.CodexMultiAgentV2RegistryMaterialization
+
+open ASPProof.CodexMultiAgentV2RegistryMaterialization
+
+#check nonUniqueDurableRootRejects
+#check registryFactsMintNoTurns
+#check registryFactsMintNoDelegations
+#check registryMaterializationPreservesOnlyAgentFacts

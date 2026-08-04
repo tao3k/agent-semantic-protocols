@@ -63,14 +63,15 @@ fn projection(generation: u64) -> CodexMultiAgentV2ControlPlaneProjection {
 }
 
 #[test]
-fn runtime_server_ipc_exposes_typed_publish_and_read_operations() {
+fn runtime_server_ipc_exposes_typed_refresh_and_read_operations() {
     let publish = serde_json::to_value(
-        WorkspaceDbIpcOperation::PublishCodexMultiAgentControlPlane {
-            projection: projection(4),
+        WorkspaceDbIpcOperation::RefreshCodexMultiAgentControlPlane {
+            project_id: "workspace-1".to_owned(),
+            root_session_id: "root-1".to_owned(),
         },
     )
     .expect("serialize publish operation");
-    assert_eq!(publish["kind"], "publish-codex-multi-agent-control-plane");
+    assert_eq!(publish["kind"], "refresh-codex-multi-agent-control-plane");
 
     let read = serde_json::to_value(WorkspaceDbIpcOperation::ReadCodexMultiAgentControlPlane {
         root_session_id: "root-session".to_owned(),

@@ -292,6 +292,29 @@ impl WorkspaceDbIpcSession {
         Ok(receipt)
     }
 
+    /// Route one cache-control request through the Runtime Server data plane.
+    pub async fn cache_control(
+        &self,
+        request: super::RuntimeCacheControlRequest,
+    ) -> Result<super::RuntimeCacheControlReceipt, String> {
+        let session_root = self.runtime_project_root()?;
+        let request_root = std::path::Path::new(request.project_root());
+        if request_root != session_root {
+            return Err(format!(
+                "cache-control project root must match the Runtime Server session: session={} request={}",
+                session_root.display(),
+                request_root.display()
+            ));
+        }
+        match self
+            .call_operation(WorkspaceDbIpcOperation::CacheControl { request })
+            .await?
+        {
+            WorkspaceDbIpcResult::CacheControl { receipt } => Ok(receipt),
+            _ => Err("Runtime Server returned an unexpected cache-control result".to_owned()),
+        }
+    }
+
     pub async fn ensure_runtime_generation(
         &self,
     ) -> Result<crate::runtime_server_admission::WorkspaceGenerationAdmissionReceipt, String> {
@@ -385,6 +408,41 @@ impl WorkspaceDbIpcSession {
                 "Runtime Server returned unexpected Graph Turbo result: {other:?}"
             )),
         }
+    }
+
+    pub async fn runtime_search_generation_authority(
+        &self,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceSearchGenerationAuthority, String> {
+        let expected_workspace_identity = self.workspace_identity().to_owned();
+        let expected_project_root = self.runtime_project_root()?.display().to_string();
+        let pointer = self
+            .shared
+            .search_generation_authority
+            .get_or_try_init(|| async {
+                let result = self
+                    .call_operation(
+                        WorkspaceDbIpcOperation::ReadRuntimeSearchGenerationAuthority {
+                            project_root: expected_project_root.clone(),
+                        },
+                    )
+                    .await?;
+                let receipt = match result {
+                    WorkspaceDbIpcResult::RuntimeSearchGenerationAuthority { receipt } => receipt,
+                    other => {
+                        return Err(format!(
+                            "Runtime Server returned unexpected search generation authority result: {other:?}"
+                        ));
+                    }
+                };
+                crate::runtime_server_workspace::WorkspaceSearchGenerationAuthorityPointerClient::open(
+                    &receipt,
+                    &expected_workspace_identity,
+                    &expected_project_root,
+                )
+                .await
+            })
+            .await?;
+        pointer.read()
     }
 
     pub async fn publish_runtime_owner(

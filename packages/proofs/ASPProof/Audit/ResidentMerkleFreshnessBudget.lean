@@ -1,4 +1,5 @@
 import ASPProof.ResidentMerkleFreshnessBudget
+import ASPProof.NoncancellableColdGenerationAdmission
 
 namespace ASPProof.Audit.ResidentMerkleFreshnessBudget
 
@@ -13,5 +14,10 @@ open ASPProof.ResidentMerkleFreshnessBudget
 #check cached_hit_without_owner_freshness_is_insufficient
 #check every_exact_projection_requires_owner_freshness
 #check stale_cached_hit_cannot_be_returned
+#check connected_first_never_opens_when_connected_available
+#check connected_first_opens_only_under_connection_pressure
+#check atomic_monotonic_activity_does_not_block_read_hot_path
+#check shared_generation_pointer_has_no_warm_scheduler_roundtrip
+#check complete_pointer_refines_authority_binding
 
 end ASPProof.Audit.ResidentMerkleFreshnessBudget

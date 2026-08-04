@@ -1,0 +1,71 @@
+#+title: Registry-derived Multiple Agent V2 control-plane materialization
+#+property: schemaVersion 1
+
+* Status
+
+This document defines the Runtime Server refinement from the durable
+AgentSession Registry into ASP's downstream Codex Multiple Agent V2
+control-plane projection.
+
+* Execution-plane boundary
+
+Codex remains the execution plane. ASP does not implement Codex spawning,
+scheduling, queues, turn execution, interruption, or archival. The Runtime
+Server consumes durable host and registry evidence and publishes a queryable
+control-plane observation.
+
+* Server-owned refresh
+
+The Runtime Server owns refresh. A client supplies only the project identity
+and root session identity. The server queries its local asynchronous
+AgentSession Registry owner, computes the source digest and materialization
+generation, validates the shared projection, and publishes it through the
+existing control-plane admission owner.
+
+The server-local registry query must not use the synchronous client adapter.
+That adapter may proxy through the Runtime Server and would recursively enter
+the same IPC owner.
+
+* Evidence floor
+
+An AgentSession Registry snapshot is durable evidence for agent identities,
+physical generations, parent relations, configured agent types, resident
+names, roles, and trusted live message-target bindings.
+
+The root session identifier alone is not a root-agent record. A current
+projection requires exactly one durable root row whose session identity is the
+requested root and whose parent is absent. Missing or duplicate root evidence
+fails closed; the materializer must not invent a root name, role, generation,
+or lifecycle state.
+
+Registry status is not a Codex dispatch claim and is not a Codex turn receipt.
+Consequently registry-derived lifecycle nodes carry an unobserved dispatch
+generation and cannot authorize durable dispatch by themselves.
+
+* No inferred turns or delegations
+
+The AgentSession Registry does not own durable Codex turn identifiers or
+delegation delivery receipts. Registry-only materialization therefore emits
+an empty turn set and an empty delegation set. A parent session relation may
+remain on the agent node, but it must not be upgraded into a delegation edge.
+
+Turn nodes and delegation edges may be added only by a later evidence owner
+whose receipt schema names those facts. Delivered or completed delegations
+continue to require their indexed delivery receipt.
+
+* Freshness and generation
+
+Records are sorted by session identity before canonical serialization. The
+source digest covers the complete scoped registry snapshot. An unchanged
+current snapshot is idempotent and reuses its generation. Changed evidence,
+stale materialization, or changed Workspace Server observation advances the
+generation before publication. Lower generations and same-generation content
+conflicts remain rejected by the shared publication owner.
+
+* Performance and failure contract
+
+Digesting and graph construction execute inside the resident Runtime Server,
+not in the CLI. Refresh returns a typed publication receipt. Registry owner
+absence, scope leakage, invalid physical generation, missing root evidence,
+projection validation failure, and publication conflict return typed failures;
+none authorizes a client-side fallback or a synthesized graph.
