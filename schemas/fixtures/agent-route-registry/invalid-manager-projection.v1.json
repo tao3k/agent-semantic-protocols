@@ -3,14 +3,13 @@
   "schemaVersion": "1",
   "agents": {
     "asp_testing": {
-      "sessionName": "asp-testing",
+      "sessionName": "asp_testing",
       "sessionLifetime": "resident",
       "roles": ["testing"],
       "platforms": {
         "codex": {
-          "hostAgentName": "asp_testing",
-          "profile": "asp-testing.toml",
-          "model": "gpt-5.6-luna"
+          "projection": "asp-testing_codex.toml",
+          "managerProjection": "legacy-shadow"
         }
       }
     }

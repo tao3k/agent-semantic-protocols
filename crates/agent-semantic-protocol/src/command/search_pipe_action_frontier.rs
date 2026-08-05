@@ -1,5 +1,7 @@
 //! Typed search-pipe action frontier facts and display materialization.
 
+use std::collections::BTreeMap;
+
 use super::search_pipe_projection::query_projection_suffix;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -30,6 +32,11 @@ pub(super) enum ActionRoute {
         dependency: String,
         scope: String,
     },
+    LexicalSearch {
+        language_id: String,
+        query: String,
+        scope: String,
+    },
     TreeSitterQuery {
         language_id: String,
         recipe: String,
@@ -38,7 +45,111 @@ pub(super) enum ActionRoute {
     },
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ActionFrontierEntry {
+    pub(super) id: String,
+    pub(super) kind: String,
+    pub(super) capability_id: String,
+    pub(super) target: String,
+    pub(super) target_role: String,
+    pub(super) fields: BTreeMap<String, serde_json::Value>,
+}
+
 impl ActionNode {
+    pub(super) fn frontier_entry(&self) -> ActionFrontierEntry {
+        let mut fields = BTreeMap::new();
+        fields.insert("suffix".to_string(), self.suffix.clone().into());
+        let (kind, capability_id, target, target_role) = match &self.route {
+            ActionRoute::QueryProjection {
+                language_id,
+                selector,
+                owner,
+                symbol,
+                workspace,
+            } => {
+                fields.insert("languageId".to_string(), language_id.clone().into());
+                fields.insert("ownerPath".to_string(), owner.clone().into());
+                fields.insert("itemName".to_string(), symbol.clone().into());
+                fields.insert(
+                    "structuralSelector".to_string(),
+                    selector.structural_selector().into(),
+                );
+                fields.insert("workspace".to_string(), workspace.clone().into());
+                fields.insert(
+                    "projection".to_string(),
+                    super::search_pipe_projection::query_projection_kind(language_id).into(),
+                );
+                fields.insert("requiresExact".to_string(), true.into());
+                (
+                    "query-code",
+                    "query",
+                    selector.structural_selector().to_string(),
+                    "selector",
+                )
+            }
+            ActionRoute::OwnerItems {
+                language_id,
+                owner,
+                query,
+                scope,
+            } => {
+                fields.insert("languageId".to_string(), language_id.clone().into());
+                fields.insert("ownerPath".to_string(), owner.clone().into());
+                fields.insert("query".to_string(), query.clone().into());
+                fields.insert("workspace".to_string(), scope.clone().into());
+                ("owner-items", "owner-items", owner.clone(), "owner")
+            }
+            ActionRoute::DependencySearch {
+                language_id,
+                dependency,
+                scope,
+            } => {
+                fields.insert("languageId".to_string(), language_id.clone().into());
+                fields.insert("workspace".to_string(), scope.clone().into());
+                (
+                    "search-deps",
+                    "search-deps",
+                    dependency.clone(),
+                    "dependency",
+                )
+            }
+            ActionRoute::LexicalSearch {
+                language_id,
+                query,
+                scope,
+            } => {
+                fields.insert("languageId".to_string(), language_id.clone().into());
+                fields.insert("workspace".to_string(), scope.clone().into());
+                ("lexical-search", "lexical-search", query.clone(), "query")
+            }
+            ActionRoute::TreeSitterQuery {
+                language_id,
+                recipe,
+                names,
+                scope,
+            } => {
+                fields.insert("languageId".to_string(), language_id.clone().into());
+                fields.insert("names".to_string(), names.clone().into());
+                fields.insert("workspace".to_string(), scope.clone().into());
+                (
+                    "treesitter-query",
+                    "treesitter-query",
+                    recipe.clone(),
+                    "syntax-recipe",
+                )
+            }
+        };
+        ActionFrontierEntry {
+            id: self.id.clone(),
+            kind: kind.to_string(),
+            capability_id: capability_id.to_string(),
+            target,
+            target_role: target_role.to_string(),
+            fields,
+        }
+    }
+
     pub(super) fn materialized_command(&self) -> Option<String> {
         match &self.route {
             ActionRoute::QueryProjection {
@@ -70,6 +181,15 @@ impl ActionNode {
             } => Some(format!(
                 "asp {language_id} search deps {} --workspace {scope} --view seeds",
                 shell_arg(dependency)
+            )),
+            ActionRoute::LexicalSearch {
+                language_id,
+                query,
+                scope,
+            } => Some(format!(
+                "asp {language_id} search lexical --query {} --workspace {} --view seeds",
+                shell_arg(query),
+                shell_arg(scope),
             )),
             ActionRoute::TreeSitterQuery {
                 language_id,

@@ -107,6 +107,14 @@ charged to its parent cwd workspace. Dropping changed paths before admission is
 a contract violation because a boolean mutation signal cannot identify the
 affected workspace set.
 
+Fanout MUST NOT rediscover Git candidates or rescan a checkout. The origin
+workspace binds the typed candidate evidence already carried by the admitted
+observation; every additional affected workspace binds the candidate/base
+evidence retained by its own resident admission entry. Missing resident
+candidate evidence fails that workspace lane explicitly. Reusing the origin
+candidate for a nested workspace, or reconstructing candidate identity in the
+writer lane, is an authority violation.
+
 The request MUST also carry a non-empty =mutationId= derived from the typed hook
 event identity (for Codex, the session plus tool-use identity). Changed paths
 are not an event identity: two consecutive edits may change the same paths and
@@ -118,13 +126,23 @@ as an unbounded global history. A different =mutationId= waits behind an active
 writer flight and then submits a successor; it is never answered from the prior
 event merely because its path set is equal.
 
-PostTool submission and generation authority are distinct receipts. PostTool
-enqueues the typed mutation into the resident client's Tokio writer lane and
-returns a =queued= or =coalesced= mutation-submission receipt without waiting
-for the daemon to build or acknowledge a generation. The writer lane preserves
-mutation-ID order: a new event is chained after the prior in-flight event for
-that workspace, while equal IDs share the same flight. The background daemon
-response updates diagnostic state but is not required to release the hook.
+PostTool submission and generation authority are distinct receipts. The first
+observer of one =mutationId= atomically becomes the resident client-lane leader.
+That leader returns =queued= only after the Runtime Server has accepted the
+typed mutation; it never waits for provider construction or generation
+publication. A short-lived hook process MUST NOT own an unacknowledged
+background send whose exit could discard changed paths. Once the leader flight
+is installed, equal-ID followers return =coalesced= immediately and MUST NOT
+repeat Git candidate discovery or IPC admission. A different =mutationId= waits
+behind the active flight and then becomes a successor leader, preserving
+mutation-ID order.
+
+The leader carries one observed candidate generation into server admission.
+All equal-ID followers share that accepted flight. A later generation =ensure=
+operation reuses the candidate generation and policy-overlay digest from the
+typed mutation-admission receipt when querying the server's current =Building=,
+=Ready=, or =Failed= state; it MUST NOT rescan Git merely to observe the state
+of an already admitted generation.
 
 A mutation-submission receipt never authorizes search or exact projection.
 PreTool, explicit query, and health readiness use the separate generation
@@ -136,18 +154,24 @@ that already completed.
 * Installed performance receipt
 
 The installed health receipt MUST expose =workspaceGeneration.elapsedMicros= for
-the workspace lookup plus local writer-lane submission. Provider construction,
-daemon response, and terminal waiting are excluded by contract. It MUST also
-expose the most recent background admission outcome for diagnostics. This value
-is the executable cold/warm performance evidence; increasing a command timeout
-cannot satisfy the gate.
+workspace lookup, writer-lane role selection, and—only for the leader—Runtime
+Server acceptance. Provider construction and terminal generation waiting are
+excluded by contract. Equal-ID followers are released by the resident lane
+without repeating candidate discovery or IPC. The receipt MUST also expose the
+most recent admission outcome for diagnostics. This value is the executable
+cold/warm performance evidence; increasing a command timeout cannot satisfy the
+gate.
 
 * Concurrency gate
 
 The executable gate MUST cover multiple concurrent sessions and workspaces.
-Repeated admission for one workspace is single-flight; different workspace keys
-build independently. Admission submit p99 MUST remain below one millisecond and
-the receipt MUST expose the same attempt to every concurrent observer.
+Repeated admission for one workspace and one =mutationId= is single-flight;
+different workspace keys build independently. Exactly one observer returns
+=queued=, equal-ID followers return =coalesced=, and only the leader may discover
+the candidate or perform IPC admission. Submission p99 and typed =ensure= p99
+MUST each remain below one millisecond. The underlying mutation-admission
+receipt exposes the same attempt to every observer that requests the full
+admission result.
 
 * Scientific engineering closure
 

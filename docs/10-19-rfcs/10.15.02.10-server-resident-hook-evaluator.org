@@ -38,7 +38,7 @@ the key observed before evaluation equals the generation key that produced the
 response. Workspace identity is part of the key, so equal configuration bytes
 in two workspaces cannot alias lifecycle state.
 
-* Warm and fallback paths
+* Warm and recovery paths
 
 #+begin_src mermaid
 stateDiagram-v2
@@ -52,18 +52,25 @@ stateDiagram-v2
     KeyRecheck --> Emit: observed K equals response K
     KeyRecheck --> RetryOnce: generation advanced
     RetryOnce --> ServerProbe: one bounded retry
-    ServerProbe --> LocalFallback: server unavailable or old transport
-    LocalFallback --> RepairGate: typed contract drift
-    LocalFallback --> Emit: coherent local evaluation
-    RepairGate --> Emit: repaired replay or plane policy
+    ServerProbe --> TypedUnavailable: server unavailable or old transport
+    TypedUnavailable --> RecoveryGate: canonical repair command only
+    RecoveryGate --> Bootstrap: repaired server generation
     Emit --> [*]
 #+end_src
 
 The warm path performs one local socket round trip and zero matcher
-compilations. Server absence, an older data-plane schema, or server restart is
-an optimization miss rather than an authorization fact: the bootstrap falls
-back to the existing local evaluator. The RFC 10.15.02.09 enforcement and
-observational failure policies remain authoritative.
+compilations.  Normal Hook evaluation MUST use the typed Runtime Server data
+plane and the already hydrated =ClientHookConfig= owned by that process.  It
+MUST NOT open, decode, or hydrate the durable snapshot on each action.
+
+The durable seqlock snapshot is an atomic diagnostic/checkpoint projection,
+not a second evaluation authority and not a client-readable policy engine.
+Server absence, an older data-plane schema, identity mismatch, or server
+restart returns typed =unavailable=.  A separate recovery gate MAY admit only
+digest/target-validated canonical binary installation and Runtime Server
+reconciliation; after repair, the original event is evaluated by the new
+resident generation.  It MUST NOT make a local policy decision or silently
+pass the event.
 
 * Stateful cache requirements
 
@@ -81,6 +88,10 @@ observational failure policies remain authoritative.
 7. The decision receipt MUST expose =hookMatcherGeneration= as =compiled= or
    =resident-hit= so installed-path validation can distinguish reuse from mere
    server health.
+8. The per-action path neither opens nor decodes the durable checkpoint and
+   never hydrates a matcher.  Resident generation construction owns hydration.
+9. Recovery admission is disjoint from Hook policy evaluation and accepts only
+   canonical repair operations whose candidate digest and target are validated.
 
 * Executable mathematical assertions
 
@@ -108,19 +119,21 @@ observational failure policies remain authoritative.
 | stale responses are rejected | =stale_generation_is_not_admissible= |
 | a leased generation cannot be evicted | =leased_generation_is_not_evictable= |
 | the warm path uses one round trip | =warm_path_is_one_round_trip= |
-| server failure preserves local fallback | =server_failure_selects_local_fallback= |
+| server failure is typed unavailable | =server_failure_is_typed_unavailable= |
+| generation identity mismatch is typed unavailable | =identity_mismatch_is_typed_unavailable= |
 
 * Rust ownership boundary
 
 | Responsibility | Owner |
 |-
 | stable public command and bounded server-first forwarding | =asp hook= entrypoint |
-| local fallback and cold repair | internal bootstrap module of the same =asp= artifact |
+| typed unavailable response and canonical repair gate | internal bootstrap module of the same =asp= artifact |
 | typed evaluator request and response | Runtime Server data-plane protocol |
 | evaluator callback and compiled-generation cache | protocol daemon process |
 | config compilation and classification semantics | =agent-semantic-hook= |
 | artifact/config drift repair | RFC 10.15.02.09 bootstrap repair |
 
-This design intentionally does not serialize =ClientHookConfig=. The final
-platform response is the only semantic result crossing the evaluator IPC
-boundary.
+This design intentionally does not serialize =ClientHookConfig= across the
+per-action IPC boundary.  The durable representation is an atomic checkpoint,
+never the client evaluation route.  The final platform response is the only
+per-action semantic result crossing the evaluator IPC boundary.

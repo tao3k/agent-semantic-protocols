@@ -52,7 +52,7 @@ pub(in super::super) fn asp_selector_seeded_search_pipe_frontier_stays_inside_sc
     );
     assert!(
         stdout.contains(&format!(
-            "nextCommand=asp rust query --selector '{selector}' --workspace . --code"
+            "nextCommand=asp rust query --selector '{selector}' --workspace . --projection source"
         )),
         "stdout={stdout}"
     );

@@ -1,7 +1,7 @@
 //! Enforces configured resident dispatch and terminal wrapper contracts.
 
 /// Deny configured resident spawns that do not use their canonical isolated context.
-pub(super) fn enforce_configured_resident_spawn_contract(
+pub(crate) fn enforce_configured_resident_spawn_contract(
     hook_config: &agent_semantic_hook::ClientHookConfig,
     platform: &str,
     event: &str,
@@ -66,7 +66,7 @@ pub(super) fn enforce_configured_resident_spawn_contract(
 }
 
 /// Mark the validating dispatch wrapper as a terminal resident execution bridge.
-pub(super) fn materialize_resident_dispatch_wrapper(
+pub(crate) fn materialize_resident_dispatch_wrapper(
     payload: &serde_json::Value,
     decision: &mut agent_semantic_hook::HookDecision,
 ) {

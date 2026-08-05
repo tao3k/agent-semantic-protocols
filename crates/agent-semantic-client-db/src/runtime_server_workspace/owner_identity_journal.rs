@@ -1,12 +1,11 @@
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use memmap2::MmapOptions;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use super::atomic_snapshot_pointer::{AtomicSnapshotPointerReader, AtomicSnapshotPointerWriter};
 
@@ -84,7 +83,7 @@ impl RuntimeOwnerIdentityJournalPublisher {
                 format!("read runtime owner identity pointer task failed: {error}")
             })??;
         let current = match current_pointer {
-            Some(pointer) => Some(read_segment(&directory, &pointer, None).await?),
+            Some(pointer) => Some(read_segment(&directory, &pointer).await?),
             None => None,
         };
         Ok(Self {
@@ -237,118 +236,15 @@ impl RuntimeOwnerIdentityJournalPublisher {
     }
 }
 
-#[derive(Debug)]
-pub(super) struct RuntimeOwnerIdentityJournalReader {
-    directory: PathBuf,
-    pointer: AtomicSnapshotPointerReader<RuntimeOwnerIdentityJournalPointer>,
-    snapshot: RwLock<Option<RuntimeOwnerIdentityJournalSnapshot>>,
-    counters: Arc<RuntimeOwnerIdentityJournalCounters>,
-}
-
-#[derive(Debug, Default)]
-struct RuntimeOwnerIdentityJournalCounters {
-    segment_opens: AtomicU64,
-    segment_decodes: AtomicU64,
-}
-
-impl RuntimeOwnerIdentityJournalReader {
-    pub async fn open(generation_pointer_path: &Path) -> Result<Self, String> {
-        let directory = generation_pointer_path
-            .parent()
-            .ok_or_else(|| "workspace generation pointer has no parent".to_owned())?
-            .to_path_buf();
-        let pointer =
-            AtomicSnapshotPointerReader::open(&directory.join(POINTER_FILE), POINTER_CONTEXT)
-                .await?;
-        let counters = Arc::new(RuntimeOwnerIdentityJournalCounters::default());
-        let snapshot = match pointer.read_optional()? {
-            Some(current) => Some(read_segment(&directory, &current, Some(&counters)).await?),
-            None => None,
-        };
-        Ok(Self {
-            directory,
-            pointer,
-            snapshot: RwLock::new(snapshot),
-            counters,
-        })
-    }
-
-    pub async fn owner_is_current(
-        &self,
-        workspace_identity: &str,
-        base_generation_digest: &str,
-        owner_path: &str,
-        owner_content_digest: &str,
-    ) -> Result<bool, String> {
-        self.refresh_if_changed().await?;
-        let snapshot = self.snapshot.read().await;
-        let Some(snapshot) = snapshot.as_ref() else {
-            return Ok(false);
-        };
-        if snapshot.workspace_identity != workspace_identity
-            || snapshot.base_generation_digest != base_generation_digest
-        {
-            return Ok(false);
-        }
-        Ok(
-            match snapshot
-                .entries
-                .binary_search_by(|entry| entry.owner_path.as_str().cmp(owner_path))
-            {
-                Ok(index) => {
-                    let entry = &snapshot.entries[index];
-                    entry.state == RuntimeOwnerIdentityState::Present
-                        && entry.content_digest.as_deref() == Some(owner_content_digest)
-                }
-                Err(_) => true,
-            },
-        )
-    }
-
-    async fn refresh_if_changed(&self) -> Result<(), String> {
-        let Some(pointer) = self.pointer.read_optional()? else {
-            return Ok(());
-        };
-        if self
-            .snapshot
-            .read()
-            .await
-            .as_ref()
-            .is_some_and(|snapshot| snapshot.epoch == pointer.epoch)
-        {
-            return Ok(());
-        }
-        let next = read_segment(&self.directory, &pointer, Some(&self.counters)).await?;
-        *self.snapshot.write().await = Some(next);
-        Ok(())
-    }
-
-    #[cfg(test)]
-    fn counter_snapshot(&self) -> (u64, u64, u64) {
-        (
-            self.counters.segment_opens.load(Ordering::Relaxed),
-            self.counters.segment_decodes.load(Ordering::Relaxed),
-            self.pointer.decode_count(),
-        )
-    }
-}
-
 async fn read_segment(
     directory: &Path,
     pointer: &RuntimeOwnerIdentityJournalPointer,
-    counters: Option<&RuntimeOwnerIdentityJournalCounters>,
 ) -> Result<RuntimeOwnerIdentityJournalSnapshot, String> {
     validate_segment_name(&pointer.segment_name)?;
-    if let Some(counters) = counters {
-        counters.segment_opens.fetch_add(1, Ordering::Relaxed);
-    }
     let snapshot =
         map_json::<RuntimeOwnerIdentityJournalSnapshot>(&directory.join(&pointer.segment_name))
             .await
             .map_err(|error| format!("open runtime owner identity segment: {error}"))?;
-    if let Some(counters) = counters {
-        counters.segment_decodes.fetch_add(1, Ordering::Relaxed);
-    }
     if pointer.epoch != snapshot.epoch {
         return Err("runtime owner identity pointer epoch mismatch".to_owned());
     }

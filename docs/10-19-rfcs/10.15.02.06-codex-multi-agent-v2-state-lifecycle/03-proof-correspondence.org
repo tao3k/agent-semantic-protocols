@@ -1,45 +1,14 @@
-#+title: RFC 10.15.02.06.03 — LifeSession proof correspondence
-#+options: toc:2
+#+TITLE: Multi-agent Life Session proof correspondence
 
-* Three-view contract
+| Contract | Lean owner | Rust obligation |
+|-
+| Orthogonal server/session/binding/dispatch layers | =AgentSessionLifecycleProduct= | state and transition enums preserve generation fences |
+| Root session contains many agents | =MultiAgentLifeSession.MultiAgentLifeSession= | aggregate registry is scoped by root session |
+| Typed identity separation | =ResidentProfile= | route, session, and platform target are newtypes |
+| Verified binding before dispatch | =durableResidentDispatchAuthorized= | dispatch claim requires current verification receipt |
+| One resident generation per slot | =ResidentOccupancy= | incumbent/replacement cannot coexist |
+| Temporary agents do not consume resident slots | =temporaryAgentsDoNotConsumeResidentSlots= | temporary lifecycle is stored separately |
+| Dynamic configured routes | =ResidentRegistry= | no fixed resident-name enumeration |
 
-The proof specification is maintained in three synchronized views:
-
-- Org states normative lifecycle and Rust migration clauses.
-- Typst states the mathematical predicates inside Org-Babel blocks.
-- Lean makes the reducer and non-implication claims executable.
-
-Mermaid state diagrams are a fourth presentation view.  Every lifecycle edge
-in a diagram must name both a state transition and its durable fact or rejection
-condition.
-
-* Lean modules
-
-- =ASPAgentLifeSessionRefinement.lean=: name projection, binding authority,
-  rebind progress, and one-command public surface;
-- =ASPAgentLifeSessionClose.lean=: archive orthogonality, revision and
-  generation fences, stable-key close, shutdown timeout, late termination,
-  path release, and fresh-generation replacement; and
-- =ASPAgentLifeSessionAggregate.lean=: cross-protocol authority separation and
-  durable-dispatch revocation during close.
-
-Their direct audits enumerate 47 theorem declarations.  All declarations must
-remain axiom-free.  In particular, computational fence equality must reduce in
-the kernel; the audit must not add =propext= merely to accommodate a convenient
-boolean comparison implementation.
-
-* AXLE obligations
-
-AXLE MUST fail closed unless:
-
-- all three Lean modules and their direct audits are present;
-- every Lean owner has an Org reference to this module family;
-- the Typst block evaluates through stdin;
-- theorem-family identifiers cover binding, close, recovery, replacement, and
-  aggregate authority separation;
-- no declaration contains =sorryAx= or an allowed-axiom exception; and
-- the receipt binds the exact Lean audit, Org clauses, and Typst source digest.
-
-A successful =lake build= proves type correctness only.  AXLE owns independent
-RFC correspondence and receipt completeness; executable Rust conformance
-remains a later, separate gate.
+The audit module =ASPProof.Audit.MultiAgentLifeSession= must report zero axiom
+dependencies for every theorem above.

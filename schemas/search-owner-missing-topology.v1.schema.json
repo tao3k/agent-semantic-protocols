@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agent-semantic-protocols.dev/search-owner-missing-topology.v1.schema.json",
+  "title": "Search owner-missing bounded topology",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "state",
+    "reasonKind",
+    "languageId",
+    "ownerPath",
+    "generationDigest",
+    "rootDigest",
+    "nodes",
+    "edges",
+    "actionFrontier",
+    "recommendedNext"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.search-owner-missing-topology"
+    },
+    "schemaVersion": { "const": "1" },
+    "state": { "const": "owner-missing" },
+    "reasonKind": { "const": "owner-not-in-workspace" },
+    "languageId": { "type": "string", "minLength": 1 },
+    "ownerPath": { "type": "string", "minLength": 1 },
+    "generationDigest": { "type": "string", "minLength": 1 },
+    "rootDigest": { "type": "string", "minLength": 1 },
+    "nodes": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "role", "value", "action", "confidence"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "minLength": 1 },
+          "role": { "type": "string", "minLength": 1 },
+          "value": { "type": "string" },
+          "action": { "type": "string", "minLength": 1 },
+          "confidence": { "const": "exact" },
+          "path": { "type": "string" },
+          "fields": { "type": "object" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "edges": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": ["source", "target", "relation"],
+        "properties": {
+          "source": { "type": "string", "minLength": 1 },
+          "target": { "type": "string", "minLength": 1 },
+          "relation": { "type": "string", "minLength": 1 },
+          "fields": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "actionFrontier": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "recommendedNext": { "type": "string", "minLength": 1 }
+  }
+}

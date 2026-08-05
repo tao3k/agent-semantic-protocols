@@ -8,18 +8,23 @@ mod protocol_binary_retention;
 pub(crate) use protocol_binary_retention::prune_runtime_binary_artifacts;
 
 use protocol_binary_identity::is_digest_addressed_protocol_binary;
-#[cfg(test)]
 pub(crate) use protocol_binary_identity::protocol_binary_digest_from_canonical_artifact_path;
 pub(crate) use protocol_binary_identity::{
     canonical_protocol_binary_artifact_digest, protocol_binary_artifact_path_digest,
 };
 
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::time::Duration;
 
-pub(super) const SEMANTIC_AGENT_PROTOCOL_BIN: &str = "asp";
+pub(crate) const SEMANTIC_AGENT_PROTOCOL_BIN: &str = "asp";
+#[cfg(not(test))]
+const DOCTOR_PROCESS_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+#[cfg(test)]
+const DOCTOR_PROCESS_PROBE_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RuntimeBinaryIdentityV1 {
@@ -294,7 +299,7 @@ fn install_protocol_binary_alias(
     Ok(())
 }
 
-pub(super) fn ensure_runtime_protocol_binary_alias(
+pub(crate) fn ensure_runtime_protocol_binary_alias(
     protocol_home: &Path,
     alias: &Path,
 ) -> Result<(), String> {
@@ -348,10 +353,6 @@ pub(super) fn ensure_runtime_protocol_binary_alias(
         ));
     }
     Ok(())
-}
-
-pub(crate) fn protocol_binary_on_path() -> Option<PathBuf> {
-    protocol_binary_path_probe().path
 }
 
 pub(crate) fn protocol_binary_path_probe() -> ProtocolBinaryPathProbe {
@@ -455,14 +456,50 @@ pub(crate) fn protocol_binary_in_codex_hook_shell() -> ProtocolBinaryShellProbe 
     }
 }
 
+pub(crate) fn protocol_binary_contract_fingerprint(path: &Path) -> Option<String> {
+    let args = [OsString::from("--contract-fingerprint")];
+    let output = bounded_doctor_process(path, &args).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let fingerprint = String::from_utf8(output.stdout).ok()?;
+    let fingerprint = fingerprint.trim();
+    (!fingerprint.is_empty()).then(|| fingerprint.to_string())
+}
+
+fn bounded_doctor_process(
+    executable: &Path,
+    args: &[OsString],
+) -> Result<std::process::Output, String> {
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return Err(
+            "doctor process probe cannot synchronously block an active Tokio runtime".into(),
+        );
+    }
+    let runtime =
+        agent_semantic_client_db::runtime_server_runtime::RuntimeServerClientExecutor::get()?;
+    runtime.block_on(
+        agent_semantic_runtime::hook_process_runtime::run_hook_process(
+            agent_semantic_runtime::hook_process_runtime::HookProcessRequest {
+                executable,
+                args,
+                stdin: &[],
+                timeout: DOCTOR_PROCESS_PROBE_TIMEOUT,
+                current_dir: None,
+                environment: None,
+                discard_stdout: false,
+            },
+        ),
+    )
+}
+
 #[cfg(unix)]
 fn probe_protocol_binary_in_login_shell(shell: &Path) -> ProtocolBinaryShellProbe {
-    let mut command = std::process::Command::new(shell);
     // Codex's command Hook runner invokes the configured shell with `-lc` and
     // inherits the host environment.  Doctor must exercise that exact surface;
     // a synthetic non-login PATH probe can report a false exit-127 failure.
-    command.args(["-lc", "command -v asp"]);
-    let output = match command.output() {
+    let args = [OsString::from("-lc"), OsString::from("command -v asp")];
+    let output = match bounded_doctor_process(shell, &args) {
         Ok(output) => output,
         Err(_) => {
             return ProtocolBinaryShellProbe {
@@ -562,11 +599,68 @@ pub(crate) fn install_protocol_binary_target(
                 source.display()
             )
         })?;
-    let target_is_current = fs::symlink_metadata(target)
+    let artifact_path = artifact_root
+        .join("blake3-256")
+        .join(&artifact_digest)
+        .join(binary_name);
+    if !artifact_path.is_file() {
+        let artifact_parent = artifact_path.parent().ok_or_else(|| {
+            format!(
+                "digest-addressed protocol artifact has no parent: {}",
+                artifact_path.display()
+            )
+        })?;
+        fs::create_dir_all(artifact_parent)
+            .map_err(|error| format!("failed to create {}: {error}", artifact_parent.display()))?;
+        let candidate = temporary_protocol_binary_path(&artifact_path);
+        if fs::symlink_metadata(&candidate).is_ok() {
+            fs::remove_file(&candidate).map_err(|error| {
+                format!("failed to remove stale {}: {error}", candidate.display())
+            })?;
+        }
+        fs::copy(source, &candidate).map_err(|error| {
+            format!(
+                "failed to stage digest-addressed runtime artifact {}: {error}",
+                candidate.display()
+            )
+        })?;
+        let permissions = fs::metadata(source)
+            .map_err(|error| format!("failed to inspect {}: {error}", source.display()))?
+            .permissions();
+        fs::set_permissions(&candidate, permissions)
+            .map_err(|error| format!("failed to chmod {}: {error}", candidate.display()))?;
+        let candidate_digest = agent_semantic_content_identity::file_content_digest_v1(&candidate)
+            .map_err(|error| {
+                format!(
+                    "failed to verify staged runtime artifact {}: {error}",
+                    candidate.display()
+                )
+            })?;
+        if candidate_digest != artifact_digest {
+            let _ = fs::remove_file(&candidate);
+            return Err(format!(
+                "digest-addressed runtime artifact drift: expected={artifact_digest} actual={candidate_digest}"
+            ));
+        }
+        atomic_replace_protocol_entry(&candidate, &artifact_path)?;
+    }
+    let artifact_identity = fs::canonicalize(&artifact_path).map_err(|error| {
+        format!(
+            "failed to resolve digest-addressed runtime artifact {}: {error}",
+            artifact_path.display()
+        )
+    })?;
+    if protocol_binary_digest_from_canonical_artifact_path(&artifact_identity).as_deref()
+        != Some(artifact_digest.as_str())
+    {
+        return Err(format!(
+            "runtime artifact path does not encode installed digest: path={} digest={artifact_digest}",
+            artifact_identity.display()
+        ));
+    }
+    let target_is_current = fs::canonicalize(target)
         .ok()
-        .filter(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
-        .and_then(|_| agent_semantic_content_identity::file_content_digest_v1(target).ok())
-        .is_some_and(|current_digest| current_digest == artifact_digest);
+        .is_some_and(|current| current == artifact_identity);
     let status = if target_is_current {
         "already-present"
     } else {
@@ -580,30 +674,7 @@ pub(crate) fn install_protocol_binary_target(
                 format!("failed to remove stale {}: {error}", candidate.display())
             })?;
         }
-        fs::copy(source, &candidate).map_err(|error| {
-            format!(
-                "failed to stage Lattice runtime profile {}: {error}",
-                candidate.display()
-            )
-        })?;
-        let permissions = fs::metadata(source)
-            .map_err(|error| format!("failed to inspect {}: {error}", source.display()))?
-            .permissions();
-        fs::set_permissions(&candidate, permissions)
-            .map_err(|error| format!("failed to chmod {}: {error}", candidate.display()))?;
-        let candidate_digest = agent_semantic_content_identity::file_content_digest_v1(&candidate)
-            .map_err(|error| {
-                format!(
-                    "failed to derive staged Lattice runtime profile digest for {}: {error}",
-                    candidate.display()
-                )
-            })?;
-        if candidate_digest != artifact_digest {
-            let _ = fs::remove_file(&candidate);
-            return Err(format!(
-                "Lattice runtime profile digest drift: expected={artifact_digest} actual={candidate_digest}"
-            ));
-        }
+        stage_active_protocol_entry(&artifact_identity, &candidate)?;
         let status = if fs::symlink_metadata(target).is_ok() {
             "updated"
         } else {
@@ -760,7 +831,3 @@ fn same_dir(left: &Path, right: &Path) -> bool {
         _ => left == right,
     }
 }
-
-#[cfg(test)]
-#[path = "../../tests/unit/protocol_binary.rs"]
-mod artifact_identity_tests;

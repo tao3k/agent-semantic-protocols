@@ -69,6 +69,16 @@ pub struct GraphTopologyProjectionRequest<'a> {
     language_id: GraphTopologyLanguageId,
     workspace_root: &'a Path,
     candidates: &'a [GraphProjectionCandidate],
+    project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
+    include_repository_discovery: bool,
+}
+
+pub struct GraphOwnerMissingTopologyRequest<'a> {
+    pub language_id: &'a str,
+    pub owner_path: &'a str,
+    pub generation_digest: &'a str,
+    pub root_digest: &'a str,
+    pub project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
 }
 
 impl<'a> GraphTopologyProjectionRequest<'a> {
@@ -81,7 +91,22 @@ impl<'a> GraphTopologyProjectionRequest<'a> {
             language_id: language_id.clone(),
             workspace_root,
             candidates,
+            project_resolutions: &[],
+            include_repository_discovery: true,
         }
+    }
+
+    pub fn with_project_resolutions(
+        mut self,
+        project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
+    ) -> Self {
+        self.project_resolutions = project_resolutions;
+        self
+    }
+
+    pub fn without_repository_discovery(mut self) -> Self {
+        self.include_repository_discovery = false;
+        self
     }
 }
 
@@ -99,6 +124,8 @@ impl<'a> From<(&'a str, &'a Path, &'a [GraphProjectionCandidate])>
             language_id: language_id.into(),
             workspace_root,
             candidates,
+            project_resolutions: &[],
+            include_repository_discovery: true,
         }
     }
 }
@@ -109,7 +136,7 @@ pub fn graph_project_topology_projection(
     let mut projection = GraphTopologyProjection::default();
     let language_id = request.language_id;
     let workspace_root = request.workspace_root;
-    let _candidates = request.candidates;
+    let candidates = request.candidates;
     let workspace_id = stable_graph_node_id("workspace", ".");
     projection.nodes.push(json!({
         "id": workspace_id.clone(),
@@ -141,8 +168,15 @@ pub fn graph_project_topology_projection(
         "relation": "has_provider_root",
     }));
 
-    let submodule_paths = graph_project_submodule_paths(workspace_root);
-    let language_projects: Vec<LanguageProjectRoot> = Vec::new();
+    let submodule_paths = if request.include_repository_discovery {
+        graph_project_submodule_paths(workspace_root)
+    } else {
+        Vec::new()
+    };
+    let language_projects = request
+        .project_resolutions
+        .iter()
+        .filter(|admitted| admitted.resolution.language_id == language_id.as_str());
     for submodule_path in &submodule_paths {
         let submodule_id = stable_graph_node_id("submodule", submodule_path);
         projection.nodes.push(json!({
@@ -164,89 +198,456 @@ pub fn graph_project_topology_projection(
         }));
     }
 
-    for project in language_projects {
-        let project_value = format!("{language_id}:{}", project.root_path);
+    for admitted in language_projects {
+        append_admitted_project_resolution(
+            &mut projection,
+            &provider_id,
+            &language_id,
+            admitted,
+            candidates,
+            &submodule_paths,
+        );
+    }
+    projection
+}
+
+pub fn graph_owner_missing_topology_projection(
+    request: GraphOwnerMissingTopologyRequest<'_>,
+) -> GraphTopologyProjection {
+    const PROJECT_LIMIT: usize = 3;
+    const SCOPE_LIMIT: usize = 4;
+
+    let mut projection = GraphTopologyProjection::default();
+    let workspace_id = stable_graph_node_id("workspace", ".");
+    let provider_root_value = format!("{}:.", request.language_id);
+    let provider_root_id = stable_graph_node_id("provider-root", &provider_root_value);
+    let generation_id = stable_graph_node_id("generation", request.generation_digest);
+    let owner_id = stable_graph_node_id("owner", request.owner_path);
+    projection.nodes.extend([
+        json!({
+            "id": workspace_id.clone(),
+            "kind": "workspace",
+            "role": "root",
+            "value": ".",
+            "action": "topology",
+            "confidence": "exact",
+        }),
+        json!({
+            "id": provider_root_id.clone(),
+            "kind": "provider-root",
+            "role": "language-root",
+            "value": provider_root_value,
+            "action": "topology",
+            "confidence": "exact",
+            "fields": { "languageId": request.language_id },
+        }),
+        json!({
+            "id": generation_id.clone(),
+            "kind": "generation",
+            "role": "workspace-generation",
+            "value": request.generation_digest,
+            "action": "topology",
+            "confidence": "exact",
+            "fields": { "rootDigest": request.root_digest },
+        }),
+        json!({
+            "id": owner_id.clone(),
+            "kind": "owner",
+            "role": "missing-owner",
+            "value": request.owner_path,
+            "path": request.owner_path,
+            "action": "owner",
+            "confidence": "exact",
+            "fields": {
+                "languageId": request.language_id,
+                "state": "owner-missing",
+                "reasonKind": "owner-not-in-workspace",
+            },
+        }),
+    ]);
+    projection.edges.extend([
+        json!({
+            "source": workspace_id,
+            "target": provider_root_id.clone(),
+            "relation": "has_provider_root",
+        }),
+        json!({
+            "source": generation_id,
+            "target": owner_id.clone(),
+            "relation": "omits_owner",
+        }),
+    ]);
+
+    let mut project_count = 0;
+    let mut scope_count = 0;
+    for admitted in request.project_resolutions.iter().filter(|admitted| {
+        admitted.resolution.language_id == request.language_id
+            && admitted_project_resolution_contains_owner(admitted, request.owner_path)
+    }) {
+        if project_count == PROJECT_LIMIT || scope_count == SCOPE_LIMIT {
+            break;
+        }
+        project_count += 1;
+        let resolution = &admitted.resolution;
+        let project_entry = logical_join(&admitted.candidate_base, &resolution.project_entry);
+        let project_value = format!(
+            "{}:{}:{project_entry}",
+            request.language_id, resolution.provider_id
+        );
         let project_id = stable_graph_node_id("language-project", &project_value);
-        let primary_marker = project
-            .project_markers
-            .first()
-            .map(|marker| marker.path.as_str());
         projection.nodes.push(json!({
             "id": project_id.clone(),
             "kind": "language-project",
             "role": "project-root",
-            "value": project.root_path,
+            "value": project_entry,
+            "path": project_entry,
             "action": "topology",
-            "path": project.root_path,
             "confidence": "exact",
             "fields": {
-                "languageId": language_id,
-                "projectMarker": primary_marker,
+                "languageId": request.language_id,
+                "providerId": resolution.provider_id,
+                "parserId": resolution.parser_id,
+                "resolutionDigest": admitted.resolution_digest,
             },
         }));
         projection.edges.push(json!({
-            "source": provider_id,
-            "target": project_id,
+            "source": provider_root_id,
+            "target": project_id.clone(),
             "relation": "has_language_project",
         }));
 
-        for marker in &project.project_markers {
-            let marker_value = format!("{language_id}:{}", marker.path);
-            let marker_id = stable_graph_node_id("project-marker", &marker_value);
+        for scope in resolution.source_scopes.iter().filter(|scope| {
+            source_scope_contains(&admitted.candidate_base, scope, request.owner_path)
+        }) {
+            if scope_count == SCOPE_LIMIT {
+                break;
+            }
+            scope_count += 1;
+            let scope_id = stable_graph_node_id(
+                "source-scope",
+                &format!("{project_value}:{}", scope.scope_id),
+            );
             projection.nodes.push(json!({
-                "id": marker_id.clone(),
-                "kind": "project-marker",
-                "role": "project-marker",
-                "value": marker.path.as_str(),
+                "id": scope_id.clone(),
+                "kind": "source-scope",
+                "role": "provider-resolved",
+                "value": scope.scope_id,
+                "action": "owner",
+                "confidence": "exact",
+                "fields": {
+                    "packageId": scope.package_id,
+                    "targetId": scope.target_id,
+                    "includeAuthority": scope.include_authority,
+                    "scopeDigest": scope.scope_digest,
+                },
+            }));
+            projection.edges.extend([
+                json!({
+                    "source": project_id,
+                    "target": scope_id.clone(),
+                    "relation": "resolves_source_scope",
+                }),
+                json!({
+                    "source": scope_id,
+                    "target": owner_id.clone(),
+                    "relation": "expects_owner",
+                }),
+            ]);
+        }
+    }
+    projection
+}
+
+fn admitted_project_resolution_contains_owner(
+    admitted: &agent_semantic_runtime::AdmittedProjectResolution,
+    owner_path: &str,
+) -> bool {
+    admitted
+        .resolution
+        .source_scopes
+        .iter()
+        .any(|scope| source_scope_contains(&admitted.candidate_base, scope, owner_path))
+}
+
+fn append_admitted_project_resolution(
+    projection: &mut GraphTopologyProjection,
+    provider_root_id: &str,
+    language_id: &GraphTopologyLanguageId,
+    admitted: &agent_semantic_runtime::AdmittedProjectResolution,
+    candidates: &[GraphProjectionCandidate],
+    submodule_paths: &[String],
+) {
+    let resolution = &admitted.resolution;
+    let project_entry = logical_join(&admitted.candidate_base, &resolution.project_entry);
+    let project_value = format!("{language_id}:{}:{project_entry}", resolution.provider_id);
+    let project_id = stable_graph_node_id("language-project", &project_value);
+    projection.nodes.push(json!({
+        "id": project_id.clone(),
+        "kind": "language-project",
+        "role": "project-root",
+        "value": project_entry,
+        "action": "topology",
+        "path": project_entry,
+        "confidence": "exact",
+        "fields": {
+            "languageId": language_id,
+            "providerId": resolution.provider_id,
+            "parserId": resolution.parser_id,
+            "candidateBase": admitted.candidate_base,
+            "resolutionDigest": admitted.resolution_digest,
+            "completeness": resolution.completeness,
+        },
+    }));
+    projection.edges.push(json!({
+        "source": provider_root_id,
+        "target": project_id,
+        "relation": "has_language_project",
+    }));
+
+    for manifest in &resolution.package_graph.manifests {
+        append_project_file_node(
+            projection,
+            language_id,
+            &project_id,
+            &admitted.candidate_base,
+            manifest,
+            "project-marker",
+            "declared_by",
+        );
+    }
+
+    for lockfile in &resolution.package_graph.lockfiles {
+        append_project_file_node(
+            projection,
+            language_id,
+            &project_id,
+            &admitted.candidate_base,
+            lockfile,
+            "dependency-marker",
+            "uses_dependency_marker",
+        );
+    }
+
+    for submodule_path in submodule_paths {
+        if graph_path_is_under(&project_entry, submodule_path) {
+            projection.edges.push(json!({
+                "source": stable_graph_node_id("submodule", submodule_path),
+                "target": project_id,
+                "relation": "contains_project",
+            }));
+        }
+    }
+
+    for package in &resolution.package_graph.packages {
+        let package_value = format!("{project_value}:{}", package.package_id);
+        let package_id = stable_graph_node_id("package", &package_value);
+        let package_root = logical_join(&admitted.candidate_base, &package.root);
+        projection.nodes.push(json!({
+            "id": package_id.clone(),
+            "kind": "package",
+            "role": "language-package",
+            "value": package.name,
+            "action": "topology",
+            "path": package_root,
+            "confidence": "exact",
+            "fields": {
+                "languageId": language_id,
+                "providerId": resolution.provider_id,
+                "packageId": package.package_id,
+                "manifestPath": logical_join(&admitted.candidate_base, &package.manifest_path),
+                "workspaceMember": package.workspace_member,
+            },
+        }));
+        projection.edges.push(json!({
+            "source": project_id,
+            "target": package_id,
+            "relation": "contains_package",
+        }));
+
+        for target in &package.targets {
+            let target_value = format!("{package_value}:{}", target.target_id);
+            let target_id = stable_graph_node_id("target", &target_value);
+            projection.nodes.push(json!({
+                "id": target_id.clone(),
+                "kind": "target",
+                "role": target.kind,
+                "value": target.name,
                 "action": "topology",
-                "path": marker.path.as_str(),
                 "confidence": "exact",
                 "fields": {
                     "languageId": language_id,
-                    "marker": marker.name.as_str(),
+                    "packageId": package.package_id,
+                    "targetId": target.target_id,
+                    "explicit": target.explicit,
+                    "sourceRoots": rebase_paths(&admitted.candidate_base, &target.source_roots),
+                    "entrypoints": rebase_paths(&admitted.candidate_base, &target.entrypoints),
+                    "generatedRoots": rebase_paths(&admitted.candidate_base, &target.generated_roots),
                 },
             }));
             projection.edges.push(json!({
-                "source": project_id,
-                "target": marker_id,
-                "relation": "declared_by",
+                "source": package_id,
+                "target": target_id,
+                "relation": "declares_target",
             }));
         }
+    }
 
-        for marker in &project.dependency_markers {
-            let marker_value = format!("{language_id}:{}", marker.path);
-            let marker_id = stable_graph_node_id("dependency-marker", &marker_value);
-            projection.nodes.push(json!({
-                "id": marker_id.clone(),
-                "kind": "dependency-marker",
-                "role": "dependency-source",
-                "value": marker.path.as_str(),
-                "action": "topology",
-                "path": marker.path.as_str(),
-                "confidence": "exact",
-                "fields": {
-                    "languageId": language_id,
-                    "marker": marker.name.as_str(),
-                },
-            }));
-            projection.edges.push(json!({
-                "source": project_id,
-                "target": marker_id,
-                "relation": "uses_dependency_marker",
-            }));
-        }
+    append_internal_dependency_edges(projection, &project_value, resolution);
+    append_source_scope_nodes(
+        projection,
+        &project_value,
+        &admitted.candidate_base,
+        resolution,
+        candidates,
+    );
+}
 
-        for submodule_path in &submodule_paths {
-            if graph_path_is_under(&project.root_path, submodule_path) {
+fn append_project_file_node(
+    projection: &mut GraphTopologyProjection,
+    language_id: &GraphTopologyLanguageId,
+    project_id: &str,
+    candidate_base: &str,
+    file: &agent_semantic_runtime::ProjectFile,
+    kind: &str,
+    relation: &str,
+) {
+    let path = logical_join(candidate_base, &file.path);
+    let marker_id = stable_graph_node_id(kind, &format!("{language_id}:{path}"));
+    projection.nodes.push(json!({
+        "id": marker_id.clone(),
+        "kind": kind,
+        "role": file.kind,
+        "value": path,
+        "action": "topology",
+        "path": path,
+        "confidence": "exact",
+        "fields": {
+            "languageId": language_id,
+            "digest": file.digest,
+        },
+    }));
+    projection.edges.push(json!({
+        "source": project_id,
+        "target": marker_id,
+        "relation": relation,
+    }));
+}
+
+fn append_internal_dependency_edges(
+    projection: &mut GraphTopologyProjection,
+    project_value: &str,
+    resolution: &agent_semantic_runtime::ProjectResolutionReceipt,
+) {
+    for dependency in &resolution.package_graph.internal_dependency_edges {
+        projection.edges.push(json!({
+            "source": stable_graph_node_id(
+                "package",
+                &format!("{project_value}:{}", dependency.from_package_id),
+            ),
+            "target": stable_graph_node_id(
+                "package",
+                &format!("{project_value}:{}", dependency.to_package_id),
+            ),
+            "relation": "depends_on_package",
+            "fields": { "dependencyKind": dependency.kind },
+        }));
+    }
+}
+
+fn append_source_scope_nodes(
+    projection: &mut GraphTopologyProjection,
+    project_value: &str,
+    candidate_base: &str,
+    resolution: &agent_semantic_runtime::ProjectResolutionReceipt,
+    candidates: &[GraphProjectionCandidate],
+) {
+    for scope in &resolution.source_scopes {
+        let scope_id = stable_graph_node_id(
+            "source-scope",
+            &format!("{project_value}:{}", scope.scope_id),
+        );
+        projection.nodes.push(json!({
+            "id": scope_id.clone(),
+            "kind": "source-scope",
+            "role": "provider-resolved",
+            "value": scope.scope_id,
+            "action": "owner",
+            "confidence": "exact",
+            "fields": {
+                "packageId": scope.package_id,
+                "targetId": scope.target_id,
+                "roots": rebase_paths(candidate_base, &scope.roots),
+                "explicitPaths": rebase_paths(candidate_base, &scope.explicit_paths),
+                "extensions": scope.extensions,
+                "includeAuthority": scope.include_authority,
+                "scopeDigest": scope.scope_digest,
+            },
+        }));
+        projection.edges.push(json!({
+            "source": stable_graph_node_id(
+                "target",
+                &format!("{project_value}:{}:{}", scope.package_id, scope.target_id),
+            ),
+            "target": scope_id,
+            "relation": "resolves_source_scope",
+        }));
+        for candidate in candidates {
+            if source_scope_contains(candidate_base, scope, &candidate.path) {
                 projection.edges.push(json!({
-                    "source": stable_graph_node_id("submodule", submodule_path),
-                    "target": project_id,
-                    "relation": "contains_project",
+                    "source": scope_id,
+                    "target": stable_graph_node_id("owner", &candidate.path),
+                    "relation": "admits_owner",
                 }));
             }
         }
     }
-    projection
+}
+
+fn source_scope_contains(
+    candidate_base: &str,
+    scope: &agent_semantic_runtime::ResolvedSourceScope,
+    candidate_path: &str,
+) -> bool {
+    let explicit_match = scope
+        .explicit_paths
+        .iter()
+        .map(|path| logical_join(candidate_base, path))
+        .any(|path| candidate_path == path);
+    let root_match = scope
+        .roots
+        .iter()
+        .map(|root| logical_join(candidate_base, root))
+        .any(|root| graph_path_is_under(candidate_path, &root));
+    let excluded = scope
+        .exclusions
+        .iter()
+        .map(|exclusion| logical_join(candidate_base, &exclusion.prefix))
+        .any(|prefix| graph_path_is_under(candidate_path, &prefix));
+    let extension_matches = scope.extensions.is_empty()
+        || scope.extensions.iter().any(|extension| {
+            let extension = extension.trim_start_matches('.');
+            candidate_path.ends_with(&format!(".{extension}"))
+        });
+    (explicit_match || root_match) && !excluded && extension_matches
+}
+
+fn rebase_paths(candidate_base: &str, paths: &[String]) -> Vec<String> {
+    paths
+        .iter()
+        .map(|path| logical_join(candidate_base, path))
+        .collect()
+}
+
+fn logical_join(base: &str, path: &str) -> String {
+    let base = base.trim_matches('/');
+    let path = path.trim_start_matches("./").trim_matches('/');
+    if base.is_empty() || base == "." {
+        path.to_owned()
+    } else if path.is_empty() || path == "." {
+        base.to_owned()
+    } else {
+        format!("{base}/{path}")
+    }
 }
 
 pub fn graph_submodule_owner_edges(workspace_root: &Path, owners: &[String]) -> Vec<Value> {
@@ -304,17 +705,4 @@ pub fn graph_path_is_under(path: &str, root: &str) -> bool {
         || path
             .strip_prefix(root)
             .is_some_and(|rest| rest.starts_with('/'))
-}
-
-#[derive(Debug)]
-struct LanguageProjectRoot {
-    root_path: String,
-    project_markers: Vec<TopologyMarker>,
-    dependency_markers: Vec<TopologyMarker>,
-}
-
-#[derive(Debug)]
-struct TopologyMarker {
-    name: String,
-    path: String,
 }

@@ -36,6 +36,7 @@ pub(super) struct GraphTurboSearchPipeRequest<'a> {
     pub(super) query: Option<&'a str>,
     pub(super) query_clauses: &'a [String],
     pub(super) candidates: &'a [Candidate],
+    pub(super) project_resolutions: &'a [agent_semantic_runtime::AdmittedProjectResolution],
     pub(super) pipes: &'a [String],
     pub(super) source: &'a str,
     pub(super) candidate_sources: &'a [String],
@@ -70,6 +71,7 @@ pub(super) fn graph_turbo_request(
     let query = request.query;
     let query_clauses = request.query_clauses;
     let candidates = request.candidates;
+    let project_resolutions = request.project_resolutions;
     let pipes = request.pipes;
     let source = request.source;
     let candidate_sources = request.candidate_sources;
@@ -201,6 +203,7 @@ pub(super) fn graph_turbo_request(
             language_id,
             dependency_root,
             &graph_candidates,
+            project_resolutions,
         );
     }
     if include_items {

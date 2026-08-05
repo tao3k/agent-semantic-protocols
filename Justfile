@@ -166,12 +166,11 @@ agent-tools-install-protocol-debug bin_dir="":
 agent-tools-install-hook bin_dir="":
 	@just agent-tools-install-protocol "{{bin_dir}}"
 
-# Install a released language provider binary through asp.
-# Develop mode: the root Justfile owns provider builds and installs into the ASP runtime bin.
+# Install a language provider through ASP's registered workspace-install contract.
+# The root Justfile is only an adapter; provider-owned descriptors own builds and artifacts.
 agent-tools-install-language language target="" scope="global" project="":
     #!/usr/bin/env bash
     set -euo pipefail
-    repo_root="$(pwd -P)"
     state_home="{{asp_state_home}}"
     target="{{ target }}"
     scope="{{ scope }}"
@@ -197,85 +196,20 @@ agent-tools-install-language language target="" scope="global" project="":
         exit 2
         ;;
     esac
-    runtime_bin="${state_home}/runtime/bin"
-    mkdir -p "${runtime_bin}"
-    case "{{ language }}" in
-      rust)
-        direnv exec "${repo_root}" cargo build \
-          --manifest-path "${repo_root}/languages/rust-lang-project-harness/Cargo.toml" \
-          --release --features cli --bin rs-harness
-        provider="rust"
-        binary="rs-harness"
-        provider_source="${repo_root}/languages/rust-lang-project-harness/target/release/rs-harness"
-        ;;
-      typescript)
-        npm --prefix "${repo_root}/languages/typescript-lang-project-harness" ci
-        npm --prefix "${repo_root}/languages/typescript-lang-project-harness" run build
-        artifact_dir="${state_home}/runtime/provider-artifacts/ts-harness/develop"
-        mkdir -p "${artifact_dir}"
-        cp -R "${repo_root}/languages/typescript-lang-project-harness/dist/provider/." "${artifact_dir}/"
-        printf '#!/usr/bin/env bash\nexec node %q "$@"\n' \
-          "${artifact_dir}/ts-harness.mjs" >"${artifact_dir}/ts-harness"
-        chmod 755 "${artifact_dir}/ts-harness"
-        provider="typescript"
-        binary="ts-harness"
-        provider_source="${artifact_dir}/ts-harness"
-        ;;
-      python)
-        uv sync --project "${repo_root}/languages/python-lang-project-harness" --frozen
-        artifact_dir="${state_home}/runtime/provider-artifacts/py-harness/develop"
-        mkdir -p "${artifact_dir}"
-        printf '#!/usr/bin/env bash\nexec %q "$@"\n' \
-          "${repo_root}/languages/python-lang-project-harness/.venv/bin/py-harness" \
-          >"${artifact_dir}/py-harness"
-        chmod 755 "${artifact_dir}/py-harness"
-        provider="python"
-        binary="py-harness"
-        provider_source="${artifact_dir}/py-harness"
-        ;;
-      julia)
-        direnv exec "${repo_root}" env \
-          ASP_JULIA_BUILD_DIR="${repo_root}/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local" \
-          "${repo_root}/languages/JuliaLangProjectHarness.jl/juliac/build_provider.sh"
-        provider="julia"
-        binary="asp-julia-harness"
-        provider_source="${repo_root}/languages/JuliaLangProjectHarness.jl/build/juliac-asp-local/asp-julia-harness"
-        ;;
-      gerbil-scheme)
-        artifact_dir="${state_home}/runtime/provider-artifacts/gslph/develop"
-        just agent-tools-build-gerbil "${artifact_dir}"
-        provider="gerbil-scheme-harness"
-        binary="gslph"
-        provider_source="${artifact_dir}/gslph"
-        ;;
-      org)
-        direnv exec "${repo_root}" cargo build \
-          --manifest-path "${repo_root}/languages/orgize/Cargo.toml" \
-          --release --features md --bin orgize
-        provider="orgize"
-        binary="orgize"
-        provider_source="${repo_root}/languages/orgize/target/release/orgize"
-        ;;
-      *)
-        echo "unsupported develop language: {{ language }}" >&2
-        exit 2
-        ;;
-    esac
     install_args=(
       install language "{{ language }}"
       "${scope_args[@]}"
-      --record-installed-receipt "${provider_source}"
     )
     if [[ -n "${target}" ]]; then
       install_args+=(--target "${target}")
     fi
     protocol_bin="${state_home}/runtime/bin/asp"
     if [[ ! -x "${protocol_bin}" ]]; then
-      echo "canonical ASP binary is required to record the provider receipt; run 'just agent-tools-install-protocol' first" >&2
+      echo "canonical ASP binary is required to install the provider; run 'just agent-tools-install-protocol' first" >&2
       exit 1
     fi
     "${protocol_bin}" "${install_args[@]}"
-    echo "[agent-tools-install] provider=${provider} language={{ language }} installMode=develop-workspace source=root-justfile binary=${binary} installedPath=${runtime_bin}/${binary} receipt=recorded"
+    echo "[agent-tools-install] language={{ language }} installMode=provider-workspace-install source=provider-registry receipt=recorded"
 
 # Develop mode: build and install the Rust provider from this checkout.
 agent-tools-install-rust:

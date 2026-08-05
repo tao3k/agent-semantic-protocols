@@ -18,13 +18,13 @@ mod dispatch_agent_session_policy;
 mod document_provider;
 mod gerbil_check_cache;
 mod gerbil_deps;
-mod global_provider_catalog;
+pub(crate) mod global_provider_catalog;
 mod graph;
 pub mod graph_turbo_resident_process;
 mod healthcheck;
 mod hook;
 mod hook_enforcement;
-mod hook_runtime;
+pub(crate) mod hook_runtime;
 mod hook_runtime_context;
 mod hook_runtime_source_access;
 mod install_binary_config_admission;
@@ -43,7 +43,7 @@ mod org_capture_contract_materialize;
 mod org_capture_interactive;
 mod org_recall;
 mod paths;
-mod protocol_binary;
+pub(crate) mod protocol_binary;
 mod protocol_version;
 mod provider_activation;
 mod provider_dispatch;
@@ -62,11 +62,6 @@ mod runtime_server;
 #[cfg(test)]
 #[path = "../../tests/unit/command/runtime_server_agent_facing_wall_budget.rs"]
 mod runtime_server_agent_facing_wall_budget;
-pub(crate) use runtime_server::runtime_server_hook_evaluation_client;
-mod runtime_server_artifact;
-mod runtime_server_definition;
-mod runtime_server_service_catalog;
-mod runtime_server_supervisor;
 mod search_config;
 mod search_dependency_seed;
 mod search_failure_render;
@@ -110,12 +105,13 @@ mod workspace_tree_sitter_query;
 mod workspace_tree_sitter_query_trace;
 
 pub(crate) use dispatch::{run_protocol_command, run_protocol_command_started};
+pub(crate) use hook::evaluate_hook_event_via_runtime;
 pub(in crate::command) use hook_enforcement::codex_enforcement_report;
-pub(crate) use hook_runtime::run_protocol_hook_with_input;
 pub(in crate::command) use hook_runtime_context::payload_indicates_subagent_context;
 pub(in crate::command) use protocol_binary::{
     ProtocolBinaryInstallPlan, ensure_protocol_binary_installed,
-    protocol_binary_artifact_path_digest, protocol_binary_in_codex_hook_shell,
+    protocol_binary_artifact_path_digest, protocol_binary_contract_fingerprint,
+    protocol_binary_in_codex_hook_shell,
 };
 pub(in crate::command) use protocol_version::{
     protocol_version_line, run_protocol_version_command,

@@ -5,10 +5,12 @@
 
 mod exporter;
 mod observation;
+mod process_memory;
 mod query;
 mod query_server;
 mod runtime;
-pub use runtime::try_emit_to_runtime;
+pub(crate) use runtime::begin_runtime_memory_operation;
+pub use runtime::emit_to_runtime;
 pub use runtime::try_record_to_active_runtime;
 mod semconv;
 

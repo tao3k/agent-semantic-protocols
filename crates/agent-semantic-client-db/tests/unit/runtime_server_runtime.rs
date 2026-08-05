@@ -1,4 +1,6 @@
-use agent_semantic_client_db::runtime_server_runtime::RuntimeServerRuntimeBuilder;
+use agent_semantic_client_db::runtime_server_runtime::{
+    RuntimeServerOwnedTask, RuntimeServerRuntimeBuilder,
+};
 
 #[test]
 fn daemon_profile_owns_spawn_and_join_lifecycle() {
@@ -7,14 +9,40 @@ fn daemon_profile_owns_spawn_and_join_lifecycle() {
         .build()
         .expect("daemon runtime");
     let joined = runtime.block_on(async {
-        let task = tokio::spawn(async { 42_u64 });
-        task.await.expect("join daemon task")
+        let task = RuntimeServerOwnedTask::spawn("fixture-daemon-task", async { 42_u64 });
+        task.join().await.expect("join daemon task")
     });
     assert_eq!(joined, 42);
 }
 
 #[test]
+fn dropping_owned_daemon_task_aborts_instead_of_detaching() {
+    let runtime = RuntimeServerRuntimeBuilder::new_daemon()
+        .enable_all()
+        .build()
+        .expect("daemon runtime");
+    runtime.block_on(async {
+        let (dropped, observed_drop) = tokio::sync::oneshot::channel::<()>();
+        let task = RuntimeServerOwnedTask::spawn("fixture-abort-on-drop", async move {
+            let _guard = dropped;
+            std::future::pending::<()>().await;
+        });
+        drop(task);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), observed_drop)
+                .await
+                .is_ok(),
+            "dropping an owned Runtime task must cancel its future"
+        );
+    });
+}
+
+#[test]
 fn client_profile_completes_bounded_control_work() {
+    assert!(
+        agent_semantic_client_db::runtime_server_runtime::RUNTIME_SERVER_CLIENT_WORKER_COUNT > 1,
+        "the Runtime Server control client must not collapse all Tokio work onto one worker"
+    );
     let runtime = RuntimeServerRuntimeBuilder::new_client()
         .enable_all()
         .build()

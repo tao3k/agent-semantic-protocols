@@ -48,8 +48,8 @@ pub(super) struct GlobalProviderCatalogPublication {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct GlobalProviderCatalogReadiness {
-    pub(super) catalog_generation: String,
+pub(crate) struct GlobalProviderCatalogReadiness {
+    pub(crate) catalog_generation: String,
     pub(super) provider_count: usize,
     pub(super) elapsed_micros: u128,
 }
@@ -217,26 +217,7 @@ fn runtime_catalog() -> Result<Arc<GlobalProviderCatalog>, String> {
     Ok(catalog)
 }
 
-pub(super) fn runtime_projection_provider(
-    language_id: &str,
-) -> Result<GlobalProviderCatalogProvider, String> {
-    let catalog = runtime_catalog()?;
-    let mut providers = catalog
-        .providers
-        .iter()
-        .filter(|provider| provider.language_id == language_id);
-    let provider = providers.next().ok_or_else(|| {
-        format!("Global provider catalog omitted language: languageId={language_id}")
-    })?;
-    if providers.next().is_some() {
-        return Err(format!(
-            "Global provider catalog has ambiguous projection providers: languageId={language_id}"
-        ));
-    }
-    Ok(provider.clone())
-}
-
-pub(super) fn read_global_provider_catalog_readiness()
+pub(crate) fn read_global_provider_catalog_readiness()
 -> Result<GlobalProviderCatalogReadiness, String> {
     let started_at = std::time::Instant::now();
     let catalog = load_catalog_from_disk()?;
@@ -247,7 +228,7 @@ pub(super) fn read_global_provider_catalog_readiness()
     })
 }
 
-pub(super) fn runtime_provider_registry_snapshot(
+pub(crate) fn runtime_provider_registry_snapshot(
     project_root: &Path,
 ) -> Result<(agent_semantic_client_core::ProviderRegistrySnapshot, String), String> {
     let catalog = runtime_catalog()?;

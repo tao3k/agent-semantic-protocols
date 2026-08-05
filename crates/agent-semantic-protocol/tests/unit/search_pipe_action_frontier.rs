@@ -46,4 +46,14 @@ fn source_query_projection_is_explicit_on_the_exact_surface() {
             "asp rust query --selector 'rust://src/lib.rs#item/function/load' --workspace . --projection source"
         )
     );
+    let entry = action.frontier_entry();
+    assert_eq!(entry.kind, "query-code");
+    assert_eq!(entry.capability_id, "query");
+    assert_eq!(entry.target_role, "selector");
+    assert_eq!(entry.target, "rust://src/lib.rs#item/function/load");
+    assert_eq!(entry.fields["projection"], "source");
+    assert_eq!(entry.fields["requiresExact"], true);
+    let serialized = serde_json::to_value(entry).expect("serialize typed action frontier");
+    assert!(serialized.get("command").is_none());
+    assert!(serialized.get("argv").is_none());
 }

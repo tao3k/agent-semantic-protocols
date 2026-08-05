@@ -16,10 +16,6 @@ use format::{
     write_range_header, write_u64, write_usize,
 };
 
-#[cfg(test)]
-#[path = "../../tests/unit/runtime_server_exact_generation_identity.rs"]
-mod generation_identity_tests;
-
 const MAGIC: &[u8; 16] = b"ASPEXACTMMAPV1__";
 const HEADER_LEN: usize = 144;
 const OWNER_ENTRY_LEN: usize = 112;
@@ -47,7 +43,6 @@ const RELOCATION_COUNT_OFFSET: usize = 136;
 pub struct WorkspaceExactProjectionDataPlaneClient {
     pointer: WorkspaceGenerationPointerReader,
     mapped: MappedWorkspaceExactProjection,
-    owner_identity_journal: super::owner_identity_journal::RuntimeOwnerIdentityJournalReader,
 }
 
 #[derive(Debug)]
@@ -73,41 +68,11 @@ impl WorkspaceExactProjectionDataPlaneClient {
         }
     }
 
-    pub async fn owner_identity_is_current(&self, owner_path: &str) -> Result<bool, String> {
-        let Some(owner) = self.owner_snapshot(owner_path)? else {
-            return Ok(false);
-        };
-        let snapshot = self.pointer.read()?;
-        if !generation_identity_matches(
-            self.mapped.epoch,
-            &self.mapped.generation_digest,
-            snapshot.active_epoch,
-            &snapshot.generation_digest,
-        ) {
-            return Ok(false);
-        }
-        self.owner_identity_journal
-            .owner_is_current(
-                &snapshot.workspace_identity,
-                &snapshot.generation_digest,
-                owner_path,
-                &owner.content_digest,
-            )
-            .await
-    }
-
     pub async fn open(pointer_path: &Path) -> Result<Self, String> {
         let pointer = WorkspaceGenerationPointerReader::open(pointer_path).await?;
         let snapshot = pointer.read()?;
         let mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
-        let owner_identity_journal =
-            super::owner_identity_journal::RuntimeOwnerIdentityJournalReader::open(pointer_path)
-                .await?;
-        Ok(Self {
-            pointer,
-            mapped,
-            owner_identity_journal,
-        })
+        Ok(Self { pointer, mapped })
     }
 
     pub fn read_runtime_selector(
@@ -162,15 +127,6 @@ impl WorkspaceExactProjectionDataPlaneClient {
         self.mapped = MappedWorkspaceExactProjection::open(&snapshot).await?;
         Ok(true)
     }
-}
-
-fn generation_identity_matches(
-    mapped_epoch: u64,
-    mapped_generation_digest: &str,
-    pointer_epoch: u64,
-    pointer_generation_digest: &str,
-) -> bool {
-    mapped_epoch == pointer_epoch && mapped_generation_digest == pointer_generation_digest
 }
 
 #[derive(Debug)]

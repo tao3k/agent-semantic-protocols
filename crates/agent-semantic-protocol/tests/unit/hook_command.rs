@@ -2,90 +2,51 @@
 mod hook;
 #[path = "../../src/command/hook_runtime_context.rs"]
 mod hook_runtime_context;
-#[path = "../../src/command/protocol_binary.rs"]
-mod protocol_binary;
-
 use hook_runtime_context::payload_indicates_subagent_context;
-use protocol_binary::install_protocol_binary_target;
 use serde_json::json;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod hook_runtime {
+    #[derive(Default)]
+    pub(crate) struct HookGenerationAdmissionObservation;
+
+    pub(crate) fn read_hook_input_bounded() -> Result<String, String> {
+        Ok("{}".to_string())
+    }
+
     pub(crate) fn run_hook_runtime_args(_args: Vec<String>) -> Result<(), String> {
         Ok(())
+    }
+
+    pub(crate) fn observe_runtime_generation_for_hook_client(
+        _event: &str,
+        _project_root: &std::path::Path,
+        _payload: &serde_json::Value,
+    ) -> (bool, HookGenerationAdmissionObservation) {
+        (false, HookGenerationAdmissionObservation)
+    }
+
+    pub(crate) fn materialize_runtime_generation_observation(
+        _decision: &mut agent_semantic_hook::HookDecision,
+        _explicit_asp_workspace: bool,
+        _observation: HookGenerationAdmissionObservation,
+    ) {
+    }
+}
+
+mod runtime_server {
+    pub(crate) fn runtime_server_hook_evaluation_client(
+        _project_root: &std::path::Path,
+        _arguments: Vec<String>,
+        _input: String,
+    ) -> Result<String, String> {
+        Ok(String::new())
     }
 }
 
 const _: fn(&[String]) -> Result<(), String> = hook::run_hook_command;
 const _: fn(Vec<String>) -> Result<(), String> = hook_runtime::run_hook_runtime_args;
-const _: fn(
-    &protocol_binary::ProtocolBinaryInstallPlan,
-) -> Result<protocol_binary::ProtocolBinaryInstall, String> =
-    protocol_binary::ensure_protocol_binary_installed;
-const _: fn() -> Option<std::path::PathBuf> = protocol_binary::protocol_binary_on_path;
-const _: fn() -> protocol_binary::ProtocolBinaryShellProbe =
-    protocol_binary::protocol_binary_in_codex_hook_shell;
-
-#[tokio::test]
-async fn hook_binary_module_preserves_digest_addressed_identity_helpers() {
-    let root =
-        std::env::temp_dir().join(format!("asp-hook-binary-identity-{}", std::process::id()));
-    let digest = "b".repeat(64);
-    let artifact = root.join("blake3-256").join(&digest).join("asp");
-    tokio::fs::create_dir_all(artifact.parent().expect("artifact parent"))
-        .await
-        .expect("create digest artifact");
-    tokio::fs::write(&artifact, b"fixture")
-        .await
-        .expect("write digest artifact");
-    assert_eq!(
-        protocol_binary::protocol_binary_artifact_path_digest(&artifact).as_deref(),
-        Some(digest.as_str())
-    );
-    assert_eq!(
-        protocol_binary::canonical_protocol_binary_artifact_digest(&artifact)
-            .await
-            .expect("canonical digest identity"),
-        digest
-    );
-    tokio::fs::remove_dir_all(root)
-        .await
-        .expect("remove digest artifact fixture");
-}
-
-#[test]
-fn protocol_binary_capture_requires_the_real_asp_entrypoint() {
-    let result = protocol_binary::ProtocolBinaryInstallPlan::capture_for_target(
-        std::path::PathBuf::from("/tmp/asp/runtime/artifacts"),
-        std::path::PathBuf::from("/tmp/asp/runtime/bin/asp"),
-    );
-    let Err(error) = result else {
-        panic!("unit test binary must not impersonate the installed asp entrypoint");
-    };
-    assert!(
-        error.contains("must run through `asp`"),
-        "unexpected capture error: {error}"
-    );
-}
-
-#[test]
-fn protocol_binary_install_fields_are_contract_visible() {
-    let install = protocol_binary::ProtocolBinaryInstall {
-        path: std::path::PathBuf::from("asp"),
-        status: "found",
-        artifact_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-            .to_string(),
-    };
-
-    assert_eq!(install.path, std::path::PathBuf::from("asp"));
-    assert_eq!(install.status, "found");
-    assert_eq!(
-        install.artifact_digest,
-        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    );
-}
-
 fn args(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| value.to_string()).collect()
 }
@@ -347,43 +308,6 @@ fn asp_is_the_only_hook_binary_target() {
     );
 }
 
-#[test]
-fn protocol_binary_install_replaces_existing_target_file() {
-    let root = temp_project_root("protocol-binary-replace");
-    let source = root.join("source-asp");
-    let target = root.join("asp");
-    let artifact_root = root.join("runtime/artifacts");
-    std::fs::write(&source, "new asp").expect("write source");
-    std::fs::write(&target, "old asp").expect("write target");
-    #[cfg(unix)]
-    let old_inode = target_inode(&target);
-
-    let install = install_protocol_binary_target(
-        &source,
-        &target,
-        &artifact_root,
-        &protocol_binary::RuntimeBinaryIdentityV1::asp_bootstrap(),
-    )
-    .expect("install binary");
-    let status = install.status;
-
-    assert_eq!(status, "updated");
-    assert_eq!(
-        std::fs::read_to_string(&target).expect("read target"),
-        "new asp"
-    );
-    #[cfg(unix)]
-    assert_ne!(old_inode, target_inode(&target));
-    #[cfg(unix)]
-    assert!(
-        std::fs::symlink_metadata(&target)
-            .expect("target symlink metadata")
-            .file_type()
-            .is_symlink()
-    );
-    let _ = std::fs::remove_dir_all(root);
-}
-
 fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -401,13 +325,6 @@ fn temp_project_root(name: &str) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!("agent-semantic-protocol-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
     root
-}
-
-#[cfg(unix)]
-fn target_inode(path: &std::path::Path) -> u64 {
-    use std::os::unix::fs::MetadataExt;
-
-    std::fs::metadata(path).expect("target metadata").ino()
 }
 
 fn package_bin_targets(metadata: &serde_json::Value, package_name: &str) -> Vec<String> {

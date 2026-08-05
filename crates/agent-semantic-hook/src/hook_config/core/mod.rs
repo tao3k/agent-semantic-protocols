@@ -2,6 +2,9 @@
 
 mod implementation;
 
+#[doc = "Owns ranked policy candidates before the final arbitration step."]
+mod policy_candidate;
+
 #[doc = "Compiles config match primitives for this owner."]
 mod compile;
 #[doc = "Resolves configured resident targets from compiled rules."]
@@ -15,6 +18,7 @@ mod resident_target;
 #[doc = "Matches structured projection contracts."]
 mod structured_projection;
 
-pub use implementation::ClientHookConfig;
+pub use implementation::{ClientHookConfig, DurableHookConfigArtifact};
 pub(super) use implementation::compile_config;
+pub(crate) use policy_candidate::HookPolicyCandidate;
 pub use resident_target::ConfiguredResidentTarget;

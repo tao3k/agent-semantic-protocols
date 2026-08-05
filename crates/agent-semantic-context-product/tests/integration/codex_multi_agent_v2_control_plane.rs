@@ -60,10 +60,11 @@ fn projection() -> CodexMultiAgentV2ControlPlaneProjection {
         },
         workspace_server.clone(),
         "root-session".to_owned(),
-        vec![
-            agent("root-session", None, workspace_server.clone()),
-            agent("child-session", Some("root-session"), workspace_server),
-        ],
+        vec![agent(
+            "child-session",
+            Some("root-session"),
+            workspace_server,
+        )],
         Vec::new(),
         vec![CodexDelegationEdgeProjection {
             parent_session_id: "root-session".to_owned(),

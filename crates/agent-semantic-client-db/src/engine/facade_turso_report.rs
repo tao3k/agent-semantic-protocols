@@ -6,7 +6,7 @@ use agent_semantic_client_core::ClientDbStatus;
 use crate::types::{ClientDbReport, ClientDbSyntaxQueryReplay};
 
 use super::facade::block_on_db_engine_async;
-use super::turso::connect_turso_client_db;
+use super::turso::connect_turso_client_db_read_only;
 
 pub(super) fn turso_client_db_report(db_path: &Path) -> ClientDbReport {
     let status = if db_path.exists() {
@@ -58,7 +58,7 @@ struct TursoClientDbCounts {
 fn turso_client_db_counts(db_path: &Path) -> Result<TursoClientDbCounts, String> {
     let db_path = db_path.to_path_buf();
     block_on_db_engine_async(async move {
-        let connection = connect_turso_client_db(&db_path).await?;
+        let connection = connect_turso_client_db_read_only(&db_path).await?;
         let syntax_row_counts = count_turso_syntax_replay_rows_or_zero(&connection).await;
         Ok(TursoClientDbCounts {
             cache_generations: count_turso_rows_or_zero(&connection, "asp_cache_generation").await,

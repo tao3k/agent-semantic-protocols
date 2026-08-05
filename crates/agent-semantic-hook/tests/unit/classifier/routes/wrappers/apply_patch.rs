@@ -71,7 +71,7 @@ protocolVersion = "1"
 
 [agents.placeholders]
 explore = "asp-explore"
-testing = "asp-testing"
+testing = "asp_testing"
 
 [[agents.residentAgents]]
 enabled = true
@@ -84,7 +84,7 @@ sessionLifetime = "resident"
 
 [[agents.residentAgents]]
 enabled = true
-name = "asp-testing"
+name = "asp_testing"
 role = "asp_testing"
 roles = []
 permissions = []

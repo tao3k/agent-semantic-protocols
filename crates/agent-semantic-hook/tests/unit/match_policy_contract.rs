@@ -23,6 +23,10 @@ fn run_with_projection_capabilities() {
 }
 
 fn run_with_projection_capabilities_for(test_name: &str) {
+    // Each fixture temporarily projects the test binary as a capability probe.
+    // Serialize the process tree so parallel tests cannot multiply the same
+    // executable/probe lifecycle and starve the Hook contract runner.
+    let _capability_fixture = crate::match_policy_fixture::capability_guard();
     let capability_root = std::env::temp_dir().join(format!(
         "agent-semantic-hook-match-policy-capabilities-{}-{}",
         std::process::id(),

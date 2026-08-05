@@ -11,18 +11,38 @@ structure RegistrySnapshot where
   agents : List RegistryAgent
 
 structure ControlPlaneProjection where
+  rootTaskId : String
   agents : List RegistryAgent
   turns : List String
   delegations : List (String × String)
 deriving DecidableEq
 
-def durableRootCount (snapshot : RegistrySnapshot) : Nat :=
-  (snapshot.agents.filter fun agent =>
-    decide (agent.sessionId = snapshot.rootSessionId ∧ agent.parentSessionId = none)).length
+inductive RegistryControlPlaneRequest where
+  | refresh
+  | read
+deriving DecidableEq
+
+inductive CodexExecutionOperation where
+  | spawn
+  | resume
+  | send
+  | interrupt
+  | archive
+  | delete
+deriving DecidableEq
+
+def emittedExecutionOperation
+    (_request : RegistryControlPlaneRequest) : Option CodexExecutionOperation :=
+  none
+
+def rootTaskEvidenceAdmissible (snapshot : RegistrySnapshot) : Bool :=
+  !snapshot.agents.isEmpty &&
+    snapshot.agents.all fun agent => decide (agent.sessionId ≠ snapshot.rootSessionId)
 
 def materialize (snapshot : RegistrySnapshot) : Option ControlPlaneProjection :=
-  if durableRootCount snapshot = 1 then
+  if rootTaskEvidenceAdmissible snapshot then
     some {
+      rootTaskId := snapshot.rootSessionId
       agents := snapshot.agents
       turns := []
       delegations := []
@@ -30,10 +50,21 @@ def materialize (snapshot : RegistrySnapshot) : Option ControlPlaneProjection :=
   else
     none
 
-theorem nonUniqueDurableRootRejects (snapshot : RegistrySnapshot)
-    (nonUnique : durableRootCount snapshot ≠ 1) :
+theorem missingScopedRootTaskEvidenceRejects (snapshot : RegistrySnapshot)
+    (missing : rootTaskEvidenceAdmissible snapshot = false) :
     materialize snapshot = none := by
-  simp [materialize, nonUnique]
+  simp [materialize, missing]
+
+theorem registryMaterializationPreservesRootTaskIdentity
+    (snapshot : RegistrySnapshot)
+    (projection : ControlPlaneProjection)
+    (published : materialize snapshot = some projection) :
+    projection.rootTaskId = snapshot.rootSessionId := by
+  unfold materialize at published
+  split at published
+  · cases published
+    rfl
+  · contradiction
 
 theorem registryFactsMintNoTurns
     (snapshot : RegistrySnapshot)
@@ -67,5 +98,10 @@ theorem registryMaterializationPreservesOnlyAgentFacts
   · cases published
     rfl
   · contradiction
+
+theorem registryControlPlaneDoesNotExecuteCodex
+    (request : RegistryControlPlaneRequest) :
+    emittedExecutionOperation request = none := by
+  cases request <;> rfl
 
 end ASPProof.CodexMultiAgentV2RegistryMaterialization

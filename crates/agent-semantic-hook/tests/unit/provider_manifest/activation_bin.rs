@@ -170,7 +170,7 @@ fn default_activation_rejects_absolute_provider_override() {
 }
 
 #[test]
-fn asp_toml_can_disable_document_language_hook_activation() {
+fn document_language_flags_do_not_create_executable_activation_entries() {
     let _state_home_lock = crate::test_process_env::ASP_STATE_HOME_ENV_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -179,13 +179,10 @@ fn asp_toml_can_disable_document_language_hook_activation() {
     let _state_home_guard = StateHomeEnvGuard::set(&state_home);
     git_init(&root);
     fs::write(root.join("README.md"), "# fixture\n").expect("write Markdown candidate");
-    install_state_home_provider(&state_home, "md", "orgize", "orgize");
+    install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
     write_agent_config(
         &root,
-        r#"[providers.rust]
-enabled = false
-
-[providers.typescript]
+        r#"[providers.typescript]
 enabled = false
 
 [providers.python]
@@ -210,21 +207,18 @@ enabled = false
             .iter()
             .any(|provider| provider.language_id == "org")
     );
-    let md = activation
-        .providers
-        .iter()
-        .find(|provider| provider.language_id == "md")
-        .expect("md provider remains enabled");
-    assert_eq!(md.provider_id, "orgize");
-    assert_eq!(md.binary, "orgize");
-    assert_eq!(md.execution.as_str(), "external-process");
     assert!(
-        md.coverage.package_roots.is_empty(),
-        "document resolution must not invent a package-manager root"
+        !activation
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == "md"),
+        "document providers belong to the Hook policy projection, not executable activation"
     );
     assert!(
-        md.provider_command_prefix.is_empty(),
-        "document activation must not persist the receipt-resolved provider path"
+        activation
+            .providers
+            .iter()
+            .any(|provider| provider.language_id == "rust")
     );
 
     fs::remove_dir_all(root).expect("remove temp root");
@@ -241,9 +235,8 @@ fn top_level_asp_toml_no_longer_configures_provider_activation() {
     git_init(&root);
     fs::write(root.join("README.md"), "# fixture\n").expect("write Markdown candidate");
     fs::write(root.join("fixture.org"), "* Fixture\n").expect("write Org candidate");
-    install_state_home_provider(&state_home, "org", "orgize", "orgize");
-    install_state_home_provider(&state_home, "md", "orgize", "orgize");
-    fs::write(root.join("asp.toml"), "[providers.org]\nenabled = false\n")
+    install_state_home_provider(&state_home, "rust", "rs-harness", "rs-harness");
+    fs::write(root.join("asp.toml"), "[providers.rust]\nenabled = false\n")
         .expect("write ignored top-level asp.toml");
 
     let activation = build_default_activation(&root).expect("build activation");
@@ -252,7 +245,7 @@ fn top_level_asp_toml_no_longer_configures_provider_activation() {
         activation
             .providers
             .iter()
-            .any(|provider| provider.language_id == "org"),
+            .any(|provider| provider.language_id == "rust"),
         "build_default_activation must ignore top-level asp.toml; .agents/asp.toml is the only project provider config"
     );
 

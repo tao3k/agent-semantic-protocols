@@ -164,6 +164,19 @@ pub(super) async fn run_operation(
                     },
                 )?,
             }),
+            Operation::DispatchLease {
+                project_id,
+                root_session_id,
+                name,
+                dispatch_identity,
+            } => Ok(IpcResult::DispatchLease {
+                lease: registry.dispatch_lease(
+                    project_id,
+                    root_session_id,
+                    name,
+                    dispatch_identity,
+                )?,
+            }),
             Operation::CompleteDispatch {
                 project_id,
                 root_session_id,

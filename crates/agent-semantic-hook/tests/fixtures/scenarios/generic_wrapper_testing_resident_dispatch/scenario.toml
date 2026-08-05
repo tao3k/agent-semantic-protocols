@@ -10,9 +10,9 @@ commands = [
 [expected]
 ruleId = "resident-testing-dispatch"
 decision = "deny"
-residentName = "asp-testing"
+residentName = "asp_testing"
 receiptKind = "asp-testing-execution-v1"
-loopCommandPrefix = "asp agent session bootstrap --name asp-testing"
+loopCommandPrefix = "asp agent session bootstrap --name asp_testing"
 
 [performance]
 maxMatcherMicros = 1000

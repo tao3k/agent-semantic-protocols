@@ -1,7 +1,7 @@
 name = "asp_testing"
 description = "ASP test/build execution lane."
 nickname_candidates = ["ASP test", "ASP check", "ASP build"]
-model = {{MODEL_TOML}}
+model = "gpt-5.6-luna"
 model_reasoning_effort = "low"
 sandbox_mode = "workspace-write"
 developer_instructions = """

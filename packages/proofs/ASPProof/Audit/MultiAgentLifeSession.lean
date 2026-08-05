@@ -1,0 +1,11 @@
+import ASPProof.MultiAgentLifeSession
+
+open ASPProof.MultiAgentLifeSession
+
+#print axioms unverifiedBindingCannotAuthorizeDispatch
+#print axioms wrongSessionNameCannotAuthorizeDispatch
+#print axioms wrongPlatformTargetCannotAuthorizeDispatch
+#print axioms wellFormedResidentSlotHasAtMostOneLiveGeneration
+#print axioms installedTestingResidentResolvesByConfiguredRouteKey
+#print axioms installedTestingResidentPreservesExplorerRoute
+#print axioms temporaryAgentsDoNotConsumeResidentSlots

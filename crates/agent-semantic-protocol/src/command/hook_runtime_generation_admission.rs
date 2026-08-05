@@ -3,56 +3,54 @@ use std::path::Path;
 const WORKSPACE_ADMISSION_EVENTS: [&str; 2] = ["session-start", "user-prompt"];
 
 #[derive(Debug, Default)]
-pub(super) struct HookGenerationAdmissionObservation {
+pub(in crate::command) struct HookGenerationAdmissionObservation {
+    pub(super) requested: bool,
     pub(super) receipt: Option<serde_json::Value>,
     pub(super) error: Option<String>,
 }
 
-pub(super) fn decision_changed_paths(decision: &agent_semantic_hook::HookDecision) -> Vec<String> {
-    let mut changed_paths = decision
-        .fields
-        .get("normalizedActions")
-        .and_then(serde_json::Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|action| {
-            action
-                .get("operationIntent")
-                .and_then(serde_json::Value::as_str)
-                == Some("apply-patch")
-        })
-        .flat_map(|action| {
-            action
-                .get("paths")
-                .and_then(serde_json::Value::as_array)
-                .into_iter()
-                .flatten()
-        })
-        .filter_map(serde_json::Value::as_str)
-        .filter(|path| !path.trim().is_empty())
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    if decision
-        .fields
-        .get("operationIntent")
-        .and_then(serde_json::Value::as_str)
-        == Some("apply-patch")
-    {
-        changed_paths.extend(
-            decision
-                .fields
-                .get("paths")
-                .and_then(serde_json::Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(serde_json::Value::as_str)
-                .filter(|path| !path.trim().is_empty())
-                .map(str::to_owned),
-        );
+pub(super) fn materialize_explicit_query_gate(
+    decision: &mut agent_semantic_hook::HookDecision,
+    explicit_asp_workspace: bool,
+    observation: HookGenerationAdmissionObservation,
+) {
+    decision.fields.insert(
+        "runtimeGenerationAdmissionStatus".to_owned(),
+        serde_json::Value::String(
+            if observation.requested {
+                if observation.error.is_some() {
+                    if explicit_asp_workspace {
+                        "failed-closed"
+                    } else {
+                        "failed-non-blocking"
+                    }
+                } else {
+                    "submitted"
+                }
+            } else {
+                "not-requested"
+            }
+            .to_owned(),
+        ),
+    );
+    if let Some(receipt) = observation.receipt {
+        decision
+            .fields
+            .insert("runtimeGenerationAdmission".to_owned(), receipt);
     }
-    changed_paths.sort();
-    changed_paths.dedup();
-    changed_paths
+    if let Some(error) = observation.error {
+        decision.fields.insert(
+            "runtimeGenerationAdmissionError".to_owned(),
+            serde_json::Value::String(error.clone()),
+        );
+        if explicit_asp_workspace {
+            decision.decision = agent_semantic_hook::DecisionKind::Block;
+            decision.reason_kind = agent_semantic_hook::ReasonKind::ActivationUnavailable;
+            decision.message = format!(
+                "ASP blocked the explicit search/query because its workspace generation did not reach terminal Ready: {error}"
+            );
+        }
+    }
 }
 
 pub(super) fn payload_mutation_id(payload: &serde_json::Value) -> Option<String> {
@@ -64,15 +62,25 @@ pub(super) fn payload_mutation_id(payload: &serde_json::Value) -> Option<String>
     Some(format!("{session_id}/{tool_use_id}"))
 }
 
+pub(super) fn payload_changed_paths(payload: &serde_json::Value) -> Vec<String> {
+    let Some(tool_name) = payload.get("tool_name").and_then(serde_json::Value::as_str) else {
+        return Vec::new();
+    };
+    let tool_input = payload
+        .get("tool_input")
+        .unwrap_or(&serde_json::Value::Null);
+    agent_semantic_hook::workspace_mutation_paths(tool_name, tool_input)
+}
+
 pub(crate) fn request(
     project_root: &Path,
     mutation_id: String,
     changed_paths: Vec<String>,
 ) -> Result<serde_json::Value, String> {
     let project_root = project_root.to_path_buf();
-    crate::command::runtime_server::block_on_runtime_server_client(async move {
+    crate::server::runtime_server::block_on_runtime_server_client(async move {
         let session =
-            crate::command::runtime_server::runtime_server_workspace_session_for_admission_async(
+            crate::server::runtime_server::runtime_server_workspace_session_for_admission_async(
                 &project_root,
             )
             .await?;
@@ -86,42 +94,20 @@ pub(crate) fn request(
 }
 
 pub(super) fn hook_event_requires_generation_admission(
-    args: &[String],
+    event: &str,
     workspace_mutated: bool,
     explicit_asp_workspace: bool,
 ) -> bool {
-    args.iter().any(|argument| {
-        WORKSPACE_ADMISSION_EVENTS.contains(&argument.as_str())
-            || (argument == "post-tool" && workspace_mutated)
-            || (argument == "pre-tool" && explicit_asp_workspace)
-    })
-}
-
-pub(super) fn decision_mutates_workspace(decision: &agent_semantic_hook::HookDecision) -> bool {
-    decision
-        .fields
-        .get("operationIntent")
-        .and_then(serde_json::Value::as_str)
-        == Some("apply-patch")
-        || decision
-            .fields
-            .get("normalizedActions")
-            .and_then(serde_json::Value::as_array)
-            .is_some_and(|actions| {
-                actions.iter().any(|action| {
-                    action
-                        .get("operationIntent")
-                        .and_then(serde_json::Value::as_str)
-                        == Some("apply-patch")
-                })
-            })
+    WORKSPACE_ADMISSION_EVENTS.contains(&event)
+        || (event == "post-tool" && workspace_mutated)
+        || (event == "pre-tool" && explicit_asp_workspace)
 }
 
 pub(crate) fn ensure(project_root: &Path) -> Result<serde_json::Value, String> {
     let project_root = project_root.to_path_buf();
-    crate::command::runtime_server::block_on_runtime_server_client(async move {
+    crate::server::runtime_server::block_on_runtime_server_client(async move {
         let session =
-            crate::command::runtime_server::runtime_server_workspace_session_for_admission_async(
+            crate::server::runtime_server::runtime_server_workspace_session_for_admission_async(
                 &project_root,
             )
             .await?;
@@ -136,16 +122,17 @@ pub(crate) fn ensure(project_root: &Path) -> Result<serde_json::Value, String> {
 /// search/query command enters the read-only data plane.
 pub(crate) fn ensure_ready(project_root: &Path) -> Result<serde_json::Value, String> {
     let project_root = project_root.to_path_buf();
-    crate::command::runtime_server::block_on_runtime_server_client(async move {
+    crate::server::runtime_server::block_on_runtime_server_client(async move {
         let session =
-            crate::command::runtime_server::runtime_server_workspace_session_for_admission_async(
+            crate::server::runtime_server::runtime_server_workspace_session_for_admission_async(
                 &project_root,
             )
             .await?;
-        let receipt = session.repair_runtime_generation_locator().await?;
+        let receipt = session.ensure_runtime_generation_ready().await?;
         receipt.validate()?;
-        serde_json::to_value(receipt)
-            .map_err(|error| format!("failed to encode ready runtime generation: {error}"))
+        serde_json::to_value(receipt).map_err(|error| {
+            format!("failed to encode ready runtime generation observation: {error}")
+        })
     })?
 }
 
@@ -154,7 +141,7 @@ pub(crate) fn ensure_ready(project_root: &Path) -> Result<serde_json::Value, Str
 mod tests;
 
 pub(super) fn observe(
-    args: &[String],
+    event: &str,
     workspace_mutated: bool,
     mutation_id: Option<String>,
     changed_paths: Vec<String>,
@@ -162,7 +149,7 @@ pub(super) fn observe(
     admit: impl FnOnce(String, Vec<String>) -> Result<serde_json::Value, String>,
     ensure: impl FnOnce() -> Result<serde_json::Value, String>,
 ) -> HookGenerationAdmissionObservation {
-    if !hook_event_requires_generation_admission(args, workspace_mutated, explicit_asp_workspace) {
+    if !hook_event_requires_generation_admission(event, workspace_mutated, explicit_asp_workspace) {
         return HookGenerationAdmissionObservation::default();
     }
 
@@ -182,10 +169,12 @@ pub(super) fn observe(
     };
     match result {
         Ok(receipt) => HookGenerationAdmissionObservation {
+            requested: true,
             receipt: Some(receipt),
             error: None,
         },
         Err(error) => HookGenerationAdmissionObservation {
+            requested: true,
             receipt: None,
             error: Some(error),
         },

@@ -3,11 +3,11 @@
   "schemaVersion": "1",
   "agents": {
     "asp_testing": {
-      "sessionName": "asp-testing",
+      "sessionName": "asp_testing",
       "sessionLifetime": "resident",
       "roles": ["build", "subagent", "testing"],
       "platforms": {
-        "codex": { "hostAgentName": "asp_testing" }
+        "codex": { "projection": "asp-testing_codex.toml" }
       }
     }
   }

@@ -1,7 +1,20 @@
 use super::{
     WorkspaceDerivedProjectionSnapshot, WorkspaceOwnerSnapshot, WorkspaceSelectorSnapshot,
-    validate_selector,
+    projection_validation::validate_selector, typed_digest,
 };
+
+#[test]
+fn streaming_digest_preserves_the_existing_json_digest_contract() {
+    let value = (
+        "workspace-a",
+        vec![0_u8, 1, 2, 127, 128, 254, 255],
+        vec!["selector-a", "selector-b"],
+    );
+    let encoded = serde_json::to_vec(&value).expect("encode digest fixture");
+    let expected = format!("blake3-256:{}", blake3::hash(&encoded).to_hex());
+
+    assert_eq!(typed_digest(&value).expect("streaming digest"), expected);
+}
 
 #[test]
 fn signature_text_cannot_masquerade_as_callable_skeleton_json() {

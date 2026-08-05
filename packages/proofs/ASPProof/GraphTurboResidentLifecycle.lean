@@ -54,6 +54,46 @@ structure RuntimeAndGraphTurboHealth where
   graphTurbo : GraphTurboResidentState
   deriving DecidableEq, Repr
 
+structure GraphTurboTransportTopology where
+  tokioOwnsChildIo : Bool
+  requestUsesBlockingPool : Bool
+  childSharesDaemonProcessGroup : Bool
+  shutdownSendsTypedMessage : Bool
+  shutdownJoinsChild : Bool
+  readerTaskSurvivesShutdown : Bool
+
+def GraphTurboTransportLifecycleClosed
+    (topology : GraphTurboTransportTopology) : Prop :=
+  topology.tokioOwnsChildIo = true ∧
+  topology.requestUsesBlockingPool = false ∧
+  topology.childSharesDaemonProcessGroup = false ∧
+  topology.shutdownSendsTypedMessage = true ∧
+  topology.shutdownJoinsChild = true ∧
+  topology.readerTaskSurvivesShutdown = false
+
+structure GraphTurboDemandLifecycle where
+  idleChildProcessCount : Nat
+  idleArtifactReadCount : Nat
+  idleConfigReadCount : Nat
+  idleConfigMutationCount : Nat
+  rejectedConfigBlocksDaemonReadiness : Bool
+  warmPublicationsPerDemandEpoch : Nat
+  processStartsPerDemandEpoch : Nat
+  startupTaskOwnedByDaemon : Bool
+  startupTaskJoinedOrAborted : Bool
+
+def GraphTurboDemandLifecycleClosed
+    (topology : GraphTurboDemandLifecycle) : Prop :=
+  topology.idleChildProcessCount = 0 ∧
+  topology.idleArtifactReadCount = 0 ∧
+  topology.idleConfigReadCount = 0 ∧
+  topology.idleConfigMutationCount = 0 ∧
+  topology.rejectedConfigBlocksDaemonReadiness = false ∧
+  topology.warmPublicationsPerDemandEpoch ≤ 1 ∧
+  topology.processStartsPerDemandEpoch ≤ 1 ∧
+  topology.startupTaskOwnedByDaemon = true ∧
+  topology.startupTaskJoinedOrAborted = true
+
 def GraphTurboRankAdmitted
     (state : GraphTurboResidentState)
     (requested response : GraphTurboRuntimeIdentity) : Prop :=
@@ -193,5 +233,34 @@ theorem healthyExactIdentityAdmitsCandidateRank
     GraphTurboRankAdmitted .healthy identity identity ∧
       GraphTurboResultAccepted .candidate := by
   simp [GraphTurboRankAdmitted, GraphTurboResultAccepted]
+
+theorem foreground_interrupt_drains_one_tokio_owned_child
+    (topology : GraphTurboTransportTopology)
+    (tokioIo : topology.tokioOwnsChildIo = true)
+    (noBlockingPool : topology.requestUsesBlockingPool = false)
+    (isolatedSignalDomain : topology.childSharesDaemonProcessGroup = false)
+    (typedShutdown : topology.shutdownSendsTypedMessage = true)
+    (joined : topology.shutdownJoinsChild = true)
+    (noReaderSurvivor : topology.readerTaskSurvivesShutdown = false) :
+    GraphTurboTransportLifecycleClosed topology := by
+  exact ⟨tokioIo, noBlockingPool, isolatedSignalDomain, typedShutdown, joined,
+    noReaderSurvivor⟩
+
+theorem idle_daemon_and_concurrent_sessions_cannot_amplify_graph_startup
+    (topology : GraphTurboDemandLifecycle)
+    (idleHasNoChild : topology.idleChildProcessCount = 0)
+    (idleHasNoArtifactIo : topology.idleArtifactReadCount = 0)
+    (idleHasNoConfigRead : topology.idleConfigReadCount = 0)
+    (idleHasNoConfigMutation : topology.idleConfigMutationCount = 0)
+    (rejectedConfigIsCapabilityLocal :
+      topology.rejectedConfigBlocksDaemonReadiness = false)
+    (coalescedWarm : topology.warmPublicationsPerDemandEpoch ≤ 1)
+    (singleProcess : topology.processStartsPerDemandEpoch ≤ 1)
+    (daemonOwned : topology.startupTaskOwnedByDaemon = true)
+    (closed : topology.startupTaskJoinedOrAborted = true) :
+    GraphTurboDemandLifecycleClosed topology := by
+  exact ⟨idleHasNoChild, idleHasNoArtifactIo, idleHasNoConfigRead,
+    idleHasNoConfigMutation, rejectedConfigIsCapabilityLocal, coalescedWarm,
+    singleProcess, daemonOwned, closed⟩
 
 end ASPProof

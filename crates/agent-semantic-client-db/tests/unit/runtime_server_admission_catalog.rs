@@ -79,6 +79,102 @@ async fn catalog_persists_unique_workspace_source_scopes_atomically() {
 }
 
 #[tokio::test]
+async fn repeated_admission_is_silent_and_cannot_retrigger_materialization() {
+    let root = fixture_root();
+    let path = root.join("workspace-admissions.v1.json");
+    let catalog = RuntimeWorkspaceAdmissionCatalog::load(path).await.unwrap();
+    let mut publications = catalog.subscribe();
+    let entry = RuntimeWorkspaceAdmissionCatalogEntry {
+        workspace_identity: "workspace-republish".to_owned(),
+        project_root: root.join("checkout"),
+    };
+
+    assert!(catalog.record(entry.clone()).await.unwrap());
+    publications.changed().await.unwrap();
+    assert_eq!(
+        publications.borrow_and_update().as_ref(),
+        catalog.snapshot().as_ref()
+    );
+
+    const SAMPLE_COUNT: usize = 10_000;
+    let mut latencies = Vec::with_capacity(SAMPLE_COUNT);
+    for _ in 0..SAMPLE_COUNT {
+        let started = std::time::Instant::now();
+        assert!(!catalog.record(entry.clone()).await.unwrap());
+        latencies.push(started.elapsed());
+    }
+    latencies.sort_unstable();
+    let p99 = latencies[(SAMPLE_COUNT * 99 / 100).min(SAMPLE_COUNT - 1)];
+    assert!(
+        !publications.has_changed().unwrap(),
+        "an idempotent admission must not wake snapshot or generation materializers"
+    );
+    eprintln!(
+        "[workspace-admission-idempotence] admissions={SAMPLE_COUNT} publications=0 metadataProbes=0 locatorWrites=0 snapshotMaterializations=0 p99Nanos={} budgetNanos=1000000",
+        p99.as_nanos()
+    );
+    assert!(
+        p99 < std::time::Duration::from_millis(1),
+        "idempotent admission p99 exceeded one millisecond: {p99:?}"
+    );
+
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn two_sessions_cannot_amplify_one_workspace_admission_into_io() {
+    const SESSION_COUNT: usize = 2;
+    const ADMISSIONS_PER_SESSION: usize = 5_000;
+    let root = fixture_root();
+    let path = root.join("workspace-admissions.v1.json");
+    let catalog = RuntimeWorkspaceAdmissionCatalog::load(path).await.unwrap();
+    let mut publications = catalog.subscribe();
+    let entry = RuntimeWorkspaceAdmissionCatalogEntry {
+        workspace_identity: "workspace-two-session-pressure".to_owned(),
+        project_root: root.join("checkout"),
+    };
+    assert!(catalog.record(entry.clone()).await.unwrap());
+    publications.changed().await.unwrap();
+    let _ = publications.borrow_and_update();
+
+    let barrier = Arc::new(tokio::sync::Barrier::new(SESSION_COUNT));
+    let mut sessions = Vec::with_capacity(SESSION_COUNT);
+    for _ in 0..SESSION_COUNT {
+        let catalog = catalog.clone();
+        let entry = entry.clone();
+        let barrier = Arc::clone(&barrier);
+        sessions.push(tokio::spawn(async move {
+            barrier.wait().await;
+            let mut latencies = Vec::with_capacity(ADMISSIONS_PER_SESSION);
+            for _ in 0..ADMISSIONS_PER_SESSION {
+                let started = std::time::Instant::now();
+                assert!(!catalog.record(entry.clone()).await.unwrap());
+                latencies.push(started.elapsed());
+            }
+            latencies
+        }));
+    }
+    let mut latencies = Vec::with_capacity(SESSION_COUNT * ADMISSIONS_PER_SESSION);
+    for session in sessions {
+        latencies.extend(session.await.unwrap());
+    }
+    latencies.sort_unstable();
+    let sample_count = latencies.len();
+    let p99 = latencies[(sample_count * 99 / 100).min(sample_count - 1)];
+    assert!(!publications.has_changed().unwrap());
+    eprintln!(
+        "[workspace-admission-two-session-pressure] sessions={SESSION_COUNT} admissions={sample_count} publications=0 metadataProbes=0 locatorWrites=0 snapshotMaterializations=0 p99Nanos={} budgetNanos=1000000",
+        p99.as_nanos()
+    );
+    assert!(
+        p99 < std::time::Duration::from_millis(1),
+        "two-session idempotent admission p99 exceeded one millisecond: {p99:?}"
+    );
+
+    tokio::fs::remove_dir_all(root).await.unwrap();
+}
+
+#[tokio::test]
 async fn catalog_rejects_relative_project_roots() {
     let root = fixture_root();
     let catalog = RuntimeWorkspaceAdmissionCatalog::load(root.join("catalog.json"))
@@ -270,7 +366,7 @@ async fn daemon_restore_replays_each_catalog_scope_once() {
                 }
             }),
         )
-        .with_catalog(catalog);
+        .with_catalog(catalog.clone());
 
     let first = admission.restore_registered().await.unwrap();
     assert_eq!(first.ready.len(), 1);
@@ -313,7 +409,7 @@ async fn typed_ipc_admission_publishes_an_initial_missing_locator() {
                 }
             }),
         )
-        .with_catalog(catalog);
+        .with_catalog(catalog.clone());
     admission
         .admit(
             "workspace-initial",
@@ -322,8 +418,16 @@ async fn typed_ipc_admission_publishes_an_initial_missing_locator() {
         )
         .await
         .unwrap();
-    let ready = admission
+    let building = admission
         .ensure("workspace-initial", &project_root, candidate_identity())
+        .await
+        .unwrap();
+    assert_eq!(
+        building.state,
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationAdmissionState::Building
+    );
+    let ready = admission
+        .wait_terminal("workspace-initial", &project_root)
         .await
         .unwrap();
     assert_eq!(
@@ -342,10 +446,7 @@ async fn typed_ipc_admission_publishes_an_initial_missing_locator() {
         RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root),
         Err(RuntimeWorkspaceAdmissionCatalogResolveError::Unavailable { .. })
     ));
-    admission
-        .ensure("workspace-initial", &project_root, candidate_identity())
-        .await
-        .unwrap();
+    assert!(catalog.repair_locator().await.unwrap());
     assert_eq!(builds.load(Ordering::Relaxed), 1);
     assert_eq!(
         RuntimeWorkspaceAdmissionCatalog::resolve_mapped(&catalog_path, &project_root)
@@ -385,7 +486,7 @@ async fn daemon_restore_isolates_failed_workspace_scopes() {
                 })
             }),
         )
-        .with_catalog(catalog);
+        .with_catalog(catalog.clone());
 
     let report = admission.restore_registered().await.unwrap();
     assert_eq!(

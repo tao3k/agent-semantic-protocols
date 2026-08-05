@@ -6,7 +6,8 @@ mod core;
 mod core_load;
 
 pub use asp_session_policy::AspSessionPolicy;
-pub use core::{ClientHookConfig, ConfiguredResidentTarget};
+pub(crate) use core::HookPolicyCandidate;
+pub use core::{ClientHookConfig, ConfiguredResidentTarget, DurableHookConfigArtifact};
 pub use core_load::{
     default_client_config_path, default_client_config_template, load_client_config,
     load_client_config_for_project, load_client_config_overlay_for_project,

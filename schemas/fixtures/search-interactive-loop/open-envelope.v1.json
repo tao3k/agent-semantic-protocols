@@ -26,5 +26,10 @@
     "artifactDigest": "blake3:6666666666666666666666666666666666666666666666666666666666666666",
     "artifactSchemaId": "agent.semantic-protocols.search-choice-panel"
   },
+  "graphCursorArtifact": {
+    "artifactRef": "artifact:graph-cursor-1",
+    "artifactDigest": "blake3:7777777777777777777777777777777777777777777777777777777777777777",
+    "artifactSchemaId": "agent.semantic-protocols.search-graph-cursor"
+  },
   "issuedAtUnixMs": 1785027439000
 }

@@ -1,6 +1,8 @@
-import ASPProof.ASPLayeredAgentLifecycle
+import ASPProof.AgentSessionLifecycleProduct
 
 namespace ASPProof.SubagentManagerProjectionDispatch
+
+open ASPProof.AgentSessionLifecycleProduct
 
 inductive HostPlatform where
   | codex
@@ -72,17 +74,14 @@ def dispatchAdmitted
     (spec : CanonicalAgentSpec)
     (projection : HostProjection)
     (publication : ProjectionPublicationReceipt)
-    (session : ASPProof.ASPLayeredAgentLifecycle.AgentSession)
+    (session : LifecycleProduct)
     (dispatch : ManagerDispatchReceipt) : Bool :=
   publicationAdmitted spec projection publication &&
-    session.agentId == spec.agentId &&
-    session.profileCurrent &&
-    session.bindingDelivered &&
-    session.routeable &&
+    durableDispatchAuthorized session &&
     dispatch.agentId == spec.agentId &&
     dispatch.specDigest == spec.specDigest &&
     dispatch.projectionDigest == projection.projectionDigest &&
-    dispatch.physicalGeneration == session.physicalGeneration &&
+    dispatch.physicalGeneration == session.session.generation &&
     dispatch.delivered
 
 def explorerSpec : CanonicalAgentSpec :=
@@ -125,15 +124,17 @@ def codexPublication : ProjectionPublicationReceipt :=
     parserValidated := true
     atomicallyPublished := true }
 
-def currentExplorerSession : ASPProof.ASPLayeredAgentLifecycle.AgentSession :=
-  { canonicalPath := 101
-    agentId := 17
-    physicalGeneration := 9
-    profileCurrent := true
-    bindingDelivered := true
-    routeable := true
-    terminatedReceipt := false
-    pathReleaseReceipt := false }
+def currentExplorerSession : LifecycleProduct :=
+  { server := { epoch := 1, health := .ready }
+    session := { generation := 9, phase := .active }
+    binding := {
+      generation := 9
+      childId := 17
+      canonicalTarget := 101
+      phase := .fresh
+      terminationReceiptIndexed := false
+      pathReleaseReceiptIndexed := false }
+    dispatch := { generation := 9, dispatchKey := 7101, phase := .idle } }
 
 def codexDispatch : ManagerDispatchReceipt :=
   { agentId := 17
@@ -179,8 +180,9 @@ theorem stale_installed_projection_cannot_dispatch :
       currentExplorerSession codexDispatch = false := by
   native_decide
 
-def staleProfileSession : ASPProof.ASPLayeredAgentLifecycle.AgentSession :=
-  { currentExplorerSession with profileCurrent := false }
+def staleProfileSession : LifecycleProduct :=
+  { currentExplorerSession with
+    binding := { currentExplorerSession.binding with phase := .stale } }
 
 theorem stale_resident_child_is_not_reused :
     dispatchAdmitted explorerSpec codexExplorerProjection codexPublication

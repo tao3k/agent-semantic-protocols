@@ -167,6 +167,15 @@ async fn context_run_initialization_round_trips_through_mvcc_projection() {
         )
         .expect("valid located runtime");
     assert_eq!(located_runtime, runtime);
+    assert_eq!(
+        located_runtime
+            .active_panel()
+            .expect("active panel")
+            .graph_cursor_artifact()
+            .artifact_schema_id()
+            .as_str(),
+        "agent.semantic-protocols.search-graph-cursor"
+    );
     let router = GraphRouter::new(store, UnusedProofResolver, FixedClock(2));
     let routed = router
         .load_search_loop(runtime.loop_id())

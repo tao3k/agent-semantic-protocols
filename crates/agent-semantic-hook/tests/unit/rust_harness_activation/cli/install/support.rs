@@ -28,6 +28,9 @@ pub(super) fn protocol_command() -> Command {
     let mut command = asp_command();
     command.env("ASP_ORG_REPO_URL", org_repo);
     command.env("ASP_STATE_HOME", state_home);
+    command.env("GIT_CONFIG_NOSYSTEM", "1");
+    command.env("GIT_CONFIG_GLOBAL", "/dev/null");
+    command.env("GIT_TERMINAL_PROMPT", "0");
     command.env_remove("PRJ_CACHE_HOME");
     command
 }
@@ -128,7 +131,7 @@ fn local_test_org_repo() -> PathBuf {
     ORG_REPO
         .get_or_init(|| {
             let root = temp_project_root("org-state-source");
-            run_git(&root, &["init", "-q"]);
+            run_git(&root, &["init", "-q", "--template="]);
             let skill_path = root.join("templates").join("ASP_ORG_SKILL.org");
             std::fs::create_dir_all(skill_path.parent().expect("skill parent"))
                 .expect("create org skill dir");
@@ -153,7 +156,10 @@ fn local_test_org_repo() -> PathBuf {
 }
 
 fn run_git(root: &Path, args: &[&str]) {
-    let output = Command::new("git")
+    let _git_fixture = crate::integration_fixture::GIT_FIXTURE_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let output = crate::integration_fixture::isolated_git_command()
         .current_dir(root)
         .args(args)
         .output()

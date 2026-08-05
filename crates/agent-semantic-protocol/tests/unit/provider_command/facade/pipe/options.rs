@@ -120,13 +120,13 @@ fn search_pipe_selector_seed_renders_single_command_frontier_without_provider_sp
     );
     assert!(
         stdout.contains(&format!(
-            "nextCommand=asp rust query --selector '{selector}' --workspace . --code"
+            "nextCommand=asp rust query --selector '{selector}' --workspace . --projection source"
         )),
         "{stdout}"
     );
     assert!(!stdout.contains("commandHandles="), "{stdout}");
     assert!(
-        stdout.contains("actionFrontier=A1.query-code,A2.owner-items,A3.rg-query"),
+        stdout.contains("actionFrontier=A1.query-code,A2.owner-items"),
         "{stdout}"
     );
     assert!(stdout.contains("recommendedNext=A1.query-code"), "{stdout}");
@@ -281,7 +281,8 @@ fn query_stale_structural_selector_fails_instead_of_empty_success() {
             "rust://crates/agent-semantic-client/src/search_pipe_source.rs#item/function/collect_search_pipe_auto_acquisition",
             "--workspace",
             ".",
-            "--code",
+            "--projection",
+            "source",
         ])
         .output()
         .expect("run stale structural selector query");

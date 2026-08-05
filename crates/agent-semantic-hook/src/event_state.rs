@@ -1,9 +1,9 @@
 //! Append-only hook event state persisted by `asp hook`.
 
-use fs2::FileExt;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agent_semantic_runtime::ensure_project_hook_state_dir;
@@ -21,6 +21,7 @@ const HOOK_EVENT_SCHEMA_ID: &str = "agent.semantic-protocols.hook.event";
 const DENY_REPLAY_WINDOW_MS: u128 = 3 * 60 * 1000;
 const HOOK_EVENT_STATE_TAIL_BYTES: u64 = 1024 * 1024;
 const HOOK_EVENT_STATE_TAIL_LINE_CAP: usize = 4096;
+static HOOK_EVENT_STATE_WRITER: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HookEventSessionId(String);
@@ -109,7 +110,7 @@ pub fn apply_repeated_deny_replay(
     let preserve_agent_session_route_message =
         should_preserve_agent_session_route_message(decision);
     if source_access_replay && !preserve_agent_session_route_message {
-        insert_asp_explore_recovery_action_fields(decision);
+        insert_resident_recovery_action_fields(decision);
     }
     let compact_first_source_access_replay =
         source_access_replay && should_compact_source_access_deny_message(decision);
@@ -149,11 +150,11 @@ pub fn apply_repeated_deny_replay(
     Ok(true)
 }
 
-fn insert_asp_explore_recovery_action_fields(decision: &mut HookDecision) {
+fn insert_resident_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("requiredAction".to_string())
-        .or_insert_with(|| Value::String("enter-asp-explore-choice-pane".to_string()));
+        .or_insert_with(|| Value::String("enter-resident-choice-pane".to_string()));
     decision
         .fields
         .entry("nextAction".to_string())
@@ -183,7 +184,7 @@ fn insert_asp_explore_recovery_action_fields(decision: &mut HookDecision) {
     decision
         .fields
         .entry("completionReceipt".to_string())
-        .or_insert_with(|| Value::String("asp-explore-choice-pane-receipt".to_string()));
+        .or_insert_with(|| Value::String("resident-choice-pane-receipt".to_string()));
 }
 
 /// Append one compact hook decision record to `events.jsonl`.
@@ -193,7 +194,10 @@ pub fn append_hook_event_state(
 ) -> Result<PathBuf, String> {
     let state_dir = ensure_project_hook_state_dir(project_root)?;
     let state_path = state_dir.join(HOOK_EVENT_STATE_FILE);
-    let lock_path = state_dir.join(format!("{HOOK_EVENT_STATE_FILE}.lock"));
+    let _writer = HOOK_EVENT_STATE_WRITER
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "resident hook event writer lock was poisoned".to_string())?;
     let event = json!({
         "schemaId": HOOK_EVENT_SCHEMA_ID,
         "schemaVersion": "1",
@@ -212,24 +216,6 @@ pub fn append_hook_event_state(
     });
     let mut line = event.to_string();
     line.push('\n');
-    let lock_file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(&lock_path)
-        .map_err(|error| {
-            format!(
-                "failed to open hook state lock {}: {error}",
-                lock_path.display()
-            )
-        })?;
-    lock_file.lock_exclusive().map_err(|error| {
-        format!(
-            "failed to lock hook state lock {}: {error}",
-            lock_path.display()
-        )
-    })?;
     let state_len = fs::metadata(&state_path)
         .map(|metadata| metadata.len())
         .or_else(|error| {
@@ -280,12 +266,6 @@ pub fn append_hook_event_state(
             )
         })?;
     }
-    lock_file.unlock().map_err(|error| {
-        format!(
-            "failed to unlock hook state lock {}: {error}",
-            lock_path.display()
-        )
-    })?;
     Ok(state_path)
 }
 

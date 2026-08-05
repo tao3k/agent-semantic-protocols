@@ -12,12 +12,15 @@ example
     (member : agent ∈ state.agents)
     (parentId : Nat)
     (parentBinding : agent.parentSessionId = some parentId)
+    (notRoot : parentId ≠ state.rootSessionId)
     (missingParent : parentId ∉ agentSessionIds state) :
     ¬ parentsResolve state := by
   intro resolves
   have resolved := resolves agent member
   rw [parentBinding] at resolved
-  exact missingParent resolved.2.2
+  rcases resolved.2.2 with root | parent
+  · exact notRoot root
+  · exact missingParent parent
 
 example
     (edge : CodexDelegationEdge)

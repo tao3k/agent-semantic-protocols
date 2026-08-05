@@ -201,6 +201,86 @@ impl serde::Serialize for HookDecision {
     }
 }
 
+impl<'de> serde::Deserialize<'de> for HookDecision {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase", deny_unknown_fields)]
+        struct DeserializedHookDecision {
+            schema_id: String,
+            schema_version: String,
+            protocol_id: String,
+            protocol_version: String,
+            platform: String,
+            event: String,
+            decision: DecisionKind,
+            reason_kind: ReasonKind,
+            language_ids: Vec<agent_semantic_config::LanguageId>,
+            subject: DecisionSubject,
+            routes: Vec<DecisionRoute>,
+            message: String,
+            #[serde(default)]
+            fields: BTreeMap<String, Value>,
+            #[serde(default)]
+            interactive_command: Option<de::IgnoredAny>,
+        }
+
+        let wire = DeserializedHookDecision::deserialize(deserializer)?;
+        validate_hook_decision_identity::<D::Error>(
+            "schemaId",
+            &wire.schema_id,
+            HOOK_DECISION_SCHEMA_ID,
+        )?;
+        validate_hook_decision_identity::<D::Error>(
+            "schemaVersion",
+            &wire.schema_version,
+            HOOK_DECISION_SCHEMA_VERSION,
+        )?;
+        validate_hook_decision_identity::<D::Error>(
+            "protocolId",
+            &wire.protocol_id,
+            HOOK_PROTOCOL_ID,
+        )?;
+        validate_hook_decision_identity::<D::Error>(
+            "protocolVersion",
+            &wire.protocol_version,
+            HOOK_PROTOCOL_VERSION,
+        )?;
+        let _ = wire.interactive_command;
+
+        Ok(Self {
+            schema_id: HOOK_DECISION_SCHEMA_ID,
+            schema_version: HOOK_DECISION_SCHEMA_VERSION,
+            protocol_id: HOOK_PROTOCOL_ID,
+            protocol_version: HOOK_PROTOCOL_VERSION,
+            platform: wire.platform,
+            event: wire.event,
+            decision: wire.decision,
+            reason_kind: wire.reason_kind,
+            language_ids: wire.language_ids,
+            subject: wire.subject,
+            routes: wire.routes,
+            message: wire.message,
+            fields: wire.fields,
+        })
+    }
+}
+
+fn validate_hook_decision_identity<E>(field: &str, actual: &str, expected: &str) -> Result<(), E>
+where
+    E: de::Error,
+{
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(E::custom(format!(
+            "invalid Hook decision {field}: expected {expected}, found {actual}"
+        )))
+    }
+}
+
 impl HookDecision {
     /// Whether an explicit config rule selected a complete resident dispatch.
     pub fn has_configured_resident_dispatch(&self) -> bool {
@@ -256,7 +336,7 @@ impl HookDecision {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 /// Allow or deny result emitted by the hook classifier.
 pub enum DecisionKind {
@@ -265,7 +345,7 @@ pub enum DecisionKind {
     Deny,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 /// Reason category for a hook decision.
 pub enum ReasonKind {
@@ -307,7 +387,7 @@ where
         .map_err(de::Error::custom)
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 /// Semantic route kind suggested by a hook denial.
 pub enum DecisionRouteKind {
@@ -323,7 +403,7 @@ pub enum DecisionRouteKind {
     CheckChanged,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Tool name, command, and paths that triggered a hook decision.
 pub struct DecisionSubject {
@@ -331,11 +411,11 @@ pub struct DecisionSubject {
     pub tool_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub paths: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 /// Provider command route that the agent should run instead of denied tool use.
 pub struct DecisionRoute {

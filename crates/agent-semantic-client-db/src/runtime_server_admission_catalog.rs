@@ -132,11 +132,26 @@ impl RuntimeWorkspaceAdmissionCatalog {
         Arc::clone(&self.entries.borrow())
     }
 
+    /// Subscribes to identity-map changes in the control-plane catalog.
+    ///
+    /// Re-admitting the same workspace is deliberately silent. Source,
+    /// activation, and configuration generations have their own authorities;
+    /// using an identity catalog as their invalidation bus turns every request
+    /// into a full snapshot refresh.
+    pub fn subscribe(
+        &self,
+    ) -> tokio::sync::watch::Receiver<Arc<BTreeSet<RuntimeWorkspaceAdmissionCatalogEntry>>> {
+        self.entries.subscribe()
+    }
+
     pub async fn record(
         &self,
         entry: RuntimeWorkspaceAdmissionCatalogEntry,
     ) -> Result<bool, String> {
         entry.validate()?;
+        if self.entries.borrow().contains(&entry) {
+            return Ok(false);
+        }
         let _writer = self.writer.lock().await;
         let mut entries = self.entries.borrow().as_ref().clone();
         if let Some(existing) = entries.iter().find(|existing| {
@@ -162,19 +177,30 @@ impl RuntimeWorkspaceAdmissionCatalog {
             ));
         }
         if !entries.insert(entry) {
-            match tokio::fs::metadata(&self.path).await {
-                Ok(metadata) if metadata.is_file() && metadata.len() > 0 => return Ok(false),
-                Ok(_) | Err(_) => {
-                    publish_catalog(&self.path, &entries).await?;
-                    return Ok(true);
-                }
-            }
+            return Ok(false);
         }
         if let Err(error) = publish_catalog(&self.path, &entries).await {
             return Err(error);
         }
         self.entries.send_replace(Arc::new(entries));
         Ok(true)
+    }
+
+    /// Rebuilds a missing derived locator from the resident identity catalog.
+    ///
+    /// This is intentionally separate from [`Self::record`]: ordinary
+    /// admissions must never probe the filesystem merely to rediscover that an
+    /// already-admitted identity is unchanged.
+    pub async fn repair_locator(&self) -> Result<bool, String> {
+        let _writer = self.writer.lock().await;
+        match tokio::fs::metadata(&self.path).await {
+            Ok(metadata) if metadata.is_file() && metadata.len() > 0 => Ok(false),
+            Ok(_) | Err(_) => {
+                let entries = Arc::clone(&self.entries.borrow());
+                publish_catalog(&self.path, entries.as_ref()).await?;
+                Ok(true)
+            }
+        }
     }
 
     /// Resolves an already-admitted canonical project root without Git discovery,

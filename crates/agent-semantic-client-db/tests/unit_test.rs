@@ -52,6 +52,8 @@ mod runtime_server_generation_admission;
 mod runtime_server_generation_restore;
 #[path = "unit/runtime_server_graph_turbo.rs"]
 mod runtime_server_graph_turbo;
+#[path = "unit/runtime_server_health.rs"]
+mod runtime_server_health;
 #[path = "unit/runtime_server_hook_evaluation.rs"]
 mod runtime_server_hook_evaluation;
 #[path = "unit/runtime_server_opentelemetry_test.rs"]
@@ -70,6 +72,8 @@ mod runtime_server_workspace_recovery;
 mod runtime_server_workspace_resident;
 #[path = "unit/selector_generation_evidence.rs"]
 mod selector_generation_evidence;
+#[path = "unit/seqlock_json_memory.rs"]
+mod seqlock_json_memory;
 #[path = "unit/db/snapshot_fixture.rs"]
 mod snapshot_fixture;
 #[path = "unit/db/source_index_refresh_perf.rs"]

@@ -39,6 +39,11 @@ structure ControlPlaneMaterialization where
   freshness : ControlPlaneFreshness
   deriving DecidableEq, Repr
 
+structure CodexRootTask where
+  sessionId : Nat
+  evidenceRef : Option Nat
+  deriving DecidableEq, Repr
+
 structure CodexAgentNode where
   sessionId : Nat
   rootSessionId : Nat
@@ -69,6 +74,7 @@ structure CodexMultiAgentControlPlane where
   materialization : ControlPlaneMaterialization
   workspaceServer : WorkspaceServer
   rootSessionId : Nat
+  rootTask : CodexRootTask
   agents : List CodexAgentNode
   turns : List CodexTurnNode
   delegations : List CodexDelegationEdge
@@ -80,24 +86,19 @@ def agentSessionIds (state : CodexMultiAgentControlPlane) : List Nat :=
 def uniqueAgentSessionIds (state : CodexMultiAgentControlPlane) : Prop :=
   (agentSessionIds state).Nodup
 
-def rootNode (state : CodexMultiAgentControlPlane) (agent : CodexAgentNode) : Prop :=
-  agent.sessionId = state.rootSessionId ∧
-    agent.rootSessionId = state.rootSessionId ∧
-    agent.parentSessionId = none
-
-def exactlyOneRoot (state : CodexMultiAgentControlPlane) : Prop :=
-  ∃ root ∈ state.agents,
-    rootNode state root ∧
-      ∀ other ∈ state.agents, rootNode state other → other = root
+def rootTaskEvidenced (state : CodexMultiAgentControlPlane) : Prop :=
+  state.rootTask.sessionId = state.rootSessionId ∧
+    (state.materialization.freshness = ControlPlaneFreshness.current →
+      state.rootTask.evidenceRef.isSome = true)
 
 def parentsResolve (state : CodexMultiAgentControlPlane) : Prop :=
   ∀ agent ∈ state.agents,
     agent.rootSessionId = state.rootSessionId ∧
       match agent.parentSessionId with
-      | none => agent.sessionId = state.rootSessionId
+      | none => False
       | some parentId =>
           parentId ≠ agent.sessionId ∧
-            parentId ∈ agentSessionIds state
+            (parentId = state.rootSessionId ∨ parentId ∈ agentSessionIds state)
 
 def turnsResolve (state : CodexMultiAgentControlPlane) : Prop :=
   ∀ turn ∈ state.turns,
@@ -119,16 +120,16 @@ def deliveryEvidenceAligned (edge : CodexDelegationEdge) : Prop :=
 
 def delegationsResolve (state : CodexMultiAgentControlPlane) : Prop :=
   ∀ edge ∈ state.delegations,
-    edge.parentSessionId ∈ agentSessionIds state ∧
+    (edge.parentSessionId = state.rootSessionId ∨
+      edge.parentSessionId ∈ agentSessionIds state) ∧
       edge.childSessionId ∈ agentSessionIds state ∧
       edge.parentSessionId ≠ edge.childSessionId ∧
       delegationGenerationAligned state edge ∧
       deliveryEvidenceAligned edge
 
 def wellFormed (state : CodexMultiAgentControlPlane) : Prop :=
-  state.agents ≠ [] ∧
+  rootTaskEvidenced state ∧
     uniqueAgentSessionIds state ∧
-    exactlyOneRoot state ∧
     parentsResolve state ∧
     turnsResolve state ∧
     delegationsResolve state

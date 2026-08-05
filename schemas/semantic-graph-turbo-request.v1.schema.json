@@ -869,6 +869,7 @@
         "enum": [
           "item-skeleton",
           "query-code",
+          "lexical-search",
           "fd-query",
           "rg-query",
           "owner-items",
@@ -882,6 +883,7 @@
         "capabilityId": {
           "enum": [
             "query",
+            "lexical-search",
             "fd",
             "rg",
             "owner-items",
@@ -1144,6 +1146,8 @@
             "doc",
             "children",
             "content",
+            "source",
+            "callable-skeleton",
             "code"
           ]
         },

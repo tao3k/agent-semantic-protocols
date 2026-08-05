@@ -56,7 +56,7 @@ pub(crate) fn protocol_binary_digest_from_canonical_artifact_path(
 pub(crate) async fn canonical_protocol_binary_artifact_digest(
     path: &Path,
 ) -> Result<String, String> {
-    let canonical = tokio::fs::canonicalize(path).await.map_err(|error| {
+    let canonical = fs::canonicalize(path).map_err(|error| {
         format!(
             "failed to resolve canonical ASP runtime artifact {}: {error}",
             path.display()

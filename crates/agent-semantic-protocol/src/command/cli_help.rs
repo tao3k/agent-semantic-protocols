@@ -417,6 +417,10 @@ pub(crate) fn selected_command(args: &[String]) -> Command {
         [install, binary, ..] if install == "install" && binary == "binary" => {
             install_binary_command()
         }
+        [install, hook, ..] if install == "install" && hook == "hook" => install_hook_command(),
+        [install, plugin, ..] if install == "install" && plugin == "plugin" => {
+            install_plugin_command()
+        }
         [graph, render, ..] if graph == "graph" && render == "render" => graph_render_command(),
         [document, leaf, ..] if is_document_facade(document) => DOCUMENT_COMMANDS
             .iter()
@@ -451,7 +455,7 @@ fn selected_command_default(args: &[String]) -> Command {
         (Some("cloud"), _) => cloud_command(),
         (Some("paths"), _) => paths_command(),
         (Some("healthcheck"), _) => healthcheck_command(),
-        (Some("server"), _) => super::runtime_server::runtime_server_command(),
+        (Some("server"), _) => crate::server::runtime_server::runtime_server_command(),
         (Some("live-corpus"), _) => live_corpus_command(),
         (Some("source-access"), _) => source_access_command(),
         (Some("ast-patch"), _) => ast_patch_command(),

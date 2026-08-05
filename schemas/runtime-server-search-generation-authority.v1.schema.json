@@ -41,7 +41,7 @@
       "$ref": "source-snapshot-evidence.v1.schema.json#/$defs/sourceSnapshot"
     },
     "workspaceGeneration": {
-      "$ref": "workspace-generation-evidence.v1.schema.json"
+      "$ref": "workspace-generation-root-evidence.v1.schema.json"
     }
   },
   "$defs": {

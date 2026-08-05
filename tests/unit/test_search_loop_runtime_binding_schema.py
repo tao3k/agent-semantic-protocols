@@ -12,6 +12,7 @@ FIXTURE_DIR = SCHEMA_DIR / "fixtures" / "search-interactive-loop"
 RUNTIME_SCHEMA_PATH = SCHEMA_DIR / "search-loop-runtime-binding.v1.schema.json"
 INTERACTIVE_SCHEMA_PATH = SCHEMA_DIR / "search-interactive-loop.v1.schema.json"
 COMMAND_SCHEMA_PATH = SCHEMA_DIR / "semantic-command.v1.schema.json"
+CURSOR_SCHEMA_PATH = SCHEMA_DIR / "search-graph-cursor.v1.schema.json"
 
 
 def load_json(path: Path) -> dict:
@@ -98,3 +99,35 @@ def test_runtime_binding_rejects_unrecognized_artifact_fields() -> None:
     binding = copy.deepcopy(load_json(FIXTURE_DIR / "runtime-active.v1.json"))
     binding["activePanel"]["proposalSetArtifact"]["payload"] = {"raw": True}
     assert list(runtime_validator().iter_errors(binding))
+
+
+def test_runtime_binding_requires_cursor_artifact_for_active_panel() -> None:
+    binding = copy.deepcopy(load_json(FIXTURE_DIR / "runtime-active.v1.json"))
+    del binding["activePanel"]["graphCursorArtifact"]
+    assert list(runtime_validator().iter_errors(binding))
+
+
+def test_open_envelope_requires_cursor_artifact() -> None:
+    envelope = copy.deepcopy(load_json(FIXTURE_DIR / "open-envelope.v1.json"))
+    del envelope["graphCursorArtifact"]
+    assert list(runtime_validator().iter_errors(envelope))
+
+
+def test_runtime_binding_rejects_non_cursor_artifact_schema() -> None:
+    binding = copy.deepcopy(load_json(FIXTURE_DIR / "runtime-active.v1.json"))
+    binding["activePanel"]["graphCursorArtifact"]["artifactSchemaId"] = (
+        "agent.semantic-protocols.search-choice-panel"
+    )
+    assert list(runtime_validator().iter_errors(binding))
+
+
+def test_graph_cursor_artifact_is_valid() -> None:
+    validator = Draft202012Validator(
+        load_json(CURSOR_SCHEMA_PATH),
+        registry=schema_registry(),
+    )
+    validator.validate(load_json(FIXTURE_DIR / "graph-cursor.v1.json"))
+
+
+def test_graph_cursor_schema_is_valid_draft_2020_12() -> None:
+    Draft202012Validator.check_schema(load_json(CURSOR_SCHEMA_PATH))

@@ -12,6 +12,7 @@ mod exact_projection_diagnostic;
 mod exact_projection_diagnostic_io;
 mod exact_projection_trace;
 mod resident_exact_projection;
+pub(crate) mod server;
 pub use agent_semantic_context_product as context_product_state;
 
 pub mod agent_session_lifecycle_projection;
@@ -27,5 +28,7 @@ pub mod hook_bootstrap;
 pub use state_cli::run_binary_from_env;
 pub(crate) mod codex;
 pub use command::search_pipe_selector_seed::{
+    SelectorSeedCursorBinding, SelectorSeedCursorError, SelectorSeededSearchCursorRequest,
     SelectorSeededSearchPipeRequest, render_selector_seeded_search_pipe,
+    selector_seeded_search_cursor,
 };

@@ -1,0 +1,13 @@
+#+TITLE: Per-slot resident occupancy
+
+“Single resident” is never a workspace-wide or root-session-wide restriction.
+It means only this invariant:
+
+#+begin_quote
+For each configured resident route key, at most one physical resident
+generation occupies that route's slot.
+#+end_quote
+
+Different resident profiles may be live concurrently, and any number of
+temporary agents may coexist with them.  Replacement changes one slot from
+incumbent to vacant to replacement after the close/release receipts are indexed.

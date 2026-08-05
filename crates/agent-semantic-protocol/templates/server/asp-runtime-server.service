@@ -5,7 +5,6 @@ Description=Global ASP resident daemon
 Type=simple
 ExecStart=@ASP_RUNTIME@ server daemon
 Environment=ASP_STATE_HOME=@ASP_STATE_HOME@
-@ASP_GRAPH_TURBO_PYTHON_ENV@
 Restart=always
 RestartSec=10ms
 

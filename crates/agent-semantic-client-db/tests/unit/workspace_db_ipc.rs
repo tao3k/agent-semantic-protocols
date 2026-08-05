@@ -55,25 +55,6 @@ fn runtime_owner_relocation_has_one_atomic_v1_wire_shape() {
 }
 
 #[test]
-fn runtime_owner_freshness_has_one_typed_v1_wire_shape() {
-    let value = serde_json::to_value(WorkspaceDbIpcOperation::EnsureRuntimeOwner {
-        project_root: "/workspace".to_owned(),
-        language_id: "rust".to_owned(),
-        owner_path: "src/lib.rs".to_owned(),
-    })
-    .expect("encode runtime owner freshness");
-    assert_eq!(
-        value,
-        serde_json::json!({
-            "kind": "ensure-runtime-owner",
-            "projectRoot": "/workspace",
-            "languageId": "rust",
-            "ownerPath": "src/lib.rs"
-        })
-    );
-}
-
-#[test]
 fn canonical_owner_runtime_root_ignores_long_process_temp_directory() {
     let runtime = workspace_db_owner_runtime_base();
     assert_eq!(runtime.parent(), Some(std::path::Path::new("/tmp")));

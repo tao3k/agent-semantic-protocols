@@ -190,8 +190,8 @@ fn builtin_manifests_include_document_language_providers() {
     let md_routes = agent_semantic_hook::materialize_provider_routes(md).expect("md routes");
 
     assert_eq!(org.provider_id().as_str(), "orgize");
-    assert_eq!(org.binary(), "orgize");
-    assert_eq!(org.execution().as_str(), "external-process");
+    assert_eq!(org.binary(), "asp");
+    assert_eq!(org.execution().as_str(), "embedded");
     assert!(org.search_capabilities().owner_items);
     assert!(
         org.document_resolution()
@@ -245,8 +245,8 @@ fn builtin_manifests_include_document_language_providers() {
     );
 
     assert_eq!(md.provider_id().as_str(), "orgize");
-    assert_eq!(md.binary(), "orgize");
-    assert_eq!(md.execution().as_str(), "external-process");
+    assert_eq!(md.binary(), "asp");
+    assert_eq!(md.execution().as_str(), "embedded");
     assert!(md.search_capabilities().owner_items);
     assert!(
         md.document_resolution()

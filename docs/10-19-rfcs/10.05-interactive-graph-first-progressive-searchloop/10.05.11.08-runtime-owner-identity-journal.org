@@ -10,10 +10,10 @@ it does not introduce a second workspace identity or a provider-private cache.
 
 An immutable exact-projection generation is safe to read during publication of
 its successor, but a base-generation hit alone does not prove that the owner is
-still live.  Calling =EnsureRuntimeOwner= before every hit preserves freshness
-but couples the read plane to Server availability.  Reading and hashing the
-owner file on every query preserves correctness but fails the sub-millisecond
-read budget.
+still live.  The removed =EnsureRuntimeOwner= request coupled the read plane to
+Server availability and admitted query-time provider repair.  Reading and
+hashing the owner file on every query likewise fails the sub-millisecond read
+budget.  Neither operation is part of the v1 data-plane surface.
 
 * Contract
 
@@ -66,8 +66,8 @@ query performs these steps:
 5. return the mmap projection only when the entry is absent under a covered
    base generation, or explicitly present with the same digest;
 6. return a typed missing/stale result immediately for a tombstone or mismatch;
-7. request owner semantic refresh only for the typed stale result, never as a
-   prerequisite for a proven-current hit.
+7. return the typed stale result without scheduling work; hook/watcher
+   lifecycle admission owns semantic refresh and writer-lane publication.
 
 A same-base rebase is idempotent and must preserve accumulated deltas.  A new
 base generation starts an empty overlay only after its exact segment is

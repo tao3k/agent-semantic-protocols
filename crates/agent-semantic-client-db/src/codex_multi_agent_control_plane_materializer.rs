@@ -44,16 +44,18 @@ pub(crate) fn materialize_codex_multi_agent_control_plane(
         );
     }
 
-    let root_count = records
+    if records.is_empty() {
+        return Err(
+            "Codex root task requires a non-empty scoped AgentSession Registry snapshot".to_owned(),
+        );
+    }
+    if records
         .iter()
-        .filter(|record| {
-            record.session_id() == root_session_id && record.parent_session_id().is_none()
-        })
-        .count();
-    if root_count != 1 {
-        return Err(format!(
-            "AgentSession Registry snapshot requires exactly one durable root row, found {root_count}"
-        ));
+        .any(|record| record.session_id() == root_session_id)
+    {
+        return Err(
+            "Codex root task must not be encoded as an AgentSession Registry row".to_owned(),
+        );
     }
 
     let canonical_records = serde_json::to_vec(&records)

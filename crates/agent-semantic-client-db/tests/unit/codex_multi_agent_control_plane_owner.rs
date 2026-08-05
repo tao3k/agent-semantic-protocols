@@ -22,15 +22,15 @@ fn projection(generation: u64) -> CodexMultiAgentV2ControlPlaneProjection {
     let lifecycle = AgentSessionLifecycleProjection::new(
         workspace_server.clone(),
         SessionLifecycleProjection {
-            session_id: Some("root-session".to_owned()),
+            session_id: Some("child-session".to_owned()),
             generation: Some(1),
             phase: SessionPhase::Active,
         },
         HostBindingProjection {
             generation: Some(1),
             phase: BindingPhase::Fresh,
-            child_session_id: Some("root-session".to_owned()),
-            canonical_message_target: Some("agent://root-session".to_owned()),
+            child_session_id: Some("child-session".to_owned()),
+            canonical_message_target: Some("agent://child-session".to_owned()),
             termination_receipt_indexed: false,
             path_release_receipt_indexed: false,
         },
@@ -50,9 +50,9 @@ fn projection(generation: u64) -> CodexMultiAgentV2ControlPlaneProjection {
         "root-session".to_owned(),
         vec![CodexAgentNodeProjection {
             root_session_id: "root-session".to_owned(),
-            parent_session_id: None,
-            resident_name: "asp-main".to_owned(),
-            role: "main".to_owned(),
+            parent_session_id: Some("root-session".to_owned()),
+            resident_name: "asp-worker".to_owned(),
+            role: "worker".to_owned(),
             configured_agent_type: None,
             lifecycle,
         }],
@@ -97,7 +97,7 @@ async fn publication_is_idempotent_and_authorizes_from_the_current_snapshot() {
     assert!(replay.idempotent);
     assert!(
         owner
-            .downstream_dispatch_authorized("workspace-example", "root-session", "root-session")
+            .downstream_dispatch_authorized("workspace-example", "root-session", "child-session")
             .await
     );
 }
@@ -143,7 +143,7 @@ async fn workspace_server_change_marks_the_snapshot_stale_before_dispatch() {
     );
     assert!(
         !owner
-            .downstream_dispatch_authorized("workspace-example", "root-session", "root-session")
+            .downstream_dispatch_authorized("workspace-example", "root-session", "child-session")
             .await
     );
 }

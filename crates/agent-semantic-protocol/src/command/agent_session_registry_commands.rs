@@ -282,6 +282,7 @@ pub(super) fn smoke_session(
 }
 
 fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
+    let resident_name = super::configured_resident_session_name(None)?;
     let state_home = agent_semantic_runtime::state_core::resolve_state_home()?;
     let temp_root = std::env::temp_dir().join("asp-agent-session-smoke");
     let _ = std::fs::remove_dir_all(&temp_root);
@@ -361,7 +362,7 @@ fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
             "session",
             "register",
             "--name",
-            "asp-explore",
+            resident_name.as_str(),
             "--child-session-id",
             child_session_id,
             "--root-session-id",
@@ -428,7 +429,7 @@ fn run_invalid_child_bootstrap_smoke() -> Result<serde_json::Value, String> {
             "session",
             "close",
             "--name",
-            "asp-explore",
+            resident_name.as_str(),
             "--root-session-id",
             root_session_id,
         ])

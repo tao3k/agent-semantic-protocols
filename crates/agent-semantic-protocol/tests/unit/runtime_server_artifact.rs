@@ -1,6 +1,6 @@
-#[path = "../../src/command/runtime_server_definition.rs"]
+#[path = "../../src/server/runtime_server_definition.rs"]
 mod definition_implementation;
-#[path = "../../src/command/runtime_server_artifact.rs"]
+#[path = "../../src/server/runtime_server_artifact.rs"]
 mod implementation;
 
 use definition_implementation::atomic_write_if_changed;
@@ -29,22 +29,6 @@ fn healthy_runtime_with_unchanged_definition_is_a_zero_mutation_noop() {
         runtime_server_supervisor_action(true, false),
         RuntimeServerSupervisorAction::Noop
     );
-}
-
-#[test]
-fn agent_session_probe_uses_the_published_endpoint_digest() {
-    let source = include_str!("../../src/command/runtime_server.rs");
-    let probe = source
-        .split("pub(crate) async fn probe_healthy_runtime_server_at")
-        .nth(1)
-        .expect("agent-session RuntimeServer probe must exist")
-        .split("pub(crate) async fn")
-        .next()
-        .expect("probe must have a bounded source owner");
-
-    assert!(probe.contains("prewarm_runtime_server_status_memory(&endpoint).await?"));
-    assert!(probe.contains("endpoint.runtime_artifact_digest.clone()"));
-    assert!(!probe.contains("canonical_protocol_binary_artifact_digest"));
 }
 
 #[test]

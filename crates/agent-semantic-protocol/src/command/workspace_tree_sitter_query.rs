@@ -192,7 +192,8 @@ fn run_workspace_tree_sitter_query(
         .enable_all()
         .build()
         .map_err(|error| format!("failed to create Tree-sitter query runtime: {error}"))?;
-    let client_db_session = super::runtime_server::runtime_server_workspace_session(project_root)?;
+    let client_db_session =
+        crate::server::runtime_server::runtime_server_workspace_session(project_root)?;
     tree_sitter_trace("resolve-state", phase_started, None);
     let query_identity = agent_semantic_client_db::ProviderTreeSitterQueryIdentity {
         scope: state.scope.clone(),

@@ -43,7 +43,8 @@ pub(super) fn bootstrap_session(
     project_root: &Path,
 ) -> Result<(), String> {
     let project_id = project_session_scope_id(registry, project_root)?;
-    let name = args.name.as_deref().unwrap_or("asp-explore");
+    let configured_name = super::configured_resident_session_name(args.name.as_deref())?;
+    let name = configured_name.as_str();
     reject_resident_child_bootstrap(registry, &project_id, name)?;
     let root_session_id = resolved_root_session_id(registry, args.root_session_id.as_deref())?;
     let now = agent_session_unix_timestamp()?;
@@ -426,7 +427,7 @@ pub(super) fn bootstrap_session(
                 && let Some(choice) = menu
                     .choices
                     .iter_mut()
-                    .find(|choice| choice.id == "send-denied-asp-command")
+                    .find(|choice| is_dispatch_resident_command_choice(choice.id))
             {
                 let mut command = format!(
                     "asp agent session dispatch-claim --name {}",
@@ -979,3 +980,11 @@ pub(super) fn bootstrap_session(
     }
     Ok(())
 }
+
+fn is_dispatch_resident_command_choice(choice_id: &str) -> bool {
+    choice_id == "dispatch-resident-command"
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/agent_session_registry_bootstrap_dispatch_choice.rs"]
+mod dispatch_choice_projection_tests;

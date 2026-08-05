@@ -4,12 +4,20 @@ use agent_semantic_client_db::runtime_server_admission::{
     WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID,
     WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID, WorkspaceGenerationAdmission,
     WorkspaceGenerationAdmissionReceipt, WorkspaceGenerationAdmissionState,
-    WorkspaceGenerationCandidateIdentity, WorkspaceGenerationMutationAdmissionReceipt,
+    WorkspaceGenerationBuildMode, WorkspaceGenerationCandidateIdentity,
+    WorkspaceGenerationMutationAdmissionReceipt,
 };
 use agent_semantic_client_db::runtime_server_admission_catalog::{
     RuntimeWorkspaceAdmissionCatalog, RuntimeWorkspaceAdmissionCatalogEntry,
 };
 use tokio::sync::{Barrier, Mutex};
+
+#[test]
+fn mutation_rebuild_does_not_attempt_to_restore_the_superseded_materialization() {
+    assert!(WorkspaceGenerationBuildMode::RestoreOnly.attempts_durable_restore());
+    assert!(WorkspaceGenerationBuildMode::RestoreOrBuild.attempts_durable_restore());
+    assert!(!WorkspaceGenerationBuildMode::RebuildAfterMutation.attempts_durable_restore());
+}
 
 fn candidate_identity() -> WorkspaceGenerationCandidateIdentity {
     candidate_identity_for(
@@ -136,22 +144,24 @@ async fn mutation_admission_rejects_non_normalized_paths_and_workspace_identity_
     .with_catalog(catalog);
 
     let path_error = admission
-        .admit_changed_paths(
+        .admit_observed_mutation(
             "mutation-path-normalization",
             "workspace-parent",
             parent_root.clone(),
             vec![std::path::PathBuf::from("src/../src/lib.rs")],
+            candidate_identity(),
         )
         .await
         .expect_err("parent directory component must fail closed");
     assert!(path_error.contains("path must be normalized"));
 
     let identity_error = admission
-        .admit_changed_paths(
+        .admit_observed_mutation(
             "mutation-identity-drift",
             "workspace-parent",
             conflicting_root.clone(),
             vec![conflicting_root.join("src/lib.rs")],
+            candidate_identity(),
         )
         .await
         .expect_err("workspace identity drift must fail closed");
@@ -295,7 +305,7 @@ async fn project_roots_have_independent_admission_flights() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn changed_paths_are_admitted_by_longest_resident_workspace_root() {
+async fn changed_paths_fan_out_to_each_workspace_resident_without_git_rediscovery() {
     let temp = tempfile::tempdir().expect("temporary resident catalog");
     let parent_root = temp.path().join("repository");
     let nested_root = parent_root.join("languages/rust-lang-project-harness");
@@ -332,9 +342,27 @@ async fn changed_paths_are_admitted_by_longest_resident_workspace_root() {
         }
     }))
     .with_catalog(catalog);
+    for (workspace_identity, workspace_root) in [
+        ("workspace-parent", &parent_root),
+        ("workspace-nested", &nested_root),
+    ] {
+        admission
+            .admit(
+                workspace_identity,
+                workspace_root.clone(),
+                candidate_identity(),
+            )
+            .await
+            .expect("admit resident candidate evidence");
+        admission
+            .wait_terminal(workspace_identity, workspace_root)
+            .await
+            .expect("resident candidate evidence ready");
+    }
+    builds.lock().await.clear();
 
     let receipt = admission
-        .admit_changed_paths(
+        .admit_observed_mutation(
             "mutation-parent-and-nested",
             "workspace-parent",
             parent_root.clone(),
@@ -342,9 +370,10 @@ async fn changed_paths_are_admitted_by_longest_resident_workspace_root() {
                 parent_root.join("README.md"),
                 nested_root.join("src/exact_source.rs"),
             ],
+            candidate_identity(),
         )
         .await
-        .expect("admit changed paths");
+        .expect("fan out changed paths from resident evidence");
     receipt.validate().expect("valid mutation receipt");
     assert_eq!(receipt.changed_path_count, 2);
     assert_eq!(receipt.affected_workspace_count, 2);
@@ -356,15 +385,15 @@ async fn changed_paths_are_admitted_by_longest_resident_workspace_root() {
             .collect::<Vec<_>>(),
         vec!["workspace-nested", "workspace-parent"]
     );
-
-    admission
-        .wait_terminal("workspace-parent", &parent_root)
-        .await
-        .expect("parent workspace terminal state");
-    admission
-        .wait_terminal("workspace-nested", &nested_root)
-        .await
-        .expect("nested workspace terminal state");
+    for (workspace_identity, workspace_root) in [
+        ("workspace-parent", &parent_root),
+        ("workspace-nested", &nested_root),
+    ] {
+        admission
+            .wait_terminal(workspace_identity, workspace_root)
+            .await
+            .expect("workspace mutation terminal state");
+    }
     let mut builds = builds.lock().await.clone();
     builds.sort();
     assert_eq!(
@@ -406,11 +435,12 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     let changed_path = root.join("src/lib.rs");
 
     let first = admission
-        .admit_changed_paths(
+        .admit_observed_mutation(
             "mutation-1",
             "workspace-mutation-queue",
             root.clone(),
             vec![changed_path.clone()],
+            candidate_identity(),
         )
         .await
         .expect("admit first mutation");
@@ -418,11 +448,12 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     assert!(first.receipts[0].accepted);
 
     let second = admission
-        .admit_changed_paths(
+        .admit_observed_mutation(
             "mutation-2",
             "workspace-mutation-queue",
             root.clone(),
             vec![changed_path.clone()],
+            candidate_identity(),
         )
         .await
         .expect("queue successor mutation");
@@ -430,11 +461,12 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     assert!(second.receipts[0].accepted);
 
     let third = admission
-        .admit_changed_paths(
+        .admit_observed_mutation(
             "mutation-3",
             "workspace-mutation-queue",
             root.clone(),
             vec![changed_path.clone()],
+            candidate_identity(),
         )
         .await
         .expect("queue second successor mutation");
@@ -442,11 +474,12 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     assert!(third.receipts[0].accepted);
 
     let duplicate = admission
-        .admit_changed_paths(
+        .admit_observed_mutation(
             "mutation-2",
             "workspace-mutation-queue",
             root.clone(),
             vec![changed_path.clone()],
+            candidate_identity(),
         )
         .await
         .expect("observe queued mutation");
@@ -482,11 +515,12 @@ async fn distinct_mutation_queued_during_build_runs_as_the_next_generation_attem
     assert_eq!(build_count.load(std::sync::atomic::Ordering::Relaxed), 3);
 
     let completed_duplicate = admission
-        .admit_changed_paths(
+        .admit_observed_mutation(
             "mutation-3",
             "workspace-mutation-queue",
             root.clone(),
             vec![changed_path],
+            candidate_identity(),
         )
         .await
         .expect("coalesce duplicate of the completed mutation");
@@ -545,11 +579,12 @@ async fn multi_workspace_multi_session_admission_is_in_process_single_flight_and
                 let root = std::env::temp_dir().join(&workspace_identity);
                 let started = tokio::time::Instant::now();
                 let receipt = admission
-                    .admit_changed_paths(
+                    .admit_observed_mutation(
                         format!("mutation-{workspace_index}"),
                         workspace_identity,
                         root.clone(),
                         vec![root.join("src/lib.rs")],
+                        candidate_identity(),
                     )
                     .await;
                 (workspace_index, receipt, started.elapsed())
@@ -615,58 +650,6 @@ async fn multi_workspace_multi_session_admission_is_in_process_single_flight_and
         .await
         .expect("in-process workspace generation lanes must drain within 100ms")
         .expect("drain in-process workspace generation lanes");
-}
-
-#[tokio::test]
-async fn ready_workspace_accepts_a_new_incremental_generation_attempt() {
-    let build_count = Arc::new(Mutex::new(0_u32));
-    let admission = WorkspaceGenerationAdmission::new(Arc::new({
-        let build_count = Arc::clone(&build_count);
-        move |_workspace_identity, _project_root, _candidate, _build_mode| {
-            let build_count = Arc::clone(&build_count);
-            Box::pin(async move {
-                *build_count.lock().await += 1;
-                Ok(committed_generation())
-            })
-        }
-    }));
-    let project_root = std::env::temp_dir().join("asp-generation-readmission-project");
-
-    let first = admission
-        .admit(
-            "workspace-readmission",
-            project_root.clone(),
-            candidate_identity(),
-        )
-        .await
-        .expect("admit initial generation");
-    assert!(first.accepted);
-    assert_eq!(first.attempt, 1);
-    admission
-        .wait_terminal("workspace-readmission", &project_root)
-        .await
-        .expect("initial generation ready");
-
-    let second = admission
-        .admit(
-            "workspace-readmission",
-            project_root.clone(),
-            candidate_identity(),
-        )
-        .await
-        .expect("admit incremental generation");
-    assert!(second.accepted);
-    assert_eq!(second.attempt, 2);
-    admission
-        .wait_terminal("workspace-readmission", &project_root)
-        .await
-        .expect("incremental generation ready");
-    assert_eq!(*build_count.lock().await, 2);
-
-    admission
-        .shutdown()
-        .await
-        .expect("drain incremental generation admission lane");
 }
 
 #[path = "runtime_server_generation_reconciliation.rs"]

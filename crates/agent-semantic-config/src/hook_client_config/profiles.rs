@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// One language/toolchain command family with responsibility-scoped argv prefixes.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientCommandProfileConfig {
     pub id: String,
@@ -14,7 +14,7 @@ pub struct HookClientCommandProfileConfig {
 }
 
 /// Typed reference from one hook rule to one profile responsibility category.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientCommandProfileRef {
     pub profile: String,

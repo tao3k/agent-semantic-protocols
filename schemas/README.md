@@ -56,6 +56,12 @@ exploration across evidence state, graph topology, open frontier, router trace,
 metrics, synthesis, and reflection. It rejects duplicate commands and unresolved
 next-command placeholders.
 
+`search-owner-missing-topology.v1.schema.json` owns the bounded graph returned
+when owner-items search cannot find a requested path in the active generation.
+It preserves language/generation identity, provider-resolved project and source
+scope relations, and one typed recovery action; it is not an exact-selector
+resolution and cannot recommend replaying the missing owner command.
+
 `project-resolution.v1.schema.json` owns provider-resolved package-manager
 workspace membership and source scope. Search and graph consumers use the
 ASP-projected source index from that receipt.

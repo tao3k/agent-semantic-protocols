@@ -218,7 +218,8 @@ pub async fn prepare_runtime_server_endpoint_in(
     .to_hex();
     let socket_path = runtime_base.join(format!("r-{}.sock", &digest[..16]));
     let data_plane_socket_path = runtime_base.join(format!("r-{}.data.sock", &digest[..16]));
-    let status_memory_path = runtime_base.join(format!("r-{}.status", &digest[..16]));
+    let status_memory_path = runtime_base.join("status.v1.memory");
+    let workspace_store_path = runtime_base.join("workspaces");
     if socket_path.as_os_str().as_bytes().len() > MAX_UNIX_SOCKET_PATH_BYTES {
         return Err(format!(
             "Runtime Server socket path exceeds Unix sun_path budget: {}",
@@ -243,6 +244,7 @@ pub async fn prepare_runtime_server_endpoint_in(
         binding_token: binding_token.to_owned(),
         socket_path: socket_path.to_string_lossy().into_owned(),
         data_plane_socket_path: data_plane_socket_path.to_string_lossy().into_owned(),
+        workspace_store_path: workspace_store_path.to_string_lossy().into_owned(),
         status_memory_path: status_memory_path.to_string_lossy().into_owned(),
     })
 }

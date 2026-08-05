@@ -6,7 +6,8 @@ use agent_semantic_hook::{
 };
 
 use super::{
-    decision_changed_paths, hook_event_requires_generation_admission, observe, payload_mutation_id,
+    HookGenerationAdmissionObservation, hook_event_requires_generation_admission,
+    materialize_explicit_query_gate, observe, payload_changed_paths, payload_mutation_id,
 };
 
 fn decision_with_fields(fields: BTreeMap<String, serde_json::Value>) -> HookDecision {
@@ -32,38 +33,6 @@ fn decision_with_fields(fields: BTreeMap<String, serde_json::Value>) -> HookDeci
 }
 
 #[test]
-fn changed_paths_are_extracted_from_typed_normalized_actions() {
-    let fields = serde_json::from_value::<BTreeMap<String, serde_json::Value>>(serde_json::json!({
-        "normalizedActions": [
-            {
-                "operationIntent": "apply-patch",
-                "paths": [
-                    "languages/rust-lang-project-harness/src/lib.rs",
-                    "crates/agent-semantic-client-db/src/runtime_server.rs"
-                ]
-            },
-            {
-                "operationIntent": "apply-patch",
-                "paths": ["languages/rust-lang-project-harness/src/lib.rs"]
-            },
-            {
-                "operationIntent": "shell-command",
-                "paths": ["ignored.rs"]
-            }
-        ]
-    }))
-    .expect("typed hook fields");
-
-    assert_eq!(
-        decision_changed_paths(&decision_with_fields(fields)),
-        vec![
-            "crates/agent-semantic-client-db/src/runtime_server.rs".to_owned(),
-            "languages/rust-lang-project-harness/src/lib.rs".to_owned(),
-        ]
-    );
-}
-
-#[test]
 fn mutation_identity_is_derived_from_the_typed_hook_payload() {
     let payload = serde_json::json!({
         "session_id": "session-root",
@@ -77,12 +46,25 @@ fn mutation_identity_is_derived_from_the_typed_hook_payload() {
 }
 
 #[test]
+fn post_tool_paths_come_from_canonical_tool_actions_without_policy_fields() {
+    let payload = serde_json::json!({
+        "tool_name": "functions.apply_patch",
+        "tool_input": {
+            "patch": "*** Begin Patch\n*** Update File: crates/agent-semantic-protocol/src/command/hook_runtime.rs\n@@\n-old\n+new\n*** End Patch"
+        }
+    });
+
+    assert_eq!(
+        payload_changed_paths(&payload),
+        vec!["crates/agent-semantic-protocol/src/command/hook_runtime.rs".to_owned()]
+    );
+}
+
+#[test]
 fn workspace_lifecycle_events_admit_generation() {
     for event in ["session-start", "user-prompt"] {
         assert!(hook_event_requires_generation_admission(
-            &["--event".to_owned(), event.to_owned(),],
-            false,
-            false,
+            event, false, false,
         ));
     }
 }
@@ -91,36 +73,30 @@ fn workspace_lifecycle_events_admit_generation() {
 fn only_mutating_post_tool_edges_submit_reconciliation() {
     for event in ["pre-tool", "permission-request", "post-tool", "stop"] {
         assert!(!hook_event_requires_generation_admission(
-            &["--event".to_owned(), event.to_owned(),],
-            false,
-            false,
+            event, false, false,
         ));
     }
     assert!(hook_event_requires_generation_admission(
-        &["--event".to_owned(), "post-tool".to_owned()],
+        "post-tool",
         true,
         false,
     ));
     assert!(!hook_event_requires_generation_admission(
-        &["--event".to_owned(), "pre-tool".to_owned()],
-        true,
-        false,
+        "pre-tool", true, false,
     ));
 }
 
 #[test]
 fn explicit_asp_workspace_is_admitted_before_the_tool_executes() {
     assert!(hook_event_requires_generation_admission(
-        &["--event".to_owned(), "pre-tool".to_owned()],
-        false,
-        true,
+        "pre-tool", false, true,
     ));
 }
 
 #[test]
 fn failed_post_tool_reconciliation_is_diagnostic_not_a_hook_error() {
     let observation = observe(
-        &["--event".to_owned(), "post-tool".to_owned()],
+        "post-tool",
         true,
         Some("session-root/tool-use-1".to_owned()),
         vec!["src/lib.rs".to_owned()],
@@ -130,6 +106,7 @@ fn failed_post_tool_reconciliation_is_diagnostic_not_a_hook_error() {
     );
 
     assert!(observation.receipt.is_none());
+    assert!(observation.requested);
     assert_eq!(
         observation.error.as_deref(),
         Some("provider project-resolution omitted scope")
@@ -141,7 +118,7 @@ fn every_admission_event_contains_failure_instead_of_returning_it() {
     for event in ["session-start", "user-prompt", "post-tool"] {
         let workspace_mutated = event == "post-tool";
         let observation = observe(
-            &["--event".to_owned(), event.to_owned()],
+            event,
             workspace_mutated,
             workspace_mutated.then(|| "session-root/tool-use-1".to_owned()),
             workspace_mutated
@@ -153,6 +130,7 @@ fn every_admission_event_contains_failure_instead_of_returning_it() {
         );
 
         assert!(observation.receipt.is_none(), "event={event}");
+        assert!(observation.requested, "event={event}");
         assert_eq!(
             observation.error.as_deref(),
             Some(format!("{event} generation failed").as_str()),
@@ -170,7 +148,7 @@ fn ready_admission_preserves_the_typed_receipt_for_decision_evidence() {
         "workspaceIdentity": "workspace-test"
     });
     let observation = observe(
-        &["--event".to_owned(), "user-prompt".to_owned()],
+        "user-prompt",
         false,
         None,
         Vec::new(),
@@ -180,6 +158,7 @@ fn ready_admission_preserves_the_typed_receipt_for_decision_evidence() {
     );
 
     assert_eq!(observation.receipt, Some(receipt));
+    assert!(observation.requested);
     assert!(observation.error.is_none());
 }
 
@@ -198,7 +177,7 @@ fn lifecycle_admission_ensures_once_without_submitting_a_mutation_delta() {
         "workspaceIdentity": "workspace-test"
     });
     let observation = observe(
-        &["--event".to_owned(), "user-prompt".to_owned()],
+        "user-prompt",
         false,
         None,
         Vec::new(),
@@ -207,21 +186,51 @@ fn lifecycle_admission_ensures_once_without_submitting_a_mutation_delta() {
         || Ok(receipt.clone()),
     );
     assert_eq!(observation.receipt, Some(receipt));
+    assert!(observation.requested);
     assert!(observation.error.is_none());
 }
 
 #[test]
 fn explicit_asp_commands_require_terminal_generation_repair_before_dispatch() {
     let source = include_str!("../../src/command/hook_runtime.rs");
+    let admission_source = include_str!("../../src/command/hook_runtime_generation_admission.rs");
 
     assert!(source.contains("hook_runtime_generation_admission::ensure_ready"));
     assert!(source.contains("explicit_asp_workspace"));
+    assert!(source.contains("materialize_explicit_query_gate"));
+    assert!(admission_source.contains("ensure_runtime_generation_ready().await"));
+    assert!(!admission_source.contains("match session.ensure_runtime_generation().await"));
+}
+
+#[test]
+fn explicit_asp_generation_failure_blocks_the_tool_call() {
+    let mut decision = decision_with_fields(BTreeMap::new());
+    materialize_explicit_query_gate(
+        &mut decision,
+        true,
+        HookGenerationAdmissionObservation {
+            requested: true,
+            receipt: None,
+            error: Some("terminal generation failed".to_owned()),
+        },
+    );
+
+    assert_eq!(decision.decision, DecisionKind::Block);
+    assert_eq!(decision.reason_kind, ReasonKind::ActivationUnavailable);
+    assert_eq!(
+        decision
+            .fields
+            .get("runtimeGenerationAdmissionStatus")
+            .and_then(serde_json::Value::as_str),
+        Some("failed-closed")
+    );
+    assert!(decision.message.contains("terminal generation failed"));
 }
 
 #[test]
 fn non_admission_events_do_not_call_runtime_server() {
     let observation = observe(
-        &["--event".to_owned(), "post-tool".to_owned()],
+        "post-tool",
         false,
         None,
         Vec::new(),
@@ -231,13 +240,14 @@ fn non_admission_events_do_not_call_runtime_server() {
     );
 
     assert!(observation.receipt.is_none());
+    assert!(!observation.requested);
     assert!(observation.error.is_none());
 }
 
 #[test]
 fn mutating_post_tool_requires_normalized_changed_paths() {
     let observation = observe(
-        &["--event".to_owned(), "post-tool".to_owned()],
+        "post-tool",
         true,
         Some("session-root/tool-use-1".to_owned()),
         Vec::new(),
@@ -247,6 +257,7 @@ fn mutating_post_tool_requires_normalized_changed_paths() {
     );
 
     assert!(observation.receipt.is_none());
+    assert!(observation.requested);
     assert_eq!(
         observation.error.as_deref(),
         Some("post-tool workspace mutation omitted normalized changed paths")
@@ -256,7 +267,7 @@ fn mutating_post_tool_requires_normalized_changed_paths() {
 #[test]
 fn mutating_post_tool_requires_typed_mutation_identity() {
     let observation = observe(
-        &["--event".to_owned(), "post-tool".to_owned()],
+        "post-tool",
         true,
         None,
         vec!["src/lib.rs".to_owned()],
@@ -266,6 +277,7 @@ fn mutating_post_tool_requires_typed_mutation_identity() {
     );
 
     assert!(observation.receipt.is_none());
+    assert!(observation.requested);
     assert_eq!(
         observation.error.as_deref(),
         Some("post-tool workspace mutation omitted typed mutation identity")
@@ -283,7 +295,7 @@ fn mutating_post_tool_forwards_the_complete_changed_path_set() {
         "state": "queued"
     });
     let observation = observe(
-        &["--event".to_owned(), "post-tool".to_owned()],
+        "post-tool",
         true,
         Some("session-root/tool-use-1".to_owned()),
         vec![
@@ -306,5 +318,6 @@ fn mutating_post_tool_forwards_the_complete_changed_path_set() {
     );
 
     assert_eq!(observation.receipt, Some(receipt));
+    assert!(observation.requested);
     assert!(observation.error.is_none());
 }

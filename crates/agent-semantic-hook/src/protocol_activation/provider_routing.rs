@@ -5,17 +5,17 @@ use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use crate::protocol::normalize_source_selector;
 
 use super::protocol_activation_manifest::{
-    ActivatedProvider, HookRuntime, ProviderRoutePathContext, ProviderSelectorMatch,
-    SourceSelectorKind,
+    ActivatedProvider, HookProviderProjection, HookRuntime, ProviderRoutePathContext,
+    ProviderSelectorMatch, SourceSelectorKind,
 };
 
 use crate::protocol::{CommandTemplate, DecisionRoute, DecisionRouteKind};
 
 impl HookRuntime {
-    pub(crate) fn providers_for_selector(&self, selector: &str) -> Vec<ProviderSelectorMatch<'_>> {
+    pub(crate) fn providers_for_selector(&self, selector: &str) -> Vec<ProviderSelectorMatch> {
         let matcher = SourceSelectorMatcher::new(selector);
-        self.providers
-            .iter()
+        hook_provider_projections(self)
+            .into_iter()
             .filter_map(|provider| {
                 provider
                     .match_source_selector_with(&matcher)
@@ -25,26 +25,46 @@ impl HookRuntime {
     }
 }
 
-impl ActivatedProvider {
-    fn matches_source_selector(&self, selector: &str) -> bool {
-        self.match_source_selector(selector).is_some()
-    }
+pub(crate) fn hook_provider_projections(runtime: &HookRuntime) -> Vec<HookProviderProjection> {
+    crate::hook_policy_kernel::active_provider_projections(&runtime.project_root).unwrap_or_else(
+        || {
+            runtime
+                .providers
+                .iter()
+                .map(HookProviderProjection::from)
+                .collect()
+        },
+    )
+}
 
-    fn match_source_selector(&self, selector: &str) -> Option<SourceSelectorKind> {
-        let matcher = SourceSelectorMatcher::new(selector);
-        self.match_source_selector_with(&matcher)
+impl From<&ActivatedProvider> for HookProviderProjection {
+    fn from(provider: &ActivatedProvider) -> Self {
+        Self {
+            language_id: provider.language_id.clone(),
+            provider_id: provider.provider_id.clone(),
+            binary: provider.binary.clone(),
+            provider_command_prefix: provider.provider_command_prefix.clone(),
+            package_roots: provider.package_roots.clone(),
+            source_extensions: provider.source_extensions.clone(),
+            config_files: provider.config_files.clone(),
+            policy: provider.policy.clone(),
+            routes: provider.routes.clone(),
+        }
     }
+}
 
+impl HookProviderProjection {
     fn match_source_selector_with(
         &self,
         selector: &SourceSelectorMatcher<'_>,
     ) -> Option<SourceSelectorKind> {
-        if selector.has_glob && self.glob_matches_source_selector(selector) {
-            return Some(if selector.has_glob {
-                SourceSelectorKind::Pattern
-            } else {
-                SourceSelectorKind::ExactPath
-            });
+        if selector.has_glob
+            && self
+                .source_extensions
+                .iter()
+                .any(|extension| selector.targets_extension(extension))
+        {
+            return Some(SourceSelectorKind::Pattern);
         }
         if !selector.has_glob
             && self
@@ -54,61 +74,114 @@ impl ActivatedProvider {
         {
             return Some(SourceSelectorKind::ExactPath);
         }
-        if self
-            .config_files
+        self.config_files
             .iter()
             .any(|config| selector.normalized.ends_with(config))
-        {
-            return Some(SourceSelectorKind::ExactPath);
-        }
-        None
+            .then_some(SourceSelectorKind::ExactPath)
     }
 
     pub(crate) fn matches_search_token(&self, token: &str) -> bool {
         let normalized = normalize_route_path(token);
-        self.matches_source_selector(&normalized)
-            || self.matches_source_directory_token(&normalized)
+        let matcher = SourceSelectorMatcher::new(&normalized);
+        self.match_source_selector_with(&matcher).is_some()
+            || self.package_roots.iter().any(|root| {
+                let root = normalize_route_path(root);
+                let root = root.trim_end_matches('/');
+                !root.is_empty()
+                    && root != "."
+                    && (normalized == root || normalized.starts_with(&format!("{root}/")))
+            })
     }
 
-    fn matches_source_directory_token(&self, normalized: &str) -> bool {
-        self.source_root_matches_search_token(normalized)
-            || self.package_roots_match_search_token(normalized)
+    pub(crate) fn route_from_template(
+        &self,
+        kind: DecisionRouteKind,
+        template: &CommandTemplate,
+        path: Option<&str>,
+        query: Option<&str>,
+    ) -> DecisionRoute {
+        let route_context = path.map(|path| self.route_path_context(path));
+        let route_path = route_context
+            .as_ref()
+            .map(|context| context.selector.as_str())
+            .or(path)
+            .unwrap_or("");
+        let project_root = route_context
+            .as_ref()
+            .map(|context| context.project_root.as_str())
+            .unwrap_or_else(|| self.default_route_project_root());
+        let argv = template
+            .argv
+            .iter()
+            .map(|arg| {
+                arg.replace("{owner}", route_path)
+                    .replace("{query}", query.unwrap_or(""))
+                    .replace("{workspace}", project_root)
+            })
+            .collect::<Vec<_>>();
+        let argv = if argv.first().is_some_and(|command| command == "asp") {
+            argv
+        } else if argv.first().is_some_and(|command| command == &self.binary) {
+            let mut facade = vec!["asp".to_owned(), self.language_id.as_str().to_owned()];
+            facade.extend(argv.into_iter().skip(1));
+            facade
+        } else if !self.provider_command_prefix.is_empty()
+            && argv.starts_with(&self.provider_command_prefix)
+        {
+            let mut facade = vec!["asp".to_owned(), self.language_id.as_str().to_owned()];
+            facade.extend(argv.into_iter().skip(self.provider_command_prefix.len()));
+            facade
+        } else {
+            argv
+        };
+        DecisionRoute {
+            language_id: self.language_id.clone(),
+            provider_id: self.provider_id.clone(),
+            binary: "asp".to_owned(),
+            kind,
+            argv,
+            stdin_mode: template.stdin_mode,
+        }
     }
 
-    fn package_roots_match_search_token(&self, normalized: &str) -> bool {
+    fn route_path_context(&self, path: &str) -> ProviderRoutePathContext {
+        let normalized = normalize_route_path(path);
+        let mut roots = self.package_roots.clone();
+        roots.sort_by(|left, right| right.len().cmp(&left.len()).then(left.cmp(right)));
+        for root in roots {
+            if root == "." {
+                continue;
+            }
+            if normalized == root {
+                return ProviderRoutePathContext {
+                    selector: ".".to_owned(),
+                    project_root: root,
+                };
+            }
+            if let Some(selector) = normalized.strip_prefix(&format!("{root}/")) {
+                return ProviderRoutePathContext {
+                    selector: selector.to_owned(),
+                    project_root: root,
+                };
+            }
+        }
+        ProviderRoutePathContext {
+            selector: normalized,
+            project_root: self.default_route_project_root().to_owned(),
+        }
+    }
+
+    fn default_route_project_root(&self) -> &str {
         self.package_roots
             .iter()
-            .any(|root| self.package_root_matches_search_token(root, normalized))
+            .find(|root| root.as_str() == ".")
+            .or_else(|| self.package_roots.first())
+            .map(String::as_str)
+            .unwrap_or(".")
     }
+}
 
-    fn package_root_matches_search_token(&self, package_root: &str, normalized: &str) -> bool {
-        let package_root = normalize_route_path(package_root);
-        let package_root = package_root.trim_end_matches('/');
-        if package_root.is_empty() || package_root == "." {
-            return false;
-        }
-        if normalized == package_root {
-            return true;
-        }
-        normalized
-            .strip_prefix(&format!("{package_root}/"))
-            .is_some_and(|relative| self.source_root_matches_search_token(relative))
-    }
-
-    fn source_root_matches_search_token(&self, normalized: &str) -> bool {
-        self.package_roots.iter().any(|root| {
-            let root = normalize_route_path(root);
-            let root = root.trim_end_matches('/');
-            !root.is_empty() && (normalized == root || normalized.starts_with(&format!("{root}/")))
-        })
-    }
-
-    fn glob_matches_source_selector(&self, selector: &SourceSelectorMatcher<'_>) -> bool {
-        self.source_extensions
-            .iter()
-            .any(|extension| selector.targets_extension(extension))
-    }
-
+impl ActivatedProvider {
     pub(crate) fn route_from_template(
         &self,
         kind: DecisionRouteKind,

@@ -187,8 +187,24 @@ fn registry_v1_descriptors_match_builtin_provider_manifests() {
                     manifest.provider_id()
                 )
             });
+        let descriptor_ref = registration
+            .pointer("/descriptor/$ref")
+            .and_then(Value::as_str)
+            .expect("registry descriptor reference");
+        let descriptor_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../schemas")
+            .join(descriptor_ref);
+        let descriptor: Value = serde_json::from_str(
+            &std::fs::read_to_string(&descriptor_path).unwrap_or_else(|error| {
+                panic!(
+                    "read registry descriptor {}: {error}",
+                    descriptor_path.display()
+                )
+            }),
+        )
+        .expect("parse registry descriptor");
         let registry_descriptor: agent_semantic_hook::ProviderQueryPackDescriptor =
-            serde_json::from_value(registration["queryPackDescriptor"].clone())
+            serde_json::from_value(descriptor["queryPackDescriptor"].clone())
                 .expect("parse registry query-pack descriptor");
         assert_eq!(&registry_descriptor, manifest.query_pack_descriptor());
     }

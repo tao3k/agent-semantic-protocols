@@ -57,7 +57,7 @@ sessionLifetime = "resident"
     let asp_explore = resident_agent(&config, "asp-explore");
     assert_eq!(asp_explore.codex_agent_name, "asp_explorer");
 
-    let asp_testing = resident_agent(&config, "asp-testing");
+    let asp_testing = resident_agent(&config, "asp_testing");
     assert_eq!(asp_testing.codex_agent_name, "asp_testing");
 
     let asp_lint = resident_agent(&config, "asp-lint");
@@ -162,7 +162,7 @@ fn default_template_round_trips_through_config_parser() {
     assert!(asp_explore.enabled);
     assert_eq!(asp_explore.name, "asp-explore");
     assert_eq!(asp_explore.codex_agent_name, "asp_explorer");
-    let asp_testing = resident_agent(&config, "asp-testing");
+    let asp_testing = resident_agent(&config, "asp_testing");
     assert_eq!(asp_testing.codex_agent_name, "asp_testing");
     assert_eq!(config.agents.resident_agents.len(), 2);
     let testing_dispatch = config

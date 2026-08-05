@@ -298,6 +298,32 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
         .await
         .expect("restore canonical generation from resident Turso handle");
     assert_eq!(receipt.target_epoch, 1);
+    let mut durability = memory_registry
+        .subscribe_generation_durability(
+            &scope.workspace_identity,
+            std::path::Path::new(&scope.project_root),
+        )
+        .expect("subscribe restored generation durability");
+    loop {
+        if let Some(durability_receipt) = durability.borrow().clone()
+            && durability_receipt.target_epoch == receipt.target_epoch
+        {
+            durability_receipt
+                .validate()
+                .expect("validate restored generation durability receipt");
+            match durability_receipt.state {
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::DurableReady => break,
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::Failed => {
+                    panic!("resident Turso restore durability failed: {durability_receipt:?}")
+                }
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady => {}
+            }
+        }
+        durability
+            .changed()
+            .await
+            .expect("restored generation durability lane remains available");
+    }
     assert_eq!(
         durable_registry.counters().database_open_count,
         durable_baseline.database_open_count,
@@ -323,7 +349,10 @@ async fn resident_turso_session_restores_an_empty_memory_backend_without_reopeni
     assert_eq!(data_plane.database_opens, 0);
     assert_eq!(data_plane.provider_spawns, 0);
     assert_eq!(data_plane.control_socket_roundtrips, 0);
-    assert_eq!(data_plane.filesystem_reads, 1);
+    assert_eq!(
+        data_plane.filesystem_reads, 0,
+        "resident Turso restore must not reread the generation pointer"
+    );
     assert_eq!(data_plane.filesystem_writes, 1);
 
     memory_registry

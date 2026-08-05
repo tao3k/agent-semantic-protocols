@@ -5,19 +5,37 @@
 //! advanced beyond that binary's enum vocabulary.
 
 use std::ffi::OsString;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{ExitStatus, Output};
-use std::time::{Duration, Instant};
+use std::io::Read;
+use std::path::PathBuf;
 
-use agent_semantic_config::runtime_dev::{RuntimeArtifactMode, parse_runtime_artifact_mode};
 const MAX_HOOK_INPUT_BYTES: usize = 1024 * 1024;
-const REPAIR_LOCK_WAIT: Duration = Duration::from_secs(90);
-const REPAIR_COMMAND_TIMEOUT: Duration = Duration::from_secs(90);
-const HOOK_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(15);
-const REPAIR_POLL_INTERVAL: Duration = Duration::from_millis(25);
-const REPAIR_DEPTH_ENV: &str = "ASP_HOOK_BOOTSTRAP_REPAIR_DEPTH";
 const TRACE_ENV: &str = "ASP_HOOK_BOOTSTRAP_TRACE";
+const HOOK_EVENTS: &[&str] = &[
+    "pre-tool",
+    "permission-request",
+    "post-tool",
+    "stop",
+    "notification",
+    "user-prompt",
+    "session-start",
+    "subagent-start",
+    "subagent-stop",
+];
+
+/// Return whether the public CLI arguments name an actual Hook event.
+///
+/// Lifecycle diagnostics such as `asp hook doctor` and `asp hook paths` must
+/// reach the ordinary command parser.  Only event evaluation enters the
+/// configuration-independent bootstrap boundary.
+#[doc(hidden)]
+pub fn is_hook_event_dispatch<I, S>(args: I) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: Into<OsString>,
+{
+    let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
+    args.first().and_then(|arg| arg.to_str()) == Some("hook") && hook_event(&args).is_some()
+}
 
 /// Run the canonical hook command, repairing the development artifact on a
 /// recognized binary/config contract drift before replaying the event once.
@@ -35,7 +53,13 @@ pub fn run_hook_bootstrap_from_env() -> i32 {
 fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
     validate_hook_args(&args)?;
     let input = read_bounded_stdin()?;
-    let state_home = agent_semantic_runtime::resolve_state_home()?;
+    if asp_no_agent_passthrough(&input, std::env::var_os("ASP_NO_AGENT").as_deref()) {
+        if std::env::var_os(TRACE_ENV).is_some() {
+            eprintln!("[asp-hook] route=bootstrap-no-agent-passthrough");
+        }
+        println!("{{}}");
+        return Ok(0);
+    }
     let hook_args = args
         .iter()
         .map(|arg| {
@@ -46,72 +70,114 @@ fn run_hook_bootstrap(args: Vec<OsString>) -> Result<i32, String> {
         .collect::<Result<Vec<_>, _>>()?;
     let hook_input = String::from_utf8(input.clone())
         .map_err(|error| format!("hook payload must be UTF-8 JSON: {error}"))?;
-    if let Ok(project_root) = server_project_root(&input) {
-        match crate::command::runtime_server_hook_evaluation_client(
-            &project_root,
-            hook_args.clone(),
-            hook_input.clone(),
-        ) {
-            Ok(output) if !server_hook_output_requires_local_fallback(&output) => {
-                if std::env::var_os(TRACE_ENV).is_some() {
-                    eprintln!("[asp-hook] route=server-resident-evaluator");
-                }
-                println!("{output}");
-                return Ok(0);
-            }
-            Ok(_) => {
-                if std::env::var_os(TRACE_ENV).is_some() {
-                    eprintln!("[asp-hook] route=local-fallback serverError=activation-unavailable");
-                }
-            }
-            Err(error) => {
-                if std::env::var_os(TRACE_ENV).is_some() {
-                    eprintln!(
-                        "[asp-hook] route=local-fallback serverError={}",
-                        single_line(&error)
-                    );
-                }
-            }
+    if hook_event_is_runtime_server_recovery(&args, &input) {
+        if std::env::var_os(TRACE_ENV).is_some() {
+            eprintln!("[asp-hook] route=bootstrap-runtime-server-recovery");
         }
-    }
-    let error = match crate::command::run_protocol_hook_with_input(hook_args, hook_input) {
-        Ok(()) => return Ok(0),
-        Err(error) if !is_contract_drift_message(&error) => return Err(error),
-        Err(error) => error,
-    };
-    if std::env::var_os(REPAIR_DEPTH_ENV).is_some() {
-        return Err(error);
+        println!("{{}}");
+        return Ok(0);
     }
 
-    match repair_and_replay(&state_home, &args, &input) {
-        Ok(replayed) => emit_output(
-            replayed,
-            Some("status=repaired replay=once authority=dev-root"),
-        ),
-        Err(repair_error) if event_is_observational(&args) => {
-            eprintln!("{error}");
+    let project_root = server_project_root(&input)?;
+    match crate::command::evaluate_hook_event_via_runtime(
+        hook_event(&args).unwrap_or("unknown"),
+        &project_root,
+        hook_args,
+        hook_input,
+    ) {
+        Ok(output) => {
+            if std::env::var_os(TRACE_ENV).is_some() {
+                eprintln!("[asp-hook] route=server-resident-evaluator");
+            }
+            println!("{output}");
+            Ok(0)
+        }
+        Err(error) if event_is_observational(&args) => {
             eprintln!(
-                "[asp-hook] status=degraded-open event={} repairError={} policy=observational-liveness",
+                "[asp-hook] status=degraded-open event={} serverError={} policy=observational-liveness",
                 hook_event(&args).unwrap_or("unknown"),
-                single_line(&repair_error),
+                single_line(&error),
             );
             Ok(0)
         }
-        Err(repair_error) => {
-            eprintln!("{error}");
-            eprintln!(
-                "[asp-hook] status=repair-failed event={} repairError={} policy=enforcement-fail-closed",
-                hook_event(&args).unwrap_or("unknown"),
-                single_line(&repair_error),
-            );
-            Ok(2)
-        }
+        Err(error) => Err(runtime_server_hook_unavailable(
+            hook_event(&args).unwrap_or("unknown"),
+            &error,
+        )),
     }
 }
 
-fn server_hook_output_requires_local_fallback(output: &str) -> bool {
-    output.contains("\"reasonKind\":\"activation-unavailable\"")
-        || output.contains("\\\"reasonKind\\\":\\\"activation-unavailable\\\"")
+fn asp_no_agent_passthrough(input: &[u8], inherited: Option<&std::ffi::OsStr>) -> bool {
+    if inherited == Some(std::ffi::OsStr::new("1")) {
+        return true;
+    }
+    let Ok(payload) = serde_json::from_slice::<serde_json::Value>(input) else {
+        return false;
+    };
+    hook_payload_command(&payload).is_some_and(command_has_no_agent_prefix)
+}
+
+fn command_has_no_agent_prefix(command: &str) -> bool {
+    let command = command.trim_start();
+    command == "ASP_NO_AGENT=1"
+        || command
+            .strip_prefix("ASP_NO_AGENT=1")
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(char::is_whitespace)
+}
+
+#[cfg(test)]
+#[test]
+fn no_agent_passthrough_has_explicit_truthy_semantics() {
+    let ordinary = br#"{"tool_input":{"cmd":"cargo test"}}"#;
+    assert!(asp_no_agent_passthrough(
+        ordinary,
+        Some(std::ffi::OsStr::new("1"))
+    ));
+    for value in ["", "0", "true", "yes", "on"] {
+        assert!(!asp_no_agent_passthrough(
+            ordinary,
+            Some(std::ffi::OsStr::new(value))
+        ));
+    }
+    assert!(asp_no_agent_passthrough(
+        br#"{"tool_input":{"cmd":"ASP_NO_AGENT=1 cargo test"}}"#,
+        None
+    ));
+    assert!(asp_no_agent_passthrough(
+        br#"{"tool_input":{"cmd":"  ASP_NO_AGENT=1 cargo test"}}"#,
+        None
+    ));
+    assert!(!asp_no_agent_passthrough(
+        br#"{"tool_input":{"cmd":"cargo test; ASP_NO_AGENT=1 echo late"}}"#,
+        None
+    ));
+    assert!(!asp_no_agent_passthrough(
+        br#"{"tool_input":{"cmd":"ASP_NO_AGENT=10 cargo test"}}"#,
+        None
+    ));
+}
+
+fn runtime_server_hook_unavailable(event: &str, error: &str) -> String {
+    let canonical_install_target = agent_semantic_runtime::resolve_state_home()
+        .ok()
+        .map(|state_home| state_home.join("runtime/bin/asp"));
+    serde_json::json!({
+        "schemaId": "agent.semantic-protocols.hook-control-plane-unavailable.v1",
+        "schemaVersion": "1",
+        "surface": "hook",
+        "event": event,
+        "state": "unavailable",
+        "reasonKind": "runtime-server-hook-authority-unavailable",
+        "recoveryCommand": "asp server reconcile",
+        "recoveryCommands": [
+            "asp server reconcile",
+            "<validated-candidate-asp> install binary --target <canonicalBinaryInstallTarget>"
+        ],
+        "canonicalBinaryInstallTarget": canonical_install_target,
+        "error": single_line(error),
+    })
+    .to_string()
 }
 
 fn validate_hook_args(args: &[OsString]) -> Result<(), String> {
@@ -122,6 +188,77 @@ fn validate_hook_args(args: &[OsString]) -> Result<(), String> {
         return Err("bootstrap hook event is missing or non-UTF-8".to_string());
     }
     Ok(())
+}
+
+fn hook_event_is_runtime_server_recovery(args: &[OsString], input: &[u8]) -> bool {
+    if !matches!(hook_event(args), Some("pre-tool" | "permission-request")) {
+        return false;
+    }
+    let Ok(payload) = serde_json::from_slice::<serde_json::Value>(input) else {
+        return false;
+    };
+    let Some(command) = hook_payload_command(&payload) else {
+        return false;
+    };
+    let Ok(stages) = agent_semantic_command_match::parse_bash_command_candidates(command) else {
+        return false;
+    };
+    if stages.len() != 1 {
+        return false;
+    }
+    let words = stages[0].words();
+    let Some(asp_index) = words.iter().position(|word| {
+        word.rsplit(['/', '\\'])
+            .next()
+            .is_some_and(|name| name == "asp")
+    }) else {
+        return false;
+    };
+    let trusted_prefix = asp_index == 0
+        || (asp_index == 3
+            && words[0].rsplit(['/', '\\']).next() == Some("direnv")
+            && words[1] == "exec"
+            && words[2] == ".");
+    if !trusted_prefix {
+        return false;
+    }
+    let exact_server_control = words.get(asp_index + 1).map(String::as_str) == Some("server")
+        && matches!(
+            words.get(asp_index + 2).map(String::as_str),
+            Some("status" | "reconcile" | "restart")
+        )
+        && words.len() == asp_index + 3;
+    if exact_server_control {
+        return true;
+    }
+    let Ok(state_home) = agent_semantic_runtime::resolve_state_home() else {
+        return false;
+    };
+    exact_canonical_binary_install(words, asp_index, &state_home.join("runtime/bin/asp"))
+}
+
+fn exact_canonical_binary_install(
+    words: &[String],
+    asp_index: usize,
+    canonical_target: &std::path::Path,
+) -> bool {
+    words.get(asp_index + 1).map(String::as_str) == Some("install")
+        && words.get(asp_index + 2).map(String::as_str) == Some("binary")
+        && words.get(asp_index + 3).map(String::as_str) == Some("--target")
+        && words
+            .get(asp_index + 4)
+            .is_some_and(|target| std::path::Path::new(target) == canonical_target)
+        && words.len() == asp_index + 5
+}
+
+fn hook_payload_command(payload: &serde_json::Value) -> Option<&str> {
+    let tool_input = payload
+        .get("tool_input")
+        .or_else(|| payload.get("toolInput"));
+    tool_input
+        .and_then(|input| input.get("cmd").or_else(|| input.get("command")))
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| payload.get("command").and_then(serde_json::Value::as_str))
 }
 
 fn read_bounded_stdin() -> Result<Vec<u8>, String> {
@@ -151,143 +288,11 @@ fn server_project_root(input: &[u8]) -> Result<PathBuf, String> {
     std::env::current_dir().map_err(|error| format!("failed to resolve hook workspace: {error}"))
 }
 
-fn run_hook_attempt(executable: &Path, args: &[OsString], input: &[u8]) -> Result<Output, String> {
-    agent_semantic_runtime::runtime_block_on_current_thread(
-        agent_semantic_runtime::hook_process_runtime::run_hook_process(
-            agent_semantic_runtime::hook_process_runtime::HookProcessRequest {
-                executable,
-                args,
-                stdin: input,
-                timeout: HOOK_ATTEMPT_TIMEOUT,
-                current_dir: None,
-                environment: Some((REPAIR_DEPTH_ENV, "1")),
-                discard_stdout: false,
-            },
-        ),
-    )?
-}
-
-fn is_contract_drift(output: &Output) -> bool {
-    if output.status.success() {
-        return false;
-    }
-    is_contract_drift_message(&String::from_utf8_lossy(&output.stderr))
-}
-
-fn is_contract_drift_message(message: &str) -> bool {
-    message.contains("hook matcher config freshness gate failed")
-        || message.contains("hook resident config freshness gate failed")
-        || message.contains("hook language provider projection freshness gate failed")
-}
-
-fn repair_and_replay(state_home: &Path, args: &[OsString], input: &[u8]) -> Result<Output, String> {
-    if std::env::var_os(REPAIR_DEPTH_ENV).is_some() {
-        return Err("repair recursion was rejected".to_string());
-    }
-    let _guard = agent_semantic_runtime::runtime_block_on_current_thread(
-        BootstrapRepairGuard::acquire(state_home, REPAIR_LOCK_WAIT),
-    )??;
-    let bootstrap = state_home.join("runtime/bin/asp");
-
-    // A concurrent hook may have completed publication while this process was
-    // waiting for the bootstrap lock.  Recheck before starting a build.
-    let concurrent = run_hook_attempt(&bootstrap, args, input)?;
-    if concurrent.status.success() {
-        return Ok(concurrent);
-    }
-    if !is_contract_drift(&concurrent) {
-        return Err(format!(
-            "hook failure changed while awaiting repair lock: status={}",
-            concurrent.status
-        ));
-    }
-
-    run_authorized_repair(state_home)?;
-    let replayed = run_hook_attempt(&bootstrap, args, input)?;
-    if replayed.status.success() {
-        Ok(replayed)
-    } else {
-        Err(format!(
-            "one replay after repair failed: status={} stderr={}",
-            replayed.status,
-            single_line(&String::from_utf8_lossy(&replayed.stderr))
-        ))
-    }
-}
-
-fn run_authorized_repair(state_home: &Path) -> Result<(), String> {
-    let config_path = state_home.join("asp.toml");
-    let input = std::fs::read_to_string(&config_path).map_err(|error| {
-        format!(
-            "read bootstrap authority {}: {error}",
-            config_path.display()
-        )
-    })?;
-    let RuntimeArtifactMode::Dev { root } = parse_runtime_artifact_mode(&input)? else {
-        return Err(
-            "release mode has no authorized development checkout for hook artifact repair"
-                .to_string(),
-        );
-    };
-    let root = root.canonicalize().map_err(|error| {
-        format!(
-            "canonicalize configured hook repair dev root {}: {error}",
-            root.display()
-        )
-    })?;
-    let justfile = root.join("Justfile");
-    if !justfile.is_file() {
-        return Err(format!(
-            "configured hook repair dev root has no Justfile: {}",
-            justfile.display()
-        ));
-    }
-    let runtime_bin = state_home.join("runtime/bin");
-    let executable =
-        agent_semantic_runtime::hook_process_runtime::hook_development_installer_executable();
-    let args = agent_semantic_runtime::hook_process_runtime::hook_development_installer_args(
-        &root,
-        &justfile,
-        &runtime_bin,
-    );
-    let output = agent_semantic_runtime::runtime_block_on_current_thread(
-        agent_semantic_runtime::hook_process_runtime::run_hook_process(
-            agent_semantic_runtime::hook_process_runtime::HookProcessRequest {
-                executable: &executable,
-                args: &args,
-                stdin: &[],
-                timeout: REPAIR_COMMAND_TIMEOUT,
-                current_dir: Some(&root),
-                environment: Some((REPAIR_DEPTH_ENV, "1")),
-                discard_stdout: true,
-            },
-        ),
-    )??;
-    if !output.status.success() {
-        return Err(format!(
-            "authorized hook repair failed: status={} stderr={}",
-            output.status,
-            single_line(&String::from_utf8_lossy(&output.stderr))
-        ));
-    }
-    Ok(())
-}
-
-fn emit_output(output: Output, receipt: Option<&str>) -> Result<i32, String> {
-    std::io::stdout()
-        .write_all(&output.stdout)
-        .map_err(|error| format!("write hook stdout: {error}"))?;
-    std::io::stderr()
-        .write_all(&output.stderr)
-        .map_err(|error| format!("write hook stderr: {error}"))?;
-    if let Some(receipt) = receipt {
-        eprintln!("[asp-hook] {receipt}");
-    }
-    Ok(exit_code(output.status))
-}
-
 fn hook_event(args: &[OsString]) -> Option<&str> {
-    args.get(1).and_then(|arg| arg.to_str())
+    args.iter()
+        .skip(1)
+        .filter_map(|arg| arg.to_str())
+        .find(|arg| HOOK_EVENTS.contains(arg))
 }
 
 fn event_is_observational(args: &[OsString]) -> bool {
@@ -305,69 +310,8 @@ fn event_is_observational(args: &[OsString]) -> bool {
     )
 }
 
-fn exit_code(status: ExitStatus) -> i32 {
-    status.code().unwrap_or(2)
-}
-
 fn single_line(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-struct BootstrapRepairGuard {
-    file: std::fs::File,
-}
-
-impl BootstrapRepairGuard {
-    async fn acquire(state_home: &Path, timeout: Duration) -> Result<Self, String> {
-        let lock_dir = state_home.join("runtime/locks");
-        std::fs::create_dir_all(&lock_dir)
-            .map_err(|error| format!("create bootstrap repair lock directory: {error}"))?;
-        let lock_path = lock_dir.join("hook-bootstrap-repair.v1.lock");
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .map_err(|error| {
-                format!(
-                    "open bootstrap repair lock {}: {error}",
-                    lock_path.display()
-                )
-            })?;
-        let started = Instant::now();
-        loop {
-            #[cfg(unix)]
-            {
-                use std::os::fd::AsRawFd;
-                let status =
-                    unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-                if status == 0 {
-                    return Ok(Self { file });
-                }
-            }
-            #[cfg(not(unix))]
-            return Ok(Self { file });
-            if started.elapsed() >= timeout {
-                return Err(format!(
-                    "bootstrap repair lock wait exceeded {} seconds: {}",
-                    timeout.as_secs(),
-                    lock_path.display()
-                ));
-            }
-            tokio::time::sleep(REPAIR_POLL_INTERVAL).await;
-        }
-    }
-}
-
-impl Drop for BootstrapRepairGuard {
-    fn drop(&mut self) {
-        #[cfg(unix)]
-        {
-            use std::os::fd::AsRawFd;
-            let _ = unsafe { libc::flock(self.file.as_raw_fd(), libc::LOCK_UN) };
-        }
-    }
 }
 
 #[cfg(test)]

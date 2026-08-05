@@ -1,9 +1,12 @@
 //! Agent session routing owns resident child lifecycle decisions for hook-time `asp` commands.
 
 use crate::command::{has_current_agent_session, record_current_session_tool_event};
+use agent_semantic_config::agent_route_registry::{
+    AgentSessionLifetime, CompiledAgentRoute, compile_agent_route, load_agent_route_registry,
+};
 use agent_semantic_config::{
-    HookClientAgentSessionMessagesConfig, HookClientAgentsConfig, HookClientConfigFile,
-    load_asp_project_config_file, load_hook_client_config_file, merge_asp_project_hook_config,
+    HookClientAgentSessionMessagesConfig, load_asp_project_config_file,
+    load_hook_client_config_file, merge_asp_project_hook_config,
 };
 use agent_semantic_hook::{
     DecisionKind, DecisionSubject, HOOK_DECISION_SCHEMA_ID, HOOK_DECISION_SCHEMA_VERSION,
@@ -45,28 +48,25 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(super) struct AspSessionPolicy {
-    enabled: bool,
-    resident_child_name: String,
-    resident_agent_role: String,
-    resident_codex_agent_name: String,
+    resident_route: CompiledAgentRoute,
     messages: HookClientAgentSessionMessagesConfig,
 }
 
 impl AspSessionPolicy {
     pub(super) fn enabled(&self) -> bool {
-        self.enabled
+        true
     }
 
     pub(super) fn resident_child_name(&self) -> &str {
-        &self.resident_child_name
+        self.resident_route.session_name.as_str()
     }
 
     pub(super) fn resident_agent_role(&self) -> &str {
-        &self.resident_agent_role
+        self.resident_route.route_key.as_str()
     }
 
     pub(super) fn resident_codex_agent_name(&self) -> &str {
-        &self.resident_codex_agent_name
+        self.resident_route.platform_host_agent_name.as_str()
     }
 }
 
@@ -78,7 +78,8 @@ pub(super) fn load_asp_session_policy(
     let project = load_asp_project_config_file(&agent_semantic_hook::project_agent_config_path(
         project_root,
     ))?;
-    AspSessionPolicy::try_from(merge_asp_project_hook_config(base, project)?)
+    let merged = merge_asp_project_hook_config(base, project)?;
+    AspSessionPolicy::from_agent_route_registry(merged.agent_session_messages)
 }
 
 pub(super) fn load_embedded_asp_session_policy(
@@ -88,54 +89,37 @@ pub(super) fn load_embedded_asp_session_policy(
     let project = load_asp_project_config_file(&agent_semantic_hook::project_agent_config_path(
         project_root,
     ))?;
-    AspSessionPolicy::try_from(merge_asp_project_hook_config(base, project)?)
+    let merged = merge_asp_project_hook_config(base, project)?;
+    AspSessionPolicy::from_agent_route_registry(merged.agent_session_messages)
 }
 
 impl AspSessionPolicy {
-    fn try_from_parts(
-        config: HookClientAgentsConfig,
+    fn from_agent_route_registry(
         messages: HookClientAgentSessionMessagesConfig,
     ) -> Result<Self, String> {
-        let explore_agent = configured_search_resident_agent(&config).ok_or_else(|| {
-            "agents.residentAgents must define an enabled resident with role tag search".to_string()
-        })?;
+        let registry_path = agent_semantic_runtime::resolve_state_home()?
+            .join("agents")
+            .join("config.toml");
+        let loaded = load_agent_route_registry(&registry_path)?;
+        let (route_key, _) = loaded
+            .registry
+            .agents
+            .iter()
+            .find(|(_, route)| {
+                route.session_lifetime == AgentSessionLifetime::Resident
+                    && route.roles.iter().any(|role| role == "explore")
+            })
+            .ok_or_else(|| {
+                format!(
+                    "agent route registry {} must define a resident route with role `explore`",
+                    registry_path.display()
+                )
+            })?;
+        let resident_route = compile_agent_route(&loaded, route_key, "codex")?;
         Ok(Self {
-            enabled: explore_agent.enabled,
-            resident_child_name: explore_agent.name.clone(),
-            resident_agent_role: explore_agent.role.clone(),
-            resident_codex_agent_name: configured_codex_agent_name(explore_agent),
+            resident_route,
             messages,
         })
-    }
-}
-
-fn configured_search_resident_agent(
-    config: &HookClientAgentsConfig,
-) -> Option<&agent_semantic_config::HookClientResidentAgentConfig> {
-    config.resident_agents.iter().find(|agent| {
-        agent.enabled
-            && agent
-                .roles
-                .iter()
-                .any(|role| role.eq_ignore_ascii_case("search"))
-    })
-}
-
-fn configured_codex_agent_name(
-    agent: &agent_semantic_config::HookClientResidentAgentConfig,
-) -> String {
-    if agent.codex_agent_name.is_empty() {
-        agent.role.clone()
-    } else {
-        agent.codex_agent_name.clone()
-    }
-}
-
-impl TryFrom<HookClientConfigFile> for AspSessionPolicy {
-    type Error = String;
-
-    fn try_from(config: HookClientConfigFile) -> Result<Self, Self::Error> {
-        Self::try_from_parts(config.agents, config.agent_session_messages)
     }
 }
 

@@ -11,7 +11,7 @@ structure GenerationKey where
 
 inductive EvaluationRoute where
   | server
-  | localFallback
+  | unavailable
   deriving DecidableEq, Repr
 
 structure GenerationState where
@@ -30,10 +30,10 @@ def Evictable (generation : GenerationState) : Prop :=
   generation.leases = 0
 
 def routeForServer (available : Bool) : EvaluationRoute :=
-  if available then .server else .localFallback
+  if available then .server else .unavailable
 
 def routeForIdentity (observed produced : GenerationKey) : EvaluationRoute :=
-  if observed = produced then .server else .localFallback
+  if observed = produced then .server else .unavailable
 
 def warmRoundTrips : Nat := 1
 
@@ -80,13 +80,13 @@ theorem leased_generation_is_not_evictable
 theorem warm_path_is_one_round_trip : warmRoundTrips = 1 := by
   rfl
 
-theorem server_failure_selects_local_fallback :
-    routeForServer false = .localFallback := by
+theorem server_failure_is_typed_unavailable :
+    routeForServer false = .unavailable := by
   rfl
 
-theorem identity_mismatch_selects_local_fallback
+theorem identity_mismatch_is_typed_unavailable
     (observed produced : GenerationKey) (different : observed ≠ produced) :
-    routeForIdentity observed produced = .localFallback := by
+    routeForIdentity observed produced = .unavailable := by
   exact if_neg different
 
 end ASPProof.ServerResidentHookEvaluator

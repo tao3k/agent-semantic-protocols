@@ -1,6 +1,7 @@
 //! Reachability-based retention for immutable runtime binary artifacts.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -34,22 +35,18 @@ pub(crate) fn prune_runtime_binary_artifacts(
 ) -> Result<RuntimeArtifactRetentionReceipt, String> {
     let algorithm_root = artifact_root.join("blake3-256");
     let (generations, ignored_entry_count) = runtime_artifact_generations(&algorithm_root)?;
-    let reclaimed_bytes = generations.values().fold(0_u64, |total, generation| {
-        total.saturating_add(generation.bytes)
-    });
-    let removed_generation_count = generations.len();
-    if algorithm_root.try_exists().map_err(|error| {
-        format!(
-            "failed to inspect legacy runtime artifact root {}: {error}",
-            algorithm_root.display()
-        )
-    })? {
-        fs::remove_dir_all(&algorithm_root).map_err(|error| {
-            format!(
-                "failed to remove legacy digest-addressed runtime artifact root {}: {error}",
-                algorithm_root.display()
-            )
-        })?;
+    let protected = protected_runtime_artifact_digests(artifact_root)?;
+    let mut reclaimed_bytes = 0_u64;
+    let mut removed_generation_count = 0_usize;
+    for (digest, generation) in &generations {
+        if protected.contains(digest) {
+            continue;
+        }
+        let path = algorithm_root.join(digest);
+        fs::remove_dir_all(&path)
+            .map_err(|error| format!("failed to remove unreachable {}: {error}", path.display()))?;
+        reclaimed_bytes = reclaimed_bytes.saturating_add(generation.bytes);
+        removed_generation_count += 1;
     }
 
     let receipt = RuntimeArtifactRetentionReceipt {
@@ -58,14 +55,42 @@ pub(crate) fn prune_runtime_binary_artifacts(
         algorithm: "blake3-256".to_owned(),
         rollback_generations_per_binary: ROLLBACK_GENERATIONS_PER_BINARY,
         scanned_generation_count: generations.len(),
-        retained_generation_count: 0,
+        retained_generation_count: generations.len() - removed_generation_count,
         removed_generation_count,
         ignored_entry_count,
         reclaimed_bytes,
-        protected_digests: Vec::new(),
+        protected_digests: protected.into_iter().collect(),
     };
     publish_retention_receipt(artifact_root, &receipt)?;
     Ok(receipt)
+}
+
+fn protected_runtime_artifact_digests(artifact_root: &Path) -> Result<BTreeSet<String>, String> {
+    let runtime_root = artifact_root.parent().ok_or_else(|| {
+        format!(
+            "runtime artifact root has no runtime parent: {}",
+            artifact_root.display()
+        )
+    })?;
+    let bin_root = runtime_root.join("bin");
+    if !bin_root.is_dir() {
+        return Ok(BTreeSet::new());
+    }
+    let mut protected = BTreeSet::new();
+    for entry in fs::read_dir(&bin_root)
+        .map_err(|error| format!("failed to read {}: {error}", bin_root.display()))?
+    {
+        let entry = entry
+            .map_err(|error| format!("failed to read entry in {}: {error}", bin_root.display()))?;
+        let Ok(identity) = fs::canonicalize(entry.path()) else {
+            continue;
+        };
+        if let Some(digest) = super::protocol_binary_digest_from_canonical_artifact_path(&identity)
+        {
+            protected.insert(digest);
+        }
+    }
+    Ok(protected)
 }
 
 fn runtime_artifact_generations(

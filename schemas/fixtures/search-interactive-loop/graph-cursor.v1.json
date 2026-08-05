@@ -1,0 +1,40 @@
+{
+  "schemaId": "agent.semantic-protocols.search-graph-cursor",
+  "schemaVersion": "1",
+  "loopId": "loop:search-1",
+  "graphArtifact": {
+    "artifactRef": "artifact:selector-topology-1",
+    "artifactDigest": "blake3:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifactSchemaId": "agent.semantic-protocols.semantic-graph-turbo-result"
+  },
+  "state": {
+    "stateDigest": "state-7",
+    "graphGeneration": 7,
+    "workspaceGeneration": "workspace-generation-42",
+    "currentNode": "goal:model-owner",
+    "remainingBudget": 4,
+    "obligations": ["claim:effective-owner"],
+    "frontier": ["symbol:ModelConfig"],
+    "visited": ["goal:model-owner"],
+    "routeMeasure": {
+      "semanticGraphHops": 2,
+      "executedGraphHops": 1,
+      "toolRounds": 1,
+      "searchTokens": 180,
+      "uncachedModelTokens": 60
+    },
+    "routeBudget": {
+      "maxEvidenceTokens": 4096,
+      "maxRawTokens": 8192,
+      "maxUncachedTokens": 2048,
+      "maxRounds": 8,
+      "maxGraphHops": 4,
+      "maxTransitions": 8
+    }
+  },
+  "materializedNodeIds": [
+    "goal:model-owner",
+    "symbol:AgentRegistry",
+    "symbol:ModelConfig"
+  ]
+}

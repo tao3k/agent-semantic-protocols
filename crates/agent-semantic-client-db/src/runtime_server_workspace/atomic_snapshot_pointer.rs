@@ -139,33 +139,45 @@ where
     T: Clone + DeserializeOwned,
 {
     pub(super) async fn open(path: &Path, context: &'static str) -> Result<Self, String> {
-        let file = tokio::fs::File::open(path)
-            .await
-            .map_err(|error| format!("open {context} pointer `{}`: {error}", path.display()))?
-            .into_std()
-            .await;
-        let pointer_path = path.to_path_buf();
-        let mapping = tokio::task::spawn_blocking(move || unsafe {
+        Self::open_optional(path, context).await?.ok_or_else(|| {
+            format!(
+                "open {context} pointer `{}`: file not found",
+                path.display()
+            )
+        })
+    }
+
+    pub(super) async fn open_optional(
+        path: &Path,
+        context: &'static str,
+    ) -> Result<Option<Self>, String> {
+        let file = match tokio::fs::File::open(path).await {
+            Ok(file) => file.into_std().await,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(format!(
+                    "open {context} pointer `{}`: {error}",
+                    path.display()
+                ));
+            }
+        };
+        let mapping = unsafe {
             // SAFETY: the writer fixes the file length and never replaces the
             // inode; publication only mutates the mapped payload under seqlock.
+            // mmap installs a lazy virtual-memory mapping and does not read the
+            // pointer payload, so a blocking-pool hop would only add scheduler
+            // latency to cold session admission.
             MmapOptions::new().len(POINTER_LEN).map(&file)
-        })
-        .await
-        .map_err(|error| format!("map {context} pointer reader task failed: {error}"))?
-        .map_err(|error| {
-            format!(
-                "map {context} pointer `{}`: {error}",
-                pointer_path.display()
-            )
-        })?;
+        }
+        .map_err(|error| format!("map {context} pointer `{}`: {error}", path.display()))?;
         let (leased_snapshot, _) = tokio::sync::watch::channel(None);
-        Ok(Self {
+        Ok(Some(Self {
             mapping,
             context,
             leased_snapshot,
             decode_count: AtomicU64::new(0),
             marker: PhantomData,
-        })
+        }))
     }
 
     pub(super) fn read(&self) -> Result<T, String> {
@@ -212,6 +224,24 @@ where
         }
     }
 
+    pub(super) fn read_previous_valid_optional(&self) -> Option<T> {
+        if let Some(snapshot) = self.cached_snapshot() {
+            return Some(snapshot);
+        }
+        match decode_consistent_snapshot::<T>(&self.mapping, self.context) {
+            Ok(Some((generation, snapshot))) => {
+                self.decode_count.fetch_add(1, Ordering::Relaxed);
+                Some(self.publish_lease(generation, snapshot))
+            }
+            Ok(None) | Err(ReadSnapshotError::Invalid(_)) => None,
+            Err(ReadSnapshotError::Unstable) => self
+                .leased_snapshot
+                .borrow()
+                .as_ref()
+                .map(|lease| lease.snapshot.clone()),
+        }
+    }
+
     fn cached_snapshot(&self) -> Option<T> {
         let observed = pointer_generation(&self.mapping).load(Ordering::Acquire);
         if observed == 0 || observed & 1 == 1 {
@@ -245,11 +275,6 @@ where
             .expect("decoded pointer publishes a complete lease")
             .snapshot
             .clone()
-    }
-
-    #[cfg(test)]
-    pub(super) fn decode_count(&self) -> u64 {
-        self.decode_count.load(Ordering::Relaxed)
     }
 }
 

@@ -428,3 +428,81 @@ pub(crate) fn asp_provider_process_orphan_descendant_closure_stays_inside_scenar
     assert_eq!(performance_gate["observed"]["descendantGone"], true);
     let _ = fs::remove_dir_all(root);
 }
+
+pub(crate) fn asp_provider_projection_batch_workspace_pressure_stays_inside_scenario_gate() {
+    use agent_semantic_provider_transport::projection_batch::{
+        MAX_PROVIDER_PROJECTION_BATCH_OWNERS, MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES,
+        provider_projection_batch_ranges,
+    };
+
+    let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scenario_root = crate_root
+        .join("tests")
+        .join("unit")
+        .join("scenarios")
+        .join("asp_provider_projection_batch_workspace_pressure");
+    let benchmark: SharedBenchmarkToml = read_toml(&scenario_root.join("benchmark.toml"));
+    let max_total_ms = duration_millis_from_manifest(&benchmark.max_total);
+    let owner_sizes = vec![64 * 1024; 294];
+
+    let started_at = Instant::now();
+    let ranges = provider_projection_batch_ranges(&owner_sizes);
+    let elapsed = started_at.elapsed();
+    let max_batch_source_bytes = ranges
+        .iter()
+        .map(|range| owner_sizes[range.clone()].iter().sum::<usize>())
+        .max()
+        .expect("workspace pressure must produce batches");
+
+    assert_eq!(
+        ranges.len(),
+        usize::try_from(
+            benchmark
+                .max_provider_process_count
+                .expect("process budget")
+        )
+        .expect("process budget fits usize")
+    );
+    assert!(
+        ranges
+            .iter()
+            .all(|range| range.len() <= MAX_PROVIDER_PROJECTION_BATCH_OWNERS)
+    );
+    assert!(max_batch_source_bytes <= MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES);
+    assert!(
+        elapsed.as_millis() <= max_total_ms,
+        "projection batch planning exceeded max_total={} observed={}ms",
+        benchmark.max_total,
+        elapsed.as_millis()
+    );
+
+    let performance_gate = serde_json::json!({
+        "schemaId": "agent.semantic-protocols.semantic-hot-path-performance-gate",
+        "schemaVersion": "1",
+        "scenarioId": "asp-provider-projection-batch-workspace-pressure",
+        "languageId": "gerbil-scheme",
+        "workspace": ".",
+        "command": ["agent_semantic_provider_transport::provider_projection_batch_ranges"],
+        "phase": "cold-generation-planning",
+        "expected": {
+            "workspaceOwnerCount": 294,
+            "maxOwnersPerProviderProcess": MAX_PROVIDER_PROJECTION_BATCH_OWNERS,
+            "maxSourceBytesPerProviderProcess": MAX_PROVIDER_PROJECTION_BATCH_SOURCE_BYTES,
+            "maxProviderProcessCount": benchmark.max_provider_process_count,
+            "fallbackReason": "none"
+        },
+        "observed": {
+            "observedTotal": duration_literal(elapsed),
+            "plannedProviderProcessCount": ranges.len(),
+            "maxBatchOwnerCount": ranges.iter().map(|range| range.len()).max(),
+            "maxBatchSourceBytes": max_batch_source_bytes,
+            "fallbackReason": "none"
+        },
+        "verdict": "pass",
+        "evidenceRefs": ["scenario:asp-provider-projection-batch-workspace-pressure"]
+    });
+    assert_eq!(
+        performance_gate["observed"]["plannedProviderProcessCount"],
+        10
+    );
+}

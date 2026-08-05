@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 
+use crate::DecisionRoute;
 use crate::hook_recovery_prompt::CompiledRecoveryPromptConfig;
-use crate::{ActivatedProvider, DecisionRoute};
+use crate::protocol_activation::protocol_activation_manifest::HookProviderProjection;
 
 pub const HOOK_TRIGGER_PROMPT_FILE_NAME: &str = "hook_trigger_prompt.md";
 
@@ -14,7 +15,7 @@ const USER_EXTENSIONS_END: &str = "<!-- ASP-HOOK-TRIGGER-PROMPT:USER-EXTENSIONS-
 pub(crate) fn source_access_recovery_message(
     platform: &str,
     reason: &str,
-    _providers: &[&ActivatedProvider],
+    _providers: &[&HookProviderProjection],
     routes: &[DecisionRoute],
     _semantic_ast_patch_enabled: bool,
     recovery_prompt: &CompiledRecoveryPromptConfig,

@@ -32,11 +32,13 @@ An AgentSession Registry snapshot is durable evidence for agent identities,
 physical generations, parent relations, configured agent types, resident
 names, roles, and trusted live message-target bindings.
 
-The root session identifier alone is not a root-agent record. A current
-projection requires exactly one durable root row whose session identity is the
-requested root and whose parent is absent. Missing or duplicate root evidence
-fails closed; the materializer must not invent a root name, role, generation,
-or lifecycle state.
+The root session identifier alone is not root-task evidence. A current
+registry-derived projection requires a non-empty, completely scoped snapshot
+whose durable child rows attest the requested root identity and topology. The
+materializer records that snapshot reference on a separate =CodexRootTask= and
+must not invent a root-agent name, role, physical generation, binding, or
+lifecycle state. An =AgentSession= row that impersonates the root task is
+rejected rather than treated as a managed agent.
 
 Registry status is not a Codex dispatch claim and is not a Codex turn receipt.
 Consequently registry-derived lifecycle nodes carry an unobserved dispatch
@@ -52,6 +54,21 @@ remain on the agent node, but it must not be upgraded into a delegation edge.
 Turn nodes and delegation edges may be added only by a later evidence owner
 whose receipt schema names those facts. Delivered or completed delegations
 continue to require their indexed delivery receipt.
+
+* Public adapter
+
+The agent-facing adapter exposes two observation-only operations:
+
+- =control-plane refresh= asks the Runtime Server to reconcile the durable
+  registry snapshot and returns its typed publication receipt;
+- =control-plane show= reads the last published projection for the requested
+  root session.
+
+Both operations accept a root session identity and derive the project identity
+from the canonical workspace. They do not spawn, resume, send, interrupt,
+archive, or delete a Codex task. A client-side sequence that classifies model
+guidance, child-message attempts, receipts, and archival as an ASP control-plane
+lifecycle is legacy execution-plane duplication and must not be retained.
 
 * Freshness and generation
 

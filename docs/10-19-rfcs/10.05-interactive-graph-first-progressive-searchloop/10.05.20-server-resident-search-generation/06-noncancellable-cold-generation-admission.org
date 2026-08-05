@@ -41,3 +41,24 @@ Warm exact reads retain their existing performance gate.
 - Timeout after queued admission cannot return the workspace to =missing=.
 - A queued repair never authorizes reads before publication.
 - Publication continues to use the canonical generation admission owner.
+
+* Resident-ready fast path
+
+Generation readiness observation and generation repair are distinct operations.
+When the Runtime Server already reports =resident-ready= for the workspace
+identity/project root, an exact read must reuse the published generation handle.
+It must not invoke repair, candidate discovery, provider resolution, admission,
+or terminal-state waiting.
+
+The ready fast path has a 100ms wall budget, performs zero provider invocations
+and zero database opens, and may use only bounded Runtime Server control-plane
+roundtrips. Only =missing= or =recovery-required= may enqueue repair. A ready
+observation cannot be upgraded into repair merely to prove readiness again.
+
+* Repair executor lifetime
+
+Repair execution is owned by the Runtime Server bootstrap runtime. The
+workspace stream receives a typed executor handle; it does not construct a
+second Tokio runtime and does not inherit a request-stream cancellation scope.
+Discovery or admission failure is stored as terminal generation evidence and
+is observable through healthcheck and telemetry rather than only stderr.

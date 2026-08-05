@@ -24,7 +24,6 @@ async fn owner_content_identity_tracks_live_change_missing_and_normalized_path()
         .expect("read changed owner identity")
         .expect("changed owner exists");
     assert_ne!(before.digest, after.digest);
-    assert_ne!(before.bytes, after.bytes);
 
     tokio::fs::remove_file(&absolute)
         .await

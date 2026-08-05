@@ -1,8 +1,6 @@
 #![recursion_limit = "256"]
 #![deny(dead_code)]
 
-#[path = "unit/command/agent_session_registry_control_plane.rs"]
-mod agent_session_registry_control_plane;
 #[path = "unit/command/agent_session_registry_resume_cli.rs"]
 mod agent_session_registry_resume_cli;
 #[path = "unit/command/agent_session_registry_resume_model_create_cli.rs"]
@@ -70,6 +68,8 @@ mod hook_paths;
 mod hook_runtime_skill;
 #[path = "unit/install_provider_cli.rs"]
 mod install_provider_cli;
+#[path = "../../agent-semantic-hook/tests/unit/integration_fixture.rs"]
+mod integration_fixture;
 #[path = "unit/paths_command.rs"]
 mod paths_command;
 #[path = "unit/provider_command/mod.rs"]

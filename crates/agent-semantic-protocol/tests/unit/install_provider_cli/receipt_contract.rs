@@ -138,19 +138,29 @@ fn default_develop_receipt_install_publishes_the_global_runtime_catalog_atomical
 }
 
 #[test]
-fn root_justfile_develop_install_has_one_state_home_runtime_authority() {
+fn root_justfile_develop_install_is_only_a_registry_driven_adapter() {
     let justfile = include_str!("../../../../../Justfile");
 
     for required in [
-        r#"runtime_bin="${state_home}/runtime/bin""#,
-        r#"provider_source="${repo_root}/languages/rust-lang-project-harness/target/release/rs-harness""#,
-        r#"--record-installed-receipt "${provider_source}""#,
         r#"protocol_bin="${state_home}/runtime/bin/asp""#,
-        "custom provider bin_dir is unsupported; ASP State Home runtime/bin is the only provider runtime authority",
+        r#"install language "{{ language }}""#,
+        "installMode=provider-workspace-install source=provider-registry",
     ] {
         assert!(
             justfile.contains(required),
-            "developer provider install lost the single-runtime contract: {required}"
+            "developer provider adapter lost its registry contract: {required}"
+        );
+    }
+    for forbidden in [
+        "--record-installed-receipt",
+        "provider_source=",
+        r#"case "{{ language }}" in"#,
+        "languages/rust-lang-project-harness/target/release/rs-harness",
+        "runtime/provider-artifacts/gslph/develop",
+    ] {
+        assert!(
+            !justfile.contains(forbidden),
+            "root Justfile duplicated provider-owned install logic: {forbidden}"
         );
     }
 }

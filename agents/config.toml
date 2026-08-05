@@ -2,23 +2,23 @@ schema_id = "agent.semantic-protocols.agent-route-registry"
 schema_version = 1
 
 [agents.asp_explorer]
-session_name = "asp-explore"
+session_name = "asp_explorer"
 session_lifetime = "resident"
 roles = ["explore", "subagent"]
 
 [agents.asp_explorer.platforms.codex]
-host_agent_name = "asp_explorer"
+projection = "asp-explorer_codex.toml"
 
 [agents.asp_explorer.platforms.claude]
-host_agent_name = "asp-explorer"
+projection = "asp-explorer_claude.md"
 
 [agents.asp_testing]
-session_name = "asp-testing"
+session_name = "asp_testing"
 session_lifetime = "resident"
 roles = ["build", "subagent", "testing"]
 
 [agents.asp_testing.platforms.codex]
-host_agent_name = "asp_testing"
+projection = "asp-testing_codex.toml"
 
 [agents.asp_testing.platforms.claude]
-host_agent_name = "asp-testing"
+projection = "asp-testing_claude.md"

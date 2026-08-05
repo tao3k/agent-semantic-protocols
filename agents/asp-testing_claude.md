@@ -1,8 +1,8 @@
 ---
-name: asp-testing
+name: asp_testing
 description: ASP test/build execution lane.
 tools: Bash, Read, Glob, Grep
-model: {{MODEL_YAML}}
+model: haiku
 permissionMode: acceptEdits
 maxTurns: 8
 ---

@@ -47,12 +47,18 @@ binding freshness, dispatch authority, archive authority, or replacement.
 
 A well-formed graph requires:
 
-- exactly one root node whose session id equals =rootSessionId=;
+- one independently evidenced =CodexRootTask= whose session id equals
+  =rootSessionId=;
 - unique observed session ids;
 - every node belongs to the same root task;
-- every non-root parent refers to an existing node;
+- every agent parent refers either to the root task or to an existing agent;
 - every node's Workspace Server identity equals the aggregate identity;
 - no node is its own parent.
+
+The root task is not an =AgentSession= registry row.  It carries execution-plane
+identity evidence but no invented resident name, role, physical generation,
+binding, or dispatch lifecycle.  The =agents= collection contains only
+downstream managed-agent observations.
 
 * Turn and delegation graph
 

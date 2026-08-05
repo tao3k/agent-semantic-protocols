@@ -60,8 +60,8 @@ pub async fn run_hook_process(request: HookProcessRequest<'_>) -> Result<Output,
         .await
         .map_err(|_| {
             format!(
-                "bounded hook process exceeded {} seconds: {}",
-                request.timeout.as_secs(),
+                "bounded hook process exceeded {} milliseconds: {}",
+                request.timeout.as_millis(),
                 request.executable.display()
             )
         })?

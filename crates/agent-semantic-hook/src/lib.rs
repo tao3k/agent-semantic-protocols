@@ -109,9 +109,10 @@ pub use event_state_subagent_model_drift::{
     latest_unmanaged_subagent_start,
 };
 pub use hook_config::{
-    AspSessionPolicy, ClientHookConfig, ConfiguredResidentTarget, default_client_config_path,
-    default_client_config_template, load_client_config, load_client_config_for_project,
-    load_client_config_overlay_for_project, load_embedded_client_config_for_project,
+    AspSessionPolicy, ClientHookConfig, ConfiguredResidentTarget, DurableHookConfigArtifact,
+    default_client_config_path, default_client_config_template, load_client_config,
+    load_client_config_for_project, load_client_config_overlay_for_project,
+    load_embedded_client_config_for_project,
 };
 pub use hook_config_global::default_global_client_config_path;
 pub use match_policy_conformance::{
@@ -150,6 +151,7 @@ pub use runtime_profile::{
     runtime_project_root_for_activation,
 };
 pub(crate) use source_selector::{SourceSelectorMatch, collect_source_selector_matches};
+pub use tool_action::workspace_mutation_paths;
 pub(crate) use tool_action::{
     OperationIntent, ToolAction, collect_tool_actions, payload_string, subject_for_action,
 };

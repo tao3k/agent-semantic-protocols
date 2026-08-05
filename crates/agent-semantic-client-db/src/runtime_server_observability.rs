@@ -19,6 +19,11 @@ pub enum RuntimeServerEvent {
         generation_digest: String,
         elapsed_micros: u64,
     },
+    WorkspaceGenerationAdmissionFailed {
+        workspace_identity: String,
+        build_mode: String,
+        error: String,
+    },
     WorkspaceGenerationRestoreFailed {
         workspace_identity: String,
         error: String,

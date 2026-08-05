@@ -349,12 +349,12 @@ pub(crate) fn run_language_command(
         let current_generation_client =
             super::search_pipe::fast_search_requires_source_index_snapshot(&provider_args)
                 .then(|| {
-                    super::runtime_server::block_on_agent_facing_runtime_server_client(
+                    crate::server::runtime_server::block_on_agent_facing_runtime_server_client(
                         exact_query_started,
                         "search",
                         "graph-turbo-generation-open",
                         &project_root,
-                        super::runtime_server::runtime_server_workspace_generation_client_async(
+                        crate::server::runtime_server::runtime_server_workspace_generation_client_async(
                             &project_root,
                         ),
                     )
@@ -362,7 +362,7 @@ pub(crate) fn run_language_command(
                 .transpose()?;
         let current_snapshot = current_generation_client
             .as_ref()
-            .map(super::runtime_server::runtime_server_current_source_index_snapshot_from_client)
+            .map(crate::server::runtime_server::runtime_server_current_source_index_snapshot_from_client)
             .transpose()?;
         let provider_context_required =
             fast_search_needs_provider_context(&provider_args, provider)?;

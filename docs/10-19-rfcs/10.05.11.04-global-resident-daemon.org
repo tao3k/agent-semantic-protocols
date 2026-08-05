@@ -51,10 +51,11 @@ through typed control IPC.
 * Command surface
 
 #+begin_example
-asp resident status
-asp resident reconcile
-asp resident restart
-asp resident daemon
+asp server status
+asp server reconcile
+asp server restart
+asp server stop
+asp server daemon
 #+end_example
 
 =status=, =reconcile=, and =restart= are typed clients.  =daemon= is the service
@@ -71,6 +72,19 @@ per-workspace bootstrap command.
 5. retire only the endpoint owned by the validated epoch.
 
 It never means kill-by-PID or spawn an unmanaged child.
+
+=stop= is a terminal supervisor transaction.  The adapter snapshots the current
+endpoint owner epoch, asks the platform supervisor to unload the service, and
+then retires only artifacts still owned by that epoch.  A =stopped= receipt is
+valid only when the endpoint, control socket, data-plane socket, and status
+memory are all absent.  Repeated stop is idempotent.  A replacement epoch makes
+the stale stop fail closed instead of deleting the replacement.
+
+Status-memory mappings are cached by live file identity, not pathname alone.
+Unlinking the file immediately invalidates every long-lived client mapping; a
+new daemon publishing the same pathname must be reopened under its new file
+identity before any status can be returned.  Thus =draining= cannot survive as
+an authoritative cached state after terminal stop.
 
 * Control plane
 
@@ -209,6 +223,8 @@ after their callers have moved to the Global control and data contracts.
 - a second daemon attempt fails immediately;
 - endpoint publication is atomic and epoch-bound;
 - typed restart drains and exits without PID access;
+- typed stop publishes terminal artifact-absence evidence and is idempotent;
+- removed or replacement status memory invalidates every cached mapping;
 - the supervisor replaces a stale or exited daemon;
 - installed runtime artifact and endpoint digest agree.
 

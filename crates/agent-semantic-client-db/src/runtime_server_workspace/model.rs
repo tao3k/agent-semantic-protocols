@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+
+#[path = "digest.rs"]
+mod digest;
+#[path = "model_validation.rs"]
+mod model_validation;
+use digest::typed_digest;
+use model_validation::validate_digest;
+pub(crate) use model_validation::validate_owners;
 
 pub const WORKSPACE_GENERATION_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-workspace-generation-snapshot.v1";
@@ -179,49 +186,6 @@ pub struct WorkspaceRuntimeSelectorOverlayReceipt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// Proof-carrying result of reconciling one resident owner with its workspace file.
-pub struct WorkspaceRuntimeOwnerFreshnessReceipt {
-    pub schema_id: String,
-    pub schema_version: String,
-    pub workspace_identity: String,
-    pub generation_digest: String,
-    pub owner_path: String,
-    pub owner_content_digest: Option<String>,
-    pub changed: bool,
-    pub removed: bool,
-}
-
-impl WorkspaceRuntimeOwnerFreshnessReceipt {
-    pub fn validate(&self) -> Result<(), String> {
-        if self.schema_id != "asp.runtime-owner-freshness-receipt.v1" || self.schema_version != "1"
-        {
-            return Err("runtime owner freshness receipt schema identity mismatch".to_owned());
-        }
-        if self.workspace_identity.trim().is_empty() || self.owner_path.trim().is_empty() {
-            return Err("runtime owner freshness receipt identity is incomplete".to_owned());
-        }
-        if !valid_blake3_wire_digest(&self.generation_digest) {
-            return Err("runtime owner freshness generation digest is invalid".to_owned());
-        }
-        match (&self.owner_content_digest, self.removed) {
-            (None, true) => Ok(()),
-            (Some(digest), false) if valid_blake3_wire_digest(digest) => Ok(()),
-            _ => Err("runtime owner freshness content identity is inconsistent".to_owned()),
-        }
-    }
-}
-
-fn valid_blake3_wire_digest(value: &str) -> bool {
-    value.strip_prefix("blake3-256:").is_some_and(|digest| {
-        digest.len() == 64
-            && digest
-                .bytes()
-                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "state",
     rename_all = "kebab-case",
@@ -356,33 +320,15 @@ impl WorkspaceMemoryGeneration {
             owners: input.owners,
             relations: input.relations,
         };
-        generation.validate()?;
+        // Every digest above was computed from this owned input. Validate the evidence once,
+        // without serializing the large owner/projection payloads a second time merely to
+        // compare each digest with itself.
+        generation.validate_evidence()?;
         Ok(generation)
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        self.workspace_snapshot.validate()?;
-        self.validate_identity()?;
-        validate_digest("generationDigest", &self.generation_digest)?;
-        validate_digest("providerSchemaDigest", &self.provider_schema_digest)?;
-        validate_digest("moduleGraphDigest", &self.module_graph_digest)?;
-        validate_digest("selectorSetDigest", &self.selector_set_digest)?;
-        validate_digest("memoryBackendDigest", &self.memory_backend_digest)?;
-        validate_digest(
-            "workspaceSourceScopeGeneration",
-            &self.workspace_source_scope_generation,
-        )?;
-        if self.workspace_source_scope_generation
-            != agent_semantic_runtime::workspace_source_scope_generation_digest(
-                &self.project_resolutions,
-            )?
-        {
-            return Err("workspace generation ProjectResolution evidence drift".to_owned());
-        }
-        if self.provider_schema_digest != agent_semantic_runtime::project_resolution_schema_digest()
-        {
-            return Err("workspace generation provider schema authority drift".to_owned());
-        }
+        self.validate_evidence()?;
         let selector_set_digest = typed_digest(
             &self
                 .owners
@@ -418,32 +364,7 @@ impl WorkspaceMemoryGeneration {
         if self.generation_digest != generation_digest {
             return Err("workspace generation identity digest drift".to_owned());
         }
-        if self.workspace_snapshot.root_digest() != self.source_snapshot.root_digest
-            || self.workspace_generation.root_digest != self.source_snapshot.root_digest
-            || self.workspace_generation.root_depth != u32::from(self.root_depth[0])
-            || self.workspace_generation.leaf_count
-                != u64::try_from(self.source_snapshot.leaf_count)
-                    .map_err(|_| "workspace generation leaf count overflow".to_owned())?
-            || self.workspace_generation.owner_count
-                != u64::try_from(self.owners.len())
-                    .map_err(|_| "workspace generation owner count overflow".to_owned())?
-        {
-            return Err("workspace generation authority evidence drift".to_owned());
-        }
-        agent_semantic_content_identity::workspace_generation_evidence::ValidatedWorkspaceGenerationV1::new(
-            self.workspace_generation.clone(),
-        )
-        .map_err(|error| format!("workspace generation evidence is incomplete: {error}"))?;
-        let mut unique_relations = std::collections::BTreeSet::new();
-        for relation in &self.relations {
-            relation.validate()?;
-            if !unique_relations.insert(relation) {
-                return Err(
-                    "workspace generation contains a duplicate provider relation".to_owned(),
-                );
-            }
-        }
-        validate_owners(&self.owners)
+        Ok(())
     }
 
     fn validate_identity(&self) -> Result<(), String> {
@@ -639,71 +560,9 @@ impl RuntimeServerShutdownReceipt {
     }
 }
 
-fn validate_digest(field: &str, digest: &str) -> Result<(), String> {
-    let Some(value) = digest.strip_prefix("blake3-256:") else {
-        return Err(format!("{field} must use blake3-256"));
-    };
-    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(format!("{field} must contain a 64-character hex digest"));
-    }
-    Ok(())
-}
-
-fn typed_digest<T: Serialize + ?Sized>(value: &T) -> Result<String, String> {
-    let bytes = serde_json::to_vec(value)
-        .map_err(|error| format!("encode workspace generation digest input: {error}"))?;
-    Ok(format!("blake3-256:{}", blake3::hash(&bytes).to_hex()))
-}
-
-pub(crate) fn validate_owners(owners: &[WorkspaceOwnerSnapshot]) -> Result<(), String> {
-    let mut owner_paths = HashMap::with_capacity(owners.len());
-    let mut selectors = HashMap::new();
-    for (owner_index, owner) in owners.iter().enumerate() {
-        validate_owner(owner)?;
-        if owner_paths
-            .insert(owner.owner_path.as_str(), owner_index)
-            .is_some()
-        {
-            return Err(format!(
-                "duplicate workspace owner path: {}",
-                owner.owner_path
-            ));
-        }
-        for selector in &owner.selectors {
-            validate_selector(owner, selector)?;
-            if selectors
-                .insert(selector.selector.as_str(), owner.owner_path.as_str())
-                .is_some()
-            {
-                return Err(format!(
-                    "duplicate workspace selector identity: {}",
-                    selector.selector
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 #[path = "../../tests/unit/runtime_server_workspace_projection_validation.rs"]
 mod derived_projection_validation_tests;
 
-fn validate_owner(owner: &WorkspaceOwnerSnapshot) -> Result<(), String> {
-    if owner.owner_path.trim().is_empty() {
-        return Err("workspace owner path must be non-empty text".to_owned());
-    }
-    validate_digest("owner contentDigest", &owner.content_digest)?;
-    let actual = format!("blake3-256:{}", blake3::hash(&owner.bytes).to_hex());
-    if actual != owner.content_digest {
-        return Err(format!(
-            "workspace owner digest mismatch: ownerPath={}",
-            owner.owner_path
-        ));
-    }
-    Ok(())
-}
-
 #[path = "projection_validation.rs"]
 mod projection_validation;
-use projection_validation::validate_selector;

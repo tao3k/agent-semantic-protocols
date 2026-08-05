@@ -31,6 +31,32 @@ Exactly one WorkspaceResident may be active for a workspace identity.  Several
 AgentSessions, turns, and subagents may share it.  Agent exit cannot terminate
 or replace the WorkspaceResident and cannot discard server-accepted work.
 
+* Load-once Memory Backend data plane
+
+Each canonical workspace-generation pointer owns one process-local client cell.
+The cell is keyed by the canonical pointer path and contains the validated mmap
+plus its Memory Backend.  Concurrent first opens for the same workspace
+coalesce through that workspace's Tokio =OnceCell=.  Cells for different
+workspaces initialize independently; there is no cross-workspace open lock.
+
+After initialization, =search= and =query= MUST NOT repeat pointer existence
+probes, mmap opens, generation decoding, or full generation validation.  A hot
+lease reads the already admitted Memory Backend.  Pointer epoch observation may
+replace the backend atomically when publication advances, while extant leases
+retain the previous immutable backend until they are dropped.
+
+The required performance evidence distinguishes:
+
+- =coldOpenCount=: at most one per pointer generation under concurrent demand;
+- =coalescedOpenCount=: concurrent waiters sharing the same first open;
+- =mmapOpenCount= and =generationValidationCount=: zero on unchanged warm hits;
+- =databaseOpenCount= and =controlRoundtripCount=: always zero on the data plane;
+- warm and concurrent p99 latency, with a sub-millisecond hard gate.
+
+Missing or rejected generations publish a typed terminal state.  They cannot
+fall back to per-request activation sync, provider execution, or workspace
+materialization.
+
 * Merkle boundary
 
 Merkle identities control content and publication identity only.  They bind:
@@ -101,6 +127,24 @@ The exact-query order is:
 4. incrementally publish changed owner bytes and selectors when identity differs;
 5. only then open the current immutable generation and resolve the projection.
 
+The incremental publication reply is a durable commit boundary.  The writer
+lane MUST publish the exact segment and seqlock generation pointer before it
+switches the resident backend or returns terminal =Ready=.  A transient
+=ResidentReady= state is not sufficient for an exact-query caller: after a
+=Ready= reply, a freshly opened canonical pointer MUST identify the same commit
+or a monotonic successor.  Publication failure preserves the previous resident
+backend and returns a typed failure; it cannot acknowledge the unpublished
+generation and finish durability later.
+
+A monotonic successor is admitted by owner coverage, not by strict generation
+digest equality.  The owner-readiness receipt carries the daemon-observed live
+owner content digest (or an explicit tombstone).  After reopening, the client
+MUST compare that owner identity with the mapped generation.  A background
+whole-workspace publication may legitimately replace the owner-local commit
+between =Ready= and reopen; it is accepted only when it contains the same ready
+owner identity.  Merely observing a different, newer generation digest is
+neither failure evidence nor freshness evidence.
+
 A cached hit without this proof is stale evidence.  Read-side freshness MUST
 apply to =source=, =callable-skeleton=, and future exact projections uniformly;
 it must not be conditional on =OwnerForRepair= or any cache-miss state.  The
@@ -109,6 +153,21 @@ resident's fingerprint cache.  It MUST NOT scan the workspace.  Warm owner
 freshness plus generation open remains subject to the exact-query performance
 gate; a changed owner may use the bounded resident publication lane, but old
 bytes must never be returned while that publication is pending.
+
+The Runtime Server owns this read-side check.  An exact-query client may send
+only the normalized owner path and the content digest observed in its resident
+exact segment.  The daemon compares that admitted digest with the current owner
+identity.  A match may return the existing resident readiness receipt without a
+workspace scan.  A mismatch, removal, or replacement MUST reconcile the
+generation to terminal =Ready= before the client reopens the generation pointer
+and reads a projection.  The client MUST NOT hash the owner, discover a Git
+candidate, build a Merkle tree, or publish a generation itself.
+
+Mutation admission remains an acceleration path, not a correctness
+precondition.  If a post-tool event is lost, delayed, coalesced, or emitted by a
+client that exits, the next exact read still detects the changed owner.  The
+daemon operation and its tests therefore MUST cover a cached selector hit after
+an owner rewrite with no explicit mutation admission.
 
 Owner-local discovery is subject to the same proof.  =search owner ... items=
 must ensure the requested owner through the WorkspaceResident writer lane
@@ -194,6 +253,7 @@ shared across setup, enqueue, acceptance, and completion.
 | watcher coalescing | 50 ms | observation backlog |
 | writer enqueue | 100 ms | resident writer saturation |
 | writer acceptance | 100 ms | foreground admission unavailable |
+| session-cold search authority read p99 | < 1 ms | Ready catalog admission regression |
 | warm search authority read p99 | < 1 ms | shared-pointer data-plane regression |
 | background materialization | measured, no foreground blocking | worker receipt required |
 | atomic publication | 250 ms | publication regression |
@@ -265,6 +325,23 @@ canonical executable identity, but MUST NOT hash executable bytes or recompute
 artifact metadata.  Content or metadata reads of the ASP/provider executable
 on an agent-facing path are a performance-contract violation.
 
+The canonical Runtime Server entry is a stable symlink to an immutable
+=runtime/artifacts/blake3-256/<digest>/asp= object.  Install verifies bytes
+before publishing that object and atomically switches the symlink.  Supervisor
+=status|reconcile|restart= derives the expected digest from the canonical
+artifact path identity; it MUST NOT read executable bytes.  In particular, a
+restart control frame is sent before the supervisor boundary and binary
+freshness cannot consume that boundary.  A regular mutable file at the
+canonical runtime entry is not a second supported architecture.
+
+Registered provider runtime entries follow the same single architecture: each
+entry is a symlink to its own immutable
+=runtime/artifacts/blake3-256/<digest>/<binary>= object.  Reconcile accepts a
+canonical digest-lattice symlink without reading or rewriting binary bytes.  A
+regular file, an external symlink, or any other unmanaged entry is a typed
+configuration error.  There is no migration or compatibility branch in the
+runtime reconciler.
+
 Memory mapping a generation file is not by itself Memory Search.  The Runtime
 Server MUST load and validate one immutable generation per admitted workspace,
 construct its selector, term, and relation indexes once, and retain that
@@ -292,7 +369,27 @@ uses the resident =EvaluateGraphTurbo= operation.  A CLI that opens or decodes
 the complete generation mmap after receiving this authority violates the
 contract.
 
-The cold authority admission returns a distinct
+The Runtime Server endpoint publishes the canonical =workspaceStorePath=.
+Together with workspace identity and canonical project root, this deterministically
+locates the stable generation pointer without a control or data-plane socket
+round trip.  A process-local Runtime pointer catalog owns one load-once reader
+per =(pointerPath, workspaceIdentity, projectRoot)= and shares it across all
+sessions.  Generation publication MUST complete this load-once mapping before
+the generation becomes Ready.  Query sessions therefore only join an already
+initialized catalog entry; they never own first mapping or its waiter wakeup.
+Concurrent sessions MUST NOT independently open or mmap the same pointer.  A
+missing pointer is not cached, so later server admission can publish it.  When
+the pointer does not yet exist, the client performs exactly one typed cold
+workspace admission over IPC and then reopens the pointer exactly once.  The
+admission call acknowledges resident ownership without waiting for the full
+generation build.  A second =Missing= result returns typed
+=generation-building= with a retry delay, and =RecoveryRequired= remains a
+typed fail-closed supervisor error; neither state authorizes an in-call retry
+loop or couples the daemon build lifetime to the client deadline.
+The server and client MUST consume the same endpoint-owned store locator; they
+MUST NOT independently derive it from ambient state-home configuration.
+
+The typed cold authority admission returns a distinct
 =agent.semantic-protocols.runtime-server-search-generation-authority-open-receipt=
 v1.  It binds the compact authority to the resident scope's stable
 =active-generation.pointer=.  A session maps that fixed-size seqlock pointer
@@ -304,7 +401,7 @@ owner count, digests, epoch, and root-depth evidence into the pointer.  A
 generation change is observed through the pointer's monotonic publication
 sequence without remapping the complete generation.
 
-Unix IPC remains authoritative for cold workspace admission, mutation, complex
+Unix IPC remains authoritative for missing-generation admission, mutation, complex
 lookup, and graph evaluation.  It is not a warm identity transport.  This
 separation is required because scheduler and socket tail latency cannot satisfy
 the sub-millisecond p99 gate under multi-session pressure even when framing and
@@ -319,6 +416,11 @@ connection reuse are optimized.
 - stale-generation misses are typed and never emitted as empty success;
 - unchanged owners are reused under incremental Merkle materialization;
 - cold repair terminates and a repeated warm query stays within its budget;
+- a missing generation performs one daemon admission and one reopen; a second
+  miss returns typed =generation-building= and =RecoveryRequired= terminates
+  fail-closed without an in-call retry;
+- canonical provider symlinks reconcile with zero binary-byte reads and
+  unmanaged runtime entries are rejected without migration;
 - watcher retirement releases all workspace-owned tasks and paths.
 - an exceeded search/query gate is retrievable from Turso by trace and stage;
 - 1,000 concurrent observations do not block foreground query completion and
@@ -336,8 +438,11 @@ connection reuse are optimized.
 - concurrent warm searches across multiple sessions share the workspace
   resident lease without a global lock, while different workspaces progress
   independently.
-- 64 sessions performing at least 2,000 concurrent warm authority reads keep
-  p99 below 1 ms; a separate 1,000-read sequential run keeps p99 below 1 ms.
+- 64 concurrent session lanes produce at least 1,000 fresh-session catalog-hit
+  samples and at least 2,000 warm authority reads; both p99 values remain below
+  1 ms.  A separate 1,000-read sequential run also keeps p99 below 1 ms.  A
+  sample set smaller than 100 is insufficient for a p99 gate because it aliases
+  p99 to max latency.
 - warm authority reads have a zero delta for every runtime data-plane I/O
   counter, including control socket round trips.
 - pointer wire size remains constant when owner count grows, and the pointer

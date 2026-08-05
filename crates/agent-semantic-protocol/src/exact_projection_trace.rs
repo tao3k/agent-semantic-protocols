@@ -9,6 +9,12 @@ pub(crate) fn stage(stage: &str, started: tokio::time::Instant) {
     }
 }
 
+pub(crate) fn generation(stage: &str, generation_digest: &str) {
+    if enabled() {
+        eprintln!("[exact-query-trace] stage={stage} generationDigest={generation_digest}");
+    }
+}
+
 fn enabled() -> bool {
     std::env::var_os(TRACE_ENV).is_some()
 }

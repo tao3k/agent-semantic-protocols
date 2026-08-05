@@ -861,6 +861,30 @@ direct source reads remain fail-closed through the language-extension matcher.
 This separation guarantees that data-plane failure cannot deadlock the hook
 control plane.
 
+Post-tool mutation observation MUST consume the canonical normalized tool
+actions directly from the event payload.  It MUST NOT infer mutation identity
+or changed paths from the selected allow/deny decision, =configRuleId=, or
+=fields.normalizedActions=.  Policy rules are permitted to be event-specific;
+therefore an unmatched =PostToolUse= policy decision is not evidence that the
+tool did not mutate the workspace.  The same tool-action normalizer owns both
+policy facts and the mutation projection, while policy arbitration and
+generation durability remain independent consumers.  A normalized
+=apply-patch= action with typed =session_id=, =tool_use_id=, and non-empty paths
+must submit generation admission even when no post-tool policy rule matches.
+
+The submission wire carries only =mutationId=, =projectRoot=, and normalized
+=changedPaths=.  Candidate discovery, Merkle identity calculation, provider
+projection, and generation publication are Runtime Server work; none may run
+in the short-lived Hook process before submission RPC.  The Runtime Server
+acknowledges =queued= or =coalesced= after taking ownership, then performs the
+heavy work on its Tokio background lane.  Session-local single-flight may
+coalesce duplicate callers before IPC, but it cannot own the background task.
+Likewise, generation ensure and terminal-ready wires do not accept a
+client-computed candidate: a hot ensure reads resident admission memory and a
+cold ensure or terminal gate asks the Runtime Server to discover/build.  This
+keeps Hook mutation submission independent of workspace size and prevents a
+large Merkle scan from starving the immutable Hook evaluator.
+
 An installer updates the runtime through a versioned artifact followed by an
 atomic active-binary switch.  The running hook process may finish on its pinned
 binary; the next hook event resolves the new active binary.  Installation

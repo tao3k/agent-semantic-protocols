@@ -46,6 +46,7 @@ pub struct UncheckedSearchLoopOpenEnvelopeV1 {
     authority_receipt_artifact: SearchLoopArtifactBindingV1,
     proposal_set_artifact: SearchLoopArtifactBindingV1,
     choice_panel_artifact: SearchLoopArtifactBindingV1,
+    graph_cursor_artifact: SearchLoopArtifactBindingV1,
     issued_at_unix_ms: u64,
 }
 
@@ -64,6 +65,7 @@ impl SearchLoopOpenEnvelopeV1 {
         if !is_language_id(&unchecked.language_id) {
             return Err(SearchLoopRuntimeValidationError::LanguageId);
         }
+        validate_graph_cursor_artifact(&unchecked.graph_cursor_artifact)?;
         Ok(Self(unchecked))
     }
 
@@ -103,6 +105,10 @@ impl SearchLoopOpenEnvelopeV1 {
         &self.0.choice_panel_artifact
     }
 
+    pub fn graph_cursor_artifact(&self) -> &SearchLoopArtifactBindingV1 {
+        &self.0.graph_cursor_artifact
+    }
+
     pub fn issued_at_unix_ms(&self) -> u64 {
         self.0.issued_at_unix_ms
     }
@@ -118,6 +124,7 @@ pub struct SearchLoopActivePanelBindingV1 {
     panel_id: ProtocolId,
     panel_artifact: SearchLoopArtifactBindingV1,
     proposal_set_artifact: SearchLoopArtifactBindingV1,
+    graph_cursor_artifact: SearchLoopArtifactBindingV1,
     based_on_revision: u64,
 }
 
@@ -132,6 +139,10 @@ impl SearchLoopActivePanelBindingV1 {
 
     pub fn proposal_set_artifact(&self) -> &SearchLoopArtifactBindingV1 {
         &self.proposal_set_artifact
+    }
+
+    pub fn graph_cursor_artifact(&self) -> &SearchLoopArtifactBindingV1 {
+        &self.graph_cursor_artifact
     }
 
     pub fn based_on_revision(&self) -> u64 {
@@ -267,6 +278,9 @@ impl SearchLoopRuntimeBindingV1 {
         {
             return Err(SearchLoopRuntimeValidationError::RevisionBeforeOpen);
         }
+        if let Some(panel) = &unchecked.active_panel {
+            validate_graph_cursor_artifact(&panel.graph_cursor_artifact)?;
+        }
         if unchecked
             .terminal_binding
             .as_ref()
@@ -332,6 +346,19 @@ impl SearchLoopRuntimeBindingV1 {
         self.0.terminal_binding.as_ref()
     }
 
+    pub fn validate_active_graph_cursor(
+        &self,
+        cursor: &crate::search_graph_cursor::SearchGraphCursorArtifact,
+    ) -> Result<(), SearchLoopRuntimeValidationError> {
+        if self.active_panel().is_none() {
+            return Err(SearchLoopRuntimeValidationError::ActiveGraphCursorMissing);
+        }
+        if cursor.loop_id() != self.loop_id() {
+            return Err(SearchLoopRuntimeValidationError::GraphCursorLoopMismatch);
+        }
+        Ok(())
+    }
+
     pub fn into_unchecked(self) -> UncheckedSearchLoopRuntimeBindingV1 {
         self.0
     }
@@ -347,6 +374,9 @@ pub enum SearchLoopRuntimeValidationError {
     RevisionBeforeOpen,
     DuplicateBatchId,
     DuplicateExecutionGroup,
+    GraphCursorArtifactSchema,
+    ActiveGraphCursorMissing,
+    GraphCursorLoopMismatch,
 }
 
 impl fmt::Display for SearchLoopRuntimeValidationError {
@@ -362,6 +392,15 @@ impl fmt::Display for SearchLoopRuntimeValidationError {
             }
             Self::DuplicateBatchId => "runtime binding contains a duplicate batch id",
             Self::DuplicateExecutionGroup => "runtime binding contains a duplicate execution group",
+            Self::GraphCursorArtifactSchema => {
+                "SearchLoop cursor artifact has the wrong schema identity"
+            }
+            Self::ActiveGraphCursorMissing => {
+                "terminal SearchLoop cannot admit an active graph cursor"
+            }
+            Self::GraphCursorLoopMismatch => {
+                "SearchLoop cursor artifact belongs to a different loop"
+            }
         })
     }
 }
@@ -374,6 +413,17 @@ fn is_language_id(value: &str) -> bool {
         && bytes.all(|byte| {
             byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-')
         })
+}
+
+fn validate_graph_cursor_artifact(
+    artifact: &SearchLoopArtifactBindingV1,
+) -> Result<(), SearchLoopRuntimeValidationError> {
+    if artifact.artifact_schema_id().as_str()
+        != crate::search_graph_cursor::SEARCH_GRAPH_CURSOR_SCHEMA_ID
+    {
+        return Err(SearchLoopRuntimeValidationError::GraphCursorArtifactSchema);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

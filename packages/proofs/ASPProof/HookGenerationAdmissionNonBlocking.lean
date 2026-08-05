@@ -19,6 +19,42 @@ inductive Decision where
   | deny
   deriving DecidableEq, Repr
 
+/-- Tool normalization is upstream of both policy and durability consumers. -/
+inductive NormalizedOperation where
+  | applyPatch
+  | directRead
+  | generic
+  deriving DecidableEq, Repr
+
+inductive PolicyMatch where
+  | matchedAllow
+  | matchedDeny
+  | unmatched
+  deriving DecidableEq, Repr
+
+inductive CandidateDiscoveryOwner where
+  | hookProcess
+  | runtimeServer
+  deriving DecidableEq, Repr
+
+def hookWaitsForCandidate : CandidateDiscoveryOwner → Bool
+  | .hookProcess => true
+  | .runtimeServer => false
+
+def backgroundWorkSurvivesHookExit : CandidateDiscoveryOwner → Bool
+  | .hookProcess => false
+  | .runtimeServer => true
+
+def observesWorkspaceMutation : NormalizedOperation → Bool
+  | .applyPatch => true
+  | .directRead => false
+  | .generic => false
+
+def policyDecision : PolicyMatch → Decision
+  | .matchedAllow => .allow
+  | .matchedDeny => .deny
+  | .unmatched => .allow
+
 /-- Admission is observed by the hook but cannot replace policy matching. -/
 def hookDecision (_admission : GenerationAdmission) : Action → Decision
   | .directSourceRead => .deny
@@ -68,5 +104,27 @@ theorem hook_allow_does_not_imply_generation_query_execution
     | building => rfl
     | ready => contradiction
     | failed => rfl
+
+theorem unmatched_policy_cannot_erase_normalized_apply_patch_mutation :
+    policyDecision .unmatched = .allow ∧
+      observesWorkspaceMutation .applyPatch = true := by
+  constructor <;> rfl
+
+theorem mutation_projection_is_policy_independent
+    (policy : PolicyMatch) :
+    observesWorkspaceMutation .applyPatch = true := by
+  cases policy <;> rfl
+
+theorem runtime_server_submission_does_not_wait_for_candidate :
+    hookWaitsForCandidate .runtimeServer = false := by
+  rfl
+
+theorem runtime_server_submission_survives_hook_exit :
+    backgroundWorkSurvivesHookExit .runtimeServer = true := by
+  rfl
+
+theorem client_candidate_discovery_violates_nonblocking_submission :
+    hookWaitsForCandidate .hookProcess = true := by
+  rfl
 
 end ASPProof.HookGenerationAdmissionNonBlocking

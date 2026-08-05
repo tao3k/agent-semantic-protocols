@@ -31,6 +31,26 @@ def targets : List Target :=
         `ASPProof.HookGenerationAdmissionNonBlocking.hook_allow_does_not_imply_generation_query_execution
       theoremFamily := "hook-data-plane-separation"
       rfcClauseIds := ["ASP-RFC-10.15-HOOK-GENERATION-NONBLOCKING"] }
+  , { name :=
+        `ASPProof.HookGenerationAdmissionNonBlocking.unmatched_policy_cannot_erase_normalized_apply_patch_mutation
+      theoremFamily := "post-tool-mutation-policy-independence"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-GENERATION-NONBLOCKING"] }
+  , { name :=
+        `ASPProof.HookGenerationAdmissionNonBlocking.mutation_projection_is_policy_independent
+      theoremFamily := "canonical-tool-action-mutation-projection"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-GENERATION-NONBLOCKING"] }
+  , { name :=
+        `ASPProof.HookGenerationAdmissionNonBlocking.runtime_server_submission_does_not_wait_for_candidate
+      theoremFamily := "daemon-owned-candidate-discovery"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-GENERATION-NONBLOCKING"] }
+  , { name :=
+        `ASPProof.HookGenerationAdmissionNonBlocking.runtime_server_submission_survives_hook_exit
+      theoremFamily := "daemon-owned-generation-background-work"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-GENERATION-NONBLOCKING"] }
+  , { name :=
+        `ASPProof.HookGenerationAdmissionNonBlocking.client_candidate_discovery_violates_nonblocking_submission
+      theoremFamily := "hook-client-candidate-discovery-counterexample"
+      rfcClauseIds := ["ASP-RFC-10.15-HOOK-GENERATION-NONBLOCKING"] }
   ]
 
 def auditJson : TermElabM Json :=

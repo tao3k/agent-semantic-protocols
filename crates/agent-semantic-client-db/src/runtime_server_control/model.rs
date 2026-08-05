@@ -34,6 +34,7 @@ pub struct RuntimeServerEndpoint {
     pub binding_token: String,
     pub socket_path: String,
     pub data_plane_socket_path: String,
+    pub workspace_store_path: String,
     pub status_memory_path: String,
 }
 
@@ -63,6 +64,7 @@ impl RuntimeServerEndpoint {
             || self.binding_token.is_empty()
             || self.socket_path.is_empty()
             || self.data_plane_socket_path.is_empty()
+            || self.workspace_store_path.is_empty()
             || self.status_memory_path.is_empty()
         {
             return Err("Runtime Server endpoint is incomplete".to_owned());
@@ -72,6 +74,9 @@ impl RuntimeServerEndpoint {
         }
         if !Path::new(&self.data_plane_socket_path).is_absolute() {
             return Err("Runtime Server data-plane socket path must be absolute".to_owned());
+        }
+        if !Path::new(&self.workspace_store_path).is_absolute() {
+            return Err("Runtime Server workspace store path must be absolute".to_owned());
         }
         if !Path::new(&self.status_memory_path).is_absolute() {
             return Err("Runtime Server status memory path must be absolute".to_owned());
@@ -231,6 +236,22 @@ impl RuntimeServerStatusSnapshot {
             graph_turbo_resident: self.graph_turbo_resident.clone(),
             reason: None,
         })
+    }
+
+    pub(crate) fn cached_health_receipt(&self, request_id: String) -> RuntimeServerControlReceipt {
+        RuntimeServerControlReceipt {
+            schema_id: RECEIPT_SCHEMA_ID.to_owned(),
+            schema_version: SCHEMA_VERSION.to_owned(),
+            request_id,
+            state: self.state,
+            runtime_artifact_digest: self.runtime_artifact_digest.clone(),
+            artifact_mode: self.artifact_mode.clone(),
+            artifact_catalog_digest: self.artifact_catalog_digest.clone(),
+            transport_contract_digest: self.transport_contract_digest.clone(),
+            workspace_entry_count: self.workspace_entry_count,
+            graph_turbo_resident: self.graph_turbo_resident.clone(),
+            reason: None,
+        }
     }
 }
 

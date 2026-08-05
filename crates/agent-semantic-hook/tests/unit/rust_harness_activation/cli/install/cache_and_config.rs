@@ -21,6 +21,7 @@ fn write_managed_config_sidecar(path: &std::path::Path, bytes: &[u8]) {
 
 #[test]
 fn cli_install_uses_state_core_home_over_prj_cache_home() {
+    let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-prj-cache-home");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
@@ -93,6 +94,7 @@ fn collect_activation_paths(dir: &std::path::Path, matches: &mut Vec<std::path::
 
 #[test]
 fn cli_install_refreshes_drifted_managed_client_hook_config() {
+    let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-preserves-client-config");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
@@ -141,6 +143,7 @@ decision = "deny"
 
 #[test]
 fn cli_install_refreshes_legacy_managed_hook_config() {
+    let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-preserves-user-hook-config");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
@@ -206,6 +209,7 @@ argvSourceGlobAny = [
 
 #[test]
 fn cli_install_preserves_top_level_flags_and_writes_project_plugin_entries() {
+    let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-unified-exec-feature");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");

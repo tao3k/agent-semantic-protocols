@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
@@ -17,7 +18,7 @@ const PAYLOAD_LENGTH_OFFSET: usize = 8;
 const PAYLOAD_OFFSET: usize = 16;
 
 static STATUS_MEMORY_READERS: OnceCell<
-    RwLock<HashMap<String, Arc<OnceCell<Arc<RuntimeServerStatusMemoryReader>>>>>,
+    tokio::sync::RwLock<HashMap<String, Arc<RuntimeServerStatusMemoryReader>>>,
 > = OnceCell::const_new();
 
 pub(crate) struct RuntimeServerStatusMemoryWriter {
@@ -30,9 +31,25 @@ pub(crate) struct RuntimeServerStatusMemoryWriter {
 
 struct RuntimeServerStatusMemoryReader {
     mapping: Mmap,
+    file_identity: StatusMemoryFileIdentity,
     cached_snapshot: RwLock<Option<(u64, Arc<RuntimeServerStatusSnapshot>)>>,
     snapshot_decode_count: AtomicU64,
     snapshot_cache_hit_count: AtomicU64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct StatusMemoryFileIdentity {
+    device: u64,
+    inode: u64,
+}
+
+impl StatusMemoryFileIdentity {
+    fn from_metadata(metadata: &std::fs::Metadata) -> Self {
+        Self {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -116,12 +133,17 @@ impl RuntimeServerStatusMemoryWriter {
 }
 
 impl RuntimeServerStatusMemoryReader {
-    async fn open(endpoint: &RuntimeServerEndpoint) -> Result<Self, String> {
+    async fn open_path(status_memory_path: &std::path::Path) -> Result<Self, String> {
         let file = tokio::fs::OpenOptions::new()
             .read(true)
-            .open(&endpoint.status_memory_path)
+            .open(status_memory_path)
             .await
             .map_err(|error| format!("failed to open Runtime Server status memory: {error}"))?;
+        let metadata = file
+            .metadata()
+            .await
+            .map_err(|error| format!("failed to inspect Runtime Server status memory: {error}"))?;
+        let file_identity = StatusMemoryFileIdentity::from_metadata(&metadata);
         let file = file.into_std().await;
         // SAFETY: the elected Runtime Server owns the fixed-size backing file and
         // publishes payloads under the generation seqlock.
@@ -132,6 +154,7 @@ impl RuntimeServerStatusMemoryReader {
         }
         Ok(Self {
             mapping,
+            file_identity,
             cached_snapshot: RwLock::new(None),
             snapshot_decode_count: AtomicU64::new(0),
             snapshot_cache_hit_count: AtomicU64::new(0),
@@ -223,46 +246,86 @@ pub fn runtime_server_status_memory_metrics(
 ) -> Option<RuntimeServerStatusMemoryMetrics> {
     let readers = STATUS_MEMORY_READERS.get()?;
     let reader_slot = readers
-        .read()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .try_read()
+        .ok()?
         .get(&endpoint.status_memory_path)
         .cloned()?;
-    reader_slot.get().map(|reader| reader.metrics())
+    Some(reader_slot.metrics())
 }
 
 async fn runtime_server_status_memory_reader(
     endpoint: &RuntimeServerEndpoint,
 ) -> Result<Arc<RuntimeServerStatusMemoryReader>, String> {
+    runtime_server_status_memory_reader_at(&endpoint.status_memory_path).await
+}
+
+async fn cached_runtime_server_status_memory_reader(
+    endpoint: &RuntimeServerEndpoint,
+) -> Option<Arc<RuntimeServerStatusMemoryReader>> {
+    STATUS_MEMORY_READERS
+        .get()?
+        .read()
+        .await
+        .get(&endpoint.status_memory_path)
+        .cloned()
+}
+
+async fn runtime_server_status_memory_reader_at(
+    status_memory_path: &str,
+) -> Result<Arc<RuntimeServerStatusMemoryReader>, String> {
+    let status_memory_path = std::path::Path::new(status_memory_path);
     let readers = STATUS_MEMORY_READERS
-        .get_or_init(|| async { RwLock::new(HashMap::new()) })
+        .get_or_init(|| async { tokio::sync::RwLock::new(HashMap::new()) })
         .await;
-    let reader_slot = {
-        let cached = readers
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        cached.get(&endpoint.status_memory_path).cloned()
-    };
-    let reader_slot = match reader_slot {
-        Some(reader_slot) => reader_slot,
-        None => {
-            let mut cached = readers
-                .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            Arc::clone(
-                cached
-                    .entry(endpoint.status_memory_path.clone())
-                    .or_insert_with(|| Arc::new(OnceCell::const_new())),
-            )
+    let cache_key = status_memory_path.to_string_lossy().into_owned();
+    loop {
+        let live_identity = status_memory_file_identity(status_memory_path).await?;
+        if let Some(reader) = {
+            let cached = readers.read().await;
+            cached
+                .get(&cache_key)
+                .filter(|reader| reader.file_identity == live_identity)
+                .cloned()
+        } {
+            return Ok(reader);
         }
-    };
-    let reader = reader_slot
-        .get_or_try_init(|| async {
-            RuntimeServerStatusMemoryReader::open(endpoint)
-                .await
-                .map(Arc::new)
-        })
-        .await?;
-    Ok(Arc::clone(reader))
+
+        let candidate =
+            Arc::new(RuntimeServerStatusMemoryReader::open_path(status_memory_path).await?);
+        if candidate.file_identity != status_memory_file_identity(status_memory_path).await? {
+            continue;
+        }
+        let mut cached = readers.write().await;
+        if let Some(reader) = cached
+            .get(&cache_key)
+            .filter(|reader| reader.file_identity == candidate.file_identity)
+        {
+            return Ok(Arc::clone(reader));
+        }
+        cached.insert(cache_key.clone(), Arc::clone(&candidate));
+        return Ok(candidate);
+    }
+}
+
+async fn status_memory_file_identity(
+    status_memory_path: &std::path::Path,
+) -> Result<StatusMemoryFileIdentity, String> {
+    tokio::fs::metadata(status_memory_path)
+        .await
+        .map(|metadata| StatusMemoryFileIdentity::from_metadata(&metadata))
+        .map_err(|error| format!("failed to inspect Runtime Server status memory: {error}"))
+}
+
+pub async fn read_runtime_server_cached_health_status(
+    status_memory_path: &std::path::Path,
+    request_id: String,
+) -> Result<RuntimeServerControlReceipt, String> {
+    let status_memory_path = status_memory_path
+        .to_str()
+        .ok_or_else(|| "Runtime Server status memory path is not UTF-8".to_owned())?;
+    let reader = runtime_server_status_memory_reader_at(status_memory_path).await?;
+    let snapshot = reader.read()?;
+    Ok(snapshot.cached_health_receipt(request_id))
 }
 
 pub async fn prewarm_runtime_server_status_memory(
@@ -277,6 +340,11 @@ pub(crate) async fn read_runtime_server_status(
     endpoint: &RuntimeServerEndpoint,
     request_id: String,
 ) -> Result<RuntimeServerControlReceipt, String> {
+    if let Some(reader) = cached_runtime_server_status_memory_reader(endpoint).await
+        && let Ok(receipt) = reader.read()?.receipt(request_id.clone(), endpoint)
+    {
+        return Ok(receipt);
+    }
     let reader = runtime_server_status_memory_reader(endpoint).await?;
     let snapshot = reader.read()?;
     snapshot.receipt(request_id, endpoint)
@@ -288,3 +356,7 @@ fn generation(mapping: &[u8]) -> &AtomicU64 {
     // AtomicU64, and the mapping outlives the returned reference.
     unsafe { &*pointer }
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_control/status_memory.rs"]
+mod tests;

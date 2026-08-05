@@ -7,11 +7,11 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 
-pub(super) struct LoadedHookConfig {
-    pub(super) config: ClientHookConfig,
+pub(crate) struct LoadedHookConfig {
+    pub(crate) config: Arc<ClientHookConfig>,
     pub(super) asp_session_policy: super::hook_runtime_agent_session::AspSessionPolicy,
     pub(super) repair_reasons: Vec<String>,
-    pub(super) auto_refresh: Option<String>,
+    pub(crate) auto_refresh: Option<String>,
 }
 
 static COMPILED_CONFIG_GENERATIONS: OnceLock<Mutex<HashMap<String, Arc<LoadedHookConfig>>>> =
@@ -58,25 +58,37 @@ fn compiled_generation_key(
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-pub(super) fn load_fresh_hook_config(
+pub(crate) fn load_fresh_hook_config(
     config_path: &Path,
     project_root: &Path,
     runtime: &HookRuntime,
 ) -> Result<(Arc<LoadedHookConfig>, &'static str), String> {
     let initial_key = compiled_generation_key(config_path, project_root, runtime)?;
     let cache = COMPILED_CONFIG_GENERATIONS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut cache = cache
-        .lock()
-        .map_err(|_| "compiled hook generation cache is poisoned".to_owned())?;
-    if let Some(generation) = cache.get(&initial_key) {
-        return Ok((Arc::clone(generation), "resident-hit"));
+    {
+        let cache = cache
+            .lock()
+            .map_err(|_| "compiled hook generation cache is poisoned".to_owned())?;
+        if let Some(generation) = cache.get(&initial_key) {
+            return Ok((Arc::clone(generation), "resident-hit"));
+        }
     }
+
+    // Config compilation may atomically refresh managed projections and can
+    // re-enter freshness validation.  Never retain the process-wide cache
+    // mutex across that work: the cache protects publication, not compilation.
     let generation = Arc::new(load_fresh_hook_config_uncached(
         config_path,
         project_root,
         runtime,
     )?);
     let published_key = compiled_generation_key(config_path, project_root, runtime)?;
+    let mut cache = cache
+        .lock()
+        .map_err(|_| "compiled hook generation cache is poisoned".to_owned())?;
+    if let Some(published) = cache.get(&published_key) {
+        return Ok((Arc::clone(published), "resident-hit"));
+    }
     if cache.len() >= MAX_COMPILED_CONFIG_GENERATIONS {
         let evictable = cache
             .iter()
@@ -170,7 +182,7 @@ fn load_fresh_hook_config_uncached(
         )
     })?;
     Ok(LoadedHookConfig {
-        config,
+        config: Arc::new(config),
         asp_session_policy,
         repair_reasons,
         auto_refresh,
@@ -194,7 +206,7 @@ pub(super) fn record_language_provider_projection_repair(
     }
 }
 
-pub(super) fn apply_language_provider_projection(
+pub(crate) fn apply_language_provider_projection(
     config: &ClientHookConfig,
     runtime: &mut HookRuntime,
     config_path: &Path,

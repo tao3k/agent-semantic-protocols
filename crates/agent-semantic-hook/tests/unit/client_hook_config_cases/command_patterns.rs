@@ -249,7 +249,7 @@ fn configured_git_diff_routes_to_testing_resident() {
             "session",
             "bootstrap",
             "--name",
-            "asp-testing",
+            "asp_testing",
             "--receipt-kind",
             receipt_kind,
             "--command-json",
@@ -299,7 +299,7 @@ fn configured_git_diff_routes_to_testing_resident() {
         .expect("render configured resident deny");
     assert_eq!(
         rendered["hookSpecificOutput"]["permissionDecisionReason"],
-        "asp agent session bootstrap --name asp-testing --receipt-kind \
+        "asp agent session bootstrap --name asp_testing --receipt-kind \
 asp-testing-execution-v1 --command-json '[\"/bin/sh\",\"-c\",\"git diff --check\"]'"
     );
     assert!(

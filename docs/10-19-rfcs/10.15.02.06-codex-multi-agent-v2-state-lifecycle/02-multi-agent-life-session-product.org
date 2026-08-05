@@ -1,0 +1,53 @@
+#+TITLE: Rust refinement of Multi-agent Life Session
+
+* Required Rust types
+
+Rust must expose one aggregate rooted at the ASP root session:
+
+#+begin_example
+MultiAgentLifeSession
+  root_session_id
+  resident_slots: RouteKey -> ResidentSlot
+  temporary_agents: AgentInstanceId -> LifecycleProduct
+
+ResidentProfile
+  route_key
+  session_name
+  platform_host_agent_name
+
+ResidentSlot
+  profile
+  occupancy: Vacant | Incumbent | Replacement
+#+end_example
+
+The three identity fields must be distinct newtypes.  Registry lookup uses
+=session_name=; configuration/policy uses =route_key=; native dispatch uses
+=platform_host_agent_name=.  No =unknown-resident-agent-kind=, hard-coded name
+mapping, legacy menu choice, or string fallback is admitted.
+
+* Configuration authority
+
+Rust must not define a second list of agents or platform fields.  The authority
+chain is:
+
+#+begin_example
+Codex agents-config-schema.json
+  -> agents/*_codex.toml
+Claude agent frontmatter contract
+  -> agents/*_claude.md
+  -> ASP AgentsConfigRegistry
+  -> immutable Hook agent-route projection
+#+end_example
+
+=agents/config.toml= only relates ASP route/session/lifetime/roles to explicit
+platform projection paths.  The loader reads every referenced platform file,
+validates its platform schema, and checks that the projected host name matches
+the typed registry identity.  Hook placeholders and resident entries are
+generated from that receipt; their names must never be literal Rust constants
+or manually duplicated template tables.
+
+* Boundary
+
+CLI and Hook are adapters.  They submit typed commands to the Runtime Server
+owner and render typed receipts.  They do not open the registry directly and do
+not derive authority from process health.

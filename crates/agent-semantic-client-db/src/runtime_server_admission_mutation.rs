@@ -97,23 +97,41 @@ impl WorkspaceGenerationMutationAdmissionReceipt {
 }
 
 impl WorkspaceGenerationAdmission {
-    pub async fn admit_changed_paths(
+    pub async fn admit_observed_mutation(
         &self,
         mutation_id: impl Into<String>,
-        origin_workspace_identity: impl Into<String>,
+        workspace_identity: impl Into<String>,
         project_root: PathBuf,
         changed_paths: Vec<PathBuf>,
+        candidate: super::WorkspaceGenerationCandidateIdentity,
     ) -> Result<WorkspaceGenerationMutationAdmissionReceipt, String> {
         let mutation_id = mutation_id.into();
         if mutation_id.trim().is_empty() {
             return Err("workspace mutation admission id must be non-empty".to_owned());
         }
-        let origin_workspace_identity = origin_workspace_identity.into();
-        if origin_workspace_identity.trim().is_empty() {
+        let workspace_identity = workspace_identity.into();
+        if workspace_identity.trim().is_empty() {
             return Err("workspace mutation admission identity must be non-empty".to_owned());
         }
         if !project_root.is_absolute() {
             return Err("workspace mutation admission root must be absolute".to_owned());
+        }
+        if let Some(existing) = self.catalog.as_ref().and_then(|catalog| {
+            catalog
+                .snapshot()
+                .iter()
+                .find(|entry| {
+                    entry.workspace_identity == workspace_identity
+                        && entry.project_root != project_root
+                })
+                .cloned()
+        }) {
+            return Err(format!(
+                "workspace mutation admission identity already owns a different resident root: workspaceIdentity={} catalogProjectRoot={} requestedProjectRoot={}",
+                workspace_identity,
+                existing.project_root.display(),
+                project_root.display(),
+            ));
         }
         let changed_paths = changed_paths
             .into_iter()
@@ -139,53 +157,22 @@ impl WorkspaceGenerationAdmission {
         if changed_paths.is_empty() {
             return Err("workspace mutation admission requires changed paths".to_owned());
         }
-
-        self.admit_normalized_changed_paths(
-            mutation_id,
-            origin_workspace_identity,
-            project_root,
-            changed_paths,
-        )
-        .await
-    }
-
-    async fn admit_normalized_changed_paths(
-        &self,
-        mutation_id: String,
-        origin_workspace_identity: String,
-        project_root: PathBuf,
-        changed_paths: std::collections::BTreeSet<PathBuf>,
-    ) -> Result<WorkspaceGenerationMutationAdmissionReceipt, String> {
-        let changed_paths = Arc::new(changed_paths);
         let mut catalog_entries = match &self.catalog {
-            Some(catalog) => catalog.snapshot().iter().cloned().collect(),
+            Some(catalog) => catalog.snapshot().iter().cloned().collect::<Vec<_>>(),
             None => Vec::new(),
         };
-        if let Some(existing) = catalog_entries.iter().find(|entry| {
-            entry.workspace_identity == origin_workspace_identity
-                && entry.project_root != project_root
-        }) {
-            return Err(format!(
-                "workspace mutation admission identity already owns a different resident root: workspaceIdentity={} catalogProjectRoot={} requestedProjectRoot={}",
-                origin_workspace_identity,
-                existing.project_root.display(),
-                project_root.display()
-            ));
-        }
         if !catalog_entries.iter().any(|entry| {
-            entry.workspace_identity == origin_workspace_identity
-                && entry.project_root == project_root
+            entry.workspace_identity == workspace_identity && entry.project_root == project_root
         }) {
             catalog_entries.push(
                 crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalogEntry {
-                    workspace_identity: origin_workspace_identity.clone(),
+                    workspace_identity: workspace_identity.clone(),
                     project_root: project_root.clone(),
                 },
             );
         }
-
         let mut affected = std::collections::BTreeMap::<String, PathBuf>::new();
-        for changed_path in changed_paths.iter() {
+        for changed_path in &changed_paths {
             let matched = catalog_entries
                 .iter()
                 .filter(|entry| changed_path.starts_with(&entry.project_root))
@@ -193,67 +180,67 @@ impl WorkspaceGenerationAdmission {
                 .ok_or_else(|| {
                     format!(
                         "changed path is outside the resident workspace catalog: {}",
-                        changed_path.display()
+                        changed_path.display(),
                     )
                 })?;
-            if let Some(existing_root) = affected.insert(
+            affected.insert(
                 matched.workspace_identity.clone(),
                 matched.project_root.clone(),
-            ) && existing_root != matched.project_root
-            {
-                return Err(format!(
-                    "workspace identity maps to multiple project roots: workspaceIdentity={} left={} right={}",
-                    matched.workspace_identity,
-                    existing_root.display(),
-                    matched.project_root.display()
-                ));
-            }
+            );
         }
-
-        let mut receipts = if affected.len() == 1 {
-            let (workspace_identity, workspace_root) = affected
-                .pop_first()
-                .expect("single affected workspace must exist");
-            vec![
-                self.admit_mutation(
-                    mutation_id.clone(),
-                    workspace_identity,
-                    workspace_root,
-                    Arc::clone(&changed_paths),
-                )
-                .await?,
-            ]
-        } else {
-            let mut tasks = tokio::task::JoinSet::new();
-            for (workspace_identity, workspace_root) in affected {
-                let admission = self.clone();
-                let mutation_id = mutation_id.clone();
-                let changed_paths = Arc::clone(&changed_paths);
-                tasks.spawn(async move {
-                    admission
-                        .admit_mutation(
-                            mutation_id,
-                            workspace_identity,
-                            workspace_root,
-                            changed_paths,
-                        )
-                        .await
-                });
-            }
-            let mut receipts = Vec::new();
-            while let Some(joined) = tasks.join_next().await {
-                receipts.push(joined.map_err(|error| {
-                    format!("workspace mutation admission task failed: {error}")
-                })??);
-            }
-            receipts
-        };
+        let changed_path_count = changed_paths.len();
+        let changed_paths = Arc::new(changed_paths);
+        let mut tasks = tokio::task::JoinSet::new();
+        for (affected_identity, affected_root) in affected {
+            let affected_candidate = if affected_identity == workspace_identity
+                && affected_root == project_root
+            {
+                candidate.clone()
+            } else {
+                let key = WorkspaceGenerationAdmissionKey {
+                    workspace_identity: affected_identity.clone(),
+                    project_root: affected_root.clone(),
+                };
+                let entry = self.entries.get(&key).ok_or_else(|| {
+                    format!(
+                        "workspace mutation fanout requires resident candidate evidence: workspaceIdentity={} projectRoot={}",
+                        affected_identity,
+                        affected_root.display(),
+                    )
+                })?;
+                let observed = entry.observed();
+                super::WorkspaceGenerationCandidateIdentity {
+                    candidate_generation: observed.candidate_generation,
+                    policy_overlay_digest: observed.policy_overlay_digest,
+                }
+            };
+            let admission = self.clone();
+            let mutation_id = mutation_id.clone();
+            let changed_paths = Arc::clone(&changed_paths);
+            tasks.spawn(async move {
+                admission
+                    .admit_mutation_candidate(
+                        mutation_id,
+                        affected_identity,
+                        affected_root,
+                        changed_paths,
+                        affected_candidate,
+                    )
+                    .await
+            });
+        }
+        let mut receipts = Vec::new();
+        while let Some(joined) = tasks.join_next().await {
+            receipts.push(
+                joined.map_err(|error| format!("workspace mutation task failed: {error}"))??,
+            );
+        }
         receipts.sort_by(|left, right| left.workspace_identity.cmp(&right.workspace_identity));
         let receipt = WorkspaceGenerationMutationAdmissionReceipt {
             schema_id: WORKSPACE_GENERATION_MUTATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
             schema_version: "1".to_owned(),
             mutation_id,
-            changed_path_count: changed_paths.len(),
+            changed_path_count,
             affected_workspace_count: receipts.len(),
             receipts,
         };
@@ -267,6 +254,7 @@ impl WorkspaceGenerationAdmission {
         mutation_id: impl Into<String>,
         workspace_identity: impl Into<String>,
         project_root: PathBuf,
+        candidate: super::WorkspaceGenerationCandidateIdentity,
     ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
         let mutation_id = mutation_id.into();
         if mutation_id.trim().is_empty() {
@@ -279,28 +267,11 @@ impl WorkspaceGenerationAdmission {
         if !project_root.is_absolute() {
             return Err("workspace cache rebuild root must be absolute".to_owned());
         }
-        self.admit_mutation(
-            mutation_id,
-            workspace_identity,
-            project_root,
-            Arc::new(std::collections::BTreeSet::new()),
-        )
-        .await
-    }
-
-    async fn admit_mutation(
-        &self,
-        mutation_id: String,
-        workspace_identity: String,
-        project_root: PathBuf,
-        changed_paths: Arc<std::collections::BTreeSet<PathBuf>>,
-    ) -> Result<WorkspaceGenerationAdmissionReceipt, String> {
-        let candidate = super::discover_workspace_generation_candidate(&project_root).await?;
         self.admit_mutation_candidate(
             mutation_id,
             workspace_identity,
             project_root,
-            changed_paths,
+            Arc::new(std::collections::BTreeSet::new()),
             candidate,
         )
         .await
@@ -385,8 +356,26 @@ impl WorkspaceGenerationAdmission {
             return Ok(entry.observed());
         }
 
-        let transition = entry.transition.lock().await;
-        let mut mutations = entry.mutations.lock().await;
+        let transition = loop {
+            match entry.transition.try_lock() {
+                Ok(transition) => break transition,
+                Err(_) => {
+                    tokio::task::yield_now().await;
+                    if let Some(active) = entry.active_mutation.borrow().as_ref()
+                        && active.mutation_id == mutation_id
+                    {
+                        if active.changed_paths.as_ref() != changed_paths.as_ref()
+                            || active.candidate != candidate
+                        {
+                            return Err(format!(
+                                "workspace mutation identity was reused with different candidate evidence: mutationId={mutation_id}"
+                            ));
+                        }
+                        return Ok(entry.observed());
+                    }
+                }
+            }
+        };
         if let Some(active) = entry.active_mutation.borrow().as_ref()
             && active.mutation_id == mutation_id
         {
@@ -399,6 +388,43 @@ impl WorkspaceGenerationAdmission {
             }
             return Ok(entry.observed());
         }
+        if !entry.building.load(Ordering::Acquire) {
+            entry.building.store(true, Ordering::Release);
+            let attempt = entry.attempt.fetch_add(1, Ordering::AcqRel) + 1;
+            let accepted = WorkspaceGenerationAdmissionReceipt {
+                schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
+                schema_version: "1".to_owned(),
+                workspace_identity: workspace_identity.clone(),
+                candidate_generation: candidate.candidate_generation.clone(),
+                policy_overlay_digest: candidate.policy_overlay_digest.clone(),
+                state: WorkspaceGenerationAdmissionState::Building,
+                accepted: true,
+                attempt,
+                commit: None,
+                error: None,
+            };
+            accepted.validate()?;
+            entry.receipt.send_replace(accepted.clone());
+            entry
+                .active_mutation
+                .send_replace(Some(super::WorkspaceMutationIdentity {
+                    mutation_id,
+                    changed_paths,
+                    candidate: candidate.clone(),
+                }));
+            drop(transition);
+            self.spawn_build(
+                entry,
+                workspace_identity,
+                project_root,
+                candidate,
+                attempt,
+                super::WorkspaceGenerationBuildMode::RebuildAfterMutation,
+            );
+            return Ok(accepted);
+        }
+
+        let mut mutations = entry.mutations.lock().await;
         if let Some(pending) = mutations
             .pending
             .iter()
@@ -439,39 +465,6 @@ impl WorkspaceGenerationAdmission {
             return Ok(queued);
         }
 
-        entry.building.store(true, Ordering::Release);
-        let attempt = entry.attempt.fetch_add(1, Ordering::AcqRel) + 1;
-        entry
-            .active_mutation
-            .send_replace(Some(super::WorkspaceMutationIdentity {
-                mutation_id,
-                changed_paths,
-                candidate: candidate.clone(),
-            }));
-        let accepted = WorkspaceGenerationAdmissionReceipt {
-            schema_id: WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID.to_owned(),
-            schema_version: "1".to_owned(),
-            workspace_identity: workspace_identity.clone(),
-            candidate_generation: candidate.candidate_generation.clone(),
-            policy_overlay_digest: candidate.policy_overlay_digest.clone(),
-            state: WorkspaceGenerationAdmissionState::Building,
-            accepted: true,
-            attempt,
-            commit: None,
-            error: None,
-        };
-        accepted.validate()?;
-        entry.receipt.send_replace(accepted.clone());
-        drop(mutations);
-        drop(transition);
-        self.spawn_build(
-            entry,
-            workspace_identity,
-            project_root,
-            candidate,
-            attempt,
-            super::WorkspaceGenerationBuildMode::RebuildAfterMutation,
-        );
-        Ok(accepted)
+        unreachable!("building mutation admission must queue or coalesce before this point")
     }
 }

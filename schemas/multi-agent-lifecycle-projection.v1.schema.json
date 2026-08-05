@@ -10,6 +10,7 @@
     "materialization",
     "workspaceServer",
     "rootSessionId",
+    "rootTask",
     "agents",
     "turns",
     "delegations"
@@ -24,9 +25,9 @@
       "$ref": "agent-session-lifecycle-projection.v1.schema.json#/properties/workspaceServer"
     },
     "rootSessionId": { "type": "string", "minLength": 1 },
+    "rootTask": { "$ref": "#/$defs/rootTask" },
     "agents": {
       "type": "array",
-      "minItems": 1,
       "items": { "$ref": "#/$defs/agentNode" }
     },
     "turns": {
@@ -39,6 +40,15 @@
     }
   },
   "$defs": {
+    "rootTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "evidenceRef"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "evidenceRef": { "type": ["string", "null"], "minLength": 1 }
+      }
+    },
     "materialization": {
       "type": "object",
       "additionalProperties": false,

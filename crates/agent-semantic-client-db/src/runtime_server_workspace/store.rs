@@ -8,8 +8,12 @@ pub struct RuntimeServerWorkspaceStore {
 
 impl RuntimeServerWorkspaceStore {
     pub fn for_runtime_base(runtime_base: &Path) -> Self {
+        Self::for_root(runtime_base.join("workspaces"))
+    }
+
+    pub fn for_root(root: PathBuf) -> Self {
         Self {
-            root: runtime_base.join("workspaces"),
+            root,
             prepared: std::sync::Arc::new(tokio::sync::OnceCell::new()),
         }
     }
@@ -33,6 +37,14 @@ impl RuntimeServerWorkspaceStore {
             .await
             .map(|_| ())
     }
+}
+
+pub async fn prepare_runtime_server_workspace_store_at_root(
+    root: PathBuf,
+) -> Result<RuntimeServerWorkspaceStore, String> {
+    let store = RuntimeServerWorkspaceStore::for_root(root);
+    store.prepare().await?;
+    Ok(store)
 }
 
 pub async fn prepare_runtime_server_workspace_store(

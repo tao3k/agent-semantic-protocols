@@ -78,6 +78,27 @@ observe evidence state
 
 The loop state, not a command transcript, is the durable protocol object.
 
+** Typed topology before compact rendering
+
+Every SearchLoop entry path, including a user-supplied exact selector, MUST
+first construct the same typed graph facts consumed by Graph Turbo: stable
+nodes, directed edges, and typed action-frontier entries.  A selector seed is
+therefore not a second text protocol.  It contributes an intent node, a
+language/provider node, and—only after canonical selector validation—owner and
+item nodes with =targets_item=, =serves_owner=, and =owns_item= relations.
+Executable actions reference those graph identities; presentation ordinals
+such as =A1= are not durable node identities.
+
+Compact Render is a projection over that typed topology.  It MAY preserve
+small human-facing lines such as =ownerSeed=, =actionFrontier=, and
+=recommendedNext=, but it MUST NOT parse the selector again, invent another
+owner/symbol fact, or choose an action independently.  A malformed or
+cross-language selector may retain an unresolved input node for explanation,
+but it MUST produce no owner/item relation and no executable exact-query
+action.  This separation is the prerequisite for a later session cursor to
+jump directly to an already materialized node without replaying the complete
+SearchLoop.
+
 * Architecture layers
 
 ** 10.05.00 Foundations and invariants
@@ -136,6 +157,33 @@ state whether process-group isolation was enforced and whether descendant
 cleanup was required, so a successful provider leader cannot hide an orphan
 binary that ASP had to terminate.
 
+*** Provider workspace artifact admission
+
+Development-provider installation MUST be driven by the selected provider's
+registered =provider-workspace-install= descriptor.  The shared provider
+manifest stores only the repository-relative descriptor reference; build
+commands, environment, artifact root, entrypoint, and optional launch adapter
+remain provider-owned.  ASP MUST NOT duplicate those language-specific facts
+in the root CLI or Justfile.
+
+ASP owns execution of the registered workspace build through the Provider
+Execution Gate and admission of the resulting artifact.  A directory artifact
+MUST be captured as one immutable, digest-addressed tree, preserving the
+relative layout required by its entrypoint (for example =bin/= and =lib/=).
+Publishing only the entrypoint file from a declared directory artifact is an
+identity error.  The provider install receipt MUST bind the tree digest, leaf
+count, immutable artifact entrypoint, installed launcher identity, and final
+execution-command digest.
+
+The PATH-visible provider entry is an ASP-owned atomic launcher/profile.  It
+MAY execute a provider-declared launch program or the immutable artifact
+entrypoint directly, but it MUST resolve all artifact-relative programs and
+arguments against the admitted tree.  Runtime reconciliation MUST treat a
+receipt-covered launcher as current and MUST NOT collapse the tree back into a
+single-file installation.  Descriptor identity or path escape failures are
+typed provider-local admission failures; they never authorize falling back to
+the root development installer.
+
 ** 10.05.10 Interactive SearchLoop
 
 Owns:
@@ -178,6 +226,17 @@ be base64-expanded into a generation JSON document.  One batch response
 contains owners, canonical item identities, selectors, relations, and the
 source leaf digests from which they were parsed.  Projections for unchanged
 owners are reused from the previous complete generation by digest identity.
+
+ASP MUST partition generation projection into ordered, short-lived provider
+processes before writing a batch frame.  The default admission bound is at most
+32 owners and at most 4 MiB of aggregate owner source bytes per process; an
+individual owner that exceeds the byte bound is admitted alone and remains
+subject to the Provider Execution Gate.  ASP consumes and validates each batch
+response before starting the next batch, so a provider never retains the ASTs
+or response graph for a complete large workspace.  Batch partitioning is
+language-neutral ASP policy: a Scheme, Python, Rust, or future provider parses
+only the bounded owner bytes supplied to that invocation and MUST NOT retain a
+resident workspace index after exit.
 
 The per-workspace Tokio writer lane builds a complete next generation off the
 read path.  Owner bytes, canonical selectors, relations, moves, tombstones,
@@ -462,6 +521,17 @@ an owner command for a path already proven absent.  A =selector-stale= receipt
 MUST recommend symbol-oriented SearchLoop discovery in the active generation;
 it MUST NOT recommend owner-items for the absent path.
 
+The owner-items search surface may still observe =owner-missing= before an
+exact selector exists.  That search failure is not an exact-selector result and
+MUST be projected as the bounded
+=agent.semantic-protocols.search-owner-missing-topology= packet.  The packet
+binds the requested language, active generation and root digests, missing owner,
+provider-resolved ProjectResolution/source-scope evidence, and one typed search
+action.  It MUST NOT paste source, invoke a provider, rescan the workspace, or
+repeat the failed owner-items command.  Its project and source-scope nodes come
+from the admitted Runtime Server generation; native candidates do not define
+workspace membership.
+
 Static hook activation declares provider capabilities only.  Git candidate
 identity, package-manager project resolution, source scope, selector inventory,
 and exact projection are one Runtime Server generation transaction.  No CLI,
@@ -491,6 +561,39 @@ validated =ready= receipt.  =building= and =failed= remain fail-closed.  This
 ordering is owned by the Hook/Runtime Server contract, not by a retry loop in
 the exact-query CLI.
 
+The foreground admission operation and the explicit-query gate are distinct
+typed operations.  The former may return =building= immediately after the
+resident writer lane accepts work.  The latter MUST ask the Runtime Server to
+observe that same single-flight attempt through its terminal transition and
+MUST return only a validated published-generation readiness receipt.  An
+admission-catalog =ready= entry alone is insufficient after daemon restart:
+the gate must also prove that the canonical generation lease and Memory Search
+pointer are open in the current Runtime Server process, restoring the committed
+immutable generation when the persistent receipt is valid.  Pointer existence,
+resident generation identity, or a matching generation digest alone is not a
+durability proof.  Reuse requires a successfully decoded current-schema pointer
+whose workspace identity and generation digest equal the resident generation.
+An incompatible pointer MUST be republished through the per-workspace writer
+lane; the old generation remains readable until =DurableReady= commits the new
+pointer.  A terminal readiness receipt MUST NOT be exposed as durable before
+that commit.  It MUST NOT poll from the CLI,
+create another build, infer readiness from a timeout, or translate =building=
+into success.  A failed terminal receipt or transport error MUST make the
+explicit ASP =pre-tool= decision fail closed; recording a non-blocking
+diagnostic while allowing the command violates the generation gate.
+
+Once the Hook releases the command, exact projection remains a read-only data
+plane operation: shared Memory Search authority is consulted without socket,
+filesystem, Turso, provider, or scheduler work, followed by owner freshness
+and selector projection inside the admitted immutable generation.  Search and
+query adapters MUST NOT call =ensure-runtime-owner=; filesystem observation,
+provider projection, and owner overlay publication are watcher/writer-lane
+operations.  A read encountering an unadmitted or incomplete generation fails
+closed and MUST never manufacture one.  Thus the only legal cold order is
+=Hook ensure-terminal-ready -> writer publication -> exact projection=, while
+the legal warm order reuses the already published terminal receipt and mapped
+generation.
+
 Explicit admission and observation are different operations.  A later
 =admit-runtime-generation= for a =ready= workspace MUST be accepted so the
 incremental builder can detect a Git/package-manager generation change and
@@ -514,6 +617,8 @@ The Lean model under =packages/proofs= must establish at least:
 - an active owner with an absent selector cannot be classified as stale-owner;
 - publication changes the visible selector set atomically with its generation;
 - a =building= or =failed= admission cannot release an exact query; and
+- resident readiness plus pointer existence cannot release a query unless the
+  pointer is current-schema and generation-equal to the resident generation;
 - recovery from a stale selector never reuses the absent owner as authority.
 
 Future proof work must evaluate not only safety but search efficiency:

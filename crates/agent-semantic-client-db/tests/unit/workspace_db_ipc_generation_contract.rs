@@ -1,4 +1,4 @@
-use agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcOperation;
+use agent_semantic_client_db::workspace_db_ipc::{WorkspaceDbIpcOperation, WorkspaceDbIpcResult};
 
 fn candidate_identity()
 -> agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCandidateIdentity {
@@ -37,11 +37,30 @@ fn runtime_generation_admission_ensure_and_locator_repair_have_distinct_typed_wi
         candidate: candidate_identity(),
     })
     .expect("encode runtime generation admission");
+    let submit = serde_json::to_value(WorkspaceDbIpcOperation::SubmitRuntimeGenerationMutation {
+        mutation_id: "session-root/tool-use-1".to_owned(),
+        project_root: "/workspace".to_owned(),
+        changed_paths: vec!["/workspace/src/lib.rs".to_owned()],
+    })
+    .expect("encode daemon-owned runtime generation submission");
     let ensure = serde_json::to_value(WorkspaceDbIpcOperation::EnsureRuntimeGeneration {
         project_root: "/workspace".to_owned(),
-        candidate: candidate_identity(),
     })
     .expect("encode ensured runtime generation");
+    let ensure_ready =
+        serde_json::to_value(WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady {
+            project_root: "/workspace".to_owned(),
+        })
+        .expect("encode terminal-ready runtime generation gate");
+    let ensure_owner_ready =
+        serde_json::to_value(WorkspaceDbIpcOperation::EnsureRuntimeGenerationOwnerReady {
+            project_root: "/workspace".to_owned(),
+            owner_path: "src/lib.rs".to_owned(),
+            admitted_content_digest:
+                "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    .to_owned(),
+        })
+        .expect("encode exact-owner terminal-ready generation gate");
     let repair = serde_json::to_value(WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator {
         project_root: "/workspace".to_owned(),
     })
@@ -60,11 +79,35 @@ fn runtime_generation_admission_ensure_and_locator_repair_have_distinct_typed_wi
         })
     );
     assert_eq!(
+        submit,
+        serde_json::json!({
+            "kind": "submit-runtime-generation-mutation",
+            "mutationId": "session-root/tool-use-1",
+            "projectRoot": "/workspace",
+            "changedPaths": ["/workspace/src/lib.rs"]
+        })
+    );
+    assert_eq!(
         ensure,
         serde_json::json!({
             "kind": "ensure-runtime-generation",
+            "projectRoot": "/workspace"
+        })
+    );
+    assert_eq!(
+        ensure_ready,
+        serde_json::json!({
+            "kind": "ensure-runtime-generation-ready",
+            "projectRoot": "/workspace"
+        })
+    );
+    assert_eq!(
+        ensure_owner_ready,
+        serde_json::json!({
+            "kind": "ensure-runtime-generation-owner-ready",
             "projectRoot": "/workspace",
-            "candidate": candidate_json()
+            "ownerPath": "src/lib.rs",
+            "admittedContentDigest": "blake3-256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         })
     );
     assert_eq!(
@@ -127,4 +170,33 @@ fn runtime_generation_mutation_admission_rejects_an_empty_mutation_identity() {
     ))
     .expect_err("mutation admission identity must be non-empty");
     assert!(error.to_string().contains("mutationId"));
+}
+
+#[test]
+fn exact_owner_readiness_binds_owner_identity_independently_of_generation_identity() {
+    let commit =
+        agent_semantic_client_db::runtime_server_admission::WorkspaceGenerationCommitReceipt {
+            active_epoch: 7,
+            generation_digest: "blake3-256:generation-ready".to_owned(),
+            source_root_digest: "blake3-256:root-ready".to_owned(),
+        };
+    let receipt = agent_semantic_client_db::runtime_server_admission::WorkspaceOwnerGenerationReadinessReceipt::new(
+        "workspace-alpha",
+        "src/lib.rs",
+        Some("blake3-256:owner-current".to_owned()),
+        commit,
+        true,
+    )
+    .expect("owner readiness receipt");
+    let encoded =
+        serde_json::to_value(WorkspaceDbIpcResult::RuntimeOwnerGenerationReadiness { receipt })
+            .expect("encode owner readiness result");
+
+    assert_eq!(encoded["state"], "runtime-owner-generation-readiness");
+    assert_eq!(encoded["receipt"]["schemaVersion"], "1");
+    assert_eq!(encoded["receipt"]["ownerPath"], "src/lib.rs");
+    assert_eq!(
+        encoded["receipt"]["ownerContentDigest"],
+        "blake3-256:owner-current"
+    );
 }

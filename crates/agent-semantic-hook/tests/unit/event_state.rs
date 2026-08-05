@@ -67,6 +67,35 @@ fn concurrent_hook_event_appends_write_valid_json_lines() {
 }
 
 #[test]
+fn legacy_lock_path_is_not_hook_event_authority() {
+    let project_root = unique_project_root();
+    let state_home = unique_state_home(&project_root);
+    let _state_home_guard = AspStateHomeGuard::activate(state_home);
+    let run_id = project_root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("temp project root name")
+        .to_string();
+
+    let event_path = append_hook_event_state(&project_root, &decision(&run_id, 0))
+        .expect("first event transaction should commit");
+    let legacy_lock_path = event_path.with_file_name("events.jsonl.lock");
+    fs::create_dir_all(&legacy_lock_path).expect("legacy lock obstruction");
+
+    append_hook_event_state(&project_root, &decision(&run_id, 1))
+        .expect("legacy lock path must not participate in event authority");
+
+    let committed = fs::read_to_string(&event_path)
+        .expect("event projection")
+        .lines()
+        .filter(|line| line.contains(&run_id))
+        .count();
+    assert_eq!(committed, 2);
+
+    fs::remove_dir_all(&project_root).ok();
+}
+
+#[test]
 fn recorded_subagent_context_tracks_latest_lifecycle_event() {
     let project_root = unique_project_root();
     let state_home = unique_state_home(&project_root);
@@ -348,7 +377,7 @@ fn configured_resident_dispatch_requires_complete_canonical_fields() {
             "session",
             "bootstrap",
             "--name",
-            "asp-testing",
+            "asp_testing",
             "--root-session-id",
             "root-session-test",
             "--receipt-kind",
@@ -360,7 +389,7 @@ fn configured_resident_dispatch_requires_complete_canonical_fields() {
             .configured_resident_interactive_command_line()
             .as_deref(),
         Some(
-            "asp agent session bootstrap --name asp-testing --root-session-id root-session-test --receipt-kind asp-testing-execution-v1"
+            "asp agent session bootstrap --name asp_testing --root-session-id root-session-test --receipt-kind asp-testing-execution-v1"
         )
     );
 
@@ -375,7 +404,7 @@ fn insert_configured_resident_dispatch(decision: &mut HookDecision) {
     for (field, value) in [
         ("agentSessionAction", "dispatch-configured-resident"),
         ("transport", "resident-agent"),
-        ("residentName", "asp-testing"),
+        ("residentName", "asp_testing"),
         ("receiptKind", "asp-testing-execution-v1"),
         ("targetAgentName", "asp_testing"),
         ("sessionId", "root-session-test"),

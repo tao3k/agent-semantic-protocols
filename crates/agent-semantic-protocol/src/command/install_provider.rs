@@ -16,10 +16,18 @@ use super::install_provider_development::{
     capture_development_artifact_provenance, development_artifact_is_authorized,
     run_development_provider_installer,
 };
+#[path = "install_provider_workspace.rs"]
+mod install_provider_workspace;
 use super::install_provider_release::ProviderReleaseSpec;
 use super::install_provider_runtime_reconcile::reconcile_registered_provider_runtime_binaries;
 use super::install_provider_target::resolve_provider_binary_install_target;
 use super::org_capture;
+
+#[path = "install_provider_cli_support.rs"]
+mod install_provider_cli_support;
+use install_provider_cli_support::{
+    absolute_project_root, has_help_flag, install_hook_usage, usage,
+};
 
 #[cfg(test)]
 use super::install_provider_archive::{checksum_name, parse_sha256_checksum};
@@ -148,39 +156,17 @@ fn run_install_binary(args: &[String]) -> Result<(), String> {
         target,
     )?;
     let installed = super::protocol_binary::ensure_protocol_binary_installed(&plan)?;
-    let provider_binaries = reconcile_registered_provider_runtime_binaries(
-        &runtime_state.runtime_bin_dir,
-        &artifact_root,
-        &runtime_state.provider_lock_dir,
-    )?;
-    let global_provider_catalog = super::global_provider_catalog::publish_global_provider_catalog(
-        &provider_binaries.provider_receipts,
-    )?;
     let active_artifact_receipt = agent_semantic_hook::rebind_active_asp_binary_receipt_if_present(
         &installed.path,
         &installed.artifact_digest,
         &runtime_state.activation_path,
     )?;
     println!(
-        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic providerRegistrations={} providerBinaryIdentities={} providerBinariesReconciled={} providerBinariesChanged={} providerBinariesMissing={} providerReceiptsReconciled={} providerReceiptsChanged={} providerReceiptsMissing={} providerBinaryByteReads={} globalProviderCatalog={} globalProviderCatalogChangedLeafCount={} globalProviderCatalogBinaryByteReads={} globalProviderCatalogWrite={} globalProviderCatalogElapsedMicros={} activeArtifactReceipt={}",
+        "[asp-install-binary] binaryPath={} binaryInstall={} binaryArtifactDigest={} digestAlgorithm=blake3-256 binaryCurrent={} binarySwitch=atomic providerReconciliation=not-on-binary-install globalProviderCatalog=not-on-binary-install activeArtifactReceipt={}",
         installed.path.display(),
         installed.status,
         installed.artifact_digest,
         installed.path.display(),
-        provider_binaries.registration_count,
-        provider_binaries.binary_identity_count,
-        provider_binaries.reconciled_count,
-        provider_binaries.changed_count,
-        provider_binaries.missing_count,
-        provider_binaries.receipt_reconciled_count,
-        provider_binaries.receipt_changed_count,
-        provider_binaries.receipt_missing_count,
-        provider_binaries.binary_byte_reads,
-        global_provider_catalog.catalog_generation,
-        global_provider_catalog.changed_leaf_count,
-        global_provider_catalog.binary_byte_reads,
-        global_provider_catalog.catalog_write,
-        global_provider_catalog.elapsed_micros,
         active_artifact_receipt.as_str(),
     );
     Ok(())
@@ -209,11 +195,6 @@ fn run_install_plugin(args: &[String]) -> Result<(), String> {
         return super::cli_help::print_install_plugin_help();
     }
     run_codex_plugin_install_args(args)
-}
-
-fn has_help_flag(args: &[String]) -> bool {
-    args.iter()
-        .any(|arg| matches!(arg.as_str(), "help" | "--help" | "-h"))
 }
 
 fn run_install_provider(args: &[String]) -> Result<(), String> {
@@ -263,6 +244,26 @@ fn run_install_provider(args: &[String]) -> Result<(), String> {
         install_args.record_installed_receipt.as_deref(),
     )? {
         ProviderArtifactAuthority::DevelopBuild { root } => {
+            let registration =
+                agent_semantic_hook::registered_provider_development_v1(language_id)?;
+            if registration.development.workspace_install.is_some() {
+                let built = install_provider_workspace::build_registered_provider_workspace(
+                    root,
+                    &registration,
+                )?;
+                return install_provider_workspace::record_registered_provider_workspace_install(
+                    language_id,
+                    registered_binary.provider_id().as_str(),
+                    registered_binary.binary(),
+                    &target,
+                    &invocation_root,
+                    project_root,
+                    &install_args.scope,
+                    root,
+                    &registration,
+                    built,
+                );
+            }
             return run_development_provider_installer(root, language_id, &target, project_root);
         }
         ProviderArtifactAuthority::Develop { root, artifact } => {
@@ -647,14 +648,6 @@ fn record_development_provider_install(
     Ok(())
 }
 
-fn absolute_project_root(invocation_root: &Path, project_root: &Path) -> PathBuf {
-    if project_root.is_absolute() {
-        project_root.to_path_buf()
-    } else {
-        invocation_root.join(project_root)
-    }
-}
-
 #[derive(clap::Parser)]
 #[command(
     name = "asp install language",
@@ -953,14 +946,6 @@ fn write_provider_lock(path: &Path, lock: &ProviderInstallLock<'_>) -> Result<()
 
 fn toml_escape(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-fn usage() -> String {
-    "usage: asp install binary --target <path>\n       asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]\n       asp install plugin --codex [PROJECT_ROOT] [--global|--global-plugin] [--subagent-model MODEL]\n       asp install language <language> [--global | --project <canonical-root>] [--target <target>]\n       scope: global is the default; project installation requires explicit --project <canonical-root>\n       release mode: plain `asp install language` resolves only the locked release artifact (installMode=locked-release)\n       develop mode: plain `asp install language` delegates to the development installer under [dev].root; [dev].root owns provider builds and installation (installMode=develop-workspace)".to_string()
-}
-
-fn install_hook_usage() -> String {
-    "usage: asp install hook --client claude [PROJECT_ROOT] [--subagent-model MODEL]".to_string()
 }
 
 #[cfg(test)]

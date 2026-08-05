@@ -150,9 +150,6 @@ fn read_agent_file_lifetime(
 fn agent_file_candidates(agents_dir: &Path, name: &str, host_client: &str) -> Vec<PathBuf> {
     let normalized = name.replace('_', "-");
     let mut stems = vec![normalized.clone(), normalized.replace('-', "_")];
-    if normalized == "asp-explore" {
-        stems.push("asp-explorer".to_string());
-    }
     stems.sort();
     stems.dedup();
     let mut candidates = Vec::new();

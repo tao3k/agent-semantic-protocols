@@ -63,6 +63,8 @@ import ASPProof.HostAuthoritativeAgentProfile
 import ASPProof.ManagerProjectionElimination
 import ASPProof.Audit.ManagerProjectionElimination
 import ASPProof.AgentSessionLifecycleProduct
+import ASPProof.MultiAgentLifeSession
+import ASPProof.Audit.MultiAgentLifeSession
 import ASPProof.AgentSessionLifecycleExecutableRefinement
 import ASPProof.CodexMultiAgentV2ControlPlane
 import ASPProof.Audit.AgentSessionLifecycleProduct
@@ -177,6 +179,8 @@ import ASPProof.SearchRouteExecutableRiskAdmittedParetoFrontier
 import ASPProof.SearchRouteProofCarryingSelectiveDisclosure
 import ASPProof.SearchRouteFourLayerGraphReasoning
 import ASPProof.SearchRouterInteractiveGraphState
+import ASPProof.SearchRouteMaterializedGraphCursor
+import ASPProof.Audit.SearchRouteMaterializedGraphCursor
 import ASPProof.GraphTurboResidentLifecycle
 import ASPProof.SearchProjectionTraceSet
 import ASPProof.SubagentManagerProjectionDispatch
@@ -227,18 +231,12 @@ import ASPProof.Audit.ExactSelectorGenerationAdmission
 import ASPProof.CodexMultiAgentV2Lifecycle
 import ASPProof.ASPAgentSessionFencing
 import ASPProof.ASPAgentSessionPortal
-import ASPProof.ASPAgentLifeSessionRefinement
-import ASPProof.ASPAgentLifeSessionClose
-import ASPProof.ASPAgentLifeSessionAggregate
 import ASPProof.SearchRouteProviderClosure
 import ASPProof.SearchRouteScipyMixedRadix
 import ASPProof.SearchRoutePythonLeanSubagentTriad
 import ASPProof.SearchRouteTriadHandoffIdentity
 import ASPProof.RelationshipContract
 import ASPProof.SearchRouteTriadRelationshipContract
-import ASPProof.ASPAgentLifeSessionSingleResident
-import ASPProof.ASPAgentSessionRegistryAuthority
-import ASPProof.ASPLayeredAgentLifecycle
 import ASPProof.ASPWorkspaceGenerationReadiness
 import ASPProof.ASPWorkspaceReconcileClosure
 import ASPProof.ASPWorkspacePublicationRecovery
@@ -246,7 +244,6 @@ import ASPProof.ASPInteractiveSearchLatency
 import ASPProof.ASPAgentFacingSearchWallBudget
 import ASPProof.ASPForegroundAcceptanceDeadline
 import ASPProof.ASPAgentSessionEndpointAdmission
-import ASPProof.ASPDynamicResidentProfiles
 import ASPProof.OrgizeTypstLintEvidence
 import ASPProof.RuntimeBinaryProfileDispatch
 import ASPProof.CallableSkeletonLazyRepair

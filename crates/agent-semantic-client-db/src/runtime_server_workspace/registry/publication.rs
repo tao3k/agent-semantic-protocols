@@ -210,8 +210,11 @@ impl RuntimeServerWorkspaceRegistry {
         let request_id = request_id.into();
         let workspace_identity = workspace_identity.into();
         let project_root = std::path::Path::new(&materialization.as_materialization().project_root);
-        if let Ok(Some(entry)) = self.ready_entry(&workspace_identity, project_root)
-            && let Some(active) = entry.current.borrow().clone()
+        let active = match self.ready_entry(&workspace_identity, project_root) {
+            Ok(Some(entry)) => entry.current.borrow().clone(),
+            Ok(None) | Err(_) => None,
+        };
+        if let Some(active) = active
             && active.generation().workspace_identity
                 == materialization.as_materialization().workspace_identity
             && active

@@ -6,11 +6,13 @@ use std::sync::{Arc, OnceLock, RwLock};
 
 pub(crate) const HOOK_POLICY_KERNEL_VERSION: &str = "hook-enforcement-kernel-v1";
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub(crate) struct HookPolicySnapshot {
     pub kernel_version: &'static str,
     pub generation_digest: String,
     pub language_providers: Vec<HookClientLanguageProviderConfig>,
+    pub provider_projections:
+        Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>,
 }
 
 static ACTIVE_POLICY_SNAPSHOTS: OnceLock<RwLock<HashMap<String, Arc<HookPolicySnapshot>>>> =
@@ -73,10 +75,58 @@ fn compile_language_provider_snapshot(
         b"agent.semantic-protocols.hook-policy-language-providers.v1",
         &[HOOK_POLICY_KERNEL_VERSION.as_bytes(), canonical.as_slice()],
     );
+    let manifests = crate::builtin_provider_manifests();
+    let provider_projections = providers
+        .iter()
+        .map(|provider| {
+            let manifest = manifests
+                .iter()
+                .find(|manifest| {
+                    manifest.language_id().as_str() == provider.language_id
+                        && manifest.provider_id().as_str() == provider.provider_id
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "hook policy snapshot has no registered provider `{}/{}`",
+                        provider.language_id, provider.provider_id
+                    )
+                })?;
+            let registered_digest =
+                crate::provider_manifest_digest(manifest).map_err(|error| error.to_string())?;
+            if registered_digest != provider.manifest_digest {
+                return Err(format!(
+                    "hook policy snapshot manifest drift for `{}/{}`: configured {} registered {}",
+                    provider.language_id,
+                    provider.provider_id,
+                    provider.manifest_digest,
+                    registered_digest
+                ));
+            }
+            let config_files = manifest
+                .project_resolution()
+                .map(|descriptor| descriptor.entry_markers.clone())
+                .unwrap_or_default();
+            Ok(
+                crate::protocol_activation::protocol_activation_manifest::HookProviderProjection {
+                    language_id: manifest.language_id().clone(),
+                    provider_id: manifest.provider_id().clone(),
+                    binary: manifest.binary().to_owned(),
+                    provider_command_prefix: Vec::new(),
+                    package_roots: vec![".".to_owned()],
+                    source_extensions: provider.source_extensions.clone(),
+                    config_files,
+                    policy: manifest.policy().clone(),
+                    routes: crate::materialize_provider_routes(manifest)
+                        .map_err(|error| error.to_string())?,
+                },
+            )
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     Ok(HookPolicySnapshot {
         kernel_version: HOOK_POLICY_KERNEL_VERSION,
         generation_digest: format!("blake3-256:{}", digest.as_str()),
         language_providers: providers,
+        provider_projections,
     })
 }
 
@@ -104,6 +154,12 @@ pub(crate) fn active_policy_snapshot(project_root: &str) -> Option<Arc<HookPolic
         .and_then(|snapshots| snapshots.get(project_root).cloned())
 }
 
+pub(crate) fn active_provider_projections(
+    project_root: &str,
+) -> Option<Vec<crate::protocol_activation::protocol_activation_manifest::HookProviderProjection>> {
+    active_policy_snapshot(project_root).map(|snapshot| snapshot.provider_projections.clone())
+}
+
 pub(crate) fn snapshot_supports_source_file(project_root: &str, path: &Path) -> Option<bool> {
     let snapshot = active_policy_snapshot(project_root)?;
     debug_assert_eq!(snapshot.kernel_version, HOOK_POLICY_KERNEL_VERSION);
@@ -116,58 +172,5 @@ pub(crate) fn snapshot_supports_source_file(project_root: &str, path: &Path) -> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn provider(
-        language_id: &str,
-        provider_id: &str,
-        extensions: &[&str],
-    ) -> HookClientLanguageProviderConfig {
-        HookClientLanguageProviderConfig {
-            language_id: language_id.to_owned(),
-            provider_id: provider_id.to_owned(),
-            manifest_digest: format!("manifest-{language_id}-{provider_id}"),
-            source_extensions: extensions
-                .iter()
-                .map(|extension| (*extension).to_owned())
-                .collect(),
-        }
-    }
-
-    #[test]
-    fn snapshot_recognizes_configured_provider_without_runtime_server() {
-        let project = "hook-policy-kernel-typescript";
-        publish_language_provider_snapshot(
-            project,
-            &[provider("typescript", "ts-harness", &[".ts", ".tsx"])],
-        )
-        .expect("publish TypeScript hook policy snapshot");
-        assert_eq!(
-            snapshot_supports_source_file(project, Path::new("src/app.ts")),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn invalid_refresh_preserves_last_known_good_snapshot() {
-        let project = "hook-policy-kernel-last-known-good";
-        let active = publish_language_provider_snapshot(
-            project,
-            &[provider("rust", "rs-harness", &[".rs"])],
-        )
-        .expect("publish admitted snapshot");
-        let invalid = provider("rust", "rs-harness", &[]);
-        assert!(publish_language_provider_snapshot(project, &[invalid]).is_err());
-        let retained = active_policy_snapshot(project).expect("retain last known good snapshot");
-        assert_eq!(retained.generation_digest, active.generation_digest);
-    }
-
-    #[test]
-    fn duplicate_provider_identity_is_rejected() {
-        let duplicate = provider("rust", "rs-harness", &[".rs"]);
-        let error = compile_language_provider_snapshot(&[duplicate.clone(), duplicate])
-            .expect_err("duplicate provider identity must fail");
-        assert!(error.contains("duplicate provider"));
-    }
-}
+#[path = "../tests/unit/hook_policy_kernel.rs"]
+mod tests;

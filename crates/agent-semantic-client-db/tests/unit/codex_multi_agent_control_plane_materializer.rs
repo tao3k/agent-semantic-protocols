@@ -24,7 +24,7 @@ fn registry_record(
 }
 
 #[test]
-fn registry_materialization_requires_a_durable_root_row() {
+fn registry_materialization_requires_scoped_root_task_evidence() {
     let error = materialize_codex_multi_agent_control_plane(
         "workspace-1",
         "workspace-1",
@@ -32,9 +32,23 @@ fn registry_materialization_requires_a_durable_root_row() {
         Vec::new(),
         None,
     )
-    .expect_err("a root id alone must not synthesize a Codex root agent");
+    .expect_err("a root id alone must not synthesize a Codex root task");
 
-    assert!(error.contains("exactly one durable root row"));
+    assert!(error.contains("non-empty scoped AgentSession Registry snapshot"));
+}
+
+#[test]
+fn registry_materialization_rejects_root_task_impersonation() {
+    let error = materialize_codex_multi_agent_control_plane(
+        "workspace-1",
+        "workspace-1",
+        "root-1",
+        vec![registry_record("root-1", None, 1)],
+        None,
+    )
+    .expect_err("root task identity must not acquire invented AgentSession lifecycle facts");
+
+    assert!(error.contains("must not be encoded as an AgentSession Registry row"));
 }
 
 #[test]
@@ -43,7 +57,7 @@ fn registry_materialization_rejects_cross_workspace_scope() {
         "workspace-1",
         "workspace-2",
         "root-1",
-        vec![registry_record("root-1", None, 1)],
+        vec![registry_record("child-1", Some("root-1"), 1)],
         None,
     )
     .expect_err("registry project scope must not cross the Runtime Server workspace");
@@ -72,15 +86,14 @@ fn registry_materialization_does_not_invent_turns_or_delegation_receipts() {
         "workspace-1",
         "workspace-1",
         "root-1",
-        vec![
-            registry_record("child-1", Some("root-1"), 1),
-            registry_record("root-1", None, 1),
-        ],
+        vec![registry_record("child-1", Some("root-1"), 1)],
         None,
     )
     .expect("durable registry graph must materialize");
 
-    assert_eq!(projection.agents.len(), 2);
+    assert_eq!(projection.root_task.session_id, "root-1");
+    assert!(projection.root_task.evidence_ref.is_some());
+    assert_eq!(projection.agents.len(), 1);
     assert!(projection.turns.is_empty());
     assert!(projection.delegations.is_empty());
     assert!(
@@ -93,7 +106,7 @@ fn registry_materialization_does_not_invent_turns_or_delegation_receipts() {
 
 #[test]
 fn unchanged_registry_snapshot_is_idempotent_but_changed_evidence_advances_generation() {
-    let records = vec![registry_record("root-1", None, 1)];
+    let records = vec![registry_record("child-1", Some("root-1"), 1)];
     let first = materialize_codex_multi_agent_control_plane(
         "workspace-1",
         "workspace-1",
@@ -114,7 +127,7 @@ fn unchanged_registry_snapshot_is_idempotent_but_changed_evidence_advances_gener
         "workspace-1",
         "workspace-1",
         "root-1",
-        vec![registry_record("root-1", None, 2)],
+        vec![registry_record("child-1", Some("root-1"), 2)],
         Some(&unchanged),
     )
     .expect("changed registry graph must advance");

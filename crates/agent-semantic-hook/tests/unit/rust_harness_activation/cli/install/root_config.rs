@@ -7,6 +7,7 @@ use super::support::{
 
 #[test]
 fn cli_install_removes_legacy_project_marketplace_source() {
+    let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-existing-marketplace-source");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
@@ -66,6 +67,7 @@ source = "."
 
 #[test]
 fn cli_install_writes_codex_custom_subagent_with_requested_model() {
+    let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-codex-subagent-model");
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
@@ -102,6 +104,7 @@ fn cli_install_writes_codex_custom_subagent_with_requested_model() {
 
 #[test]
 fn cli_install_rejects_empty_subagent_model_override() {
+    let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-empty-subagent-model");
 
     let output = protocol_command()
@@ -127,6 +130,7 @@ fn cli_install_rejects_empty_subagent_model_override() {
 
 #[test]
 fn cli_install_rejects_missing_subagent_model_value() {
+    let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let output = protocol_command()
         .args(["install", "plugin", "--codex", "--subagent-model"])
         .output()
@@ -142,6 +146,7 @@ fn cli_install_rejects_missing_subagent_model_value() {
 
 #[test]
 fn cli_install_writes_claude_custom_subagent_by_default() {
+    let _install_fixture = crate::integration_fixture::install_fixture_guard();
     let root = git_project_root("install-claude-subagent");
     std::fs::write(
         root.join("Cargo.toml"),
@@ -151,18 +156,22 @@ fn cli_install_writes_claude_custom_subagent_by_default() {
     std::fs::create_dir_all(root.join("src")).expect("create Rust source root");
     std::fs::write(root.join("src/lib.rs"), "pub fn run() {}\n")
         .expect("write Rust source candidate");
-    let init = std::process::Command::new("git")
-        .args(["init", "--quiet"])
+    let _git_fixture = crate::integration_fixture::GIT_FIXTURE_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let init = crate::integration_fixture::isolated_git_command()
+        .args(["init", "--quiet", "--template="])
         .current_dir(&root)
         .output()
         .expect("initialize Git fixture");
     assert!(init.status.success(), "git init failed: {init:?}");
-    let add = std::process::Command::new("git")
+    let add = crate::integration_fixture::isolated_git_command()
         .args(["add", "Cargo.toml", "src/lib.rs"])
         .current_dir(&root)
         .output()
         .expect("index Rust fixture");
     assert!(add.status.success(), "git add failed: {add:?}");
+    drop(_git_fixture);
     let codex_home = root.join(".codex-home");
     let asp_state_home = root.join(".asp-state-home");
     write_state_home_provider_binary(&asp_state_home, "rust", "rs-harness", "rs-harness");

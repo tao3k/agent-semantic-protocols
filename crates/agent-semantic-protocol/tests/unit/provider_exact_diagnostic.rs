@@ -21,7 +21,7 @@ fn resident_exact_adapter_does_not_own_diagnostic_policy() {
         "legacy",
         "tokio::fs::",
         "owner_content_digest",
-        "ensure_runtime_owner_projection_async",
+        "runtime_server_workspace_session_for_admission_async",
         "refresh_if_changed",
     ] {
         assert!(
@@ -30,6 +30,7 @@ fn resident_exact_adapter_does_not_own_diagnostic_policy() {
         );
     }
     assert!(adapter_source.contains("crate::exact_projection_diagnostic_io::"));
+    assert!(adapter_source.contains("ensure_runtime_generation_ready_for_projection_async"));
     assert!(adapter_source.contains("runtime_server_workspace_exact_projection_client_async"));
     assert!(
         !adapter_source.contains("runtime_server_workspace_session_async"),
@@ -41,12 +42,13 @@ fn resident_exact_adapter_does_not_own_diagnostic_policy() {
 }
 
 #[test]
-fn resident_owner_search_is_a_zero_socket_zero_source_read() {
+fn resident_owner_search_cold_miss_uses_typed_generation_admission_without_source_read() {
     let adapter_source = include_str!("../../src/command/search_pipe_owner_items.rs");
-    assert!(adapter_source.contains("runtime_server_workspace_generation_client_async"));
+    assert!(adapter_source.contains("runtime_server_workspace_exact_projection_client_async"));
     for forbidden in [
         "runtime_server_workspace_session_async",
-        "ensure_runtime_owner_projection_async",
+        "runtime_server_workspace_session_for_admission_async",
+        "ensure_runtime_owner(",
         "std::fs::read",
         "tokio::fs::read",
         "UnixStream",
@@ -57,6 +59,7 @@ fn resident_owner_search_is_a_zero_socket_zero_source_read() {
             "owner search hot path contains forbidden I/O token: {forbidden}"
         );
     }
+    assert!(adapter_source.contains("ensure_runtime_generation_ready_for_projection_async"));
     assert!(adapter_source.contains("let provider_invocations = 0;"));
     assert!(adapter_source.contains("controlRoundtrips={}"));
 }

@@ -11,7 +11,7 @@ fn missing_resident_agent_route_is_rejected_without_a_compatibility_fallback() {
 residentAgents = []
 [agents.placeholders]
 explore = "asp-explore"
-testing = "asp-testing"
+testing = "asp_testing"
 "#,
     )
     .expect("write hook config without resident route");

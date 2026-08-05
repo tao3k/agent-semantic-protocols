@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tao3k.github.io/agent-semantic-protocols/schemas/provider-workspace-install.v1.schema.json",
+  "title": "Provider Workspace Install Descriptor v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId",
+    "schemaVersion",
+    "schemaAuthority",
+    "providerId",
+    "binary",
+    "workspaceArtifact",
+    "workspaceBuild"
+  ],
+  "properties": {
+    "schemaId": {
+      "const": "agent.semantic-protocols.provider-workspace-install"
+    },
+    "schemaVersion": {
+      "const": "1"
+    },
+    "schemaAuthority": {
+      "type": "string",
+      "format": "uri"
+    },
+    "providerId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "binary": {
+      "type": "string",
+      "pattern": "^[^/]+$"
+    },
+    "workspaceArtifact": {
+      "$ref": "#/$defs/workspaceArtifact"
+    },
+    "dependencyMaterialization": {
+      "$ref": "#/$defs/command"
+    },
+    "workspaceBuild": {
+      "$ref": "#/$defs/workspaceBuild"
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    },
+    "workspaceArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "entrypoint"],
+      "properties": {
+        "root": { "$ref": "#/$defs/relativePath" },
+        "entrypoint": { "$ref": "#/$defs/relativePath" },
+        "launch": { "$ref": "#/$defs/launch" }
+      }
+    },
+    "launch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "program",
+        "args",
+        "programRelativeToArtifact",
+        "argsRelativeToArtifact"
+      ],
+      "properties": {
+        "program": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "programRelativeToArtifact": { "type": "boolean" },
+        "argsRelativeToArtifact": { "type": "boolean" }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["program", "args", "workingDirectory", "env"],
+      "properties": {
+        "program": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "workingDirectory": { "$ref": "#/$defs/relativePath" },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "workspaceBuild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "program",
+        "args",
+        "workingDirectory",
+        "sourceSnapshotAnchors",
+        "derivedPaths",
+        "env"
+      ],
+      "properties": {
+        "program": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "workingDirectory": { "$ref": "#/$defs/relativePath" },
+        "sourceSnapshotAnchors": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "derivedPaths": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/relativePath" }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}

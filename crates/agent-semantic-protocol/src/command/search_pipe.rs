@@ -322,13 +322,15 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         return Ok(());
     }
     let current_snapshot = context.required_source_index_snapshot()?;
+    let source_index_client = context.source_index_client.ok_or_else(|| {
+        "search pipe requires the resident workspace generation client".to_owned()
+    })?;
+    let generation_lease = source_index_client.lease();
     let acquisition = collect_search_pipe_candidates(CollectSearchPipeCandidatesRequest {
         language_id: context.language_id,
         project_root: &project_root,
         current_snapshot,
-        source_index_client: context.source_index_client.ok_or_else(|| {
-            "search pipe requires the resident workspace generation client".to_owned()
-        })?,
+        source_index_client,
         locator_root: context.locator_root,
         intent: &pipe_args.seed_query,
         scopes: &pipe_args.scopes,
@@ -374,6 +376,7 @@ fn run_search_pipe_command(args: &[String], context: &FastSearchContext<'_>) -> 
         surface: "search-pipe",
         query: Some(&pipe_args.seed_query),
         candidates: &acquisition.candidates,
+        project_resolutions: &generation_lease.generation().project_resolutions,
         pipes: &surfaces,
         source: &rendered_source,
         candidate_sources: &acquisition.candidate_sources,
@@ -675,6 +678,11 @@ fn run_search_ingest_command(
         context.provider_context,
         context.source_index_client,
     )?;
+    let generation_lease = context.source_index_client.map(|client| client.lease());
+    let project_resolutions = generation_lease
+        .as_ref()
+        .map(|lease| lease.generation().project_resolutions.as_slice())
+        .unwrap_or(&[]);
     let generation =
         agent_semantic_search::graph_generation_authority::AdmittedGraphGenerationV1::admit(
             &current_snapshot.source_snapshot,
@@ -692,6 +700,7 @@ fn run_search_ingest_command(
         surface: "search-ingest",
         query: None,
         candidates: &candidates,
+        project_resolutions,
         pipes: &ingest_args.pipes,
         source: "ingest",
         candidate_sources: &["ingest".to_string()],
@@ -760,13 +769,15 @@ fn run_search_lexical_command(
     let current_snapshot = context.source_index_snapshot.ok_or_else(|| {
         "search lexical requires the provider-dispatch source-index snapshot".to_string()
     })?;
+    let source_index_client = context.source_index_client.ok_or_else(|| {
+        "search lexical requires the resident workspace generation client".to_owned()
+    })?;
+    let generation_lease = source_index_client.lease();
     let acquisition = collect_search_pipe_candidates(CollectSearchPipeCandidatesRequest {
         language_id: context.language_id,
         project_root: &project_root,
         current_snapshot,
-        source_index_client: context.source_index_client.ok_or_else(|| {
-            "search lexical requires the resident workspace generation client".to_owned()
-        })?,
+        source_index_client,
         locator_root: context.locator_root,
         intent: &pipe_args.query,
         scopes: &pipe_args.owners,
@@ -805,6 +816,7 @@ fn run_search_lexical_command(
         surface: "search-lexical",
         query: Some(&pipe_args.query),
         candidates: &acquisition.candidates,
+        project_resolutions: &generation_lease.generation().project_resolutions,
         pipes: &pipe_args.pipes,
         source: source_label,
         candidate_sources: &acquisition.candidate_sources,

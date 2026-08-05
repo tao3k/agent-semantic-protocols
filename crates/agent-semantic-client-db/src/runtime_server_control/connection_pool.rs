@@ -16,6 +16,9 @@ static RUNTIME_SERVER_CONNECTION_POOLS: OnceCell<
     RwLock<HashMap<String, Arc<RuntimeServerConnectionPool>>>,
 > = OnceCell::const_new();
 
+const RUNTIME_SERVER_CONTROL_EXCHANGE_BUDGET: std::time::Duration =
+    std::time::Duration::from_millis(650);
+
 pub(super) struct RuntimeServerConnectionPool {
     endpoint: RuntimeServerEndpoint,
     next_lane: AtomicUsize,
@@ -157,6 +160,22 @@ async fn exchange_runtime_server_request(
     stream: &mut Option<UnixStream>,
     request: &RuntimeServerControlRequest,
 ) -> Result<RuntimeServerControlReceipt, String> {
+    exchange_runtime_server_request_with_budget(
+        endpoint,
+        stream,
+        request,
+        RUNTIME_SERVER_CONTROL_EXCHANGE_BUDGET,
+    )
+    .await
+}
+
+async fn exchange_runtime_server_request_with_budget(
+    endpoint: &RuntimeServerEndpoint,
+    stream: &mut Option<UnixStream>,
+    request: &RuntimeServerControlRequest,
+    budget: std::time::Duration,
+) -> Result<RuntimeServerControlReceipt, String> {
+    discard_closed_or_dirty_control_stream(stream);
     if stream.is_none() {
         *stream = Some(
             UnixStream::connect(&endpoint.socket_path)
@@ -167,7 +186,8 @@ async fn exchange_runtime_server_request(
     let active = stream
         .as_mut()
         .expect("Runtime Server lane stream initialized above");
-    let result = async {
+    let started = std::time::Instant::now();
+    let result = match tokio::time::timeout(budget, async {
         write_frame(active, &[request]).await?;
         let mut receipts = read_frame::<_, Vec<RuntimeServerControlReceipt>>(active).await?;
         if receipts.len() != 1 {
@@ -177,10 +197,42 @@ async fn exchange_runtime_server_request(
             ));
         }
         Ok(receipts.remove(0))
-    }
-    .await;
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err(serde_json::json!({
+            "schemaId": "agent.semantic-protocols.runtime-server-control-wall-failure",
+            "schemaVersion": "1",
+            "state": "unavailable",
+            "stage": "runtime-server-control-exchange",
+            "reasonKind": "runtime-server-control-exchange-budget-exceeded",
+            "executionBudgetMicros": budget.as_micros(),
+            "elapsedMicros": started.elapsed().as_micros(),
+            "retryAfterMs": 250,
+        })
+        .to_string()),
+    };
     if result.is_err() {
         *stream = None;
     }
     result
 }
+
+fn discard_closed_or_dirty_control_stream(stream: &mut Option<UnixStream>) {
+    let Some(active) = stream.as_mut() else {
+        return;
+    };
+    let mut probe = [0_u8; 1];
+    match active.try_read(&mut probe) {
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+        // A pooled lane is only idle after its complete response frame was
+        // consumed. EOF, an error, or unexpected unread bytes all mean this
+        // stream cannot safely carry the next request generation.
+        Ok(_) | Err(_) => *stream = None,
+    }
+}
+
+#[cfg(test)]
+#[path = "../../tests/unit/runtime_server_control_connection_pool.rs"]
+mod tests;

@@ -53,6 +53,28 @@ def withinBudgets (budget : PhaseBudgets) (elapsed : PhaseElapsed) : Prop :=
   elapsed.warmReadMicros ≤ budget.warmReadMicros ∧
   elapsed.publicationMicros ≤ budget.publicationMicros
 
+structure RuntimeBinaryControlTopology where
+  immutableDigestAddressedArtifact : Bool
+  canonicalEntryIsAtomicPointer : Bool
+  controlPathReadsBinaryBytes : Bool
+  restartFramePrecedesSupervisorBoundary : Bool
+
+def runtimeBinaryControlFastPath
+    (topology : RuntimeBinaryControlTopology) : Prop :=
+  topology.immutableDigestAddressedArtifact = true ∧
+  topology.canonicalEntryIsAtomicPointer = true ∧
+  topology.controlPathReadsBinaryBytes = false ∧
+  topology.restartFramePrecedesSupervisorBoundary = true
+
+theorem digest_addressed_pointer_keeps_binary_bytes_off_control_path
+    (topology : RuntimeBinaryControlTopology)
+    (immutable : topology.immutableDigestAddressedArtifact = true)
+    (atomicPointer : topology.canonicalEntryIsAtomicPointer = true)
+    (noByteRead : topology.controlPathReadsBinaryBytes = false)
+    (frameWithinBoundary : topology.restartFramePrecedesSupervisorBoundary = true) :
+    runtimeBinaryControlFastPath topology := by
+  exact ⟨immutable, atomicPointer, noByteRead, frameWithinBoundary⟩
+
 theorem stale_miss_cannot_be_fresh
     (generation : PublishedGeneration)
     (observation : Observation)
@@ -129,6 +151,59 @@ theorem failed_admission_is_retryable :
     ensureState .failed = .building := by
   rfl
 
+inductive GenerationOpenState where
+  | ready
+  | missing
+  | recoveryRequired
+  deriving DecidableEq, Repr
+
+structure GenerationOpenTransition where
+  daemonAdmissions : Nat
+  pointerReopens : Nat
+  queryReady : Bool
+  typedBuilding : Bool
+  deriving DecidableEq, Repr
+
+def openGeneration : GenerationOpenState → GenerationOpenTransition
+  | .ready =>
+      { daemonAdmissions := 0, pointerReopens := 0, queryReady := true,
+        typedBuilding := false }
+  | .missing =>
+      { daemonAdmissions := 1, pointerReopens := 1, queryReady := false,
+        typedBuilding := true }
+  | .recoveryRequired =>
+      { daemonAdmissions := 0, pointerReopens := 0, queryReady := false,
+        typedBuilding := false }
+
+theorem missing_generation_has_one_bounded_admission_and_reopen :
+    openGeneration .missing =
+      { daemonAdmissions := 1, pointerReopens := 1, queryReady := false,
+        typedBuilding := true } := by
+  rfl
+
+theorem recovery_required_is_fail_closed_without_retry :
+    openGeneration .recoveryRequired =
+      { daemonAdmissions := 0, pointerReopens := 0, queryReady := false,
+        typedBuilding := false } := by
+  rfl
+
+structure ProviderRuntimeEntry where
+  canonicalDigestLatticeSymlink : Bool
+  binaryByteReads : Nat
+  rewrites : Nat
+  deriving DecidableEq, Repr
+
+def providerRuntimeReconcileAllowed (entry : ProviderRuntimeEntry) : Prop :=
+  entry.canonicalDigestLatticeSymlink = true ∧
+    entry.binaryByteReads = 0 ∧ entry.rewrites = 0
+
+theorem unmanaged_provider_runtime_entry_has_no_migration_path
+    (entry : ProviderRuntimeEntry)
+    (hUnmanaged : entry.canonicalDigestLatticeSymlink = false) :
+    ¬ providerRuntimeReconcileAllowed entry := by
+  intro hAllowed
+  exact Bool.noConfusion (hUnmanaged.symm.trans hAllowed.1)
+
 inductive ExactProjectionKind where
   | source
   | callableSkeleton
@@ -172,6 +247,78 @@ theorem stale_cached_hit_cannot_be_returned
     (hStale : evidence.liveContentDigest ≠ evidence.publishedContentDigest) :
     ¬ exactProjectionAllowed kind evidence := by
   simpa [exactProjectionAllowed, ownerFresh] using hStale
+
+inductive OwnerFreshnessAuthority where
+  | client
+  | runtimeServer
+  deriving DecidableEq, Repr
+
+structure ExactOwnerReadTransition where
+  authority : OwnerFreshnessAuthority
+  admittedContentDigest : Nat
+  liveContentDigest : Nat
+  reopenedOwnerContentDigest : Nat
+  readyGenerationDigest : Nat
+  reopenedGenerationDigest : Nat
+  terminalReady : Bool
+  pointerPublished : Bool
+  generationReopened : Bool
+  deriving DecidableEq, Repr
+
+def daemonExactReadAllowed (transition : ExactOwnerReadTransition) : Prop :=
+  transition.authority = .runtimeServer ∧
+    (transition.admittedContentDigest = transition.liveContentDigest ∨
+      (transition.terminalReady = true ∧ transition.pointerPublished = true ∧
+        transition.generationReopened = true ∧
+        transition.reopenedOwnerContentDigest = transition.liveContentDigest))
+
+theorem client_owned_freshness_check_is_rejected
+    (transition : ExactOwnerReadTransition)
+    (hClient : transition.authority = .client) :
+    ¬ daemonExactReadAllowed transition := by
+  intro hAllowed
+  exact OwnerFreshnessAuthority.noConfusion (hClient.symm.trans hAllowed.1)
+
+theorem stale_owner_requires_terminal_reconcile_before_reopen
+    (transition : ExactOwnerReadTransition)
+    (hAllowed : daemonExactReadAllowed transition)
+    (hStale : transition.admittedContentDigest ≠ transition.liveContentDigest) :
+    transition.terminalReady = true ∧ transition.pointerPublished = true ∧
+      transition.generationReopened = true ∧
+        transition.reopenedOwnerContentDigest = transition.liveContentDigest := by
+  exact hAllowed.2.resolve_left hStale
+
+theorem terminal_ready_exact_reconcile_requires_pointer_publication
+    (transition : ExactOwnerReadTransition)
+    (hAllowed : daemonExactReadAllowed transition)
+    (hStale : transition.admittedContentDigest ≠ transition.liveContentDigest) :
+    transition.pointerPublished = true := by
+  exact (stale_owner_requires_terminal_reconcile_before_reopen transition hAllowed hStale).2.1
+
+theorem superseding_generation_is_admitted_by_owner_content_identity
+    (transition : ExactOwnerReadTransition)
+    (hAuthority : transition.authority = .runtimeServer)
+    (_hStale : transition.admittedContentDigest ≠ transition.liveContentDigest)
+    (hReady : transition.terminalReady = true)
+    (hPublished : transition.pointerPublished = true)
+    (hReopened : transition.generationReopened = true)
+    (hOwner : transition.reopenedOwnerContentDigest = transition.liveContentDigest)
+    (_hSuperseded : transition.readyGenerationDigest ≠ transition.reopenedGenerationDigest) :
+    daemonExactReadAllowed transition := by
+  exact ⟨hAuthority, Or.inr ⟨hReady, hPublished, hReopened, hOwner⟩⟩
+
+inductive MutationAdmissionObservation where
+  | observed
+  | lost
+  deriving DecidableEq, Repr
+
+theorem lost_mutation_does_not_relax_exact_read_freshness
+    (kind : ExactProjectionKind)
+    (evidence : ExactOwnerReadEvidence)
+    (_mutation : MutationAdmissionObservation)
+    (hAllowed : exactProjectionAllowed kind evidence) :
+    ownerFresh evidence := by
+  exact hAllowed
 
 inductive OptionalProviderState where
   | unavailable
@@ -365,6 +512,134 @@ def warmSchedulerRoundTrips : SearchAuthorityTransport → Nat
 theorem shared_generation_pointer_has_no_warm_scheduler_roundtrip :
     warmSchedulerRoundTrips .sharedGenerationPointer = 0 := by
   rfl
+
+inductive GenerationPointerAvailability where
+  | published
+  | missing
+  deriving DecidableEq, Repr
+
+def coldAdmissionRoundTrips : GenerationPointerAvailability → Nat
+  | .published => 0
+  | .missing => 1
+
+theorem published_pointer_requires_no_cold_admission_roundtrip :
+    coldAdmissionRoundTrips .published = 0 := by
+  rfl
+
+def pointerMappingsForSessions (sessionCount : Nat) (sharedCatalog : Bool) : Nat :=
+  if sessionCount = 0 then 0 else if sharedCatalog then 1 else sessionCount
+
+theorem shared_pointer_catalog_maps_once
+    (sessionCount : Nat)
+    (hSessions : sessionCount > 0) :
+    pointerMappingsForSessions sessionCount true = 1 := by
+  simp [pointerMappingsForSessions, Nat.ne_of_gt hSessions]
+
+structure LoadOnceMemoryBackendTopology where
+  cellsPerPointerPath : Nat
+  coldMmapOpensPerPointerGeneration : Nat
+  warmMmapOpensPerQuery : Nat
+  warmGenerationValidationsPerQuery : Nat
+  warmDatabaseOpensPerQuery : Nat
+  warmControlRoundTripsPerQuery : Nat
+  crossWorkspaceOpenLock : Bool
+  deriving DecidableEq, Repr
+
+def loadOnceMemoryBackendClosed
+    (topology : LoadOnceMemoryBackendTopology) : Prop :=
+  topology.cellsPerPointerPath = 1 ∧
+  topology.coldMmapOpensPerPointerGeneration ≤ 1 ∧
+  topology.warmMmapOpensPerQuery = 0 ∧
+  topology.warmGenerationValidationsPerQuery = 0 ∧
+  topology.warmDatabaseOpensPerQuery = 0 ∧
+  topology.warmControlRoundTripsPerQuery = 0 ∧
+  topology.crossWorkspaceOpenLock = false
+
+theorem concurrent_sessions_share_one_memory_backend_without_global_lock
+    (topology : LoadOnceMemoryBackendTopology)
+    (oneCell : topology.cellsPerPointerPath = 1)
+    (coalescedCold : topology.coldMmapOpensPerPointerGeneration ≤ 1)
+    (noWarmMmap : topology.warmMmapOpensPerQuery = 0)
+    (noWarmValidation : topology.warmGenerationValidationsPerQuery = 0)
+    (noWarmDatabase : topology.warmDatabaseOpensPerQuery = 0)
+    (noWarmControl : topology.warmControlRoundTripsPerQuery = 0)
+    (workspaceIsolation : topology.crossWorkspaceOpenLock = false) :
+    loadOnceMemoryBackendClosed topology := by
+  exact ⟨oneCell, coalescedCold, noWarmMmap, noWarmValidation,
+    noWarmDatabase, noWarmControl, workspaceIsolation⟩
+
+structure ResidentMutationFanoutTopology where
+  gitDiscoveriesDuringAdmission : Nat
+  originCandidateFromObservation : Bool
+  nestedCandidateFromResidentEntry : Bool
+  reusesOriginCandidateAcrossWorkspaceScopes : Bool
+  crossWorkspaceWriterLock : Bool
+  deriving DecidableEq, Repr
+
+def residentMutationFanoutClosed
+    (topology : ResidentMutationFanoutTopology) : Prop :=
+  topology.gitDiscoveriesDuringAdmission = 0 ∧
+  topology.originCandidateFromObservation = true ∧
+  topology.nestedCandidateFromResidentEntry = true ∧
+  topology.reusesOriginCandidateAcrossWorkspaceScopes = false ∧
+  topology.crossWorkspaceWriterLock = false
+
+theorem mutation_fanout_uses_resident_candidate_evidence_without_git_rediscovery
+    (topology : ResidentMutationFanoutTopology)
+    (noGitDiscovery : topology.gitDiscoveriesDuringAdmission = 0)
+    (originEvidence : topology.originCandidateFromObservation = true)
+    (nestedEvidence : topology.nestedCandidateFromResidentEntry = true)
+    (scopeIsolation : topology.reusesOriginCandidateAcrossWorkspaceScopes = false)
+    (writerIsolation : topology.crossWorkspaceWriterLock = false) :
+    residentMutationFanoutClosed topology := by
+  exact ⟨noGitDiscovery, originEvidence, nestedEvidence, scopeIsolation,
+    writerIsolation⟩
+
+structure MutationSubmissionFlightTopology where
+  observerCount : Nat
+  leaderCount : Nat
+  candidateDiscoveryCount : Nat
+  ipcAdmissionCount : Nat
+  followersReturnCoalesced : Bool
+  ensureReusesAcceptedCandidate : Bool
+  deriving DecidableEq, Repr
+
+def mutationSubmissionFlightClosed
+    (topology : MutationSubmissionFlightTopology) : Prop :=
+  topology.observerCount > 0 ∧
+  topology.leaderCount = 1 ∧
+  topology.candidateDiscoveryCount = 1 ∧
+  topology.ipcAdmissionCount = 1 ∧
+  topology.followersReturnCoalesced = true ∧
+  topology.ensureReusesAcceptedCandidate = true
+
+theorem equal_mutation_observers_have_one_accepted_leader
+    (topology : MutationSubmissionFlightTopology)
+    (hasObserver : topology.observerCount > 0)
+    (oneLeader : topology.leaderCount = 1)
+    (oneCandidateDiscovery : topology.candidateDiscoveryCount = 1)
+    (oneIpcAdmission : topology.ipcAdmissionCount = 1)
+    (followersCoalesce : topology.followersReturnCoalesced = true)
+    (ensureReusesCandidate : topology.ensureReusesAcceptedCandidate = true) :
+    mutationSubmissionFlightClosed topology := by
+  exact ⟨hasObserver, oneLeader, oneCandidateDiscovery, oneIpcAdmission,
+    followersCoalesce, ensureReusesCandidate⟩
+
+structure PublishedPointerReadiness where
+  pointerCommitted : Bool
+  catalogMapped : Bool
+  deriving DecidableEq, Repr
+
+def pointerReadyForQueries (state : PublishedPointerReadiness) : Prop :=
+  state.pointerCommitted = true ∧ state.catalogMapped = true
+
+theorem unmapped_pointer_cannot_be_query_ready
+    (pointerCommitted : Bool) :
+    ¬ pointerReadyForQueries {
+      pointerCommitted := pointerCommitted
+      catalogMapped := false
+    } := by
+  simp [pointerReadyForQueries]
 
 structure SearchAuthorityPointerEvidence where
   sourceRoot : Nat

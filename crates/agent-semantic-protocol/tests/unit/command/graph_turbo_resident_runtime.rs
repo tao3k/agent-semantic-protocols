@@ -53,33 +53,36 @@ fn envelope(kind: &str, request_id: &str) -> Value {
         "messageKind": kind,
         "requestId": request_id,
         "sessionId": "session:rust-runtime",
+        "nodeId": "router:rust-runtime",
         "snapshotDigest": SNAPSHOT,
-        "workspaceGenerationRootDigest": "generation:rust-runtime"
+        "workspaceGenerationRootDigest": "generation:rust-runtime",
+        "routeId": "route:rust-runtime"
+    })
+}
+
+fn process_handshake(request_id: &str) -> Value {
+    json!({
+        "schemaId": "agent.semantic-protocols.semantic-graph-turbo-resident-message",
+        "schemaVersion": "1",
+        "protocolId": "agent.semantic-protocols.semantic-language",
+        "protocolVersion": "1",
+        "messageKind": "process-handshake",
+        "requestId": request_id,
+        "runtimeArtifactDigest": format!("blake3-256:{}", "a".repeat(64)),
+        "executionCommandDigest": "blake3-256:graph-turbo-resident-v1"
     })
 }
 
 fn rank_message(request_id: &str) -> Value {
     let mut message = envelope("rank", request_id);
-    message["request"] = json!({
-        "profile": "owner-query",
-        "algorithm": "typed-ppr-diverse",
-        "seedIds": ["q:parser"],
-        "budget": 3,
-        "pathBudget": 2,
-        "pathMaxHops": 2,
-        "queryTerms": ["parser"],
-        "cache": {"enabled": true},
-        "windowMerge": {"enabled": true, "maxGapLines": 8},
-        "graph": {
-            "nodes": [
-                {"id": "q:parser", "kind": "query", "role": "term", "value": "parser"},
-                {"id": "owner:cli", "kind": "owner", "role": "path", "value": "src/cli.py"}
-            ],
-            "edges": [
-                {"source": "q:parser", "target": "owner:cli", "relation": "matches"}
-            ]
-        }
-    });
+    let mut request = serde_json::from_str::<Value>(include_str!(
+        "../../../../../sandtables/fixtures/asp/graph-turbo-owner-query.json"
+    ))
+    .expect("canonical Graph Turbo request fixture");
+    request["sourceSnapshot"]["rootDigest"] = Value::String(SNAPSHOT.to_owned());
+    request["workspaceGeneration"]["rootDigest"] =
+        Value::String("generation:rust-runtime".to_owned());
+    message["request"] = request;
     message
 }
 
@@ -111,27 +114,73 @@ async fn rust_runtime_keeps_python_resident_and_persists_only_exact_candidate_re
         execution_command_digest: "blake3-256:graph-turbo-resident-v1".into(),
         request_timeout: Duration::from_secs(60),
     })
+    .await
     .expect("spawn Graph Turbo resident");
     let pid = process.process_id();
+    #[cfg(unix)]
+    {
+        let child_process_group = unsafe { libc::getpgid(pid as libc::pid_t) };
+        let daemon_process_group = unsafe { libc::getpgrp() };
+        assert_eq!(
+            child_process_group, pid as libc::pid_t,
+            "Graph Turbo child must own an isolated process group"
+        );
+        assert_ne!(
+            child_process_group, daemon_process_group,
+            "foreground daemon signals must reach the Rust supervisor before the child"
+        );
+    }
     let handshake = process
-        .request(&envelope("handshake", "request:hello"))
+        .request(&process_handshake("request:hello"))
+        .await
         .expect("handshake");
-    assert_eq!(handshake["status"], "handshake-accepted");
+    assert_eq!(
+        handshake["status"], "process-handshake-accepted",
+        "handshake receipt: {handshake}"
+    );
 
     let cold_started = std::time::Instant::now();
     let cold = process
         .request(&rank_message("request:cold"))
+        .await
         .expect("cold rank");
     let cold_rank_micros = cold_started.elapsed().as_micros() as u64;
     let warm_started = std::time::Instant::now();
     let warm = process
         .request(&rank_message("request:warm"))
+        .await
         .expect("warm rank");
     let warm_rank_micros = warm_started.elapsed().as_micros() as u64;
     assert_eq!(process.process_id(), pid);
     assert_eq!(cold["authority"], "candidate");
     assert_eq!(warm["accounting"]["graphTurboInvocations"], 2);
     assert_eq!(warm["accounting"]["semanticGraphHops"], 0);
+
+    let mut pressure_samples = Vec::with_capacity(1_000);
+    for index in 0..1_000 {
+        let started = std::time::Instant::now();
+        let receipt = process
+            .request(&rank_message(&format!("request:soak:{index}")))
+            .await
+            .expect("resident Graph Turbo soak rank");
+        pressure_samples.push(started.elapsed());
+        assert_eq!(receipt["authority"], "candidate");
+        assert_eq!(
+            process.process_id(),
+            pid,
+            "Graph Turbo child restarted during soak"
+        );
+    }
+    pressure_samples.sort_unstable();
+    let pressure_p99 = pressure_samples[(pressure_samples.len() * 99) / 100];
+    eprintln!(
+        "[graph-turbo-resident-soak] requests=1000 processCount=1 processRestarts=0 p99Nanos={} blockingPoolSubmissions=0 osReaderThreads=0",
+        pressure_p99.as_nanos()
+    );
+    assert!(
+        pressure_p99 < Duration::from_millis(25),
+        "Graph Turbo resident warm p99 must remain below 25ms, observed {pressure_p99:?}"
+    );
 
     let directory = TestDirectory::create("graph-turbo-resident-runtime");
     let cache = TursoGraphTurboCache::open(&directory.path().join("graph-turbo.db"))
@@ -168,6 +217,7 @@ async fn rust_runtime_keeps_python_resident_and_persists_only_exact_candidate_re
 
     let shutdown = process
         .shutdown(&envelope("shutdown", "request:shutdown"))
+        .await
         .expect("shutdown");
     assert_eq!(shutdown["status"], "shutdown-accepted");
 

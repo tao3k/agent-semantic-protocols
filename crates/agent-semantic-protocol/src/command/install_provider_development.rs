@@ -192,8 +192,14 @@ pub(super) fn capture_development_artifact_provenance(
                 registration.language_id.as_str()
             )
         })?;
-    let justfile_digest =
-        agent_semantic_content_identity::file_content_digest_v1(&dev_root.join("Justfile"))?;
+    let build_descriptor = registration
+        .development
+        .workspace_install
+        .as_deref()
+        .map(|reference| provider_source_root.join(reference))
+        .unwrap_or_else(|| dev_root.join("Justfile"));
+    let build_descriptor_digest =
+        agent_semantic_content_identity::file_content_digest_v1(&build_descriptor)?;
     let build_recipe_digest = format!(
         "blake3-256:{}",
         blake3::hash(
@@ -203,7 +209,7 @@ pub(super) fn capture_development_artifact_provenance(
                 registration.language_id.as_str(),
                 registration.development.source_root,
                 target,
-                justfile_digest
+                build_descriptor_digest
             )
             .as_bytes()
         )

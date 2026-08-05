@@ -36,7 +36,6 @@ positiveCommands = [
   "cargo check -p agent-semantic-hook",
   "cargo build -p agent-semantic-hook",
   "just test",
-  "rs-harness check --full .",
   "uv run pytest tests/unit",
   "pytest tests/unit",
   "npm test",

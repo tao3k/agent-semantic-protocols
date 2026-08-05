@@ -1,0 +1,103 @@
+#+title: Runtime Hook Admission Locator
+#+startup: overview
+
+* Status
+
+Implemented v1 contract for eliminating query-time workspace discovery from
+the Runtime Server Hook client. Installed-artifact replay remains an empirical
+qualification step; it is not part of the request-path correctness authority.
+
+* Problem
+
+The Hook request path already receives a project root from the client payload,
+but currently reconstructs workspace identity through =ResolvedState::resolve=,
+canonicalizes the root, reads the Runtime Server endpoint JSON, and only then
+opens the workspace data-plane session. Those operations repeat lifecycle work
+inside every cold Hook process. The Unix workspace transport itself is already
+sub-millisecond after admission; repeated workspace discovery is the remaining
+cold-path cost.
+
+* Normative contract
+
+The Runtime Server lifecycle is the single writer of a typed Hook admission
+locator. A committed locator generation contains:
+
+- the exact Runtime Server endpoint binding used by the data plane;
+- one workspace identity for each admitted canonical project root;
+- all lifecycle-observed lookup roots that are authorized aliases of that
+  canonical root;
+- one content digest covering the endpoint binding and complete admission set.
+
+The Hook client MUST obtain =workspaceIdentity=, =canonicalProjectRoot=, and the
+data-plane endpoint from one coherent locator generation. On this path it MUST
+NOT run Git discovery, package-scope discovery, =canonicalize=, endpoint JSON
+loading, activation refresh, or source-index mutation.
+
+Lookup is exact over a normalized absolute path string. Alias publication is a
+lifecycle operation; the request path cannot invent aliases. A root absent from
+the current generation fails closed with =hook-workspace-not-admitted= and asks
+the asynchronous lifecycle owner to publish a new generation.
+
+There is no fallback to =ResolvedState::resolve= or the old endpoint JSON path.
+Recovery rebuilds and atomically replaces the locator generation before Hook
+traffic is admitted again.
+
+* Authority and storage
+
+The locator is stored under the canonical Runtime Server state namespace as a
+seqlock-backed memory artifact. Its in-memory representation is Postcard, not
+JSON: the lifecycle writer publishes odd generation, payload length, BLAKE3
+digest over the exact payload bytes, Postcard payload, then even generation.
+Readers accept only one stable even generation whose raw payload digest,
+schema identity, endpoint binding, and selected workspace admission validate.
+The JSON Schema remains the cross-language semantic contract; it does not
+force the hot memory representation to parse JSON.
+
+The file is a read-only discovery artifact, not a second Runtime Server and not
+an activation database. Workspace databases remain Turso-owned; the locator
+only maps an already admitted root to its resident session identity.
+
+* Performance contract
+
+After locator publication, a cold Hook request has these mandatory receipts:
+
+- =gitDiscoveries=0=;
+- =packageScopeResolutions=0=;
+- =canonicalizeCalls=0=;
+- =endpointJsonReads=0=;
+- =locatorMemoryOpens=1= for a new process and =0= after process-local reuse;
+- complete locator lookup plus typed workspace IPC roundtrip p99 below 1ms.
+
+The performance fixture covers eight admitted workspaces and 1,024 concurrent
+read-only Hook sessions. The workload size is explicit evidence; the Runtime
+Server's general IPC pool remains machine-adaptive, while one-shot Hook
+sessions use a typed read-only profile with one lane and lazy mutation state.
+Generation recovery latency is reported separately and cannot satisfy the
+request-path gate.
+
+Current debug-profile receipts on the owner checkout are:
+
+- cold locator =607083ns=;
+- reused multi-workspace/session locator p99 =192333ns=;
+- warm typed Unix workspace transport average =77098ns= over 32 samples.
+
+These component receipts are gates, not a substitute for the installed
+cold-to-warm replay.
+
+* Executable refinement
+
+The Rust implementation belongs to Runtime Server lifecycle/server owners and
+the workspace IPC client boundary. Command modules only select the interface.
+The implementation sequence is:
+
+1. publish the schema-owned locator from the admission catalog and endpoint;
+2. add a read-only memory locator client;
+3. replace Hook client workspace discovery with locator lookup;
+4. delete the query-time =ResolvedState::resolve= and =canonicalize= path;
+5. establish cold, warm, multi-workspace, and concurrent-session p99 gates.
+
+The implementation owners are
+=agent-semantic-client-db::runtime_server_hook_admission_locator=,
+=workspace_db_ipc::runtime_locator=, and the Runtime Server lifecycle in
+=agent-semantic-protocol::server=. The previous resolved-admission helper was
+deleted; command surfaces do not own locator implementation.

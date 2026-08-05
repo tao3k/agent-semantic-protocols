@@ -20,6 +20,7 @@ pub use api::{
     current_workspace_search_source_index_snapshot,
 };
 pub use async_rebuild::{
+    prepare_runtime_server_owner_projection_with_registry_async,
     prepare_runtime_server_workspace_generation_async,
     prepare_runtime_server_workspace_generation_with_registry_async,
 };

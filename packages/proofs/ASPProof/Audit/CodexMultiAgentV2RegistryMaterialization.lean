@@ -2,7 +2,9 @@ import ASPProof.CodexMultiAgentV2RegistryMaterialization
 
 open ASPProof.CodexMultiAgentV2RegistryMaterialization
 
-#check nonUniqueDurableRootRejects
+#check missingScopedRootTaskEvidenceRejects
+#check registryMaterializationPreservesRootTaskIdentity
 #check registryFactsMintNoTurns
 #check registryFactsMintNoDelegations
 #check registryMaterializationPreservesOnlyAgentFacts
+#check registryControlPlaneDoesNotExecuteCodex

@@ -1,8 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const CODEX_FALLBACK_RESIDENT_AGENT_MODEL: &str = "gpt-5.4-mini";
 const CLAUDE_DEFAULT_RESIDENT_AGENT_MODEL: &str = "haiku";
+const EMBEDDED_AGENT_ROUTE_REGISTRY: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agents/config.toml"
+));
 
 pub(super) fn subagent_model_arg(client: &str, model: Option<&str>) -> Result<String, String> {
     let model = match model {
@@ -40,8 +43,16 @@ pub(crate) fn install_codex_resident_agents(
     codex_home: &Path,
     subagent_model: &str,
 ) -> Result<PathBuf, String> {
-    let path = refresh_codex_resident_search_agent(codex_home, subagent_model)?;
-    let testing_contents = codex_resident_testing_agent(subagent_model)?;
+    install_codex_resident_agents_with_models(codex_home, subagent_model, subagent_model)
+}
+
+pub(crate) fn install_codex_resident_agents_with_models(
+    codex_home: &Path,
+    explorer_model: &str,
+    testing_model: &str,
+) -> Result<PathBuf, String> {
+    let path = refresh_codex_resident_search_agent(codex_home, explorer_model)?;
+    let testing_contents = codex_resident_testing_agent(testing_model)?;
     let testing_canonical_path = asp_agent_config_path("asp-testing", "codex", "toml")?;
     write_agent_config(&testing_canonical_path, testing_contents.as_bytes())?;
     let testing_path = codex_home.join("agents").join("asp-testing.toml");
@@ -132,31 +143,32 @@ fn codex_default_subagent_model() -> Result<String, String> {
     let config_path = agent_semantic_runtime::state_core::resolve_state_home()?
         .join("agents")
         .join("config.toml");
-    Ok(read_codex_primary_model(&config_path)?
-        .unwrap_or_else(|| CODEX_FALLBACK_RESIDENT_AGENT_MODEL.to_string()))
+    if config_path.is_file() {
+        return read_codex_explorer_model(&config_path);
+    }
+    codex_explorer_model_from_catalog(EMBEDDED_AGENT_ROUTE_REGISTRY, "embedded agents/config.toml")
 }
 
-fn read_codex_primary_model(config_path: &Path) -> Result<Option<String>, String> {
-    if !config_path.exists() {
-        return Ok(None);
-    }
+fn read_codex_explorer_model(config_path: &Path) -> Result<String, String> {
     let text = fs::read_to_string(config_path)
         .map_err(|error| format!("failed to read {}: {error}", config_path.display()))?;
-    let value = toml::from_str::<toml::Value>(&text)
-        .map_err(|error| format!("failed to parse {}: {error}", config_path.display()))?;
-    let model = value
-        .get("platform")
-        .and_then(toml::Value::as_table)
-        .and_then(|platform| platform.get("codex"))
-        .and_then(toml::Value::as_table)
-        .and_then(|codex| codex.get("models"))
-        .and_then(toml::Value::as_table)
-        .and_then(|models| models.get("primary"))
+    codex_explorer_model_from_catalog(&text, &config_path.display().to_string())
+}
+
+fn codex_explorer_model_from_catalog(text: &str, owner: &str) -> Result<String, String> {
+    let value = toml::from_str::<toml::Value>(text)
+        .map_err(|error| format!("failed to parse {owner}: {error}"))?;
+    value
+        .get("agents")
+        .and_then(|agents| agents.get("asp_explorer"))
+        .and_then(|agent| agent.get("platforms"))
+        .and_then(|platforms| platforms.get("codex"))
+        .and_then(|codex| codex.get("model"))
         .and_then(toml::Value::as_str)
         .map(str::trim)
         .filter(|model| !model.is_empty())
-        .map(ToString::to_string);
-    Ok(model)
+        .map(ToString::to_string)
+        .ok_or_else(|| format!("agents.asp_explorer.platforms.codex.model is required in {owner}"))
 }
 
 fn codex_resident_search_agent(subagent_model: &str) -> Result<String, String> {

@@ -5,6 +5,7 @@ mod codex_control_plane;
 mod protocol;
 mod provider_owner;
 mod runtime_generation;
+mod runtime_locator;
 pub(crate) mod transport;
 mod validation;
 

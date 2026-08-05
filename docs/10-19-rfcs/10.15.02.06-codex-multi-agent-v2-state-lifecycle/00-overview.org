@@ -1,28 +1,67 @@
-#+title: RFC 10.15.02.06 — Codex Multi-Agent v2 LifeSession module map
-#+options: toc:2
+#+TITLE: Multi-agent Life Session lifecycle
+#+OPTIONS: toc:2 num:nil
 
-* Scope
+* Status
 
-This directory decomposes the Rust-readiness refinement of the Codex
-Multi-Agent v2 downstream LifeSession contract.  The parent RFC owns observed
-Host semantics and the cross-module invariants.  These modules own the detailed
-close protocol, Rust aggregate boundary, and proof correspondence.
+This directory defines the only supported Life Session architecture.  A Life
+Session is always a =MultiAgentLifeSession=: one root session containing a
+dynamic set of resident agent slots and temporary agents.
 
-* Modules
+There is no single-agent Life Session compatibility mode.  Runtime Server
+health, host UI visibility, and archive indexing are observations; none of them
+can manufacture session, binding, replacement, or dispatch authority.
 
-- [[file:01-close-release-protocol.org][01 — Close, termination, and canonical path release]]
-- [[file:02-rust-lifesession-aggregate.org][02 — Rust LifeSession aggregate boundary]]
-- [[file:03-proof-correspondence.org][03 — Lean, Typst, and AXLE correspondence]]
-- [[file:04-single-resident-archive-release.org][04 — Single resident archive and release]]
-- [[file:05-server-owned-session-registry-authority.org][05 — Server-owned session registry authority]]
-- [[file:06-layered-runtime-session-turn-model.org][06 — Layered runtime, Agent Session, and Codex turn model]]
-- [[file:07-workspace-generation-readiness.org][07 — Runtime workspace generation readiness]]
-- [[file:08-workspace-reconcile-closure.org][08 — Workspace-specific reconcile closure]]
-- [[file:09-warm-publication-recovery.org][09 — Warm publication crash recovery and bounded progress]]
+* Product state
 
-* Cross-module invariant
+The executable refinement is the product of four independent layers:
 
-Binding authority, close authority, replacement authority, and presentation
-visibility are independent.  No module may infer one from another.  All Host
-effects use revision CAS, durable intent/outbox, a stable dispatch key,
-intent-indexed receipts, and a delivered aggregate CAS.
+1. workspace Runtime Server generation and health;
+2. root/session lifecycle generation and phase;
+3. per-agent host binding generation and release receipts;
+4. per-command dispatch generation and phase.
+
+=ASPProof.AgentSessionLifecycleProduct= owns those layers.
+=ASPProof.MultiAgentLifeSession= is the aggregate root that owns resident slots,
+temporary agents, configured identities, and the per-slot occupancy invariant.
+
+* Identity
+
+Every resident profile has three non-interchangeable identities:
+
+- route key: configuration and policy lookup;
+- session name: durable ASP registry identity;
+- platform host agent name: native client dispatch target.
+
+The implementation must not infer one from another.  A durable dispatch needs
+a binding whose session name and platform target both match the configured
+profile and whose target-verification receipt is current.
+
+* Multiplicity
+
+A root session may contain many resident slots and many temporary agents.
+Each resident slot has exactly one occupancy value: vacant, incumbent, or
+replacement.  Therefore at most one resident generation can be live per slot;
+temporary agents never consume resident slots.
+
+* Authority chain
+
+#+begin_example
+configured profile
+  -> typed route/session/platform identities
+  -> verified resident binding
+  -> current lifecycle product generation
+  -> durable dispatch claim
+  -> host delivery receipt
+#+end_example
+
+Archive intent revokes durable dispatch but does not release the canonical
+path.  Replacement requires indexed host-termination and path-release receipts
+and a strictly newer generation.  Server restart preserves every non-server
+layer.
+
+* Removed architecture
+
+The former =ASPAgentLifeSession*=, layered-agent, dynamic-name registry, and
+parallel configured-identity proof families are removed.  Rust, schemas, and
+tests must refine the product/aggregate pair above; they may not translate back
+through legacy states or fallback identities.

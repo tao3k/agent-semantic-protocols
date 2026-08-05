@@ -1,4 +1,20 @@
-use super::{Command, SupervisorCommandError, resolve_supervisor_command};
+use super::{
+    Command, SUPERVISOR_COMMAND_BOUNDARY, SUPERVISOR_COMMAND_EXECUTION_BUDGET,
+    SupervisorCommandError, resolve_supervisor_command,
+};
+
+#[test]
+fn supervisor_command_execution_reserves_cleanup_time() {
+    assert_eq!(
+        SUPERVISOR_COMMAND_EXECUTION_BUDGET,
+        std::time::Duration::from_millis(800)
+    );
+    assert_eq!(
+        SUPERVISOR_COMMAND_BOUNDARY,
+        std::time::Duration::from_millis(900)
+    );
+    assert!(SUPERVISOR_COMMAND_EXECUTION_BUDGET < SUPERVISOR_COMMAND_BOUNDARY);
+}
 
 #[test]
 fn command_injection_requires_an_absolute_path() {

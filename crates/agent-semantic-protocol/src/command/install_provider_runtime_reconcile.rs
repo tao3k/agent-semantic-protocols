@@ -13,9 +13,33 @@ fn registered_provider_binary_exists(path: &Path) -> Result<bool, String> {
     }
 }
 
-fn registered_provider_binary_is_lattice_current(path: &Path) -> Result<bool, String> {
+fn registered_provider_binary_is_canonical_lattice_entry(
+    path: &Path,
+    artifact_root: &Path,
+) -> Result<bool, String> {
     match std::fs::symlink_metadata(path) {
-        Ok(metadata) => Ok(metadata.file_type().is_file()),
+        Ok(metadata) if !metadata.file_type().is_symlink() => Ok(false),
+        Ok(_) => {
+            let canonical = std::fs::canonicalize(path).map_err(|error| {
+                format!(
+                    "failed to resolve registered provider Lattice entry {}: {error}",
+                    path.display()
+                )
+            })?;
+            let canonical_artifact_root =
+                std::fs::canonicalize(artifact_root).map_err(|error| {
+                    format!(
+                        "failed to resolve provider artifact root {}: {error}",
+                        artifact_root.display()
+                    )
+                })?;
+            Ok(canonical.file_name() == path.file_name()
+                && canonical.starts_with(canonical_artifact_root.join("blake3-256"))
+                && super::protocol_binary::protocol_binary_digest_from_canonical_artifact_path(
+                    &canonical,
+                )
+                .is_some())
+        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(format!(
             "failed to inspect registered provider Lattice profile {}: {error}",
@@ -63,7 +87,7 @@ fn reconcile_registered_provider_runtime_binaries_from(
         .map(|registration| registration.binary().to_string())
         .collect::<std::collections::BTreeSet<_>>();
     let mut reconciled_count = 0;
-    let mut changed_count = 0;
+    let changed_count = 0;
     let mut missing_count = 0;
     let mut receipt_reconciled_count = 0;
     let mut receipt_changed_count = 0;
@@ -94,25 +118,14 @@ fn reconcile_registered_provider_runtime_binaries_from(
             missing_count += 1;
             continue;
         }
-        if registered_provider_receipt_covers_binary(&current_receipts, binary_name)
-            && registered_provider_binary_is_lattice_current(&target)?
-        {
+        if registered_provider_binary_is_canonical_lattice_entry(&target, artifact_root)? {
             reconciled_count += 1;
             continue;
         }
-        let binary_identity =
-            super::protocol_binary::RuntimeBinaryIdentityV1::from_registered_provider(binary_name)?;
-        let install = super::protocol_binary::install_protocol_binary_target(
-            &target,
-            &target,
-            artifact_root,
-            &binary_identity,
-        )?;
-        binary_byte_reads += 1;
-        reconciled_count += 1;
-        if install.status != "already-present" {
-            changed_count += 1;
-        }
+        return Err(format!(
+            "registered provider runtime entry {} is not a canonical digest-lattice symlink",
+            target.display()
+        ));
     }
     for registration in registrations {
         let binary_path = runtime_bin_dir.join(registration.binary());

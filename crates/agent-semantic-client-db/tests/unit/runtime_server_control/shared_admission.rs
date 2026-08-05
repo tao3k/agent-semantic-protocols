@@ -13,10 +13,14 @@ use super::fixture_endpoint;
 #[tokio::test(flavor = "multi_thread")]
 async fn shared_runtime_admission_plane_is_workspace_keyed_and_drains() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 29).await;
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
-        .await
-        .expect("bind Runtime Server");
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 29).await;
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::default()),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind Runtime Server");
     let server = tokio::spawn(server.serve());
     let first = Arc::new(
         agent_semantic_client_db::workspace_db_ipc::WorkspaceDbIpcSession::for_runtime_server(

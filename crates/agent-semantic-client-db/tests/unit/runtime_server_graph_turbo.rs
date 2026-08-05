@@ -15,7 +15,7 @@ use super::runtime_server_control::fixture_endpoint;
 #[tokio::test(flavor = "multi_thread")]
 async fn runtime_status_reports_daemon_owned_graph_turbo_resident() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 29).await;
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 29).await;
     let graph_turbo = GraphTurboResidentStatusHandle::new(GraphTurboResidentStatus {
         state: GraphTurboResidentState::Healthy,
         process_id: Some(4242),
@@ -23,10 +23,14 @@ async fn runtime_status_reports_daemon_owned_graph_turbo_resident() {
         execution_command_digest: Some(format!("blake3-256:{}", "a".repeat(64))),
         reason: None,
     });
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
-        .await
-        .expect("bind runtime server")
-        .with_graph_turbo_resident_status(graph_turbo.clone());
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::default()),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind runtime server")
+    .with_graph_turbo_resident_status(graph_turbo.clone());
     let server = tokio::spawn(server.serve());
 
     call_runtime_server(
@@ -105,7 +109,7 @@ async fn graph_turbo_lease_miss_rejects_before_python_builder() {
     tokio::fs::create_dir_all(&project_root)
         .await
         .expect("create Graph Turbo project root");
-    let endpoint = fixture_endpoint(&runtime_dir, 33).await;
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 33).await;
     let invocation_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let builder_count = Arc::clone(&invocation_count);
     let builder: GraphTurboEvaluationBuilder =
@@ -120,10 +124,14 @@ async fn graph_turbo_lease_miss_rejects_before_python_builder() {
                 }))
             })
         });
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
-        .await
-        .expect("bind Runtime Server")
-        .with_graph_turbo_evaluation_builder(builder);
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::default()),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind Runtime Server")
+    .with_graph_turbo_evaluation_builder(builder);
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
     let session = WorkspaceDbIpcSession::for_runtime_server(

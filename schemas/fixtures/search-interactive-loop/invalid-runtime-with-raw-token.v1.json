@@ -20,6 +20,11 @@
       "artifactDigest": "blake3:5555555555555555555555555555555555555555555555555555555555555555",
       "artifactSchemaId": "agent.semantic-protocols.search-route-proposal-set"
     },
+    "graphCursorArtifact": {
+      "artifactRef": "artifact:graph-cursor-1",
+      "artifactDigest": "blake3:8888888888888888888888888888888888888888888888888888888888888888",
+      "artifactSchemaId": "agent.semantic-protocols.search-graph-cursor"
+    },
     "basedOnRevision": 4
   },
   "batches": [],

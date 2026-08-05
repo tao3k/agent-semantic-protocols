@@ -154,6 +154,85 @@ async fn resident_writer_replaces_a_corrupt_pointer_with_one_complete_generation
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_sessions_share_one_load_once_generation_backend() {
+    let temporary = tempfile::tempdir().expect("temporary runtime root");
+    let workspace_identity = "workspace-load-once";
+    let registry =
+        RuntimeServerWorkspaceRegistry::new(temporary.path().to_path_buf()).expect("registry");
+    registry
+        .publish(
+            "publish-load-once-generation",
+            WorkspaceRecoverySource::TursoGeneration,
+            generation(workspace_identity),
+        )
+        .await
+        .expect("publish load-once generation");
+    let pointer =
+        agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+            temporary.path(),
+            workspace_identity,
+            &project_root(workspace_identity),
+        )
+        .expect("workspace generation pointer path");
+
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(65));
+    let mut sessions = tokio::task::JoinSet::new();
+    for _ in 0..64 {
+        let pointer = pointer.clone();
+        let barrier = std::sync::Arc::clone(&barrier);
+        sessions.spawn(async move {
+            barrier.wait().await;
+            let WorkspaceGenerationDataPlaneOpen::Ready(client) =
+                WorkspaceGenerationDataPlaneClient::open_state(&pointer)
+                    .await
+                    .expect("open shared generation")
+            else {
+                panic!("published generation must be ready");
+            };
+            assert_eq!(client.lease().epoch(), 1);
+        });
+    }
+    barrier.wait().await;
+    while let Some(session) = sessions.join_next().await {
+        session.expect("load-once session");
+    }
+
+    let mut warm_samples = Vec::with_capacity(2_048);
+    for _ in 0..2_048 {
+        let started = std::time::Instant::now();
+        let state = WorkspaceGenerationDataPlaneClient::open_state(&pointer)
+            .await
+            .expect("warm generation open");
+        assert!(matches!(state, WorkspaceGenerationDataPlaneOpen::Ready(_)));
+        warm_samples.push(started.elapsed());
+    }
+    warm_samples.sort_unstable();
+    let warm_p99 = warm_samples[warm_samples.len() * 99 / 100];
+    let receipt = WorkspaceGenerationDataPlaneClient::cache_receipt(&pointer);
+    assert_eq!(receipt.cold_open_count, 1, "receipt={receipt:?}");
+    assert_eq!(receipt.refresh_open_count, 0, "receipt={receipt:?}");
+    assert!(receipt.warm_hit_count >= 2_048, "receipt={receipt:?}");
+    assert!(
+        warm_p99 < std::time::Duration::from_millis(1),
+        "load-once generation warm p99 exceeded 1ms: {warm_p99:?} receipt={receipt:?}"
+    );
+    let counters = registry.data_plane_counters();
+    assert_eq!(counters.database_opens, 0);
+    assert_eq!(counters.provider_spawns, 0);
+    assert_eq!(counters.control_socket_roundtrips, 0);
+    println!(
+        "[workspace-generation-load-once] sessions=64 warmSamples={} coldOpenCount={} coalescedOpenCount={} warmHitCount={} refreshOpenCount={} databaseOpenCount=0 providerProcessCount=0 controlRoundtripCount=0 p99Nanos={} budgetNanos=1000000",
+        warm_samples.len(),
+        receipt.cold_open_count,
+        receipt.coalesced_open_count,
+        receipt.warm_hit_count,
+        receipt.refresh_open_count,
+        warm_p99.as_nanos(),
+    );
+    registry.shutdown().await.expect("drain writer lane");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn obsolete_exact_segment_format_requires_typed_rebuild() {
     let temporary = tempfile::tempdir().expect("temporary runtime root");
     let workspace_identity = "workspace-obsolete-exact-format";

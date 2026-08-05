@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientDecisionMaterializer {
     AgentSearchJson,
@@ -9,7 +9,7 @@ pub enum HookClientDecisionMaterializer {
 }
 
 /// One declarative hook rule from project-local config.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleConfig {
     pub id: String,
@@ -43,7 +43,7 @@ pub struct HookClientRuleConfig {
 }
 
 /// Stable responsibility key resolved through `agents.placeholders`.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct HookClientAgentPlaceholder(String);
 
 impl HookClientAgentPlaceholder {
@@ -52,7 +52,7 @@ impl HookClientAgentPlaceholder {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct HookClientReceiptKind(String);
 
 impl HookClientReceiptKind {
@@ -61,7 +61,7 @@ impl HookClientReceiptKind {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleDispatchConfig {
     pub transport: HookClientRuleDispatchTransport,
@@ -72,14 +72,14 @@ pub struct HookClientRuleDispatchConfig {
 }
 
 /// Supported host transport for config-driven execution dispatch.
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientRuleDispatchTransport {
     ResidentAgent,
 }
 
 /// Declarative provider materialization policy for a resident dispatch.
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientLazyProviderPolicy {
     MatchedLanguage,
@@ -95,7 +95,7 @@ impl HookClientRuleDispatchTransport {
 }
 
 /// Shared host action spelling used by declarative hook rules.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientActionKind {
     Read,
@@ -109,7 +109,7 @@ pub enum HookClientActionKind {
     Unknown,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientActionSubjectKind {
     RegisteredLanguageSource,
@@ -120,7 +120,7 @@ pub enum HookClientActionSubjectKind {
     Other,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientActionAuthority {
     RawHostAction,
@@ -132,7 +132,7 @@ pub enum HookClientActionAuthority {
 }
 
 /// Rule match axes from project-local hook config.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleMatchConfig {
     #[serde(default)]
@@ -187,14 +187,14 @@ pub struct HookClientRuleMatchConfig {
 }
 
 /// Structured document formats understood by hook projector capabilities.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, Hash, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientStructuredFormat {
     Json,
     Toml,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientStructuredProjectionMatchConfig {
     pub binary: String,
@@ -208,14 +208,14 @@ pub struct HookClientStructuredProjectionMatchConfig {
     pub option_value_arity: std::collections::BTreeMap<String, u8>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, Hash, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientStructuredFilterGrammar {
     BoundedPathV1,
 }
 
 /// Route suggestion from project-local hook config.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRuleRouteConfig {
     pub provider_id: String,
@@ -230,7 +230,7 @@ pub struct HookClientRuleRouteConfig {
 }
 
 /// Config-level decision spelling for a rule.
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientConfigDecision {
     Allow,
@@ -239,7 +239,7 @@ pub enum HookClientConfigDecision {
 }
 
 /// Config-level reason category spelling for a rule.
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientConfigReasonKind {
     None,
@@ -252,7 +252,7 @@ pub enum HookClientConfigReasonKind {
 }
 
 /// Config-level route kind spelling for a rule route.
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientConfigRouteKind {
     Prime,
@@ -268,7 +268,7 @@ pub enum HookClientConfigRouteKind {
 }
 
 /// Config-level stdin handling spelling for a route.
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookClientConfigStdinMode {
     None,

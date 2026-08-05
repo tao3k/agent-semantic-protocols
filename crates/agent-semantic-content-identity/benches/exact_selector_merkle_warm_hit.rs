@@ -4,7 +4,7 @@ use agent_semantic_content_identity::exact_selector_cache::{
 };
 use agent_semantic_content_identity::exact_selector_merkle::{
     ContentDigestV1, EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM, EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID,
-    EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION, ExactProjectionModeV1, ExactSelectorMerkleProofV1,
+    EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION, ExactProjectionModeV1, ParserLanguageIdV1,
     derive_parser_fact_digest_v1, derive_projection_digest_v1,
 };
 use agent_semantic_content_identity::workspace_merkle_v1::WorkspacePathMerkleTreeV1;
@@ -22,6 +22,7 @@ fn digest(character: char) -> ContentDigestV1 {
 
 fn record() -> ExactSelectorProjectionRecordV1 {
     let projection_payload = b"fn run() {}".to_vec();
+    let language_id = ParserLanguageIdV1::from("rust");
     let owner_path = "crates/example/src/lib.rs".to_owned();
     let source_blob_digest = digest('d');
     let tree = WorkspacePathMerkleTreeV1::from_file_digests([
@@ -30,7 +31,7 @@ fn record() -> ExactSelectorProjectionRecordV1 {
     ])
     .expect("valid Merkle tree");
     let parser_fact_digest = derive_parser_fact_digest_v1(
-        "rust",
+        &language_id,
         &digest('e'),
         &digest('f'),
         &digest('d'),
@@ -42,7 +43,7 @@ fn record() -> ExactSelectorProjectionRecordV1 {
             agent_semantic_content_identity::canonical_item_identity::CanonicalItemIdentity::new(
                 "rust", "function", "run",
             ),
-            structural_selector.as_str(),
+            structural_selector.clone(),
         );
     let projection_digest = derive_projection_digest_v1(
         &canonical_item_selector,
@@ -52,42 +53,43 @@ fn record() -> ExactSelectorProjectionRecordV1 {
         &projection_payload,
     );
     ExactSelectorProjectionRecordV1 {
-        proof: ExactSelectorMerkleProofV1 {
-            schema_id: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID.to_owned(),
-            schema_version: EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION.to_owned(),
-            digest_algorithm: EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM.to_owned(),
-            language_id: "rust".to_owned(),
-            workspace_root_digest: tree.root_digest().clone(),
-            owner_path: owner_path.clone(),
-            owner_subtree_digest: tree
+        source_byte_range: 0..projection_payload.len() as u64,
+        proof: serde_json::from_value(serde_json::json!({
+            "canonicalItemSelector": canonical_item_selector,
+            "schemaId": EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_ID,
+            "schemaVersion": EXACT_SELECTOR_MERKLE_PROOF_SCHEMA_VERSION,
+            "digestAlgorithm": EXACT_SELECTOR_MERKLE_DIGEST_ALGORITHM,
+            "languageId": language_id,
+            "workspaceRootDigest": tree.root_digest(),
+            "ownerPath": owner_path,
+            "ownerSubtreeDigest": tree
                 .owner_subtree_digest(&owner_path)
-                .expect("owner leaf")
-                .clone(),
-            owner_inclusion_proof: tree.inclusion_proof(&owner_path).expect("owner proof"),
-            source_blob_digest,
-            parser_identity_digest: digest('e'),
-            query_pack_digest: digest('f'),
-            parser_fact_digest,
-            canonical_item_selector,
-            structural_selector,
-            projection_mode: ExactProjectionModeV1::Code,
-            projection_digest,
-        },
+                .expect("owner leaf"),
+            "ownerInclusionProof": tree.inclusion_proof(&owner_path).expect("owner proof"),
+            "sourceBlobDigest": source_blob_digest,
+            "parserIdentityDigest": digest('e'),
+            "queryPackDigest": digest('f'),
+            "parserFactDigest": parser_fact_digest,
+            "structuralSelector": structural_selector,
+            "projectionMode": ExactProjectionModeV1::Code,
+            "projectionDigest": projection_digest,
+        }))
+        .expect("valid exact-selector Merkle proof packet"),
         projection_payload,
     }
 }
 
 fn key<'a>(record: &'a ExactSelectorProjectionRecordV1) -> ExactSelectorMerkleLookupKeyV1<'a> {
     ExactSelectorMerkleLookupKeyV1 {
-        language_id: &record.proof.language_id,
-        workspace_root_digest: &record.proof.workspace_root_digest,
-        owner_path: &record.proof.owner_path,
-        owner_subtree_digest: &record.proof.owner_subtree_digest,
-        source_blob_digest: &record.proof.source_blob_digest,
-        parser_identity_digest: &record.proof.parser_identity_digest,
-        query_pack_digest: &record.proof.query_pack_digest,
-        structural_selector: &record.proof.structural_selector,
-        projection_mode: record.proof.projection_mode,
+        language_id: record.proof.language_id(),
+        workspace_root_digest: record.proof.workspace_root_digest(),
+        owner_path: record.proof.owner_path(),
+        owner_subtree_digest: record.proof.owner_subtree_digest(),
+        source_blob_digest: record.proof.source_blob_digest(),
+        parser_identity_digest: record.proof.parser_identity_digest(),
+        query_pack_digest: record.proof.query_pack_digest(),
+        structural_selector: record.proof.structural_selector(),
+        projection_mode: record.proof.projection_mode().clone(),
     }
 }
 
@@ -128,7 +130,10 @@ fn main() {
     assert!(single_p95_ns <= SINGLE_LOOKUP_P95_BUDGET_NS);
 
     let mut invalid_record = record.clone();
-    invalid_record.proof.workspace_root_digest = digest('9');
+    let mut invalid_proof =
+        serde_json::to_value(&invalid_record.proof).expect("serializable proof");
+    invalid_proof["workspaceRootDigest"] = serde_json::json!(digest('9'));
+    invalid_record.proof = serde_json::from_value(invalid_proof).expect("deserializable proof");
     let invalid_key = key(&invalid_record);
     let miss_p95_ns = p95_ns(SINGLE_ITERATIONS, || {
         assert_eq!(

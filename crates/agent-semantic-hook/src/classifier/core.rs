@@ -17,6 +17,8 @@ use crate::{
     collect_source_selector_matches, collect_tool_actions, payload_string, subject_for_action,
 };
 
+const RUNTIME_BINARY_POLICY_PRIORITY: i64 = 105_000;
+
 /// Named input for hook classification with optional client policy config.
 pub struct HookClassificationRequest<'a> {
     /// Activated provider runtime for the current project.
@@ -215,7 +217,7 @@ fn root_session_is_known_v1(payload: &Value) -> bool {
 fn classify_runtime_binary_action_v1(
     request: &HookClassificationRequest<'_>,
     action: &ToolAction,
-) -> Option<HookDecision> {
+) -> Option<crate::hook_config::HookPolicyCandidate> {
     if !root_session_is_known_v1(request.payload) {
         return None;
     }
@@ -293,7 +295,27 @@ fn classify_runtime_binary_action_v1(
         "runtimeBinary".to_string(),
         Value::String(registered_binary),
     );
-    Some(decision)
+    Some(crate::hook_config::HookPolicyCandidate {
+        priority: RUNTIME_BINARY_POLICY_PRIORITY,
+        decision,
+    })
+}
+
+fn higher_priority_candidate(
+    left: Option<crate::hook_config::HookPolicyCandidate>,
+    right: Option<crate::hook_config::HookPolicyCandidate>,
+) -> Option<crate::hook_config::HookPolicyCandidate> {
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            if right.priority > left.priority {
+                Some(right)
+            } else {
+                Some(left)
+            }
+        }
+        (Some(candidate), None) | (None, Some(candidate)) => Some(candidate),
+        (None, None) => None,
+    }
 }
 
 fn classify_tool_actions(
@@ -309,12 +331,12 @@ fn classify_tool_actions(
     } = request;
     let mut first_allow = None;
     for action in actions {
-        if let Some(decision) = classify_runtime_binary_action_v1(request, action) {
-            return Some(decision);
-        }
-        let Some(decision) = config.classify(registry, platform, event, action) else {
+        let runtime_candidate = classify_runtime_binary_action_v1(request, action);
+        let config_candidate = config.classify_candidate(registry, platform, event, action);
+        let Some(candidate) = higher_priority_candidate(runtime_candidate, config_candidate) else {
             continue;
         };
+        let decision = candidate.decision;
         match decision.decision {
             crate::DecisionKind::Allow => {
                 first_allow.get_or_insert(decision);

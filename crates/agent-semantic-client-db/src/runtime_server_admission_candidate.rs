@@ -107,7 +107,32 @@ pub enum WorkspaceGenerationBuildMode {
     RebuildAfterMutation,
 }
 
+impl WorkspaceGenerationBuildMode {
+    /// Whether admission may decode and reuse the durable canonical generation.
+    ///
+    /// A mutation rebuild has already rejected that generation as superseded,
+    /// so decoding its potentially large materialization would be both wasted
+    /// work and avoidable peak memory pressure.
+    pub const fn attempts_durable_restore(self) -> bool {
+        !matches!(self, Self::RebuildAfterMutation)
+    }
+}
+
 pub type WorkspaceGenerationCandidateBuildFuture =
     Pin<Box<dyn Future<Output = Result<WorkspaceGenerationBuild, String>> + Send + 'static>>;
 pub type WorkspaceGenerationCandidateBuilder =
     Arc<dyn Fn(String, PathBuf) -> WorkspaceGenerationCandidateBuildFuture + Send + Sync + 'static>;
+
+pub type WorkspaceOwnerProjectionBuildFuture = Pin<
+    Box<
+        dyn Future<Output = Result<crate::runtime_server_workspace::WorkspaceOwnerSnapshot, String>>
+            + Send
+            + 'static,
+    >,
+>;
+pub type WorkspaceOwnerProjectionBuilder = Arc<
+    dyn Fn(String, PathBuf, String, String) -> WorkspaceOwnerProjectionBuildFuture
+        + Send
+        + Sync
+        + 'static,
+>;

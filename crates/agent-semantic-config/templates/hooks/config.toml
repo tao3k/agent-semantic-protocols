@@ -12,9 +12,9 @@ contractFingerprint = "@HOOK_CLIENT_CONTRACT_FINGERPRINT@"
 # projection when materializing the managed config. Do not maintain extensions here.
 # @REGISTERED_LANGUAGE_PROVIDERS@
 
-[agents.placeholders]
-explore = "asp-explore"
-testing = "asp-testing"
+[agents]
+
+# @AGENT_ROUTES@
 
 [[commandProfiles]]
 id = "rust-cargo"
@@ -490,24 +490,6 @@ receiptKind = "asp-testing-execution-v1"
 
 [rules.match]
 argvPrefixAny = [["git", "show"], ["git", "diff"], ["git", "cat-file"], ["git", "blame"], ["git", "log"]]
-
-[[agents.residentAgents]]
-enabled = true
-name = "asp-explore"
-role = "asp_explorer"
-roles = ["subagent", "search"]
-permissions = ["read-only"]
-codexAgentName = "asp_explorer"
-sessionLifetime = "resident"
-
-[[agents.residentAgents]]
-enabled = true
-name = "asp-testing"
-role = "asp_testing"
-roles = ["subagent", "testing", "build"]
-permissions = ["workspace-write"]
-codexAgentName = "asp_testing"
-sessionLifetime = "resident"
 
 [agentSessionGuide]
 register = """

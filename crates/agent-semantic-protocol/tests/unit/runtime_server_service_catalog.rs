@@ -1,4 +1,4 @@
-#[path = "../../src/command/runtime_server_service_catalog.rs"]
+#[path = "../../src/server/runtime_server_service_catalog.rs"]
 mod runtime_server_service_catalog;
 
 #[test]

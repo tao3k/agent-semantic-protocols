@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 mod runtime_server_owner_content_identity_tests;
 
 pub(super) struct RuntimeOwnerContentIdentity {
-    pub bytes: Vec<u8>,
     pub digest: String,
 }
 
@@ -29,7 +28,16 @@ pub(super) async fn read(
         "blake3-256:{}",
         agent_semantic_content_identity::ArtifactHash::blake3(&bytes).value
     );
-    Ok(Some(RuntimeOwnerContentIdentity { bytes, digest }))
+    Ok(Some(RuntimeOwnerContentIdentity { digest }))
+}
+
+pub(crate) async fn current_owner_content_digest(
+    project_root: &Path,
+    owner_path: &str,
+) -> Result<Option<String>, String> {
+    read(project_root, owner_path)
+        .await
+        .map(|identity| identity.map(|identity| identity.digest))
 }
 
 pub(super) fn normalized_owner_path(owner_path: &str) -> Result<PathBuf, String> {

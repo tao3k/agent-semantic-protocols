@@ -1,105 +1,24 @@
-#+title: RFC 10.15.02.06.01 — LifeSession close and canonical path release
-#+options: toc:2
+#+TITLE: Multi-agent resident-slot close and release protocol
 
 * Scope
 
-Closing a Codex child is a durable protocol.  Host archive visibility, the
-persisted close edge, shutdown dispatch, observed termination, canonical path
-release, and replacement reservation are independent facts.
+Close and replacement operate on one resident slot inside a
+=MultiAgentLifeSession=.  They never close the root session merely because one
+agent exits, and they never count temporary agents as resident replacements.
 
-* State contract
+* Ordered transition
 
-The close projection has these phases:
+#+begin_example
+incumbent
+  -> archive-intent durable
+  -> dispatch authority revoked
+  -> host shutdown requested
+  -> host termination receipt indexed
+  -> canonical path release receipt indexed
+  -> vacant
+  -> newer replacement generation
+#+end_example
 
-- =live=;
-- =close-intent-durable=;
-- =shutdown-requested=;
-- =host-terminated=;
-- =path-released=; and
-- =BlockedHostCapability=.
-
-=AcceptArchiveProjection= changes presentation only.  It neither advances the
-close phase nor authorizes replacement.  =ReserveReplacement= requires a
-path-release receipt and a strictly newer physical generation.
-
-#+name: agent-lifesession-close-release-math
-#+begin_src typst
-#let no = $0$
-#let live = $L$
-#let intent = $C$
-#let shutdown = $S$
-#let terminated = $T$
-#let released = $R$
-#let blocked = $B$
-#let replacement = math.op("replacement")
-#let phase = math.op("phase")
-#let closeIntent = math.op("close-intent")
-#let terminationReceipt = math.op("termination-receipt")
-#let pathReleaseReceipt = math.op("path-release-receipt")
-#let physicalGeneration = math.op("physical-generation")
-#let archive = math.op("archive")
-#let termination = math.op("termination")
-#let release = math.op("release")
-#let admit = math.op("admit")
-#let expectedRevision = math.op("expected-revision")
-#let revision = math.op("revision")
-#let stableKey = math.op("stable-key")
-#let close = math.op("close")
-#let durableDispatch = math.op("durable-dispatch")
-
-$ live -> intent -> shutdown -> terminated -> released $
-
-$ shutdown -> blocked -> terminated $
-
-$ replacement(s, g') =
-  (phase(s) = released)
-  and closeIntent(s)
-  and terminationReceipt(s)
-  and pathReleaseReceipt(s)
-  and (g' > physicalGeneration(s)) $
-
-$ archive(s) != termination(s) quad and quad archive(s) != release(s) $
-
-$ admit(s, e) =
-  (expectedRevision(e) = revision(s))
-  and (physicalGeneration(e) = physicalGeneration(s))
-  and stableKey(s, e) $
-
-$ close(s) != live => durableDispatch(s) = no $
-#+end_src
-
-#+name: agent-lifesession-close-release-state-machine
-#+begin_src mermaid
-stateDiagram-v2
-  [*] --> Live
-  Live --> LiveArchived: AcceptArchiveProjection / presentation only
-  LiveArchived --> CloseIntentDurable: CommitCloseIntent / CAS
-  Live --> CloseIntentDurable: CommitCloseIntent / CAS
-  CloseIntentDurable --> ShutdownRequested: DispatchShutdown / stable key
-  ShutdownRequested --> HostTerminated: ObserveTermination / receipt
-  ShutdownRequested --> BlockedHostCapability: ShutdownTimedOut / diagnostic
-  BlockedHostCapability --> HostTerminated: ObserveTermination / late receipt
-  HostTerminated --> PathReleased: CommitPathRelease / tombstone + receipt
-  PathReleased --> ReplacementReserved: ReserveReplacement / newer generation CAS
-  CloseIntentDurable --> Rejected: release before termination
-  ShutdownRequested --> Rejected: stale revision, generation, or dispatch key
-  BlockedHostCapability --> Rejected: replacement without termination
-#+end_src
-
-* Blocked Host capability
-
-=BlockedHostCapability= records a durable close edge and shutdown dispatch for
-which the Host has not supplied termination.  It authorizes neither path
-release nor replacement.  A late termination receipt resumes the same stable
-dispatch key and advances the existing intent; it does not start another close
-transaction or ask the agent to choose an administrative repair command.
-
-* Required properties
-
-- Archive may occur before close, after close, or not at all.
-- A persisted close edge does not prove termination.
-- Termination does not prove canonical path release.
-- Path release before termination is rejected.
-- Duplicate effects under one stable key are idempotent.
-- Stale revision, generation, and stable-key completions are rejected.
-- Same-generation replacement is rejected.
+Missing transport, timeout, archive visibility, or a Runtime Server restart
+cannot skip an edge.  A slot cannot contain incumbent and replacement states at
+the same time because =ResidentOccupancy= makes that state unrepresentable.

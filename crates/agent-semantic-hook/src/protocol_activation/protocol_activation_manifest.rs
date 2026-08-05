@@ -226,6 +226,8 @@ pub struct ProviderDevelopmentDescriptor {
     pub schema_version: String,
     pub source_root: String,
     pub build_binding: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_install: Option<String>,
     pub artifact_domain: ProviderDevelopmentArtifactDomain,
 }
 
@@ -586,7 +588,7 @@ pub struct ProviderQueryPackClause {
     pub intent_axes: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 /// In-memory runtime resolved from activation plus static provider manifests.
 pub struct HookRuntime {
     pub project_root: String,
@@ -595,7 +597,7 @@ pub struct HookRuntime {
 }
 
 /// In-memory activated provider selected from a validated manifest.
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActivatedProvider {
     pub manifest_id: String,
     pub manifest_digest: String,
@@ -618,15 +620,33 @@ pub struct ActivatedProvider {
     pub policy: HookPolicy,
     pub routes: HookRoutes,
 }
+
+/// Provider-owned language and routing facts compiled for Hook matching.
+///
+/// This deliberately excludes execution activation. A document provider or a
+/// language provider whose harness is not active still participates in Hook
+/// policy without pretending that an executable provider was activated.
+#[derive(Clone, Debug)]
+pub(crate) struct HookProviderProjection {
+    pub language_id: agent_semantic_config::LanguageId,
+    pub provider_id: agent_semantic_config::ProviderId,
+    pub binary: String,
+    pub provider_command_prefix: Vec<String>,
+    pub package_roots: Vec<String>,
+    pub source_extensions: Vec<String>,
+    pub config_files: Vec<String>,
+    pub policy: HookPolicy,
+    pub routes: HookRoutes,
+}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SourceSelectorKind {
     ExactPath,
     Pattern,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ProviderSelectorMatch<'a> {
-    pub provider: &'a ActivatedProvider,
+#[derive(Clone, Debug)]
+pub(crate) struct ProviderSelectorMatch {
+    pub provider: HookProviderProjection,
     pub kind: SourceSelectorKind,
 }
 

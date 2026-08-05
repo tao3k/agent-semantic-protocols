@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use std::path::Path;
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, LazyLock},
+};
 
 use super::{
     WorkspaceGenerationLease, WorkspaceGenerationPointerReader, WorkspaceGenerationSnapshot,
@@ -181,21 +184,129 @@ pub struct WorkspaceSearchGenerationAuthorityPointerClient {
     project_root: String,
 }
 
+pub type SharedWorkspaceSearchGenerationAuthorityPointerClient =
+    Arc<WorkspaceSearchGenerationAuthorityPointerClient>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct WorkspaceSearchGenerationAuthorityPointerKey {
+    generation_pointer_path: PathBuf,
+    workspace_identity: String,
+    project_root: String,
+}
+
+type SharedAuthorityPointerCell =
+    tokio::sync::OnceCell<Option<SharedWorkspaceSearchGenerationAuthorityPointerClient>>;
+
+static SHARED_AUTHORITY_POINTERS: LazyLock<
+    dashmap::DashMap<WorkspaceSearchGenerationAuthorityPointerKey, Arc<SharedAuthorityPointerCell>>,
+> = LazyLock::new(dashmap::DashMap::new);
+
 impl WorkspaceSearchGenerationAuthorityPointerClient {
+    fn shared_key(
+        generation_pointer_path: &Path,
+        workspace_identity: &str,
+        project_root: &str,
+    ) -> WorkspaceSearchGenerationAuthorityPointerKey {
+        WorkspaceSearchGenerationAuthorityPointerKey {
+            generation_pointer_path: generation_pointer_path.to_path_buf(),
+            workspace_identity: workspace_identity.to_owned(),
+            project_root: project_root.to_owned(),
+        }
+    }
+
+    pub fn shared_get(
+        generation_pointer_path: &Path,
+        workspace_identity: &str,
+        project_root: &str,
+    ) -> Option<SharedWorkspaceSearchGenerationAuthorityPointerClient> {
+        let key = Self::shared_key(generation_pointer_path, workspace_identity, project_root);
+        SHARED_AUTHORITY_POINTERS
+            .get(&key)
+            .and_then(|cell| cell.get().and_then(Clone::clone))
+    }
+
+    pub(crate) fn invalidate_committed_pointer(
+        generation_pointer_path: &Path,
+        workspace_identity: &str,
+        project_root: &str,
+    ) {
+        SHARED_AUTHORITY_POINTERS.remove(&Self::shared_key(
+            generation_pointer_path,
+            workspace_identity,
+            project_root,
+        ));
+    }
+
+    pub async fn shared_open_path_optional(
+        generation_pointer_path: &Path,
+        workspace_identity: &str,
+        project_root: &str,
+    ) -> Result<Option<Arc<Self>>, String> {
+        let key = Self::shared_key(generation_pointer_path, workspace_identity, project_root);
+        let cell = SHARED_AUTHORITY_POINTERS
+            .entry(key.clone())
+            .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new()))
+            .clone();
+        let pointer = cell
+            .get_or_try_init(|| async {
+                Self::open_path_optional(generation_pointer_path, workspace_identity, project_root)
+                    .await
+                    .map(|pointer| pointer.map(Arc::new))
+            })
+            .await?
+            .clone();
+        if pointer.is_none() {
+            SHARED_AUTHORITY_POINTERS.remove(&key);
+        }
+        Ok(pointer)
+    }
+
+    pub async fn open_path(
+        generation_pointer_path: &Path,
+        workspace_identity: &str,
+        project_root: &str,
+    ) -> Result<Self, String> {
+        let reader = WorkspaceGenerationPointerReader::open(generation_pointer_path).await?;
+        let client = Self {
+            reader,
+            workspace_identity: workspace_identity.to_owned(),
+            project_root: project_root.to_owned(),
+        };
+        client.read()?;
+        Ok(client)
+    }
+
+    pub async fn open_path_optional(
+        generation_pointer_path: &Path,
+        workspace_identity: &str,
+        project_root: &str,
+    ) -> Result<Option<Self>, String> {
+        let Some(reader) =
+            WorkspaceGenerationPointerReader::open_optional(generation_pointer_path).await?
+        else {
+            return Ok(None);
+        };
+        let client = Self {
+            reader,
+            workspace_identity: workspace_identity.to_owned(),
+            project_root: project_root.to_owned(),
+        };
+        client.read()?;
+        Ok(Some(client))
+    }
+
     pub async fn open(
         receipt: &WorkspaceSearchGenerationAuthorityOpenReceipt,
         workspace_identity: &str,
         project_root: &str,
     ) -> Result<Self, String> {
         receipt.validate_binding(workspace_identity, project_root)?;
-        let reader =
-            WorkspaceGenerationPointerReader::open(Path::new(&receipt.generation_pointer_path))
-                .await?;
-        let client = Self {
-            reader,
-            workspace_identity: workspace_identity.to_owned(),
-            project_root: project_root.to_owned(),
-        };
+        let client = Self::open_path(
+            Path::new(&receipt.generation_pointer_path),
+            workspace_identity,
+            project_root,
+        )
+        .await?;
         let mapped = client.read()?;
         if mapped.active_epoch < receipt.authority.active_epoch {
             return Err(

@@ -5,7 +5,7 @@ pub(super) fn agent_usage() -> &'static str {
 }
 
 pub(super) fn session_usage() -> &'static str {
-    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|observe-host-ack|dispatch-claim|dispatch-execute|dispatch-complete|dispatch-mark-orphaned|register|list|show|status|lifecycle audit|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive> [--guide] [--name NAME] [--canonical-target PATH] [--dispatch-identity ID] [--command-digest DIGEST] [--command-json JSON] [--resident-bridge] [--evidence-ref REF] [--agent-type-field present|absent] [--resident-target-status present|absent|unroutable] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
+    "usage: asp agent session <bootstrap|observe-host-capability|observe-host-tree|observe-host-ack|dispatch-claim|dispatch-execute|dispatch-complete|dispatch-mark-orphaned|register|list|show|status|lifecycle audit|control-plane refresh|control-plane show|smoke|resume|fork|archive|close|gc|reconcile|delete|unarchive> [--guide] [--name NAME] [--canonical-target PATH] [--dispatch-identity ID] [--command-digest DIGEST] [--command-json JSON] [--resident-bridge] [--evidence-ref REF] [--agent-type-field present|absent] [--resident-target-status present|absent|unroutable] [--schema-digest DIGEST] [--observation-ttl-seconds N] [--child-session-id ID] [--message-target-id ID] [--root-session-id ID] [--parent-session-id ID] [--roles ROLE[,ROLE...]] [--model MODEL] [--status STATUS] [--expires-at UNIX_TS] [--artifact-stale-after-seconds N] [--active] [--replace] [--force] [--activity|--heartbeat] [--json] [CODEX_SESSION_ARGS...]"
 }
 
 #[derive(Clone, Copy)]
@@ -23,6 +23,8 @@ pub(super) enum SessionCommand {
     Show,
     Status,
     LifecycleAudit,
+    ControlPlaneRefresh,
+    ControlPlaneShow,
     Smoke,
     Resume,
     Fork,
@@ -148,6 +150,24 @@ impl SessionArgs {
                 "smoke" | "check" if index == 0 => parsed.command = SessionCommand::Smoke,
                 "lifecycle-audit" if index == 0 => {
                     parsed.command = SessionCommand::LifecycleAudit;
+                }
+                "control-plane" if index == 0 => {
+                    index += 1;
+                    match args.get(index).map(String::as_str) {
+                        Some("refresh") => parsed.command = SessionCommand::ControlPlaneRefresh,
+                        Some("show") => parsed.command = SessionCommand::ControlPlaneShow,
+                        Some(other) => {
+                            return Err(format!(
+                                "unknown asp agent session control-plane subcommand `{other}`"
+                            ));
+                        }
+                        None => {
+                            return Err(
+                                "asp agent session control-plane requires subcommand `refresh` or `show`"
+                                    .to_string(),
+                            );
+                        }
+                    }
                 }
                 "lifecycle" if index == 0 => {
                     index += 1;
@@ -357,7 +377,7 @@ asp agent session bootstrap --name <residentChildName-from-hook-decision>",
             "asp agent session observe-host-capability guide\n\
 Record a short-lived observation of the native collaboration.spawn_agent schema for the active CODEX_THREAD_ID.\n\
 This receipt is diagnostic only: it does not register a resident child and does not authorize fallback.\n\
-asp agent session observe-host-capability --name asp-explore --agent-type-field present|absent",
+asp agent session observe-host-capability --name <configured-session-name> --agent-type-field present|absent",
         ),
         SessionCommand::ObserveHostTree => Some(
             "asp agent session observe-host-tree guide\n\
@@ -388,7 +408,7 @@ asp agent session dispatch-execute --name <resident-lane> --receipt-kind <kind> 
         SessionCommand::DispatchComplete => Some(
             "asp agent session dispatch-complete guide\n\
 Record one terminal compact receipt for an existing dispatch identity. Repeated completion is idempotent and permanently disables replay.\n\
-asp agent session dispatch-complete --name asp-explore --dispatch-identity <id> --command-digest <digest> --evidence-ref <ref>",
+asp agent session dispatch-complete --name <configured-session-name> --dispatch-identity <id> --command-digest <digest> --evidence-ref <ref>",
         ),
         SessionCommand::DispatchMarkOrphaned => Some(
             "asp agent session dispatch-mark-orphaned guide\n\
@@ -404,6 +424,18 @@ asp agent session dispatch-mark-orphaned --name <resident-lane> --dispatch-ident
 Read-only lifecycle audit for the current root session.\n\
 Combines ASP registry rows with Codex rollout session/activity evidence without creating, closing, or deleting sessions.\n\
 asp agent session lifecycle audit --json",
+        ),
+        SessionCommand::ControlPlaneRefresh => Some(
+            "asp agent session control-plane refresh guide\n\
+Ask the resident Runtime Server to materialize the current downstream Codex Multiple Agent V2 control plane from durable AgentSession Registry evidence.\n\
+This returns a typed publication receipt and does not execute any Codex host operation.\n\
+asp agent session control-plane refresh [--root-session-id <root-session-id>]",
+        ),
+        SessionCommand::ControlPlaneShow => Some(
+            "asp agent session control-plane show guide\n\
+Read the resident Runtime Server's last published downstream Codex Multiple Agent V2 control-plane projection.\n\
+This is observation-only and never reconstructs the graph in the CLI.\n\
+asp agent session control-plane show [--root-session-id <root-session-id>]",
         ),
         SessionCommand::Smoke => Some(
             "asp agent session smoke guide\n\
@@ -431,7 +463,7 @@ asp agent session reconcile --json",
 Resume is a saved-session operation, not the resident-child bootstrap workflow.\n\
 This does not create a resident ASP child session.\n\
 If no configured resident child is registered, use bootstrap flow instead:\n\
-asp agent session bootstrap --name asp-explore",
+asp agent session bootstrap",
         ),
         SessionCommand::Fork => Some(
             "asp agent session fork guide\n\
@@ -509,7 +541,7 @@ fn default_agent_session_guide() -> agent_semantic_config::HookClientAgentSessio
     agent_semantic_config::HookClientAgentSessionGuideConfig::new(
         Some(
             "asp agent session register guide\n\
-Guide template failed to load. Run `asp sync` or install hooks, then enter `asp agent session bootstrap --name asp-explore`."
+Guide template failed to load. Run `asp sync` or install hooks, then enter `asp agent session bootstrap`."
                 .to_string(),
         ),
         Some(
@@ -524,12 +556,12 @@ Show one registered child session by --name or --child-session-id."
         ),
         Some(
             "asp agent session reuse guide\n\
-Guide template failed to load. The legacy reuse guide is removed; enter `asp agent session bootstrap --name asp-explore`."
+Guide template failed to load. Enter `asp agent session bootstrap`; the resident route is resolved from the agent registry."
                 .to_string(),
         ),
         Some(
             "asp agent session status guide\n\
-Guide template failed to load. Enter `asp agent session bootstrap --name asp-explore` when the resident child is missing or non-routable."
+Guide template failed to load. Enter `asp agent session bootstrap` when the configured resident child is missing or non-routable."
                 .to_string(),
         ),
     )
@@ -561,7 +593,7 @@ Register is a low-level state write owned by the resident-child interactive loop
 Detected host: {host_label}\n\
 Session env: {session_env}\n\
 Canonical loop entry:\n\
-   asp agent session bootstrap --name asp-explore\n\
+   asp agent session bootstrap\n\
 After a hook deny, run only the loop entry. Choose exactly one number, perform the platform-native action for that choice, then re-enter the same loop until state=Ready.\n\
 The pane owns audit, recovery, cleanup, creation, model alignment, and durable registration. Only run register when a pane choice explicitly asks for it and provides both childSessionId and agentMessageTargetId.\n\
 Configured resident child action: {create_action}\n\

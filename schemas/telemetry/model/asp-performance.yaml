@@ -41,6 +41,67 @@ groups:
         type: string
         brief: Runtime Server transport-contract digest.
         requirement_level: recommended
+      - id: asp.operation.id
+        type: string
+        brief: Correlation identity shared by every stage of one admitted operation.
+        requirement_level: recommended
+      - id: asp.process.resident_memory
+        type: int
+        unit: By
+        brief: Resident bytes observed at the stage boundary.
+        requirement_level: recommended
+      - id: asp.process.peak_resident_memory
+        type: int
+        unit: By
+        brief: Process-lifetime peak resident bytes observed at the stage boundary.
+        requirement_level: recommended
+      - id: asp.process.memory.budget
+        type: int
+        unit: By
+        brief: Hard resident-memory budget for the Runtime Server process.
+        requirement_level: recommended
+      - id: asp.process.memory.budget.status
+        type:
+          members:
+            - id: within_budget
+              value: within-budget
+            - id: budget_exceeded
+              value: budget-exceeded
+        brief: Verdict produced by comparing resident and peak resident bytes with the memory budget.
+        requirement_level: recommended
+      - id: asp.process.disk.read_bytes
+        type: int
+        unit: By
+        brief: Process-lifetime bytes read from disk at the stage boundary.
+        requirement_level: recommended
+      - id: asp.process.disk.write_bytes
+        type: int
+        unit: By
+        brief: Process-lifetime bytes written to disk at the stage boundary.
+        requirement_level: recommended
+      - id: asp.process.page_ins
+        type: int
+        brief: Process-lifetime page-in count at the stage boundary.
+        requirement_level: recommended
+      - id: asp.runtime.event_loop.lag
+        type: int
+        unit: us
+        brief: Tokio timer scheduling lag observed by the resident sampler.
+        requirement_level: recommended
+      - id: asp.runtime.event_loop.lag.budget
+        type: int
+        unit: us
+        brief: Maximum admitted Tokio event-loop scheduling lag.
+        requirement_level: recommended
+      - id: asp.runtime.event_loop.lag.budget.status
+        type:
+          members:
+            - id: within_budget
+              value: within-budget
+            - id: budget_exceeded
+              value: budget-exceeded
+        brief: Verdict produced by comparing resident event-loop lag with its budget.
+        requirement_level: recommended
       - id: asp.performance.elapsed
         type: int
         unit: us
@@ -80,4 +141,3 @@ groups:
       Span names use `asp {asp.surface} {asp.stage}`. A budget failure is an
       error span and is persisted even when the invoking CLI exits.
     extends: registry.asp.performance
-

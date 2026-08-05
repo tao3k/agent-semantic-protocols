@@ -10,6 +10,7 @@ pub use candidate::{
     WorkspaceGenerationBuild, WorkspaceGenerationBuildFuture, WorkspaceGenerationBuildMode,
     WorkspaceGenerationBuilder, WorkspaceGenerationCandidateBuildFuture,
     WorkspaceGenerationCandidateBuilder, WorkspaceGenerationCandidateIdentity,
+    WorkspaceOwnerProjectionBuildFuture, WorkspaceOwnerProjectionBuilder,
     discover_workspace_generation_candidate,
 };
 pub use mutation::{
@@ -28,6 +29,8 @@ pub const WORKSPACE_GENERATION_ADMISSION_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-workspace-generation-admission.v1";
 pub const WORKSPACE_GENERATION_READINESS_RECEIPT_SCHEMA_ID: &str =
     "agent.semantic-protocols.runtime-server-workspace-generation-readiness.v1";
+pub const WORKSPACE_OWNER_GENERATION_READINESS_RECEIPT_SCHEMA_ID: &str =
+    "agent.semantic-protocols.runtime-server-workspace-owner-generation-readiness.v1";
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct WorkspaceGenerationAdmissionKey {
@@ -112,6 +115,63 @@ impl WorkspaceGenerationReadinessReceipt {
     }
 }
 
+/// Read-side proof that the Runtime Server published the current projection
+/// for one exact owner. A newer whole-workspace generation may supersede the
+/// commit before the client reopens it, so consumers admit by owner content
+/// identity rather than strict generation-digest equality.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceOwnerGenerationReadinessReceipt {
+    pub schema_id: String,
+    pub schema_version: String,
+    pub workspace_identity: String,
+    pub owner_path: String,
+    pub owner_content_digest: Option<String>,
+    pub commit: WorkspaceGenerationCommitReceipt,
+    pub reconciled: bool,
+}
+
+impl WorkspaceOwnerGenerationReadinessReceipt {
+    pub fn new(
+        workspace_identity: impl Into<String>,
+        owner_path: impl Into<String>,
+        owner_content_digest: Option<String>,
+        commit: WorkspaceGenerationCommitReceipt,
+        reconciled: bool,
+    ) -> Result<Self, String> {
+        let receipt = Self {
+            schema_id: WORKSPACE_OWNER_GENERATION_READINESS_RECEIPT_SCHEMA_ID.to_owned(),
+            schema_version: "1".to_owned(),
+            workspace_identity: workspace_identity.into(),
+            owner_path: owner_path.into(),
+            owner_content_digest,
+            commit,
+            reconciled,
+        };
+        receipt.validate()?;
+        Ok(receipt)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema_id != WORKSPACE_OWNER_GENERATION_READINESS_RECEIPT_SCHEMA_ID
+            || self.schema_version != "1"
+        {
+            return Err("workspace owner generation readiness receipt schema mismatch".to_owned());
+        }
+        if self.workspace_identity.trim().is_empty() || self.owner_path.trim().is_empty() {
+            return Err("workspace owner generation readiness identity is incomplete".to_owned());
+        }
+        if self
+            .owner_content_digest
+            .as_deref()
+            .is_some_and(str::is_empty)
+        {
+            return Err("workspace owner generation readiness digest is empty".to_owned());
+        }
+        self.commit.validate()
+    }
+}
+
 impl WorkspaceGenerationCommitReceipt {
     pub fn from_recovery(
         recovery: &crate::runtime_server_workspace::WorkspaceRecoveryReceipt,
@@ -178,9 +238,11 @@ impl WorkspaceGenerationAdmissionReceipt {
 #[derive(Clone)]
 pub struct WorkspaceGenerationAdmission {
     builder: WorkspaceGenerationBuilder,
+    owner_projection_builder: Option<WorkspaceOwnerProjectionBuilder>,
     catalog: Option<crate::runtime_server_admission_catalog::RuntimeWorkspaceAdmissionCatalog>,
     entries: Arc<dashmap::DashMap<WorkspaceGenerationAdmissionKey, Arc<AdmissionEntry>>>,
     changes: Arc<tokio::sync::Notify>,
+    submission_tasks: Arc<parking_lot::Mutex<Vec<tokio::task::JoinHandle<()>>>>,
 }
 
 struct PendingWorkspaceMutation {
@@ -242,10 +304,35 @@ impl WorkspaceGenerationAdmission {
     pub fn new(builder: WorkspaceGenerationBuilder) -> Self {
         Self {
             builder,
+            owner_projection_builder: None,
             catalog: None,
             entries: Arc::new(dashmap::DashMap::new()),
             changes: Arc::new(tokio::sync::Notify::new()),
+            submission_tasks: Arc::new(parking_lot::Mutex::new(Vec::new())),
         }
+    }
+
+    #[must_use]
+    pub fn with_owner_projection_builder(
+        mut self,
+        builder: WorkspaceOwnerProjectionBuilder,
+    ) -> Self {
+        self.owner_projection_builder = Some(builder);
+        self
+    }
+
+    pub async fn project_owner(
+        &self,
+        workspace_identity: String,
+        project_root: PathBuf,
+        owner_path: String,
+        language_id: String,
+    ) -> Result<crate::runtime_server_workspace::WorkspaceOwnerSnapshot, String> {
+        let builder = self.owner_projection_builder.as_ref().ok_or_else(|| {
+            "runtime owner projection builder is unavailable in the admitted ServerProcess"
+                .to_owned()
+        })?;
+        builder(workspace_identity, project_root, owner_path, language_id).await
     }
 
     pub fn with_catalog(
@@ -254,6 +341,23 @@ impl WorkspaceGenerationAdmission {
     ) -> Self {
         self.catalog = Some(catalog);
         self
+    }
+
+    pub fn current(
+        &self,
+        workspace_identity: &str,
+        project_root: &std::path::Path,
+    ) -> Option<WorkspaceGenerationAdmissionReceipt> {
+        self.entries
+            .get(&WorkspaceGenerationAdmissionKey {
+                workspace_identity: workspace_identity.to_owned(),
+                project_root: project_root.to_path_buf(),
+            })
+            .map(|entry| entry.observed())
+    }
+
+    pub fn track_submission_task(&self, task: tokio::task::JoinHandle<()>) {
+        self.submission_tasks.lock().push(task);
     }
 
     pub async fn admit(
@@ -686,6 +790,7 @@ impl WorkspaceGenerationAdmission {
             .map(|entry| Arc::clone(entry.value()))
             .collect::<Vec<_>>();
         let mut tasks = Vec::new();
+        tasks.extend(self.submission_tasks.lock().drain(..));
         for entry in entries {
             if let Some(task) = entry.task.lock().take() {
                 task.abort();

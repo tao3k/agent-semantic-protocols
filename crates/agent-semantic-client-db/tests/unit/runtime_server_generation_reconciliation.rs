@@ -48,7 +48,8 @@ async fn concurrent_generation_rebuild_admission_is_single_flight_and_sub_millis
         requests.spawn(async move {
             let started = tokio::time::Instant::now();
             let receipt = admission
-                .admit(
+                .admit_cache_rebuild(
+                    "ready-locator-reconciliation",
                     "workspace-ready-locator-reconciliation",
                     project_root,
                     candidate_identity(),

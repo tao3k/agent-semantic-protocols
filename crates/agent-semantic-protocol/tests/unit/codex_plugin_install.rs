@@ -211,13 +211,16 @@ mod unix {
         std::fs::create_dir_all(state_home.join("agents")).expect("create ASP agents dir");
         std::fs::write(
             state_home.join("agents").join("config.toml"),
-            r#"[platform.codex.models]
-primary = "gpt-5.3-codex-spark"
-fallback = ["gpt-5.4-mini"]
+            r#"schema_id = "agent.semantic-protocols.agent-route-registry"
+schema_version = 1
+
+[agents.asp_explorer.platforms.codex]
+model = "gpt-5.3-codex-spark"
 "#,
         )
         .expect("write ASP agents config");
         write_existing_project_plugin_cache(&root);
+        write_tracked_plugin_source_bundle(&root);
 
         let fake_bin = write_fake_codex_cli(&root);
         let output = Command::new(env!("CARGO_BIN_EXE_asp"))
@@ -225,6 +228,8 @@ fallback = ["gpt-5.4-mini"]
             .env("CODEX_HOME", &codex_home)
             .env("PATH", prepend_path(&fake_bin))
             .env("ASP_STATE_HOME", &state_home)
+            .env("ASP_RUNTIME_SERVER_LAUNCHCTL_PATH", "/usr/bin/true")
+            .env("ASP_RUNTIME_SERVER_SYSTEMCTL_PATH", "/usr/bin/true")
             .env("PRJ_CACHE_HOME", root.join(".cache"))
             .args(["install", "plugin", "--codex", "."])
             .output()

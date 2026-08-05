@@ -6,7 +6,7 @@ use crate::runtime_server_workspace::{
     WorkspaceGenerationState, WorkspaceMemoryBackend, WorkspaceMemoryGeneration,
     WorkspaceOwnerSnapshot, WorkspaceRecoveryReceipt, WorkspaceRecoverySource,
     WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
-    WorkspaceRuntimeSelectorRead, validate_projection_kind,
+    WorkspaceRuntimeSelectorRead, validate_projection_kind, workspace_generation_pointer_path,
 };
 use parking_lot::RwLock;
 use std::{
@@ -148,8 +148,6 @@ pub(super) enum WorkspaceWriteCommand {
 pub struct RuntimeServerWorkspaceRegistry {
     pub(crate) root: PathBuf,
     entries: RwLock<HashMap<String, Arc<WorkspaceResident>>>,
-    pub(crate) owner_admissions:
-        tokio::sync::Mutex<HashMap<(String, String), Arc<tokio::sync::Mutex<()>>>>,
     writer_capacity: usize,
     blocking_lane_ready: tokio::sync::OnceCell<()>,
     counters: Arc<RuntimeDataPlaneCounterState>,
@@ -180,7 +178,6 @@ impl RuntimeServerWorkspaceRegistry {
         Ok(Self {
             root,
             entries: RwLock::new(HashMap::new()),
-            owner_admissions: tokio::sync::Mutex::new(HashMap::new()),
             writer_capacity,
             blocking_lane_ready: tokio::sync::OnceCell::new(),
             counters: Arc::new(RuntimeDataPlaneCounterState::default()),
@@ -254,38 +251,6 @@ impl RuntimeServerWorkspaceRegistry {
             entry.overlays.snapshot(backend.generation()),
             Arc::clone(&resident.activity),
         )
-    }
-
-    pub(crate) async fn admit_runtime_workspace_root(
-        &self,
-        project_root: &std::path::Path,
-        workspace_identity: &str,
-    ) -> Result<PathBuf, String> {
-        if let Ok(Some(entry)) = self.ready_entry(workspace_identity, project_root) {
-            return Ok(entry.project_root.clone());
-        }
-        let canonical_root = tokio::fs::canonicalize(project_root)
-            .await
-            .map_err(|error| {
-                format!(
-                    "failed to resolve runtime project root {}: {error}",
-                    project_root.display()
-                )
-            })?;
-        let resolved =
-            agent_semantic_client_core::state_core::ResolvedState::resolve(&canonical_root)?;
-        if resolved.workspace.workspace_id.to_string() != workspace_identity {
-            return Err("runtime owner freshness workspace identity drift".to_owned());
-        }
-        if !canonical_root.starts_with(&resolved.workspace.root) {
-            return Err(format!(
-                "runtime project root escapes its workspace: projectRoot={} workspaceRoot={}",
-                canonical_root.display(),
-                resolved.workspace.root.display()
-            ));
-        }
-        let entry = self.entry(workspace_identity, &canonical_root).await?;
-        Ok(entry.project_root.clone())
     }
 
     pub async fn prepare_resident_workspace_scope(
@@ -421,10 +386,17 @@ impl RuntimeServerWorkspaceRegistry {
     }
 
     pub async fn shutdown(&self) -> Result<RuntimeServerShutdownReceipt, String> {
-        let residents = self.entries.read().values().cloned().collect::<Vec<_>>();
+        let residents = self
+            .entries
+            .read()
+            .iter()
+            .map(|(workspace_identity, resident)| {
+                (workspace_identity.clone(), Arc::clone(resident))
+            })
+            .collect::<Vec<_>>();
         let workspace_count = residents.len();
         let mut acknowledgements = Vec::with_capacity(residents.len());
-        for resident in &residents {
+        for (_, resident) in &residents {
             let (reply, receive) = oneshot::channel();
             resident
                 .writer
@@ -438,10 +410,26 @@ impl RuntimeServerWorkspaceRegistry {
                 .await
                 .map_err(|_| "runtime workspace writer lane dropped shutdown receipt".to_owned())?;
         }
-        for resident in &residents {
+        for (_, resident) in &residents {
             if let Some(task) = resident.task.lock().await.take() {
                 task.await
                     .map_err(|error| format!("join runtime workspace writer lane: {error}"))?;
+            }
+        }
+        for (workspace_identity, resident) in &residents {
+            let project_roots = resident.scopes.read().keys().cloned().collect::<Vec<_>>();
+            for project_root in project_roots {
+                let pointer_path = workspace_generation_pointer_path(
+                    &self.root,
+                    workspace_identity,
+                    std::path::Path::new(&project_root),
+                )?;
+                WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(&pointer_path);
+                crate::runtime_server_workspace::WorkspaceSearchGenerationAuthorityPointerClient::invalidate_committed_pointer(
+                    &pointer_path,
+                    workspace_identity,
+                    &project_root,
+                );
             }
         }
         let receipt = RuntimeServerShutdownReceipt {
@@ -794,9 +782,11 @@ async fn workspace_writer_lane(
                                 && backend.generation().selector_set_digest
                                     == generation.selector_set_digest
                         })
-                            && tokio::fs::try_exists(publisher.pointer_path())
-                                .await
-                                .unwrap_or(false) =>
+                            && super::super::WorkspaceGenerationPointerReader::matches_generation(
+                                publisher.pointer_path(),
+                                &generation,
+                            )
+                            .await =>
                     {
                         let result = last_receipts.get(&scope_key).cloned().or_else(|| {
                             let target_epoch = active_epoch;
@@ -866,25 +856,36 @@ async fn workspace_writer_lane(
                                         continue;
                                     }
                                 };
+                                if let Err(error) =
+                                    publisher.publish(generation, active_epoch != 0).await
+                                {
+                                    durability.send_replace(Some(
+                                        crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt::new(
+                                            workspace_identity,
+                                            generation_digest,
+                                            target_epoch,
+                                            crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::Failed,
+                                            Some(error.clone()),
+                                        )
+                                        .expect("validated failed workspace generation receipt"),
+                                    ));
+                                    let _ = reply.send(Err(error));
+                                    continue;
+                                }
+                                counters.filesystem_writes.fetch_add(1, Ordering::Relaxed);
                                 current.send_replace(Some(Arc::clone(&backend)));
                                 overlays.reset(backend.generation());
-                                let resident_durability =
+                                durability.send_replace(Some(
                                     crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt::new(
                                         workspace_identity.clone(),
                                         generation_digest.clone(),
                                         target_epoch,
-                                        crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::ResidentReady,
+                                        crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::DurableReady,
                                         None,
-                                    );
-                                let resident_durability = match resident_durability {
-                                    Ok(receipt) => receipt,
-                                    Err(error) => {
-                                        let _ = reply.send(Err(error));
-                                        continue;
-                                    }
-                                };
-                                durability.send_replace(Some(resident_durability));
-                                let resident_receipt = WorkspaceRecoveryReceipt {
+                                    )
+                                    .expect("validated durable workspace generation receipt"),
+                                ));
+                                let durable_receipt = WorkspaceRecoveryReceipt {
                                     schema_id: WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID.to_owned(),
                                     schema_version: "1".to_owned(),
                                     request_id: request_id.clone(),
@@ -902,41 +903,12 @@ async fn workspace_writer_lane(
                                     .unwrap_or(u64::MAX),
                                     counters: RuntimeDataPlaneCounters::default(),
                                 };
-                                if let Err(error) = resident_receipt.validate() {
+                                if let Err(error) = durable_receipt.validate() {
                                     let _ = reply.send(Err(error));
                                     continue;
                                 }
-                                let _ = reply.send(Ok(resident_receipt.clone()));
-                                last_receipts.insert(scope_key, resident_receipt);
-                                tokio::task::yield_now().await;
-
-                                match publisher.publish(generation, active_epoch != 0).await {
-                                    Ok(_) => {
-                                        counters.filesystem_writes.fetch_add(1, Ordering::Relaxed);
-                                        durability.send_replace(Some(
-                                            crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt::new(
-                                                workspace_identity,
-                                                generation_digest,
-                                                target_epoch,
-                                                crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::DurableReady,
-                                                None,
-                                            )
-                                            .expect("validated durable workspace generation receipt"),
-                                        ));
-                                    }
-                                    Err(error) => {
-                                        durability.send_replace(Some(
-                                            crate::runtime_server_workspace::WorkspaceGenerationDurabilityReceipt::new(
-                                                workspace_identity,
-                                                generation_digest,
-                                                target_epoch,
-                                                crate::runtime_server_workspace::WorkspaceGenerationDurabilityState::Failed,
-                                                Some(error),
-                                            )
-                                            .expect("validated failed workspace generation receipt"),
-                                        ));
-                                    }
-                                }
+                                let _ = reply.send(Ok(durable_receipt.clone()));
+                                last_receipts.insert(scope_key, durable_receipt);
                                 continue;
                             }
                             Err(error) => {

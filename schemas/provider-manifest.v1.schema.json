@@ -149,7 +149,18 @@
           }
         },
         "buildBinding": {
-          "const": "root-development-installer-v1"
+          "enum": [
+            "root-development-installer-v1",
+            "provider-workspace-install-v1"
+          ]
+        },
+        "workspaceInstall": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/].*\\.json$",
+          "not": {
+            "pattern": "(^|/)\\.\\.(/|$)"
+          }
         },
         "artifactDomain": {
           "enum": [
@@ -157,7 +168,23 @@
             "state-home-provider-staging"
           ]
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "buildBinding": {
+                "const": "provider-workspace-install-v1"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "workspaceInstall"
+            ]
+          }
+        }
+      ]
     },
     "providerSearchCapabilities": {
       "type": "object",

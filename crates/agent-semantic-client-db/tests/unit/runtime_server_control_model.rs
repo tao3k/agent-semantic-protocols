@@ -17,6 +17,7 @@ fn endpoint() -> RuntimeServerEndpoint {
         binding_token: "binding-token".to_owned(),
         socket_path: "/runtime/control.sock".to_owned(),
         data_plane_socket_path: "/runtime/data.sock".to_owned(),
+        workspace_store_path: "/runtime/workspaces".to_owned(),
         status_memory_path: "/runtime/status.memory".to_owned(),
     }
 }

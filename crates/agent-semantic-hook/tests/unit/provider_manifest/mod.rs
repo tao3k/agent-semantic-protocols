@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -12,6 +11,7 @@ mod builtin;
 mod provider_manifest_contract;
 mod provider_query_pack_descriptor;
 mod provider_semantic_facts_descriptor;
+mod provider_workspace_install;
 
 fn temp_root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!(
@@ -27,8 +27,11 @@ fn temp_root(name: &str) -> PathBuf {
 }
 
 fn git_init(root: &std::path::Path) {
-    let status = Command::new("git")
-        .args(["init", "-q"])
+    let _git_fixture = crate::integration_fixture::GIT_FIXTURE_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let status = crate::integration_fixture::isolated_git_command()
+        .args(["init", "-q", "--template="])
         .current_dir(root)
         .status()
         .expect("run git init");

@@ -25,6 +25,7 @@ use crate::tool_action::{ToolAction, subject_for_action};
 #[derive(Debug)]
 /// Compiled hook rules loaded from the global ASP state root.
 pub struct ClientHookConfig {
+    source_config: agent_semantic_config::HookClientConfigFile,
     pub(in crate::hook_config) rules: Vec<CompiledHookRule>,
     language_providers: Vec<agent_semantic_config::HookClientLanguageProviderConfig>,
     contract_fingerprint: Option<String>,
@@ -93,6 +94,10 @@ struct RuleRoute {
 }
 
 impl CompiledHookRule {
+    fn durable_matcher_artifact(&self) -> DurableRuleMatcherArtifact {
+        self.match_config.durable_matcher_artifact()
+    }
+
     fn rendered_message(&self) -> String {
         let fallback = format!(
             "client hook config rule `{}` matched this tool use",
@@ -321,6 +326,66 @@ impl CompiledHookRule {
 }
 
 impl RuleMatch {
+    fn durable_matcher_artifact(&self) -> DurableRuleMatcherArtifact {
+        DurableRuleMatcherArtifact {
+            command_contains: self.command_contains_any.durable_artifact(),
+            path_glob: self.path_glob_any.durable_artifact(),
+            argv_source_glob: self.argv_source_glob_any.durable_artifact(),
+        }
+    }
+
+    fn try_from_config(
+        mut config: HookClientRuleMatchConfig,
+        durable_matcher: Option<DurableRuleMatcherArtifact>,
+    ) -> Result<Self, String> {
+        let mut tool_any = std::mem::take(&mut config.tool_any);
+        if let Some(tool) = config.tool.take() {
+            tool_any.push(tool);
+        }
+        let (command_contains_any, path_glob_any, argv_source_glob_any) = match durable_matcher {
+            Some(durable) => (
+                CompiledCommandContains::from_durable(durable.command_contains)?,
+                CompiledPathGlobs::from_durable(durable.path_glob)?,
+                CompiledPathGlobs::from_durable(durable.argv_source_glob)?,
+            ),
+            None => (
+                compile_command_contains(std::mem::take(&mut config.command_contains_any))?,
+                compile_globs("pathGlobAny", std::mem::take(&mut config.path_glob_any))?,
+                compile_globs(
+                    "argvSourceGlobAny",
+                    std::mem::take(&mut config.argv_source_glob_any),
+                )?,
+            ),
+        };
+        Ok(Self {
+            agent_action: action_match::AgentActionMatch::new(
+                action_match::AgentActionMatchConfig {
+                    action_any: std::mem::take(&mut config.action_any),
+                    effect_any: std::mem::take(&mut config.effect_any),
+                    subject_kind_any: std::mem::take(&mut config.subject_kind_any),
+                    authority_any: std::mem::take(&mut config.authority_any),
+                    authority_exclude_any: std::mem::take(&mut config.authority_exclude_any),
+                    authority_rules: std::mem::take(&mut config.authority_rules),
+                    effect_rules: std::mem::take(&mut config.effect_rules),
+                },
+            ),
+            wrapper_match: agent_semantic_config::WrapperMatchMode::default(),
+            tool_any,
+            command_any: config.command_any,
+            argv_pattern_any: config.argv_pattern_any,
+            argv_prefix_any: config.argv_prefix_any,
+            command_contains_any,
+            path_any: config.path_any,
+            path_glob_any,
+            argv_source_any: config.argv_source_any,
+            argv_source_glob_any,
+            argv_source_exclude_flag_any: config.argv_source_exclude_flag_any,
+            argv_workspace_regular_file: config.argv_workspace_regular_file,
+            argv_registered_source_file: config.argv_registered_source_file,
+            structured_projection: config.structured_projection,
+        })
+    }
+
     fn matches_before_paths(
         &self,
         registry: &HookRuntime,
@@ -659,6 +724,22 @@ impl CompiledHookRule {
         command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],
         wrapper_match: agent_semantic_config::WrapperMatchMode,
     ) -> Result<Self, String> {
+        Self::try_from_with_agents_and_matcher(
+            config,
+            agents,
+            command_profiles,
+            wrapper_match,
+            None,
+        )
+    }
+
+    fn try_from_with_agents_and_matcher(
+        config: HookClientRuleConfig,
+        agents: &agent_semantic_config::HookClientAgentsConfig,
+        command_profiles: &[agent_semantic_config::HookClientCommandProfileConfig],
+        wrapper_match: agent_semantic_config::WrapperMatchMode,
+        durable_matcher: Option<DurableRuleMatcherArtifact>,
+    ) -> Result<Self, String> {
         let dispatch = config
             .dispatch
             .map(|dispatch| {
@@ -731,7 +812,7 @@ impl CompiledHookRule {
                 raw_match_config.argv_prefix_any.push(prefix);
             }
         }
-        let mut match_config = RuleMatch::try_from(raw_match_config)?;
+        let mut match_config = RuleMatch::try_from_config(raw_match_config, durable_matcher)?;
         match_config.wrapper_match = wrapper_match;
         Ok(Self {
             id: config.id,
@@ -763,38 +844,8 @@ impl CompiledHookRule {
 impl TryFrom<HookClientRuleMatchConfig> for RuleMatch {
     type Error = String;
 
-    fn try_from(mut config: HookClientRuleMatchConfig) -> Result<Self, Self::Error> {
-        let mut tool_any = std::mem::take(&mut config.tool_any);
-        if let Some(tool) = config.tool.take() {
-            tool_any.push(tool);
-        }
-        Ok(Self {
-            agent_action: action_match::AgentActionMatch::new(
-                action_match::AgentActionMatchConfig {
-                    action_any: std::mem::take(&mut config.action_any),
-                    effect_any: std::mem::take(&mut config.effect_any),
-                    subject_kind_any: std::mem::take(&mut config.subject_kind_any),
-                    authority_any: std::mem::take(&mut config.authority_any),
-                    authority_exclude_any: std::mem::take(&mut config.authority_exclude_any),
-                    authority_rules: std::mem::take(&mut config.authority_rules),
-                    effect_rules: std::mem::take(&mut config.effect_rules),
-                },
-            ),
-            wrapper_match: agent_semantic_config::WrapperMatchMode::default(),
-            tool_any,
-            command_any: config.command_any,
-            argv_pattern_any: config.argv_pattern_any,
-            argv_prefix_any: config.argv_prefix_any,
-            command_contains_any: compile_command_contains(config.command_contains_any)?,
-            path_any: config.path_any,
-            path_glob_any: compile_globs("pathGlobAny", config.path_glob_any)?,
-            argv_source_any: config.argv_source_any,
-            argv_source_glob_any: compile_globs("argvSourceGlobAny", config.argv_source_glob_any)?,
-            argv_source_exclude_flag_any: config.argv_source_exclude_flag_any,
-            argv_workspace_regular_file: config.argv_workspace_regular_file,
-            argv_registered_source_file: config.argv_registered_source_file,
-            structured_projection: config.structured_projection,
-        })
+    fn try_from(config: HookClientRuleMatchConfig) -> Result<Self, Self::Error> {
+        Self::try_from_config(config, None)
     }
 }
 
@@ -876,7 +927,14 @@ impl From<HookClientConfigStdinMode> for StdinMode {
 #[path = "compiled_rule_client_config.rs"]
 mod client_config;
 
+#[path = "compiled_rule_durable_artifact.rs"]
+mod durable_artifact;
+
 pub(in crate::hook_config) use client_config::compile_config;
+pub use durable_artifact::DurableHookConfigArtifact;
+use durable_artifact::{
+    DURABLE_HOOK_MATCHER_SCHEMA_ID, DURABLE_HOOK_MATCHER_SCHEMA_VERSION, DurableRuleMatcherArtifact,
+};
 
 use crate::hook_config::core::compile::{compile_command_contains, compile_globs};
 use crate::hook_config::core::match_types::{CompiledCommandContains, CompiledPathGlobs};

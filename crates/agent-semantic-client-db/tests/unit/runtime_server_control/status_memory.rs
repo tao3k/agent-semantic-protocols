@@ -1,0 +1,145 @@
+use std::sync::Arc;
+
+use super::{
+    RuntimeServerEndpoint, RuntimeServerState, RuntimeServerStatusMemoryWriter,
+    read_runtime_server_cached_health_status, read_runtime_server_status,
+};
+
+fn fixture_endpoint(root: &std::path::Path, owner_epoch: u64) -> RuntimeServerEndpoint {
+    RuntimeServerEndpoint {
+        schema_id: "agent.semantic-protocols.runtime-server-endpoint.v1".to_owned(),
+        schema_version: "1".to_owned(),
+        transport_contract_digest: super::super::runtime_server_transport_contract_digest(),
+        owner_epoch,
+        runtime_artifact_path: "/runtime/asp".to_owned(),
+        runtime_artifact_digest: format!("runtime-{owner_epoch}"),
+        artifact_mode: "dev".to_owned(),
+        artifact_catalog_digest: format!("blake3-256:{}", "a".repeat(64)),
+        binding_token: format!("binding-{owner_epoch}"),
+        socket_path: root.join("control.sock").to_string_lossy().into_owned(),
+        data_plane_socket_path: root.join("data.sock").to_string_lossy().into_owned(),
+        workspace_store_path: root.join("workspaces").to_string_lossy().into_owned(),
+        status_memory_path: root.join("status.memory").to_string_lossy().into_owned(),
+    }
+}
+
+#[tokio::test]
+async fn removed_status_memory_invalidates_a_cached_mapping() {
+    let root = tempfile::tempdir().expect("status memory fixture");
+    let endpoint = fixture_endpoint(root.path(), 1);
+    let mut writer = RuntimeServerStatusMemoryWriter::create(&endpoint)
+        .await
+        .expect("create status memory");
+    writer
+        .publish(RuntimeServerState::Draining, 3)
+        .expect("publish draining");
+    let receipt = read_runtime_server_cached_health_status(
+        std::path::Path::new(&endpoint.status_memory_path),
+        "before-removal".to_owned(),
+    )
+    .await
+    .expect("read live status memory");
+    assert_eq!(receipt.state, RuntimeServerState::Draining);
+
+    drop(writer);
+    tokio::fs::remove_file(&endpoint.status_memory_path)
+        .await
+        .expect("remove status memory");
+    let error = read_runtime_server_cached_health_status(
+        std::path::Path::new(&endpoint.status_memory_path),
+        "after-removal".to_owned(),
+    )
+    .await
+    .expect_err("an unlinked status mapping must never remain authoritative");
+    assert!(error.contains("failed to inspect Runtime Server status memory"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn replacement_epoch_reopens_once_for_concurrent_sessions() {
+    let root = tempfile::tempdir().expect("status memory fixture");
+    let first = fixture_endpoint(root.path(), 1);
+    let mut first_writer = RuntimeServerStatusMemoryWriter::create(&first)
+        .await
+        .expect("create first status memory");
+    first_writer
+        .publish(RuntimeServerState::Draining, 1)
+        .expect("publish first epoch");
+    read_runtime_server_cached_health_status(
+        std::path::Path::new(&first.status_memory_path),
+        "first-epoch".to_owned(),
+    )
+    .await
+    .expect("cache first epoch");
+    drop(first_writer);
+    tokio::fs::remove_file(&first.status_memory_path)
+        .await
+        .expect("remove first epoch");
+
+    let second = Arc::new(fixture_endpoint(root.path(), 2));
+    let mut second_writer = RuntimeServerStatusMemoryWriter::create(&second)
+        .await
+        .expect("create replacement status memory");
+    second_writer
+        .publish(RuntimeServerState::Healthy, 7)
+        .expect("publish replacement epoch");
+
+    let mut readers = tokio::task::JoinSet::new();
+    for session in 0..64 {
+        let second = Arc::clone(&second);
+        readers.spawn(async move {
+            for sample in 0..64 {
+                let receipt = read_runtime_server_status(
+                    &second,
+                    format!("session-{session}-sample-{sample}"),
+                )
+                .await?;
+                if receipt.state != RuntimeServerState::Healthy
+                    || receipt.runtime_artifact_digest != "runtime-2"
+                    || receipt.workspace_entry_count != 7
+                {
+                    return Err(format!("stale replacement receipt: {receipt:?}"));
+                }
+            }
+            Ok::<(), String>(())
+        });
+    }
+    while let Some(result) = readers.join_next().await {
+        result
+            .expect("reader task joins")
+            .expect("reader sees new epoch");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn cached_status_identity_check_is_sub_millisecond_at_p99() {
+    let root = tempfile::tempdir().expect("status memory fixture");
+    let endpoint = fixture_endpoint(root.path(), 9);
+    let mut writer = RuntimeServerStatusMemoryWriter::create(&endpoint)
+        .await
+        .expect("create status memory");
+    writer
+        .publish(RuntimeServerState::Healthy, 2)
+        .expect("publish healthy");
+    read_runtime_server_status(&endpoint, "prewarm".to_owned())
+        .await
+        .expect("prewarm reader");
+
+    let mut samples = Vec::with_capacity(10_000);
+    for sample in 0..10_000 {
+        let started = std::time::Instant::now();
+        read_runtime_server_status(&endpoint, format!("sample-{sample}"))
+            .await
+            .expect("read cached status");
+        samples.push(started.elapsed().as_nanos());
+    }
+    samples.sort_unstable();
+    let p99 = samples[(samples.len() * 99) / 100];
+    eprintln!(
+        "[runtime-status-memory] samples={} p99Nanos={p99} filesystemIdentityChecks=0 bindingAuthority=endpoint-owner-epoch",
+        samples.len()
+    );
+    assert!(
+        p99 < 1_000_000,
+        "cached status identity validation p99 must remain below 1ms; p99Nanos={p99}"
+    );
+}

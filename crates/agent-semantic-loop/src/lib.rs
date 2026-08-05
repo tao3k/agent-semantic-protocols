@@ -7,6 +7,7 @@ mod requirement;
 mod route_validation;
 mod search_advance;
 pub mod search_capability;
+pub mod search_graph_cursor;
 pub mod search_loop;
 pub mod search_runtime;
 

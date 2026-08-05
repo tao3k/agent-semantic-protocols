@@ -12,16 +12,16 @@ pub(super) fn append_project_topology_nodes(
     language_id: &str,
     workspace_root: &Path,
     candidates: &[Candidate],
+    project_resolutions: &[agent_semantic_runtime::AdmittedProjectResolution],
 ) {
     let projection_candidates = graph_projection_candidates(candidates);
-    let projection = agent_semantic_search::graph_project_topology_projection(
-        (
-            language_id,
-            workspace_root,
-            projection_candidates.as_slice(),
-        )
-            .into(),
-    );
+    let request = agent_semantic_search::GraphTopologyProjectionRequest::from((
+        language_id,
+        workspace_root,
+        projection_candidates.as_slice(),
+    ))
+    .with_project_resolutions(project_resolutions);
+    let projection = agent_semantic_search::graph_project_topology_projection(request);
     nodes.extend(projection.nodes);
     edges.extend(projection.edges);
 }

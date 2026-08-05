@@ -1,4 +1,8 @@
-use std::{path::Path, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    path::Path,
+    sync::Arc,
+};
 
 use opentelemetry::{
     KeyValue,
@@ -50,6 +54,51 @@ static ACTIVE_RUNTIME_TELEMETRY: std::sync::OnceLock<
 > = std::sync::OnceLock::new();
 static NEXT_RUNTIME_TELEMETRY_REGISTRATION_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(1);
+static ACTIVE_MEMORY_OPERATIONS: std::sync::OnceLock<std::sync::Mutex<BTreeMap<String, String>>> =
+    std::sync::OnceLock::new();
+
+pub(crate) struct RuntimeMemoryOperationGuard {
+    operation_id: String,
+}
+
+impl Drop for RuntimeMemoryOperationGuard {
+    fn drop(&mut self) {
+        if let Some(active) = ACTIVE_MEMORY_OPERATIONS.get()
+            && let Ok(mut active) = active.lock()
+        {
+            active.remove(&self.operation_id);
+        }
+    }
+}
+
+pub(crate) fn begin_runtime_memory_operation(
+    workspace_identity: impl Into<String>,
+    operation_id: impl Into<String>,
+) -> RuntimeMemoryOperationGuard {
+    let operation_id = operation_id.into();
+    if let Ok(mut active) = ACTIVE_MEMORY_OPERATIONS
+        .get_or_init(|| std::sync::Mutex::new(BTreeMap::new()))
+        .lock()
+    {
+        active.insert(operation_id.clone(), workspace_identity.into());
+    }
+    RuntimeMemoryOperationGuard { operation_id }
+}
+
+fn active_memory_operations() -> Vec<(String, String)> {
+    ACTIVE_MEMORY_OPERATIONS
+        .get()
+        .and_then(|active| active.lock().ok())
+        .map(|active| {
+            active
+                .iter()
+                .map(|(operation_id, workspace_identity)| {
+                    (operation_id.clone(), workspace_identity.clone())
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
 
 pub fn try_record_to_active_runtime(observation: RuntimePerformanceObservation) -> bool {
     let Some(active) = ACTIVE_RUNTIME_TELEMETRY.get() else {
@@ -64,13 +113,25 @@ pub fn try_record_to_active_runtime(observation: RuntimePerformanceObservation) 
 }
 
 impl RuntimeServerOpenTelemetry {
-    /// Starts immediately. Turso open and schema bootstrap occur only inside
-    /// the resident task and cannot delay core endpoint publication.
-    pub fn start(
+    /// Binds the resident telemetry surfaces only after the initial process and
+    /// Tokio scheduler observation is available. Turso open and schema
+    /// bootstrap remain resident-task work.
+    pub async fn start(
         database_path: std::path::PathBuf,
         ingress_socket_path: std::path::PathBuf,
         query_socket_path: std::path::PathBuf,
     ) -> Result<Self, String> {
+        let scheduler_probe_started = tokio::time::Instant::now();
+        tokio::task::yield_now().await;
+        let event_loop_lag_micros =
+            u64::try_from(scheduler_probe_started.elapsed().as_micros()).unwrap_or(u64::MAX);
+        let initial_process_memory = tokio::task::spawn_blocking(move || {
+            super::process_memory::observe_process_memory(event_loop_lag_micros)
+        })
+        .await
+        .map_err(|error| {
+            format!("initial Runtime Server process-memory probe task failed: {error}")
+        })?;
         let worker_count = tokio::runtime::Handle::current().metrics().num_workers();
         let capacity = worker_count.saturating_mul(64).clamp(64, 4096);
         let (sender, receiver) = mpsc::channel(capacity);
@@ -106,6 +167,7 @@ impl RuntimeServerOpenTelemetry {
             ingress,
             query_listener,
             dropped_observations,
+            initial_process_memory,
             shutdown_receiver,
         ));
         Ok(Self {
@@ -137,23 +199,18 @@ impl RuntimeServerOpenTelemetry {
     }
 }
 
-/// Emits one observation to the resident lane without awaiting I/O. This is
-/// used only after a performance gate has already failed; success and warm
-/// paths allocate no telemetry socket.
-pub fn try_emit_to_runtime(
+/// Emits one observation through Tokio to the resident telemetry lane.
+pub async fn emit_to_runtime(
     ingress_socket_path: &Path,
     observation: &RuntimePerformanceObservation,
 ) -> bool {
     let Ok(bytes) = serde_json::to_vec(observation) else {
         return false;
     };
-    let Ok(socket) = std::os::unix::net::UnixDatagram::unbound() else {
+    let Ok(socket) = tokio::net::UnixDatagram::unbound() else {
         return false;
     };
-    if socket.set_nonblocking(true).is_err() {
-        return false;
-    }
-    socket.send_to(&bytes, ingress_socket_path).is_ok()
+    socket.send_to(&bytes, ingress_socket_path).await.is_ok()
 }
 
 async fn run_resident_telemetry_lane(
@@ -162,6 +219,7 @@ async fn run_resident_telemetry_lane(
     ingress: tokio::net::UnixDatagram,
     query_listener: tokio::net::UnixListener,
     dropped_observations: Arc<std::sync::atomic::AtomicU64>,
+    initial_process_memory: Option<super::process_memory::ProcessMemoryObservation>,
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<(), String> {
     let exporter = TursoOpenTelemetrySpanExporter::open(&database_path).await?;
@@ -178,17 +236,42 @@ async fn run_resident_telemetry_lane(
     ));
     let tracer = provider.tracer("asp.runtime-server.performance");
     let mut ingress_buffer = vec![0_u8; 16 * 1024];
+    let (memory_sender, mut memory_receiver) = watch::channel(initial_process_memory);
+    let mut memory_sampler =
+        tokio::spawn(run_process_memory_sampler(memory_sender, shutdown.clone()));
+    let mut latest_process_memory = initial_process_memory;
+    let mut recorded_memory_watermarks = HashMap::<String, u64>::new();
     loop {
         tokio::select! {
+            biased;
+            changed = shutdown.changed() => {
+                let _ = changed;
+                while let Ok(observation) = receiver.try_recv() {
+                    record_observation_with_memory(
+                        &tracer,
+                        observation,
+                        latest_process_memory,
+                    );
+                }
+                break;
+            }
             observation = receiver.recv() => match observation {
-                Some(observation) => record_observation(&tracer, observation),
+                Some(observation) => record_observation_with_memory(
+                    &tracer,
+                    observation,
+                    latest_process_memory,
+                ),
                 None => break,
             },
             ingress_result = ingress.recv(&mut ingress_buffer) => match ingress_result {
                 Ok(length) => match serde_json::from_slice::<RuntimePerformanceObservation>(
                     &ingress_buffer[..length],
                 ) {
-                    Ok(observation) => record_observation(&tracer, observation),
+                    Ok(observation) => record_observation_with_memory(
+                        &tracer,
+                        observation,
+                        latest_process_memory,
+                    ),
                     Err(_) => {
                         dropped_observations.fetch_add(
                             1,
@@ -203,15 +286,53 @@ async fn run_resident_telemetry_lane(
                     );
                 }
             },
-            changed = shutdown.changed() => {
-                let _ = changed;
-                while let Ok(observation) = receiver.try_recv() {
-                    record_observation(&tracer, observation);
+            changed = memory_receiver.changed() => {
+                if changed.is_err() {
+                    return Err("Runtime Server process-memory sampler closed unexpectedly".to_owned());
                 }
-                break;
-            }
+                latest_process_memory = *memory_receiver.borrow_and_update();
+                let active_operations = active_memory_operations();
+                recorded_memory_watermarks.retain(|operation_id, _| {
+                    active_operations.iter().any(|(active_id, _)| active_id == operation_id)
+                });
+                for (operation_id, workspace_identity) in active_operations {
+                    let mut observation = RuntimePerformanceObservation::new(
+                        "runtime-server",
+                        "process-memory-watermark",
+                        0,
+                        0,
+                        "within-budget",
+                    )
+                    .with_operation_id(operation_id.clone());
+                    observation.workspace_identity = Some(workspace_identity);
+                    if let Some(memory) = latest_process_memory {
+                        observation.record_runtime_process_memory(memory);
+                    }
+                    let observed_peak = observation
+                        .process_peak_resident_bytes
+                        .or(observation.process_resident_bytes);
+                    if let Some(observed_peak) = observed_peak {
+                        let watermark = observed_peak
+                            / super::process_memory::MEMORY_WATERMARK_STEP_BYTES;
+                        let should_record = recorded_memory_watermarks
+                            .get(&operation_id)
+                            .is_none_or(|recorded| watermark > *recorded);
+                        if should_record {
+                            recorded_memory_watermarks.insert(operation_id, watermark);
+                            record_observation(&tracer, observation);
+                        }
+                    }
+                }
+            },
+            sampler_result = &mut memory_sampler => {
+                return sampler_result
+                    .map_err(|error| format!("Runtime Server process-memory sampler task failed: {error}"))?;
+            },
         }
     }
+    memory_sampler
+        .await
+        .map_err(|error| format!("Runtime Server process-memory sampler task failed: {error}"))??;
     let _ = query_shutdown.send(true);
     query_task
         .await
@@ -222,11 +343,57 @@ async fn run_resident_telemetry_lane(
         .map_err(|error| format!("OpenTelemetry provider shutdown failed: {error}"))
 }
 
+async fn run_process_memory_sampler(
+    memory: watch::Sender<Option<super::process_memory::ProcessMemoryObservation>>,
+    mut shutdown: watch::Receiver<bool>,
+) -> Result<(), String> {
+    let mut interval = tokio::time::interval(std::time::Duration::from_millis(250));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            scheduled = interval.tick() => {
+                let event_loop_lag_micros = u64::try_from(
+                    tokio::time::Instant::now()
+                        .saturating_duration_since(scheduled)
+                        .as_micros(),
+                )
+                .unwrap_or(u64::MAX);
+                let observation = tokio::task::spawn_blocking(
+                    move || super::process_memory::observe_process_memory(event_loop_lag_micros),
+                )
+                .await
+                .map_err(|error| {
+                    format!("Runtime Server process-memory probe task failed: {error}")
+                })?;
+                memory.send_replace(observation);
+            }
+            changed = shutdown.changed() => {
+                let _ = changed;
+                return Ok(());
+            }
+        }
+    }
+}
+
+fn record_observation_with_memory(
+    tracer: &opentelemetry_sdk::trace::SdkTracer,
+    mut observation: RuntimePerformanceObservation,
+    memory: Option<super::process_memory::ProcessMemoryObservation>,
+) {
+    if let Some(memory) = memory {
+        observation.record_runtime_process_memory(memory);
+    }
+    record_observation(tracer, observation);
+}
+
 fn record_observation(
     tracer: &opentelemetry_sdk::trace::SdkTracer,
     observation: RuntimePerformanceObservation,
 ) {
     let mut span = tracer.start(format!("asp {} {}", observation.surface, observation.stage));
+    if observation.budget_status == "budget-exceeded" {
+        span.set_status(Status::error("performance-budget-exceeded"));
+    }
     let mut attributes = vec![
         KeyValue::new(semconv::SURFACE, observation.surface),
         KeyValue::new(semconv::STAGE, observation.stage),
@@ -264,6 +431,61 @@ fn record_observation(
         &mut attributes,
         semconv::TRANSPORT_CONTRACT_DIGEST,
         observation.transport_contract_digest,
+    );
+    push_optional(
+        &mut attributes,
+        semconv::OPERATION_ID,
+        observation.operation_id,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::PROCESS_RESIDENT_MEMORY,
+        observation.process_resident_bytes,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::PROCESS_PEAK_RESIDENT_MEMORY,
+        observation.process_peak_resident_bytes,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::PROCESS_MEMORY_BUDGET,
+        observation.process_memory_budget_bytes,
+    );
+    push_optional(
+        &mut attributes,
+        semconv::PROCESS_MEMORY_BUDGET_STATUS,
+        observation.process_memory_budget_status,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::PROCESS_DISK_READ_BYTES,
+        observation.process_disk_read_bytes,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::PROCESS_DISK_WRITE_BYTES,
+        observation.process_disk_write_bytes,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::PROCESS_PAGE_INS,
+        observation.process_page_ins,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::RUNTIME_EVENT_LOOP_LAG,
+        observation.runtime_event_loop_lag_micros,
+    );
+    push_optional_u64(
+        &mut attributes,
+        semconv::RUNTIME_EVENT_LOOP_LAG_BUDGET,
+        observation.runtime_event_loop_lag_budget_micros,
+    );
+    push_optional(
+        &mut attributes,
+        semconv::RUNTIME_EVENT_LOOP_LAG_BUDGET_STATUS,
+        observation.runtime_event_loop_lag_budget_status,
     );
     push_optional_u64(
         &mut attributes,

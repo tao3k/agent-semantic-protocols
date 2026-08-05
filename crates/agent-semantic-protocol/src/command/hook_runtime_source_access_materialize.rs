@@ -1,7 +1,7 @@
 use super::hook_selected_resident_execution;
 use agent_semantic_hook::{DecisionKind, HookDecision};
 
-pub(super) fn materialize_source_access_deny_message(
+pub(crate) fn materialize_source_access_deny_message(
     decision: &mut HookDecision,
     hook_config: &agent_semantic_hook::ClientHookConfig,
 ) {

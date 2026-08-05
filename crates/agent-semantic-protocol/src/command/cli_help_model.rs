@@ -334,20 +334,23 @@ fn install_command() -> Command {
         .bin_name("asp install")
         .about("Install ASP binaries, hooks, plugins, or providers")
         .subcommand(install_binary_command())
-        .subcommand(
-            Command::new("hook")
-                .about("Install host hook integration")
-                .arg(
-                    Arg::new("client")
-                        .long("client")
-                        .value_name("CLIENT")
-                        .required(true)
-                        .value_parser(["claude"]),
-                )
-                .arg(project_root_arg()),
-        )
+        .subcommand(install_hook_command())
         .subcommand(install_plugin_command())
         .subcommand(install_language_command())
+}
+
+fn install_hook_command() -> Command {
+    Command::new("hook")
+        .bin_name("asp install hook")
+        .about("Install host hook integration")
+        .arg(
+            Arg::new("client")
+                .long("client")
+                .value_name("CLIENT")
+                .required(true)
+                .value_parser(["claude"]),
+        )
+        .arg(project_root_arg())
 }
 
 fn install_binary_command() -> Command {

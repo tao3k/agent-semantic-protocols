@@ -683,12 +683,16 @@ async fn selector_overlay_binds_projection_kind_and_projection_bytes() {
     else {
         panic!("callable-skeleton projection must be mmap-readable");
     };
-    assert!(matches!(
-        process_cold
-            .read_runtime_selector("callable-skeleton", selector)
-            .expect("read canonical process-cold generation"),
-        WorkspaceRuntimeSelectorRead::OwnerForRepair { .. }
-    ));
+    let process_cold_read = process_cold
+        .read_runtime_selector("callable-skeleton", selector)
+        .expect("read canonical process-cold generation");
+    assert!(
+        matches!(
+            &process_cold_read,
+            WorkspaceRuntimeSelectorRead::ProjectionMissing { .. }
+        ),
+        "canonical process-cold generation leaked a resident-only selector overlay: {process_cold_read:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

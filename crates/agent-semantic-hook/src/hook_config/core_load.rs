@@ -11,6 +11,9 @@ use crate::hook_config_global::default_global_client_config_path;
 use crate::provider_manifest::project_agent_config_path;
 
 const REGISTERED_LANGUAGE_PROVIDERS_MARKER: &str = "# @REGISTERED_LANGUAGE_PROVIDERS@";
+const AGENT_ROUTES_MARKER: &str = "# @AGENT_ROUTES@";
+const EMBEDDED_AGENT_ROUTES: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/hook-agent-routes.toml"));
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +33,7 @@ pub fn default_client_config_template() -> String {
         .expect("embedded provider manifests must render a valid hook config projection");
     default_hook_client_config_template()
         .replace(REGISTERED_LANGUAGE_PROVIDERS_MARKER, projection.trim_end())
+        .replace(AGENT_ROUTES_MARKER, EMBEDDED_AGENT_ROUTES.trim_end())
 }
 
 pub(crate) fn default_client_config_file()

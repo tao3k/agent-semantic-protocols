@@ -18,9 +18,11 @@ aho-corasick.workspace = true
 agent-semantic-client = { path = "../agent-semantic-client" }
 agent-semantic-config = { path = "../agent-semantic-config" }
 agent-semantic-hook = { path = "../agent-semantic-hook" }
+agent-semantic-command-match = { path = "../agent-semantic-command-match" }
 agent-semantic-provider-transport = { path = "../agent-semantic-provider-transport" }
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
 agent-semantic-search = { path = "../agent-semantic-search" }
+agent-semantic-loop = { path = "../agent-semantic-loop" }
 agent-semantic-tree-sitter = { path = "../agent-semantic-tree-sitter" }
 orgize = { workspace = true }
 proc-macro2 = { workspace = true, features = ["span-locations"] }

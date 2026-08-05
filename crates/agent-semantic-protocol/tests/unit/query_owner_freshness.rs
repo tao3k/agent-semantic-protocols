@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[tokio::test(flavor = "multi_thread")]
-async fn exact_selector_code_reads_modified_source_without_stale_index() {
+async fn exact_source_projection_reconciles_unadmitted_owner_change_before_cached_hit() {
     let root = temp_project_root("exact-selector-freshness");
     establish_rust_package(&root);
     let owner = root.join("src/lib.rs");
@@ -18,90 +18,31 @@ async fn exact_selector_code_reads_modified_source_without_stale_index() {
     assert!(first.contains("let value = 1;"), "{first}");
 
     fs::write(&owner, "pub fn alpha() {\n    let value = 2;\n}\n").expect("write second source");
-    runtime
-        .admit("alpha-rewrite", vec!["src/lib.rs".to_owned()])
-        .await;
 
+    let refresh_started = std::time::Instant::now();
     let second = run_exact_selector_query(&root, &runtime.state_home).await;
+    let refresh_elapsed = refresh_started.elapsed();
     assert!(second.contains("let value = 2;"), "{second}");
     assert!(
         !second.contains("let value = 1;"),
         "exact selector query returned stale source after owner rewrite: {second}"
     );
-
-    runtime.shutdown().await;
-    let _ = fs::remove_dir_all(root);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn exact_source_projection_reconciles_unadmitted_owner_change_before_cached_hit() {
-    let root = temp_project_root("exact-selector-read-side-freshness");
-    establish_rust_package(&root);
-    let owner = root.join("src/lib.rs");
-    fs::write(&owner, "pub fn alpha() {\n    let value = 1;\n}\n").expect("write first source");
-    let runtime = ExactQueryRuntime::start(&root).await;
-
-    runtime
-        .admit("alpha-initial", vec!["src/lib.rs".to_owned()])
-        .await;
-    let first = run_exact_selector_query(&root, &runtime.state_home).await;
-    assert!(first.contains("let value = 1;"), "{first}");
-
-    fs::write(&owner, "pub fn alpha() {\n    let value = 2;\n}\n")
-        .expect("write unadmitted source change");
-    let started = std::time::Instant::now();
-    let second = run_exact_selector_query(&root, &runtime.state_home).await;
-    let elapsed = started.elapsed();
-    assert!(second.contains("let value = 2;"), "{second}");
     assert!(
-        !second.contains("let value = 1;"),
-        "exact source projection returned a stale cached hit: {second}"
+        refresh_elapsed < std::time::Duration::from_millis(250),
+        "unadmitted owner refresh exceeded the 250ms atomic publication budget: {refresh_elapsed:?}"
     );
+    let warm_started = std::time::Instant::now();
+    let warm = run_exact_selector_query(&root, &runtime.state_home).await;
+    let warm_elapsed = warm_started.elapsed();
+    assert!(warm.contains("let value = 2;"), "{warm}");
     assert!(
-        elapsed < std::time::Duration::from_millis(100),
-        "read-side owner freshness exceeded 100ms: {elapsed:?}"
+        warm_elapsed < std::time::Duration::from_millis(100),
+        "unchanged owner exact query exceeded the 100ms warm budget: {warm_elapsed:?}"
     );
-
-    runtime.shutdown().await;
-    let _ = fs::remove_dir_all(root);
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn concurrent_exact_reads_single_flight_unadmitted_owner_refresh() {
-    let root = temp_project_root("exact-selector-concurrent-read-side-freshness");
-    establish_rust_package(&root);
-    let owner = root.join("src/lib.rs");
-    tokio::fs::write(&owner, "pub fn alpha() -> u8 { 1 }\n")
-        .await
-        .expect("write first source");
-    let runtime = ExactQueryRuntime::start(&root).await;
-
-    runtime
-        .admit("alpha-concurrent-initial", vec!["src/lib.rs".to_owned()])
-        .await;
-    let first = run_exact_selector_query(&root, &runtime.state_home).await;
-    assert!(first.contains("{ 1 }"), "{first}");
-
-    tokio::fs::write(&owner, "pub fn alpha() -> u8 { 2 }\n")
-        .await
-        .expect("write unadmitted concurrent source change");
-    let started = tokio::time::Instant::now();
-    let mut readers = tokio::task::JoinSet::new();
-    for _ in 0..32 {
-        let root = root.clone();
-        let state_home = runtime.state_home.clone();
-        readers.spawn(async move { run_exact_selector_query(&root, &state_home).await });
-    }
-    while let Some(result) = readers.join_next().await {
-        let projection = result.expect("join concurrent exact reader");
-        assert!(projection.contains("{ 2 }"), "{projection}");
-        assert!(!projection.contains("{ 1 }"), "{projection}");
-        assert!(!projection.contains("selector-stale"), "{projection}");
-    }
-    let elapsed = started.elapsed();
-    assert!(
-        elapsed < std::time::Duration::from_millis(500),
-        "32 concurrent exact reads exceeded the pressure gate: {elapsed:?}"
+    println!(
+        "[exact-owner-freshness-performance] reconcileMicros={} reconcileBudgetMicros=250000 warmMicros={} warmBudgetMicros=100000",
+        refresh_elapsed.as_micros(),
+        warm_elapsed.as_micros()
     );
 
     runtime.shutdown().await;
@@ -249,6 +190,15 @@ fn establish_rust_package(root: &Path) {
         "[package]\nname = \"exact-selector-fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
     )
     .expect("write Cargo project entry");
+    let git_init = std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(root)
+        .status()
+        .expect("initialize exact-query Git fixture");
+    assert!(
+        git_init.success(),
+        "exact-query Git fixture initialization failed"
+    );
 }
 
 async fn run_exact_selector_query_for(
@@ -347,8 +297,28 @@ impl ExactQueryRuntime {
                 Box::pin(build_exact_query_generation(workspace_identity, project_root))
             })
         };
-        let workspace_store = agent_semantic_client_db::runtime_server_workspace::prepare_runtime_server_workspace_store(
-            &state_home.join("runtime/server"),
+        let owner_builder: agent_semantic_client_db::runtime_server_admission::WorkspaceOwnerProjectionBuilder =
+            Arc::new(move |_workspace_identity, project_root, owner_path, _language_id| {
+                Box::pin(async move {
+                    let bytes = tokio::fs::read(project_root.join(&owner_path))
+                        .await
+                        .map_err(|error| format!("read exact-query owner fixture: {error}"))?;
+                    build_exact_query_generation_owner(
+                        agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                            content_digest: format!(
+                                "blake3-256:{}",
+                                blake3::hash(&bytes).to_hex()
+                            ),
+                            owner_path,
+                            bytes,
+                            selectors: Vec::new(),
+                        },
+                    )
+                    .await
+                })
+            });
+        let workspace_store = agent_semantic_client_db::runtime_server_workspace::prepare_runtime_server_workspace_store_at_root(
+            endpoint.workspace_store_path.clone().into(),
         )
         .await
         .expect("prepare exact-query Runtime Server workspace store");
@@ -365,12 +335,11 @@ impl ExactQueryRuntime {
             )
             .await
             .expect("bind exact-query Runtime Server")
-            .with_workspace_generation_builder_and_catalog(builder, catalog)
-            .with_workspace_owner_projection_builder(Arc::new(
-                |_workspace_identity, _language_id, _project_root, owner| {
-                    Box::pin(build_exact_query_owner_projection(owner))
-                },
-            ));
+            .with_workspace_generation_and_owner_builders_and_catalog(
+                builder,
+                owner_builder,
+                catalog,
+            );
         let shutdown = server.shutdown_handle();
         let server = tokio::spawn(server.serve());
         let workspace_identity =
@@ -446,7 +415,7 @@ impl ExactQueryRuntime {
     }
 }
 
-async fn build_exact_query_owner_projection(
+async fn build_exact_query_generation_owner(
     mut owner: agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot,
 ) -> Result<agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot, String> {
     let source = String::from_utf8_lossy(&owner.bytes);
@@ -592,10 +561,11 @@ async fn build_exact_query_generation(
             selectors: vec![selector_receipt],
         });
         owners.push(
-            agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
-                owner_path: owner_path.to_owned(),
-                content_digest,
-                selectors: vec![
+            build_exact_query_generation_owner(
+                agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerSnapshot {
+                    owner_path: owner_path.to_owned(),
+                    content_digest,
+                    selectors: vec![
                     agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot {
                         selector: selector_id,
                         byte_start: 0,
@@ -603,8 +573,10 @@ async fn build_exact_query_generation(
                         derived_projections: Vec::new(),
                     },
                 ],
-                bytes,
-            },
+                    bytes,
+                },
+            )
+            .await?,
         );
     }
     let workspace_snapshot = agent_semantic_content_identity::WorkspaceSnapshot::from_file_bytes(

@@ -11,7 +11,8 @@ turso-sync-server-e2e = []
 
 [dependencies]
 agent-semantic-runtime = { path = "../agent-semantic-runtime" }
-memmap2 = "0.9.10"
+memmap2.workspace = true
+postcard.workspace = true
 agent-semantic-context-product = { path = "../agent-semantic-context-product" }
 agent-semantic-content-identity.workspace = true
 agent-semantic-artifacts.workspace = true
@@ -30,6 +31,7 @@ agent-semantic-loop = { version = "0.1.0", path = "../agent-semantic-loop" }
 blake3.workspace = true
 which = { workspace = true }
 dashmap = "6.2.1"
+libc.workspace = true
 
 [[test]]
 name = "runtime_server_opentelemetry_test"
@@ -78,6 +80,7 @@ required-features = ["turso-sync-server-e2e"]
 
 
 [dev-dependencies]
+agent-semantic-config = { path = "../agent-semantic-config" }
 criterion = { workspace = true }
 asp-rust-project-harness-policy.workspace = true
 tempfile.workspace = true

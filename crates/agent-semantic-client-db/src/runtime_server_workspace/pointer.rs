@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use super::WorkspaceGenerationSnapshot;
 use super::atomic_snapshot_pointer::{AtomicSnapshotPointerReader, AtomicSnapshotPointerWriter};
+use super::{WorkspaceGenerationSnapshot, WorkspaceMemoryGeneration};
 
 const POINTER_FILE_NAME: &str = "active-generation.pointer";
 const POINTER_CONTEXT: &str = "workspace generation";
@@ -52,17 +52,41 @@ pub struct WorkspaceGenerationPointerReader {
 }
 
 impl WorkspaceGenerationPointerReader {
+    pub(crate) async fn matches_generation(
+        path: &Path,
+        generation: &WorkspaceMemoryGeneration,
+    ) -> bool {
+        let Ok(reader) = Self::open(path).await else {
+            return false;
+        };
+        let Ok(snapshot) = reader.read() else {
+            return false;
+        };
+        snapshot.validate().is_ok()
+            && snapshot.workspace_identity == generation.workspace_identity
+            && snapshot.generation_digest == generation.generation_digest
+    }
+
     pub async fn open(path: &Path) -> Result<Self, String> {
         Ok(Self {
             inner: AtomicSnapshotPointerReader::open(path, POINTER_CONTEXT).await?,
         })
     }
 
+    pub async fn open_optional(path: &Path) -> Result<Option<Self>, String> {
+        Ok(
+            match AtomicSnapshotPointerReader::open_optional(path, POINTER_CONTEXT).await? {
+                Some(inner) => Some(Self { inner }),
+                None => None,
+            },
+        )
+    }
+
     pub fn read(&self) -> Result<WorkspaceGenerationSnapshot, String> {
         self.inner.read()
     }
 
-    pub(crate) fn read_optional(&self) -> Result<Option<WorkspaceGenerationSnapshot>, String> {
-        self.inner.read_optional()
+    pub(crate) fn read_previous_valid_optional(&self) -> Option<WorkspaceGenerationSnapshot> {
+        self.inner.read_previous_valid_optional()
     }
 }

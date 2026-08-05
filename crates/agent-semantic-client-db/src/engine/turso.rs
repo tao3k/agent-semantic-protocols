@@ -21,7 +21,6 @@ const TURSO_CLIENT_DB_SCHEMA_BOOTSTRAP_READY: &str = "ready";
 const TURSO_CLIENT_DB_INDEX_METHOD: bool = true;
 const TURSO_CLIENT_DB_MVCC_ENABLED: bool = true;
 const TURSO_CLIENT_DB_BEGIN_CONCURRENT_ENABLED: bool = false;
-const TURSO_CLIENT_DB_CONNECTION_LANES: usize = 4;
 
 /// Bootstrap metadata table used to record the Turso DB Engine schema version.
 pub const TURSO_BOOTSTRAP_TABLE: &str = "asp_db_engine_bootstrap";
@@ -431,13 +430,14 @@ impl std::ops::DerefMut for TursoConnectionLease {
 }
 
 struct TursoDatabasePoolEntry {
-    database: std::sync::Arc<turso::Database>,
-    write_lanes: Vec<std::sync::Arc<tokio::sync::Mutex<turso::Connection>>>,
-    next_write_lane: usize,
+    database: tokio::sync::OnceCell<std::sync::Arc<turso::Database>>,
+    write_lanes: tokio::sync::RwLock<Vec<std::sync::Arc<tokio::sync::Mutex<turso::Connection>>>>,
+    next_write_lane: std::sync::atomic::AtomicUsize,
     schema_state: TursoSchemaState,
 }
 
-type TursoDatabasePool = std::collections::BTreeMap<std::path::PathBuf, TursoDatabasePoolEntry>;
+type TursoDatabasePool =
+    std::collections::BTreeMap<std::path::PathBuf, std::sync::Arc<TursoDatabasePoolEntry>>;
 
 fn turso_database_pool() -> &'static tokio::sync::Mutex<TursoDatabasePool> {
     static POOL: std::sync::OnceLock<tokio::sync::Mutex<TursoDatabasePool>> =
@@ -448,23 +448,30 @@ fn turso_database_pool() -> &'static tokio::sync::Mutex<TursoDatabasePool> {
 pub(crate) async fn shared_turso_database(
     turso_path: &Path,
 ) -> Result<std::sync::Arc<turso::Database>, String> {
+    let entry = shared_turso_pool_entry(turso_path).await;
+    let database = entry
+        .database
+        .get_or_try_init(|| async {
+            build_turso_database(turso_path)
+                .await
+                .map(std::sync::Arc::new)
+        })
+        .await?;
+    Ok(std::sync::Arc::clone(database))
+}
+
+async fn shared_turso_pool_entry(turso_path: &Path) -> std::sync::Arc<TursoDatabasePoolEntry> {
     let mut pool = turso_database_pool().lock().await;
-    if let Some(entry) = pool.get(turso_path) {
-        return Ok(std::sync::Arc::clone(&entry.database));
-    }
-    let database = std::sync::Arc::new(build_turso_database(turso_path).await?);
-    pool.insert(
-        turso_path.to_path_buf(),
-        TursoDatabasePoolEntry {
-            database: std::sync::Arc::clone(&database),
-            write_lanes: Vec::new(),
-            next_write_lane: 0,
+    std::sync::Arc::clone(pool.entry(turso_path.to_path_buf()).or_insert_with(|| {
+        std::sync::Arc::new(TursoDatabasePoolEntry {
+            database: tokio::sync::OnceCell::new(),
+            write_lanes: tokio::sync::RwLock::new(Vec::new()),
+            next_write_lane: std::sync::atomic::AtomicUsize::new(0),
             schema_state: std::sync::Arc::new(tokio::sync::Mutex::new(
                 std::collections::HashMap::new(),
             )),
-        },
-    );
-    Ok(database)
+        })
+    }))
 }
 
 pub(super) async fn evict_turso_client_dir(client_dir: &Path) {
@@ -501,59 +508,76 @@ async fn configure_turso_write_connection(
     Ok(())
 }
 
+fn adaptive_turso_write_lane_ceiling() -> usize {
+    std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1)
+}
+
+async fn new_turso_write_lane(
+    database: &turso::Database,
+    turso_path: &Path,
+) -> Result<std::sync::Arc<tokio::sync::Mutex<turso::Connection>>, String> {
+    let connection = database
+        .connect()
+        .map_err(|error| format!("failed to connect Turso client DB write lane: {error}"))?;
+    configure_turso_write_connection(
+        &connection,
+        TURSO_CLIENT_DB_MVCC_ENABLED
+            && turso_path.file_name().and_then(|name| name.to_str())
+                != Some(TURSO_SEARCH_PROJECTION_DB_FILE),
+    )
+    .await?;
+    Ok(std::sync::Arc::new(tokio::sync::Mutex::new(connection)))
+}
+
 async fn shared_turso_write_connection(turso_path: &Path) -> Result<TursoConnectionLease, String> {
-    let (database, lane, schema_state) = {
-        let mut pool = turso_database_pool().lock().await;
-        if !pool.contains_key(turso_path) {
-            let database = std::sync::Arc::new(build_turso_database(turso_path).await?);
-            pool.insert(
-                turso_path.to_path_buf(),
-                TursoDatabasePoolEntry {
-                    database,
-                    write_lanes: Vec::new(),
-                    next_write_lane: 0,
-                    schema_state: std::sync::Arc::new(tokio::sync::Mutex::new(
-                        std::collections::HashMap::new(),
-                    )),
-                },
-            );
+    let entry = shared_turso_pool_entry(turso_path).await;
+    let database = shared_turso_database(turso_path).await?;
+    let mut lanes = {
+        let lanes = entry.write_lanes.read().await;
+        lanes.iter().cloned().collect::<Vec<_>>()
+    };
+    if lanes.is_empty() {
+        let mut published = entry.write_lanes.write().await;
+        if published.is_empty() {
+            published.push(new_turso_write_lane(&database, turso_path).await?);
         }
+        lanes = published.iter().cloned().collect();
+    }
 
-        let entry = pool
-            .get_mut(turso_path)
-            .expect("Turso database pool entry was inserted above");
-        if entry.write_lanes.is_empty() {
-            entry.write_lanes.reserve(TURSO_CLIENT_DB_CONNECTION_LANES);
-            for _ in 0..TURSO_CLIENT_DB_CONNECTION_LANES {
-                let connection = entry.database.connect().map_err(|error| {
-                    format!("failed to connect Turso client DB write lane: {error}")
-                })?;
-                configure_turso_write_connection(
-                    &connection,
-                    TURSO_CLIENT_DB_MVCC_ENABLED
-                        && turso_path.file_name().and_then(|name| name.to_str())
-                            != Some(TURSO_SEARCH_PROJECTION_DB_FILE),
-                )
-                .await?;
-                entry
-                    .write_lanes
-                    .push(std::sync::Arc::new(tokio::sync::Mutex::new(connection)));
-            }
+    let first_lane = entry
+        .next_write_lane
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        % lanes.len();
+    for offset in 0..lanes.len() {
+        let lane = std::sync::Arc::clone(&lanes[(first_lane + offset) % lanes.len()]);
+        if let Ok(connection) = lane.try_lock_owned() {
+            return Ok(TursoConnectionLease {
+                _database: database,
+                connection,
+                schema_state: std::sync::Arc::clone(&entry.schema_state),
+            });
         }
+    }
 
-        let lane_index = entry.next_write_lane % entry.write_lanes.len();
-        entry.next_write_lane = entry.next_write_lane.wrapping_add(1);
-        (
-            std::sync::Arc::clone(&entry.database),
-            std::sync::Arc::clone(&entry.write_lanes[lane_index]),
-            std::sync::Arc::clone(&entry.schema_state),
-        )
+    let lane = if lanes.len() < adaptive_turso_write_lane_ceiling() {
+        let mut published = entry.write_lanes.write().await;
+        if published.len() < adaptive_turso_write_lane_ceiling() {
+            let lane = new_turso_write_lane(&database, turso_path).await?;
+            published.push(std::sync::Arc::clone(&lane));
+            lane
+        } else {
+            std::sync::Arc::clone(&published[first_lane % published.len()])
+        }
+    } else {
+        std::sync::Arc::clone(&lanes[first_lane])
     };
     let connection = lane.lock_owned().await;
     Ok(TursoConnectionLease {
         _database: database,
         connection,
-        schema_state,
+        schema_state: std::sync::Arc::clone(&entry.schema_state),
     })
 }
 
@@ -673,3 +697,7 @@ pub(super) async fn turso_table_exists(
     }
     Ok(false)
 }
+
+#[cfg(test)]
+#[path = "../../tests/unit/db/engine/turso_pool.rs"]
+mod tests;

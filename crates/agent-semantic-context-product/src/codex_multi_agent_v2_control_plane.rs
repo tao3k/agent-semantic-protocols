@@ -59,6 +59,13 @@ pub struct CodexControlPlaneMaterialization {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CodexRootTaskProjection {
+    pub session_id: String,
+    pub evidence_ref: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CodexAgentNodeProjection {
     pub root_session_id: String,
     pub parent_session_id: Option<String>,
@@ -96,6 +103,7 @@ pub struct CodexMultiAgentV2ControlPlaneProjection {
     pub materialization: CodexControlPlaneMaterialization,
     pub workspace_server: WorkspaceServerProjection,
     pub root_session_id: String,
+    pub root_task: CodexRootTaskProjection,
     pub agents: Vec<CodexAgentNodeProjection>,
     pub turns: Vec<CodexTurnNodeProjection>,
     pub delegations: Vec<CodexDelegationEdgeProjection>,
@@ -110,12 +118,17 @@ impl CodexMultiAgentV2ControlPlaneProjection {
         turns: Vec<CodexTurnNodeProjection>,
         delegations: Vec<CodexDelegationEdgeProjection>,
     ) -> Result<Self, String> {
+        let root_task = CodexRootTaskProjection {
+            session_id: root_session_id.clone(),
+            evidence_ref: materialization.evidence_refs.first().cloned(),
+        };
         let projection = Self {
             schema_id: CODEX_MULTI_AGENT_V2_CONTROL_PLANE_SCHEMA_ID.to_owned(),
             schema_version: CODEX_MULTI_AGENT_V2_CONTROL_PLANE_SCHEMA_VERSION.to_owned(),
             materialization,
             workspace_server,
             root_session_id,
+            root_task,
             agents,
             turns,
             delegations,
@@ -153,12 +166,30 @@ impl CodexMultiAgentV2ControlPlaneProjection {
         if self.root_session_id.is_empty() {
             return Err("Codex root session id must not be empty".to_owned());
         }
-        if self.agents.is_empty() {
-            return Err("Codex control-plane graph requires one root agent".to_owned());
+        if self.root_task.session_id != self.root_session_id {
+            return Err("Codex root-task identity does not match rootSessionId".to_owned());
+        }
+        if self.materialization.freshness == CodexControlPlaneFreshness::Current
+            && self
+                .root_task
+                .evidence_ref
+                .as_deref()
+                .is_none_or(str::is_empty)
+        {
+            return Err("current Codex root task requires indexed evidence".to_owned());
+        }
+        if let Some(root_evidence_ref) = self.root_task.evidence_ref.as_ref()
+            && !self
+                .materialization
+                .evidence_refs
+                .contains(root_evidence_ref)
+        {
+            return Err(
+                "Codex root-task evidence must be indexed by the materialization".to_owned(),
+            );
         }
 
         let mut agents = HashMap::with_capacity(self.agents.len());
-        let mut root_count = 0usize;
         for agent in &self.agents {
             if agent.root_session_id != self.root_session_id {
                 return Err(format!(
@@ -186,14 +217,9 @@ impl CodexMultiAgentV2ControlPlaneProjection {
             if agents.insert(session_id.to_owned(), generation).is_some() {
                 return Err(format!("duplicate Codex agent session id `{session_id}`"));
             }
-            if session_id == self.root_session_id && agent.parent_session_id.is_none() {
-                root_count += 1;
+            if session_id == self.root_session_id {
+                return Err("Codex root task must not be encoded as an agent node".to_owned());
             }
-        }
-        if root_count != 1 {
-            return Err(format!(
-                "Codex control-plane graph requires exactly one root agent, found {root_count}"
-            ));
         }
         for agent in &self.agents {
             let session_id = agent
@@ -203,15 +229,15 @@ impl CodexMultiAgentV2ControlPlaneProjection {
                 .as_deref()
                 .expect("validated observed session id");
             match agent.parent_session_id.as_deref() {
-                None if session_id != self.root_session_id => {
+                None => {
                     return Err(format!(
-                        "non-root Codex agent `{session_id}` requires a parent"
+                        "Codex agent `{session_id}` requires a parent task or agent"
                     ));
                 }
                 Some(parent) if parent == session_id => {
                     return Err(format!("Codex agent `{session_id}` cannot parent itself"));
                 }
-                Some(parent) if !agents.contains_key(parent) => {
+                Some(parent) if parent != self.root_session_id && !agents.contains_key(parent) => {
                     return Err(format!(
                         "Codex agent `{session_id}` references missing parent `{parent}`"
                     ));
@@ -259,7 +285,9 @@ impl CodexMultiAgentV2ControlPlaneProjection {
             if edge.parent_session_id == edge.child_session_id {
                 return Err("Codex delegation cannot target its parent session".to_owned());
             }
-            if !agents.contains_key(&edge.parent_session_id) {
+            if edge.parent_session_id != self.root_session_id
+                && !agents.contains_key(&edge.parent_session_id)
+            {
                 return Err(format!(
                     "Codex delegation references missing parent `{}`",
                     edge.parent_session_id

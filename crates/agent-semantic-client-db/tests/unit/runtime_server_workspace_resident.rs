@@ -314,10 +314,14 @@ async fn concurrent_sessions_reuse_one_resident_search_generation_authority() {
     tokio::fs::create_dir_all(&project_root)
         .await
         .expect("create search authority project root");
-    let endpoint = fixture_endpoint(&temporary, 41).await;
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
-        .await
-        .expect("bind Runtime Server");
+    let (endpoint, artifact_catalog) = fixture_endpoint(&temporary, 41).await;
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::default()),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind Runtime Server");
     let registry = Arc::clone(server.workspace_registry());
     registry
         .publish(
@@ -346,17 +350,23 @@ async fn concurrent_sessions_reuse_one_resident_search_generation_authority() {
         let project_root = project_root.clone();
         let ready = Arc::clone(&ready);
         readers.push(tokio::spawn(async move {
-            let session = WorkspaceDbIpcSession::for_runtime_server(
-                &endpoint,
-                "workspace-search-authority".to_owned(),
-                project_root.clone(),
-            );
-            let cold_started = tokio::time::Instant::now();
-            session
-                .runtime_search_generation_authority()
-                .await
-                .expect("prewarm resident search generation authority");
-            let cold_latency = cold_started.elapsed();
+            let mut cold_latencies = Vec::with_capacity(16);
+            let mut session = None;
+            for _ in 0..16 {
+                let candidate = WorkspaceDbIpcSession::for_runtime_server(
+                    &endpoint,
+                    "workspace-search-authority".to_owned(),
+                    project_root.clone(),
+                );
+                let cold_started = tokio::time::Instant::now();
+                candidate
+                    .runtime_search_generation_authority()
+                    .await
+                    .expect("read session-cold resident search generation authority");
+                cold_latencies.push(cold_started.elapsed());
+                session = Some(candidate);
+            }
+            let session = session.expect("fresh authority session");
             ready.wait().await;
             let mut latencies = Vec::with_capacity(32);
             for _ in 0..32 {
@@ -373,14 +383,14 @@ async fn concurrent_sessions_reuse_one_resident_search_generation_authority() {
                     authority.workspace_generation.root_digest
                 );
             }
-            (cold_latency, latencies)
+            (cold_latencies, latencies)
         }));
     }
-    let mut cold_latencies = Vec::with_capacity(64);
+    let mut cold_latencies = Vec::with_capacity(64 * 16);
     let mut latencies = Vec::with_capacity(64 * 32);
     for reader in readers {
-        let (cold_latency, warm_latencies) = reader.await.expect("join authority reader");
-        cold_latencies.push(cold_latency);
+        let (reader_cold_latencies, warm_latencies) = reader.await.expect("join authority reader");
+        cold_latencies.extend(reader_cold_latencies);
         latencies.extend(warm_latencies);
     }
     cold_latencies.sort_unstable();
@@ -388,8 +398,8 @@ async fn concurrent_sessions_reuse_one_resident_search_generation_authority() {
     let cold_p99 = cold_latencies[cold_latencies.len() * 99 / 100];
     let concurrent_p99 = latencies[latencies.len() * 99 / 100];
     assert!(
-        cold_p99 < std::time::Duration::from_millis(50),
-        "resident search generation authority cold p99 exceeded 50ms: {cold_p99:?}"
+        cold_p99 < std::time::Duration::from_millis(1),
+        "resident search generation authority cold p99 exceeded 1ms: {cold_p99:?}"
     );
     assert!(
         concurrent_p99 < std::time::Duration::from_millis(1),
@@ -447,7 +457,8 @@ async fn concurrent_sessions_reuse_one_resident_search_generation_authority() {
     let service_p99 = service_latencies[service_latencies.len() * 99 / 100];
     let service_max = service_latencies[service_latencies.len() - 1];
     eprintln!(
-        "resident-search-authority sessions=64 requests={} coldP99Micros={} concurrentP99Micros={} serviceP50Micros={} serviceP95Micros={} serviceP99Micros={} serviceMaxMicros={} workspaceCount={} counters={:?}",
+        "resident-search-authority sessions=64 coldSamples={} requests={} coldP99Micros={} concurrentP99Micros={} serviceP50Micros={} serviceP95Micros={} serviceP99Micros={} serviceMaxMicros={} workspaceCount={} counters={:?}",
+        cold_latencies.len(),
         latencies.len(),
         cold_p99.as_micros(),
         concurrent_p99.as_micros(),

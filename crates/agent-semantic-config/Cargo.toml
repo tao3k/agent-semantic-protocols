@@ -7,7 +7,9 @@ license = "MIT"
 
 [dependencies]
 figment = { workspace = true, features = ["toml"] }
+jsonschema.workspace = true
 serde = { workspace = true }
+serde_json.workspace = true
 toml.workspace = true
 
 [dev-dependencies]

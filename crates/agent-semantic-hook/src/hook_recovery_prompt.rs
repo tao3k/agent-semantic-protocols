@@ -10,7 +10,7 @@ Do not return source bodies, snippets, or line-range selectors from the search c
 {agent_flow}
 "#;
 
-const CODEX_AGENT_FLOW: &str = r#"Codex: start the configured resident ASP subagent for ASP search/query work. Use the configured agent role and resident child name from hooks/config.toml; the default resident child is `asp-explore`.
+const CODEX_AGENT_FLOW: &str = r#"Codex: start the configured resident ASP subagent for ASP search/query work. Resolve the agent role and resident child name from hooks/config.toml.
 When the subagent returns its child session id, register it from this root session: `asp agent session register --name <resident-name> --child-session-id <child-session-id> --role <resident-role>`. ASP resolves the root and parent session from the active agent environment.
 Forward ASP search/query, owner/frontier ranking, dependency, and test reachability work to that resident child; keep the root agent on session, checkpoint, exact reads, edits, and recovery commands.
 "#;

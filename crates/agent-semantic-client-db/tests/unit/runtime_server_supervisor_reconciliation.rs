@@ -43,9 +43,13 @@ async fn exercise_stable_supervisor_reconciliation(enforce_latency: bool) {
     )
     .await
     .expect("prepare Runtime Server endpoint");
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
-        .await
-        .expect("bind Runtime Server");
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::default()),
+        Arc::new(catalog),
+    )
+    .await
+    .expect("bind Runtime Server");
     let server = tokio::spawn(server.serve());
 
     let warm = call_runtime_server(
@@ -108,8 +112,9 @@ async fn exercise_stable_supervisor_reconciliation(enforce_latency: bool) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stale_generation_handoff_publishes_the_next_healthy_endpoint() {
+    let _performance = crate::test_support::performance_lock();
     let runtime_dir = tempfile::tempdir().expect("create isolated Runtime Server directory");
-    let catalog = fixture_catalog().await;
+    let catalog = Arc::new(fixture_catalog().await);
     let registry = Arc::new(WorkspaceDbRegistry::default());
     let first_endpoint = prepare_runtime_server_endpoint_in(
         runtime_dir.path(),
@@ -122,10 +127,26 @@ async fn stale_generation_handoff_publishes_the_next_healthy_endpoint() {
     )
     .await
     .expect("prepare first Runtime Server endpoint");
-    let first_server = RuntimeServer::bind(first_endpoint.clone(), Arc::clone(&registry))
-        .await
-        .expect("bind first Runtime Server generation");
+    let first_server = RuntimeServer::bind_with_catalog(
+        first_endpoint.clone(),
+        Arc::clone(&registry),
+        Arc::clone(&catalog),
+    )
+    .await
+    .expect("bind first Runtime Server generation");
     let first_server = tokio::spawn(first_server.serve());
+
+    let second_endpoint = prepare_runtime_server_endpoint_in(
+        runtime_dir.path(),
+        &runtime_dir.path().join("asp-generation-two"),
+        "blake3-256:generation-two",
+        catalog.mode_label(),
+        &catalog.digest(),
+        52,
+        "generation-two-binding",
+    )
+    .await
+    .expect("pre-stage second Runtime Server endpoint");
 
     let handoff_started = tokio::time::Instant::now();
     let draining = reconcile_runtime_server(
@@ -145,20 +166,10 @@ async fn stale_generation_handoff_publishes_the_next_healthy_endpoint() {
         RuntimeServerExit::RestartRequested
     );
 
-    let second_endpoint = prepare_runtime_server_endpoint_in(
-        runtime_dir.path(),
-        &runtime_dir.path().join("asp-generation-two"),
-        "blake3-256:generation-two",
-        catalog.mode_label(),
-        &catalog.digest(),
-        52,
-        "generation-two-binding",
-    )
-    .await
-    .expect("prepare second Runtime Server endpoint");
-    let second_server = RuntimeServer::bind(second_endpoint.clone(), registry)
-        .await
-        .expect("bind second Runtime Server generation");
+    let second_server =
+        RuntimeServer::bind_with_catalog(second_endpoint.clone(), registry, catalog)
+            .await
+            .expect("bind second Runtime Server generation");
     let second_server = tokio::spawn(second_server.serve());
     let healthy = call_runtime_server(
         &second_endpoint,

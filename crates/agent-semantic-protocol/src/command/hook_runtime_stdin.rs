@@ -1,6 +1,5 @@
 //! Bounded stdin transport for hook payloads.
 
-use std::cell::RefCell;
 use std::io;
 #[cfg(not(unix))]
 use std::io::Read;
@@ -18,40 +17,8 @@ const HOOK_STDIN_CHUNK_BYTES: usize = 16 * 1024;
 #[cfg(unix)]
 const HOOK_STDIN_MAX_BYTES: usize = 1024 * 1024;
 
-thread_local! {
-    static HOOK_STDIN_OVERRIDE: RefCell<Option<String>> = const { RefCell::new(None) };
-}
-
-pub(crate) fn with_hook_stdin_override<T>(input: String, operation: impl FnOnce() -> T) -> T {
-    struct Restore(Option<String>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            HOOK_STDIN_OVERRIDE.with(|slot| {
-                slot.replace(self.0.take());
-            });
-        }
-    }
-
-    let previous = HOOK_STDIN_OVERRIDE.with(|slot| slot.replace(Some(input)));
-    let _restore = Restore(previous);
-    operation()
-}
-
-fn take_hook_stdin_override() -> Option<String> {
-    HOOK_STDIN_OVERRIDE.with(|slot| slot.borrow_mut().take())
-}
-
 #[cfg(unix)]
-pub(super) fn read_hook_stdin_bounded() -> io::Result<String> {
-    if let Some(input) = take_hook_stdin_override() {
-        if input.len() > HOOK_STDIN_MAX_BYTES {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("hook payload exceeds {HOOK_STDIN_MAX_BYTES} bytes"),
-            ));
-        }
-        return Ok(input);
-    }
+pub(in super::super) fn read_hook_stdin_bounded() -> io::Result<String> {
     use std::os::fd::AsRawFd;
 
     let stdin = io::stdin();
@@ -87,7 +54,7 @@ pub(super) fn read_hook_stdin_bounded() -> io::Result<String> {
 }
 
 #[cfg(not(unix))]
-pub(super) fn read_hook_stdin_bounded() -> io::Result<String> {
+pub(in super::super) fn read_hook_stdin_bounded() -> io::Result<String> {
     if let Some(input) = take_hook_stdin_override() {
         return Ok(input);
     }

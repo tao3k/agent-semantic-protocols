@@ -521,7 +521,7 @@ fn agent_session_registry_storage_is_turso_owned() {
 }
 
 #[test]
-fn agent_session_registry_project_open_uses_asp_home_db() {
+fn agent_session_registry_project_open_requires_runtime_owner() {
     let root = temp_root("agent-session-registry-state-home");
     let state_home = root.join("state");
     let project_root = root.join("project");
@@ -535,7 +535,7 @@ fn agent_session_registry_project_open_uses_asp_home_db() {
 
     let status = Command::new(env::current_exe().expect("locate current test binary"))
         .arg("--exact")
-        .arg("db::agent_session_registry_project_open_helper")
+        .arg("db::agent_session_registry_project_open_without_runtime_owner_helper")
         .arg("--nocapture")
         .env("ASP_SESSION_STATE_HOME_CHILD", "1")
         .env("ASP_SESSION_STATE_HOME", &state_home)
@@ -548,7 +548,7 @@ fn agent_session_registry_project_open_uses_asp_home_db() {
 }
 
 #[test]
-fn agent_session_registry_project_open_helper() {
+fn agent_session_registry_project_open_without_runtime_owner_helper() {
     if env::var("ASP_SESSION_STATE_HOME_CHILD").ok().as_deref() != Some("1") {
         return;
     }
@@ -562,17 +562,17 @@ fn agent_session_registry_project_open_helper() {
     let state_root =
         AgentSessionRegistry::state_root_for_project(&project_root).expect("resolve project root");
     assert_eq!(state_root, state.state_home);
-    let registry =
-        AgentSessionRegistry::open_or_create_project(&project_root).expect("create registry");
-
-    assert_eq!(
-        registry.db_path(),
-        &state_root.join(AGENT_SESSION_REGISTRY_DB_NAME)
+    let error = match AgentSessionRegistry::open_or_create_project(&project_root) {
+        Ok(_) => panic!("client project open without Runtime Server must fail closed"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("requires Runtime Server typed IPC; direct-open is forbidden"),
+        "unexpected project-open error: {error}"
     );
-    assert!(registry.db_path().is_file());
-    assert_eq!(
-        registry.db_path(),
-        &state.state_home.join(AGENT_SESSION_REGISTRY_DB_NAME)
+    assert!(
+        !state_root.join(AGENT_SESSION_REGISTRY_DB_NAME).exists(),
+        "client must not create the Runtime Server-owned registry DB"
     );
     assert!(
         !state

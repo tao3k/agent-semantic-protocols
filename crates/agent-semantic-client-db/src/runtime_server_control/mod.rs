@@ -21,5 +21,5 @@ pub use model::{
 };
 pub use status_memory::{
     RuntimeServerStatusMemoryMetrics, prewarm_runtime_server_status_memory,
-    runtime_server_status_memory_metrics,
+    read_runtime_server_cached_health_status, runtime_server_status_memory_metrics,
 };

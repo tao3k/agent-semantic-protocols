@@ -26,6 +26,23 @@ impl super::core::AgentSessionRegistry {
         let root_session_id = root_session_id.into();
         let name = name.into();
         let dispatch_identity = dispatch_identity.into();
+        if let Some(result) = self.runtime_operation(
+            crate::workspace_db_ipc::AgentSessionRegistryIpcOperation::DispatchLease {
+                project_id: project_id.as_str().to_owned(),
+                root_session_id: root_session_id.as_str().to_owned(),
+                name: name.as_str().to_owned(),
+                dispatch_identity: dispatch_identity.as_str().to_owned(),
+            },
+        )? {
+            return match result {
+                crate::workspace_db_ipc::AgentSessionRegistryIpcResult::DispatchLease { lease } => {
+                    Ok(lease)
+                }
+                other => Err(format!(
+                    "Runtime Server returned the wrong agent-session dispatch lease result: {other:?}"
+                )),
+            };
+        }
         super::core::block_on_agent_session_registry_async(async {
             let connection = connect_turso_agent_session_registry(self.db_path()).await?;
             turso_dispatch_lease_by_identity(

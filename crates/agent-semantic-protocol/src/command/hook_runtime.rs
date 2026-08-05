@@ -24,11 +24,10 @@ mod hook_runtime_decision_render;
 mod hook_runtime_doctor;
 #[path = "hook_runtime_generation_admission.rs"]
 mod hook_runtime_generation_admission;
+pub(super) use hook_runtime_generation_admission::HookGenerationAdmissionObservation;
 pub(super) use hook_runtime_generation_admission::request as request_runtime_generation_admission;
 #[path = "hook_runtime_install.rs"]
 mod hook_runtime_install;
-#[path = "hook_runtime_project_root_override.rs"]
-mod hook_runtime_project_root_override;
 #[path = "hook_runtime_resident_permissions.rs"]
 mod hook_runtime_resident_permissions;
 #[path = "hook_runtime_skill.rs"]
@@ -36,13 +35,11 @@ mod hook_runtime_skill;
 #[path = "hook_runtime_source_access_materialize.rs"]
 mod hook_runtime_source_access_materialize;
 #[path = "hook_runtime_stdin.rs"]
-pub(crate) mod hook_runtime_stdin;
+mod hook_runtime_stdin;
 #[path = "hook_runtime_subagent.rs"]
 mod hook_runtime_subagent;
 #[path = "hook_runtime_workspace_candidate.rs"]
 mod hook_runtime_workspace_candidate;
-
-pub(super) use hook_runtime_skill::active_codex_plugin_skill_path;
 
 #[cfg(test)]
 #[path = "../../tests/unit/command/hook_workspace_candidate.rs"]
@@ -60,22 +57,34 @@ use agent_semantic_runtime::project_state_paths;
 use hook_runtime_activation_failure::emit_activation_load_failure;
 use hook_runtime_activation_path::default_or_discovered_activation_path;
 use hook_runtime_agent_session::{classify_main_session_asp_exploration, load_asp_session_policy};
+pub(crate) use hook_runtime_agent_session_dispatch::{
+    enforce_configured_resident_spawn_contract as enforce_resident_spawn_from_snapshot,
+    materialize_resident_dispatch_wrapper as materialize_resident_dispatch_from_snapshot,
+};
 use hook_runtime_cli_args::{display_path, optional_flag_value};
 use hook_runtime_codex_plugin::codex_project_plugin_hooks_present;
 use hook_runtime_config_recovery::annotate_hook_config_repair;
+pub(crate) use hook_runtime_config_recovery::{
+    apply_language_provider_projection as apply_resident_language_provider_projection,
+    load_fresh_hook_config as load_resident_hook_config,
+};
 use hook_runtime_decision_render::{emit_decision, emit_hook_runtime_failure};
 use hook_runtime_doctor::run_doctor;
 pub(super) use hook_runtime_install::run_codex_plugin_install_args;
 use hook_runtime_install::run_install;
-use hook_runtime_project_root_override::{
-    hook_runtime_project_root_override, with_hook_runtime_project_root_override,
-};
 use hook_runtime_resident_permissions::{
     classify_read_only_resident_receipt, classify_read_only_resident_write,
 };
 use hook_runtime_source_access_materialize::materialize_source_access_deny_message;
-use hook_runtime_stdin::read_hook_stdin_bounded;
-use hook_runtime_workspace_candidate::{hook_workspace_candidate, requests_explicit_asp_workspace};
+pub(crate) use hook_runtime_source_access_materialize::materialize_source_access_deny_message as materialize_source_access_from_snapshot;
+pub(crate) fn read_hook_input_bounded() -> Result<String, String> {
+    hook_runtime_stdin::read_hook_stdin_bounded()
+        .map_err(|error| format!("failed to read hook payload from stdin: {error}"))
+}
+#[cfg(test)]
+use hook_runtime_workspace_candidate::activation_repair_project_root;
+use hook_runtime_workspace_candidate::hook_workspace_candidate;
+pub(super) use hook_runtime_workspace_candidate::requests_explicit_asp_workspace;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -88,35 +97,45 @@ where
     run(args.into_iter().map(Into::into).collect())
 }
 
-pub(crate) fn run_protocol_hook_with_input(args: Vec<String>, input: String) -> Result<(), String> {
-    hook_runtime_stdin::with_hook_stdin_override(input, || super::run_protocol_command(args))
-}
-
-pub(crate) fn run_protocol_hook_capture(
-    args: Vec<String>,
-    input: String,
-) -> Result<String, String> {
-    let (_, output) = hook_runtime_decision_render::with_hook_output_capture(|| {
-        run_protocol_hook_with_input(args, input)
-    })?;
-    if output.is_empty() {
-        return Err("hook evaluation completed without a platform response".to_owned());
-    }
-    Ok(output)
-}
-
-pub(crate) fn run_protocol_hook_capture_for_project(
+pub(super) fn observe_runtime_generation_for_hook_client(
+    event: &str,
     project_root: &Path,
-    args: Vec<String>,
-    input: String,
-) -> Result<String, String> {
-    let project_root = fs::canonicalize(project_root).map_err(|error| {
-        format!(
-            "failed to canonicalize resident hook workspace {}: {error}",
-            project_root.display()
-        )
-    })?;
-    with_hook_runtime_project_root_override(project_root, || run_protocol_hook_capture(args, input))
+    payload: &serde_json::Value,
+) -> (bool, HookGenerationAdmissionObservation) {
+    let explicit_asp_workspace = requests_explicit_asp_workspace(payload);
+    if event != "post-tool" && !explicit_asp_workspace {
+        return (
+            explicit_asp_workspace,
+            HookGenerationAdmissionObservation::default(),
+        );
+    }
+    let changed_paths = hook_runtime_generation_admission::payload_changed_paths(payload);
+    let workspace_mutated = !changed_paths.is_empty();
+    let mutation_id = hook_runtime_generation_admission::payload_mutation_id(payload);
+    let observation = hook_runtime_generation_admission::observe(
+        event,
+        workspace_mutated,
+        mutation_id,
+        changed_paths,
+        explicit_asp_workspace,
+        |mutation_id, changed_paths| {
+            hook_runtime_generation_admission::request(project_root, mutation_id, changed_paths)
+        },
+        || hook_runtime_generation_admission::ensure_ready(project_root),
+    );
+    (explicit_asp_workspace, observation)
+}
+
+pub(super) fn materialize_runtime_generation_observation(
+    decision: &mut HookDecision,
+    explicit_asp_workspace: bool,
+    observation: HookGenerationAdmissionObservation,
+) {
+    hook_runtime_generation_admission::materialize_explicit_query_gate(
+        decision,
+        explicit_asp_workspace,
+        observation,
+    );
 }
 
 fn run(args: Vec<String>) -> Result<(), String> {
@@ -159,7 +178,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         event
     };
     let explicit_activation_path = flag_value(args, "--activation").map(PathBuf::from);
-    let stdin = match read_hook_stdin_bounded() {
+    let stdin = match hook_runtime_stdin::read_hook_stdin_bounded() {
         Ok(stdin) => stdin,
         Err(error) => {
             emit_hook_runtime_failure(
@@ -191,54 +210,72 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     let activation_path =
         explicit_activation_path.unwrap_or_else(|| default_or_discovered_activation_path(&payload));
     let mut activation_auto_refresh = None;
-    let mut runtime = match load_activation(&activation_path) {
-        Ok(registry) => registry,
-        Err(initial_error) => {
-            let repair_project_root = match activation_repair_project_root(
-                &payload,
-                &activation_path,
-            ) {
-                Ok(project_root) => project_root,
-                Err(identity_error) => {
-                    emit_activation_load_failure(
-                        client,
-                        event,
-                        emit,
+    let direct_read_project_root =
+        hook_runtime_workspace_candidate::direct_read_policy_project_root(&payload);
+    let mut runtime = if let Some(project_root) = direct_read_project_root.as_ref() {
+        // Direct reads are classified from the provider-registry Hook snapshot.
+        // Executable activation is irrelevant and may perform cold provider
+        // identity work that cannot fit the resident decision boundary.
+        agent_semantic_hook::HookRuntime {
+            project_root: project_root.display().to_string(),
+            rankers: Vec::new(),
+            providers: Vec::new(),
+        }
+    } else {
+        match load_activation(&activation_path) {
+            Ok(registry) => registry,
+            Err(initial_error) => {
+                let repair_project_root =
+                    match hook_runtime_workspace_candidate::activation_repair_project_root(
+                        &payload,
                         &activation_path,
-                        &format!(
-                            "initial load failed: {initial_error}; activation repair identity resolution failed: {identity_error}"
-                        ),
-                        &stdin,
-                    )?;
-                    return Ok(());
-                }
-            };
-            match agent_semantic_hook::load_or_sync_activation(
-                &activation_path,
-                &repair_project_root,
-            ) {
-                Ok(registry) => {
-                    activation_auto_refresh = Some("completed:activation-refresh".to_string());
-                    registry
-                }
-                Err(reload_error) => {
-                    emit_activation_load_failure(
-                        client,
-                        event,
-                        emit,
-                        &activation_path,
-                        &format!(
-                            "initial load failed: {initial_error}; automatic activation refresh failed: {reload_error}"
-                        ),
-                        &stdin,
-                    )?;
-                    return Ok(());
+                    ) {
+                        Ok(project_root) => project_root,
+                        Err(identity_error) => {
+                            emit_activation_load_failure(
+                                client,
+                                event,
+                                emit,
+                                &activation_path,
+                                &format!(
+                                    "initial load failed: {initial_error}; activation repair identity resolution failed: {identity_error}"
+                                ),
+                                &stdin,
+                            )?;
+                            return Ok(());
+                        }
+                    };
+                match agent_semantic_hook::load_or_sync_activation(
+                    &activation_path,
+                    &repair_project_root,
+                ) {
+                    Ok(registry) => {
+                        activation_auto_refresh = Some("completed:activation-refresh".to_string());
+                        registry
+                    }
+                    Err(reload_error) => {
+                        emit_activation_load_failure(
+                            client,
+                            event,
+                            emit,
+                            &activation_path,
+                            &format!(
+                                "initial load failed: {initial_error}; automatic activation refresh failed: {reload_error}"
+                            ),
+                            &stdin,
+                        )?;
+                        return Ok(());
+                    }
                 }
             }
         }
     };
-    let activation_project_root =
-        hook_runtime_project_root(&activation_path, &runtime.project_root);
+    let activation_project_root = direct_read_project_root.unwrap_or_else(|| {
+        hook_runtime_activation_path::hook_runtime_project_root(
+            &activation_path,
+            &runtime.project_root,
+        )
+    });
     let project_root = hook_workspace_candidate(&payload, &activation_project_root);
     runtime.project_root = project_root.display().to_string();
     let config_path = flag_value(args, "--config")
@@ -279,10 +316,8 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         event: classification_event,
         payload: &payload,
     });
-    let workspace_mutated =
-        hook_runtime_generation_admission::decision_mutates_workspace(&classified_decision);
-    let changed_paths =
-        hook_runtime_generation_admission::decision_changed_paths(&classified_decision);
+    let changed_paths = hook_runtime_generation_admission::payload_changed_paths(&payload);
+    let workspace_mutated = !changed_paths.is_empty();
     let mutation_id = hook_runtime_generation_admission::payload_mutation_id(&payload);
     let mut decision = if let Some(read_only_decision) = classify_read_only_resident_receipt(
         &project_root,
@@ -323,7 +358,7 @@ fn run_hook(args: &[String]) -> Result<(), String> {
     );
     let explicit_asp_workspace = requests_explicit_asp_workspace(&payload);
     let runtime_generation_admission = hook_runtime_generation_admission::observe(
-        args,
+        classification_event,
         workspace_mutated,
         mutation_id,
         changed_paths,
@@ -357,21 +392,11 @@ fn run_hook(args: &[String]) -> Result<(), String> {
             serde_json::Value::String("reloaded-and-classified".to_string()),
         );
     }
-    if let Some(receipt) = runtime_generation_admission.receipt {
-        decision
-            .fields
-            .insert("runtimeGenerationAdmission".to_owned(), receipt);
-    }
-    if let Some(error) = runtime_generation_admission.error {
-        decision.fields.insert(
-            "runtimeGenerationAdmissionStatus".to_owned(),
-            serde_json::Value::String("failed-non-blocking".to_owned()),
-        );
-        decision.fields.insert(
-            "runtimeGenerationAdmissionError".to_owned(),
-            serde_json::Value::String(error),
-        );
-    }
+    hook_runtime_generation_admission::materialize_explicit_query_gate(
+        &mut decision,
+        explicit_asp_workspace,
+        runtime_generation_admission,
+    );
     if matches!(event, "subagent-start" | "subagent-stop") {
         let mut payload_keys = payload
             .as_object()
@@ -445,10 +470,11 @@ fn run_hook(args: &[String]) -> Result<(), String> {
         payload: &payload,
         decision: &decision,
     });
-    if let Err(error) = append_hook_event_state(&project_root, &decision) {
-        eprintln!("[agent-semantic-hook] failed to update hook state: {error}");
-    }
-    emit_decision(emit, &decision)
+    append_hook_event_state(&project_root, &decision).map_err(|error| {
+        format!("hook decision transaction did not commit its event projection: {error}")
+    })?;
+    let result = emit_decision(emit, &decision);
+    result
 }
 
 fn archive_stopped_managed_child(
@@ -834,7 +860,7 @@ fn enforce_resident_child_deny_contract(
         decision.fields.insert(
             "executionLane".to_string(),
             serde_json::Value::String(
-                if configured_resident_name == "asp-testing" {
+                if configured_resident_name == "asp_testing" {
                     "testing"
                 } else {
                     "search"
@@ -864,81 +890,6 @@ fn string_field(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
         .map(str::to_string)
 }
 
-fn activation_relative_project_root(activation_path: &Path, project_root: &str) -> PathBuf {
-    let configured = PathBuf::from(project_root);
-    let root = if configured.is_absolute() {
-        configured
-    } else {
-        activation_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(configured)
-    };
-    fs::canonicalize(&root).unwrap_or(root)
-}
-
-fn hook_runtime_project_root(activation_path: &Path, project_root: &str) -> PathBuf {
-    let activation_root = activation_relative_project_root(activation_path, project_root);
-    if activation_root_is_global_hook_state(activation_path, &activation_root) {
-        if let Some(project_root) = hook_runtime_project_root_override() {
-            return project_root;
-        }
-        let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        return fs::canonicalize(&cwd).unwrap_or(cwd);
-    }
-    activation_root
-}
-
-fn activation_repair_project_root(
-    payload: &serde_json::Value,
-    activation_path: &Path,
-) -> Result<PathBuf, String> {
-    let payload_root = payload
-        .get("cwd")
-        .and_then(serde_json::Value::as_str)
-        .map(PathBuf::from)
-        .map(|root| fs::canonicalize(&root).unwrap_or(root));
-    let activation_owner =
-        agent_semantic_runtime::state::project_root_for_activation_path(activation_path)
-            .map(|root| fs::canonicalize(&root).unwrap_or(root));
-
-    if let Some(owner) = activation_owner {
-        if let Some(payload_root) = payload_root
-            && !payload_root.starts_with(&owner)
-        {
-            return Err(format!(
-                "identity/state mismatch: activationOwner={} payloadCwd={}",
-                owner.display(),
-                payload_root.display()
-            ));
-        }
-        return Ok(owner);
-    }
-    if let Some(payload_root) = payload_root {
-        return Ok(payload_root);
-    }
-    let current = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    Ok(fs::canonicalize(&current).unwrap_or(current))
-}
-
-fn activation_root_is_global_hook_state(activation_path: &Path, activation_root: &Path) -> bool {
-    let Some(activation_dir) = activation_path.parent() else {
-        return false;
-    };
-    if fs::canonicalize(activation_dir).unwrap_or_else(|_| activation_dir.to_path_buf())
-        != fs::canonicalize(activation_root).unwrap_or_else(|_| activation_root.to_path_buf())
-    {
-        return false;
-    }
-    activation_dir.file_name().and_then(|name| name.to_str()) == Some("state")
-        && activation_dir.ancestors().any(|ancestor| {
-            ancestor
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name == "hooks")
-        })
-}
-
 fn project_root_arg(args: &[String]) -> Result<PathBuf, String> {
     let root = positionals(args)
         .first()
@@ -948,7 +899,7 @@ fn project_root_arg(args: &[String]) -> Result<PathBuf, String> {
         .map_err(|error| format!("failed to resolve project root {}: {error}", root.display()))
 }
 
-fn ensure_supported_client(client: &str) -> Result<(), String> {
+pub(crate) fn ensure_supported_client(client: &str) -> Result<(), String> {
     if matches!(client, "codex" | "claude") {
         Ok(())
     } else {
@@ -958,13 +909,13 @@ fn ensure_supported_client(client: &str) -> Result<(), String> {
     }
 }
 
-fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+pub(crate) fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.windows(2)
         .find(|window| window[0] == flag)
         .map(|window| window[1].as_str())
 }
 
-fn first_positional(args: &[String]) -> Option<&str> {
+pub(crate) fn first_positional(args: &[String]) -> Option<&str> {
     positionals(args).first().copied()
 }
 

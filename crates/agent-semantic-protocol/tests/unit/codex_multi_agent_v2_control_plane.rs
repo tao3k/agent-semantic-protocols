@@ -43,17 +43,6 @@ fn lifecycle(
     )
 }
 
-fn root_agent(workspace_server: WorkspaceServerProjection) -> CodexAgentNodeProjection {
-    CodexAgentNodeProjection {
-        root_session_id: "root-session".to_owned(),
-        parent_session_id: None,
-        resident_name: "asp-main".to_owned(),
-        role: "main".to_owned(),
-        configured_agent_type: None,
-        lifecycle: lifecycle("root-session", 1, workspace_server),
-    }
-}
-
 fn child_agent(workspace_server: WorkspaceServerProjection) -> CodexAgentNodeProjection {
     CodexAgentNodeProjection {
         root_session_id: "root-session".to_owned(),
@@ -76,19 +65,16 @@ fn valid_projection() -> CodexMultiAgentV2ControlPlaneProjection {
         },
         workspace_server.clone(),
         "root-session".to_owned(),
-        vec![
-            root_agent(workspace_server.clone()),
-            child_agent(workspace_server),
-        ],
+        vec![child_agent(workspace_server)],
         vec![CodexTurnNodeProjection {
-            turn_id: "turn-root".to_owned(),
-            session_id: "root-session".to_owned(),
+            turn_id: "turn-child".to_owned(),
+            session_id: "child-session".to_owned(),
             generation: Some(1),
             phase: CodexTurnPhase::Running,
         }],
         vec![CodexDelegationEdgeProjection {
             parent_session_id: "root-session".to_owned(),
-            parent_turn_id: Some("turn-root".to_owned()),
+            parent_turn_id: None,
             child_session_id: "child-session".to_owned(),
             child_generation: 1,
             phase: CodexDelegationPhase::Delivered,
@@ -101,7 +87,8 @@ fn valid_projection() -> CodexMultiAgentV2ControlPlaneProjection {
 #[test]
 fn valid_codex_host_tree_is_admitted() {
     let projection = valid_projection();
-    assert_eq!(projection.agents.len(), 2);
+    assert_eq!(projection.root_task.session_id, "root-session");
+    assert_eq!(projection.agents.len(), 1);
     assert_eq!(projection.turns.len(), 1);
     assert_eq!(projection.delegations.len(), 1);
 }
@@ -109,7 +96,7 @@ fn valid_codex_host_tree_is_admitted() {
 #[test]
 fn duplicate_agent_session_is_rejected() {
     let workspace_server = server(ServerHealth::Ready);
-    let duplicate = root_agent(workspace_server.clone());
+    let duplicate = child_agent(workspace_server.clone());
     let error = CodexMultiAgentV2ControlPlaneProjection::new(
         CodexControlPlaneMaterialization {
             generation: 1,
@@ -119,7 +106,7 @@ fn duplicate_agent_session_is_rejected() {
         },
         workspace_server.clone(),
         "root-session".to_owned(),
-        vec![root_agent(workspace_server), duplicate],
+        vec![child_agent(workspace_server), duplicate],
         vec![],
         vec![],
     )
@@ -141,12 +128,38 @@ fn missing_parent_is_rejected() {
         },
         workspace_server.clone(),
         "root-session".to_owned(),
-        vec![root_agent(workspace_server), child],
+        vec![child],
         vec![],
         vec![],
     )
     .expect_err("missing parent must fail");
     assert!(error.contains("missing parent"));
+}
+
+#[test]
+fn root_task_cannot_be_encoded_as_an_agent_session() {
+    let mut projection = valid_projection();
+    projection.agents[0].lifecycle.session.session_id = Some("root-session".to_owned());
+
+    assert!(
+        projection
+            .validate()
+            .expect_err("root task impersonation must fail")
+            .contains("must not be encoded as an agent node")
+    );
+}
+
+#[test]
+fn root_task_evidence_must_be_indexed() {
+    let mut projection = valid_projection();
+    projection.root_task.evidence_ref = Some("codex-receipt://unindexed".to_owned());
+
+    assert!(
+        projection
+            .validate()
+            .expect_err("unindexed root-task evidence must fail")
+            .contains("must be indexed by the materialization")
+    );
 }
 
 #[test]
@@ -215,7 +228,24 @@ fn serialized_contract_is_codex_specific_and_round_trips() {
         value["schemaId"],
         "agent.semantic-protocols.codex-multi-agent-v2-control-plane-projection"
     );
+    assert_eq!(value["rootTask"]["sessionId"], "root-session");
     let round_trip: CodexMultiAgentV2ControlPlaneProjection =
         serde_json::from_value(value).expect("deserialize control plane");
     assert_eq!(round_trip, projection);
+}
+
+#[test]
+fn shared_schema_models_root_task_separately_from_managed_agents() {
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/multi-agent-lifecycle-projection.v1.schema.json"
+    ))
+    .expect("shared Multi-Agent V2 schema must parse");
+    let required = schema["required"]
+        .as_array()
+        .expect("projection required fields");
+
+    assert!(required.iter().any(|field| field == "rootTask"));
+    assert_eq!(schema["properties"]["rootTask"]["$ref"], "#/$defs/rootTask");
+    assert!(schema["properties"]["agents"].get("minItems").is_none());
+    assert_eq!(schema["properties"]["schemaVersion"]["const"], "1");
 }

@@ -219,15 +219,12 @@ async fn dispatch_workspace_db_session_operation(
             "resident runtime selector reads are only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
-        WorkspaceDbIpcOperation::EnsureRuntimeOwner { .. } => Err(
-            "resident runtime owner freshness is only accepted by the Runtime Server data plane"
-                .to_owned(),
-        ),
         WorkspaceDbIpcOperation::PublishRuntimeSelectorOverlay { .. } => Err(
             "resident runtime selector writes are only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
         WorkspaceDbIpcOperation::AdmitRuntimeGeneration { .. }
+        | WorkspaceDbIpcOperation::SubmitRuntimeGenerationMutation { .. }
         | WorkspaceDbIpcOperation::EnsureRuntimeGeneration { .. }
         | WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator { .. }
         | WorkspaceDbIpcOperation::ReadRuntimeGenerationDurability { .. }
@@ -363,6 +360,12 @@ async fn dispatch_workspace_db_session_operation(
             "Runtime owner publication is only accepted by the Runtime Server data plane"
                 .to_owned(),
         ),
+        WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady { .. }
+        | WorkspaceDbIpcOperation::EnsureRuntimeGenerationOwnerReady { .. } => {
+            unreachable!(
+                "EnsureRuntimeGenerationReady must be consumed by generation admission before dispatch"
+            )
+        }
     };
     dispatched.unwrap_or_else(|message| WorkspaceDbIpcResult::Failed {
         code: "workspace-owner-operation-failed".to_owned(),
@@ -423,12 +426,11 @@ pub async fn serve_runtime_server_workspace_stream(
     stream: UnixStream,
     endpoint: &crate::runtime_server_control::RuntimeServerEndpoint,
     registry: &WorkspaceDbRegistry,
-    memory_registry: &crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    memory_registry: &std::sync::Arc<
+        crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
+    >,
     generation_admission: Option<
         &std::sync::Arc<crate::runtime_server_admission::WorkspaceGenerationAdmission>,
-    >,
-    owner_projection_builder: Option<
-        &crate::runtime_server_workspace::WorkspaceOwnerProjectionBuilder,
     >,
     hook_evaluation_builder: Option<&crate::runtime_server::HookEvaluationBuilder>,
     graph_turbo_evaluation_builder: Option<&crate::runtime_server::GraphTurboEvaluationBuilder>,
@@ -521,27 +523,6 @@ pub async fn serve_runtime_server_workspace_stream(
                         message,
                     },
                 },
-                WorkspaceDbIpcOperation::EnsureRuntimeOwner {
-                    project_root,
-                    language_id,
-                    owner_path,
-                } => match ensure_runtime_owner_freshness(
-                    memory_registry,
-                    &request.request_id,
-                    &request.workspace_identity,
-                    Path::new(&project_root),
-                    &language_id,
-                    &owner_path,
-                    owner_projection_builder,
-                )
-                .await
-                {
-                    Ok(receipt) => WorkspaceDbIpcResult::RuntimeOwnerFreshness { receipt },
-                    Err(message) => WorkspaceDbIpcResult::Failed {
-                        code: "runtime-server-owner-freshness-failed".to_owned(),
-                        message,
-                    },
-                },
                 WorkspaceDbIpcOperation::PublishRuntimeSelectorOverlay {
                     project_root,
                     overlay,
@@ -578,37 +559,49 @@ pub async fn serve_runtime_server_workspace_stream(
                     )
                     .await
                 }
-                WorkspaceDbIpcOperation::EnsureRuntimeGeneration {
+                WorkspaceDbIpcOperation::SubmitRuntimeGenerationMutation {
+                    mutation_id,
                     project_root,
-                    candidate,
+                    changed_paths,
+                } => generation::submit_mutation(
+                    std::sync::Arc::clone(memory_registry),
+                    generation_admission.cloned(),
+                    request.workspace_identity.clone(),
+                    mutation_id,
+                    project_root,
+                    changed_paths,
+                ),
+                WorkspaceDbIpcOperation::EnsureRuntimeGeneration { project_root } => {
+                    generation::ensure_current_or_build(
+                        generation_admission.map(std::sync::Arc::as_ref),
+                        &request.workspace_identity,
+                        project_root,
+                    )
+                    .await
+                }
+                WorkspaceDbIpcOperation::EnsureRuntimeGenerationReady { project_root } => {
+                    generation::ensure_terminal_ready(
+                        memory_registry,
+                        generation_admission.map(std::sync::Arc::as_ref),
+                        &request.workspace_identity,
+                        project_root,
+                    )
+                    .await
+                }
+                WorkspaceDbIpcOperation::EnsureRuntimeGenerationOwnerReady {
+                    project_root,
+                    owner_path,
+                    admitted_content_digest,
                 } => {
-                    match generation_admission {
-                        Some(admission) => {
-                            let project_root = std::path::PathBuf::from(project_root);
-                            // Admission is the foreground contract.  A Building
-                            // receipt proves the WorkspaceResident accepted the
-                            // work; Merkle materialization remains server-owned
-                            // background execution and must not hold this IPC
-                            // request until terminal publication.
-                            let ensured = admission
-                                .ensure(&request.workspace_identity, &project_root, candidate)
-                                .await;
-                            match ensured {
-                                Ok(receipt) => {
-                                    WorkspaceDbIpcResult::RuntimeGenerationAdmission { receipt }
-                                }
-                                Err(message) => WorkspaceDbIpcResult::Failed {
-                                    code: "runtime-server-generation-ensure-failed".to_owned(),
-                                    message,
-                                },
-                            }
-                        }
-                        None => WorkspaceDbIpcResult::Failed {
-                            code: "runtime-server-generation-admission-unavailable".to_owned(),
-                            message: "Runtime Server has no canonical generation builder"
-                                .to_owned(),
-                        },
-                    }
+                    generation::ensure_owner_terminal_ready(
+                        memory_registry,
+                        generation_admission.map(std::sync::Arc::as_ref),
+                        &request.workspace_identity,
+                        project_root,
+                        owner_path,
+                        admitted_content_digest,
+                    )
+                    .await
                 }
                 WorkspaceDbIpcOperation::RepairRuntimeGenerationLocator { project_root } => {
                     match generation_admission {
@@ -917,27 +910,6 @@ pub async fn serve_runtime_server_workspace_stream(
         )
         .await?;
     }
-}
-
-async fn ensure_runtime_owner_freshness(
-    memory_registry: &crate::runtime_server_workspace::RuntimeServerWorkspaceRegistry,
-    request_id: &str,
-    workspace_identity: &str,
-    project_root: &Path,
-    language_id: &str,
-    owner_path: &str,
-    projection_builder: Option<&crate::runtime_server_workspace::WorkspaceOwnerProjectionBuilder>,
-) -> Result<crate::runtime_server_workspace::WorkspaceRuntimeOwnerFreshnessReceipt, String> {
-    memory_registry
-        .ensure_runtime_owner_freshness(
-            request_id,
-            workspace_identity,
-            project_root,
-            language_id,
-            owner_path,
-            projection_builder,
-        )
-        .await
 }
 
 #[cfg(test)]

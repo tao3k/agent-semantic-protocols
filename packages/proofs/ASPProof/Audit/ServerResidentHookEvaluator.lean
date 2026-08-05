@@ -28,11 +28,11 @@ def targets : List Target :=
   , { name := `ASPProof.ServerResidentHookEvaluator.warm_path_is_one_round_trip
       theoremFamily := "server-hook-one-round-trip"
       rfcClauseIds := ["ASP-RFC-10.15-SERVER-HOOK-EVALUATOR"] }
-  , { name := `ASPProof.ServerResidentHookEvaluator.server_failure_selects_local_fallback
-      theoremFamily := "server-hook-local-fallback"
+  , { name := `ASPProof.ServerResidentHookEvaluator.server_failure_is_typed_unavailable
+      theoremFamily := "server-hook-typed-unavailable"
       rfcClauseIds := ["ASP-RFC-10.15-SERVER-HOOK-EVALUATOR"] }
-  , { name := `ASPProof.ServerResidentHookEvaluator.identity_mismatch_selects_local_fallback
-      theoremFamily := "server-hook-identity-mismatch-fallback"
+  , { name := `ASPProof.ServerResidentHookEvaluator.identity_mismatch_is_typed_unavailable
+      theoremFamily := "server-hook-identity-mismatch-rejection"
       rfcClauseIds := ["ASP-RFC-10.15-SERVER-HOOK-EVALUATOR"] }
   ]
 

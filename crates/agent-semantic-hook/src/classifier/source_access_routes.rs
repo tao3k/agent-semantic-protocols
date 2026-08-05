@@ -1,10 +1,11 @@
 //! Source-access, direct-read, and raw-search classifier routes.
 
 use crate::hook_recovery_prompt::CompiledRecoveryPromptConfig;
+use crate::protocol_activation::protocol_activation_manifest::HookProviderProjection;
 use crate::{
-    ActivatedProvider, DecisionRoute, DecisionRouteKind, HookDecision, HookRuntime,
-    OperationIntent, ReasonKind, SourceSelectorKind, SourceSelectorMatch, ToolAction,
-    collect_source_selector_matches, subject_for_action,
+    DecisionRoute, DecisionRouteKind, HookDecision, HookRuntime, OperationIntent, ReasonKind,
+    SourceSelectorKind, SourceSelectorMatch, ToolAction, collect_source_selector_matches,
+    subject_for_action,
 };
 
 use super::decision::deny_for_action;
@@ -21,7 +22,7 @@ pub(super) fn classify_direct_read_action(
 ) -> Option<HookDecision> {
     fn directory_path_matches_provider(
         project_root: &str,
-        provider: &ActivatedProvider,
+        provider: &HookProviderProjection,
         path: &str,
     ) -> bool {
         let Some(normalized) = normalize_directory_path(path) else {
@@ -93,7 +94,7 @@ pub(super) fn classify_direct_read_action(
     }
 
     fn directory_path_candidate_matches_provider(
-        provider: &ActivatedProvider,
+        provider: &HookProviderProjection,
         candidate: &str,
     ) -> bool {
         if provider.matches_search_token(candidate) {
@@ -128,8 +129,9 @@ pub(super) fn classify_direct_read_action(
             }));
 
     if reads_directory {
-        let providers = registry
-            .providers
+        let matcher_providers =
+            crate::protocol_activation::provider_routing::hook_provider_projections(registry);
+        let providers = matcher_providers
             .iter()
             .filter(|provider| provider.policy.blocks_raw_source_search())
             .filter(|provider| {
@@ -204,13 +206,13 @@ pub(super) fn classify_direct_read_action(
     }
 }
 
-type DirectReadMatch<'provider> = SourceSelectorMatch<'provider>;
+type DirectReadMatch = SourceSelectorMatch;
 
 fn direct_source_read_decision(
     platform: &str,
     event: &str,
     action: &ToolAction,
-    matches: Vec<DirectReadMatch<'_>>,
+    matches: Vec<DirectReadMatch>,
     semantic_ast_patch_enabled: bool,
     recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> HookDecision {
@@ -242,7 +244,7 @@ fn derive_execute_read_decision(
     platform: &str,
     event: &str,
     action: &ToolAction,
-    matches: Vec<DirectReadMatch<'_>>,
+    matches: Vec<DirectReadMatch>,
     semantic_ast_patch_enabled: bool,
     recovery_prompt: &CompiledRecoveryPromptConfig,
 ) -> HookDecision {
@@ -270,10 +272,10 @@ fn derive_execute_read_decision(
     )
 }
 
-fn collect_direct_source_read_matches<'provider, I, S>(
-    registry: &'provider HookRuntime,
+fn collect_direct_source_read_matches<I, S>(
+    registry: &HookRuntime,
     paths: I,
-) -> Vec<DirectReadMatch<'provider>>
+) -> Vec<DirectReadMatch>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
@@ -283,15 +285,15 @@ where
     })
 }
 
-pub(super) fn direct_read_routes(matches: &[DirectReadMatch<'_>]) -> Vec<DecisionRoute> {
+pub(super) fn direct_read_routes(matches: &[DirectReadMatch]) -> Vec<DecisionRoute> {
     matches
         .iter()
-        .map(|matched| direct_read_route(matched.provider, &matched.route_selector, matched.kind))
+        .map(|matched| direct_read_route(&matched.provider, &matched.route_selector, matched.kind))
         .collect()
 }
 
 pub(super) fn direct_read_language_ids(
-    matches: &[DirectReadMatch<'_>],
+    matches: &[DirectReadMatch],
 ) -> Vec<agent_semantic_config::LanguageId> {
     matches
         .iter()
@@ -299,12 +301,12 @@ pub(super) fn direct_read_language_ids(
         .collect()
 }
 
-fn providers_from_matches<'a>(matches: &[DirectReadMatch<'a>]) -> Vec<&'a ActivatedProvider> {
-    matches.iter().map(|matched| matched.provider).collect()
+fn providers_from_matches(matches: &[DirectReadMatch]) -> Vec<&HookProviderProjection> {
+    matches.iter().map(|matched| &matched.provider).collect()
 }
 
 fn direct_read_route(
-    provider: &ActivatedProvider,
+    provider: &HookProviderProjection,
     path: &str,
     selector_kind: SourceSelectorKind,
 ) -> DecisionRoute {
@@ -324,7 +326,7 @@ fn direct_read_route(
     }
 }
 
-fn source_access_ingest_route(provider: &ActivatedProvider) -> DecisionRoute {
+fn source_access_ingest_route(provider: &HookProviderProjection) -> DecisionRoute {
     provider.route_from_template(
         DecisionRouteKind::Ingest,
         &provider.routes.ingest,
@@ -333,7 +335,7 @@ fn source_access_ingest_route(provider: &ActivatedProvider) -> DecisionRoute {
     )
 }
 
-fn language_ids(providers: &[&ActivatedProvider]) -> Vec<agent_semantic_config::LanguageId> {
+fn language_ids(providers: &[&HookProviderProjection]) -> Vec<agent_semantic_config::LanguageId> {
     providers
         .iter()
         .map(|provider| provider.language_id.clone())

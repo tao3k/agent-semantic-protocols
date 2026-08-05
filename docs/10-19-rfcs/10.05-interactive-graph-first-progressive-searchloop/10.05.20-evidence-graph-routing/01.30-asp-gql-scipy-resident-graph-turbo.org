@@ -57,6 +57,45 @@ Rust does not maintain a second implementation of Graph Turbo algorithms.
 Exact verification checks membership, continuity, restrictors, hop count,
 snapshot identity, and provenance; it does not rerun the Python search.
 
+** Demand-admitted resident lifecycle
+
+Graph Turbo is an optional algorithm plane, not a Runtime Server readiness
+dependency.  Starting the Runtime Server, publishing its endpoint, admitting a
+workspace identity, or evaluating a non-graph Hook request MUST NOT start,
+hash, import, probe, or handshake a Python process.
+
+The first validated typed =rank= request may publish one warm-admission event.
+That foreground admission is bounded and returns without waiting for process
+startup.  A daemon-owned Tokio task performs the one-shot startup, publishes a
+healthy or failed receipt, and is joined or aborted by the Runtime Server
+lifecycle owner.  Concurrent sessions coalesce on the same startup authority;
+they cannot create multiple Python processes or repeated artifact reads.
+
+An idle Runtime Server therefore has:
+
+- zero Graph Turbo child processes;
+- zero Graph Turbo artifact digest reads;
+- zero Python module imports and handshake I/O; and
+- no Graph Turbo work contributing to endpoint or Hook readiness.
+
+A persisted interpreter path from a project virtual environment is not a
+runtime artifact authority.  Production admission requires the managed Global
+provider catalog identity and its content-addressed artifact receipt.
+
+The Runtime Server supervisor definition MUST NOT carry a Graph Turbo execution
+locator.  Supervisor install, Runtime Server start, endpoint publication, and
+healthcheck are read-only with respect to the optional Graph Turbo config and
+MUST NOT validate, delete, rewrite, or repair it.  A missing, stale, or rejected
+Graph Turbo config changes only the Graph Turbo capability receipt; it cannot
+block or restart the core Runtime Server.  Config publication belongs to the
+managed artifact installation transaction.
+
+The first validated typed =rank= demand owns one compare-and-set warm
+admission.  Only that winner may read and validate the managed config and start
+the resident process, using Tokio-owned I/O.  Concurrent losers observe
+=starting= and return immediately; they cannot enqueue additional warm events,
+read config bytes, or start another process.
+
 ** Ascent bounded closure
 
 Ascent is an embedded Rust Datalog evaluator, not a database.  A closure run is:
@@ -486,6 +525,16 @@ JSONL child, serializes transport access to it, and sends a typed shutdown
 before its own diagnostic lane drains.  That child multiplexes graph sessions;
 serialization of the JSONL transport MUST NOT collapse their identities.
 
+The JSONL transport is a Tokio-owned lifecycle.  Child stdin, stdout, stderr,
+request deadlines, cancellation, wait, and shutdown MUST remain inside the
+daemon's structured async task tree.  A resident call MUST NOT reserve a
+blocking-pool worker or create an OS reader thread.  The child is placed in an
+independent process group so an interactive signal to the foreground daemon is
+observed by the Rust supervisor first; the supervisor then sends the typed
+shutdown message and joins the child.  Timeout, EOF, cancellation, and daemon
+shutdown all converge on one terminal child wait, leaving no reader task or
+pipe authority behind.
+
 The daemon resolver accepts an absolute execution locator through
 =ASP_GRAPH_TURBO_PYTHON=.  It preserves that exact absolute locator for process
 launch and separately resolves the concrete artifact behind it for digest and
@@ -549,6 +598,12 @@ Turso hit, stale-snapshot miss, and restart hit.
 - Cold, warm, cache-hit, cache-invalidated, and Python-restarted executions
   preserve the same semantic route result.
 - Warm receipts report no Python process spawn or CSR rebuild.
+- Foreground interrupt reaches the Rust supervisor without directly
+  interrupting the Python child; typed shutdown succeeds and all Tokio IO tasks
+  join before singleton release.
+- A long-running mixed-session pressure fixture leaves child count, pipe/file
+  descriptor count, reader-task count, and process generation constant, and no
+  request occupies Tokio's blocking pool.
 - Full runtime evidence names server generation, snapshot, projection, ruleset,
   algorithm implementation, and output digests.
 - Complete repository gates pass or retain exact independently owned blockers.

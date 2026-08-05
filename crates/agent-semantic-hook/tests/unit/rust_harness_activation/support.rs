@@ -18,7 +18,7 @@ fn target_debug_asp() -> Option<PathBuf> {
     if !asp.exists() {
         return None;
     }
-    assert_asp_binary_fresh(&asp);
+    assert_asp_binary_compatible(&asp);
     Some(asp)
 }
 
@@ -53,62 +53,23 @@ fn checked_asp_path(path: PathBuf, source: &str) -> PathBuf {
         "{source} points to a missing asp binary: {}",
         path.display()
     );
-    assert_asp_binary_fresh(&path);
+    assert_asp_binary_compatible(&path);
     path
 }
 
-fn assert_asp_binary_fresh(binary: &Path) {
-    let Some(newest_source) = newest_asp_hook_surface_source_mtime() else {
-        return;
-    };
-    let binary_mtime = binary
-        .metadata()
-        .and_then(|metadata| metadata.modified())
-        .unwrap_or(SystemTime::UNIX_EPOCH);
+fn assert_asp_binary_compatible(binary: &Path) {
+    let output = Command::new(binary)
+        .arg("--contract-fingerprint")
+        .output()
+        .unwrap_or_else(|error| panic!("execute ASP contract fingerprint probe: {error}"));
+    let actual = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    let expected = agent_semantic_config::hook_client_contract_fingerprint();
     assert!(
-        binary_mtime >= newest_source,
-        "asp binary {} is older than hook/install sources; rebuild with `cargo build -p agent-semantic-protocol --bin asp`",
-        binary.display()
+        output.status.success() && actual == expected,
+        "asp binary {} has incompatible Hook contract: expected={expected} actual={actual} stderr={}",
+        binary.display(),
+        String::from_utf8_lossy(&output.stderr)
     );
-}
-
-fn newest_asp_hook_surface_source_mtime() -> Option<SystemTime> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()?
-        .parent()?
-        .to_path_buf();
-    let source_roots = [
-        "crates/agent-semantic-protocol/src",
-        "crates/agent-semantic-hook/src",
-        "crates/agent-semantic-config/src",
-    ];
-    let source_files = [
-        "crates/agent-semantic-config/templates/hooks/config.toml",
-        "languages/rust-lang-project-harness/provider/asp-provider-manifest.json",
-        "schemas/semantic-language-registry.providers.v1.json",
-        "SKILL.org",
-        "SKILL.contract.org",
-    ];
-    source_roots
-        .into_iter()
-        .filter_map(|relative| newest_file_mtime(&root.join(relative)))
-        .chain(
-            source_files
-                .into_iter()
-                .filter_map(|relative| root.join(relative).metadata().ok()?.modified().ok()),
-        )
-        .max()
-}
-
-fn newest_file_mtime(path: &Path) -> Option<SystemTime> {
-    if path.is_file() {
-        return path.metadata().ok()?.modified().ok();
-    }
-    std::fs::read_dir(path)
-        .ok()?
-        .filter_map(Result::ok)
-        .filter_map(|entry| newest_file_mtime(&entry.path()))
-        .max()
 }
 
 pub(super) fn temp_project_root(name: &str) -> PathBuf {
@@ -118,8 +79,11 @@ pub(super) fn temp_project_root(name: &str) -> PathBuf {
         .as_nanos();
     let root = std::env::temp_dir().join(format!("agent-semantic-hook-{name}-{unique}"));
     std::fs::create_dir_all(&root).expect("create temp project root");
-    let output = Command::new("git")
-        .args(["init", "--quiet"])
+    let _git_fixture = crate::integration_fixture::GIT_FIXTURE_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let output = crate::integration_fixture::isolated_git_command()
+        .args(["init", "--quiet", "--template="])
         .current_dir(&root)
         .output()
         .expect("initialize temporary Git workspace");
@@ -132,7 +96,10 @@ pub(super) fn temp_project_root(name: &str) -> PathBuf {
 }
 
 pub(super) fn stage_project_candidates(root: &Path) {
-    let output = Command::new("git")
+    let _git_fixture = crate::integration_fixture::GIT_FIXTURE_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let output = crate::integration_fixture::isolated_git_command()
         .args(["add", "."])
         .current_dir(root)
         .output()
@@ -321,52 +288,12 @@ fn write_state_home_provider_file(
     std::fs::write(
         lock_dir.join(format!("{language_id}.lock.toml")),
         format!(
-            "schemaId = \"asp.provider-install-lock.v1\"\nprovider = \"{provider_id}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{entrypoint_digest}\"\ninstalledEntrypointMetadataDigest = \"{metadata_digest}\"\n",
+            "schemaId = \"asp.provider-install-lock.v1\"\nlanguage = \"{language_id}\"\nprovider = \"{provider_id}\"\ninstalledPath = \"{}\"\ninstalledEntrypointDigest = \"{entrypoint_digest}\"\ninstalledEntrypointMetadataDigest = \"{metadata_digest}\"\n",
             path.display()
         ),
     )
     .expect("write provider install receipt");
     std::fs::canonicalize(&path).unwrap_or(path)
-}
-
-pub(super) fn write_unmanaged_provider_file(
-    root: &std::path::Path,
-    binary: &str,
-    mode: u32,
-) -> PathBuf {
-    write_unmanaged_provider_in_dir(&root.join(".bin"), binary, mode)
-}
-
-fn write_unmanaged_provider_in_dir(bin_dir: &std::path::Path, binary: &str, mode: u32) -> PathBuf {
-    std::fs::create_dir_all(bin_dir).expect("create fake provider bin dir");
-    let path = bin_dir.join(binary);
-    let guide_marker = match binary {
-        "rs-harness" => {
-            "[agent-guide] runtime=agent-semantic-hook language=rust provider=rs-harness"
-        }
-        "ts-harness" => "[ts-harness-guide]",
-        "py-harness" => "[py-harness-guide]",
-        _ => "[agent-guide]",
-    };
-    std::fs::write(
-        &path,
-        format!(
-            "#!/bin/sh\nif [ \"$1\" = \"guide\" ]; then\n  printf '%s\\n' '{}'\n  exit 0\nfi\nexit 0\n",
-            guide_marker
-        ),
-    )
-    .expect("write fake provider binary");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-
-        let mut permissions = std::fs::metadata(&path)
-            .expect("fake provider metadata")
-            .permissions();
-        permissions.set_mode(mode);
-        std::fs::set_permissions(&path, permissions).expect("chmod fake provider");
-    }
-    bin_dir.to_path_buf()
 }
 
 pub(super) fn rust_harness_activation() -> HookRuntime {

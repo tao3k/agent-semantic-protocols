@@ -4,7 +4,8 @@ use std::{borrow::Cow, path::Path};
 
 use super::{
     AgentOrgArtifactsArchiveWarning, AgentOrgArtifactsRecovery, AspSessionPolicy, ClientHookConfig,
-    CompiledHookRule, CompiledRecoveryPromptConfig, HookClientConfigFile, HookDecision,
+    CompiledHookRule, CompiledRecoveryPromptConfig, DURABLE_HOOK_MATCHER_SCHEMA_ID,
+    DURABLE_HOOK_MATCHER_SCHEMA_VERSION, DurableHookConfigArtifact, HookClientConfigFile,
     HookRuntime, ToolAction, compile_agent_org_artifacts_config, merge_agent_session_messages,
 };
 
@@ -147,13 +148,13 @@ impl ClientHookConfig {
             .archive_warning(project_root.as_ref())
     }
 
-    pub(crate) fn classify(
+    pub(crate) fn classify_candidate(
         &self,
         runtime: &HookRuntime,
         platform: &str,
         event: &str,
         action: &ToolAction,
-    ) -> Option<HookDecision> {
+    ) -> Option<crate::hook_config::HookPolicyCandidate> {
         let mut command_tokens: Option<Option<Cow<'_, [String]>>> = None;
         for rule in &self.rules {
             let needs_command_tokens = rule.match_config.needs_command_tokens()
@@ -270,18 +271,24 @@ impl ClientHookConfig {
                         .extend(rule.fields.iter().map(|(key, value)| {
                             (key.clone(), serde_json::Value::String(value.clone()))
                         }));
-                    return Some(decision);
+                    return Some(crate::hook_config::HookPolicyCandidate {
+                        priority: rule.priority,
+                        decision,
+                    });
                 }
                 continue;
             }
-            return Some(rule.decision(
-                runtime,
-                platform,
-                event,
-                action,
-                decision_paths,
-                structured_source_operands.as_deref(),
-            ));
+            return Some(crate::hook_config::HookPolicyCandidate {
+                priority: rule.priority,
+                decision: rule.decision(
+                    runtime,
+                    platform,
+                    event,
+                    action,
+                    decision_paths,
+                    structured_source_operands.as_deref(),
+                ),
+            });
         }
         None
     }
@@ -312,23 +319,13 @@ fn merge_agents(
 }
 
 pub(in crate::hook_config) fn compile_config(
-    config: HookClientConfigFile,
+    mut config: HookClientConfigFile,
 ) -> Result<ClientHookConfig, String> {
-    let contract_fingerprint = config.contract_fingerprint.clone();
-    let language_providers = config.language_providers.clone();
-    let wrapper_match = config.wrapper_match;
     let default_config = agent_semantic_config::default_hook_client_config_file()?;
-    let default_agent_session_messages = default_config.agent_session_messages;
-    let agent_session_messages = merge_agent_session_messages(
+    config.agent_session_messages = merge_agent_session_messages(
         config.agent_session_messages,
-        default_agent_session_messages,
+        default_config.agent_session_messages,
     );
-    let semantic_ast_patch_enabled = config
-        .experimental
-        .get("semanticAstPatch")
-        .and_then(|feature| feature.get("enabled"))
-        .copied()
-        .unwrap_or(true);
     let configured_profile_ids = config
         .command_profiles
         .iter()
@@ -340,6 +337,7 @@ pub(in crate::hook_config) fn compile_config(
         .filter(|profile| !configured_profile_ids.contains(profile.id.as_str()))
         .collect::<Vec<_>>();
     command_profiles.extend(config.command_profiles);
+    config.command_profiles = command_profiles;
     let configured_rule_ids = config
         .rules
         .iter()
@@ -351,17 +349,57 @@ pub(in crate::hook_config) fn compile_config(
         .filter(|rule| !configured_rule_ids.contains(rule.id.as_str()))
         .collect::<Vec<_>>();
     rule_configs.extend(config.rules);
-    let agents = merge_agents(config.agents, default_config.agents);
-    let mut rules = rule_configs
+    config.rules = rule_configs;
+    config.agents = merge_agents(config.agents, default_config.agents);
+    compile_resolved_config(config, None)
+}
+
+fn compile_resolved_config(
+    config: HookClientConfigFile,
+    durable_matchers: Option<
+        &std::collections::BTreeMap<String, super::DurableRuleMatcherArtifact>,
+    >,
+) -> Result<ClientHookConfig, String> {
+    let source_config = config.clone();
+    let contract_fingerprint = config.contract_fingerprint.clone();
+    let language_providers = config.language_providers.clone();
+    let wrapper_match = config.wrapper_match;
+    let agent_session_messages = config.agent_session_messages.clone();
+    let semantic_ast_patch_enabled = config
+        .experimental
+        .get("semanticAstPatch")
+        .and_then(|feature| feature.get("enabled"))
+        .copied()
+        .unwrap_or(true);
+    let agents = config.agents.clone();
+    let mut rules = config
+        .rules
         .into_iter()
         .filter(|rule| rule.enabled)
         .map(|rule| {
-            CompiledHookRule::try_from_with_agents(rule, &agents, &command_profiles, wrapper_match)
+            let durable_matcher = durable_matchers
+                .map(|matchers| {
+                    matchers.get(&rule.id).cloned().ok_or_else(|| {
+                        format!(
+                            "durable Hook matcher artifact omitted enabled rule `{}`",
+                            rule.id
+                        )
+                    })
+                })
+                .transpose()?;
+            CompiledHookRule::try_from_with_agents_and_matcher(
+                rule,
+                &agents,
+                &config.command_profiles,
+                wrapper_match,
+                durable_matcher,
+            )
         })
         .collect::<Result<Vec<_>, _>>()?;
     // `sort_by_key` is stable, so equal-priority rules keep config file order.
     rules.sort_by_key(|rule| std::cmp::Reverse(rule.priority));
     Ok(ClientHookConfig {
+        source_config,
         rules,
         language_providers,
         contract_fingerprint,
@@ -372,3 +410,56 @@ pub(in crate::hook_config) fn compile_config(
         asp_session_policy: AspSessionPolicy::try_from(agents)?,
     })
 }
+
+impl ClientHookConfig {
+    /// Return the normalized config and already-compiled matcher automata as one typed artifact.
+    pub fn durable_snapshot_config(&self) -> DurableHookConfigArtifact {
+        let config = self.source_config.clone();
+        let rule_matchers = self
+            .rules
+            .iter()
+            .map(|rule| (rule.id.clone(), rule.durable_matcher_artifact()))
+            .collect();
+        DurableHookConfigArtifact {
+            schema_id: DURABLE_HOOK_MATCHER_SCHEMA_ID.to_owned(),
+            schema_version: DURABLE_HOOK_MATCHER_SCHEMA_VERSION.to_owned(),
+            config,
+            rule_matchers,
+        }
+    }
+
+    /// Hydrate the compiled matcher without invoking any regex, glob, or Aho builder.
+    pub fn from_durable_snapshot_config(
+        artifact: DurableHookConfigArtifact,
+    ) -> Result<Self, String> {
+        let DurableHookConfigArtifact {
+            schema_id,
+            schema_version,
+            config,
+            rule_matchers,
+        } = artifact;
+        if schema_id != DURABLE_HOOK_MATCHER_SCHEMA_ID
+            || schema_version != DURABLE_HOOK_MATCHER_SCHEMA_VERSION
+        {
+            return Err("durable Hook matcher artifact contract mismatch".to_owned());
+        }
+        let enabled_rule_ids = config
+            .rules
+            .iter()
+            .filter(|rule| rule.enabled)
+            .map(|rule| rule.id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        if enabled_rule_ids.len() != rule_matchers.len()
+            || rule_matchers
+                .keys()
+                .any(|rule_id| !enabled_rule_ids.contains(rule_id.as_str()))
+        {
+            return Err("durable Hook matcher artifact rule inventory mismatch".to_owned());
+        }
+        compile_resolved_config(config, Some(&rule_matchers))
+    }
+}
+
+#[cfg(test)]
+#[path = "../../../../tests/unit/hook_config_durable_artifact.rs"]
+mod tests;

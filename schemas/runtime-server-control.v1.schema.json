@@ -46,7 +46,8 @@
         "artifactCatalogDigest",
         "bindingToken",
         "dataPlaneSocketPath",
-        "socketPath"
+        "socketPath",
+        "workspaceStorePath"
         ,"statusMemoryPath"
       ],
       "properties": {
@@ -88,6 +89,10 @@
           "minLength": 1
         },
         "dataPlaneSocketPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceStorePath": {
           "type": "string",
           "minLength": 1
         },

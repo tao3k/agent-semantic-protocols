@@ -141,7 +141,8 @@ pub(super) fn observe_host_capability(
         );
     }
     let root_session_id = non_empty_env("CODEX_THREAD_ID")?;
-    let name = args.name.as_deref().unwrap_or("asp-explore");
+    let configured_name = super::configured_resident_session_name(args.name.as_deref())?;
+    let name = configured_name.as_str();
     let field_status = args
         .agent_type_field
         .as_deref()
@@ -197,7 +198,8 @@ pub(super) fn observe_host_ack(
     reject_identity_flags(args, "host ack observation")?;
 
     let root_session_id = non_empty_env("CODEX_THREAD_ID")?;
-    let resident_name = args.name.as_deref().unwrap_or("asp-explore");
+    let configured_name = super::configured_resident_session_name(args.name.as_deref())?;
+    let resident_name = configured_name.as_str();
     let canonical_target = args.canonical_target.as_deref().ok_or_else(|| {
         "observe-host-ack requires --canonical-target because lane names never infer live targets"
             .to_string()
@@ -327,7 +329,8 @@ pub(super) fn observe_host_tree(
 ) -> Result<(), String> {
     reject_identity_flags(args, "host tree observation")?;
     let root_session_id = non_empty_env("CODEX_THREAD_ID")?;
-    let name = args.name.as_deref().unwrap_or("asp-explore");
+    let configured_name = super::configured_resident_session_name(args.name.as_deref())?;
+    let name = configured_name.as_str();
     let target_status = args.resident_target_status.as_deref().ok_or_else(|| {
         "--resident-target-status present|absent|unroutable is required".to_string()
     })?;

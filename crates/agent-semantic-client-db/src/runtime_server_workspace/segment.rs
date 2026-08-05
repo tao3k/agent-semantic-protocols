@@ -111,11 +111,13 @@ impl WorkspaceGenerationPublisher {
                     )
                     .await?;
                 let pointer_reader = WorkspaceGenerationPointerReader::open(pointer.path()).await?;
-                let active = tokio::task::spawn_blocking(move || pointer_reader.read_optional())
-                    .await
-                    .map_err(|error| {
-                        format!("read workspace generation pointer task failed: {error}")
-                    })??;
+                let active = tokio::task::spawn_blocking(move || {
+                    pointer_reader.read_previous_valid_optional()
+                })
+                .await
+                .map_err(|error| {
+                    format!("read workspace generation pointer task failed: {error}")
+                })?;
                 if let Some(active) = &active {
                     active.validate()?;
                     owner_identity_journal
@@ -141,6 +143,7 @@ impl WorkspaceGenerationPublisher {
         // lock lets retention distinguish the currently readable generation from abandoned
         // or superseded segment files without guessing from epoch numbers.
         let mut active_snapshot = state.active_snapshot.lock().await;
+        let retention_started = tokio::time::Instant::now();
         prune_obsolete_generation_segments(
             &self.directory,
             active_snapshot
@@ -148,6 +151,13 @@ impl WorkspaceGenerationPublisher {
                 .map(|snapshot| Path::new(&snapshot.mmap_segment_path)),
         )
         .await?;
+        record_generation_stage(
+            "generation-retention",
+            &generation,
+            retention_started.elapsed(),
+            None,
+        );
+        let generation_encode_started = tokio::time::Instant::now();
         let (generation, segment, exact_segment, durable_commit_digest) =
             tokio::task::spawn_blocking(move || {
                 generation.validate()?;
@@ -173,6 +183,13 @@ impl WorkspaceGenerationPublisher {
             })
             .await
             .map_err(|error| format!("workspace generation encoder task failed: {error}"))??;
+        record_generation_stage(
+            "generation-segment-encode",
+            &generation,
+            generation_encode_started.elapsed(),
+            u64::try_from(segment.len()).ok(),
+        );
+        let durable_publish_started = tokio::time::Instant::now();
         let final_path = self
             .directory
             .join(format!("generation-{}.mmap", generation.active_epoch));
@@ -244,17 +261,69 @@ impl WorkspaceGenerationPublisher {
         };
         snapshot.validate()?;
         state.pointer.publish(&snapshot).await?;
+        super::WorkspaceGenerationDataPlaneClient::invalidate_committed_pointer(
+            state.pointer.path(),
+        );
+        super::WorkspaceSearchGenerationAuthorityPointerClient::invalidate_committed_pointer(
+            state.pointer.path(),
+            &generation.workspace_identity,
+            &generation.project_root,
+        );
+        if super::WorkspaceSearchGenerationAuthorityPointerClient::shared_open_path_optional(
+            state.pointer.path(),
+            &generation.workspace_identity,
+            &generation.project_root,
+        )
+        .await?
+        .is_none()
+        {
+            return Err(
+                "published workspace generation pointer was not available for load-once admission"
+                    .to_owned(),
+            );
+        }
         state
             .owner_identity_journal
             .rebase(&snapshot.workspace_identity, &snapshot.generation_digest)
             .await?;
         *active_snapshot = Some(snapshot.clone());
+        record_generation_stage(
+            "generation-durable-publish",
+            &generation,
+            durable_publish_started.elapsed(),
+            u64::try_from(segment.len()).ok(),
+        );
         Ok(snapshot)
     }
 
     pub fn pointer_path(&self) -> &Path {
         &self.pointer_path
     }
+}
+
+fn record_generation_stage(
+    stage: &str,
+    generation: &WorkspaceMemoryGeneration,
+    elapsed: std::time::Duration,
+    canonical_encoded_bytes: Option<u64>,
+) {
+    let elapsed_micros = elapsed.as_micros().min(u128::from(u64::MAX)) as u64;
+    let budget_micros = 800_000;
+    let mut observation = crate::runtime_server_opentelemetry::RuntimePerformanceObservation::new(
+        "workspace-generation-publication",
+        stage,
+        elapsed_micros,
+        budget_micros,
+        if elapsed_micros < budget_micros {
+            "within-budget"
+        } else {
+            "budget-exceeded"
+        },
+    );
+    observation.workspace_identity = Some(generation.workspace_identity.clone());
+    observation.generation_digest = Some(generation.generation_digest.clone());
+    observation.canonical_encoded_bytes = canonical_encoded_bytes;
+    let _ = crate::runtime_server_opentelemetry::try_record_to_active_runtime(observation);
 }
 
 async fn prune_obsolete_generation_segments(

@@ -31,6 +31,13 @@ fn validates_open_envelope() {
             .as_str(),
         "agent.semantic-protocols.search-route-proposal-set"
     );
+    assert_eq!(
+        envelope
+            .graph_cursor_artifact()
+            .artifact_schema_id()
+            .as_str(),
+        "agent.semantic-protocols.search-graph-cursor"
+    );
 }
 
 #[test]
@@ -120,4 +127,54 @@ fn serialized_runtime_contains_no_bearer_token_field() {
     assert!(!serialized.contains("choiceToken"));
     assert!(!serialized.contains("pollToken"));
     assert!(!serialized.contains("receiptToken"));
+}
+
+#[test]
+fn rejects_active_runtime_with_non_cursor_artifact_binding() {
+    let mut unchecked = unchecked_active();
+    unchecked
+        .active_panel
+        .as_mut()
+        .expect("active panel")
+        .graph_cursor_artifact
+        .artifact_schema_id =
+        serde_json::from_str("\"agent.semantic-protocols.search-choice-panel\"")
+            .expect("schema id");
+
+    assert_eq!(
+        crate::search_runtime::SearchLoopRuntimeBindingV1::validate(unchecked).unwrap_err(),
+        crate::search_runtime::SearchLoopRuntimeValidationError::GraphCursorArtifactSchema
+    );
+}
+
+#[test]
+fn active_runtime_admits_only_cursor_from_the_same_loop() {
+    let runtime = crate::search_runtime::SearchLoopRuntimeBindingV1::validate(unchecked_active())
+        .expect("active runtime");
+    let cursor: crate::search_graph_cursor::UncheckedSearchGraphCursorArtifact =
+        serde_json::from_str(include_str!(
+            "../../../../schemas/fixtures/search-interactive-loop/graph-cursor.v1.json"
+        ))
+        .expect("cursor fixture");
+    let cursor = crate::search_graph_cursor::SearchGraphCursorArtifact::validate(cursor)
+        .expect("valid cursor");
+    runtime
+        .validate_active_graph_cursor(&cursor)
+        .expect("same-loop cursor");
+
+    let mut other: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../schemas/fixtures/search-interactive-loop/graph-cursor.v1.json"
+    ))
+    .expect("cursor fixture value");
+    other["loopId"] = serde_json::Value::String("loop:search-other".to_owned());
+    let other: crate::search_graph_cursor::UncheckedSearchGraphCursorArtifact =
+        serde_json::from_value(other).expect("other cursor fixture");
+    let other = crate::search_graph_cursor::SearchGraphCursorArtifact::validate(other)
+        .expect("other cursor");
+    assert_eq!(
+        runtime
+            .validate_active_graph_cursor(&other)
+            .expect_err("cross-loop cursor must fail"),
+        crate::search_runtime::SearchLoopRuntimeValidationError::GraphCursorLoopMismatch
+    );
 }

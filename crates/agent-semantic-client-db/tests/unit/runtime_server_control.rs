@@ -46,14 +46,17 @@ fn runtime_transport_identity_binds_control_and_workspace_data_plane_contracts()
 pub(super) async fn fixture_endpoint(
     runtime_dir: &tempfile::TempDir,
     epoch: u64,
-) -> agent_semantic_client_db::RuntimeServerEndpoint {
+) -> (
+    agent_semantic_client_db::RuntimeServerEndpoint,
+    Arc<agent_semantic_runtime::runtime_artifact_catalog::RuntimeArtifactCatalog>,
+) {
     let state_home = agent_semantic_runtime::resolve_state_home().expect("resolve State Home");
     let catalog = agent_semantic_runtime::runtime_artifact_catalog::load_runtime_artifact_catalog(
         &state_home,
     )
     .await
     .expect("load runtime artifact catalog");
-    prepare_runtime_server_endpoint_in(
+    let endpoint = prepare_runtime_server_endpoint_in(
         runtime_dir.path(),
         std::path::Path::new("/runtime/asp"),
         "runtime-digest",
@@ -63,7 +66,8 @@ pub(super) async fn fixture_endpoint(
         &format!("binding-{epoch}"),
     )
     .await
-    .expect("prepare isolated runtime server endpoint")
+    .expect("prepare isolated runtime server endpoint");
+    (endpoint, Arc::new(catalog))
 }
 
 async fn concurrent_runtime_status_wave(
@@ -102,10 +106,44 @@ async fn concurrent_runtime_status_wave(
     latencies
 }
 
+#[tokio::test]
+async fn shutdown_aborts_a_connection_that_does_not_observe_drain() {
+    let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 2).await;
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::default()),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind Runtime Server");
+    let shutdown = server.shutdown_handle();
+    let server = tokio::spawn(server.serve());
+    let _stalled_connection = tokio::net::UnixStream::connect(&endpoint.data_plane_socket_path)
+        .await
+        .expect("open a data-plane connection that never sends a frame");
+    tokio::time::sleep(Duration::from_millis(20)).await;
+
+    let started = tokio::time::Instant::now();
+    shutdown.shutdown();
+    let exit = tokio::time::timeout(Duration::from_millis(250), server)
+        .await
+        .expect("Runtime Server shutdown must not wait forever on a stuck connection")
+        .expect("join Runtime Server")
+        .expect("serve Runtime Server");
+
+    assert_eq!(exit, RuntimeServerExit::ShutdownRequested);
+    assert!(
+        started.elapsed() < Duration::from_millis(250),
+        "stuck connection drain exceeded the shutdown boundary: {:?}",
+        started.elapsed()
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn runtime_endpoint_omits_workspace_and_process_identity() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 21).await;
+    let (endpoint, _artifact_catalog) = fixture_endpoint(&runtime_dir, 21).await;
     let value = serde_json::to_value(&endpoint).expect("encode runtime server endpoint");
     let object = value.as_object().expect("endpoint JSON object");
 
@@ -125,7 +163,7 @@ async fn runtime_endpoint_omits_workspace_and_process_identity() {
 #[tokio::test(flavor = "current_thread")]
 async fn explicit_restart_is_not_downgraded_to_status_for_the_current_digest() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 22).await;
+    let (endpoint, _artifact_catalog) = fixture_endpoint(&runtime_dir, 22).await;
     let request = RuntimeServerControlRequest {
         schema_id: "agent.semantic-protocols.runtime-server-control-request.v1".to_owned(),
         schema_version: "1".to_owned(),
@@ -152,13 +190,17 @@ async fn source_index_lease_miss_is_fail_fast_and_never_opens_turso() {
         .await
         .expect("create query project root");
     let workspace_identity = "workspace-query-miss".to_owned();
-    let endpoint = fixture_endpoint(&runtime_dir, 32).await;
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 32).await;
     let durable_registry = Arc::new(WorkspaceDbRegistry::with_state_home(
         &runtime_dir.path().join("state"),
     ));
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::clone(&durable_registry))
-        .await
-        .expect("bind Runtime Server");
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
+        Arc::clone(&durable_registry),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind Runtime Server");
     let memory_registry = Arc::clone(server.workspace_registry());
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
@@ -207,10 +249,14 @@ async fn source_index_lease_miss_is_fail_fast_and_never_opens_turso() {
 #[tokio::test(flavor = "multi_thread")]
 async fn typed_status_and_restart_use_the_real_runtime_server() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 23).await;
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
-        .await
-        .expect("bind runtime server");
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 23).await;
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::default()),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind runtime server");
     let server = tokio::spawn(server.serve());
 
     let prewarm = call_runtime_server(
@@ -280,12 +326,13 @@ async fn typed_status_and_restart_use_the_real_runtime_server() {
 #[tokio::test(flavor = "multi_thread")]
 async fn endpoint_is_published_only_after_both_runtime_server_sockets_are_ready() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 29).await;
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 29).await;
     let endpoint_path = runtime_dir.path().join("runtime-server-endpoint.v1.json");
-    let server = RuntimeServer::bind_and_publish(
+    let server = RuntimeServer::bind_and_publish_with_catalog(
         endpoint.clone(),
         Arc::new(WorkspaceDbRegistry::default()),
         &endpoint_path,
+        artifact_catalog,
     )
     .await
     .expect("bind and publish Runtime Server");
@@ -319,17 +366,18 @@ async fn endpoint_is_published_only_after_both_runtime_server_sockets_are_ready(
 #[tokio::test(flavor = "multi_thread")]
 async fn failed_endpoint_publication_removes_every_bound_runtime_artifact() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 31).await;
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 31).await;
     let blocking_parent = runtime_dir.path().join("not-a-directory");
     tokio::fs::write(&blocking_parent, b"block directory creation")
         .await
         .expect("write blocking parent");
     let endpoint_path = blocking_parent.join("runtime-server-endpoint.v1.json");
 
-    let error = RuntimeServer::bind_and_publish(
+    let error = RuntimeServer::bind_and_publish_with_catalog(
         endpoint.clone(),
         Arc::new(WorkspaceDbRegistry::default()),
         &endpoint_path,
+        artifact_catalog,
     )
     .await
     .err()
@@ -361,10 +409,14 @@ async fn adaptive_concurrent_runtime_control_is_sub_millisecond_at_p99() {
         .saturating_mul(16)
         .clamp(32, 512);
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 24).await;
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
-        .await
-        .expect("bind runtime server");
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 24).await;
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::default()),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind runtime server");
     let server = tokio::spawn(server.serve());
 
     let admission_started = tokio::time::Instant::now();
@@ -463,10 +515,14 @@ async fn adaptive_persistent_control_lanes_are_millisecond_bounded_at_p99() {
         .saturating_mul(4)
         .clamp(16, 128);
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 26).await;
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
-        .await
-        .expect("bind runtime server");
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 26).await;
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::default()),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind runtime server");
     let server = tokio::spawn(server.serve());
 
     let prewarm = call_runtime_server(
@@ -528,10 +584,14 @@ async fn adaptive_persistent_control_lanes_are_millisecond_bounded_at_p99() {
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_tokio_shutdown_drains_the_runtime_server_once() {
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 27).await;
-    let server = RuntimeServer::bind(endpoint.clone(), Arc::new(WorkspaceDbRegistry::default()))
-        .await
-        .expect("bind Runtime Server");
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 27).await;
+    let server = RuntimeServer::bind_with_catalog(
+        endpoint.clone(),
+        Arc::new(WorkspaceDbRegistry::default()),
+        artifact_catalog,
+    )
+    .await
+    .expect("bind Runtime Server");
     let shutdown = server.shutdown_handle();
     let server = tokio::spawn(server.serve());
 
@@ -586,13 +646,14 @@ async fn hook_generation_admission_is_non_blocking_and_single_flight() {
             .workspace
             .workspace_id
             .to_string();
-    let endpoint = fixture_endpoint(&runtime_dir, 28).await;
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 28).await;
     let source_build_count = Arc::new(tokio::sync::Mutex::new(0_u32));
     let source_build_release = Arc::new(tokio::sync::Semaphore::new(0));
     let state_home = runtime_dir.path().join("state");
-    let server = RuntimeServer::bind(
+    let server = RuntimeServer::bind_with_catalog(
         endpoint.clone(),
         Arc::new(WorkspaceDbRegistry::with_state_home(&state_home)),
+        artifact_catalog,
     )
     .await
     .expect("bind Runtime Server")
@@ -744,13 +805,14 @@ async fn multi_workspace_multi_session_admission_is_single_flight_and_bounded() 
     const SESSION_COUNT_PER_WORKSPACE: usize = 12;
     const CALL_COUNT_PER_SESSION: usize = 16;
     let runtime_dir = tempfile::tempdir().expect("create isolated runtime server directory");
-    let endpoint = fixture_endpoint(&runtime_dir, 30).await;
+    let (endpoint, artifact_catalog) = fixture_endpoint(&runtime_dir, 30).await;
     let source_build_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let source_build_release = Arc::new(tokio::sync::Semaphore::new(0));
     let state_home = runtime_dir.path().join("state");
-    let server = RuntimeServer::bind(
+    let server = RuntimeServer::bind_with_catalog(
         endpoint.clone(),
         Arc::new(WorkspaceDbRegistry::with_state_home(&state_home)),
+        artifact_catalog,
     )
     .await
     .expect("bind Runtime Server")

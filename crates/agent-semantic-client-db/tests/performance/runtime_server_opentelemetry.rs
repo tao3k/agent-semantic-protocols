@@ -2,7 +2,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use agent_semantic_client_db::runtime_server_opentelemetry::{
     RuntimePerformanceObservation, RuntimePerformanceQuery, RuntimeServerOpenTelemetry,
-    TursoOpenTelemetrySpanExporter, query_runtime_performance, try_emit_to_runtime,
+    TursoOpenTelemetrySpanExporter, emit_to_runtime, query_runtime_performance,
 };
 
 fn short_unix_socket_path(label: &str) -> std::path::PathBuf {
@@ -17,7 +17,7 @@ fn short_unix_socket_path(label: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn sync_failure_adapter_does_not_require_a_tokio_reactor() {
+fn failure_adapter_uses_tokio_unix_datagram_io() {
     let fixture_root = std::env::temp_dir().join(format!(
         "asp-runtime-otel-adapter-{}-{}",
         std::process::id(),
@@ -40,7 +40,11 @@ fn sync_failure_adapter_does_not_require_a_tokio_reactor() {
         800_000,
         "budget-exceeded",
     );
-    assert!(try_emit_to_runtime(&socket_path, &observation));
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Tokio adapter fixture runtime should build");
+    assert!(runtime.block_on(emit_to_runtime(&socket_path, &observation)));
     let mut packet = [0_u8; 4_096];
     let received = receiver
         .recv(&mut packet)
@@ -58,6 +62,7 @@ fn sync_failure_adapter_does_not_require_a_tokio_reactor() {
 
 #[test]
 fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
+    let _performance = crate::test_support::performance_lock();
     let worker_count = std::thread::available_parallelism()
         .map(usize::from)
         .unwrap_or(1)
@@ -87,6 +92,7 @@ fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
             socket_path.clone(),
             query_socket_path.clone(),
         )
+        .await
         .expect("resident telemetry should start without opening Turso on the caller");
         let mut wire_observation = RuntimePerformanceObservation::new(
             "workspace-canonical-materialization",
@@ -95,8 +101,13 @@ fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
             800_000,
             "budget-exceeded",
         )
-        .with_materialization_metrics(7, 6407, 42, 3_300_000, 5_900_000_000);
+        .with_materialization_metrics(7, 6407, 42, 3_300_000, 5_900_000_000)
+        .with_operation_id("fixture-operation");
         wire_observation.workspace_identity = Some("workspace-telemetry-fixture".to_owned());
+        wire_observation.process_resident_bytes = Some(512 * 1024 * 1024);
+        wire_observation.process_peak_resident_bytes = Some(768 * 1024 * 1024);
+        wire_observation.process_memory_budget_bytes = Some(1024 * 1024 * 1024);
+        wire_observation.process_memory_budget_status = Some("within-budget".to_owned());
         let wire_contract = serde_json::to_value(wire_observation)
             .expect("performance observation should serialize");
         assert_eq!(
@@ -168,6 +179,12 @@ fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
                         Some(format!("fixture-generation-{worker_index}-{sequence}"));
                     observation.runtime_artifact_digest = Some("fixture-runtime".to_owned());
                     observation.transport_contract_digest = Some("fixture-transport".to_owned());
+                    observation.operation_id =
+                        Some(format!("fixture-operation-{worker_index}-{sequence}"));
+                    observation.process_resident_bytes = Some(512 * 1024 * 1024);
+                    observation.process_peak_resident_bytes = Some(768 * 1024 * 1024);
+                    observation.process_memory_budget_bytes = Some(1024 * 1024 * 1024);
+                    observation.process_memory_budget_status = Some("within-budget".to_owned());
                     observation.failure_reason = Some("fixture-budget-exceeded".to_owned());
                     let was_accepted = worker_handle.try_record(observation);
                     latencies.push(started.elapsed());
@@ -230,6 +247,59 @@ fn concurrent_runtime_telemetry_is_nonblocking_and_turso_queryable() {
                 .and_then(serde_json::Value::as_u64),
             Some(801_000)
         );
+        let resident_memory = latest_attributes
+            .get("asp.process.resident_memory")
+            .and_then(serde_json::Value::as_u64)
+            .expect("resident Tokio lane should attach its sampled RSS");
+        let peak_resident_memory = latest_attributes
+            .get("asp.process.peak_resident_memory")
+            .and_then(serde_json::Value::as_u64)
+            .expect("resident Tokio lane should attach its sampled peak RSS");
+        assert!(resident_memory > 0);
+        assert!(peak_resident_memory >= resident_memory);
+        let event_loop_lag = latest_attributes
+            .get("asp.runtime.event_loop.lag")
+            .and_then(serde_json::Value::as_u64)
+            .expect("resident Tokio lane should publish scheduler lag");
+        let event_loop_budget = latest_attributes
+            .get("asp.runtime.event_loop.lag.budget")
+            .and_then(serde_json::Value::as_u64)
+            .expect("resident Tokio lane should publish its scheduler-lag budget");
+        assert_eq!(
+            latest_attributes
+                .get("asp.runtime.event_loop.lag.budget.status")
+                .and_then(serde_json::Value::as_str),
+            Some(if event_loop_lag > event_loop_budget {
+                "budget-exceeded"
+            } else {
+                "within-budget"
+            })
+        );
+        assert_eq!(event_loop_budget, 10_000);
+        #[cfg(target_os = "macos")]
+        {
+            assert!(
+                latest_attributes
+                    .get("asp.process.disk.read_bytes")
+                    .and_then(serde_json::Value::as_u64)
+                    .is_some(),
+                "macOS Runtime telemetry must expose process disk reads"
+            );
+            assert!(
+                latest_attributes
+                    .get("asp.process.disk.write_bytes")
+                    .and_then(serde_json::Value::as_u64)
+                    .is_some(),
+                "macOS Runtime telemetry must expose process disk writes"
+            );
+            assert!(
+                latest_attributes
+                    .get("asp.process.page_ins")
+                    .and_then(serde_json::Value::as_u64)
+                    .is_some(),
+                "macOS Runtime telemetry must expose process page-ins"
+            );
+        }
         telemetry
             .shutdown()
             .await

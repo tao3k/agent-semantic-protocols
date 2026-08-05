@@ -105,9 +105,11 @@
         "doc",
         "children",
         "content",
+        "source",
+        "callable-skeleton",
         "code"
       ],
-      "description": "Requested or rendered projection for a semantic locator. Non-code projections are search/query frontiers; code is exact source transport."
+      "description": "Requested or rendered projection for a semantic locator. Exact query uses source or callable-skeleton; content is the document projection."
     },
     "codePolicy": {
       "enum": [

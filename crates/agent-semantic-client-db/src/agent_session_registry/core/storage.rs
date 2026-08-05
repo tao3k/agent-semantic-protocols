@@ -280,7 +280,7 @@ impl AgentSessionRegistry {
         }))
     }
 
-    pub(super) fn runtime_operation(
+    pub(in crate::agent_session_registry) fn runtime_operation(
         &self,
         operation: crate::workspace_db_ipc::AgentSessionRegistryIpcOperation,
     ) -> Result<Option<crate::workspace_db_ipc::AgentSessionRegistryIpcResult>, String> {

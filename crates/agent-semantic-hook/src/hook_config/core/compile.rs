@@ -2,8 +2,11 @@ use std::collections::HashSet;
 
 use aho_corasick::{AhoCorasickBuilder, MatchKind};
 use globset::{GlobBuilder, GlobSetBuilder};
+use regex_automata::dfa::dense;
 
-use super::match_types::{CompiledCommandContains, CompiledPathGlobs};
+use super::match_types::{
+    CompiledCommandContains, CompiledPathGlobs, DurableCommandContainsMatcher, DurableDfaMatcher,
+};
 
 pub(super) fn compile_globs(
     label: &str,
@@ -23,7 +26,7 @@ pub(super) fn compile_globs(
         }
     }
     let mut builder = GlobSetBuilder::new();
-    let mut glob_count = 0usize;
+    let mut regexes = Vec::new();
     for pattern in patterns {
         if simple_glob_suffix(&pattern)
             .is_some_and(|suffix| paired_suffixes.iter().any(|existing| existing == suffix))
@@ -34,10 +37,10 @@ pub(super) fn compile_globs(
             .literal_separator(true)
             .build()
             .map_err(|error| format!("invalid {label} pattern `{pattern}`: {error}"))?;
+        regexes.push(glob.regex().to_owned());
         builder.add(glob);
-        glob_count += 1;
     }
-    let globset = if glob_count == 0 {
+    let globset = if regexes.is_empty() {
         None
     } else {
         Some(
@@ -46,11 +49,32 @@ pub(super) fn compile_globs(
                 .map_err(|error| format!("failed to compile {label} patterns: {error}"))?,
         )
     };
-    Ok(CompiledPathGlobs {
+    let dfa = compile_dfa_union(label, &regexes)?;
+    Ok(CompiledPathGlobs::live(
         suffix_ext_any,
         suffix_any,
         globset,
-    })
+        dfa,
+    ))
+}
+
+fn compile_dfa_union(label: &str, regexes: &[String]) -> Result<Option<DurableDfaMatcher>, String> {
+    if regexes.is_empty() {
+        return Ok(None);
+    }
+    let pattern = regexes
+        .iter()
+        .map(|regex| format!("(?:{regex})"))
+        .collect::<Vec<_>>()
+        .join("|");
+    let dfa = dense::Builder::new()
+        .syntax(regex_automata::util::syntax::Config::new().utf8(false))
+        .build(&pattern)
+        .map_err(|error| {
+            format!("failed to compile durable {label} matcher `{pattern}`: {error:?}")
+        })?;
+    let (bytes, padding) = dfa.to_bytes_native_endian();
+    DurableDfaMatcher::new(bytes, padding).map(Some)
 }
 
 fn paired_suffix_globs(patterns: &[String]) -> Vec<String> {
@@ -93,12 +117,42 @@ pub(super) fn compile_command_contains(
     if patterns.is_empty() {
         return Ok(CompiledCommandContains::default());
     }
+    let regexes = patterns
+        .iter()
+        .map(|pattern| regex_syntax::escape(pattern))
+        .collect::<Vec<_>>();
+    let durable = DurableCommandContainsMatcher {
+        dfa: compile_ascii_case_insensitive_dfa_union("commandContainsAny", &regexes)?,
+    };
     AhoCorasickBuilder::new()
         .ascii_case_insensitive(true)
         .match_kind(MatchKind::LeftmostFirst)
         .build(patterns)
-        .map(|matcher| CompiledCommandContains {
-            matcher: Some(matcher),
-        })
+        .map(|matcher| CompiledCommandContains::live(matcher, durable))
         .map_err(|error| format!("failed to compile commandContainsAny patterns: {error}"))
+}
+
+fn compile_ascii_case_insensitive_dfa_union(
+    label: &str,
+    regexes: &[String],
+) -> Result<Option<DurableDfaMatcher>, String> {
+    if regexes.is_empty() {
+        return Ok(None);
+    }
+    let pattern = regexes
+        .iter()
+        .map(|regex| format!("(?:{regex})"))
+        .collect::<Vec<_>>()
+        .join("|");
+    let dfa = dense::Builder::new()
+        .syntax(
+            regex_automata::util::syntax::Config::new()
+                .utf8(false)
+                .unicode(false)
+                .case_insensitive(true),
+        )
+        .build(&pattern)
+        .map_err(|error| format!("failed to compile durable {label} matcher: {error}"))?;
+    let (bytes, padding) = dfa.to_bytes_native_endian();
+    DurableDfaMatcher::new(bytes, padding).map(Some)
 }

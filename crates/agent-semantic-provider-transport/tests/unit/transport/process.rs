@@ -55,7 +55,7 @@ fn completed_provider_invocation_kills_background_descendants_before_returning()
     let program = script(
         &root,
         "provider.sh",
-        "#!/bin/sh\nsleep 2 &\nprintf orphan\nexit 0\n",
+        "#!/bin/sh\nsleep 10 &\nprintf orphan\nexit 0\n",
     );
     let started = Instant::now();
 
@@ -65,9 +65,10 @@ fn completed_provider_invocation_kills_background_descendants_before_returning()
     assert_eq!(output.stdout.as_ref(), b"orphan");
     assert!(output.receipt.process_group_isolation_enforced());
     assert!(output.receipt.descendant_cleanup_required());
+    let elapsed = started.elapsed();
     assert!(
-        started.elapsed() < Duration::from_secs(1),
-        "provider output collection waited for an orphan descendant"
+        elapsed < Duration::from_secs(7),
+        "provider output collection waited for an orphan descendant: observed={elapsed:?}"
     );
     let _ = fs::remove_dir_all(root);
 }

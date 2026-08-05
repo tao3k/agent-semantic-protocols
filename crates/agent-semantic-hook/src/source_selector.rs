@@ -1,11 +1,11 @@
 use crate::protocol::{normalize_source_route_selector, normalize_source_selector};
 use crate::protocol_activation::protocol_activation_manifest::{
-    ActivatedProvider, HookRuntime, ProviderSelectorMatch, SourceSelectorKind,
+    HookProviderProjection, HookRuntime, ProviderSelectorMatch, SourceSelectorKind,
 };
 
-pub(crate) struct SourceSelectorMatch<'provider> {
+pub(crate) struct SourceSelectorMatch {
     pub(crate) route_selector: String,
-    pub(crate) provider: &'provider ActivatedProvider,
+    pub(crate) provider: HookProviderProjection,
     pub(crate) kind: SourceSelectorKind,
 }
 
@@ -77,29 +77,24 @@ fn infer_agent_action_subject_kind(
 
     let normalized = normalize_source_selector(value);
     let leaf = value.rsplit(['/', '\\']).next().unwrap_or(value);
-    let candidate_path = std::path::Path::new(value);
-    let project_root = std::path::Path::new(&registry.project_root);
-    let is_project_path = !candidate_path.is_absolute()
-        || (project_root.is_absolute() && candidate_path.starts_with(project_root));
     let is_path_shaped = value.contains(['/', '\\']) && !value.chars().any(char::is_whitespace);
-    let registered_source_scope = is_project_path
-        && registry.providers.iter().any(|provider| {
-            let ignored = std::iter::empty::<&String>().any(|prefix| {
-                normalized == prefix
-                    || normalized
-                        .strip_prefix(prefix)
-                        .is_some_and(|suffix| suffix.starts_with('/'))
-            });
-            !ignored
-                && provider.package_roots.iter().any(|root| {
-                    root == "."
-                        || normalized == root
-                        || normalized
-                            .strip_prefix(root)
-                            .is_some_and(|suffix| suffix.starts_with('/'))
-                        || contains_path_component_sequence(&normalized, root)
-                })
+    let registered_source_scope = registry.providers.iter().any(|provider| {
+        let ignored = std::iter::empty::<&String>().any(|prefix| {
+            normalized == prefix
+                || normalized
+                    .strip_prefix(prefix)
+                    .is_some_and(|suffix| suffix.starts_with('/'))
         });
+        !ignored
+            && provider.package_roots.iter().any(|root| {
+                root == "."
+                    || normalized == root
+                    || normalized
+                        .strip_prefix(root)
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+                    || contains_path_component_sequence(&normalized, root)
+            })
+    });
     if registered_source_scope
         && is_path_shaped
         && (value.ends_with(['/', '\\']) || !leaf.contains('.'))
@@ -129,7 +124,6 @@ fn infer_agent_action_subject_kind(
             &registry.project_root,
             std::path::Path::new(value),
         )
-        .map(|supported| is_project_path && supported)
         .unwrap_or_else(|| {
             registry.providers.iter().any(|provider| {
                 let extension_matches =
@@ -177,17 +171,17 @@ fn contains_path_component_sequence(path: &str, sequence: &str) -> bool {
     })
 }
 
-pub(crate) fn collect_source_selector_matches<'provider, I, S, F>(
-    registry: &'provider HookRuntime,
+pub(crate) fn collect_source_selector_matches<I, S, F>(
+    registry: &HookRuntime,
     selectors: I,
     should_block: F,
-) -> Vec<SourceSelectorMatch<'provider>>
+) -> Vec<SourceSelectorMatch>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
-    F: Fn(&ActivatedProvider) -> bool,
+    F: Fn(&HookProviderProjection) -> bool,
 {
-    let mut matches: Vec<SourceSelectorMatch<'provider>> = Vec::new();
+    let mut matches: Vec<SourceSelectorMatch> = Vec::new();
     for selector in selectors {
         let route_selector = normalize_source_route_selector(selector.as_ref()).to_string();
         for matched in matching_blocked_providers(registry, &route_selector, &should_block) {
@@ -202,29 +196,29 @@ where
     matches
 }
 
-fn matching_blocked_providers<'provider, F>(
-    registry: &'provider HookRuntime,
+fn matching_blocked_providers<F>(
+    registry: &HookRuntime,
     route_selector: &str,
     should_block: &F,
-) -> Vec<ProviderSelectorMatch<'provider>>
+) -> Vec<ProviderSelectorMatch>
 where
-    F: Fn(&ActivatedProvider) -> bool,
+    F: Fn(&HookProviderProjection) -> bool,
 {
     let match_selector = normalize_source_selector(route_selector);
     registry
         .providers_for_selector(match_selector)
         .into_iter()
-        .filter(|matched| should_block(matched.provider))
+        .filter(|matched| should_block(&matched.provider))
         .collect()
 }
 
-fn merge_source_selector_match<'provider>(
-    matches: &mut Vec<SourceSelectorMatch<'provider>>,
+fn merge_source_selector_match(
+    matches: &mut Vec<SourceSelectorMatch>,
     route_selector: &str,
-    provider: &'provider ActivatedProvider,
+    provider: HookProviderProjection,
     kind: SourceSelectorKind,
 ) {
-    if let Some(existing) = find_provider_match(matches, provider) {
+    if let Some(existing) = find_provider_match(matches, &provider) {
         if selector_is_more_specific(&existing.route_selector, route_selector) {
             existing.route_selector = route_selector.to_string();
             existing.kind = kind;
@@ -238,10 +232,10 @@ fn merge_source_selector_match<'provider>(
     });
 }
 
-fn find_provider_match<'matches, 'provider>(
-    matches: &'matches mut [SourceSelectorMatch<'provider>],
-    provider: &ActivatedProvider,
-) -> Option<&'matches mut SourceSelectorMatch<'provider>> {
+fn find_provider_match<'matches>(
+    matches: &'matches mut [SourceSelectorMatch],
+    provider: &HookProviderProjection,
+) -> Option<&'matches mut SourceSelectorMatch> {
     matches.iter_mut().find(|existing| {
         existing.provider.language_id == provider.language_id
             && existing.provider.provider_id == provider.provider_id

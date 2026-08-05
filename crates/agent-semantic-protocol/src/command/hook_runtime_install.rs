@@ -274,7 +274,7 @@ fn run_install_for_client(
     };
     timings.mark("legacy-artifact-cleanup");
     if client == "codex" && matches!(codex_plugin_scope, CodexPluginScope::Global) {
-        crate::command::runtime_server_supervisor::install_runtime_server_supervisor(
+        crate::server::runtime_server_supervisor::install_runtime_server_supervisor(
             &runtime_state.protocol_home,
         )?;
         timings.mark("runtime-server");

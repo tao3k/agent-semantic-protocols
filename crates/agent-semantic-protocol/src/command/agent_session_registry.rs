@@ -1,5 +1,7 @@
 //! Durable agent session and subagent registry.
 
+#[path = "agent_config_sync.rs"]
+mod agent_config_sync;
 #[path = "agent_session_registry_args.rs"]
 mod agent_session_registry_args;
 #[path = "agent_session_registry_bootstrap.rs"]
@@ -10,6 +12,8 @@ mod agent_session_registry_codex;
 mod agent_session_registry_command_parts;
 #[path = "agent_session_registry_commands.rs"]
 mod agent_session_registry_commands;
+#[path = "agent_session_registry_control_plane.rs"]
+mod agent_session_registry_control_plane;
 pub(in crate::command::agent_session_registry) use agent_session_registry_commands::stale_invalid_session_should_be_idle;
 #[path = "agent_session_registry_dispatch.rs"]
 mod agent_session_registry_dispatch;
@@ -58,6 +62,40 @@ use agent_session_registry_commands::{
 };
 use std::{env, path::PathBuf};
 
+const EMBEDDED_AGENT_ROUTE_REGISTRY: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../agents/config.toml"
+));
+
+fn configured_resident_session_name(requested: Option<&str>) -> Result<String, String> {
+    let registry =
+        toml::from_str::<agent_semantic_config::agent_route_registry::AgentRouteRegistry>(
+            EMBEDDED_AGENT_ROUTE_REGISTRY,
+        )
+        .map_err(|error| format!("failed to parse embedded agent route registry: {error}"))?;
+    if let Some(requested) = requested {
+        return registry
+            .agents
+            .values()
+            .find(|route| route.session_name == requested)
+            .map(|route| route.session_name.clone())
+            .ok_or_else(|| {
+                format!("agent session `{requested}` is absent from the route registry")
+            });
+    }
+    let mut explore_routes = registry
+        .agents
+        .values()
+        .filter(|route| route.roles.iter().any(|role| role == "explore"));
+    let route = explore_routes
+        .next()
+        .ok_or_else(|| "agent route registry omitted the explore session".to_string())?;
+    if explore_routes.next().is_some() {
+        return Err("agent route registry has multiple explore sessions".to_string());
+    }
+    Ok(route.session_name.clone())
+}
+
 pub(crate) use agent_session_registry_state::{
     ResidentChildIdentityProof, codex_transcript_resident_child_identity,
     current_registered_session, current_resident_child_identity_proof, current_root_session_id,
@@ -68,6 +106,7 @@ pub(crate) use agent_session_registry_tool_event::record_current_session_tool_ev
 pub(crate) fn run_agent_command(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("session") => run_agent_session_command(&args[1..]),
+        Some("config") => agent_config_sync::run_agent_config_command(&args[1..]),
         Some("help" | "--help" | "-h") | None => {
             println!("{}", agent_usage());
             Ok(())
@@ -144,6 +183,12 @@ pub(crate) fn run_agent_session_command(args: &[String]) -> Result<(), String> {
         SessionCommand::Show => show_session(&registry, &args),
         SessionCommand::Status => status_session(&registry, &args, &project_root),
         SessionCommand::LifecycleAudit => lifecycle_audit_session(&registry, &args),
+        SessionCommand::ControlPlaneRefresh => {
+            agent_session_registry_control_plane::refresh_control_plane(&args, &project_root)
+        }
+        SessionCommand::ControlPlaneShow => {
+            agent_session_registry_control_plane::show_control_plane(&args, &project_root)
+        }
         SessionCommand::Smoke => smoke_session(&registry, &args),
         SessionCommand::Close => close_session(&registry, &args),
         SessionCommand::Gc => gc_sessions(&registry, &args),
@@ -167,14 +212,14 @@ fn ensure_agent_session_runtime_server(
 ) -> Result<(), String> {
     let state = agent_semantic_client_core::state_core::ResolvedState::resolve(project_root)?;
     state.ensure_minimal_layout()?;
-    let healthy = super::runtime_server::block_on_agent_facing_runtime_server_client(
+    let healthy = crate::server::runtime_server::block_on_agent_facing_runtime_server_client(
         tokio::time::Instant::now(),
         "agent-session",
         "runtime-server-healthcheck",
         project_root,
         async {
             Ok(
-                super::runtime_server::probe_healthy_runtime_server_at(&state.state_home)
+                crate::server::runtime_server::probe_healthy_runtime_server_at(&state.state_home)
                     .await
                     .unwrap_or(false),
             )
@@ -183,13 +228,15 @@ fn ensure_agent_session_runtime_server(
     if healthy {
         return Ok(());
     }
-    super::runtime_server::block_on_runtime_server_supervisor_client(
+    crate::server::runtime_server::block_on_runtime_server_supervisor_client(
         "agent-session",
         "runtime-server-reconcile",
         async {
-            super::runtime_server_supervisor::reconcile_healthy_runtime_server(&state.state_home)
-                .await
-                .map(|_| ())
+            crate::server::runtime_server_supervisor::reconcile_healthy_runtime_server(
+                &state.state_home,
+            )
+            .await
+            .map(|_| ())
         },
     )
 }

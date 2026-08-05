@@ -242,209 +242,6 @@ async fn owner_overlay_cannot_manufacture_a_canonical_generation() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn stale_owner_is_reconciled_before_a_resident_projection_can_serve() {
-    let root = fixture_root();
-    tokio::fs::create_dir_all(root.join("src"))
-        .await
-        .expect("create source root");
-    let root = tokio::fs::canonicalize(root)
-        .await
-        .expect("canonical source root");
-    let current_bytes = b"fn current() {}\n";
-    tokio::fs::write(root.join("src/lib.rs"), current_bytes)
-        .await
-        .expect("write current owner");
-    let resolved = agent_semantic_client_core::state_core::ResolvedState::resolve(&root)
-        .expect("resolve root");
-    let workspace_identity = resolved.workspace.workspace_id.to_string();
-    let registry = std::sync::Arc::new(
-        RuntimeServerWorkspaceRegistry::new(root.join("runtime"))
-            .expect("create workspace registry"),
-    );
-    let stale_selector = "rust://src/lib.rs#item/function/stale";
-    let current_selector = "rust://src/lib.rs#item/function/current";
-    let stale_generation = generation_with_selectors(
-        &workspace_identity,
-        &root,
-        1,
-        b"fn stale() {}\n",
-        vec![
-            agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot {
-                selector: stale_selector.to_owned(),
-                byte_start: 0,
-                byte_end: b"fn stale() {}\n".len(),
-                derived_projections: Vec::new(),
-            },
-        ],
-    );
-    registry
-        .publish(
-            "publish-stale-generation",
-            WorkspaceRecoverySource::TursoGeneration,
-            stale_generation,
-        )
-        .await
-        .expect("publish stale canonical generation");
-
-    let build_started = std::sync::Arc::new(tokio::sync::Notify::new());
-    let release_build = std::sync::Arc::new(tokio::sync::Semaphore::new(0));
-    let build_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let builder: agent_semantic_client_db::runtime_server_workspace::WorkspaceOwnerProjectionBuilder = {
-        let build_started = std::sync::Arc::clone(&build_started);
-        let release_build = std::sync::Arc::clone(&release_build);
-        let build_count = std::sync::Arc::clone(&build_count);
-        std::sync::Arc::new(move |_workspace_identity, _language_id, _project_root, mut owner| {
-            let build_started = std::sync::Arc::clone(&build_started);
-            let release_build = std::sync::Arc::clone(&release_build);
-            let build_count = std::sync::Arc::clone(&build_count);
-            Box::pin(async move {
-                build_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                build_started.notify_one();
-                release_build
-                    .acquire_owned()
-                    .await
-                    .expect("fixture release semaphore remains open")
-                    .forget();
-                owner.selectors = vec![
-                    agent_semantic_client_db::runtime_server_workspace::WorkspaceSelectorSnapshot {
-                        selector: current_selector.to_owned(),
-                        byte_start: 0,
-                        byte_end: owner.bytes.len(),
-                        derived_projections: vec![
-                            agent_semantic_client_db::runtime_server_workspace::WorkspaceDerivedProjectionSnapshot {
-                                projection_kind: "callable-skeleton".to_owned(),
-                                bytes: owner.bytes.clone(),
-                            },
-                        ],
-                    },
-                ];
-                Ok(owner)
-            })
-        })
-    };
-    let refresh_registry = std::sync::Arc::clone(&registry);
-    let refresh_workspace_identity = workspace_identity.clone();
-    let refresh_root = root.clone();
-    let refresh_builder = std::sync::Arc::clone(&builder);
-    let refresh = tokio::spawn(async move {
-        refresh_registry
-            .ensure_runtime_owner_freshness(
-                "refresh-stale-owner",
-                &refresh_workspace_identity,
-                &refresh_root,
-                "rust",
-                "src/lib.rs",
-                Some(&refresh_builder),
-            )
-            .await
-    });
-    build_started.notified().await;
-
-    for _ in 0..128 {
-        let lease = registry
-            .lease(&workspace_identity, &root)
-            .expect("old generation remains readable while projection builds");
-        assert_eq!(
-            lease.owner("src/lib.rs").as_deref(),
-            Some(b"fn stale() {}\n".as_slice())
-        );
-        let selectors = &lease.generation().owners[0].selectors;
-        assert!(
-            selectors
-                .iter()
-                .any(|entry| entry.selector == stale_selector)
-        );
-        assert!(
-            !selectors
-                .iter()
-                .any(|entry| entry.selector == current_selector)
-        );
-    }
-    let concurrent_registry = std::sync::Arc::clone(&registry);
-    let concurrent_workspace_identity = workspace_identity.clone();
-    let concurrent_root = root.clone();
-    let concurrent_builder = std::sync::Arc::clone(&builder);
-    let concurrent = tokio::spawn(async move {
-        concurrent_registry
-            .ensure_runtime_owner_freshness(
-                "concurrent-refresh-same-owner",
-                &concurrent_workspace_identity,
-                &concurrent_root,
-                "rust",
-                "src/lib.rs",
-                Some(&concurrent_builder),
-            )
-            .await
-    });
-    release_build.add_permits(1);
-    let refreshed = refresh
-        .await
-        .expect("join primary refresh")
-        .expect("refresh stale owner");
-    let concurrent = concurrent
-        .await
-        .expect("join concurrent refresh")
-        .expect("reuse atomically published owner");
-    assert!(refreshed.changed);
-    assert!(!refreshed.removed);
-    assert!(!concurrent.changed);
-    assert_eq!(build_count.load(std::sync::atomic::Ordering::SeqCst), 1);
-    let (_, owner) = registry
-        .runtime_owner_snapshot(&workspace_identity, &root, "src/lib.rs")
-        .expect("read refreshed owner");
-    assert_eq!(owner.bytes, current_bytes);
-    assert_eq!(owner.selectors.len(), 1);
-    assert_eq!(owner.selectors[0].selector, current_selector);
-    assert_eq!(owner.selectors[0].byte_end, current_bytes.len());
-    let lease = registry
-        .lease(&workspace_identity, &root)
-        .expect("lease refreshed generation");
-    let selectors = &lease.generation().owners[0].selectors;
-    assert!(
-        !selectors
-            .iter()
-            .any(|entry| entry.selector == stale_selector)
-    );
-    assert!(
-        selectors
-            .iter()
-            .any(|entry| entry.selector == current_selector)
-    );
-
-    let warm = registry
-        .ensure_runtime_owner_freshness(
-            "verify-current-owner",
-            &workspace_identity,
-            &root,
-            "rust",
-            "src/lib.rs",
-            Some(&builder),
-        )
-        .await
-        .expect("verify current owner");
-    assert!(!warm.changed);
-    assert!(!warm.removed);
-    assert_eq!(warm.generation_digest, refreshed.generation_digest);
-    assert!(
-        registry
-            .ensure_runtime_owner_freshness(
-                "reject-owner-escape",
-                &workspace_identity,
-                &root,
-                "rust",
-                "../outside.rs",
-                Some(&builder),
-            )
-            .await
-            .expect_err("escaping owner path must fail")
-            .contains("normalized relative owner path")
-    );
-
-    registry.shutdown().await.expect("shutdown registry");
-    let _ = tokio::fs::remove_dir_all(root).await;
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn moved_owner_overlay_publishes_one_atomic_relocation_epoch() {
     let root = fixture_root();
     let registry =
@@ -613,11 +410,88 @@ async fn concurrent_cold_restore_publishes_one_canonical_epoch() {
         source
     );
     let counters = registry.data_plane_counters();
-    assert_eq!(counters.filesystem_reads, 1);
+    assert_eq!(
+        counters.filesystem_reads, 0,
+        "canonical cold restore must publish from the validated MemoryBackend without a data-plane filesystem read"
+    );
     assert_eq!(counters.filesystem_writes, 1);
     assert_eq!(counters.database_opens, 0);
     assert_eq!(counters.provider_spawns, 0);
     assert_eq!(counters.control_socket_roundtrips, 0);
+
+    let pointer_path =
+        agent_semantic_client_db::runtime_server_workspace::workspace_generation_pointer_path(
+            &root,
+            workspace_identity,
+            &root,
+        )
+        .expect("resolve active generation pointer");
+    let legacy_payload = serde_json::to_vec(&serde_json::json!({
+        "schemaId": "agent.semantic-protocols.runtime-server-workspace-generation.v1",
+        "schemaVersion": "1",
+        "workspaceIdentity": workspace_identity
+    }))
+    .expect("encode legacy pointer fixture");
+    let mut legacy_pointer = vec![0_u8; 4_096];
+    legacy_pointer[..8].copy_from_slice(&2_u64.to_ne_bytes());
+    legacy_pointer[8..16].copy_from_slice(&(legacy_payload.len() as u64).to_ne_bytes());
+    legacy_pointer[16..16 + legacy_payload.len()].copy_from_slice(&legacy_payload);
+    tokio::fs::write(&pointer_path, legacy_pointer)
+        .await
+        .expect("publish an incompatible legacy generation pointer");
+
+    // The resident data plane deliberately does not poll the pointer on every
+    // warm query. Model a real process-cold repair boundary: the old resident
+    // drains, and the process-local load-once cell disappears with the process.
+    // The incompatible pointer's unvalidated epoch is not generation authority.
+    registry
+        .shutdown()
+        .await
+        .expect("drain original writer lane");
+    let registry = std::sync::Arc::new(
+        RuntimeServerWorkspaceRegistry::new(root.clone())
+            .expect("create process-cold repair registry"),
+    );
+    let repaired = registry
+        .ensure_canonical_generation(
+            "repair-incompatible-pointer",
+            workspace_identity,
+            materialization
+                .clone()
+                .into_validated(workspace_identity)
+                .expect("validate repair materialization"),
+        )
+        .await
+        .expect("republish current-schema pointer through the writer lane");
+    assert_eq!(repaired.target_epoch, 1);
+    let durability = registry
+        .generation_durability(workspace_identity, &root)
+        .expect("read repaired generation durability")
+        .expect("repaired generation has a durability receipt");
+    durability
+        .validate()
+        .expect("validate repaired durability receipt");
+    assert_eq!(durability.target_epoch, repaired.target_epoch);
+    assert_eq!(
+        durability.state,
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationDurabilityState::DurableReady,
+        "terminal Ready must not precede canonical pointer durability"
+    );
+    let repaired_pointer =
+        agent_semantic_client_db::runtime_server_workspace::WorkspaceGenerationPointerReader::open(
+            &pointer_path,
+        )
+        .await
+        .expect("open repaired generation pointer")
+        .read()
+        .expect("decode repaired generation pointer");
+    repaired_pointer
+        .validate()
+        .expect("validate repaired current-schema pointer");
+    assert_eq!(
+        repaired_pointer.source_kind,
+        agent_semantic_content_identity::SourceSnapshotKind::Filesystem
+    );
 
     registry.shutdown().await.expect("drain writer lane");
     let _ = tokio::fs::remove_dir_all(root).await;

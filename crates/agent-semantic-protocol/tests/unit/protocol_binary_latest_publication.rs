@@ -1,5 +1,6 @@
 use super::{
-    ProtocolBinaryInstallPlan, SEMANTIC_AGENT_PROTOCOL_BIN, ensure_protocol_binary_installed,
+    ProtocolBinaryInstallPlan, SEMANTIC_AGENT_PROTOCOL_BIN,
+    canonical_protocol_binary_artifact_digest, ensure_protocol_binary_installed,
     install_protocol_binary_target, next_protocol_binary_publish_sequence,
     prune_runtime_binary_artifacts,
 };
@@ -17,6 +18,43 @@ fn fixture_root(name: &str) -> PathBuf {
     ));
     fs::create_dir_all(&root).expect("create protocol binary fixture");
     root
+}
+
+#[tokio::test]
+async fn canonical_control_digest_is_a_sub_millisecond_path_identity_lookup() {
+    let root = fixture_root("control-digest-fast-path");
+    let artifact_root = root.join("runtime/artifacts");
+    let target = root.join("runtime/bin/asp");
+    let source = fixture_source(&root, "source-asp", b"control-digest-fixture");
+    let installed = install_protocol_binary_target(
+        &source,
+        &target,
+        &artifact_root,
+        &RuntimeBinaryIdentityV1::asp_bootstrap(),
+    )
+    .expect("publish digest-addressed ASP artifact");
+
+    let mut samples = Vec::with_capacity(10_000);
+    for _ in 0..10_000 {
+        let started = std::time::Instant::now();
+        let digest = canonical_protocol_binary_artifact_digest(&target)
+            .await
+            .expect("read canonical artifact path identity");
+        samples.push(started.elapsed());
+        assert_eq!(digest, installed.artifact_digest);
+    }
+    samples.sort_unstable();
+    let p99 = samples[(samples.len() * 99) / 100];
+    eprintln!(
+        "[runtime-binary-control-fast-path] requests=10000 p99Nanos={} binaryByteReads=0",
+        p99.as_nanos()
+    );
+    assert!(
+        p99 < std::time::Duration::from_millis(1),
+        "canonical runtime digest path lookup p99 must remain sub-millisecond, observed {p99:?}"
+    );
+
+    fs::remove_dir_all(root).expect("remove protocol binary fixture");
 }
 
 fn fixture_source(root: &Path, name: &str, bytes: &[u8]) -> PathBuf {
@@ -51,7 +89,7 @@ fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
         fs::symlink_metadata(&stable_entry)
             .expect("inspect stable entry")
             .file_type()
-            .is_file()
+            .is_symlink()
     );
     assert_eq!(
         fs::read(&stable_entry).expect("read stable entry"),
@@ -63,6 +101,13 @@ fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
     );
 
     let asp_digest = installed.artifact_digest.clone();
+    assert!(
+        artifact_root
+            .join("blake3-256")
+            .join(&asp_digest)
+            .join(SEMANTIC_AGENT_PROTOCOL_BIN)
+            .is_file()
+    );
     let harness_name = "rs-harness";
     let harness_stable = runtime.join("bin").join(harness_name);
     let harness_source = fixture_source(&root, "source-rs-harness", b"rust-harness-v1");
@@ -99,7 +144,7 @@ fn lattice_profile_slots_and_multi_binary_switches_are_isolated() {
         fs::read(&harness_stable).expect("harness profile remains isolated"),
         b"rust-harness-v1"
     );
-    assert!(!artifact_root.join("blake3-256").exists());
+    assert!(artifact_root.join("blake3-256").exists());
 
     fs::remove_dir_all(&root).expect("remove protocol binary fixture");
 }
@@ -157,7 +202,7 @@ fn registered_scheme_and_python_dangling_entries_are_atomically_republished() {
             fs::symlink_metadata(&target)
                 .expect("inspect republished provider")
                 .file_type()
-                .is_file(),
+                .is_symlink(),
             "{provider_id}"
         );
         assert_eq!(
@@ -165,7 +210,13 @@ fn registered_scheme_and_python_dangling_entries_are_atomically_republished() {
             provider_id.as_bytes(),
             "{provider_id}"
         );
-        assert!(!artifact_root.join("blake3-256").exists());
+        assert!(
+            artifact_root
+                .join("blake3-256")
+                .join(&installed.artifact_digest)
+                .join(registration.binary())
+                .is_file()
+        );
 
         fs::remove_dir_all(root).expect("remove protocol binary fixture");
     }
@@ -210,7 +261,7 @@ fn loop_or_escape_fails_before_lattice_profile_switch() {
 }
 
 #[test]
-fn lattice_reconciliation_does_not_create_digest_history() {
+fn lattice_reconciliation_retains_only_reachable_digest_generations() {
     let root = fixture_root("retention");
     let runtime = root.join("runtime");
     let artifact_root = runtime.join("artifacts");
@@ -239,15 +290,15 @@ fn lattice_reconciliation_does_not_create_digest_history() {
     }
 
     let receipt = prune_runtime_binary_artifacts(&artifact_root).expect("prune artifact history");
-    assert_eq!(receipt.scanned_generation_count, 0);
-    assert_eq!(receipt.retained_generation_count, 0);
-    assert_eq!(receipt.removed_generation_count, 0);
+    assert_eq!(receipt.scanned_generation_count, 8);
+    assert_eq!(receipt.retained_generation_count, 2);
+    assert_eq!(receipt.removed_generation_count, 6);
     assert_eq!(receipt.ignored_entry_count, 0);
-    assert_eq!(receipt.reclaimed_bytes, 0);
-    assert!(receipt.protected_digests.is_empty());
+    assert_eq!(receipt.reclaimed_bytes, 99);
+    assert_eq!(receipt.protected_digests.len(), 2);
     assert!(fs::canonicalize(&asp_target).is_ok());
     assert!(fs::canonicalize(&harness_target).is_ok());
-    assert!(!artifact_root.join("blake3-256").exists());
+    assert!(artifact_root.join("blake3-256").is_dir());
     assert!(artifact_root.join("retention-receipt.v1.json").is_file());
 
     fs::remove_dir_all(&root).expect("remove protocol binary fixture");

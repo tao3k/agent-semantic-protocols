@@ -119,7 +119,7 @@ pub(crate) fn compact_source_access_deny_message(
             return message;
         }
         return format!(
-            "ASP denied source access again (`{reason}`). Stay in the resident-child interactive loop with `asp agent session bootstrap --name asp-explore`; choose one number and re-enter until state=Ready.\nrecoveryRef={recovery_ref}"
+            "ASP denied source access again (`{reason}`). Stay in the configured resident-child interactive loop with `asp agent session bootstrap`; choose one number and re-enter until state=Ready.\nrecoveryRef={recovery_ref}"
         );
     }
 
@@ -138,7 +138,7 @@ pub(crate) fn compact_source_access_deny_message(
             return message;
         }
         return format!(
-            "ASP denied source access (`{reason}`) inside asp-explore. Use ASP query/search routes and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next; do not return source bodies, snippets, or line-range selectors.\nrecoveryRef={recovery_ref}"
+            "ASP denied source access (`{reason}`) inside the configured resident agent. Use ASP query/search routes and return one compact `[asp-search-subagent]` graph-route receipt with schema/intent/route/state/evidence/next; do not return source bodies, snippets, or line-range selectors.\nrecoveryRef={recovery_ref}"
         );
     }
 
@@ -151,7 +151,7 @@ pub(crate) fn compact_source_access_deny_message(
         return message;
     }
     format!(
-        "ASP denied source access (`{reason}`). Enter the resident-child interactive loop with `asp agent session bootstrap --name asp-explore`; choose one number, perform the native platform action, then re-enter until state=Ready.\nrecoveryRef={recovery_ref}"
+        "ASP denied source access (`{reason}`). Enter the configured resident-child interactive loop with `asp agent session bootstrap`; choose one number, perform the native platform action, then re-enter until state=Ready.\nrecoveryRef={recovery_ref}"
     )
 }
 
@@ -165,8 +165,7 @@ fn render_compact_source_access_template(
     let resident_child_name = decision
         .fields
         .get("residentChildName")
-        .and_then(Value::as_str)
-        .unwrap_or("asp-explore");
+        .and_then(Value::as_str)?;
     Some(
         template
             .replace("{{reason}}", reason)
@@ -191,7 +190,7 @@ pub(crate) fn repeated_deny_message(decision: &HookDecision) -> String {
             .to_string(),
         String::new(),
         "## ASP Hook Recovery".to_string(),
-        "Enter the resident-child interactive loop with `asp agent session bootstrap --name asp-explore`; choose one number and re-enter until state=Ready.".to_string(),
+        "Enter the configured resident-child interactive loop with `asp agent session bootstrap`; choose one number and re-enter until state=Ready.".to_string(),
         String::new(),
         "## Stop".to_string(),
         "Do not switch to another evidence channel. The hook has already denied this lane."

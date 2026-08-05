@@ -8,6 +8,7 @@ build = "build.rs"
 [dependencies]
 rust-lang-project-harness = { workspace = true }
 serde.workspace = true
+serde_json.workspace = true
 
 [build-dependencies]
 rust-lang-project-harness = { workspace = true }

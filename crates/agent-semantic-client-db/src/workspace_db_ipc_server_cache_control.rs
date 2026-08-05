@@ -81,11 +81,13 @@ async fn rebuild_generation(
     project_root: &Path,
     mutation_id: &str,
 ) -> Result<(RuntimeCacheGenerationState, Option<String>), String> {
+    let candidate = discover_workspace_generation_candidate(project_root).await?;
     let admitted = admission
         .admit_cache_rebuild(
             mutation_id.to_owned(),
             workspace_identity.to_owned(),
             project_root.to_path_buf(),
+            candidate,
         )
         .await?;
     let state = if admitted.state == WorkspaceGenerationAdmissionState::Ready {

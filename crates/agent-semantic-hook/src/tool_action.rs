@@ -660,6 +660,21 @@ pub fn collect_tool_actions(tool_name: &str, tool_input: &Value) -> Vec<ToolActi
     actions
 }
 
+/// Projects workspace mutation paths directly from the canonical tool-action
+/// normalization. This projection is independent of policy matching so
+/// post-tool durability cannot disappear when no allow/deny rule applies.
+pub fn workspace_mutation_paths(tool_name: &str, tool_input: &Value) -> Vec<String> {
+    let mut paths = collect_tool_actions(tool_name, tool_input)
+        .into_iter()
+        .filter(|action| action.operation == OperationIntent::ApplyPatch)
+        .flat_map(|action| action.paths)
+        .filter(|path| !path.trim().is_empty())
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
 pub(crate) fn subject_for_action(action: &ToolAction) -> DecisionSubject {
     DecisionSubject {
         tool_name: if action.tool_name.is_empty() {

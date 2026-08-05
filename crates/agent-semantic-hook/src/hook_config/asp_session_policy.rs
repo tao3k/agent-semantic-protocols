@@ -8,16 +8,6 @@ pub struct AspSessionPolicy {
     resident_codex_agent_name: String,
 }
 
-impl Default for AspSessionPolicy {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            resident_child_name: "asp-explore".to_string(),
-            resident_codex_agent_name: "asp_explorer".to_string(),
-        }
-    }
-}
-
 impl AspSessionPolicy {
     /// Return whether ASP session routing policy is enabled.
     pub fn enabled(&self) -> bool {
@@ -39,16 +29,22 @@ impl TryFrom<HookClientAgentsConfig> for AspSessionPolicy {
     type Error = String;
 
     fn try_from(config: HookClientAgentsConfig) -> Result<Self, Self::Error> {
-        let asp_explore = config
+        let resident_name = config
+            .placeholders
+            .get("explore")
+            .ok_or_else(|| "configured explore resident route is unavailable".to_string())?;
+        let resident = config
             .resident_agents
             .iter()
-            .find(|agent| agent.name == "asp-explore")
-            .ok_or_else(|| "configured asp-explore resident agent is unavailable".to_string())?
+            .find(|agent| agent.name == *resident_name)
+            .ok_or_else(|| {
+                format!("configured explore resident agent `{resident_name}` is unavailable")
+            })?
             .clone();
         Ok(Self {
-            enabled: asp_explore.enabled,
-            resident_child_name: asp_explore.name,
-            resident_codex_agent_name: asp_explore.codex_agent_name,
+            enabled: resident.enabled,
+            resident_child_name: resident.name,
+            resident_codex_agent_name: resident.codex_agent_name,
         })
     }
 }

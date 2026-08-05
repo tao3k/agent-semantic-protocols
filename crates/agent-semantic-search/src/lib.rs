@@ -21,6 +21,7 @@ pub use graph_owner_rank::{
 pub mod exact_selector_generation_fixture;
 mod graph_query_owner_seed;
 mod graph_seed_decision;
+mod graph_selector_seed_projection;
 mod graph_topology_projection;
 mod lexical_overlay;
 pub mod memory_search;
@@ -105,10 +106,14 @@ pub use graph_seed_decision::{
     GraphTurboSeedPlanInput, SearchActionSelection, SearchEvidenceState, SeedActionIntent,
     SeedPhaseDecision, graph_turbo_seed_plan, recommended_action_for_seed_risk,
 };
+pub use graph_selector_seed_projection::{
+    GraphSelectorSeedProjection, GraphSelectorSeedProjectionRequest, graph_selector_seed_projection,
+};
 pub use graph_topology_projection::{
-    GraphTopologyProjection, GraphTopologyProjectionRequest, graph_path_is_under,
-    graph_project_submodule_paths, graph_project_submodule_paths_from_content,
-    graph_project_topology_projection, graph_submodule_owner_edges,
+    GraphOwnerMissingTopologyRequest, GraphTopologyProjection, GraphTopologyProjectionRequest,
+    graph_owner_missing_topology_projection, graph_path_is_under, graph_project_submodule_paths,
+    graph_project_submodule_paths_from_content, graph_project_topology_projection,
+    graph_submodule_owner_edges,
 };
 pub use lexical_overlay::{
     LexicalOverlayCandidateHit, LexicalOverlayDocument, LexicalOverlaySearchHit,

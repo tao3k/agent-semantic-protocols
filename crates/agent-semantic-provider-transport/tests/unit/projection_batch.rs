@@ -6,6 +6,8 @@ use super::{
     provider_projection_batch_ranges, validate_response,
 };
 
+const GERBIL_SCHEME_PRESSURE_PROVIDER_ENV: &str = "ASP_GERBIL_SCHEME_PRESSURE_PROVIDER_BIN";
+
 fn request() -> ProviderProjectionBatchRequest {
     ProviderProjectionBatchRequest {
         language_id: "rust".to_string(),
@@ -109,4 +111,63 @@ fn oversized_owner_is_admitted_as_a_single_bounded_process() {
     let ranges = provider_projection_batch_ranges(&owner_sizes);
 
     assert_eq!(ranges, vec![0..1, 1..2]);
+}
+
+#[test]
+fn registered_gerbil_scheme_provider_stays_bounded_under_294_owner_pressure() {
+    let Some(binary) = std::env::var_os(GERBIL_SCHEME_PRESSURE_PROVIDER_ENV) else {
+        return;
+    };
+    let binary = std::path::PathBuf::from(binary);
+    assert!(binary.is_file(), "registered GSLPH binary is missing");
+    let owners = (0..294)
+        .map(|index| {
+            let source = format!("(export #t)\n(def (pressure-owner-{index}) {index})\n");
+            ProviderProjectionOwner {
+                owner_path: format!("src/pressure-owner-{index}.ss"),
+                source_leaf_digest: format!("leaf-{index}"),
+                source_bytes: source.into_bytes(),
+            }
+        })
+        .collect::<Vec<_>>();
+    let owner_sizes = owners
+        .iter()
+        .map(|owner| owner.source_bytes.len())
+        .collect::<Vec<_>>();
+    let ranges = provider_projection_batch_ranges(&owner_sizes);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("provider pressure runtime");
+    let started = std::time::Instant::now();
+    let mut projected_owner_count = 0usize;
+
+    for range in &ranges {
+        let request = ProviderProjectionBatchRequest {
+            language_id: "gerbil-scheme".to_string(),
+            provider_id: "gerbil-scheme-harness".to_string(),
+            workspace_identity: "workspace-gerbil-scheme-pressure".to_string(),
+            generation_root_digest: "generation-gerbil-scheme-pressure".to_string(),
+            parser_identity_digest: "parser-gerbil-scheme-pressure".to_string(),
+            query_pack_digest: "query-pack-gerbil-scheme-pressure".to_string(),
+            base_generation_root_digest: None,
+            owners: owners[range.clone()].to_vec(),
+        };
+        let response = runtime
+            .block_on(super::run_provider_projection_batch(
+                &[binary.to_string_lossy().into_owned()],
+                "projection-batch-stdin",
+                std::env::current_dir().expect("pressure workspace"),
+                &request,
+            ))
+            .expect("bounded GSLPH projection batch");
+        projected_owner_count += response.owners.len();
+    }
+
+    assert_eq!(ranges.len(), 10);
+    assert_eq!(projected_owner_count, 294);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(60),
+        "bounded GSLPH pressure projection exceeded 60 seconds"
+    );
 }

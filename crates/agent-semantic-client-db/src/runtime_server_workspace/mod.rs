@@ -6,18 +6,18 @@ mod lease;
 mod memory_backend;
 mod model;
 mod owner_content_identity;
-mod owner_freshness;
 mod owner_identity_journal;
 pub use canonical_materialization::{
     ValidatedWorkspaceCanonicalMaterialization, WORKSPACE_CANONICAL_MATERIALIZATION_SCHEMA_ID,
     WorkspaceCanonicalMaterialization, WorkspaceCanonicalMaterializationLoad,
 };
+
 pub(crate) use memory_backend::WorkspaceMemoryBackend;
 pub(crate) use model::{
     RUNTIME_SERVER_SHUTDOWN_RECEIPT_SCHEMA_ID, WORKSPACE_RECOVERY_RECEIPT_SCHEMA_ID,
     validate_owners,
 };
-pub use owner_freshness::{WorkspaceOwnerProjectionBuildFuture, WorkspaceOwnerProjectionBuilder};
+pub(crate) use owner_content_identity::current_owner_content_digest;
 pub(crate) use resident_overlay::{ResidentOverlaySnapshot, ResidentOverlayStore};
 pub(crate) use selector_overlay::validate_projection_kind;
 mod pointer;
@@ -31,7 +31,10 @@ mod segment;
 mod selector_overlay;
 mod store;
 
-pub use client::{WorkspaceGenerationDataPlaneClient, WorkspaceGenerationDataPlaneOpen};
+pub use client::{
+    WorkspaceGenerationDataPlaneCacheReceipt, WorkspaceGenerationDataPlaneClient,
+    WorkspaceGenerationDataPlaneOpen,
+};
 pub use durability::{
     WORKSPACE_GENERATION_DURABILITY_RECEIPT_SCHEMA_ID, WorkspaceGenerationDurabilityReceipt,
     WorkspaceGenerationDurabilityState,
@@ -46,20 +49,23 @@ pub use model::{
     WorkspaceDataPlanePerformanceReceipt, WorkspaceDerivedProjectionSnapshot,
     WorkspaceGenerationBuild, WorkspaceGenerationDelta, WorkspaceGenerationSnapshot,
     WorkspaceGenerationState, WorkspaceMemoryGeneration, WorkspaceOwnerSnapshot,
-    WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeOwnerFreshnessReceipt,
-    WorkspaceRuntimeSelectorOverlay, WorkspaceRuntimeSelectorOverlayReceipt,
-    WorkspaceRuntimeSelectorRead, WorkspaceSelectorSnapshot,
+    WorkspaceRecoveryReceipt, WorkspaceRecoverySource, WorkspaceRuntimeSelectorOverlay,
+    WorkspaceRuntimeSelectorOverlayReceipt, WorkspaceRuntimeSelectorRead,
+    WorkspaceSelectorSnapshot,
 };
 pub use pointer::WorkspaceGenerationPointerReader;
 pub use registry::{PublishedWorkspaceGenerationState, RuntimeServerWorkspaceRegistry};
 pub use restore::restore_active_turso_generation;
 pub use scope_path::{workspace_generation_directory, workspace_generation_pointer_path};
 pub use search_generation_authority::{
-    WorkspaceSearchGenerationAuthority, WorkspaceSearchGenerationAuthorityOpenReceipt,
-    WorkspaceSearchGenerationAuthorityPointerClient,
+    SharedWorkspaceSearchGenerationAuthorityPointerClient, WorkspaceSearchGenerationAuthority,
+    WorkspaceSearchGenerationAuthorityOpenReceipt, WorkspaceSearchGenerationAuthorityPointerClient,
 };
 pub use segment::{MappedWorkspaceGeneration, WorkspaceGenerationPublisher};
-pub use store::{RuntimeServerWorkspaceStore, prepare_runtime_server_workspace_store};
+pub use store::{
+    RuntimeServerWorkspaceStore, prepare_runtime_server_workspace_store,
+    prepare_runtime_server_workspace_store_at_root,
+};
 mod retirement;
 pub use retirement::{
     RESIDENT_WORKSPACE_RETIREMENT_RECEIPT_SCHEMA_ID, ResidentWorkspaceRetirementReason,

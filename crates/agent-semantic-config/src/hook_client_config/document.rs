@@ -26,7 +26,7 @@ pub(super) const HOOK_PROTOCOL_VERSION: &str = "1";
 const DEFAULT_HOOK_CLIENT_CONFIG_TEMPLATE: &str = include_str!("../../templates/hooks/config.toml");
 
 /// Parsed and validated project-local hook client config.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientConfigFile {
     #[serde(default, rename = "wrapper_match")]
@@ -74,7 +74,7 @@ pub struct HookClientLanguageProviderConfig {
 }
 
 /// Optional hook recovery prompt template and per-client agent-flow fragments.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientRecoveryPromptConfig {
     #[serde(default)]
@@ -88,7 +88,7 @@ pub struct HookClientRecoveryPromptConfig {
 }
 
 /// Optional agent-facing guide text for session registry recovery.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientAgentSessionGuideConfig {
     #[serde(default)]
@@ -184,7 +184,7 @@ impl HookClientAgentSessionGuideConfig {
 }
 
 /// Optional agent-facing hook decision text for session routing.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientAgentSessionMessagesConfig {
     #[serde(default)]
@@ -301,7 +301,7 @@ pub fn merge_asp_project_hook_config(
 }
 
 /// Agent-facing Org artifact workflow guard from project-local hook config.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientAgentOrgArtifactsConfig {
     #[serde(default = "default_enabled")]
@@ -347,7 +347,7 @@ impl HookClientAgentOrgArtifactsConfig {
 }
 
 /// Warning policy for active Org artifacts that should be archived.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientAgentOrgArtifactsArchiveWarningConfig {
     #[serde(default = "default_enabled")]

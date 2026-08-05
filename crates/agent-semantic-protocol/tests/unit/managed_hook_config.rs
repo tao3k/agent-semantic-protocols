@@ -184,6 +184,7 @@ fn hook_refresh_has_no_sync_recursion_edge() {
         "super::sync::",
         "sync_agent_configuration",
         "ensure_codex_agent_configuration",
+        "super::run_protocol_command",
     ] {
         assert!(
             !hook_runtime.contains(forbidden),

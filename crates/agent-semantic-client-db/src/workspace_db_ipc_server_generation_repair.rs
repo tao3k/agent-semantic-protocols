@@ -18,32 +18,19 @@ fn active_repairs() -> &'static Mutex<HashSet<GenerationRepairKey>> {
     ACTIVE_REPAIRS.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-fn repair_runtime() -> Result<&'static tokio::runtime::Runtime, String> {
-    static RUNTIME: std::sync::OnceLock<Result<tokio::runtime::Runtime, String>> =
-        std::sync::OnceLock::new();
-    match RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .thread_name("asp-generation-repair")
-            .enable_all()
-            .build()
-            .map_err(|error| format!("create Runtime Server generation repair runtime: {error}"))
-    }) {
-        Ok(runtime) => Ok(runtime),
-        Err(error) => Err(error.clone()),
-    }
-}
-
 /// Queue cold generation repair under Runtime Server ownership.
 ///
 /// Returning from the caller, including an agent-facing wall timeout, cannot
-/// cancel this task because it owns both the admission handle and identities.
+/// cancel this task because the daemon Tokio runtime owns the spawned task and
+/// the task owns both the admission handle and identities.
 pub(super) fn enqueue(
     admission: Arc<WorkspaceGenerationAdmission>,
     workspace_identity: String,
     project_root: PathBuf,
 ) -> Result<bool, String> {
-    let runtime = repair_runtime()?;
+    let daemon = tokio::runtime::Handle::try_current().map_err(|error| {
+        format!("workspace generation repair requires the Runtime Server Tokio runtime: {error}")
+    })?;
     let key = GenerationRepairKey {
         workspace_identity,
         project_root,
@@ -57,7 +44,7 @@ pub(super) fn enqueue(
         }
     }
 
-    runtime.spawn(async move {
+    daemon.spawn(async move {
         let repair = async {
             let candidate = discover_workspace_generation_candidate(&key.project_root).await?;
             let admitted = admission

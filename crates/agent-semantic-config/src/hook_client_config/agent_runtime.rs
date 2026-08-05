@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 fn default_enabled() -> bool {
     true
@@ -11,7 +11,7 @@ fn default_session_lifetime() -> String {
 }
 
 /// Resident agent identities available to declarative hook rule dispatch.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientAgentsConfig {
     #[serde(default)]
@@ -21,7 +21,7 @@ pub struct HookClientAgentsConfig {
 }
 
 /// One resident identity and its runtime permissions/profile projection.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HookClientResidentAgentConfig {
     #[serde(default = "default_enabled")]

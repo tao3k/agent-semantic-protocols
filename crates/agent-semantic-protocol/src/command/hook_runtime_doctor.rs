@@ -64,18 +64,9 @@ pub(super) fn run_doctor(args: &[String]) -> Result<(), String> {
     );
     let hook_binary_probe = crate::command::protocol_binary::protocol_binary_path_probe();
     let hook_binary_path = hook_binary_probe.path.clone();
-    let active_contract_fingerprint = hook_binary_path.as_ref().and_then(|path| {
-        let output = std::process::Command::new(path)
-            .arg("--contract-fingerprint")
-            .output()
-            .ok()?;
-        if !output.status.success() {
-            return None;
-        }
-        let fingerprint = String::from_utf8(output.stdout).ok()?;
-        let fingerprint = fingerprint.trim();
-        (!fingerprint.is_empty()).then(|| fingerprint.to_string())
-    });
+    let active_contract_fingerprint = hook_binary_path
+        .as_ref()
+        .and_then(|path| crate::command::protocol_binary_contract_fingerprint(path));
     let binary_contract_status = match active_contract_fingerprint.as_deref() {
         Some(active) if active == binary_contract_fingerprint => "match",
         Some(_) => "mismatch",

@@ -174,37 +174,57 @@ fn registry_method_inventory_is_explicit() {
 
 #[test]
 fn every_registered_language_has_provider_owned_development_authority() {
-    use crate::ProviderDevelopmentArtifactDomain::{Checkout, StateHomeProviderStaging};
+    use crate::ProviderDevelopmentArtifactDomain::Checkout;
 
-    for (language, source_root, artifact_domain) in [
-        ("rust", "languages/rust-lang-project-harness", Checkout),
+    for (language, source_root, artifact_domain, build_binding) in [
+        (
+            "rust",
+            "languages/rust-lang-project-harness",
+            Checkout,
+            "provider-workspace-install-v1",
+        ),
         (
             "typescript",
             "languages/typescript-lang-project-harness",
-            StateHomeProviderStaging,
+            Checkout,
+            "provider-workspace-install-v1",
         ),
         (
             "python",
             "languages/python-lang-project-harness",
-            StateHomeProviderStaging,
+            Checkout,
+            "provider-workspace-install-v1",
         ),
         (
             "gerbil-scheme",
             "languages/gerbil-scheme-language-project-harness",
-            StateHomeProviderStaging,
+            Checkout,
+            "provider-workspace-install-v1",
         ),
-        ("julia", "languages/JuliaLangProjectHarness.jl", Checkout),
-        ("org", "languages/orgize", Checkout),
-        ("md", "languages/orgize", Checkout),
+        (
+            "julia",
+            "languages/JuliaLangProjectHarness.jl",
+            Checkout,
+            "provider-workspace-install-v1",
+        ),
+        (
+            "org",
+            "languages/orgize",
+            Checkout,
+            "root-development-installer-v1",
+        ),
+        (
+            "md",
+            "languages/orgize",
+            Checkout,
+            "root-development-installer-v1",
+        ),
     ] {
         let registration =
             crate::registered_provider_development_v1(language).expect("development authority");
         assert_eq!(registration.development.schema_version, "1");
         assert_eq!(registration.development.source_root, source_root);
         assert_eq!(registration.development.artifact_domain, artifact_domain);
-        assert_eq!(
-            registration.development.build_binding,
-            "root-development-installer-v1"
-        );
+        assert_eq!(registration.development.build_binding, build_binding);
     }
 }

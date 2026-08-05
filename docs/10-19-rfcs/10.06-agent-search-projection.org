@@ -28,6 +28,34 @@ inline next actions, exact locators, and explicit omission/avoidance facts.
 
 ** Provider-scoped incremental generation projection
 *** RuntimeServer-centered cache authority
+Fallback release transfer MUST be one-shot. Before =Drop= schedules a Tokio
+cleanup task, it MUST mark the transferred guard so cancellation during runtime
+teardown cannot re-enter =Drop= and recursively schedule another cleanup task.
+Cancellation before the cleanup future's first poll MUST fail closed and leave
+stale recovery to the next canonical owner.
+
+
+Resident lifecycle I/O MUST be Tokio-owned. Singleton socket acquisition, liveness
+probing, stale recovery, endpoint adoption handshakes, and normal release MUST use
+async Tokio tasks with explicit deadlines and cancellation propagation. Blocking
+=std::net= or =std::fs= operations MUST NOT execute on core RuntimeServer worker
+threads. The normal shutdown path MUST await socket release and inode-checked
+cleanup; =Drop= is only a fail-safe scheduling boundary and MUST NOT be the primary
+lifecycle protocol. A timed-out or cancelled probe MUST fail closed without
+unlinking a possibly live socket.
+
+RuntimeServer ownership is state-home scoped and executable-authoritative. When a
+state home publishes a canonical =runtime/bin/asp=, only an executable resolving to
+that canonical binary may acquire the resident election and lifetime singleton
+socket for that state home. Debug and test daemons MUST use an explicitly isolated
+=ASP_STATE_HOME= and MUST fail closed before binding production resident sockets.
+The singleton listener establishes lifetime ownership, not service readiness:
+successful resident adoption additionally requires a healthy endpoint handshake
+whose owner epoch and binding token identify the same resident. A workspace
+generation rebuild, invalidation, staleness, or admission failure is workspace
+scoped and MUST NOT place the global RuntimeServer in =draining= or close unrelated
+workspace-owner endpoints; global draining is reserved for explicit supervisor
+replacement or runtime artifact transition.
 The Runtime Server is the sole live owner of cache admission, source-index generations,
 Turso connections, MVCC publication, and the resident writer queue.  Agent-facing
 =asp cache= commands are typed IPC adapters only; they MUST NOT open =facts.turso=,
@@ -3654,6 +3682,25 @@ only the next-action facts useful to the agent; developer/history and sandtable
 analyzers may persist the heavier ASP topology/index receipts for quality and
 latency analysis.  A warm search reads Turso and the ASP acceleration model
 only; it never invokes a harness parser or provider search command.
+
+The first-stage project topology is not inferred from Compact Render rows or
+from candidate paths.  ASP projects the admitted provider =ProjectResolution=
+into the typed chain =workspace -> provider-root -> language-project ->
+project-marker/package -> target -> source-scope -> owner=.  Git/Native
+candidate discovery supplies possible owner nodes; only a provider-resolved
+source scope may add =admits_owner= or =expects_owner=.  Compact text is a
+lossy view of this graph and MUST NOT be parsed back into topology or action
+identity.
+
+An owner-items miss uses =search-owner-missing-topology.v1=.  Its bounded graph
+contains at most the active workspace/language/generation/missing-owner anchors,
+three relevant language projects, four relevant source scopes, and a typed
+action frontier.  Historical SearchLoop state stores these node ids and edges,
+so an Agent may jump to a previously materialized project/scope node without
+replaying Native discovery or the failed owner lookup.
+
+Selector-seeded graph admission and Compact Render ownership are specified in
+[[file:10.06-agent-search-projection/10.06.11-selector-seed-typed-topology.org][10.06.11 Selector-seed typed topology]].
 
 An owner-item route records language/path admission before graph construction.
 =owner-language-mismatch= is terminal evidence, not a low-confidence
